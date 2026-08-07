@@ -1,15 +1,27 @@
 .PHONY: run
 run: .venv
-	@uv run --locked src/peri_scribe/main.py
+	@mise exec -- uv run --locked src/peri_scribe/main.py
+
+.PHONY: upgrade-tools
+upgrade-tools:
+	@mise upgrade --local --minimum-release-age 3d
+
+.PHONY: install-tools
+install-tools:
+	@mise install
+
+mise.lock: mise.toml install-tools
+	@mise lock
 
 lint: .venv
-	@uv run ruff check --fix
+	@mise exec -- uv run ruff check --fix
 
 typecheck: .venv
-	@uv run ty check
+	@mise exec -- uv run ty check
 
-.venv: pyproject.toml uv.lock
-	@uv sync && touch $@
+.venv: mise.toml pyproject.toml uv.lock
+	@make install-tools
+	@mise exec -- uv sync && touch $@
 
 uv.lock:
 
