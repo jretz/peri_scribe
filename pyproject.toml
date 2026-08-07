@@ -3,6 +3,7 @@ name = "peri_scribe"
 version = "0"
 requires-python = "==3.14.*"
 dependencies = [
+    "arcgis",
     "ruff",
     "ty",
 ]
