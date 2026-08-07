@@ -2,7 +2,7 @@
 
 ## Overall Style
 
-Prefer small, module level functions for everything. Where classes make sense, frozen, kw-only dataclasses are preferred. Where values have meanings, use enums instead of strings or integers. Type hints should be used for all function arguments and return values. Use `mypy` to check type hints.
+Prefer small, module level functions for everything. Where classes make sense, frozen, kw-only dataclasses are preferred. Where values have meanings, use enums instead of strings or integers. Type hints should be used for all function arguments and return values.
 
 Use `make lint` to check style and format code. Use `make typecheck` to check for type hints. Never make changes to `ruff` or `ty` rules in pyproject.toml. Work hard to avoid disabling them on a given line of code. That is only acceptable where third party libraries are not compatible with type hints. When a rule is disabled on a line, only disable the specific rule, not type checking altogether.
 
@@ -13,3 +13,7 @@ Abbreviations are not used in this codebase. All variable names, function names,
 ## Runtime State
 
 Almost all functions are pure functions, meaning they do not have side effects and do not depend on any external state. State should almost always be in frozen dataclasses. Modifications to data should involve passing in a frozen dataclass, and returning a new frozen dataclass with the modifications applied. This makes it easier to reason about the code, and makes it easier to test.
+
+## Persistent State
+
+Functions that interact with external data sources and generated state (cached data, output, etc.) should be as small as possible. They should do nothing beyond the actual read or write operation. This makes it easier to create mocks for testing, and makes it easier to change the underlying data source or output format in the future.
