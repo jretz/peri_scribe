@@ -1,0 +1,62 @@
+[project]
+name = "peri_scribe"
+version = "0"
+requires-python = "==3.14.*"
+dependencies = [
+    "ruff",
+    "ty",
+]
+
+[tool.pyright]
+typeCheckingMode = "off"
+
+[tool.ruff]
+line-length = 88
+
+[tool.ruff.format]
+docstring-code-format = true
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    # Rule sets
+    "C90",  # https://docs.astral.sh/ruff/rules/#mccabe-c90
+    "D",  # https://docs.astral.sh/ruff/rules/#pydocstyle-d
+    "DTZ",  # https://docs.astral.sh/ruff/rules/#flake8-datetimez-dtz
+    "FIX",  # https://docs.astral.sh/ruff/rules/#flake8-fixme-fix
+    "T20",  # https://docs.astral.sh/ruff/rules/#flake8-print-t20
+
+    # Specific rules
+    "C408",  # https://docs.astral.sh/ruff/rules/unnecessary-collection-call/
+    "CPY001",  # https://docs.astral.sh/ruff/rules/missing-copyright-notice/
+    "PLR0913",  # https://docs.astral.sh/ruff/rules/too-many-arguments/
+    "S603",  # https://docs.astral.sh/ruff/rules/subprocess-without-shell-equals-true/
+    "S608",  # https://docs.astral.sh/ruff/rules/hardcoded-sql-expression/
+    "TC003",  # https://docs.astral.sh/ruff/rules/typing-only-standard-library-import/
+    "TD002",  # https://docs.astral.sh/ruff/rules/missing-todo-author/
+    "TD003",  # https://docs.astral.sh/ruff/rules/missing-todo-link/
+]
+
+[tool.ruff.lint.flake8-pytest-style]
+fixture-parentheses = false
+
+[tool.ruff.lint.isort]
+lines-after-imports = 2
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = [
+    # Specific rules
+    "ARG001",  # https://docs.astral.sh/ruff/rules/unused-function-argument/
+    "INP001",  # https://docs.astral.sh/ruff/rules/implicit-namespace-package/
+    "S101",  # https://docs.astral.sh/ruff/rules/assert/
+]
+
+[tool.ty.rules]
+division-by-zero = "error"
+possibly-missing-import = "warn"
+possibly-unresolved-reference = "warn"
+unused-ignore-comment = "error"
+
+[tool.uv]
+exclude-newer = "7 days"
+python-preference = "only-managed"
