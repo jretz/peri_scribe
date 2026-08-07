@@ -1,5 +1,6 @@
 {
     "cSpell.words": [
+        "dataclass",
         "dataclasses",
         "QGIS",
         "rclone",
