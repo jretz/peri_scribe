@@ -6,6 +6,10 @@ Prefer small, module level functions for everything. Where classes make sense, f
 
 Use `make lint` to check style and format code. Use `make typecheck` to check for type hints. Never make changes to `ruff` or `ty` rules in pyproject.toml. Work hard to avoid disabling them on a given line of code. That is only acceptable where third party libraries are not compatible with type hints. When a rule is disabled on a line, only disable the specific rule, not type checking altogether.
 
+## Import Style
+
+In general, avoid using `from <module> import <name>`. Instead, use `import <module>` and qualify the use of things that come from that module. Where there is a well established convention for renaming something on import (e.g., `import numpy as np` or `import pandas as pd`), that is acceptable, otherwise stick to original names.
+
 ## Naming Conventions
 
 Abbreviations are not used in this codebase. All variable names, function names, and constants are written out in full. Exceptions are reserved for universally understood abbreviations (e.g., KML, ID, URL) and conventional single-letter loop variables (`i`, `j` for indices; `a`, `b` for sort comparators). Terms like longitude, latitude, minimum, and maximum are written out in full, rather than abbreviated to `lon`, `lat`, `min`, and `max`.

@@ -272,3 +272,4 @@ Temporary Items
 
 # End of https://www.toptal.com/developers/gitignore/api/VisualStudioCode
 .codewhale
+*.gpkg

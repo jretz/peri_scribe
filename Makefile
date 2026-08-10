@@ -1,6 +1,14 @@
-.PHONY: run
-run: .venv
-	@mise exec -- uv run --locked src/peri_scribe/main.py
+.PHONY: feed-config
+feed-config: .venv
+	@mise exec -- uv run --locked src/peri_scribe/main.py feed-config
+
+.PHONY: fetch
+fetch: .venv
+	@mise exec -- uv run --locked src/peri_scribe/main.py --log-level debug fetch
+
+.PHONY: test
+test: .venv
+	@.venv/bin/py.test --no-header
 
 .PHONY: upgrade-tools
 upgrade-tools:
@@ -34,3 +42,4 @@ uv.lock:
 		tt:VisualStudioCode \
 	> $@
 	echo ".codewhale" >> $@
+	echo "*.gpkg" >> $@
