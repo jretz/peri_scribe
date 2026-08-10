@@ -8,7 +8,7 @@ Fire geography is pulled from configurable data sources, symbolized to show how 
 
 Prototyped:
 
-- **`fetch`** — pulls current wildfire data from ArcGIS feature services into a single GeoPackage (`current_fire_data.gpkg`). Data is written as close to source format as practical: no reprojection, original column names, per-layer CRS.
+- **`fetch`** — pulls current wildfire data from ArcGIS feature services into a single GeoPackage. Data is written as close to original source formats as practical: no re-projection, original column names, per-layer CRS, etc.
 - **`feed-config`** — prints the configured data feeds.
 
 Planned:
