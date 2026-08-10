@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import typing
 
-import geopandas as gpd
+import geopandas
 import pyproj
 import structlog
 
@@ -31,9 +31,10 @@ def extract_geometries(
 ) -> tuple[pd.DataFrame, list[shapely.Geometry | None], str | None]:
     """Separate a feature dataframe's SHAPE column from its attributes.
 
-    Returns the dataframe with the SHAPE column removed, the shapely geometries of its
-    features (None where a feature has no geometry), and a warning to report when the
-    dataframe has no geometry column.
+    Returns:
+        The dataframe with the SHAPE column removed, the shapely geometries of its
+        features (None where a feature has no geometry), and a warning to report when
+        the dataframe has no geometry column.
     """
     if "SHAPE" not in dataframe.columns:
         return (
@@ -55,9 +56,13 @@ def geo_data_frame_from(
     dataframe: pd.DataFrame,
     shapely_geometries: list[shapely.Geometry | None],
     spatial_reference_id: int,
-) -> gpd.GeoDataFrame:
-    """Build the output GeoDataFrame with its geometry column renamed."""
-    geo_data_frame = gpd.GeoDataFrame(
+) -> geopandas.GeoDataFrame:
+    """Build the output GeoDataFrame with its geometry column renamed.
+
+    Returns:
+        The GeoDataFrame with its geometry column renamed.
+    """
+    geo_data_frame = geopandas.GeoDataFrame(
         dataframe,
         geometry=shapely_geometries,
         crs=pyproj.CRS.from_epsg(spatial_reference_id),
@@ -72,10 +77,14 @@ def dataframe_for_layer(
     feed: peri_scribe.models.ArcGISFeed,
     layer: arcgis.features.FeatureLayer,
     feature_set: arcgis.features.FeatureSet,
-) -> gpd.GeoDataFrame:
+) -> geopandas.GeoDataFrame:
     """Convert a query result to a GeoDataFrame in the layer's native CRS.
 
-    Raises NoFeaturesError if the feed returns no features.
+    Returns:
+        The GeoDataFrame for the feed's features.
+
+    Raises:
+        NoFeaturesError: If the feed returns no features.
     """
     features = feature_set.features
     if not features:

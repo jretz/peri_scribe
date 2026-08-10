@@ -2,7 +2,7 @@ import pathlib
 from typing import TYPE_CHECKING
 
 import arcgis.features
-import geopandas as gpd
+import geopandas
 import pyproj
 import pytest
 import structlog
@@ -126,7 +126,7 @@ def test_fetch_writes_geo_package(
     output_path = tmp_path / peri_scribe.models.OUTPUT_FILENAME
     assert result.exit_code == 0
     assert output_path.exists()
-    written = gpd.read_file(output_path, layer=SAMPLE_FEED_NAME)
+    written = geopandas.read_file(output_path, layer=SAMPLE_FEED_NAME)
     assert list(written["name"]) == ["a", "b"]
     assert written.crs == pyproj.CRS.from_epsg(WGS84_WKID)
 

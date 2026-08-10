@@ -2,18 +2,13 @@ import typing
 
 import arcgis.features
 import click.testing
-import geopandas as gpd
+import geopandas
 import pyproj
 import pyproj.exceptions
 import pytest
-import shapely
 import shapely.geometry
 
-import peri_scribe.exceptions
-import peri_scribe.geo_data
-import peri_scribe.main
 import peri_scribe.models
-import peri_scribe.spatial_reference
 
 
 WGS84_WKID = 4326
@@ -96,7 +91,7 @@ class FeatureLayerStub:
 class FailingTransformer:
     """Transformer stand-in whose corner transforms always fail."""
 
-    def transform(
+    def transform(  # ruff: ignore[no-self-use]
         self,
         _longitude: float,
         _latitude: float,
@@ -121,7 +116,11 @@ def runner() -> click.testing.CliRunner:
 
 @pytest.fixture
 def feature_set_with_geometry() -> arcgis.features.FeatureSet:
-    """A FeatureSet whose features carry point geometries in WGS84."""
+    """A FeatureSet whose features carry point geometries in WGS84.
+
+    Returns:
+        A FeatureSet with two point features in WGS84.
+    """
     return arcgis.features.FeatureSet(
         [
             arcgis.features.Feature(
@@ -146,10 +145,14 @@ def feature_set_with_geometry() -> arcgis.features.FeatureSet:
 
 @pytest.fixture
 def layer_data_factory() -> typing.Callable[[str], peri_scribe.models.LayerData]:
-    """Build LayerData entries with two point features in WGS84."""
+    """Build LayerData entries with two point features in WGS84.
+
+    Returns:
+        A factory for LayerData entries with two point features in WGS84.
+    """
 
     def make_layer_data(name: str) -> peri_scribe.models.LayerData:
-        dataframe = gpd.GeoDataFrame(
+        dataframe = geopandas.GeoDataFrame(
             {"name": ["a", "b"]},
             geometry=[
                 shapely.geometry.Point(1.0, 2.0),

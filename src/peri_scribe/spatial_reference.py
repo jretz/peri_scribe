@@ -27,7 +27,11 @@ logger = structlog.get_logger()
 
 
 def spatial_reference_wkids(spatial_reference: object) -> set[int]:
-    """Collect the integer wkid values an ArcGIS spatial reference reports."""
+    """Collect the integer wkid values an ArcGIS spatial reference reports.
+
+    Returns:
+        The set of integer wkid values the spatial reference reports.
+    """
     if not isinstance(spatial_reference, dict):
         return set()
     wkids: set[int] = set()
@@ -41,7 +45,11 @@ def spatial_reference_wkids(spatial_reference: object) -> set[int]:
 
 
 def layer_wkids(layer: arcgis.features.FeatureLayer) -> set[int]:
-    """Collect every wkid the layer's metadata reports, including extents."""
+    """Collect every wkid the layer's metadata reports, including extents.
+
+    Returns:
+        The set of wkid values the layer's metadata reports, including extents.
+    """
     wkids: set[int] = set()
     properties = layer.properties
     for key in ("extent", "fullExtent", "initialExtent"):
@@ -57,7 +65,9 @@ def bounds_of(
 ) -> tuple[float, float, float, float] | None:
     """Return (x_minimum, x_maximum, y_minimum, y_maximum) of the geometries.
 
-    Returns None if every geometry is null.
+    Returns:
+        The bounds as (x_minimum, x_maximum, y_minimum, y_maximum), or None if every
+        geometry is null.
     """
     valid = [geometry for geometry in geometries if geometry is not None]
     if not valid:
@@ -71,6 +81,10 @@ def projected_maximum_magnitude(crs: pyproj.CRS) -> float:
 
     Derived from the CRS's area of use: its corners are transformed into the CRS, giving
     the coordinate extent in the CRS's own units.
+
+    Returns:
+        The largest coordinate magnitude the CRS plausibly produces, or the
+        `PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK` constant when the CRS has no area of use.
     """
     area = crs.area_of_use
     if area is None:
@@ -101,7 +115,12 @@ def projected_maximum_magnitude(crs: pyproj.CRS) -> float:
 def spatial_reference_domain(
     wkid: int,
 ) -> peri_scribe.models.SpatialReferenceDomain | None:
-    """Describe the plausible coordinate domain of a wkid, or None if unknown."""
+    """Describe the plausible coordinate domain of a wkid, or None if unknown.
+
+    Returns:
+        The domain of the wkid's CRS, or None if the wkid has no known geographic or
+        projected CRS.
+    """
     try:
         crs = pyproj.CRS.from_epsg(wkid)
     except pyproj.exceptions.CRSError:
@@ -134,7 +153,11 @@ def axis_fits(
     minimum_magnitude: float,
     maximum_magnitude: float,
 ) -> bool:
-    """Return True if every value in [low, high] has magnitude in the band."""
+    """Return True if every value in [low, high] has magnitude in the band.
+
+    Returns:
+        True if every value in [low, high] has magnitude in the band.
+    """
     if max(abs(low), abs(high)) > maximum_magnitude:
         return False
     if minimum_magnitude > 0 and low <= 0 <= high:
@@ -146,7 +169,11 @@ def coordinates_match_domain(
     domain: tuple[float, float, float, float],
     bounds: tuple[float, float, float, float],
 ) -> bool:
-    """Return True if every coordinate magnitude in bounds fits the bands."""
+    """Return True if every coordinate magnitude in bounds fits the bands.
+
+    Returns:
+        True if every coordinate magnitude in bounds fits the bands.
+    """
     x_minimum_band, x_maximum_band, y_minimum_band, y_maximum_band = domain
     x_minimum, x_maximum, y_minimum, y_maximum = bounds
     return axis_fits(
@@ -166,6 +193,9 @@ def longitudes_in_area(
     """Return True if the longitude extent lies within the area's bounds.
 
     The area may wrap across the antimeridian, in which case west > east.
+
+    Returns:
+        True if the longitude extent lies within the area's bounds.
     """
     if west <= east:
         return west <= x_minimum and x_maximum <= east
@@ -179,6 +209,9 @@ def coordinates_in_area(
     """Return True if the bounds fall inside the CRS's area of use.
 
     An unknown area of use is treated as matching.
+
+    Returns:
+        True if the bounds fall inside the CRS's area of use.
     """
     area = crs.area_of_use
     if area is None:
@@ -192,7 +225,11 @@ def coordinates_in_area(
 
 
 def area_of_use_text(crs: pyproj.CRS) -> str:
-    """Describe a CRS's area of use for warnings."""
+    """Describe a CRS's area of use for warnings.
+
+    Returns:
+        A human-readable description of the CRS's area of use.
+    """
     area = crs.area_of_use
     if area is None:
         return "unknown"
@@ -210,6 +247,10 @@ def select_spatial_reference_wkid(
     candidate wins; when others were excluded the selection carries a warning that lists
     them and the reason. When no wkid can be chosen, the selection carries a failure
     message that explains why.
+
+    Returns:
+        The selection describing the chosen wkid, or explaining why none could be
+        chosen.
     """
     if not candidates:
         return peri_scribe.models.SpatialReferenceSelection(
@@ -302,6 +343,12 @@ def choose_spatial_reference_id(
     returned features' coordinate bounds. If the selection carries a warning, it is
     logged; if no wkid can be chosen, NoSpatialReferenceError is raised so no output is
     written.
+
+    Returns:
+        The chosen spatial reference wkid.
+
+    Raises:
+        NoSpatialReferenceError: If no candidate wkid matches the returned coordinates.
     """
     candidates = layer_wkids(layer) | spatial_reference_wkids(
         feature_set.spatial_reference,

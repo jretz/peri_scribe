@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 
 
 if TYPE_CHECKING:
-    import geopandas as gpd
+    import geopandas
     import pyproj
 
 
@@ -65,7 +65,7 @@ FEEDS: list[ArcGISFeed] = [
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class LayerData:
     name: str
-    dataframe: gpd.GeoDataFrame
+    dataframe: geopandas.GeoDataFrame
 
 
 @dataclasses.dataclass(frozen=True)

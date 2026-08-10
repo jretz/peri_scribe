@@ -35,7 +35,11 @@ def cli(log_level: str) -> None:
 
 @cli.command()
 def fetch() -> None:
-    """Fetch all configured feeds into a single GeoPackage."""
+    """Fetch all configured feeds into a single GeoPackage.
+
+    Raises:
+        SystemExit: If a feed is unreachable.
+    """
     output_path = pathlib.Path.cwd() / peri_scribe.models.OUTPUT_FILENAME
     logger.info("Output file", path=output_path)
     gis = arcgis.gis.GIS()

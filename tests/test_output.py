@@ -2,7 +2,7 @@ import logging
 import pathlib
 import typing
 
-import geopandas as gpd
+import geopandas
 import structlog
 
 import peri_scribe.models
@@ -21,8 +21,8 @@ def test_write_geopackage_writes_every_layer(
             layer_data_factory("second_layer"),
         ],
     )
-    first = gpd.read_file(path, layer="first_layer")
-    second = gpd.read_file(path, layer="second_layer")
+    first = geopandas.read_file(path, layer="first_layer")
+    second = geopandas.read_file(path, layer="second_layer")
     assert list(first["name"]) == ["a", "b"]
     assert list(second["name"]) == ["a", "b"]
 
@@ -39,7 +39,7 @@ def test_write_geopackage_replaces_existing_file(
             [layer_data_factory("replacement_layer")],
         )
     assert "Replaced existing" in [event["event"] for event in captured]
-    written = gpd.read_file(path, layer="replacement_layer")
+    written = geopandas.read_file(path, layer="replacement_layer")
     assert list(written["name"]) == ["a", "b"]
 
 
