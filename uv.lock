@@ -724,7 +724,7 @@ wheels = [
 [[package]]
 name = "peri-scribe"
 version = "0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "arcgis" },
     { name = "click" },

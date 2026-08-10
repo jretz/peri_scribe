@@ -11,6 +11,8 @@
 - Where test setup is at all complicated, it should be factored out into a fixture.
 - When a class/method/function is tested by a function, that class/method/function name should appear immediately after `test_` in the test function name. For example, if the class `MyClass` has a method `my_method`, then a test function for that method should be named `test_my_class_my_method`.
 
-## Network
+## Input/Output
 
 No tests should touch the network in any way. All network access should be mocked out. This includes access to ArcGIS Hub, and any other data sources.
+
+No tests should write to disk. All file access should be mocked out, or done through in memory files.

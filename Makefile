@@ -1,10 +1,10 @@
 .PHONY: feed-config
 feed-config: .venv
-	@mise exec -- uv run --locked src/peri_scribe/main.py feed-config
+	@mise exec -- uv run --locked --module peri_scribe.main feed-config
 
 .PHONY: fetch
 fetch: .venv
-	@mise exec -- uv run --locked src/peri_scribe/main.py --log-level debug fetch
+	@mise exec -- uv run --locked --module peri_scribe.main --log-level debug fetch
 
 .PHONY: test
 test: .venv

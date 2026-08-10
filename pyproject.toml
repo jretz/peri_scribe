@@ -19,6 +19,10 @@ dependencies = [
     "ty",
 ]
 
+[build-system]
+requires = ["uv_build < 0.13"]
+build-backend = "uv_build"
+
 [tool.pyright]
 typeCheckingMode = "off"
 
@@ -50,8 +54,8 @@ addopts = [
     "--ty",
 ]
 filterwarnings = [
-    # Deprecation warnings raised at import time by third-party dependencies
-    # (arcgis, dask, setuptools) cannot be fixed in this project.
+    # Deprecation warnings raised at import time by third-party dependencies (arcgis,
+    # setuptools) cannot be fixed in this project.
     "ignore:distutils Version classes are deprecated:DeprecationWarning",
     "ignore:The 'generic' unit for NumPy timedelta is deprecated:DeprecationWarning",
 ]
@@ -104,6 +108,9 @@ division-by-zero = "error"
 possibly-missing-import = "warn"
 possibly-unresolved-reference = "warn"
 unused-ignore-comment = "error"
+
+[tool.uv.build-backend]
+packages = ["src/peri_scribe"]
 
 [tool.uv]
 exclude-newer = "7 days"

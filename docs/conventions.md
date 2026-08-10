@@ -1,14 +1,18 @@
 # Conventions
 
+The code exists for the purpose of being easily read and understood by humans. This means that the code should be clear, concise, and consistent.
+
 ## Overall Style
 
 Prefer small, module level functions for everything. Where classes make sense, frozen, kw-only dataclasses are preferred. Where values have meanings, use enums instead of strings or integers. Type hints should be used for all function arguments and return values.
 
-Use `make lint` to check style and format code. Use `make typecheck` to check for type hints. Never make changes to `ruff` or `ty` rules in pyproject.toml. Work hard to avoid disabling them on a given line of code. That is only acceptable where third party libraries are not compatible with type hints. When a rule is disabled on a line, only disable the specific rule, not type checking altogether.
+Use `make lint` to check style and format code. Use `make typecheck` to check for type hints. Never make changes to `ruff` or `ty` rules in pyproject.toml. Work hard to avoid disabling them on a given line of code. That is only acceptable where third party libraries are not compatible with type hints. When a rule is disabled on a line, only disable the specific rule, not type checking altogether. Do not dismiss linting or type checking errors, even if you think they are not important (e.g., only cosmetic).
+
+Do not leave dead code in the codebase.
 
 ## Import Style
 
-In general, avoid using `from <module> import <name>`. Instead, use `import <module>` and qualify the use of things that come from that module. Where there is a well established convention for renaming something on import (e.g., `import numpy as np` or `import pandas as pd`), that is acceptable, otherwise stick to original names.
+In general, avoid using `from <module> import <name>`. Instead, use `import <module>` and qualify the use of things that come from that module. Where there is a well established convention for renaming something on import (e.g., `import numpy as np` or `import pandas as pd`), that is acceptable, otherwise stick to original names. Do not use `import *`. Avoid circular imports.
 
 ## Naming Conventions
 
