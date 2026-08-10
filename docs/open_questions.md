@@ -6,10 +6,15 @@
   - If they have the same fire, do you want both sets of perimeters?
   - If not, does one take precedence over the other?
   - Would it be better to try to merge them, perhaps by taking the union of the two perimeters?
-- How long should a fire stay in the output KML? Some number of days after the last perimeter change? Until it disappears in the source data? Until the data source marks it as not active?
-- There has been mention of "breaking the format" where polygons are not filled in. Is there more known about that? Is geometry simplification (e.g., strategically removing points from polygons in a way that doesn't change the shape "too much") acceptable if it helps fix this issue?
+- How long should a fire stay in the output KML?
+  - Some number of days after the last perimeter change?
+  - Until it disappears in the source data?
+  - Until the data source marks it as not active?
+- I've heard you mention "breaking the format" where polygons are not filled in.
+  - I can debug that, but do you know any more about what's happening?
+  - Is geometry simplification (e.g., strategically removing points from polygons in a way that doesn't change the shape "too much") acceptable if it helps fix this issue?
 - I assume that the current day's perimeter will not always wholly contain the previous day's perimeter. There must be cases where perimeter mappings are corrected from one day to the next. Is that right?
-  - Would it be desirable to "fix" this? That would mean removing parts of previous day perimeters that are no longer present in the next day's perimeter.
+  - Would it be desirable to "fix" this? That would mean removing parts of previous day perimeters that are no longer present in most recent perimeter.
 - When is fire mapping "midnight"? In other words, is there a time of day when the last version of perimeters for the previous day are highly likely to be available in data sources, but no updates for the current day are likely to be available yet? This would be a good time to do a final run and "lock down" the archive of the previous day's perimeters. This is about both synchronizing data from sources, and distinguishing "today's" perimeter from "yesterday's" perimeter when symbolizing.
 
 ## Monitoring
