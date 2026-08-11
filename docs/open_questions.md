@@ -13,6 +13,10 @@
 - I've heard you mention "breaking the format" where polygons are not filled in.
   - I can debug that, but do you know any more about what's happening?
   - Is geometry simplification (e.g., strategically removing points from polygons in a way that doesn't change the shape "too much") acceptable if it helps fix this issue?
+  - *UPDATE* - I might have a fix for this. It does require geometry simplification. There are a few problems that break Google Earth's filling of polygons that appear in current perimeters:
+    - There are polygons inside the perimeters of several current fires where all points in the polygon (sometimes thousands of points) are all collinear, within the limits of numerical accuracy. These polygons have very close to zero area. These appear to be bad data that doesn't belong in the data set at all.
+    - The actual perimeters of several fires will have a point on the perimeter, followed by a point inside the perimeter, followed by a point virtually on top of the first point. Some fires have dozens of these zero area slits.
+    - Huge clusters of points nearly on top of each other... one polygon had more than 40K points within a 10m radius.
 - I assume that the current day's perimeter will not always wholly contain the previous day's perimeter. There must be cases where perimeter mappings are corrected from one day to the next. Is that right?
   - Would it be desirable to "fix" this? That would mean removing parts of previous day perimeters that are no longer present in most recent perimeter.
 - When is fire mapping "midnight"? In other words, is there a time of day when the last version of perimeters for the previous day are highly likely to be available in data sources, but no updates for the current day are likely to be available yet? This would be a good time to do a final run and "lock down" the archive of the previous day's perimeters. This is about both synchronizing data from sources, and distinguishing "today's" perimeter from "yesterday's" perimeter when symbolizing.
