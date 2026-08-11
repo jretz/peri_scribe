@@ -26,3 +26,7 @@ peri_scribe is a command line tool. It accepts the commands `fetch` and `symboli
 ## Data Validation
 
 Some feeds provide conflicting information about what coordinate reference system is used for their data. The system does its best to detect the correct coordinate reference system from one of those indicated by the feed (e.g., by checking the scale of the coordinates to determine meters vs. degrees).
+
+## Code Structure
+
+`main.py` contains all the logic to implement the CLI, and nothing else. All application logic is dispatched to other modules.

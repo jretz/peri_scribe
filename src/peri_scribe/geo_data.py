@@ -1,11 +1,12 @@
-"""GeoDataFrame construction for peri_scribe.
+"""GeoDataFrame construction and query helpers for peri_scribe.
 
 Converts ArcGIS FeatureSet query results into GeoDataFrames in the layer's native
-spatial reference.
+spatial reference, and provides retry-aware querying for ArcGIS feature layers.
 """
 
 from __future__ import annotations
 
+import time
 import typing
 
 import geopandas
@@ -14,6 +15,7 @@ import structlog
 
 import peri_scribe.exceptions
 import peri_scribe.models
+import peri_scribe.retry
 import peri_scribe.spatial_reference
 
 
@@ -104,3 +106,56 @@ def dataframe_for_layer(
         bounds,
     )
     return geo_data_frame_from(dataframe, shapely_geometries, spatial_reference_id)
+
+
+def query_with_retry(
+    feed_name: str,
+    layer: arcgis.features.FeatureLayer,
+    *,
+    max_retries: int = peri_scribe.retry.DEFAULT_MAX_RETRIES,
+) -> arcgis.features.FeatureSet:
+    """Query *layer*, retrying on transient and rate-limit errors.
+
+    Rate-limit errors (HTTP 429 from the ArcGIS REST API) use the server-
+    suggested ``Retry after`` delay. Other transient network errors use
+    exponential backoff starting at ``BACKOFF_BASE_SECONDS`` and capped at
+    ``BACKOFF_MAXIMUM_SECONDS``.
+
+    Args:
+        feed_name: Human-readable feed identifier for log messages.
+        layer: The FeatureLayer to query.
+        max_retries: Maximum number of retries before giving up.
+
+    Returns:
+        The FeatureSet returned by a successful query.
+    """
+    attempts_made = 0
+    while True:
+        attempts_made += 1
+        try:
+            return layer.query()
+        except Exception as error:
+            retry_seconds = peri_scribe.retry.rate_limit_retry_seconds(error)
+            if retry_seconds is not None:
+                retry_reason = "Rate-limited; retrying after server-suggested delay"
+            elif peri_scribe.retry.is_transient_error(error):
+                retry_seconds = peri_scribe.retry.compute_backoff(attempts_made)
+                retry_reason = "Transient network error; retrying after backoff"
+            else:
+                raise
+
+            if attempts_made > max_retries:
+                logger.exception(
+                    "Retries exhausted",
+                    feed=feed_name,
+                    attempts=attempts_made,
+                    reason=retry_reason,
+                )
+                raise
+            logger.warning(
+                retry_reason,
+                feed=feed_name,
+                attempt=attempts_made,
+                retry_seconds=retry_seconds,
+            )
+            time.sleep(retry_seconds)

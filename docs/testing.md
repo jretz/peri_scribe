@@ -16,3 +16,7 @@
 No tests should touch the network in any way. All network access should be mocked out. This includes access to ArcGIS Hub, and any other data sources.
 
 No tests should write to disk. All file access should be mocked out, or done through in memory files.
+
+## Test Coverage
+
+Do not introduce pragmas to ignore test coverage.

@@ -1,3 +1,5 @@
+import re
+
 import arcgis.features
 import pandas as pd
 import pyproj
@@ -9,6 +11,7 @@ import structlog
 import peri_scribe.exceptions
 import peri_scribe.geo_data
 import peri_scribe.models
+import peri_scribe.retry
 from tests.conftest import (
     SAMPLE_FEED_NAME,
     SAMPLE_FEED_URL,
@@ -119,3 +122,209 @@ def test_dataframe_for_layer_warns_when_features_lack_geometry() -> None:
     assert captured[0]["log_level"] == "warning"
     assert "all features lack geometry" in captured[0]["event"]
     assert list(result.geometry) == [None, None]
+
+
+RATE_LIMIT_RETRY_AFTER_SECONDS = 60
+RATE_LIMIT_ERROR_BODY = (
+    "{'error': {'code': 429, 'message': 'Unable to perform query. "
+    "Too many requests.', 'details': ['API calls quota exceeded "
+    "(120975 request units)! maximum allowed request units (115200) "
+    f"per Minute. Retry after {RATE_LIMIT_RETRY_AFTER_SECONDS} sec.']}}"
+)
+LOOSE_429_ERROR_BODY = "{'error': {'code': 429, 'message': 'Too many requests.'}}"
+
+
+class QueryStub:
+    """Callable that returns or raises successive outcomes from a list."""
+
+    def __init__(self, outcomes: list[arcgis.features.FeatureSet | Exception]) -> None:
+        self._outcomes = list(outcomes)
+        self._call_count = 0
+
+    def query(self) -> arcgis.features.FeatureSet:
+        outcome = self._outcomes[self._call_count]
+        self._call_count += 1
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+def test_query_with_retry_succeeds_on_first_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+    feature_set_with_geometry: arcgis.features.FeatureSet,
+) -> None:
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
+    outcomes: list[arcgis.features.FeatureSet | Exception] = [
+        feature_set_with_geometry,
+    ]
+    layer = QueryStub(outcomes)
+    result = peri_scribe.geo_data.query_with_retry(
+        SAMPLE_FEED_NAME,
+        layer,  # ty: ignore
+    )
+    assert result is feature_set_with_geometry
+    assert sleep_calls == []
+
+
+def test_query_with_retry_retries_on_429_with_retry_after(
+    monkeypatch: pytest.MonkeyPatch,
+    feature_set_with_geometry: arcgis.features.FeatureSet,
+) -> None:
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
+    rate_limit_error = ValueError(RATE_LIMIT_ERROR_BODY)
+    outcomes: list[arcgis.features.FeatureSet | Exception] = [
+        rate_limit_error,
+        feature_set_with_geometry,
+    ]
+    layer = QueryStub(outcomes)
+    result = peri_scribe.geo_data.query_with_retry(
+        SAMPLE_FEED_NAME,
+        layer,  # ty: ignore
+    )
+    assert result is feature_set_with_geometry
+    assert sleep_calls == [60.0]
+
+
+def test_query_with_retry_retries_on_loose_429(
+    monkeypatch: pytest.MonkeyPatch,
+    feature_set_with_geometry: arcgis.features.FeatureSet,
+) -> None:
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
+    loose_429_error = ValueError(LOOSE_429_ERROR_BODY)
+    outcomes: list[arcgis.features.FeatureSet | Exception] = [
+        loose_429_error,
+        feature_set_with_geometry,
+    ]
+    layer = QueryStub(outcomes)
+    result = peri_scribe.geo_data.query_with_retry(
+        SAMPLE_FEED_NAME,
+        layer,  # ty: ignore
+    )
+    assert result is feature_set_with_geometry
+    assert sleep_calls == [
+        float(peri_scribe.retry.FALLBACK_RETRY_SECONDS),
+    ]
+
+
+def test_query_with_retry_exhausts_retries_and_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
+    rate_limit_error = ValueError(RATE_LIMIT_ERROR_BODY)
+    max_retries = peri_scribe.retry.DEFAULT_MAX_RETRIES
+    outcomes: list[arcgis.features.FeatureSet | Exception] = [rate_limit_error] * (
+        max_retries + 2
+    )
+    layer = QueryStub(outcomes)
+    with pytest.raises(ValueError, match=re.escape(RATE_LIMIT_ERROR_BODY)):
+        peri_scribe.geo_data.query_with_retry(
+            SAMPLE_FEED_NAME,
+            layer,  # ty: ignore
+        )
+    # Sleep called once per retry (max_retries times), not for the final failure.
+    assert sleep_calls == [60.0] * max_retries
+
+
+def test_query_with_retry_fails_immediately_on_non_429(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
+    generic_error = RuntimeError("something else broke")
+    outcomes: list[arcgis.features.FeatureSet | Exception] = [generic_error]
+    layer = QueryStub(outcomes)
+    with pytest.raises(RuntimeError, match="something else broke"):
+        peri_scribe.geo_data.query_with_retry(
+            SAMPLE_FEED_NAME,
+            layer,  # ty: ignore
+        )
+    assert sleep_calls == []
+
+
+def test_query_with_retry_retries_on_transient_error(
+    monkeypatch: pytest.MonkeyPatch,
+    feature_set_with_geometry: arcgis.features.FeatureSet,
+) -> None:
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
+    transient_error = ValueError("Connection broken: IncompleteRead(…)")
+    outcomes: list[arcgis.features.FeatureSet | Exception] = [
+        transient_error,
+        feature_set_with_geometry,
+    ]
+    layer = QueryStub(outcomes)
+    result = peri_scribe.geo_data.query_with_retry(
+        SAMPLE_FEED_NAME,
+        layer,  # ty: ignore
+    )
+    assert result is feature_set_with_geometry
+    # First transient error on attempt 1 → backoff = 2.0s
+    assert sleep_calls == [peri_scribe.retry.BACKOFF_BASE_SECONDS]
+
+
+def test_query_with_retry_exhausts_transient_retries_and_raises(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
+    transient_error = ValueError("Connection broken: IncompleteRead(…)")
+    max_retries = peri_scribe.retry.DEFAULT_MAX_RETRIES
+    outcomes: list[arcgis.features.FeatureSet | Exception] = [transient_error] * (
+        max_retries + 2
+    )
+    layer = QueryStub(outcomes)
+    with pytest.raises(ValueError, match="Connection broken"):
+        peri_scribe.geo_data.query_with_retry(
+            SAMPLE_FEED_NAME,
+            layer,  # ty: ignore
+        )
+    # Backoff for attempts 1, 2, 3: 2.0s, 4.0s, 8.0s
+    assert sleep_calls == [2.0, 4.0, 8.0]
+
+
+def test_query_with_retry_logs_rate_limit_reason(
+    monkeypatch: pytest.MonkeyPatch,
+    feature_set_with_geometry: arcgis.features.FeatureSet,
+) -> None:
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
+    rate_limit_error = ValueError(RATE_LIMIT_ERROR_BODY)
+    outcomes: list[arcgis.features.FeatureSet | Exception] = [
+        rate_limit_error,
+        feature_set_with_geometry,
+    ]
+    layer = QueryStub(outcomes)
+    with structlog.testing.capture_logs() as captured:
+        peri_scribe.geo_data.query_with_retry(
+            SAMPLE_FEED_NAME,
+            layer,  # ty: ignore
+        )
+    assert captured[0]["event"] == "Rate-limited; retrying after server-suggested delay"
+    assert captured[0]["attempt"] == 1
+    assert captured[0]["retry_seconds"] == RATE_LIMIT_RETRY_AFTER_SECONDS
+
+
+def test_query_with_retry_logs_transient_reason(
+    monkeypatch: pytest.MonkeyPatch,
+    feature_set_with_geometry: arcgis.features.FeatureSet,
+) -> None:
+    sleep_calls: list[float] = []
+    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
+    transient_error = ValueError("Connection broken: IncompleteRead(…)")
+    outcomes: list[arcgis.features.FeatureSet | Exception] = [
+        transient_error,
+        feature_set_with_geometry,
+    ]
+    layer = QueryStub(outcomes)
+    with structlog.testing.capture_logs() as captured:
+        peri_scribe.geo_data.query_with_retry(
+            SAMPLE_FEED_NAME,
+            layer,  # ty: ignore
+        )
+    assert captured[0]["event"] == "Transient network error; retrying after backoff"
+    assert captured[0]["attempt"] == 1
+    assert captured[0]["retry_seconds"] == peri_scribe.retry.BACKOFF_BASE_SECONDS
