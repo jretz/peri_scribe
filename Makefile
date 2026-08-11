@@ -44,3 +44,5 @@ uv.lock:
 	> $@
 	echo ".codewhale" >> $@
 	echo "*.gpkg" >> $@
+	echo "*.kml" >> $@
+	echo "*.kmz" >> $@
