@@ -20,7 +20,7 @@ The same JSON file contains a list of notification recipients. Each recipient ha
 
 ### Symbolization
 
-There is a template file in KML format. It contains a fictional point location and a set of fictional daily perimeters for a single fictional fire. The actual location of those geographic elements do not matter. The point is named "Fire-Point-Location". The perimeters are named "Day-Minus-0", "Day-Minus-1", "Day-Minus-2", "Day-Minus-3", etc. When symbolizing real fire data, the styles associated with the fictional fire are used. This allows Google Earth, or other KML tools, to be used as the UI for specifying symbolization. If there is not data for the current day for a fire, "Day-Minus-0" symbolization will not be used (and so on for previous days) - this gives a visual indication that data is stale.
+There is a template file in KML format. It contains a fictional point location and a set of fictional perimeters for a single fictional fire. The location of those geographic elements do not matter. The point is named "Point Location". The latest perimeter is named "Perimeter (current)", the previous "Perimeter (old 1)", the one before that "Perimeter (old 2)", and so on ("Perimeter (current)" is required and any number of "Perimeter (old #)" templates can be present). When symbolizing real fire data, the styles associated with the fictional fire are used. This allows Google Earth, or other KML tools, to be used as the UI for specifying symbolization.
 
 ### Cached Data Location
 
