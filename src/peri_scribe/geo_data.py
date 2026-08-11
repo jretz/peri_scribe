@@ -14,6 +14,7 @@ import pyproj
 import structlog
 
 import peri_scribe.exceptions
+import peri_scribe.feed_types
 import peri_scribe.models
 import peri_scribe.retry
 import peri_scribe.spatial_reference
@@ -76,7 +77,7 @@ def geo_data_frame_from(
 
 
 def dataframe_for_layer(
-    feed: peri_scribe.models.ArcGISFeed,
+    feed: peri_scribe.feed_types.Feed,
     layer: arcgis.features.FeatureLayer,
     feature_set: arcgis.features.FeatureSet,
 ) -> geopandas.GeoDataFrame:

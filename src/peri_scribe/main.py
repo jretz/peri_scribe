@@ -42,7 +42,13 @@ def fetch() -> None:
 def feed_config() -> None:
     """Print the configured feeds."""
     for i, feed in enumerate(peri_scribe.models.FEEDS):
-        logger.info("Feed %d", i + 1, name=feed.name, url=feed.url)
+        logger.info(
+            "Feed %d",
+            i + 1,
+            feed_type=type(feed).__name__,
+            name=feed.name,
+            url=feed.url,
+        )
 
 
 if __name__ == "__main__":

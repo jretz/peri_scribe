@@ -47,21 +47,21 @@ class MultiQueryLayerStub:
         gis: object,
         query_outcomes: list[arcgis.features.FeatureSet | Exception],
     ) -> None:
-        self._url = url
-        self._gis = gis
-        self._query_outcomes = list(query_outcomes)
-        self._call_count = 0
-        self._properties: dict[str, object] = {
+        self.url = url
+        self.gis = gis
+        self.query_outcomes = list(query_outcomes)
+        self.call_count = 0
+        self.layer_properties: dict[str, object] = {
             "spatialReference": {"wkid": WGS84_WKID},
         }
 
     @property
     def properties(self) -> dict[str, object]:
-        return self._properties
+        return self.layer_properties
 
     def query(self) -> arcgis.features.FeatureSet:
-        outcome = self._query_outcomes[self._call_count]
-        self._call_count += 1
+        outcome = self.query_outcomes[self.call_count]
+        self.call_count += 1
         if isinstance(outcome, Exception):
             raise outcome
         return outcome
@@ -77,26 +77,26 @@ class FeatureLayerStub:
         feature_set: arcgis.features.FeatureSet,
         query_error: Exception | None = None,
     ) -> None:
-        self._url = url
-        self._gis = gis
-        self._feature_set = feature_set
-        self._query_error = query_error
-        self._properties: dict[str, object] = {
+        self.url = url
+        self.gis = gis
+        self.feature_set = feature_set
+        self.query_error = query_error
+        self.layer_properties: dict[str, object] = {
             "spatialReference": {"wkid": WGS84_WKID},
         }
 
     @property
     def properties(self) -> dict[str, object]:
-        return self._properties
+        return self.layer_properties
 
     def query(self) -> arcgis.features.FeatureSet:
-        if self._query_error is not None:
-            raise self._query_error
-        return self._feature_set
+        if self.query_error is not None:
+            raise self.query_error
+        return self.feature_set
 
 
 @pytest.fixture
-def _fetch_setup(
+def fetch_setup(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
     tmp_path: pathlib.Path,
@@ -106,12 +106,14 @@ def _fetch_setup(
     monkeypatch.setattr(
         peri_scribe.output,
         "configure_logging",
-        lambda _log_level: None,
+        lambda log_level: log_level,
     )
     monkeypatch.setattr(
         peri_scribe.models,
         "FEEDS",
-        [peri_scribe.models.ArcGISFeed(url=SAMPLE_FEED_URL)],
+        peri_scribe.models.build_feeds([
+            {"feed_type": "ArcGISFeed", "url": SAMPLE_FEED_URL},
+        ]),
     )
     monkeypatch.setattr(peri_scribe.operations.arcgis.gis, "GIS", object)
 
@@ -153,7 +155,7 @@ def test_cli_configures_logging_from_log_level(
     assert configured_levels == ["debug"]
 
 
-@pytest.mark.usefixtures("_fetch_setup")
+@pytest.mark.usefixtures("fetch_setup")
 def test_fetch_writes_geo_package(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
@@ -174,7 +176,7 @@ def test_fetch_writes_geo_package(
     assert written.crs == pyproj.CRS.from_epsg(WGS84_WKID)
 
 
-@pytest.mark.usefixtures("_fetch_setup")
+@pytest.mark.usefixtures("fetch_setup")
 def test_fetch_fails_fast_when_query_fails(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
@@ -196,7 +198,7 @@ def test_fetch_fails_fast_when_query_fails(
     assert not (tmp_path / peri_scribe.models.OUTPUT_FILENAME).exists()
 
 
-@pytest.mark.usefixtures("_fetch_setup")
+@pytest.mark.usefixtures("fetch_setup")
 def test_fetch_fails_fast_when_feed_returns_no_features(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
@@ -228,7 +230,7 @@ def test_feed_config_logs_each_configured_feed(
     monkeypatch.setattr(
         peri_scribe.output,
         "configure_logging",
-        lambda _log_level: None,
+        lambda log_level: log_level,
     )
     with structlog.testing.capture_logs() as captured:
         result = runner.invoke(peri_scribe.main.cli, ["feed-config"])
@@ -242,7 +244,7 @@ def test_feed_config_logs_each_configured_feed(
         assert event["url"] == feed.url
 
 
-@pytest.mark.usefixtures("_fetch_setup")
+@pytest.mark.usefixtures("fetch_setup")
 def test_fetch_retries_on_429_and_succeeds(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
@@ -270,7 +272,7 @@ def test_fetch_retries_on_429_and_succeeds(
     assert list(written["name"]) == ["a", "b"]
 
 
-@pytest.mark.usefixtures("_fetch_setup")
+@pytest.mark.usefixtures("fetch_setup")
 def test_fetch_exhausts_retries_and_exits(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,

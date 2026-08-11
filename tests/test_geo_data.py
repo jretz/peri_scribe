@@ -75,7 +75,9 @@ def test_geo_data_frame_from_allows_null_geometries() -> None:
 
 
 def test_dataframe_for_layer_raises_no_features_error_when_feed_is_empty() -> None:
-    feed = peri_scribe.models.ArcGISFeed(url=SAMPLE_FEED_URL)
+    feed = peri_scribe.models.build_feeds([
+        {"feed_type": "ArcGISFeed", "url": SAMPLE_FEED_URL},
+    ])[0]
     layer = LayerStub(properties={})
     feature_set = arcgis.features.FeatureSet([])
     with pytest.raises(
@@ -91,7 +93,9 @@ def test_dataframe_for_layer_raises_no_features_error_when_feed_is_empty() -> No
 def test_dataframe_for_layer_builds_geo_data_frame(
     feature_set_with_geometry: arcgis.features.FeatureSet,
 ) -> None:
-    feed = peri_scribe.models.ArcGISFeed(url=SAMPLE_FEED_URL)
+    feed = peri_scribe.models.build_feeds([
+        {"feed_type": "ArcGISFeed", "url": SAMPLE_FEED_URL},
+    ])[0]
     layer = LayerStub(properties={"spatialReference": {"wkid": WGS84_WKID}})
     result = peri_scribe.geo_data.dataframe_for_layer(
         feed,
@@ -108,7 +112,9 @@ def test_dataframe_for_layer_builds_geo_data_frame(
 
 
 def test_dataframe_for_layer_warns_when_features_lack_geometry() -> None:
-    feed = peri_scribe.models.ArcGISFeed(url=SAMPLE_FEED_URL)
+    feed = peri_scribe.models.build_feeds([
+        {"feed_type": "ArcGISFeed", "url": SAMPLE_FEED_URL},
+    ])[0]
     layer = LayerStub(properties={"spatialReference": {"wkid": WGS84_WKID}})
     feature_set = arcgis.features.FeatureSet(
         [
@@ -138,12 +144,12 @@ class QueryStub:
     """Callable that returns or raises successive outcomes from a list."""
 
     def __init__(self, outcomes: list[arcgis.features.FeatureSet | Exception]) -> None:
-        self._outcomes = list(outcomes)
-        self._call_count = 0
+        self.outcomes = list(outcomes)
+        self.call_count = 0
 
     def query(self) -> arcgis.features.FeatureSet:
-        outcome = self._outcomes[self._call_count]
-        self._call_count += 1
+        outcome = self.outcomes[self.call_count]
+        self.call_count += 1
         if isinstance(outcome, Exception):
             raise outcome
         return outcome

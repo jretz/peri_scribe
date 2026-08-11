@@ -42,22 +42,22 @@ class LayerStub(arcgis.features.FeatureLayer):
     """Minimal stand-in for an ArcGIS FeatureLayer exposing properties."""
 
     def __init__(self, properties: dict[str, object]) -> None:
-        self._properties = properties
+        self.layer_properties = properties
 
     @property
     def properties(self) -> dict[str, object]:
-        return self._properties
+        return self.layer_properties
 
 
 class FeatureSetStub(arcgis.features.FeatureSet):
     """Minimal stand-in for an ArcGIS FeatureSet exposing spatial_reference."""
 
     def __init__(self, spatial_reference: object) -> None:
-        self._spatial_reference = spatial_reference
+        self.stored_spatial_reference = spatial_reference
 
     @property
     def spatial_reference(self) -> object:
-        return self._spatial_reference
+        return self.stored_spatial_reference
 
 
 class FeatureLayerStub:
@@ -70,22 +70,22 @@ class FeatureLayerStub:
         feature_set: arcgis.features.FeatureSet,
         query_error: Exception | None = None,
     ) -> None:
-        self._url = url
-        self._gis = gis
-        self._feature_set = feature_set
-        self._query_error = query_error
-        self._properties: dict[str, object] = {
+        self.url = url
+        self.gis = gis
+        self.feature_set = feature_set
+        self.query_error = query_error
+        self.layer_properties: dict[str, object] = {
             "spatialReference": {"wkid": WGS84_WKID},
         }
 
     @property
     def properties(self) -> dict[str, object]:
-        return self._properties
+        return self.layer_properties
 
     def query(self) -> arcgis.features.FeatureSet:
-        if self._query_error is not None:
-            raise self._query_error
-        return self._feature_set
+        if self.query_error is not None:
+            raise self.query_error
+        return self.feature_set
 
 
 class FailingTransformer:
@@ -93,10 +93,10 @@ class FailingTransformer:
 
     def transform(  # ruff: ignore[no-self-use]
         self,
-        _longitude: float,
-        _latitude: float,
+        longitude: float,
+        latitude: float,
     ) -> tuple[float, float]:
-        message = "transform failed"
+        message = f"transform failed at ({longitude}, {latitude})"
         raise pyproj.exceptions.ProjError(message)
 
 

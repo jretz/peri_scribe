@@ -12,6 +12,10 @@
 - [Testing](docs/testing.md) — Testing guidelines and instructions for the project.
 - [Architecture](docs/architecture.md) — Architecture and design of the project.
 
+## Environment and Tooling
+
+- Determine the shell in use (bash, zsh, fish, etc.) early in a turn that will involve shell commands so that they can be formatted correctly for that shell from the start.
+
 ## Off Limits
 
 Do not modify any of the following files. Tell me you need a change and I will make it for you.

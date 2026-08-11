@@ -25,3 +25,7 @@ Almost all functions are pure functions, meaning they do not have side effects a
 ## Persistent State
 
 Functions that interact with external data sources and generated state (cached data, output, etc.) should be as small as possible. They should do nothing beyond the actual read or write operation. This makes it easier to create mocks for testing, and makes it easier to change the underlying data source or output format in the future.
+
+## Public vs. Private
+
+Treat all functions, methods, variables, classes, etc. as public. Do not use leading underscores to indicate otherwise. When there is a concern about exposing something publicly, make all access to it go through a method/property/etc. Ensure that accessor does not expose the underlying object so directly that there is no point to have the accessor.
