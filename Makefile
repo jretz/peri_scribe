@@ -8,7 +8,8 @@ fetch: .venv
 
 .PHONY: test
 test: .venv
-	@.venv/bin/py.test --no-header
+	@uv run --locked --module pytest
+	@make --no-print-directory lint typecheck
 
 .PHONY: upgrade-tools
 upgrade-tools:

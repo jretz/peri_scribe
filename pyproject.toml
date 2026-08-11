@@ -9,9 +9,6 @@ dependencies = [
     "pygments",  # For pytest code highlighting
     "pyproj",
     "pytest-cov",
-    "pytest-ruff",
-    "pytest-ty",
-    "pytest-xdist",
     "pytest",
     "ruff",
     "setuptools",  # For https://github.com/Esri/arcgis-python-api/issues/2428
@@ -41,17 +38,6 @@ addopts = [
     "--cov-report=html",
     "--cov=src",
     "--no-cov-on-fail",
-
-    # pytest-xdist
-    "--numprocesses=4",
-    "--dist=loadfile",
-
-    # pytest-ruff
-    "--ruff",
-    "--ruff-format",
-
-    # pytest-ty
-    "--ty",
 ]
 filterwarnings = [
     # Deprecation warnings raised at import time by third-party dependencies (arcgis,
