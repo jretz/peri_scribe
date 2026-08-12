@@ -36,7 +36,7 @@ uv.lock:
 
 .PHONY: .gitignore
 .gitignore:
-	gitnr create \
+	mise exec -- gitnr create \
 		tt:Python \
 		tt:linux \
 		tt:macOS \
