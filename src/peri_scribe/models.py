@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import enum
 import json
 import pathlib
 import typing
@@ -68,6 +69,21 @@ FEEDS: list[peri_scribe.feed_types.Feed] = build_feeds(load_feeds_config())
 class LayerData:
     name: str
     dataframe: geopandas.GeoDataFrame
+
+
+class FireStatus(enum.Enum):
+    """Whether a fire is active or inactive."""
+
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class Fire:
+    """A fire, identified by name, with its active status."""
+
+    name: str
+    status: FireStatus
 
 
 @dataclasses.dataclass(frozen=True)

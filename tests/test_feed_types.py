@@ -8,9 +8,11 @@ import peri_scribe.feed_types
 from tests.conftest import (
     SAMPLE_FEED_NAME,
     SAMPLE_FEED_URL,
+    SAMPLE_FIRE_NAME_COLUMN,
     SAMPLE_LAYER_ID,
     SAMPLE_PATH_SEGMENTS,
     SAMPLE_SERVICE_NAME,
+    SAMPLE_STATUS_COLUMN,
 )
 
 
@@ -81,28 +83,58 @@ def test_feed_types_instance_has_no_own_attributes() -> None:
 
 
 def test_arc_gis_feed_path_segments() -> None:
-    feed = peri_scribe.feed_types.ArcGISFeed(url=SAMPLE_FEED_URL)
+    feed = peri_scribe.feed_types.ArcGISFeed(
+        url=SAMPLE_FEED_URL,
+        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
+        status_column=SAMPLE_STATUS_COLUMN,
+    )
     assert feed.path_segments == SAMPLE_PATH_SEGMENTS
 
 
 def test_arc_gis_feed_path_segments_ignore_empty_segments() -> None:
-    feed = peri_scribe.feed_types.ArcGISFeed(url=SAMPLE_FEED_URL + "/")
+    feed = peri_scribe.feed_types.ArcGISFeed(
+        url=SAMPLE_FEED_URL + "/",
+        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
+        status_column=SAMPLE_STATUS_COLUMN,
+    )
     assert feed.path_segments == SAMPLE_PATH_SEGMENTS
 
 
 def test_arc_gis_feed_service_name() -> None:
-    feed = peri_scribe.feed_types.ArcGISFeed(url=SAMPLE_FEED_URL)
+    feed = peri_scribe.feed_types.ArcGISFeed(
+        url=SAMPLE_FEED_URL,
+        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
+        status_column=SAMPLE_STATUS_COLUMN,
+    )
     assert feed.service_name == SAMPLE_SERVICE_NAME
 
 
 def test_arc_gis_feed_layer_id() -> None:
-    feed = peri_scribe.feed_types.ArcGISFeed(url=SAMPLE_FEED_URL)
+    feed = peri_scribe.feed_types.ArcGISFeed(
+        url=SAMPLE_FEED_URL,
+        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
+        status_column=SAMPLE_STATUS_COLUMN,
+    )
     assert feed.layer_id == SAMPLE_LAYER_ID
 
 
 def test_arc_gis_feed_name() -> None:
-    feed = peri_scribe.feed_types.ArcGISFeed(url=SAMPLE_FEED_URL)
+    feed = peri_scribe.feed_types.ArcGISFeed(
+        url=SAMPLE_FEED_URL,
+        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
+        status_column=SAMPLE_STATUS_COLUMN,
+    )
     assert feed.name == SAMPLE_FEED_NAME
+
+
+def test_arc_gis_feed_stores_fire_name_and_status_columns() -> None:
+    feed = peri_scribe.feed_types.ArcGISFeed(
+        url=SAMPLE_FEED_URL,
+        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
+        status_column=SAMPLE_STATUS_COLUMN,
+    )
+    assert feed.fire_name_column == SAMPLE_FIRE_NAME_COLUMN
+    assert feed.status_column == SAMPLE_STATUS_COLUMN
 
 
 def test_arc_gis_feed_registered_in_feed_types() -> None:

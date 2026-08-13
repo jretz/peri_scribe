@@ -1,14 +1,20 @@
 [
     {
         "feed_type": "ArcGISFeed",
-        "url": "https://services1.arcgis.com/jUJYIo9tSA7EHvfZ/ArcGIS/rest/services/CA_Perimeters_NIFC_FIRIS_public_view/FeatureServer/0"
+        "url": "https://services1.arcgis.com/jUJYIo9tSA7EHvfZ/ArcGIS/rest/services/CA_Perimeters_NIFC_FIRIS_public_view/FeatureServer/0",
+        "fire_name_column": "incident_name",
+        "status_column": "displayStatus"
     },
     {
         "feed_type": "ArcGISFeed",
-        "url": "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0"
+        "url": "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0",
+        "fire_name_column": "attr_IncidentName",
+        "status_column": "attr_ActiveFireCandidate"
     },
     {
         "feed_type": "ArcGISFeed",
-        "url": "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0"
+        "url": "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0",
+        "fire_name_column": "IncidentName",
+        "status_column": "ActiveFireCandidate"
     }
 ]

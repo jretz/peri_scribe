@@ -1,4 +1,6 @@
+import pathlib
 import re
+import typing
 
 import arcgis.features
 import pandas as pd
@@ -9,15 +11,126 @@ import shapely.geometry
 import structlog
 
 import peri_scribe.exceptions
+import peri_scribe.feed_types
 import peri_scribe.geo_data
 import peri_scribe.models
 import peri_scribe.retry
 from tests.conftest import (
     SAMPLE_FEED_NAME,
-    SAMPLE_FEED_URL,
     WGS84_WKID,
     LayerStub,
+    sample_feed_config,
 )
+
+
+ACTIVE = peri_scribe.models.FireStatus.ACTIVE
+INACTIVE = peri_scribe.models.FireStatus.INACTIVE
+
+
+def test_fire_names_yields_fires_from_every_layer(
+    configured_feeds: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    stub_geo_package(
+        pd.DataFrame({
+            "name": ["Fires_One_0", "Fires_Two_0"],
+            "geometry_type": ["Polygon", "Point"],
+        }),
+        {
+            "Fires_One_0": pd.DataFrame({
+                "incident_name": ["Park Fire", "ALTA"],
+                "displayStatus": ["Active", "Inactive"],
+            }),
+            "Fires_Two_0": pd.DataFrame({
+                "IncidentName": ["Creek Fire"],
+                "ActiveFireCandidate": [1],
+            }),
+        },
+    )
+    assert list(peri_scribe.geo_data.fire_names(pathlib.Path("fires.gpkg"))) == [
+        peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
+        peri_scribe.models.Fire(name="ALTA", status=INACTIVE),
+        peri_scribe.models.Fire(name="Creek Fire", status=ACTIVE),
+    ]
+
+
+def test_fire_names_is_a_generator(
+    configured_feeds: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    stub_geo_package(
+        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Polygon"]}),
+        {
+            "Fires_One_0": pd.DataFrame({
+                "incident_name": ["Park Fire", "ALTA"],
+                "displayStatus": ["Active", "Inactive"],
+            }),
+        },
+    )
+    fires = peri_scribe.geo_data.fire_names(pathlib.Path("fires.gpkg"))
+    assert next(fires) == peri_scribe.models.Fire(name="Park Fire", status=ACTIVE)
+    assert next(fires) == peri_scribe.models.Fire(name="ALTA", status=INACTIVE)
+
+
+def test_fire_names_omits_rows_without_name_or_status(
+    configured_feeds: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    stub_geo_package(
+        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Polygon"]}),
+        {
+            "Fires_One_0": pd.DataFrame({
+                "incident_name": ["Park Fire", None, "", "   "],
+                "displayStatus": ["Active", "Inactive", "Inactive", None],
+            }),
+        },
+    )
+    assert list(peri_scribe.geo_data.fire_names(pathlib.Path("fires.gpkg"))) == [
+        peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
+    ]
+
+
+def test_fire_names_raises_for_layer_without_configured_feed(
+    configured_feeds: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    stub_geo_package(
+        pd.DataFrame({
+            "name": ["Fires_One_0", "Mystery_Layer_0"],
+            "geometry_type": ["Polygon", "Point"],
+        }),
+        {
+            "Fires_One_0": pd.DataFrame({
+                "incident_name": ["Park Fire"],
+                "displayStatus": ["Active"],
+            }),
+        },
+    )
+    with pytest.raises(
+        peri_scribe.exceptions.UnknownLayerError,
+        match=re.escape("layer Mystery_Layer_0 in fires.gpkg"),
+    ):
+        list(peri_scribe.geo_data.fire_names(pathlib.Path("fires.gpkg")))
+
+
+def test_fire_status_from_classifies_active_and_inactive() -> None:
+    assert peri_scribe.geo_data.fire_status_from("Active") is ACTIVE
+    assert peri_scribe.geo_data.fire_status_from("inactive") is INACTIVE
+    assert peri_scribe.geo_data.fire_status_from(1) is ACTIVE
+    assert peri_scribe.geo_data.fire_status_from(0) is INACTIVE
+    assert peri_scribe.geo_data.fire_status_from("TRUE") is ACTIVE
+    assert peri_scribe.geo_data.fire_status_from("false") is INACTIVE
+
+
+def test_fire_status_from_returns_none_for_blank_values() -> None:
+    assert peri_scribe.geo_data.fire_status_from(None) is None
+    assert peri_scribe.geo_data.fire_status_from("") is None
+    assert peri_scribe.geo_data.fire_status_from("   ") is None
+
+
+def test_fire_status_from_raises_for_unknown_value() -> None:
+    with pytest.raises(ValueError, match="Unknown fire status value"):
+        peri_scribe.geo_data.fire_status_from("Approved")
 
 
 def test_extract_geometries_without_shape_column() -> None:
@@ -75,9 +188,7 @@ def test_geo_data_frame_from_allows_null_geometries() -> None:
 
 
 def test_dataframe_for_layer_raises_no_features_error_when_feed_is_empty() -> None:
-    feed = peri_scribe.models.build_feeds([
-        {"feed_type": "ArcGISFeed", "url": SAMPLE_FEED_URL},
-    ])[0]
+    feed = peri_scribe.models.build_feeds([sample_feed_config()])[0]
     layer = LayerStub(properties={})
     feature_set = arcgis.features.FeatureSet([])
     with pytest.raises(
@@ -93,9 +204,7 @@ def test_dataframe_for_layer_raises_no_features_error_when_feed_is_empty() -> No
 def test_dataframe_for_layer_builds_geo_data_frame(
     feature_set_with_geometry: arcgis.features.FeatureSet,
 ) -> None:
-    feed = peri_scribe.models.build_feeds([
-        {"feed_type": "ArcGISFeed", "url": SAMPLE_FEED_URL},
-    ])[0]
+    feed = peri_scribe.models.build_feeds([sample_feed_config()])[0]
     layer = LayerStub(properties={"spatialReference": {"wkid": WGS84_WKID}})
     result = peri_scribe.geo_data.dataframe_for_layer(
         feed,
@@ -112,9 +221,7 @@ def test_dataframe_for_layer_builds_geo_data_frame(
 
 
 def test_dataframe_for_layer_warns_when_features_lack_geometry() -> None:
-    feed = peri_scribe.models.build_feeds([
-        {"feed_type": "ArcGISFeed", "url": SAMPLE_FEED_URL},
-    ])[0]
+    feed = peri_scribe.models.build_feeds([sample_feed_config()])[0]
     layer = LayerStub(properties={"spatialReference": {"wkid": WGS84_WKID}})
     feature_set = arcgis.features.FeatureSet(
         [

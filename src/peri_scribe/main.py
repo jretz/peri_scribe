@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import pathlib
+
 import click
 import structlog
 
@@ -48,6 +50,27 @@ def feed_config() -> None:
             feed_type=type(feed).__name__,
             name=feed.name,
             url=feed.url,
+        )
+
+
+@cli.command()
+@click.argument(
+    "geo_package_paths",
+    nargs=-1,
+    required=True,
+    type=click.Path(path_type=pathlib.Path),
+)
+def list_fires(geo_package_paths: tuple[pathlib.Path, ...]) -> None:
+    """Log the name and status of each fire in one or more GeoPackage files."""
+    for index, fire in enumerate(
+        peri_scribe.operations.list_fires(geo_package_paths),
+        start=1,
+    ):
+        logger.info(
+            "Fire %d",
+            index,
+            name=fire.name,
+            status=fire.status.value,
         )
 
 

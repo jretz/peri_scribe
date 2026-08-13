@@ -17,6 +17,8 @@ class Feed(typing.Protocol):
 
     name: str
     url: str
+    fire_name_column: str
+    status_column: str
 
 
 RegisteredFeed = typing.TypeVar("RegisteredFeed", bound=type)
@@ -64,6 +66,8 @@ class FeedTypes:
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class ArcGISFeed:
     url: str
+    fire_name_column: str
+    status_column: str
 
     @property
     def path_segments(self) -> list[str]:

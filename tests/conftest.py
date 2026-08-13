@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import typing
 
 import arcgis.features
@@ -8,7 +10,13 @@ import pyproj.exceptions
 import pytest
 import shapely.geometry
 
+import peri_scribe.feed_types
+import peri_scribe.geo_data
 import peri_scribe.models
+
+
+if typing.TYPE_CHECKING:
+    import pandas as pd
 
 
 WGS84_WKID = 4326
@@ -36,6 +44,22 @@ SAMPLE_PATH_SEGMENTS = [
 SAMPLE_SERVICE_NAME = "Fire_Layers"
 SAMPLE_LAYER_ID = 3
 SAMPLE_FEED_NAME = "Fire_Layers_3"
+SAMPLE_FIRE_NAME_COLUMN = "name"
+SAMPLE_STATUS_COLUMN = "status"
+
+
+def sample_feed_config() -> dict[str, str]:
+    """A feed configuration for the sample ArcGIS feed.
+
+    Returns:
+        The configuration for the sample ArcGIS feed.
+    """
+    return {
+        "feed_type": "ArcGISFeed",
+        "url": SAMPLE_FEED_URL,
+        "fire_name_column": SAMPLE_FIRE_NAME_COLUMN,
+        "status_column": SAMPLE_STATUS_COLUMN,
+    }
 
 
 class LayerStub(arcgis.features.FeatureLayer):
@@ -141,6 +165,59 @@ def feature_set_with_geometry() -> arcgis.features.FeatureSet:
             ),
         ],
     )
+
+
+@pytest.fixture
+def configured_feeds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[peri_scribe.feed_types.Feed]:
+    """Point models.FEEDS at two configured feeds for GeoPackage reading.
+
+    Returns:
+        The two feeds, configured with fire name and status columns.
+    """
+    feeds = peri_scribe.models.build_feeds([
+        {
+            "feed_type": "ArcGISFeed",
+            "url": "https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
+            "fire_name_column": "incident_name",
+            "status_column": "displayStatus",
+        },
+        {
+            "feed_type": "ArcGISFeed",
+            "url": "https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
+            "fire_name_column": "IncidentName",
+            "status_column": "ActiveFireCandidate",
+        },
+    ])
+    monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
+    return feeds
+
+
+@pytest.fixture
+def stub_geo_package(
+    monkeypatch: pytest.MonkeyPatch,
+) -> typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None]:
+    """Point GeoPackage layer listing and reading at in-memory stand-ins.
+
+    Returns:
+        A function that installs stand-ins serving the given layers table and
+        per-layer dataframes.
+    """
+
+    def stub(layers: pd.DataFrame, dataframes: dict[str, pd.DataFrame]) -> None:
+        monkeypatch.setattr(
+            peri_scribe.geo_data.geopandas,
+            "list_layers",
+            lambda _path: layers,
+        )
+        monkeypatch.setattr(
+            peri_scribe.geo_data.geopandas,
+            "read_file",
+            lambda _path, layer: dataframes[layer],
+        )
+
+    return stub
 
 
 @pytest.fixture

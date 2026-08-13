@@ -1,11 +1,13 @@
 """GeoDataFrame construction and query helpers for peri_scribe.
 
 Converts ArcGIS FeatureSet query results into GeoDataFrames in the layer's native
-spatial reference, and provides retry-aware querying for ArcGIS feature layers.
+spatial reference, provides retry-aware querying for ArcGIS feature layers, and
+reads fires from GeoPackage files.
 """
 
 from __future__ import annotations
 
+import pathlib
 import time
 import typing
 
@@ -107,6 +109,67 @@ def dataframe_for_layer(
         bounds,
     )
     return geo_data_frame_from(dataframe, shapely_geometries, spatial_reference_id)
+
+
+def fire_status_from(value: object) -> peri_scribe.models.FireStatus | None:
+    """Classify a feed's raw status value as active or inactive.
+
+    Blank values (including None) are treated as missing and return None. Values
+    that do not represent a known status raise an error, since they point at a
+    misconfigured status column or unexpected data.
+
+    Args:
+        value: The raw status value from a feed.
+
+    Returns:
+        The corresponding fire status, or None when the value is blank.
+
+    Raises:
+        ValueError: If the value does not represent a known status.
+    """
+    if value is None:
+        return None
+    normalized = str(value).strip().casefold()
+    if normalized in {"1", "true", "active"}:
+        return peri_scribe.models.FireStatus.ACTIVE
+    if normalized in {"0", "false", "inactive"}:
+        return peri_scribe.models.FireStatus.INACTIVE
+    if normalized:
+        message = f"Unknown fire status value: {value!r}"
+        raise ValueError(message)
+    return None
+
+
+def fire_names(
+    path: pathlib.Path,
+) -> typing.Generator[peri_scribe.models.Fire]:
+    """Yield the fires in every layer of the GeoPackage at *path*.
+
+    The GeoPackage is only read, never written. Every layer must correspond to a
+    configured feed, which says which columns hold each fire's name and status.
+    Rows without a name or without a status are omitted.
+
+    Args:
+        path: The GeoPackage file to read.
+
+    Yields:
+        The fires found in the file, one per row, in the order encountered.
+
+    Raises:
+        UnknownLayerError: If a layer does not correspond to a configured feed.
+    """
+    feeds_by_name = {feed.name: feed for feed in peri_scribe.models.FEEDS}
+    for layer_name in geopandas.list_layers(path)["name"]:
+        feed = feeds_by_name.get(layer_name)
+        if feed is None:
+            raise peri_scribe.exceptions.UnknownLayerError(layer_name, path)
+        dataframe = geopandas.read_file(path, layer=feed.name)
+        rows = dataframe[[feed.fire_name_column, feed.status_column]].dropna()
+        for name, raw_status in rows.itertuples(index=False, name=None):
+            fire_name = str(name)
+            status = fire_status_from(raw_status)
+            if fire_name.strip() and status is not None:
+                yield peri_scribe.models.Fire(name=fire_name, status=status)
 
 
 def query_with_retry(

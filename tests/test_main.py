@@ -1,14 +1,18 @@
 """CLI and integration tests for peri_scribe.main."""
 
 import pathlib
+import typing
 from typing import TYPE_CHECKING
 
 import arcgis.features
 import geopandas
+import pandas as pd
 import pyproj
 import pytest
 import structlog
 
+import peri_scribe.exceptions
+import peri_scribe.feed_types
 import peri_scribe.geo_data
 import peri_scribe.main
 import peri_scribe.models
@@ -18,8 +22,8 @@ import peri_scribe.retry
 from tests.conftest import (
     CLICK_USAGE_ERROR_EXIT_CODE,
     SAMPLE_FEED_NAME,
-    SAMPLE_FEED_URL,
     WGS84_WKID,
+    sample_feed_config,
 )
 
 
@@ -111,11 +115,74 @@ def fetch_setup(
     monkeypatch.setattr(
         peri_scribe.models,
         "FEEDS",
-        peri_scribe.models.build_feeds([
-            {"feed_type": "ArcGISFeed", "url": SAMPLE_FEED_URL},
-        ]),
+        peri_scribe.models.build_feeds([sample_feed_config()]),
     )
     monkeypatch.setattr(peri_scribe.operations.arcgis.gis, "GIS", object)
+
+
+@pytest.fixture
+def list_fires_setup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Silence log configuration so list-fires logs can be captured."""
+    monkeypatch.setattr(
+        peri_scribe.output,
+        "configure_logging",
+        lambda log_level: log_level,
+    )
+
+
+def test_list_fires_requires_at_least_one_geo_package(
+    runner: click.testing.CliRunner,
+) -> None:
+    result = runner.invoke(peri_scribe.main.cli, ["list-fires"])
+    assert result.exit_code == CLICK_USAGE_ERROR_EXIT_CODE
+    assert "Missing argument 'GEO_PACKAGE_PATHS...'" in result.output
+
+
+@pytest.mark.usefixtures("list_fires_setup")
+def test_list_fires_logs_fire_names_and_statuses(
+    runner: click.testing.CliRunner,
+    configured_feeds: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    stub_geo_package(
+        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Polygon"]}),
+        {
+            "Fires_One_0": pd.DataFrame({
+                "incident_name": ["Park Fire", "ALTA"],
+                "displayStatus": ["Active", "Inactive"],
+            }),
+        },
+    )
+    with structlog.testing.capture_logs() as captured:
+        result = runner.invoke(
+            peri_scribe.main.cli,
+            ["list-fires", "fires_one.gpkg", "fires_two.gpkg"],
+        )
+    assert result.exit_code == 0
+    assert [(event["name"], event["status"]) for event in captured] == [
+        ("Park Fire", "active"),
+        ("ALTA", "inactive"),
+    ]
+
+
+@pytest.mark.usefixtures("list_fires_setup")
+def test_list_fires_propagates_unconfigured_layer_error(
+    runner: click.testing.CliRunner,
+    configured_feeds: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    stub_geo_package(
+        pd.DataFrame({"name": ["Mystery_Layer_0"], "geometry_type": ["Polygon"]}),
+        {
+            "Mystery_Layer_0": pd.DataFrame({
+                "incident_name": ["Park Fire"],
+                "displayStatus": ["Active"],
+            }),
+        },
+    )
+    result = runner.invoke(peri_scribe.main.cli, ["list-fires", "fires.gpkg"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, peri_scribe.exceptions.UnknownLayerError)
 
 
 def test_cli_help(runner: click.testing.CliRunner) -> None:
