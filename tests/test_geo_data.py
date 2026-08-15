@@ -133,6 +133,192 @@ def test_fire_status_from_raises_for_unknown_value() -> None:
         peri_scribe.geo_data.fire_status_from("Approved")
 
 
+def test_fire_names_reads_normalized_identifiers(
+    configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    stub_geo_package(
+        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Polygon"]}),
+        {
+            "Fires_One_0": pd.DataFrame({
+                "incident_name": ["Bug", "BUG"],
+                "displayStatus": ["Active", "Inactive"],
+                "incident_number": [
+                    "{E3094E35-8B33-4A82-BE4B-D2E83652C29F}",
+                    None,
+                ],
+            }),
+        },
+    )
+    assert list(peri_scribe.geo_data.fire_names(pathlib.Path("fires.gpkg"))) == [
+        peri_scribe.models.Fire(
+            name="Bug",
+            status=ACTIVE,
+            identifier="e3094e35-8b33-4a82-be4b-d2e83652c29f",
+        ),
+        peri_scribe.models.Fire(name="BUG", status=INACTIVE, identifier=None),
+    ]
+
+
+def test_normalize_identifier() -> None:
+    assert peri_scribe.geo_data.normalize_identifier(None) is None
+    assert peri_scribe.geo_data.normalize_identifier(float("nan")) is None
+    assert peri_scribe.geo_data.normalize_identifier("") is None
+    assert peri_scribe.geo_data.normalize_identifier("   ") is None
+    assert (
+        peri_scribe.geo_data.normalize_identifier(
+            "{286B7F1D-8945-4A5D-9D81-5235C18AF1FE}",
+        )
+        == "286b7f1d-8945-4a5d-9d81-5235c18af1fe"
+    )
+    assert (
+        peri_scribe.geo_data.normalize_identifier(
+            " 2026-CACDD-007101 ",
+        )
+        == "2026-cacdd-007101"
+    )
+
+
+def test_is_complex_child_from() -> None:
+    assert peri_scribe.geo_data.is_complex_child_from(1) is True
+    assert peri_scribe.geo_data.is_complex_child_from("TRUE") is True
+    assert peri_scribe.geo_data.is_complex_child_from("yes") is True
+    assert peri_scribe.geo_data.is_complex_child_from(0) is False
+    assert peri_scribe.geo_data.is_complex_child_from("false") is False
+    assert peri_scribe.geo_data.is_complex_child_from("no") is False
+    assert peri_scribe.geo_data.is_complex_child_from(None) is False
+    assert peri_scribe.geo_data.is_complex_child_from("") is False
+    with pytest.raises(ValueError, match="Unknown complex child value"):
+        peri_scribe.geo_data.is_complex_child_from("maybe")
+
+
+def test_complex_memberships_yields_complex_children(
+    configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    stub_geo_package(
+        pd.DataFrame({"name": ["Fires_Two_0"], "geometry_type": ["Point"]}),
+        {
+            "Fires_Two_0": pd.DataFrame({
+                "IncidentName": ["0445 CROSSWHITE", "ROWE CREEK COMPLEX"],
+                "ActiveFireCandidate": [1, 1],
+                "IrwinID": [
+                    "{1B0219EE-5298-4FEF-9927-C2666D9D53FC}",
+                    "{B8431C26-6A9B-4EF0-88D8-F7EA9A3F56C3}",
+                ],
+                "CpxID": ["{B8431C26-6A9B-4EF0-88D8-F7EA9A3F56C3}", None],
+                "CpxName": ["ROWE CREEK COMPLEX", None],
+                "IsCpxChild": [1, 0],
+            }),
+        },
+    )
+    assert list(
+        peri_scribe.geo_data.complex_memberships(pathlib.Path("fires.gpkg")),
+    ) == [
+        peri_scribe.models.ComplexMembership(
+            fire_identifier="1b0219ee-5298-4fef-9927-c2666d9d53fc",
+            complex_identifier="b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3",
+            complex_name="ROWE CREEK COMPLEX",
+        ),
+    ]
+
+
+def test_complex_memberships_skips_layers_without_complex_columns(
+    configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    stub_geo_package(
+        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Polygon"]}),
+        {
+            "Fires_One_0": pd.DataFrame({
+                "incident_name": ["Bug"],
+                "displayStatus": ["Active"],
+                "incident_number": ["some-id"],
+            }),
+        },
+    )
+    assert (
+        list(
+            peri_scribe.geo_data.complex_memberships(pathlib.Path("fires.gpkg")),
+        )
+        == []
+    )
+
+
+def test_complex_memberships_skips_rows_not_marked_as_complex_children(
+    configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    stub_geo_package(
+        pd.DataFrame({"name": ["Fires_Two_0"], "geometry_type": ["Point"]}),
+        {
+            "Fires_Two_0": pd.DataFrame({
+                "IncidentName": ["Creek Fire"],
+                "ActiveFireCandidate": [1],
+                "IrwinID": ["some-id"],
+                "CpxID": ["{B8431C26-6A9B-4EF0-88D8-F7EA9A3F56C3}"],
+                "CpxName": ["ROWE CREEK COMPLEX"],
+                "IsCpxChild": [0],
+            }),
+        },
+    )
+    assert (
+        list(
+            peri_scribe.geo_data.complex_memberships(pathlib.Path("fires.gpkg")),
+        )
+        == []
+    )
+
+
+def test_complex_memberships_omits_rows_with_blank_values(
+    configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    stub_geo_package(
+        pd.DataFrame({"name": ["Fires_Two_0"], "geometry_type": ["Point"]}),
+        {
+            "Fires_Two_0": pd.DataFrame({
+                "IncidentName": ["A", "B"],
+                "ActiveFireCandidate": [1, 1],
+                "IrwinID": ["", "id-b"],
+                "CpxID": ["{B8431C26-6A9B-4EF0-88D8-F7EA9A3F56C3}", ""],
+                "CpxName": ["", "ROWE CREEK COMPLEX"],
+                "IsCpxChild": [1, 1],
+            }),
+        },
+    )
+    assert (
+        list(
+            peri_scribe.geo_data.complex_memberships(pathlib.Path("fires.gpkg")),
+        )
+        == []
+    )
+
+
+def test_complex_memberships_raises_for_layer_without_configured_feed(
+    configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    stub_geo_package(
+        pd.DataFrame({"name": ["Mystery_Layer_0"], "geometry_type": ["Point"]}),
+        {
+            "Mystery_Layer_0": pd.DataFrame({
+                "IncidentName": ["Creek Fire"],
+                "ActiveFireCandidate": [1],
+                "IrwinID": ["some-id"],
+                "CpxID": ["some-complex"],
+                "CpxName": ["SOME COMPLEX"],
+                "IsCpxChild": [1],
+            }),
+        },
+    )
+    with pytest.raises(
+        peri_scribe.exceptions.UnknownLayerError,
+        match=re.escape("layer Mystery_Layer_0 in fires.gpkg"),
+    ):
+        list(peri_scribe.geo_data.complex_memberships(pathlib.Path("fires.gpkg")))
+
+
 def test_extract_geometries_without_shape_column() -> None:
     dataframe = pd.DataFrame({"name": ["a", "b"]})
     attributes, geometries, geometry_warning = peri_scribe.geo_data.extract_geometries(

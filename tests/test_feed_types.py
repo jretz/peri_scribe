@@ -140,3 +140,19 @@ def test_arc_gis_feed_stores_fire_name_and_status_columns() -> None:
 def test_arc_gis_feed_registered_in_feed_types() -> None:
     feed_class = peri_scribe.feed_types.FeedTypes.get_feed_class("ArcGISFeed")
     assert feed_class is peri_scribe.feed_types.ArcGISFeed
+
+
+def test_arc_gis_feed_exposes_identifier_and_complex_columns() -> None:
+    feed = peri_scribe.feed_types.ArcGISFeed(
+        url=SAMPLE_FEED_URL,
+        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
+        status_column=SAMPLE_STATUS_COLUMN,
+        fire_identifier_column="incident_number",
+        complex_identifier_column="CpxID",
+        complex_name_column="CpxName",
+        is_complex_child_column="IsCpxChild",
+    )
+    assert feed.fire_identifier_column == "incident_number"
+    assert feed.complex_identifier_column == "CpxID"
+    assert feed.complex_name_column == "CpxName"
+    assert feed.is_complex_child_column == "IsCpxChild"

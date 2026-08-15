@@ -61,7 +61,7 @@ def feed_config() -> None:
     type=click.Path(path_type=pathlib.Path),
 )
 def list_fires(geo_package_paths: tuple[pathlib.Path, ...]) -> None:
-    """Log the name and status of each fire in one or more GeoPackage files."""
+    """Log the name, status, and identifier of each fire in GeoPackage files."""
     for index, fire in enumerate(
         peri_scribe.operations.list_fires(geo_package_paths),
         start=1,
@@ -71,6 +71,7 @@ def list_fires(geo_package_paths: tuple[pathlib.Path, ...]) -> None:
             index,
             name=fire.name,
             status=fire.status.value,
+            identifier=fire.identifier,
         )
 
 

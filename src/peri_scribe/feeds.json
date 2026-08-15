@@ -3,18 +3,27 @@
         "feed_type": "ArcGISFeed",
         "url": "https://services1.arcgis.com/jUJYIo9tSA7EHvfZ/ArcGIS/rest/services/CA_Perimeters_NIFC_FIRIS_public_view/FeatureServer/0",
         "fire_name_column": "incident_name",
-        "status_column": "displayStatus"
+        "status_column": "displayStatus",
+        "fire_identifier_column": "incident_number"
     },
     {
         "feed_type": "ArcGISFeed",
         "url": "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0",
         "fire_name_column": "attr_IncidentName",
-        "status_column": "attr_ActiveFireCandidate"
+        "status_column": "attr_ActiveFireCandidate",
+        "fire_identifier_column": "poly_IRWINID",
+        "complex_identifier_column": "attr_CpxID",
+        "complex_name_column": "attr_CpxName",
+        "is_complex_child_column": "attr_IsCpxChild"
     },
     {
         "feed_type": "ArcGISFeed",
         "url": "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0",
         "fire_name_column": "IncidentName",
-        "status_column": "ActiveFireCandidate"
+        "status_column": "ActiveFireCandidate",
+        "fire_identifier_column": "IrwinID",
+        "complex_identifier_column": "CpxID",
+        "complex_name_column": "CpxName",
+        "is_complex_child_column": "IsCpxChild"
     }
 ]

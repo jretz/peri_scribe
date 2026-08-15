@@ -80,10 +80,48 @@ class FireStatus(enum.Enum):
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Fire:
-    """A fire, identified by name, with its active status."""
+    """A fire, identified by name and a stable identifier when one is known.
+
+    The identifier is normalized (case-folded, stripped of surrounding braces) so that
+    equal identifiers match regardless of formatting. When the fire is part of a
+    complex, `complex` points at the FireComplex that owns it.
+    """
 
     name: str
     status: FireStatus
+    identifier: str | None = None
+    complex: FireComplex | None = dataclasses.field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class FireComplex:
+    """A complex of fires, linked to each of its member fires.
+
+    A complex is an incident with child fires. Constructing a FireComplex sets each
+    member fire's `complex` back-reference, so the link between a fire and its complex
+    is circular.
+    """
+
+    name: str
+    identifier: str
+    fires: frozenset[Fire]
+
+    def __post_init__(self) -> None:
+        for fire in self.fires:
+            object.__setattr__(fire, "complex", self)
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ComplexMembership:
+    """A fire's membership in a complex, as observed in a GeoPackage layer."""
+
+    fire_identifier: str
+    complex_identifier: str
+    complex_name: str
 
 
 @dataclasses.dataclass(frozen=True)

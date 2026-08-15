@@ -66,3 +66,110 @@ def test_build_feeds_constructs_multiple_feeds() -> None:
     assert len(feeds) == EXPECTED_TWO_FEEDS
     assert feeds[0].url == SAMPLE_FEED_URL
     assert feeds[1].url == SAMPLE_FEED_URL + "extra/"
+
+
+def test_fire_complex_links_fires_circularly() -> None:
+    fire = peri_scribe.models.Fire(
+        name="Crosswhite",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+    )
+    fire_complex = peri_scribe.models.FireComplex(
+        name="ROWE CREEK COMPLEX",
+        identifier="b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3",
+        fires=frozenset({fire}),
+    )
+    assert fire.complex is fire_complex
+    assert fire_complex.fires == frozenset({fire})
+    assert next(iter(fire_complex.fires)).complex is fire_complex
+
+
+def test_fire_complex_does_not_link_when_it_has_no_fires() -> None:
+    fire_complex = peri_scribe.models.FireComplex(
+        name="ROWE CREEK COMPLEX",
+        identifier="b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3",
+        fires=frozenset(),
+    )
+    assert fire_complex.fires == frozenset()
+
+
+def test_fire_equality_ignores_complex() -> None:
+    left_fire = peri_scribe.models.Fire(
+        name="Crosswhite",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        identifier="1b0219ee-5298-4fef-9927-c2666d9d53fc",
+    )
+    right_fire = peri_scribe.models.Fire(
+        name="Crosswhite",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        identifier="1b0219ee-5298-4fef-9927-c2666d9d53fc",
+    )
+    peri_scribe.models.FireComplex(
+        name="ROWE CREEK COMPLEX",
+        identifier="b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3",
+        fires=frozenset({left_fire}),
+    )
+    peri_scribe.models.FireComplex(
+        name="HAY CREEK COMPLEX",
+        identifier="851ddf21-4ead-4835-b54b-b3cf7bd6ac21",
+        fires=frozenset({right_fire}),
+    )
+    assert left_fire == right_fire
+
+
+def test_fire_hash_ignores_complex() -> None:
+    fire = peri_scribe.models.Fire(
+        name="Crosswhite",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        identifier="1b0219ee-5298-4fef-9927-c2666d9d53fc",
+    )
+    hash_before = hash(fire)
+    peri_scribe.models.FireComplex(
+        name="ROWE CREEK COMPLEX",
+        identifier="b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3",
+        fires=frozenset({fire}),
+    )
+    assert hash(fire) == hash_before
+    assert fire == peri_scribe.models.Fire(
+        name="Crosswhite",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        identifier="1b0219ee-5298-4fef-9927-c2666d9d53fc",
+    )
+
+
+def test_fire_complex_equality() -> None:
+    left = peri_scribe.models.FireComplex(
+        name="ROWE CREEK COMPLEX",
+        identifier="b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3",
+        fires=frozenset({
+            peri_scribe.models.Fire(
+                name="Crosswhite",
+                status=peri_scribe.models.FireStatus.ACTIVE,
+            ),
+        }),
+    )
+    right = peri_scribe.models.FireComplex(
+        name="ROWE CREEK COMPLEX",
+        identifier="b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3",
+        fires=frozenset({
+            peri_scribe.models.Fire(
+                name="Crosswhite",
+                status=peri_scribe.models.FireStatus.ACTIVE,
+            ),
+        }),
+    )
+    assert left == right
+
+
+def test_fire_complex_repr_does_not_recurse() -> None:
+    fire = peri_scribe.models.Fire(
+        name="Crosswhite",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+    )
+    fire_complex = peri_scribe.models.FireComplex(
+        name="ROWE CREEK COMPLEX",
+        identifier="b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3",
+        fires=frozenset({fire}),
+    )
+    assert "ROWE CREEK COMPLEX" in repr(fire_complex)
+    assert "Crosswhite" in repr(fire_complex)
+    assert "complex" not in repr(fire)

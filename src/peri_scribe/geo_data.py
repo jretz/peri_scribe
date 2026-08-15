@@ -2,7 +2,7 @@
 
 Converts ArcGIS FeatureSet query results into GeoDataFrames in the layer's native
 spatial reference, provides retry-aware querying for ArcGIS feature layers, and
-reads fires from GeoPackage files.
+reads fires and complex memberships from GeoPackage files.
 """
 
 from __future__ import annotations
@@ -12,6 +12,7 @@ import time
 import typing
 
 import geopandas
+import pandas as pd
 import pyproj
 import structlog
 
@@ -24,7 +25,6 @@ import peri_scribe.spatial_reference
 
 if typing.TYPE_CHECKING:
     import arcgis.features
-    import pandas as pd
     import shapely
 
 
@@ -140,14 +140,66 @@ def fire_status_from(value: object) -> peri_scribe.models.FireStatus | None:
     return None
 
 
+def normalize_identifier(value: object) -> str | None:
+    """Normalize a raw identifier value, or return None when it is missing.
+
+    Identifiers are casefolded and stripped of surrounding braces so that equal
+    identifiers match regardless of formatting, e.g. ``{286B7F1D-8945-4A5D-9D81-
+    5235C18AF1FE}`` and ``286b7f1d-8945-4a5d-9d81-5235c18af1fe``. Blank values
+    (including None and NaN) are treated as missing and return None.
+
+    Args:
+        value: The raw identifier value from a feed.
+
+    Returns:
+        The normalized identifier, or None when the value is missing.
+    """
+    if value is None or pd.isna(value):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    return text.casefold().strip("{}")
+
+
+def is_complex_child_from(value: object) -> bool:
+    """Classify a feed's raw complex child value.
+
+    Blank values (including None) are treated as false. Values that do not
+    represent a known boolean raise an error, since they point at a
+    misconfigured column or unexpected data.
+
+    Args:
+        value: The raw complex child value from a feed.
+
+    Returns:
+        True when the value represents a complex child.
+
+    Raises:
+        ValueError: If the value does not represent a known boolean.
+    """
+    if value is None:
+        return False
+    normalized = str(value).strip().casefold()
+    if normalized in {"1", "true", "yes"}:
+        return True
+    if normalized in {"0", "false", "no"}:
+        return False
+    if normalized:
+        message = f"Unknown complex child value: {value!r}"
+        raise ValueError(message)
+    return False
+
+
 def fire_names(
     path: pathlib.Path,
 ) -> typing.Generator[peri_scribe.models.Fire]:
     """Yield the fires in every layer of the GeoPackage at *path*.
 
     The GeoPackage is only read, never written. Every layer must correspond to a
-    configured feed, which says which columns hold each fire's name and status.
-    Rows without a name or without a status are omitted.
+    configured feed, which says which columns hold each fire's name, status, and
+    identifier. Rows without a name or without a status are omitted; rows
+    without an identifier are still yielded, with a None identifier.
 
     Args:
         path: The GeoPackage file to read.
@@ -165,11 +217,88 @@ def fire_names(
             raise peri_scribe.exceptions.UnknownLayerError(layer_name, path)
         dataframe = geopandas.read_file(path, layer=feed.name)
         rows = dataframe[[feed.fire_name_column, feed.status_column]].dropna()
-        for name, raw_status in rows.itertuples(index=False, name=None):
+        identifier_column = feed.fire_identifier_column
+        if identifier_column is None:
+            identifiers: typing.Sequence[object] = [None] * len(rows)
+        else:
+            identifiers = dataframe.loc[rows.index, identifier_column]
+        for (name, raw_status), raw_identifier in zip(
+            rows.itertuples(index=False, name=None),
+            identifiers,
+            strict=True,
+        ):
             fire_name = str(name)
             status = fire_status_from(raw_status)
             if fire_name.strip() and status is not None:
-                yield peri_scribe.models.Fire(name=fire_name, status=status)
+                yield peri_scribe.models.Fire(
+                    name=fire_name,
+                    status=status,
+                    identifier=normalize_identifier(raw_identifier),
+                )
+
+
+def complex_memberships(
+    path: pathlib.Path,
+) -> typing.Generator[peri_scribe.models.ComplexMembership]:
+    """Yield the complex memberships in every layer of the GeoPackage at *path*.
+
+    The GeoPackage is only read, never written. Only layers whose feed declares
+    complex columns are considered. Rows that are not marked as complex
+    children, or that lack a fire identifier, complex identifier, or complex
+    name, are omitted.
+
+    Args:
+        path: The GeoPackage file to read.
+
+    Yields:
+        The complex memberships found in the file, one per row, in the order
+        encountered.
+
+    Raises:
+        UnknownLayerError: If a layer does not correspond to a configured feed.
+    """
+    feeds_by_name = {feed.name: feed for feed in peri_scribe.models.FEEDS}
+    for layer_name in geopandas.list_layers(path)["name"]:
+        feed = feeds_by_name.get(layer_name)
+        if feed is None:
+            raise peri_scribe.exceptions.UnknownLayerError(layer_name, path)
+        if (
+            feed.fire_identifier_column is None
+            or feed.complex_identifier_column is None
+            or feed.complex_name_column is None
+            or feed.is_complex_child_column is None
+        ):
+            continue
+        columns = [
+            feed.fire_identifier_column,
+            feed.complex_identifier_column,
+            feed.complex_name_column,
+            feed.is_complex_child_column,
+        ]
+        dataframe = geopandas.read_file(path, layer=feed.name)
+        rows = dataframe[columns].dropna()
+        for (
+            raw_fire_identifier,
+            raw_complex_identifier,
+            raw_complex_name,
+            raw_is_complex_child,
+        ) in rows.itertuples(index=False, name=None):
+            if not is_complex_child_from(raw_is_complex_child):
+                continue
+            fire_identifier = normalize_identifier(raw_fire_identifier)
+            complex_identifier = normalize_identifier(raw_complex_identifier)
+            complex_name = str(raw_complex_name).strip()
+            if (
+                fire_identifier is None
+                or complex_identifier is None
+                or not complex_name
+            ):
+                continue
+            yield peri_scribe.models.ComplexMembership(
+                fire_identifier=fire_identifier,
+                complex_identifier=complex_identifier,
+                complex_name=complex_name,
+            )
 
 
 def query_with_retry(

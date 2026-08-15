@@ -195,6 +195,42 @@ def configured_feeds(
 
 
 @pytest.fixture
+def configured_feeds_with_identifiers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[peri_scribe.feed_types.Feed]:
+    """Point models.FEEDS at feeds with identifier and complex columns.
+
+    The first feed is CA-layer-like, with an identifier column only. The second is
+    WFIGS-like, with identifier and complex columns.
+
+    Returns:
+        The two feeds, configured with fire name, status, identifier, and
+        complex columns.
+    """
+    feeds = peri_scribe.models.build_feeds([
+        {
+            "feed_type": "ArcGISFeed",
+            "url": "https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
+            "fire_name_column": "incident_name",
+            "status_column": "displayStatus",
+            "fire_identifier_column": "incident_number",
+        },
+        {
+            "feed_type": "ArcGISFeed",
+            "url": "https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
+            "fire_name_column": "IncidentName",
+            "status_column": "ActiveFireCandidate",
+            "fire_identifier_column": "IrwinID",
+            "complex_identifier_column": "CpxID",
+            "complex_name_column": "CpxName",
+            "is_complex_child_column": "IsCpxChild",
+        },
+    ])
+    monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
+    return feeds
+
+
+@pytest.fixture
 def stub_geo_package(
     monkeypatch: pytest.MonkeyPatch,
 ) -> typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None]:

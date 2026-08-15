@@ -19,6 +19,10 @@ class Feed(typing.Protocol):
     url: str
     fire_name_column: str
     status_column: str
+    fire_identifier_column: str | None
+    complex_identifier_column: str | None
+    complex_name_column: str | None
+    is_complex_child_column: str | None
 
 
 RegisteredFeed = typing.TypeVar("RegisteredFeed", bound=type)
@@ -68,6 +72,10 @@ class ArcGISFeed:
     url: str
     fire_name_column: str
     status_column: str
+    fire_identifier_column: str | None = None
+    complex_identifier_column: str | None = None
+    complex_name_column: str | None = None
+    is_complex_child_column: str | None = None
 
     @property
     def path_segments(self) -> list[str]:
