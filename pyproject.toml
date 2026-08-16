@@ -10,6 +10,7 @@ dependencies = [
     "pyproj",
     "pytest-cov",
     "pytest",
+    "requests",
     "ruff",
     "setuptools",  # For https://github.com/Esri/arcgis-python-api/issues/2428
     "structlog",

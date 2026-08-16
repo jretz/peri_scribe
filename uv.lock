@@ -724,6 +724,7 @@ dependencies = [
     { name = "pyproj" },
     { name = "pytest" },
     { name = "pytest-cov" },
+    { name = "requests" },
     { name = "ruff" },
     { name = "setuptools" },
     { name = "structlog" },

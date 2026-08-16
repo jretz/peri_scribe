@@ -1,5 +1,6 @@
 """CLI and integration tests for peri_scribe.main."""
 
+import dataclasses
 import pathlib
 import typing
 from typing import TYPE_CHECKING
@@ -97,6 +98,19 @@ class FeatureLayerStub:
         if self.query_error is not None:
             raise self.query_error
         return self.feature_set
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class WatermarkFeedStub:
+    """Minimal feed stand-in with a fixed current watermark."""
+
+    name: str
+    url: str
+    watermark: str
+
+    @property
+    def current_watermark(self) -> str | None:
+        return self.watermark
 
 
 @pytest.fixture
@@ -309,6 +323,42 @@ def test_feed_config_logs_each_configured_feed(
         assert event["event"] == f"Feed {index + 1}"
         assert event["name"] == feed.name
         assert event["url"] == feed.url
+
+
+def test_current_watermarks_logs_each_feed_watermark(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.output,
+        "configure_logging",
+        lambda log_level: log_level,
+    )
+    feeds = [
+        WatermarkFeedStub(
+            name="One",
+            url="https://example.test/one",
+            watermark='{"count":1,"etag":"one","mtime":"2026-08-16T07:28:00Z"}',
+        ),
+        WatermarkFeedStub(
+            name="Two",
+            url="https://example.test/two",
+            watermark='{"count":2,"etag":"two","mtime":"2026-08-16T07:29:00Z"}',
+        ),
+    ]
+    monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
+    with structlog.testing.capture_logs() as captured:
+        result = runner.invoke(peri_scribe.main.cli, ["current-watermarks"])
+    assert result.exit_code == 0
+    assert len(captured) == len(feeds)
+    for index, (event, feed) in enumerate(
+        zip(captured, feeds, strict=True),
+        start=1,
+    ):
+        assert event["event"] == f"Feed {index}"
+        assert event["name"] == feed.name
+        assert event["url"] == feed.url
+        assert event["watermark"] == feed.watermark
 
 
 @pytest.mark.usefixtures("fetch_setup")

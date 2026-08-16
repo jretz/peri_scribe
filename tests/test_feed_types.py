@@ -3,6 +3,7 @@
 import dataclasses
 
 import pytest
+import requests
 
 import peri_scribe.feed_types
 from tests.conftest import (
@@ -25,6 +26,32 @@ class SampleFeedAlpha:
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class SampleFeedBeta:
     label: str
+
+
+class ResponseStub:
+    """Minimal stand-in for a requests.Response."""
+
+    def __init__(
+        self,
+        *,
+        payload: object | None = None,
+        headers: dict[str, str] | None = None,
+        status_error: Exception | None = None,
+        json_error: Exception | None = None,
+    ) -> None:
+        self.payload = payload
+        self.headers = headers if headers is not None else {}
+        self.status_error = status_error
+        self.json_error = json_error
+
+    def raise_for_status(self) -> None:
+        if self.status_error is not None:
+            raise self.status_error
+
+    def json(self) -> object:
+        if self.json_error is not None:
+            raise self.json_error
+        return self.payload
 
 
 def test_feed_types_register_returns_class_unchanged() -> None:
@@ -156,3 +183,147 @@ def test_arc_gis_feed_exposes_identifier_and_complex_columns() -> None:
     assert feed.complex_identifier_column == "CpxID"
     assert feed.complex_name_column == "CpxName"
     assert feed.is_complex_child_column == "IsCpxChild"
+
+
+def test_arc_gis_feed_current_watermark(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    feed = peri_scribe.feed_types.ArcGISFeed(
+        url=SAMPLE_FEED_URL,
+        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
+        status_column=SAMPLE_STATUS_COLUMN,
+    )
+    monkeypatch.setattr(
+        peri_scribe.feed_types.requests,
+        "head",
+        lambda *_arguments, **_keywords: ResponseStub(
+            headers={
+                "Last-Modified": "Wed, 21 Oct 2026 07:28:00 GMT",
+                "ETag": '"abc123"',
+            },
+        ),
+    )
+    monkeypatch.setattr(
+        peri_scribe.feed_types.requests,
+        "get",
+        lambda *_arguments, **_keywords: ResponseStub(payload={"count": 42}),
+    )
+    assert (
+        feed.current_watermark
+        == '{"count":42,"etag":"\\"abc123\\"","mtime":"Wed, 21 Oct 2026 07:28:00 GMT"}'
+    )
+
+
+def test_arc_gis_feed_current_watermark_returns_none_on_head_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    feed = peri_scribe.feed_types.ArcGISFeed(
+        url=SAMPLE_FEED_URL,
+        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
+        status_column=SAMPLE_STATUS_COLUMN,
+    )
+    monkeypatch.setattr(
+        peri_scribe.feed_types.requests,
+        "head",
+        lambda *_arguments, **_keywords: ResponseStub(
+            status_error=requests.exceptions.HTTPError("boom"),
+        ),
+    )
+    assert feed.current_watermark is None
+
+
+def test_arc_gis_feed_current_watermark_returns_none_on_count_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    feed = peri_scribe.feed_types.ArcGISFeed(
+        url=SAMPLE_FEED_URL,
+        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
+        status_column=SAMPLE_STATUS_COLUMN,
+    )
+    monkeypatch.setattr(
+        peri_scribe.feed_types.requests,
+        "head",
+        lambda *_arguments, **_keywords: ResponseStub(headers={}),
+    )
+    monkeypatch.setattr(
+        peri_scribe.feed_types.requests,
+        "get",
+        lambda *_arguments, **_keywords: ResponseStub(
+            status_error=requests.exceptions.HTTPError("boom"),
+        ),
+    )
+    assert feed.current_watermark is None
+
+
+def test_arc_gis_feed_current_watermark_returns_none_on_invalid_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    feed = peri_scribe.feed_types.ArcGISFeed(
+        url=SAMPLE_FEED_URL,
+        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
+        status_column=SAMPLE_STATUS_COLUMN,
+    )
+    monkeypatch.setattr(
+        peri_scribe.feed_types.requests,
+        "head",
+        lambda *_arguments, **_keywords: ResponseStub(headers={}),
+    )
+    monkeypatch.setattr(
+        peri_scribe.feed_types.requests,
+        "get",
+        lambda *_arguments, **_keywords: ResponseStub(
+            json_error=ValueError("not json"),
+        ),
+    )
+    assert feed.current_watermark is None
+
+
+def test_arc_gis_feed_current_watermark_returns_none_for_non_dict_payload(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    feed = peri_scribe.feed_types.ArcGISFeed(
+        url=SAMPLE_FEED_URL,
+        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
+        status_column=SAMPLE_STATUS_COLUMN,
+    )
+    monkeypatch.setattr(
+        peri_scribe.feed_types.requests,
+        "head",
+        lambda *_arguments, **_keywords: ResponseStub(headers={}),
+    )
+    monkeypatch.setattr(
+        peri_scribe.feed_types.requests,
+        "get",
+        lambda *_arguments, **_keywords: ResponseStub(payload=["not", "a", "dict"]),
+    )
+    assert feed.current_watermark is None
+
+
+def test_arc_gis_feed_current_watermark_returns_none_without_count_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    feed = peri_scribe.feed_types.ArcGISFeed(
+        url=SAMPLE_FEED_URL,
+        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
+        status_column=SAMPLE_STATUS_COLUMN,
+    )
+    monkeypatch.setattr(
+        peri_scribe.feed_types.requests,
+        "head",
+        lambda *_arguments, **_keywords: ResponseStub(headers={}),
+    )
+    monkeypatch.setattr(
+        peri_scribe.feed_types.requests,
+        "get",
+        lambda *_arguments, **_keywords: ResponseStub(payload={"total": 0}),
+    )
+    assert feed.current_watermark is None
+
+
+def test_arc_gis_feed_satisfies_feed_protocol() -> None:
+    feed = peri_scribe.feed_types.ArcGISFeed(
+        url=SAMPLE_FEED_URL,
+        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
+        status_column=SAMPLE_STATUS_COLUMN,
+    )
+    assert isinstance(feed, peri_scribe.feed_types.Feed)

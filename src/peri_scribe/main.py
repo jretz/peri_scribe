@@ -54,6 +54,19 @@ def feed_config() -> None:
 
 
 @cli.command()
+def current_watermarks() -> None:
+    """Log the current watermark for each configured feed."""
+    for index, feed in enumerate(peri_scribe.models.FEEDS, start=1):
+        logger.info(
+            "Feed %d",
+            index,
+            name=feed.name,
+            url=feed.url,
+            watermark=feed.current_watermark,
+        )
+
+
+@cli.command()
 @click.argument(
     "geo_package_paths",
     nargs=-1,
