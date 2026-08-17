@@ -1,6 +1,7 @@
 """CLI and integration tests for peri_scribe.main."""
 
 import dataclasses
+import datetime
 import pathlib
 import typing
 from typing import TYPE_CHECKING
@@ -23,8 +24,8 @@ import peri_scribe.retry
 from tests.conftest import (
     CLICK_USAGE_ERROR_EXIT_CODE,
     SAMPLE_FEED_NAME,
+    SAMPLE_FEED_URL,
     WGS84_WKID,
-    sample_feed_config,
 )
 
 
@@ -41,6 +42,8 @@ RATE_LIMIT_ERROR_BODY = (
     f"per Minute. Retry after {RATE_LIMIT_RETRY_AFTER_SECONDS} sec.']}}"
 )
 LOOSE_429_ERROR_BODY = "{'error': {'code': 429, 'message': 'Too many requests.'}}"
+
+SAMPLE_WATERMARK = "lastEdit=2"
 
 
 class MultiQueryLayerStub:
@@ -94,10 +97,51 @@ class FeatureLayerStub:
     def properties(self) -> dict[str, object]:
         return self.layer_properties
 
-    def query(self) -> arcgis.features.FeatureSet:
+    def query(
+        self,
+        **parameters: object,
+    ) -> arcgis.features.FeatureSet | dict[str, object]:
         if self.query_error is not None:
             raise self.query_error
+        if parameters.get("return_ids_only"):
+            return {"objectIdFieldName": "OBJECTID", "objectIds": [1, 2]}
         return self.feature_set
+
+
+class DeltaFeatureLayerStub:
+    """FeatureLayer stand-in serving a full set, then an incremental delta."""
+
+    def __init__(
+        self,
+        url: str,
+        gis: object,
+        full: arcgis.features.FeatureSet,
+        delta: arcgis.features.FeatureSet,
+    ) -> None:
+        self.url = url
+        self.gis = gis
+        self.full = full
+        self.delta = delta
+        self.layer_properties: dict[str, object] = {
+            "spatialReference": {"wkid": WGS84_WKID},
+        }
+
+    @property
+    def properties(self) -> dict[str, object]:
+        return self.layer_properties
+
+    def query(
+        self,
+        **parameters: object,
+    ) -> arcgis.features.FeatureSet | dict[str, object]:
+        if parameters.get("return_ids_only"):
+            object_ids = [
+                feature.attributes["OBJECTID"] for feature in self.delta.features
+            ]
+            return {"objectIdFieldName": "OBJECTID", "objectIds": object_ids}
+        if parameters.get("object_ids"):
+            return self.delta
+        return self.full
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -107,10 +151,74 @@ class WatermarkFeedStub:
     name: str
     url: str
     watermark: str
+    modified_column: str = "ModifiedOnDateTime_dt"
 
     @property
     def current_watermark(self) -> str | None:
         return self.watermark
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class FetchFeedStub:
+    """Feed stand-in with a fixed watermark for fetch command tests."""
+
+    name: str
+    url: str
+    watermark: str | None
+    modified_column: str = "ModifiedOnDateTime_dt"
+
+    @property
+    def current_watermark(self) -> str | None:
+        return self.watermark
+
+
+class RecordingFeedStub:
+    """Feed stand-in that records when its watermark is observed."""
+
+    def __init__(
+        self,
+        name: str,
+        url: str,
+        watermark: str,
+        events: list[str],
+    ) -> None:
+        self.name = name
+        self.url = url
+        self.watermark = watermark
+        self.modified_column = "ModifiedOnDateTime_dt"
+        self.events = events
+
+    @property
+    def current_watermark(self) -> str | None:
+        self.events.append("watermark")
+        return self.watermark
+
+
+class RecordingFeatureLayerStub:
+    """FeatureLayer stand-in that records when its data is downloaded."""
+
+    def __init__(
+        self,
+        url: str,
+        gis: object,
+        feature_set: arcgis.features.FeatureSet,
+        events: list[str],
+    ) -> None:
+        self.url = url
+        self.gis = gis
+        self.feature_set = feature_set
+        self.events = events
+        self.layer_properties: dict[str, object] = {
+            "spatialReference": {"wkid": WGS84_WKID},
+        }
+
+    @property
+    def properties(self) -> dict[str, object]:
+        return self.layer_properties
+
+    def query(self) -> arcgis.features.FeatureSet:
+        self.events.append("download")
+        return self.feature_set
 
 
 @pytest.fixture
@@ -129,9 +237,46 @@ def fetch_setup(
     monkeypatch.setattr(
         peri_scribe.models,
         "FEEDS",
-        peri_scribe.models.build_feeds([sample_feed_config()]),
+        [
+            FetchFeedStub(
+                name=SAMPLE_FEED_NAME,
+                url=SAMPLE_FEED_URL,
+                watermark=SAMPLE_WATERMARK,
+            ),
+        ],
     )
+
+    class FakeDate(datetime.date):
+        """A date whose today() is fixed to 2026 for deterministic snapshots."""
+
+        @classmethod
+        def today(cls) -> datetime.date:
+            return datetime.date(2026, 1, 1)
+
+    monkeypatch.setattr(peri_scribe.operations.datetime, "date", FakeDate)
     monkeypatch.setattr(peri_scribe.operations.arcgis.gis, "GIS", object)
+
+
+def snapshot_path(
+    tmp_path: pathlib.Path,
+    *,
+    feed_name: str = SAMPLE_FEED_NAME,
+    serial_number: int = 0,
+    watermark: str = SAMPLE_WATERMARK,
+) -> pathlib.Path:
+    """Return the snapshot path fetch writes for a feed and watermark.
+
+    Returns:
+        The snapshot path, assuming the 2026 test year, no prior snapshots, and a
+        first serial number of 0.
+    """
+    return peri_scribe.operations.source_geopackage_path(
+        tmp_path,
+        2026,
+        feed_name,
+        serial_number,
+        watermark,
+    )
 
 
 @pytest.fixture
@@ -144,12 +289,12 @@ def list_fires_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def test_list_fires_requires_at_least_one_geo_package(
+def test_list_fires_requires_directory(
     runner: click.testing.CliRunner,
 ) -> None:
     result = runner.invoke(peri_scribe.main.cli, ["list-fires"])
     assert result.exit_code == CLICK_USAGE_ERROR_EXIT_CODE
-    assert "Missing argument 'GEO_PACKAGE_PATHS...'" in result.output
+    assert "Missing argument 'DIRECTORY'." in result.output
 
 
 @pytest.mark.usefixtures("list_fires_setup")
@@ -157,6 +302,7 @@ def test_list_fires_logs_fire_names_and_statuses(
     runner: click.testing.CliRunner,
     configured_feeds: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+    tmp_path: pathlib.Path,
 ) -> None:
     stub_geo_package(
         pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Polygon"]}),
@@ -167,10 +313,16 @@ def test_list_fires_logs_fire_names_and_statuses(
             }),
         },
     )
+    directory = tmp_path / "data"
+    first_snapshot = directory / "sources" / "Fires_One_0" / "000000,etag=one.gpkg"
+    second_snapshot = directory / "sources" / "Fires_One_0" / "000001,etag=two.gpkg"
+    first_snapshot.parent.mkdir(parents=True)
+    first_snapshot.touch()
+    second_snapshot.touch()
     with structlog.testing.capture_logs() as captured:
         result = runner.invoke(
             peri_scribe.main.cli,
-            ["list-fires", "fires_one.gpkg", "fires_two.gpkg"],
+            ["list-fires", str(directory)],
         )
     assert result.exit_code == 0
     assert [(event["name"], event["status"]) for event in captured] == [
@@ -184,6 +336,7 @@ def test_list_fires_propagates_unconfigured_layer_error(
     runner: click.testing.CliRunner,
     configured_feeds: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+    tmp_path: pathlib.Path,
 ) -> None:
     stub_geo_package(
         pd.DataFrame({"name": ["Mystery_Layer_0"], "geometry_type": ["Polygon"]}),
@@ -194,9 +347,18 @@ def test_list_fires_propagates_unconfigured_layer_error(
             }),
         },
     )
-    result = runner.invoke(peri_scribe.main.cli, ["list-fires", "fires.gpkg"])
+    (tmp_path / "fires.gpkg").touch()
+    result = runner.invoke(peri_scribe.main.cli, ["list-fires", str(tmp_path)])
     assert result.exit_code == 1
     assert isinstance(result.exception, peri_scribe.exceptions.UnknownLayerError)
+
+
+def test_list_fires_rejects_missing_directory(
+    runner: click.testing.CliRunner,
+) -> None:
+    result = runner.invoke(peri_scribe.main.cli, ["list-fires", "no-such-directory"])
+    assert result.exit_code == CLICK_USAGE_ERROR_EXIT_CODE
+    assert "does not exist" in result.output
 
 
 def test_cli_help(runner: click.testing.CliRunner) -> None:
@@ -249,7 +411,7 @@ def test_fetch_writes_geo_package(
         lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
     )
     result = runner.invoke(peri_scribe.main.cli, ["fetch"])
-    output_path = tmp_path / peri_scribe.models.OUTPUT_FILENAME
+    output_path = snapshot_path(tmp_path)
     assert result.exit_code == 0
     assert output_path.exists()
     written = geopandas.read_file(output_path, layer=SAMPLE_FEED_NAME)
@@ -276,7 +438,7 @@ def test_fetch_fails_fast_when_query_fails(
     result = runner.invoke(peri_scribe.main.cli, ["fetch"])
     assert result.exit_code == 1
     assert f"Failed to fetch {SAMPLE_FEED_NAME}: boom" in result.output
-    assert not (tmp_path / peri_scribe.models.OUTPUT_FILENAME).exists()
+    assert not snapshot_path(tmp_path).exists()
 
 
 @pytest.mark.usefixtures("fetch_setup")
@@ -298,10 +460,9 @@ def test_fetch_fails_fast_when_feed_returns_no_features(
     assert result.exit_code == 1
     assert (
         f"Failed to fetch {SAMPLE_FEED_NAME}: "
-        f"Feed {SAMPLE_FEED_NAME} returned no features; "
-        f"{peri_scribe.models.OUTPUT_FILENAME} was not modified"
+        f"Feed {SAMPLE_FEED_NAME} returned no features; no output was written"
     ) in result.output
-    assert not (tmp_path / peri_scribe.models.OUTPUT_FILENAME).exists()
+    assert not snapshot_path(tmp_path).exists()
 
 
 def test_feed_config_logs_each_configured_feed(
@@ -338,12 +499,12 @@ def test_current_watermarks_logs_each_feed_watermark(
         WatermarkFeedStub(
             name="One",
             url="https://example.test/one",
-            watermark='{"count":1,"etag":"one","mtime":"2026-08-16T07:28:00Z"}',
+            watermark="etag=one,count=1",
         ),
         WatermarkFeedStub(
             name="Two",
             url="https://example.test/two",
-            watermark='{"count":2,"etag":"two","mtime":"2026-08-16T07:29:00Z"}',
+            watermark="etag=two,count=2",
         ),
     ]
     monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
@@ -381,7 +542,7 @@ def test_fetch_retries_on_429_and_succeeds(
         lambda url, gis: MultiQueryLayerStub(url, gis, outcomes),
     )
     result = runner.invoke(peri_scribe.main.cli, ["fetch"])
-    output_path = tmp_path / peri_scribe.models.OUTPUT_FILENAME
+    output_path = snapshot_path(tmp_path)
     assert result.exit_code == 0
     assert output_path.exists()
     assert sleep_calls == [60.0]
@@ -413,4 +574,320 @@ def test_fetch_exhausts_retries_and_exits(
         f"Failed to fetch {SAMPLE_FEED_NAME}: {RATE_LIMIT_ERROR_BODY}" in result.output
     )
     assert sleep_calls == [60.0] * max_retries
-    assert not (tmp_path / peri_scribe.models.OUTPUT_FILENAME).exists()
+    assert not snapshot_path(tmp_path).exists()
+
+
+@pytest.mark.usefixtures("fetch_setup")
+def test_fetch_writes_one_file_per_source_named_by_watermark(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+    feature_set_with_geometry: arcgis.features.FeatureSet,
+    tmp_path: pathlib.Path,
+) -> None:
+    first_watermark = "etag=one,count=1"
+    second_watermark = "etag=two,count=2"
+    first = FetchFeedStub(
+        name="First_Source_0",
+        url="https://example.test/first",
+        watermark=first_watermark,
+    )
+    second = FetchFeedStub(
+        name="Second_Source_0",
+        url="https://example.test/second",
+        watermark=second_watermark,
+    )
+    monkeypatch.setattr(peri_scribe.models, "FEEDS", [first, second])
+    monkeypatch.setattr(
+        peri_scribe.operations.arcgis.features,
+        "FeatureLayer",
+        lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
+    )
+    result = runner.invoke(peri_scribe.main.cli, ["fetch"])
+    assert result.exit_code == 0
+    first_path = snapshot_path(
+        tmp_path,
+        feed_name=first.name,
+        watermark=first_watermark,
+    )
+    second_path = snapshot_path(
+        tmp_path,
+        feed_name=second.name,
+        watermark=second_watermark,
+    )
+    assert first_path.exists()
+    assert second_path.exists()
+    assert first_path.parent == (
+        tmp_path / "data" / "2026" / "sources" / "First_Source_0"
+    )
+    assert second_path.parent == (
+        tmp_path / "data" / "2026" / "sources" / "Second_Source_0"
+    )
+    assert list(geopandas.read_file(first_path, layer="First_Source_0")["name"]) == [
+        "a",
+        "b",
+    ]
+    assert list(geopandas.read_file(second_path, layer="Second_Source_0")["name"]) == [
+        "a",
+        "b",
+    ]
+
+
+@pytest.mark.usefixtures("fetch_setup")
+def test_fetch_increments_serial_number_for_new_watermark(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+    tmp_path: pathlib.Path,
+) -> None:
+    first_watermark = "lastEdit=1"
+    second_watermark = "lastEdit=2"
+    full = arcgis.features.FeatureSet([
+        arcgis.features.Feature(
+            geometry={"x": 1.0, "y": 2.0, "spatialReference": {"wkid": WGS84_WKID}},
+            attributes={"OBJECTID": 1, "name": "a"},
+        ),
+        arcgis.features.Feature(
+            geometry={"x": 3.0, "y": 4.0, "spatialReference": {"wkid": WGS84_WKID}},
+            attributes={"OBJECTID": 2, "name": "b"},
+        ),
+    ])
+    delta = arcgis.features.FeatureSet([
+        arcgis.features.Feature(
+            geometry={"x": 5.0, "y": 6.0, "spatialReference": {"wkid": WGS84_WKID}},
+            attributes={"OBJECTID": 3, "name": "c"},
+        ),
+    ])
+    monkeypatch.setattr(
+        peri_scribe.operations.arcgis.features,
+        "FeatureLayer",
+        lambda url, gis: DeltaFeatureLayerStub(url, gis, full, delta),
+    )
+    monkeypatch.setattr(
+        peri_scribe.models,
+        "FEEDS",
+        [
+            FetchFeedStub(
+                name=SAMPLE_FEED_NAME,
+                url=SAMPLE_FEED_URL,
+                watermark=first_watermark,
+            ),
+        ],
+    )
+    assert runner.invoke(peri_scribe.main.cli, ["fetch"]).exit_code == 0
+    monkeypatch.setattr(
+        peri_scribe.models,
+        "FEEDS",
+        [
+            FetchFeedStub(
+                name=SAMPLE_FEED_NAME,
+                url=SAMPLE_FEED_URL,
+                watermark=second_watermark,
+            ),
+        ],
+    )
+    assert runner.invoke(peri_scribe.main.cli, ["fetch"]).exit_code == 0
+    first_path = snapshot_path(
+        tmp_path,
+        serial_number=0,
+        watermark=first_watermark,
+    )
+    second_path = snapshot_path(
+        tmp_path,
+        serial_number=1,
+        watermark=second_watermark,
+    )
+    assert first_path.exists()
+    assert second_path.exists()
+    assert list(geopandas.read_file(first_path, layer=SAMPLE_FEED_NAME)["name"]) == [
+        "a",
+        "b",
+    ]
+    assert list(geopandas.read_file(second_path, layer=SAMPLE_FEED_NAME)["name"]) == [
+        "c",
+    ]
+
+
+@pytest.mark.usefixtures("fetch_setup")
+def test_fetch_writes_no_new_file_when_nothing_changed(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+    tmp_path: pathlib.Path,
+) -> None:
+    first_watermark = "lastEdit=1"
+    second_watermark = "lastEdit=2"
+    full = arcgis.features.FeatureSet([
+        arcgis.features.Feature(
+            geometry={"x": 1.0, "y": 2.0, "spatialReference": {"wkid": WGS84_WKID}},
+            attributes={"OBJECTID": 1, "name": "a"},
+        ),
+        arcgis.features.Feature(
+            geometry={"x": 3.0, "y": 4.0, "spatialReference": {"wkid": WGS84_WKID}},
+            attributes={"OBJECTID": 2, "name": "b"},
+        ),
+    ])
+    monkeypatch.setattr(
+        peri_scribe.operations.arcgis.features,
+        "FeatureLayer",
+        lambda url, gis: DeltaFeatureLayerStub(
+            url,
+            gis,
+            full,
+            arcgis.features.FeatureSet([]),
+        ),
+    )
+    monkeypatch.setattr(
+        peri_scribe.models,
+        "FEEDS",
+        [
+            FetchFeedStub(
+                name=SAMPLE_FEED_NAME,
+                url=SAMPLE_FEED_URL,
+                watermark=first_watermark,
+            ),
+        ],
+    )
+    assert runner.invoke(peri_scribe.main.cli, ["fetch"]).exit_code == 0
+    monkeypatch.setattr(
+        peri_scribe.models,
+        "FEEDS",
+        [
+            FetchFeedStub(
+                name=SAMPLE_FEED_NAME,
+                url=SAMPLE_FEED_URL,
+                watermark=second_watermark,
+            ),
+        ],
+    )
+    assert runner.invoke(peri_scribe.main.cli, ["fetch"]).exit_code == 0
+    assert snapshot_path(
+        tmp_path,
+        serial_number=0,
+        watermark=first_watermark,
+    ).exists()
+    assert not snapshot_path(
+        tmp_path,
+        serial_number=1,
+        watermark=second_watermark,
+    ).exists()
+
+
+@pytest.mark.usefixtures("fetch_setup")
+def test_fetch_reuses_serial_number_for_unchanged_watermark(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+    feature_set_with_geometry: arcgis.features.FeatureSet,
+    tmp_path: pathlib.Path,
+) -> None:
+    watermark = "etag=one,count=1"
+    monkeypatch.setattr(
+        peri_scribe.operations.arcgis.features,
+        "FeatureLayer",
+        lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
+    )
+    monkeypatch.setattr(
+        peri_scribe.models,
+        "FEEDS",
+        [
+            FetchFeedStub(
+                name=SAMPLE_FEED_NAME,
+                url=SAMPLE_FEED_URL,
+                watermark=watermark,
+            ),
+        ],
+    )
+    assert runner.invoke(peri_scribe.main.cli, ["fetch"]).exit_code == 0
+    assert runner.invoke(peri_scribe.main.cli, ["fetch"]).exit_code == 0
+    assert snapshot_path(tmp_path, serial_number=0, watermark=watermark).exists()
+    assert not snapshot_path(tmp_path, serial_number=1, watermark=watermark).exists()
+
+
+@pytest.mark.usefixtures("fetch_setup")
+def test_fetch_fails_fast_when_watermark_cannot_be_observed(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+    tmp_path: pathlib.Path,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.models,
+        "FEEDS",
+        [FetchFeedStub(name=SAMPLE_FEED_NAME, url=SAMPLE_FEED_URL, watermark=None)],
+    )
+    result = runner.invoke(peri_scribe.main.cli, ["fetch"])
+    assert result.exit_code == 1
+    assert (
+        f"Failed to fetch {SAMPLE_FEED_NAME}: no watermark could be observed"
+        in result.output
+    )
+    assert not snapshot_path(tmp_path).exists()
+
+
+@pytest.mark.usefixtures("fetch_setup")
+def test_fetch_observes_watermark_before_downloading(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+    feature_set_with_geometry: arcgis.features.FeatureSet,
+) -> None:
+    events: list[str] = []
+    feed = RecordingFeedStub(
+        name=SAMPLE_FEED_NAME,
+        url=SAMPLE_FEED_URL,
+        watermark=SAMPLE_WATERMARK,
+        events=events,
+    )
+    monkeypatch.setattr(peri_scribe.models, "FEEDS", [feed])
+    monkeypatch.setattr(
+        peri_scribe.operations.arcgis.features,
+        "FeatureLayer",
+        lambda url, gis: RecordingFeatureLayerStub(
+            url,
+            gis,
+            feature_set_with_geometry,
+            events,
+        ),
+    )
+    result = runner.invoke(peri_scribe.main.cli, ["fetch"])
+    assert result.exit_code == 0
+    assert events == ["watermark", "download"]
+
+
+@pytest.mark.usefixtures("fetch_setup")
+def test_fetch_skips_download_when_watermark_already_present(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+    feature_set_with_geometry: arcgis.features.FeatureSet,
+    tmp_path: pathlib.Path,
+) -> None:
+    events: list[str] = []
+    feed = RecordingFeedStub(
+        name=SAMPLE_FEED_NAME,
+        url=SAMPLE_FEED_URL,
+        watermark=SAMPLE_WATERMARK,
+        events=events,
+    )
+    monkeypatch.setattr(peri_scribe.models, "FEEDS", [feed])
+    monkeypatch.setattr(
+        peri_scribe.operations.arcgis.features,
+        "FeatureLayer",
+        lambda url, gis: RecordingFeatureLayerStub(
+            url,
+            gis,
+            feature_set_with_geometry,
+            events,
+        ),
+    )
+    # The first fetch downloads and writes the snapshot.
+    assert runner.invoke(peri_scribe.main.cli, ["fetch"]).exit_code == 0
+    assert events == ["watermark", "download"]
+    events.clear()
+    # The second fetch sees the same watermark in the REST call and skips.
+    with structlog.testing.capture_logs() as captured:
+        result = runner.invoke(peri_scribe.main.cli, ["fetch"])
+    assert result.exit_code == 0
+    assert events == ["watermark"]
+    (skip_event,) = [
+        event
+        for event in captured
+        if event["event"] == "Skipping fetch; data already present"
+    ]
+    assert skip_event["feed"] == SAMPLE_FEED_NAME
+    assert skip_event["watermark"] == SAMPLE_WATERMARK
+    assert skip_event["path"] == snapshot_path(tmp_path)

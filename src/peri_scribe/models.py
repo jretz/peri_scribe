@@ -17,7 +17,6 @@ if TYPE_CHECKING:
     import pyproj
 
 
-OUTPUT_FILENAME = "current_fire_data.gpkg"
 GEOMETRY_COLUMN_NAME = "geom"
 
 # Minimum plausible magnitude for coordinates in a projected (metre) reference. Smaller

@@ -195,55 +195,21 @@ def test_arc_gis_feed_current_watermark(
     )
     monkeypatch.setattr(
         peri_scribe.feed_types.requests,
-        "head",
-        lambda *_arguments, **_keywords: ResponseStub(
-            headers={
-                "Last-Modified": "Wed, 21 Oct 2026 07:28:00 GMT",
-                "ETag": '"abc123"',
-            },
-        ),
-    )
-    monkeypatch.setattr(
-        peri_scribe.feed_types.requests,
         "get",
-        lambda *_arguments, **_keywords: ResponseStub(payload={"count": 42}),
-    )
-    assert (
-        feed.current_watermark
-        == '{"count":42,"etag":"\\"abc123\\"","mtime":"Wed, 21 Oct 2026 07:28:00 GMT"}'
-    )
-
-
-def test_arc_gis_feed_current_watermark_returns_none_on_head_error(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    feed = peri_scribe.feed_types.ArcGISFeed(
-        url=SAMPLE_FEED_URL,
-        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
-        status_column=SAMPLE_STATUS_COLUMN,
-    )
-    monkeypatch.setattr(
-        peri_scribe.feed_types.requests,
-        "head",
         lambda *_arguments, **_keywords: ResponseStub(
-            status_error=requests.exceptions.HTTPError("boom"),
+            payload={"editingInfo": {"lastEditDate": 123}},
         ),
     )
-    assert feed.current_watermark is None
+    assert feed.current_watermark == "lastEdit=123"
 
 
-def test_arc_gis_feed_current_watermark_returns_none_on_count_error(
+def test_arc_gis_feed_current_watermark_returns_none_on_get_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     feed = peri_scribe.feed_types.ArcGISFeed(
         url=SAMPLE_FEED_URL,
         fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
         status_column=SAMPLE_STATUS_COLUMN,
-    )
-    monkeypatch.setattr(
-        peri_scribe.feed_types.requests,
-        "head",
-        lambda *_arguments, **_keywords: ResponseStub(headers={}),
     )
     monkeypatch.setattr(
         peri_scribe.feed_types.requests,
@@ -265,11 +231,6 @@ def test_arc_gis_feed_current_watermark_returns_none_on_invalid_json(
     )
     monkeypatch.setattr(
         peri_scribe.feed_types.requests,
-        "head",
-        lambda *_arguments, **_keywords: ResponseStub(headers={}),
-    )
-    monkeypatch.setattr(
-        peri_scribe.feed_types.requests,
         "get",
         lambda *_arguments, **_keywords: ResponseStub(
             json_error=ValueError("not json"),
@@ -288,18 +249,13 @@ def test_arc_gis_feed_current_watermark_returns_none_for_non_dict_payload(
     )
     monkeypatch.setattr(
         peri_scribe.feed_types.requests,
-        "head",
-        lambda *_arguments, **_keywords: ResponseStub(headers={}),
-    )
-    monkeypatch.setattr(
-        peri_scribe.feed_types.requests,
         "get",
         lambda *_arguments, **_keywords: ResponseStub(payload=["not", "a", "dict"]),
     )
     assert feed.current_watermark is None
 
 
-def test_arc_gis_feed_current_watermark_returns_none_without_count_key(
+def test_arc_gis_feed_current_watermark_returns_none_without_editing_info(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     feed = peri_scribe.feed_types.ArcGISFeed(
@@ -309,13 +265,24 @@ def test_arc_gis_feed_current_watermark_returns_none_without_count_key(
     )
     monkeypatch.setattr(
         peri_scribe.feed_types.requests,
-        "head",
-        lambda *_arguments, **_keywords: ResponseStub(headers={}),
+        "get",
+        lambda *_arguments, **_keywords: ResponseStub(payload={"other": 1}),
+    )
+    assert feed.current_watermark is None
+
+
+def test_arc_gis_feed_current_watermark_returns_none_without_last_edit_date(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    feed = peri_scribe.feed_types.ArcGISFeed(
+        url=SAMPLE_FEED_URL,
+        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
+        status_column=SAMPLE_STATUS_COLUMN,
     )
     monkeypatch.setattr(
         peri_scribe.feed_types.requests,
         "get",
-        lambda *_arguments, **_keywords: ResponseStub(payload={"total": 0}),
+        lambda *_arguments, **_keywords: ResponseStub(payload={"editingInfo": {}}),
     )
     assert feed.current_watermark is None
 

@@ -379,10 +379,7 @@ def test_dataframe_for_layer_raises_no_features_error_when_feed_is_empty() -> No
     feature_set = arcgis.features.FeatureSet([])
     with pytest.raises(
         peri_scribe.exceptions.NoFeaturesError,
-        match=(
-            f"Feed {SAMPLE_FEED_NAME} returned no features; "
-            f"{peri_scribe.models.OUTPUT_FILENAME} was not modified"
-        ),
+        match=f"Feed {SAMPLE_FEED_NAME} returned no features; no output was written",
     ):
         peri_scribe.geo_data.dataframe_for_layer(feed, layer, feature_set)
 
@@ -627,3 +624,36 @@ def test_query_with_retry_logs_transient_reason(
     assert captured[0]["event"] == "Transient network error; retrying after backoff"
     assert captured[0]["attempt"] == 1
     assert captured[0]["retry_seconds"] == peri_scribe.retry.BACKOFF_BASE_SECONDS
+
+
+class IdQueryStub:
+    """Layer stand-in returning a fixed object-id query result."""
+
+    def __init__(self, result: dict[str, object]) -> None:
+        self.result = result
+
+    def query(self, **_parameters: object) -> dict[str, object]:
+        return self.result
+
+
+def test_query_object_ids_with_retry_returns_object_ids() -> None:
+    layer = IdQueryStub({"objectIds": [3, 4]})
+    result = peri_scribe.geo_data.query_object_ids_with_retry(
+        SAMPLE_FEED_NAME,
+        layer,  # ty: ignore
+        where="1=1",
+    )
+    assert result == [3, 4]
+
+
+def test_query_object_ids_with_retry_raises_without_object_ids() -> None:
+    layer = IdQueryStub({"count": 0})
+    with pytest.raises(
+        peri_scribe.exceptions.NoFeaturesError,
+        match="no object ids",
+    ):
+        peri_scribe.geo_data.query_object_ids_with_retry(
+            SAMPLE_FEED_NAME,
+            layer,  # ty: ignore
+            where="1=1",
+        )

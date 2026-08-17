@@ -93,10 +93,7 @@ def dataframe_for_layer(
     """
     features = feature_set.features
     if not features:
-        message = (
-            f"Feed {feed.name} returned no features; "
-            f"{peri_scribe.models.OUTPUT_FILENAME} was not modified"
-        )
+        message = f"Feed {feed.name} returned no features; no output was written"
         raise peri_scribe.exceptions.NoFeaturesError(message)
     dataframe = feature_set.sdf
     dataframe, shapely_geometries, geometry_warning = extract_geometries(dataframe)
@@ -301,32 +298,31 @@ def complex_memberships(
             )
 
 
-def query_with_retry(
+def retry_query[QueryResult](
     feed_name: str,
-    layer: arcgis.features.FeatureLayer,
+    query: typing.Callable[[], QueryResult],
     *,
     max_retries: int = peri_scribe.retry.DEFAULT_MAX_RETRIES,
-) -> arcgis.features.FeatureSet:
-    """Query *layer*, retrying on transient and rate-limit errors.
+) -> QueryResult:
+    """Run *query*, retrying on transient and rate-limit errors.
 
-    Rate-limit errors (HTTP 429 from the ArcGIS REST API) use the server-
-    suggested ``Retry after`` delay. Other transient network errors use
-    exponential backoff starting at ``BACKOFF_BASE_SECONDS`` and capped at
-    ``BACKOFF_MAXIMUM_SECONDS``.
+    Rate-limit errors (HTTP 429 from the ArcGIS REST API) use the server-suggested
+    ``Retry after`` delay. Other transient network errors use exponential backoff
+    starting at ``BACKOFF_BASE_SECONDS`` and capped at ``BACKOFF_MAXIMUM_SECONDS``.
 
     Args:
         feed_name: Human-readable feed identifier for log messages.
-        layer: The FeatureLayer to query.
+        query: The zero-argument callable that performs a single query attempt.
         max_retries: Maximum number of retries before giving up.
 
     Returns:
-        The FeatureSet returned by a successful query.
+        The result returned by *query*.
     """
     attempts_made = 0
     while True:
         attempts_made += 1
         try:
-            return layer.query()
+            return query()
         except Exception as error:
             retry_seconds = peri_scribe.retry.rate_limit_retry_seconds(error)
             if retry_seconds is not None:
@@ -352,3 +348,82 @@ def query_with_retry(
                 retry_seconds=retry_seconds,
             )
             time.sleep(retry_seconds)
+
+
+def query_with_retry(
+    feed_name: str,
+    layer: arcgis.features.FeatureLayer,
+    *,
+    max_retries: int = peri_scribe.retry.DEFAULT_MAX_RETRIES,
+    parameters: dict[str, typing.Any] | None = None,
+) -> arcgis.features.FeatureSet:
+    """Query *layer* for features, retrying on transient and rate-limit errors.
+
+    Args:
+        feed_name: Human-readable feed identifier for log messages.
+        layer: The FeatureLayer to query.
+        max_retries: Maximum number of retries before giving up.
+        parameters: Keyword arguments forwarded to ``layer.query``.
+
+    Returns:
+        The FeatureSet returned by a successful query.
+    """
+    query_parameters = {} if parameters is None else parameters
+    return retry_query(
+        feed_name,
+        lambda: layer.query(**query_parameters),
+        max_retries=max_retries,
+    )
+
+
+def query_object_ids_with_retry(
+    feed_name: str,
+    layer: arcgis.features.FeatureLayer,
+    *,
+    where: str,
+    max_retries: int = peri_scribe.retry.DEFAULT_MAX_RETRIES,
+) -> list[int]:
+    """Return the OBJECTIDs of the features in *layer* matching *where*.
+
+    The query requests only identifiers, so the response is a few bytes for most
+    layers. An empty list means no features matched.
+
+    Args:
+        feed_name: Human-readable feed identifier for log messages.
+        layer: The FeatureLayer to query.
+        where: The SQL where clause selecting the features.
+        max_retries: Maximum number of retries before giving up.
+
+    Returns:
+        The OBJECTIDs of the matching features.
+
+    Raises:
+        NoFeaturesError: If the service does not return an object id list.
+    """
+    result = retry_query(
+        feed_name,
+        lambda: layer.query(where=where, return_ids_only=True),
+        max_retries=max_retries,
+    )
+    if not isinstance(result, dict) or "objectIds" not in result:
+        message = f"Feed {feed_name} returned no object ids"
+        raise peri_scribe.exceptions.NoFeaturesError(message)
+    return [int(object_id) for object_id in result["objectIds"]]
+
+
+def read_layer_dataframe(
+    path: pathlib.Path,
+    feed: peri_scribe.feed_types.Feed,
+) -> geopandas.GeoDataFrame:
+    """Read the feed's layer from the GeoPackage at *path*.
+
+    The file is only read, never written.
+
+    Args:
+        path: The GeoPackage file to read.
+        feed: The feed whose layer is read.
+
+    Returns:
+        The layer's features as a GeoDataFrame.
+    """
+    return geopandas.read_file(path, layer=feed.name)

@@ -1,13 +1,19 @@
 """Tests for peri_scribe.operations."""
 
+import datetime
 import pathlib
 import re
 import typing
 
+import geopandas
+import pandas as pd
+import pyproj
 import pytest
+import shapely.geometry
 import structlog
 
 import peri_scribe.exceptions
+import peri_scribe.feed_types
 import peri_scribe.geo_data
 import peri_scribe.models
 import peri_scribe.operations
@@ -60,6 +66,11 @@ def stub_fire_reader(
         ) -> typing.Iterator[peri_scribe.models.ComplexMembership]:
             yield from (memberships_by_path or {}).get(path, [])
 
+        def fake_geo_package_files(
+            _directory: pathlib.Path,
+        ) -> list[pathlib.Path]:
+            return sorted(set(fires_by_path) | set(memberships_by_path or {}))
+
         monkeypatch.setattr(
             peri_scribe.geo_data,
             "fire_names",
@@ -69,6 +80,11 @@ def stub_fire_reader(
             peri_scribe.geo_data,
             "complex_memberships",
             fake_complex_memberships,
+        )
+        monkeypatch.setattr(
+            peri_scribe.operations,
+            "geo_package_files",
+            fake_geo_package_files,
         )
 
     return stub
@@ -85,7 +101,7 @@ def test_list_fires_prefers_most_common_mixed_case_spelling(
             peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
         ],
     })
-    fires = peri_scribe.operations.list_fires((pathlib.Path("one.gpkg"),))
+    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
     assert fires == [peri_scribe.models.Fire(name="Park Fire", status=ACTIVE)]
 
 
@@ -99,7 +115,7 @@ def test_list_fires_uses_most_common_spelling_when_none_is_mixed_case(
             peri_scribe.models.Fire(name="park fire", status=INACTIVE),
         ],
     })
-    fires = peri_scribe.operations.list_fires((pathlib.Path("one.gpkg"),))
+    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
     assert fires == [peri_scribe.models.Fire(name="park fire", status=INACTIVE)]
 
 
@@ -112,7 +128,7 @@ def test_list_fires_breaks_mixed_case_ties_by_first_spelling(
             peri_scribe.models.Fire(name="PARK Fire", status=ACTIVE),
         ],
     })
-    fires = peri_scribe.operations.list_fires((pathlib.Path("one.gpkg"),))
+    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
     assert fires == [peri_scribe.models.Fire(name="Park Fire", status=ACTIVE)]
 
 
@@ -125,7 +141,7 @@ def test_list_fires_marks_fire_active_when_any_record_is_active(
             peri_scribe.models.Fire(name="Alta", status=ACTIVE),
         ],
     })
-    fires = peri_scribe.operations.list_fires((pathlib.Path("one.gpkg"),))
+    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
     assert fires == [peri_scribe.models.Fire(name="Alta", status=ACTIVE)]
 
 
@@ -142,9 +158,7 @@ def test_list_fires_merges_names_across_files(
             peri_scribe.models.Fire(name="Creek Fire", status=ACTIVE),
         ],
     })
-    fires = peri_scribe.operations.list_fires(
-        (pathlib.Path("one.gpkg"), pathlib.Path("two.gpkg")),
-    )
+    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
         peri_scribe.models.Fire(name="ALTA", status=INACTIVE),
@@ -170,7 +184,7 @@ def test_list_fires_merges_records_with_same_identifier_under_different_names(
             ),
         ],
     })
-    fires = peri_scribe.operations.list_fires((pathlib.Path("one.gpkg"),))
+    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(
             name="Crosswhite",
@@ -197,7 +211,7 @@ def test_list_fires_keeps_same_named_fires_with_different_identifiers_separate(
             ),
         ],
     })
-    fires = peri_scribe.operations.list_fires((pathlib.Path("one.gpkg"),))
+    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(
             name="CANYON",
@@ -232,7 +246,7 @@ def test_list_fires_merges_unidentified_records_with_same_named_identified_recor
             ),
         ],
     })
-    fires = peri_scribe.operations.list_fires((pathlib.Path("one.gpkg"),))
+    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(
             name="Bug",
@@ -252,7 +266,7 @@ def test_list_fires_merges_keyed_record_with_later_unidentified_same_named_recor
             peri_scribe.models.Fire(name="BUG", status=INACTIVE, identifier=None),
         ],
     })
-    fires = peri_scribe.operations.list_fires((pathlib.Path("one.gpkg"),))
+    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(name="Bug", status=ACTIVE, identifier=bug_id),
     ]
@@ -278,7 +292,7 @@ def test_list_fires_merges_identified_records_through_a_shared_unidentified_reco
             ),
         ],
     })
-    fires = peri_scribe.operations.list_fires((pathlib.Path("one.gpkg"),))
+    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(
             name="Bug",
@@ -364,7 +378,7 @@ def test_list_fires_excludes_complex_parents(
             ],
         },
     )
-    fires = peri_scribe.operations.list_fires((pathlib.Path("one.gpkg"),))
+    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(
             name="0445 CROSSWHITE",
@@ -404,7 +418,7 @@ def test_list_fires_links_member_fires_to_their_complex(
             ],
         },
     )
-    fires = peri_scribe.operations.list_fires((pathlib.Path("one.gpkg"),))
+    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
     fire = fires[0]
     assert fire.complex is not None
     assert fire.complex.name == "ROWE CREEK COMPLEX"
@@ -445,9 +459,7 @@ def test_list_fires_builds_one_complex_from_memberships_across_files(
             pathlib.Path("two.gpkg"): [membership],
         },
     )
-    fires = peri_scribe.operations.list_fires(
-        (pathlib.Path("one.gpkg"), pathlib.Path("two.gpkg")),
-    )
+    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(
             name="Crosswhite",
@@ -498,7 +510,7 @@ def test_list_fires_excludes_parent_group_merged_with_unidentified_records(
             ],
         },
     )
-    fires = peri_scribe.operations.list_fires((pathlib.Path("one.gpkg"),))
+    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(
             name="5-3",
@@ -539,7 +551,7 @@ def test_fire_complexes_skips_membership_for_unidentified_fire(
         },
     )
     with structlog.testing.capture_logs() as captured:
-        fires = peri_scribe.operations.list_fires((pathlib.Path("one.gpkg"),))
+        fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
     assert captured[0]["event"] == (
         "Complex membership references an unidentified fire"
     )
@@ -570,11 +582,16 @@ def test_list_fires_propagates_unknown_layer_error(
         "fire_names",
         fake_fire_names,
     )
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "geo_package_files",
+        lambda _directory: [pathlib.Path("fires.gpkg")],
+    )
     with pytest.raises(
         peri_scribe.exceptions.UnknownLayerError,
         match=re.escape("layer Mystery_Layer_0 in fires.gpkg"),
     ):
-        peri_scribe.operations.list_fires((pathlib.Path("fires.gpkg"),))
+        peri_scribe.operations.list_fires(pathlib.Path("sources"))
 
 
 def test_list_fires_raises_system_exit_for_unreadable_file(
@@ -589,8 +606,512 @@ def test_list_fires_raises_system_exit_for_unreadable_file(
         "fire_names",
         fake_fire_names,
     )
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "geo_package_files",
+        lambda _directory: [pathlib.Path("fires.gpkg")],
+    )
     with pytest.raises(
         SystemExit,
         match=re.escape("Failed to read fires.gpkg: no such file"),
     ):
-        peri_scribe.operations.list_fires((pathlib.Path("fires.gpkg"),))
+        peri_scribe.operations.list_fires(pathlib.Path("sources"))
+
+
+def test_geo_package_files_returns_nested_files_in_sorted_order(
+    tmp_path: pathlib.Path,
+) -> None:
+    directory = tmp_path / "data"
+    alpha = directory / "sources" / "Alpha_0"
+    beta = directory / "sources" / "Beta_0"
+    alpha.mkdir(parents=True)
+    beta.mkdir(parents=True)
+    (alpha / "000002,etag=b.gpkg").touch()
+    (alpha / "000001,etag=a.gpkg").touch()
+    (beta / "000000,etag=c.gpkg").touch()
+    (directory / "notes.txt").touch()
+    assert peri_scribe.operations.geo_package_files(directory) == [
+        alpha / "000001,etag=a.gpkg",
+        alpha / "000002,etag=b.gpkg",
+        beta / "000000,etag=c.gpkg",
+    ]
+
+
+def test_geo_package_files_returns_empty_list_without_directory(
+    tmp_path: pathlib.Path,
+) -> None:
+    assert peri_scribe.operations.geo_package_files(tmp_path / "missing") == []
+
+
+def test_geo_package_files_raises_system_exit_when_tree_cannot_be_read(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    def fake_rglob(self: pathlib.Path, pattern: str) -> typing.Never:
+        message = "denied"
+        raise PermissionError(message)
+
+    monkeypatch.setattr(pathlib.Path, "rglob", fake_rglob)
+    with pytest.raises(
+        SystemExit,
+        match=re.escape(f"Failed to read {tmp_path}: denied"),
+    ):
+        peri_scribe.operations.geo_package_files(tmp_path)
+
+
+def test_source_geopackage_path_places_watermark_file_under_source_directory() -> None:
+    path = peri_scribe.operations.source_geopackage_path(
+        pathlib.Path("/base"),
+        2026,
+        "CA_Perimeters_NIFC_FIRIS_public_view_0",
+        17,
+        "etag=abc123,count=456",
+    )
+    assert path == pathlib.Path(
+        "/base/data/2026/sources/CA_Perimeters_NIFC_FIRIS_public_view_0/"
+        "000017,etag=abc123,count=456.gpkg",
+    )
+
+
+def test_geopackage_filename_zero_pads_serial_number() -> None:
+    assert (
+        peri_scribe.operations.geopackage_filename(17, "etag=abc123,count=456")
+        == "000017,etag=abc123,count=456.gpkg"
+    )
+
+
+def test_parse_geopackage_filename_returns_serial_and_watermark() -> None:
+    assert peri_scribe.operations.parse_geopackage_filename(
+        "000017,etag=abc123,count=456.gpkg",
+    ) == (17, "etag=abc123,count=456")
+
+
+def test_next_serial_number_starts_at_zero_without_existing_files() -> None:
+    expected_serial_number = 0
+    assert (
+        peri_scribe.operations.next_serial_number([], "etag=abc123,count=456")
+        == expected_serial_number
+    )
+
+
+def test_next_serial_number_increments_beyond_largest_serial() -> None:
+    expected_serial_number = 4
+    assert (
+        peri_scribe.operations.next_serial_number(
+            ["000003,etag=abc123,count=1.gpkg"],
+            "etag=def456,count=2",
+        )
+        == expected_serial_number
+    )
+
+
+def test_next_serial_number_reuses_serial_for_existing_watermark() -> None:
+    expected_serial_number = 3
+    assert (
+        peri_scribe.operations.next_serial_number(
+            ["000003,etag=abc123,count=1.gpkg"],
+            "etag=abc123,count=1",
+        )
+        == expected_serial_number
+    )
+
+
+def test_next_serial_number_ignores_malformed_filenames() -> None:
+    expected_serial_number = 3
+    assert (
+        peri_scribe.operations.next_serial_number(
+            ["old-style.gpkg", "000002,etag=abc123,count=1.gpkg"],
+            "etag=def456,count=2",
+        )
+        == expected_serial_number
+    )
+
+
+def test_snapshot_path_for_watermark_returns_matching_path(
+    tmp_path: pathlib.Path,
+) -> None:
+    directory = tmp_path / "sources" / "CA_Perimeters_NIFC_FIRIS_public_view_0"
+    directory.mkdir(parents=True)
+    (directory / "000017,etag=abc123,count=456.gpkg").touch()
+    (directory / "000018,etag=def789,count=2.gpkg").touch()
+    assert (
+        peri_scribe.operations.snapshot_path_for_watermark(
+            directory,
+            "etag=abc123,count=456",
+        )
+        == directory / "000017,etag=abc123,count=456.gpkg"
+    )
+
+
+def test_snapshot_path_for_watermark_returns_none_without_match(
+    tmp_path: pathlib.Path,
+) -> None:
+    directory = tmp_path / "sources" / "CA_Perimeters_NIFC_FIRIS_public_view_0"
+    directory.mkdir(parents=True)
+    (directory / "000017,etag=abc123,count=456.gpkg").touch()
+    assert (
+        peri_scribe.operations.snapshot_path_for_watermark(
+            directory,
+            "etag=other,count=9",
+        )
+        is None
+    )
+
+
+def test_snapshot_path_for_watermark_ignores_malformed_filenames(
+    tmp_path: pathlib.Path,
+) -> None:
+    directory = tmp_path / "sources" / "CA_Perimeters_NIFC_FIRIS_public_view_0"
+    directory.mkdir(parents=True)
+    (directory / "old-style.gpkg").touch()
+    assert (
+        peri_scribe.operations.snapshot_path_for_watermark(
+            directory,
+            "etag=abc123,count=456",
+        )
+        is None
+    )
+
+
+UTC = datetime.UTC
+
+
+def change_feed(
+    modified_column: str | None = "ModifiedOnDateTime_dt",
+) -> peri_scribe.feed_types.Feed:
+    """Return a feed with a known modified column.
+
+    Args:
+        modified_column: The modified timestamp column, or None.
+
+    Returns:
+        The feed.
+    """
+    return peri_scribe.models.build_feeds([
+        {
+            "feed_type": "ArcGISFeed",
+            "url": "https://example.test/ArcGIS/rest/services/Fires/FeatureServer/0",
+            "fire_name_column": "name",
+            "status_column": "status",
+            "modified_column": modified_column,
+        },
+    ])[0]
+
+
+def change_dataframe(
+    rows: list[tuple[int, str, tuple[float, float]]],
+) -> geopandas.GeoDataFrame:
+    """Return a GeoDataFrame of point features for the given rows.
+
+    Args:
+        rows: The OBJECTID, name, and coordinates of each feature.
+
+    Returns:
+        The GeoDataFrame.
+    """
+    return geopandas.GeoDataFrame(
+        {
+            "OBJECTID": [row[0] for row in rows],
+            "name": [row[1] for row in rows],
+        },
+        geometry=[shapely.geometry.Point(row[2]) for row in rows],
+        crs=pyproj.CRS.from_epsg(4326),
+    )
+
+
+def test_parse_iso_datetime_returns_datetime() -> None:
+    assert peri_scribe.operations.parse_iso_datetime(
+        "2026-01-01T00:00:00",
+    ) == datetime.datetime(2026, 1, 1, 0, 0, 0)
+
+
+def test_parse_iso_datetime_returns_none_for_invalid() -> None:
+    assert peri_scribe.operations.parse_iso_datetime("not-a-date") is None
+
+
+def test_modified_datetime_from_returns_none_for_none() -> None:
+    assert peri_scribe.operations.modified_datetime_from(None) is None
+
+
+def test_modified_datetime_from_returns_none_for_nan() -> None:
+    assert peri_scribe.operations.modified_datetime_from(float("nan")) is None
+
+
+def test_modified_datetime_from_returns_none_for_bool() -> None:
+    assert peri_scribe.operations.modified_datetime_from(value=True) is None
+
+
+def test_modified_datetime_from_returns_none_for_unknown() -> None:
+    assert peri_scribe.operations.modified_datetime_from(object()) is None
+
+
+def test_modified_datetime_from_makes_naive_datetime_utc_aware() -> None:
+    result = peri_scribe.operations.modified_datetime_from(
+        datetime.datetime(2026, 1, 1, 0, 0, 0),
+    )
+    assert result == datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
+
+
+def test_modified_datetime_from_converts_aware_datetime_to_utc() -> None:
+    aware = datetime.datetime(
+        2026,
+        1,
+        1,
+        12,
+        0,
+        tzinfo=datetime.timezone(datetime.timedelta(hours=2)),
+    )
+    result = peri_scribe.operations.modified_datetime_from(aware)
+    assert result == datetime.datetime(2026, 1, 1, 10, 0, 0, tzinfo=UTC)
+
+
+def test_modified_datetime_from_parses_iso_string() -> None:
+    result = peri_scribe.operations.modified_datetime_from("2026-01-01T00:00:00Z")
+    assert result == datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
+
+
+def test_modified_datetime_from_returns_none_for_invalid_string() -> None:
+    assert peri_scribe.operations.modified_datetime_from("nope") is None
+
+
+def test_modified_datetime_from_parses_epoch_milliseconds() -> None:
+    result = peri_scribe.operations.modified_datetime_from(0)
+    assert result == datetime.datetime(1970, 1, 1, 0, 0, 0, tzinfo=UTC)
+
+
+def test_latest_modified_datetime_returns_none_without_existing() -> None:
+    feed = change_feed()
+    assert peri_scribe.operations.latest_modified_datetime(None, feed) is None
+
+
+def test_latest_modified_datetime_returns_none_for_empty() -> None:
+    feed = change_feed()
+    empty = change_dataframe([])
+    assert peri_scribe.operations.latest_modified_datetime(empty, feed) is None
+
+
+def test_latest_modified_datetime_returns_none_without_modified_column() -> None:
+    feed = change_feed()
+    existing = change_dataframe([(1, "a", (0.0, 0.0))])
+    assert peri_scribe.operations.latest_modified_datetime(existing, feed) is None
+
+
+def test_latest_modified_datetime_returns_maximum() -> None:
+    feed = change_feed()
+    existing = geopandas.GeoDataFrame(
+        {
+            "OBJECTID": [1, 2],
+            "ModifiedOnDateTime_dt": [
+                "2026-01-01T00:00:00Z",
+                "2026-02-01T00:00:00Z",
+            ],
+        },
+        geometry=[
+            shapely.geometry.Point(0.0, 0.0),
+            shapely.geometry.Point(1.0, 1.0),
+        ],
+        crs=pyproj.CRS.from_epsg(4326),
+    )
+    result = peri_scribe.operations.latest_modified_datetime(existing, feed)
+    assert result == datetime.datetime(2026, 2, 1, 0, 0, 0, tzinfo=UTC)
+
+
+def test_incremental_cutoff_returns_epoch_without_existing() -> None:
+    feed = change_feed()
+    assert peri_scribe.operations.incremental_cutoff(
+        None,
+        feed,
+    ) == datetime.datetime(1970, 1, 1, 0, 0, 0, tzinfo=UTC)
+
+
+def test_incremental_cutoff_subtracts_overlap() -> None:
+    feed = change_feed()
+    existing = geopandas.GeoDataFrame(
+        {
+            "OBJECTID": [1],
+            "ModifiedOnDateTime_dt": ["2026-01-01T00:10:00Z"],
+        },
+        geometry=[shapely.geometry.Point(0.0, 0.0)],
+        crs=pyproj.CRS.from_epsg(4326),
+    )
+    result = peri_scribe.operations.incremental_cutoff(existing, feed)
+    assert result == datetime.datetime(2026, 1, 1, 0, 5, 0, tzinfo=UTC)
+
+
+def test_where_clause_for_formats_cutoff() -> None:
+    cutoff = datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
+    result = peri_scribe.operations.where_clause_for("ModifiedOnDateTime_dt", cutoff)
+    assert result == "ModifiedOnDateTime_dt >= timestamp '2026-01-01T00:00:00Z'"
+
+
+def test_normalized_attribute_value_returns_none_for_none() -> None:
+    assert peri_scribe.operations.normalized_attribute_value(None) is None
+
+
+def test_normalized_attribute_value_returns_none_for_nan() -> None:
+    assert peri_scribe.operations.normalized_attribute_value(float("nan")) is None
+
+
+def test_normalized_attribute_value_truncates_datetime() -> None:
+    result = peri_scribe.operations.normalized_attribute_value(
+        datetime.datetime(2026, 1, 1, 0, 0, 0, 123456),
+    )
+    assert result == datetime.datetime(2026, 1, 1, 0, 0, 0)
+
+
+def test_normalized_attribute_value_passes_through_other_values() -> None:
+    number = 7
+    assert peri_scribe.operations.normalized_attribute_value("abc") == "abc"
+    assert peri_scribe.operations.normalized_attribute_value(number) == number
+
+
+def test_attribute_columns_excludes_geometry() -> None:
+    new = change_dataframe([(1, "a", (0.0, 0.0))])
+    existing = change_dataframe([(1, "a", (0.0, 0.0))])
+    assert peri_scribe.operations.attribute_columns(new, existing) == [
+        "OBJECTID",
+        "name",
+    ]
+
+
+def test_feature_signatures_keys_by_object_id() -> None:
+    dataframe = change_dataframe(
+        [(1, "a", (0.0, 0.0)), (2, "b", (1.0, 1.0))],
+    )
+    signatures = peri_scribe.operations.feature_signatures(
+        dataframe,
+        ["OBJECTID", "name"],
+    )
+    assert set(signatures) == {1, 2}
+    assert signatures[1][0] == (1, "a")
+    assert signatures[1][1] == shapely.geometry.Point(0.0, 0.0).wkb
+
+
+def test_drop_features_already_present_returns_new_when_no_existing() -> None:
+    new = change_dataframe([(1, "a", (0.0, 0.0))])
+    result = peri_scribe.operations.drop_features_already_present(new, None)
+    assert result is new
+
+
+def test_drop_features_already_present_keeps_new_object_id() -> None:
+    new = change_dataframe([(3, "c", (2.0, 2.0))])
+    existing = change_dataframe([(1, "a", (0.0, 0.0)), (2, "b", (1.0, 1.0))])
+    result = peri_scribe.operations.drop_features_already_present(new, existing)
+    assert list(result["OBJECTID"]) == [3]
+
+
+def test_drop_features_already_present_drops_identical_feature() -> None:
+    new = change_dataframe([(1, "a", (0.0, 0.0))])
+    existing = change_dataframe([(1, "a", (0.0, 0.0))])
+    result = peri_scribe.operations.drop_features_already_present(new, existing)
+    assert result.empty
+
+
+def test_drop_features_already_present_keeps_changed_feature() -> None:
+    new = change_dataframe([(1, "changed", (0.0, 0.0))])
+    existing = change_dataframe([(1, "a", (0.0, 0.0))])
+    result = peri_scribe.operations.drop_features_already_present(new, existing)
+    assert list(result["name"]) == ["changed"]
+
+
+def test_latest_snapshot_path_returns_none_without_files() -> None:
+    assert peri_scribe.operations.latest_snapshot_path(pathlib.Path("/d"), []) is None
+
+
+def test_latest_snapshot_path_returns_last_file() -> None:
+    result = peri_scribe.operations.latest_snapshot_path(
+        pathlib.Path("/d"),
+        ["000000.gpkg", "000001.gpkg"],
+    )
+    assert result == pathlib.Path("/d/000001.gpkg")
+
+
+def test_fetch_feed_dataframe_raises_without_modified_column(
+    tmp_path: pathlib.Path,
+) -> None:
+    feed = change_feed(modified_column=None)
+    with pytest.raises(ValueError, match="no modified column"):
+        peri_scribe.operations.fetch_feed_dataframe(
+            feed,
+            object(),  # ty: ignore
+            ["000000.gpkg"],
+            tmp_path,
+        )
+
+
+def test_fetch_feed_dataframe_returns_none_without_changed_ids(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    feed = change_feed()
+    monkeypatch.setattr(
+        peri_scribe.geo_data,
+        "query_object_ids_with_retry",
+        lambda *_arguments, **_keywords: [],
+    )
+    result = peri_scribe.operations.fetch_feed_dataframe(
+        feed,
+        object(),  # ty: ignore
+        ["000000.gpkg"],
+        tmp_path,
+    )
+    assert result is None
+
+
+def test_fetch_feed_dataframe_returns_none_when_dedupe_removes_all(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    feed = change_feed()
+    monkeypatch.setattr(
+        peri_scribe.geo_data,
+        "query_object_ids_with_retry",
+        lambda *_arguments, **_keywords: [1],
+    )
+    monkeypatch.setattr(
+        peri_scribe.geo_data,
+        "query_with_retry",
+        lambda *_arguments, **_keywords: "feature_set",
+    )
+    empty = geopandas.GeoDataFrame(
+        {"OBJECTID": pd.Series([], dtype="int64"), "name": []},
+        geometry=[],
+        crs=pyproj.CRS.from_epsg(4326),
+    )
+    monkeypatch.setattr(
+        peri_scribe.geo_data,
+        "dataframe_for_layer",
+        lambda *_arguments, **_keywords: empty,
+    )
+    result = peri_scribe.operations.fetch_feed_dataframe(
+        feed,
+        object(),  # ty: ignore
+        ["000000.gpkg"],
+        tmp_path,
+    )
+    assert result is None
+
+
+def test_fetch_feed_dataframe_fetches_full_when_directory_empty(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    feed = change_feed()
+    sentinel = object()
+    monkeypatch.setattr(
+        peri_scribe.geo_data,
+        "query_with_retry",
+        lambda *_arguments, **_keywords: "feature_set",
+    )
+    monkeypatch.setattr(
+        peri_scribe.geo_data,
+        "dataframe_for_layer",
+        lambda *_arguments, **_keywords: sentinel,
+    )
+    result = peri_scribe.operations.fetch_feed_dataframe(
+        feed,
+        object(),  # ty: ignore
+        [],
+        tmp_path,
+    )
+    assert result is sentinel

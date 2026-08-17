@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import dataclasses
-import json
 import time
 import typing
 import urllib.parse
@@ -34,6 +33,7 @@ class Feed(typing.Protocol):
     complex_identifier_column: str | None
     complex_name_column: str | None
     is_complex_child_column: str | None
+    modified_column: str | None
 
     @property
     def current_watermark(self) -> str | None:
@@ -92,6 +92,7 @@ class ArcGISFeed:
     complex_identifier_column: str | None = None
     complex_name_column: str | None = None
     is_complex_child_column: str | None = None
+    modified_column: str | None = None
 
     @property
     def path_segments(self) -> list[str]:
@@ -117,62 +118,43 @@ class ArcGISFeed:
     def current_watermark(self) -> str | None:
         """Observe and return a watermark for this feed's layer.
 
-        The watermark is sorted JSON of the layer's ``Last-Modified`` and ``ETag``
-        response headers and its feature count, keyed ``mtime``, ``etag``, and
-        ``count``, so a plain string comparison detects any change.
+        The watermark is the layer's ``editingInfo.lastEditDate`` value, prefixed
+        with ``lastEdit=``. The server only updates that timestamp when the data is
+        actually edited.
 
         Returns:
             The observed watermark, or None when an observation fails.
         """
         parameters = {"f": "json", "_cb": time.time_ns()}
         try:
-            response = requests.head(
+            response = requests.get(
                 self.url,
                 params=parameters,
                 headers={"User-Agent": USER_AGENT},
                 timeout=REQUEST_TIMEOUT_SECONDS,
             )
             response.raise_for_status()
-        except requests.exceptions.RequestException as error:
+            payload = response.json()
+        except (requests.exceptions.RequestException, ValueError) as error:
             logger.warning(
                 "Watermark check failed",
                 url=self.url,
                 error=str(error),
             )
             return None
-
-        query_url = f"{self.url}/query"
-        count_parameters = {"where": "1=1", "returnCountOnly": "true", "f": "json"}
-        try:
-            count_response = requests.get(
-                query_url,
-                params=count_parameters,
-                headers={"User-Agent": USER_AGENT},
-                timeout=REQUEST_TIMEOUT_SECONDS,
-            )
-            count_response.raise_for_status()
-            payload = count_response.json()
-        except (requests.exceptions.RequestException, ValueError) as error:
+        if not isinstance(payload, dict):
             logger.warning(
-                "Count query failed",
-                url=query_url,
-                error=str(error),
+                "Watermark check failed",
+                url=self.url,
+                error="unexpected response shape",
             )
             return None
-        if not isinstance(payload, dict) or "count" not in payload:
+        last_edit = (payload.get("editingInfo") or {}).get("lastEditDate")
+        if last_edit is None:
             logger.warning(
-                "Count query returned no count",
-                url=query_url,
-                response=payload,
+                "Watermark check failed",
+                url=self.url,
+                error="no editingInfo.lastEditDate",
             )
             return None
-
-        return json.dumps(
-            {
-                "mtime": response.headers.get("Last-Modified"),
-                "etag": response.headers.get("ETag"),
-                "count": payload["count"],
-            },
-            sort_keys=True,
-            separators=(",", ":"),
-        )
+        return f"lastEdit={last_edit}"

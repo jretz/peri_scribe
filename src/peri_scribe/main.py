@@ -36,7 +36,7 @@ def cli(log_level: str) -> None:
 
 @cli.command()
 def fetch() -> None:
-    """Fetch all configured feeds into a single GeoPackage."""
+    """Fetch each configured feed into a GeoPackage named by serial and watermark."""
     peri_scribe.operations.fetch_all_feeds()
 
 
@@ -68,15 +68,21 @@ def current_watermarks() -> None:
 
 @cli.command()
 @click.argument(
-    "geo_package_paths",
-    nargs=-1,
-    required=True,
-    type=click.Path(path_type=pathlib.Path),
+    "directory",
+    type=click.Path(
+        path_type=pathlib.Path,
+        exists=True,
+        file_okay=False,
+        dir_okay=True,
+    ),
 )
-def list_fires(geo_package_paths: tuple[pathlib.Path, ...]) -> None:
-    """Log the name, status, and identifier of each fire in GeoPackage files."""
+def list_fires(directory: pathlib.Path) -> None:
+    """Log the name, status, and identifier of each fire.
+
+    Reads every GeoPackage file anywhere below DIRECTORY.
+    """
     for index, fire in enumerate(
-        peri_scribe.operations.list_fires(geo_package_paths),
+        peri_scribe.operations.list_fires(directory),
         start=1,
     ):
         logger.info(
