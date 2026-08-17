@@ -36,7 +36,7 @@ def cli(log_level: str) -> None:
 
 @cli.command()
 def fetch() -> None:
-    """Fetch each configured feed into a GeoPackage named by serial and watermark."""
+    """Fetch each configured feed into a GeoPackage."""
     peri_scribe.operations.fetch_all_feeds()
 
 

@@ -314,8 +314,8 @@ def test_list_fires_logs_fire_names_and_statuses(
         },
     )
     directory = tmp_path / "data"
-    first_snapshot = directory / "sources" / "Fires_One_0" / "000000,etag=one.gpkg"
-    second_snapshot = directory / "sources" / "Fires_One_0" / "000001,etag=two.gpkg"
+    first_snapshot = directory / "sources" / "Fires_One_0" / "000000,lastEdit=one.gpkg"
+    second_snapshot = directory / "sources" / "Fires_One_0" / "000001,lastEdit=two.gpkg"
     first_snapshot.parent.mkdir(parents=True)
     first_snapshot.touch()
     second_snapshot.touch()
@@ -499,12 +499,12 @@ def test_current_watermarks_logs_each_feed_watermark(
         WatermarkFeedStub(
             name="One",
             url="https://example.test/one",
-            watermark="etag=one,count=1",
+            watermark="lastEdit=1",
         ),
         WatermarkFeedStub(
             name="Two",
             url="https://example.test/two",
-            watermark="etag=two,count=2",
+            watermark="lastEdit=2",
         ),
     ]
     monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
@@ -584,8 +584,8 @@ def test_fetch_writes_one_file_per_source_named_by_watermark(
     feature_set_with_geometry: arcgis.features.FeatureSet,
     tmp_path: pathlib.Path,
 ) -> None:
-    first_watermark = "etag=one,count=1"
-    second_watermark = "etag=two,count=2"
+    first_watermark = "lastEdit=1"
+    second_watermark = "lastEdit=2"
     first = FetchFeedStub(
         name="First_Source_0",
         url="https://example.test/first",
@@ -777,7 +777,7 @@ def test_fetch_reuses_serial_number_for_unchanged_watermark(
     feature_set_with_geometry: arcgis.features.FeatureSet,
     tmp_path: pathlib.Path,
 ) -> None:
-    watermark = "etag=one,count=1"
+    watermark = "lastEdit=1"
     monkeypatch.setattr(
         peri_scribe.operations.arcgis.features,
         "FeatureLayer",

@@ -626,14 +626,14 @@ def test_geo_package_files_returns_nested_files_in_sorted_order(
     beta = directory / "sources" / "Beta_0"
     alpha.mkdir(parents=True)
     beta.mkdir(parents=True)
-    (alpha / "000002,etag=b.gpkg").touch()
-    (alpha / "000001,etag=a.gpkg").touch()
-    (beta / "000000,etag=c.gpkg").touch()
+    (alpha / "000002,lastEdit=b.gpkg").touch()
+    (alpha / "000001,lastEdit=a.gpkg").touch()
+    (beta / "000000,lastEdit=c.gpkg").touch()
     (directory / "notes.txt").touch()
     assert peri_scribe.operations.geo_package_files(directory) == [
-        alpha / "000001,etag=a.gpkg",
-        alpha / "000002,etag=b.gpkg",
-        beta / "000000,etag=c.gpkg",
+        alpha / "000001,lastEdit=a.gpkg",
+        alpha / "000002,lastEdit=b.gpkg",
+        beta / "000000,lastEdit=c.gpkg",
     ]
 
 
@@ -665,31 +665,31 @@ def test_source_geopackage_path_places_watermark_file_under_source_directory() -
         2026,
         "CA_Perimeters_NIFC_FIRIS_public_view_0",
         17,
-        "etag=abc123,count=456",
+        "lastEdit=abc123",
     )
     assert path == pathlib.Path(
         "/base/data/2026/sources/CA_Perimeters_NIFC_FIRIS_public_view_0/"
-        "000017,etag=abc123,count=456.gpkg",
+        "000017,lastEdit=abc123.gpkg",
     )
 
 
 def test_geopackage_filename_zero_pads_serial_number() -> None:
     assert (
-        peri_scribe.operations.geopackage_filename(17, "etag=abc123,count=456")
-        == "000017,etag=abc123,count=456.gpkg"
+        peri_scribe.operations.geopackage_filename(17, "lastEdit=abc123")
+        == "000017,lastEdit=abc123.gpkg"
     )
 
 
 def test_parse_geopackage_filename_returns_serial_and_watermark() -> None:
     assert peri_scribe.operations.parse_geopackage_filename(
-        "000017,etag=abc123,count=456.gpkg",
-    ) == (17, "etag=abc123,count=456")
+        "000017,lastEdit=abc,def.gpkg",
+    ) == (17, "lastEdit=abc,def")
 
 
 def test_next_serial_number_starts_at_zero_without_existing_files() -> None:
     expected_serial_number = 0
     assert (
-        peri_scribe.operations.next_serial_number([], "etag=abc123,count=456")
+        peri_scribe.operations.next_serial_number([], "lastEdit=abc123")
         == expected_serial_number
     )
 
@@ -698,8 +698,8 @@ def test_next_serial_number_increments_beyond_largest_serial() -> None:
     expected_serial_number = 4
     assert (
         peri_scribe.operations.next_serial_number(
-            ["000003,etag=abc123,count=1.gpkg"],
-            "etag=def456,count=2",
+            ["000003,lastEdit=abc123.gpkg"],
+            "lastEdit=def456",
         )
         == expected_serial_number
     )
@@ -709,8 +709,8 @@ def test_next_serial_number_reuses_serial_for_existing_watermark() -> None:
     expected_serial_number = 3
     assert (
         peri_scribe.operations.next_serial_number(
-            ["000003,etag=abc123,count=1.gpkg"],
-            "etag=abc123,count=1",
+            ["000003,lastEdit=abc123.gpkg"],
+            "lastEdit=abc123",
         )
         == expected_serial_number
     )
@@ -720,8 +720,8 @@ def test_next_serial_number_ignores_malformed_filenames() -> None:
     expected_serial_number = 3
     assert (
         peri_scribe.operations.next_serial_number(
-            ["old-style.gpkg", "000002,etag=abc123,count=1.gpkg"],
-            "etag=def456,count=2",
+            ["old-style.gpkg", "000002,lastEdit=abc123.gpkg"],
+            "lastEdit=def456",
         )
         == expected_serial_number
     )
@@ -732,14 +732,14 @@ def test_snapshot_path_for_watermark_returns_matching_path(
 ) -> None:
     directory = tmp_path / "sources" / "CA_Perimeters_NIFC_FIRIS_public_view_0"
     directory.mkdir(parents=True)
-    (directory / "000017,etag=abc123,count=456.gpkg").touch()
-    (directory / "000018,etag=def789,count=2.gpkg").touch()
+    (directory / "000017,lastEdit=abc123.gpkg").touch()
+    (directory / "000018,lastEdit=def789.gpkg").touch()
     assert (
         peri_scribe.operations.snapshot_path_for_watermark(
             directory,
-            "etag=abc123,count=456",
+            "lastEdit=abc123",
         )
-        == directory / "000017,etag=abc123,count=456.gpkg"
+        == directory / "000017,lastEdit=abc123.gpkg"
     )
 
 
@@ -748,11 +748,11 @@ def test_snapshot_path_for_watermark_returns_none_without_match(
 ) -> None:
     directory = tmp_path / "sources" / "CA_Perimeters_NIFC_FIRIS_public_view_0"
     directory.mkdir(parents=True)
-    (directory / "000017,etag=abc123,count=456.gpkg").touch()
+    (directory / "000017,lastEdit=abc123.gpkg").touch()
     assert (
         peri_scribe.operations.snapshot_path_for_watermark(
             directory,
-            "etag=other,count=9",
+            "lastEdit=other",
         )
         is None
     )
@@ -767,7 +767,7 @@ def test_snapshot_path_for_watermark_ignores_malformed_filenames(
     assert (
         peri_scribe.operations.snapshot_path_for_watermark(
             directory,
-            "etag=abc123,count=456",
+            "lastEdit=abc123",
         )
         is None
     )
