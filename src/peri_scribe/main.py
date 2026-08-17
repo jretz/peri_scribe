@@ -73,7 +73,6 @@ def current_watermarks() -> None:
         path_type=pathlib.Path,
         exists=True,
         file_okay=False,
-        dir_okay=True,
     ),
 )
 def list_fires(directory: pathlib.Path) -> None:

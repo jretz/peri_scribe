@@ -159,7 +159,7 @@ def test_fire_names_reads_normalized_identifiers(
             status=ACTIVE,
             identifier="e3094e35-8b33-4a82-be4b-d2e83652c29f",
         ),
-        peri_scribe.models.Fire(name="BUG", status=INACTIVE, identifier=None),
+        peri_scribe.models.Fire(name="BUG", status=INACTIVE),
     ]
 
 

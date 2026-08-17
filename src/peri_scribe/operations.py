@@ -298,7 +298,10 @@ def latest_modified_datetime(
     if modified_column is None or modified_column not in existing.columns:
         return None
     values = [modified_datetime_from(value) for value in existing[modified_column]]
-    return max((value for value in values if value is not None), default=None)
+    latest = [value for value in values if value is not None]
+    if not latest:
+        return None
+    return max(latest)
 
 
 def incremental_cutoff(

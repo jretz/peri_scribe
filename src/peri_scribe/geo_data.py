@@ -71,9 +71,9 @@ def geo_data_frame_from(
         geometry=shapely_geometries,
         crs=pyproj.CRS.from_epsg(spatial_reference_id),
     )
-    return geo_data_frame.rename_geometry(
-        peri_scribe.models.GEOMETRY_COLUMN_NAME,
-        inplace=False,
+    return typing.cast(
+        "geopandas.GeoDataFrame",
+        geo_data_frame.rename_geometry(peri_scribe.models.GEOMETRY_COLUMN_NAME),
     )
 
 

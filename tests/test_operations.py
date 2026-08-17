@@ -233,7 +233,7 @@ def test_list_fires_merges_unidentified_records_with_same_named_identified_recor
     # same fire do. All of them are the same fire (Bug).
     stub_fire_reader({
         pathlib.Path("one.gpkg"): [
-            peri_scribe.models.Fire(name="BUG", status=INACTIVE, identifier=None),
+            peri_scribe.models.Fire(name="BUG", status=INACTIVE),
             peri_scribe.models.Fire(
                 name="Bug",
                 status=ACTIVE,
@@ -263,7 +263,7 @@ def test_list_fires_merges_keyed_record_with_later_unidentified_same_named_recor
     stub_fire_reader({
         pathlib.Path("one.gpkg"): [
             peri_scribe.models.Fire(name="Bug", status=ACTIVE, identifier=bug_id),
-            peri_scribe.models.Fire(name="BUG", status=INACTIVE, identifier=None),
+            peri_scribe.models.Fire(name="BUG", status=INACTIVE),
         ],
     })
     fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
@@ -284,7 +284,7 @@ def test_list_fires_merges_identified_records_through_a_shared_unidentified_reco
                 status=ACTIVE,
                 identifier="286b7f1d-8945-4a5d-9d81-5235c18af1fe",
             ),
-            peri_scribe.models.Fire(name="BUG", status=INACTIVE, identifier=None),
+            peri_scribe.models.Fire(name="BUG", status=INACTIVE),
             peri_scribe.models.Fire(
                 name="Bug",
                 status=ACTIVE,
@@ -328,7 +328,7 @@ def test_normalize_fire_name() -> None:
 def test_most_common_fire_uses_first_identifier() -> None:
     bug_id = "286b7f1d-8945-4a5d-9d81-5235c18af1fe"
     occurrences = [
-        peri_scribe.models.Fire(name="Bug", status=ACTIVE, identifier=None),
+        peri_scribe.models.Fire(name="Bug", status=ACTIVE),
         peri_scribe.models.Fire(name="Bug", status=ACTIVE, identifier=bug_id),
         peri_scribe.models.Fire(
             name="Bug",
@@ -481,7 +481,6 @@ def test_list_fires_excludes_parent_group_merged_with_unidentified_records(
                 peri_scribe.models.Fire(
                     name="CINDER COMPLEX",
                     status=INACTIVE,
-                    identifier=None,
                 ),
                 peri_scribe.models.Fire(
                     name="CINDER COMPLEX",
