@@ -38,8 +38,8 @@ FALLBACK_RETRY_SECONDS = 60
 BACKOFF_BASE_SECONDS = 2.0
 BACKOFF_MAXIMUM_SECONDS = 30.0
 
-# Exponential backoff wait strategy for transient network errors: 2.0s, 4.0s, 8.0s,
-# … capped at BACKOFF_MAXIMUM_SECONDS.
+# Exponential backoff for transient network errors, so successive attempts wait
+# progressively longer and give the server time to recover.
 BACKOFF_WAIT = tenacity.wait_exponential(
     multiplier=BACKOFF_BASE_SECONDS,
     max=BACKOFF_MAXIMUM_SECONDS,

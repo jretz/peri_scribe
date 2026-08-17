@@ -10,6 +10,10 @@ Use `make lint` to check style and format code. Use `make typecheck` to check fo
 
 Do not leave dead code in the codebase.
 
+## Comments and Docstrings
+
+All English prose in code, whether in comments or docstrings, should be about "why", not "how". The code is the truth about how. Such prose should be about the current code, and should not contrast the current code with past code.
+
 ## Import Style
 
 In general, avoid using `from <module> import <name>`. Instead, use `import <module>` and qualify the use of things that come from that module. Where there is a well established convention for renaming something on import (e.g., `import numpy as np` or `import pandas as pd`), that is acceptable, otherwise stick to original names. Do not use `import *`. Avoid circular imports.
