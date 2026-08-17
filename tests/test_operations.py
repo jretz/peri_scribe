@@ -979,7 +979,9 @@ def test_incremental_cutoff_subtracts_overlap() -> None:
         crs=pyproj.CRS.from_epsg(4326),
     )
     result = peri_scribe.operations.incremental_cutoff(existing, feed)
-    assert result == datetime.datetime(2026, 1, 1, 0, 5, 0, tzinfo=UTC)
+    assert result == datetime.datetime(2026, 1, 1, 0, 10, 0, tzinfo=UTC) - (
+        peri_scribe.operations.OVERLAP
+    )
 
 
 def test_where_clause_for_formats_cutoff() -> None:

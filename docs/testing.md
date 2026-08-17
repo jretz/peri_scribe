@@ -20,3 +20,8 @@ No tests should write to disk. All file access should be mocked out, or done thr
 ## Test Coverage
 
 Do not introduce pragmas to ignore test coverage.
+
+## What to Test
+
+Tests should ensure behavior is correct and they should be independent of implementation.
+For example, if code constants change (e.g., the default number of retries), tests should still pass. If a function body has most of its code replaced with calls to a library, but it behaves in the same way, tests should still pass.

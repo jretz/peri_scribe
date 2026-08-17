@@ -614,8 +614,11 @@ def test_query_with_retry_exhausts_transient_retries_and_raises(
             layer,  # ty: ignore
             max_retries=retries,
         )
-    # Backoff for attempts 1, 2, 3: 2.0s, 4.0s, 8.0s
-    assert sleep_calls == [2.0, 4.0, 8.0]
+    # Backoff for attempts 1, 2, 3 doubles from the base constant each time.
+    assert sleep_calls == [
+        peri_scribe.retry.BACKOFF_BASE_SECONDS * 2**attempt
+        for attempt in range(retries)
+    ]
 
 
 def test_query_with_retry_logs_rate_limit_reason(

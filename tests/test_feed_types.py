@@ -11,6 +11,7 @@ import pytest
 import requests
 
 import peri_scribe.feed_types
+import peri_scribe.retry
 from tests.conftest import (
     SAMPLE_FEED_NAME,
     SAMPLE_FEED_URL,
@@ -194,7 +195,7 @@ def test_arc_gis_feed_current_watermark_retries_on_transient_error(
         ],
     )
     assert feed.current_watermark == "lastEdit=123"
-    assert sleep_calls == [2.0]
+    assert sleep_calls == [peri_scribe.retry.BACKOFF_BASE_SECONDS]
 
 
 def test_arc_gis_feed_current_watermark_returns_none_on_get_error(
