@@ -7,7 +7,6 @@ import typing
 from typing import TYPE_CHECKING
 
 import arcgis.features
-import geopandas
 import pandas as pd
 import pyproj
 import pytest
@@ -26,6 +25,7 @@ from tests.conftest import (
     SAMPLE_FEED_NAME,
     SAMPLE_FEED_URL,
     WGS84_WKID,
+    GeoPackageStore,
 )
 
 
@@ -44,6 +44,10 @@ RATE_LIMIT_ERROR_BODY = (
 LOOSE_429_ERROR_BODY = "{'error': {'code': 429, 'message': 'Too many requests.'}}"
 
 SAMPLE_WATERMARK = "lastEdit=2"
+
+# The base directory fetch resolves from ``pathlib.Path.cwd()``, which is mocked to
+# this value so snapshots never touch the real filesystem.
+BASE_DIRECTORY = pathlib.Path("/fetch")
 
 
 class MultiQueryLayerStub:
@@ -224,11 +228,14 @@ class RecordingFeatureLayerStub:
 @pytest.fixture
 def fetch_setup(
     monkeypatch: pytest.MonkeyPatch,
-    runner: click.testing.CliRunner,
-    tmp_path: pathlib.Path,
+    geo_package_store: GeoPackageStore,
 ) -> None:
-    """Point the fetch command's ArcGIS boundary at stubs writing into tmp_path."""
-    monkeypatch.chdir(tmp_path)
+    """Point the fetch command's boundaries at in-memory stubs."""
+    monkeypatch.setattr(
+        pathlib.Path,
+        "cwd",
+        staticmethod(lambda: BASE_DIRECTORY),
+    )
     monkeypatch.setattr(
         peri_scribe.output,
         "configure_logging",
@@ -258,7 +265,6 @@ def fetch_setup(
 
 
 def snapshot_path(
-    tmp_path: pathlib.Path,
     *,
     feed_name: str = SAMPLE_FEED_NAME,
     serial_number: int = 0,
@@ -271,7 +277,7 @@ def snapshot_path(
         first serial number of 0.
     """
     return peri_scribe.operations.source_geopackage_path(
-        tmp_path,
+        BASE_DIRECTORY,
         2026,
         feed_name,
         serial_number,
@@ -299,10 +305,10 @@ def test_list_fires_requires_directory(
 
 @pytest.mark.usefixtures("list_fires_setup")
 def test_list_fires_logs_fire_names_and_statuses(
+    monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
     configured_feeds: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
-    tmp_path: pathlib.Path,
 ) -> None:
     stub_geo_package(
         pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Polygon"]}),
@@ -313,16 +319,20 @@ def test_list_fires_logs_fire_names_and_statuses(
             }),
         },
     )
-    directory = tmp_path / "data"
-    first_snapshot = directory / "sources" / "Fires_One_0" / "000000,lastEdit=one.gpkg"
-    second_snapshot = directory / "sources" / "Fires_One_0" / "000001,lastEdit=two.gpkg"
-    first_snapshot.parent.mkdir(parents=True)
-    first_snapshot.touch()
-    second_snapshot.touch()
+    directory = pathlib.Path("/data")
+    snapshots = [
+        directory / "sources" / "Fires_One_0" / "000000,lastEdit=one.gpkg",
+        directory / "sources" / "Fires_One_0" / "000001,lastEdit=two.gpkg",
+    ]
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "geo_package_files",
+        lambda _directory: snapshots,
+    )
     with structlog.testing.capture_logs() as captured:
         result = runner.invoke(
             peri_scribe.main.cli,
-            ["list-fires", str(directory)],
+            ["list-fires", "."],
         )
     assert result.exit_code == 0
     assert [(event["name"], event["status"]) for event in captured] == [
@@ -333,10 +343,10 @@ def test_list_fires_logs_fire_names_and_statuses(
 
 @pytest.mark.usefixtures("list_fires_setup")
 def test_list_fires_propagates_unconfigured_layer_error(
+    monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
     configured_feeds: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
-    tmp_path: pathlib.Path,
 ) -> None:
     stub_geo_package(
         pd.DataFrame({"name": ["Mystery_Layer_0"], "geometry_type": ["Polygon"]}),
@@ -347,8 +357,12 @@ def test_list_fires_propagates_unconfigured_layer_error(
             }),
         },
     )
-    (tmp_path / "fires.gpkg").touch()
-    result = runner.invoke(peri_scribe.main.cli, ["list-fires", str(tmp_path)])
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "geo_package_files",
+        lambda _directory: [pathlib.Path("fires.gpkg")],
+    )
+    result = runner.invoke(peri_scribe.main.cli, ["list-fires", "."])
     assert result.exit_code == 1
     assert isinstance(result.exception, peri_scribe.exceptions.UnknownLayerError)
 
@@ -403,7 +417,7 @@ def test_fetch_writes_geo_package(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
     feature_set_with_geometry: arcgis.features.FeatureSet,
-    tmp_path: pathlib.Path,
+    geo_package_store: GeoPackageStore,
 ) -> None:
     monkeypatch.setattr(
         peri_scribe.operations.arcgis.features,
@@ -411,10 +425,10 @@ def test_fetch_writes_geo_package(
         lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
     )
     result = runner.invoke(peri_scribe.main.cli, ["fetch"])
-    output_path = snapshot_path(tmp_path)
+    output_path = snapshot_path()
     assert result.exit_code == 0
-    assert output_path.exists()
-    written = geopandas.read_file(output_path, layer=SAMPLE_FEED_NAME)
+    assert geo_package_store.has(output_path)
+    written = geo_package_store.layer(output_path, SAMPLE_FEED_NAME)
     assert list(written["name"]) == ["a", "b"]
     assert written.crs == pyproj.CRS.from_epsg(WGS84_WKID)
 
@@ -423,7 +437,7 @@ def test_fetch_writes_geo_package(
 def test_fetch_fails_fast_when_query_fails(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
-    tmp_path: pathlib.Path,
+    geo_package_store: GeoPackageStore,
 ) -> None:
     monkeypatch.setattr(
         peri_scribe.operations.arcgis.features,
@@ -438,14 +452,14 @@ def test_fetch_fails_fast_when_query_fails(
     result = runner.invoke(peri_scribe.main.cli, ["fetch"])
     assert result.exit_code == 1
     assert f"Failed to fetch {SAMPLE_FEED_NAME}: boom" in result.output
-    assert not snapshot_path(tmp_path).exists()
+    assert not geo_package_store.has(snapshot_path())
 
 
 @pytest.mark.usefixtures("fetch_setup")
 def test_fetch_fails_fast_when_feed_returns_no_features(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
-    tmp_path: pathlib.Path,
+    geo_package_store: GeoPackageStore,
 ) -> None:
     monkeypatch.setattr(
         peri_scribe.operations.arcgis.features,
@@ -462,7 +476,7 @@ def test_fetch_fails_fast_when_feed_returns_no_features(
         f"Failed to fetch {SAMPLE_FEED_NAME}: "
         f"Feed {SAMPLE_FEED_NAME} returned no features; no output was written"
     ) in result.output
-    assert not snapshot_path(tmp_path).exists()
+    assert not geo_package_store.has(snapshot_path())
 
 
 def test_feed_config_logs_each_configured_feed(
@@ -527,7 +541,7 @@ def test_fetch_retries_on_429_and_succeeds(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
     feature_set_with_geometry: arcgis.features.FeatureSet,
-    tmp_path: pathlib.Path,
+    geo_package_store: GeoPackageStore,
 ) -> None:
     sleep_calls: list[float] = []
     monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
@@ -542,11 +556,11 @@ def test_fetch_retries_on_429_and_succeeds(
         lambda url, gis: MultiQueryLayerStub(url, gis, outcomes),
     )
     result = runner.invoke(peri_scribe.main.cli, ["fetch"])
-    output_path = snapshot_path(tmp_path)
+    output_path = snapshot_path()
     assert result.exit_code == 0
-    assert output_path.exists()
+    assert geo_package_store.has(output_path)
     assert sleep_calls == [60.0]
-    written = geopandas.read_file(output_path, layer=SAMPLE_FEED_NAME)
+    written = geo_package_store.layer(output_path, SAMPLE_FEED_NAME)
     assert list(written["name"]) == ["a", "b"]
 
 
@@ -554,7 +568,7 @@ def test_fetch_retries_on_429_and_succeeds(
 def test_fetch_exhausts_retries_and_exits(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
-    tmp_path: pathlib.Path,
+    geo_package_store: GeoPackageStore,
 ) -> None:
     sleep_calls: list[float] = []
     monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
@@ -574,7 +588,7 @@ def test_fetch_exhausts_retries_and_exits(
         f"Failed to fetch {SAMPLE_FEED_NAME}: {RATE_LIMIT_ERROR_BODY}" in result.output
     )
     assert sleep_calls == [60.0] * max_retries
-    assert not snapshot_path(tmp_path).exists()
+    assert not geo_package_store.has(snapshot_path())
 
 
 @pytest.mark.usefixtures("fetch_setup")
@@ -582,7 +596,7 @@ def test_fetch_writes_one_file_per_source_named_by_watermark(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
     feature_set_with_geometry: arcgis.features.FeatureSet,
-    tmp_path: pathlib.Path,
+    geo_package_store: GeoPackageStore,
 ) -> None:
     first_watermark = "lastEdit=1"
     second_watermark = "lastEdit=2"
@@ -605,28 +619,30 @@ def test_fetch_writes_one_file_per_source_named_by_watermark(
     result = runner.invoke(peri_scribe.main.cli, ["fetch"])
     assert result.exit_code == 0
     first_path = snapshot_path(
-        tmp_path,
         feed_name=first.name,
         watermark=first_watermark,
     )
     second_path = snapshot_path(
-        tmp_path,
         feed_name=second.name,
         watermark=second_watermark,
     )
-    assert first_path.exists()
-    assert second_path.exists()
+    assert geo_package_store.has(first_path)
+    assert geo_package_store.has(second_path)
     assert first_path.parent == (
-        tmp_path / "data" / "2026" / "sources" / "First_Source_0"
+        BASE_DIRECTORY / "data" / "2026" / "sources" / "First_Source_0"
     )
     assert second_path.parent == (
-        tmp_path / "data" / "2026" / "sources" / "Second_Source_0"
+        BASE_DIRECTORY / "data" / "2026" / "sources" / "Second_Source_0"
     )
-    assert list(geopandas.read_file(first_path, layer="First_Source_0")["name"]) == [
+    assert list(
+        geo_package_store.layer(first_path, "First_Source_0")["name"],
+    ) == [
         "a",
         "b",
     ]
-    assert list(geopandas.read_file(second_path, layer="Second_Source_0")["name"]) == [
+    assert list(
+        geo_package_store.layer(second_path, "Second_Source_0")["name"],
+    ) == [
         "a",
         "b",
     ]
@@ -636,7 +652,7 @@ def test_fetch_writes_one_file_per_source_named_by_watermark(
 def test_fetch_increments_serial_number_for_new_watermark(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
-    tmp_path: pathlib.Path,
+    geo_package_store: GeoPackageStore,
 ) -> None:
     first_watermark = "lastEdit=1"
     second_watermark = "lastEdit=2"
@@ -686,22 +702,24 @@ def test_fetch_increments_serial_number_for_new_watermark(
     )
     assert runner.invoke(peri_scribe.main.cli, ["fetch"]).exit_code == 0
     first_path = snapshot_path(
-        tmp_path,
         serial_number=0,
         watermark=first_watermark,
     )
     second_path = snapshot_path(
-        tmp_path,
         serial_number=1,
         watermark=second_watermark,
     )
-    assert first_path.exists()
-    assert second_path.exists()
-    assert list(geopandas.read_file(first_path, layer=SAMPLE_FEED_NAME)["name"]) == [
+    assert geo_package_store.has(first_path)
+    assert geo_package_store.has(second_path)
+    assert list(
+        geo_package_store.layer(first_path, SAMPLE_FEED_NAME)["name"],
+    ) == [
         "a",
         "b",
     ]
-    assert list(geopandas.read_file(second_path, layer=SAMPLE_FEED_NAME)["name"]) == [
+    assert list(
+        geo_package_store.layer(second_path, SAMPLE_FEED_NAME)["name"],
+    ) == [
         "c",
     ]
 
@@ -710,7 +728,7 @@ def test_fetch_increments_serial_number_for_new_watermark(
 def test_fetch_writes_no_new_file_when_nothing_changed(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
-    tmp_path: pathlib.Path,
+    geo_package_store: GeoPackageStore,
 ) -> None:
     first_watermark = "lastEdit=1"
     second_watermark = "lastEdit=2"
@@ -758,16 +776,18 @@ def test_fetch_writes_no_new_file_when_nothing_changed(
         ],
     )
     assert runner.invoke(peri_scribe.main.cli, ["fetch"]).exit_code == 0
-    assert snapshot_path(
-        tmp_path,
-        serial_number=0,
-        watermark=first_watermark,
-    ).exists()
-    assert not snapshot_path(
-        tmp_path,
-        serial_number=1,
-        watermark=second_watermark,
-    ).exists()
+    assert geo_package_store.has(
+        snapshot_path(
+            serial_number=0,
+            watermark=first_watermark,
+        ),
+    )
+    assert not geo_package_store.has(
+        snapshot_path(
+            serial_number=1,
+            watermark=second_watermark,
+        ),
+    )
 
 
 @pytest.mark.usefixtures("fetch_setup")
@@ -775,7 +795,7 @@ def test_fetch_reuses_serial_number_for_unchanged_watermark(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
     feature_set_with_geometry: arcgis.features.FeatureSet,
-    tmp_path: pathlib.Path,
+    geo_package_store: GeoPackageStore,
 ) -> None:
     watermark = "lastEdit=1"
     monkeypatch.setattr(
@@ -796,15 +816,19 @@ def test_fetch_reuses_serial_number_for_unchanged_watermark(
     )
     assert runner.invoke(peri_scribe.main.cli, ["fetch"]).exit_code == 0
     assert runner.invoke(peri_scribe.main.cli, ["fetch"]).exit_code == 0
-    assert snapshot_path(tmp_path, serial_number=0, watermark=watermark).exists()
-    assert not snapshot_path(tmp_path, serial_number=1, watermark=watermark).exists()
+    assert geo_package_store.has(
+        snapshot_path(serial_number=0, watermark=watermark),
+    )
+    assert not geo_package_store.has(
+        snapshot_path(serial_number=1, watermark=watermark),
+    )
 
 
 @pytest.mark.usefixtures("fetch_setup")
 def test_fetch_fails_fast_when_watermark_cannot_be_observed(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
-    tmp_path: pathlib.Path,
+    geo_package_store: GeoPackageStore,
 ) -> None:
     monkeypatch.setattr(
         peri_scribe.models,
@@ -817,7 +841,7 @@ def test_fetch_fails_fast_when_watermark_cannot_be_observed(
         f"Failed to fetch {SAMPLE_FEED_NAME}: no watermark could be observed"
         in result.output
     )
-    assert not snapshot_path(tmp_path).exists()
+    assert not geo_package_store.has(snapshot_path())
 
 
 @pytest.mark.usefixtures("fetch_setup")
@@ -854,7 +878,6 @@ def test_fetch_skips_download_when_watermark_already_present(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
     feature_set_with_geometry: arcgis.features.FeatureSet,
-    tmp_path: pathlib.Path,
 ) -> None:
     events: list[str] = []
     feed = RecordingFeedStub(
@@ -890,4 +913,4 @@ def test_fetch_skips_download_when_watermark_already_present(
     ]
     assert skip_event["feed"] == SAMPLE_FEED_NAME
     assert skip_event["watermark"] == SAMPLE_WATERMARK
-    assert skip_event["path"] == snapshot_path(tmp_path)
+    assert skip_event["path"] == snapshot_path()

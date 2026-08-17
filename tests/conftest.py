@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import pathlib
 import typing
 
 import arcgis.features
@@ -13,6 +14,8 @@ import shapely.geometry
 import peri_scribe.feed_types
 import peri_scribe.geo_data
 import peri_scribe.models
+import peri_scribe.operations
+import peri_scribe.output
 
 
 if typing.TYPE_CHECKING:
@@ -176,20 +179,22 @@ def configured_feeds(
     Returns:
         The two feeds, configured with fire name and status columns.
     """
-    feeds = peri_scribe.models.build_feeds([
-        {
-            "feed_type": "ArcGISFeed",
-            "url": "https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
-            "fire_name_column": "incident_name",
-            "status_column": "displayStatus",
-        },
-        {
-            "feed_type": "ArcGISFeed",
-            "url": "https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
-            "fire_name_column": "IncidentName",
-            "status_column": "ActiveFireCandidate",
-        },
-    ])
+    feeds = list(
+        peri_scribe.models.build_feeds([
+            {
+                "feed_type": "ArcGISFeed",
+                "url": "https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
+                "fire_name_column": "incident_name",
+                "status_column": "displayStatus",
+            },
+            {
+                "feed_type": "ArcGISFeed",
+                "url": "https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
+                "fire_name_column": "IncidentName",
+                "status_column": "ActiveFireCandidate",
+            },
+        ]),
+    )
     monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
     return feeds
 
@@ -207,25 +212,27 @@ def configured_feeds_with_identifiers(
         The two feeds, configured with fire name, status, identifier, and
         complex columns.
     """
-    feeds = peri_scribe.models.build_feeds([
-        {
-            "feed_type": "ArcGISFeed",
-            "url": "https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
-            "fire_name_column": "incident_name",
-            "status_column": "displayStatus",
-            "fire_identifier_column": "incident_number",
-        },
-        {
-            "feed_type": "ArcGISFeed",
-            "url": "https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
-            "fire_name_column": "IncidentName",
-            "status_column": "ActiveFireCandidate",
-            "fire_identifier_column": "IrwinID",
-            "complex_identifier_column": "CpxID",
-            "complex_name_column": "CpxName",
-            "is_complex_child_column": "IsCpxChild",
-        },
-    ])
+    feeds = list(
+        peri_scribe.models.build_feeds([
+            {
+                "feed_type": "ArcGISFeed",
+                "url": "https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
+                "fire_name_column": "incident_name",
+                "status_column": "displayStatus",
+                "fire_identifier_column": "incident_number",
+            },
+            {
+                "feed_type": "ArcGISFeed",
+                "url": "https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
+                "fire_name_column": "IncidentName",
+                "status_column": "ActiveFireCandidate",
+                "fire_identifier_column": "IrwinID",
+                "complex_identifier_column": "CpxID",
+                "complex_name_column": "CpxName",
+                "is_complex_child_column": "IsCpxChild",
+            },
+        ]),
+    )
     monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
     return feeds
 
@@ -276,3 +283,100 @@ def layer_data_factory() -> typing.Callable[[str], peri_scribe.models.LayerData]
         return peri_scribe.models.LayerData(name=name, dataframe=dataframe)
 
     return make_layer_data
+
+
+class GeoPackageStore:
+    """In-memory stand-in for the GeoPackage files the fetch command writes.
+
+    Written layers are keyed by (path, layer name) so tests can assert what was
+    written and serve it back to incremental fetches without touching the
+    filesystem.
+    """
+
+    def __init__(self) -> None:
+        self.layers: dict[
+            tuple[pathlib.Path, str],
+            geopandas.GeoDataFrame,
+        ] = {}
+
+    def write(
+        self,
+        path: pathlib.Path,
+        layers: list[peri_scribe.models.LayerData],
+    ) -> None:
+        """Record *layers* as the contents of the GeoPackage at *path*."""
+        for layer_data in layers:
+            self.layers[path, layer_data.name] = layer_data.dataframe
+
+    def filenames(self, directory: pathlib.Path) -> list[pathlib.Path]:
+        """Return the GeoPackage filenames stored under *directory*.
+
+        Returns:
+            The stored GeoPackage filenames in sorted order.
+        """
+        return sorted(
+            pathlib.Path(path.name)
+            for path, _layer_name in self.layers
+            if path.parent == directory and path.suffix == ".gpkg"
+        )
+
+    def read_layer(
+        self,
+        path: pathlib.Path,
+        feed: peri_scribe.feed_types.Feed,
+    ) -> geopandas.GeoDataFrame:
+        """Return the layer for *feed* stored in the GeoPackage at *path*.
+
+        Returns:
+            The feed's layer dataframe.
+        """
+        return self.layers[path, feed.name]
+
+    def layer(
+        self,
+        path: pathlib.Path,
+        layer_name: str,
+    ) -> geopandas.GeoDataFrame:
+        """Return the layer named *layer_name* stored at *path*.
+
+        Returns:
+            The layer dataframe.
+        """
+        return self.layers[path, layer_name]
+
+    def has(self, path: pathlib.Path) -> bool:
+        """Return whether any layer has been stored at *path*.
+
+        Returns:
+            True when a layer has been stored at *path*.
+        """
+        return any(stored_path == path for stored_path, _layer_name in self.layers)
+
+
+@pytest.fixture
+def geo_package_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> GeoPackageStore:
+    """Install an in-memory stand-in for the fetch command's file storage.
+
+    Returns:
+        The store recording written GeoPackage layers.
+    """
+    store = GeoPackageStore()
+    monkeypatch.setattr(peri_scribe.output, "write_geopackage", store.write)
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "existing_geopackage_filenames",
+        store.filenames,
+    )
+    monkeypatch.setattr(
+        peri_scribe.geo_data,
+        "read_layer_dataframe",
+        store.read_layer,
+    )
+    monkeypatch.setattr(
+        pathlib.Path,
+        "mkdir",
+        lambda *_arguments, **_keywords: None,
+    )
+    return store

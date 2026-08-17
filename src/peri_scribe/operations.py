@@ -37,7 +37,7 @@ SOURCES_DIRECTORY_NAME = "sources"
 OVERLAP = datetime.timedelta(minutes=5)
 
 
-def geopackage_filename(serial_number: int, watermark: str) -> str:
+def geopackage_filename(serial_number: int, watermark: str) -> pathlib.Path:
     """Return the filename for a snapshot with *serial_number* and *watermark*.
 
     Args:
@@ -47,10 +47,10 @@ def geopackage_filename(serial_number: int, watermark: str) -> str:
     Returns:
         The snapshot's GeoPackage filename.
     """
-    return f"{serial_number:06d},{watermark}.gpkg"
+    return pathlib.Path(f"{serial_number:06d},{watermark}.gpkg")
 
 
-def parse_geopackage_filename(filename: str) -> tuple[int, str]:
+def parse_geopackage_filename(filename: pathlib.Path) -> tuple[int, str]:
     """Return the serial number and watermark encoded in *filename*.
 
     The watermark may itself contain commas, so only the first comma separates the
@@ -62,13 +62,12 @@ def parse_geopackage_filename(filename: str) -> tuple[int, str]:
     Returns:
         The serial number and watermark encoded in *filename*.
     """
-    stem = filename.removesuffix(".gpkg")
-    serial_text, watermark = stem.split(",", 1)
+    serial_text, watermark = filename.stem.split(",", 1)
     return int(serial_text), watermark
 
 
 def next_serial_number(
-    existing_filenames: typing.Iterable[str],
+    existing_filenames: typing.Iterable[pathlib.Path],
     watermark: str,
 ) -> int:
     """Return the serial number to use for a snapshot named *watermark*.
@@ -99,7 +98,7 @@ def next_serial_number(
     return max(serial_numbers, default=-1) + 1
 
 
-def existing_geopackage_filenames(directory: pathlib.Path) -> list[str]:
+def existing_geopackage_filenames(directory: pathlib.Path) -> list[pathlib.Path]:
     """Return the names of the GeoPackage files in *directory*.
 
     Args:
@@ -110,7 +109,11 @@ def existing_geopackage_filenames(directory: pathlib.Path) -> list[str]:
     """
     if not directory.is_dir():
         return []
-    return sorted(path.name for path in directory.iterdir() if path.suffix == ".gpkg")
+    return sorted(
+        pathlib.Path(path.name)
+        for path in directory.iterdir()
+        if path.suffix == ".gpkg"
+    )
 
 
 def geo_package_files(directory: pathlib.Path) -> list[pathlib.Path]:
@@ -462,7 +465,7 @@ def drop_features_already_present(
 
 def latest_snapshot_path(
     directory: pathlib.Path,
-    existing_filenames: list[str],
+    existing_filenames: list[pathlib.Path],
 ) -> pathlib.Path | None:
     """Return the most recent snapshot path, or None when there are none.
 
@@ -481,7 +484,7 @@ def latest_snapshot_path(
 def fetch_feed_dataframe(
     feed: peri_scribe.feed_types.Feed,
     layer: arcgis.features.FeatureLayer,
-    existing_filenames: list[str],
+    existing_filenames: list[pathlib.Path],
     source_directory: pathlib.Path,
 ) -> geopandas.GeoDataFrame | None:
     """Fetch a feed's new or changed features, or None when there are none.

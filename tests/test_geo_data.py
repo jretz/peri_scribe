@@ -374,7 +374,7 @@ def test_geo_data_frame_from_allows_null_geometries() -> None:
 
 
 def test_dataframe_for_layer_raises_no_features_error_when_feed_is_empty() -> None:
-    feed = peri_scribe.models.build_feeds([sample_feed_config()])[0]
+    feed = next(peri_scribe.models.build_feeds([sample_feed_config()]))
     layer = LayerStub(properties={})
     feature_set = arcgis.features.FeatureSet([])
     with pytest.raises(
@@ -387,7 +387,7 @@ def test_dataframe_for_layer_raises_no_features_error_when_feed_is_empty() -> No
 def test_dataframe_for_layer_builds_geo_data_frame(
     feature_set_with_geometry: arcgis.features.FeatureSet,
 ) -> None:
-    feed = peri_scribe.models.build_feeds([sample_feed_config()])[0]
+    feed = next(peri_scribe.models.build_feeds([sample_feed_config()]))
     layer = LayerStub(properties={"spatialReference": {"wkid": WGS84_WKID}})
     result = peri_scribe.geo_data.dataframe_for_layer(
         feed,
@@ -404,7 +404,7 @@ def test_dataframe_for_layer_builds_geo_data_frame(
 
 
 def test_dataframe_for_layer_warns_when_features_lack_geometry() -> None:
-    feed = peri_scribe.models.build_feeds([sample_feed_config()])[0]
+    feed = next(peri_scribe.models.build_feeds([sample_feed_config()]))
     layer = LayerStub(properties={"spatialReference": {"wkid": WGS84_WKID}})
     feature_set = arcgis.features.FeatureSet(
         [
@@ -657,3 +657,19 @@ def test_query_object_ids_with_retry_raises_without_object_ids() -> None:
             layer,  # ty: ignore
             where="1=1",
         )
+
+
+def test_read_layer_dataframe_reads_feed_layer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    feed = next(peri_scribe.models.build_feeds([sample_feed_config()]))
+    sentinel = object()
+    calls: list[tuple[pathlib.Path, str]] = []
+    monkeypatch.setattr(
+        peri_scribe.geo_data.geopandas,
+        "read_file",
+        lambda path, layer: calls.append((path, layer)) or sentinel,
+    )
+    path = pathlib.Path("/fires.gpkg")
+    assert peri_scribe.geo_data.read_layer_dataframe(path, feed) is sentinel
+    assert calls == [(path, SAMPLE_FEED_NAME)]

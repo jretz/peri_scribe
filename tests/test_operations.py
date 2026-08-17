@@ -618,18 +618,35 @@ def test_list_fires_raises_system_exit_for_unreadable_file(
         peri_scribe.operations.list_fires(pathlib.Path("sources"))
 
 
-def test_geo_package_files_returns_nested_files_in_sorted_order(
-    tmp_path: pathlib.Path,
+def test_existing_geopackage_filenames_returns_empty_list_without_directory(
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    directory = tmp_path / "data"
+    monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: False)
+    assert (
+        peri_scribe.operations.existing_geopackage_filenames(
+            pathlib.Path("/missing"),
+        )
+        == []
+    )
+
+
+def test_geo_package_files_returns_nested_files_in_sorted_order(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = pathlib.Path("/data")
     alpha = directory / "sources" / "Alpha_0"
     beta = directory / "sources" / "Beta_0"
-    alpha.mkdir(parents=True)
-    beta.mkdir(parents=True)
-    (alpha / "000002,lastEdit=b.gpkg").touch()
-    (alpha / "000001,lastEdit=a.gpkg").touch()
-    (beta / "000000,lastEdit=c.gpkg").touch()
-    (directory / "notes.txt").touch()
+    files = [
+        beta / "000000,lastEdit=c.gpkg",
+        alpha / "000002,lastEdit=b.gpkg",
+        alpha / "000001,lastEdit=a.gpkg",
+    ]
+    monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: True)
+    monkeypatch.setattr(
+        pathlib.Path,
+        "rglob",
+        lambda _self, _pattern: iter(files),
+    )
     assert peri_scribe.operations.geo_package_files(directory) == [
         alpha / "000001,lastEdit=a.gpkg",
         alpha / "000002,lastEdit=b.gpkg",
@@ -638,25 +655,28 @@ def test_geo_package_files_returns_nested_files_in_sorted_order(
 
 
 def test_geo_package_files_returns_empty_list_without_directory(
-    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    assert peri_scribe.operations.geo_package_files(tmp_path / "missing") == []
+    monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: False)
+    assert peri_scribe.operations.geo_package_files(pathlib.Path("/missing")) == []
 
 
 def test_geo_package_files_raises_system_exit_when_tree_cannot_be_read(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: pathlib.Path,
 ) -> None:
-    def fake_rglob(self: pathlib.Path, pattern: str) -> typing.Never:
+    directory = pathlib.Path("/data")
+
+    def fake_rglob(_self: pathlib.Path, _pattern: str) -> typing.Never:
         message = "denied"
         raise PermissionError(message)
 
+    monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: True)
     monkeypatch.setattr(pathlib.Path, "rglob", fake_rglob)
     with pytest.raises(
         SystemExit,
-        match=re.escape(f"Failed to read {tmp_path}: denied"),
+        match=re.escape(f"Failed to read {directory}: denied"),
     ):
-        peri_scribe.operations.geo_package_files(tmp_path)
+        peri_scribe.operations.geo_package_files(directory)
 
 
 def test_source_geopackage_path_places_watermark_file_under_source_directory() -> None:
@@ -674,15 +694,15 @@ def test_source_geopackage_path_places_watermark_file_under_source_directory() -
 
 
 def test_geopackage_filename_zero_pads_serial_number() -> None:
-    assert (
-        peri_scribe.operations.geopackage_filename(17, "lastEdit=abc123")
-        == "000017,lastEdit=abc123.gpkg"
-    )
+    assert peri_scribe.operations.geopackage_filename(
+        17,
+        "lastEdit=abc123",
+    ) == pathlib.Path("000017,lastEdit=abc123.gpkg")
 
 
 def test_parse_geopackage_filename_returns_serial_and_watermark() -> None:
     assert peri_scribe.operations.parse_geopackage_filename(
-        "000017,lastEdit=abc,def.gpkg",
+        pathlib.Path("000017,lastEdit=abc,def.gpkg"),
     ) == (17, "lastEdit=abc,def")
 
 
@@ -698,7 +718,7 @@ def test_next_serial_number_increments_beyond_largest_serial() -> None:
     expected_serial_number = 4
     assert (
         peri_scribe.operations.next_serial_number(
-            ["000003,lastEdit=abc123.gpkg"],
+            [pathlib.Path("000003,lastEdit=abc123.gpkg")],
             "lastEdit=def456",
         )
         == expected_serial_number
@@ -709,7 +729,7 @@ def test_next_serial_number_reuses_serial_for_existing_watermark() -> None:
     expected_serial_number = 3
     assert (
         peri_scribe.operations.next_serial_number(
-            ["000003,lastEdit=abc123.gpkg"],
+            [pathlib.Path("000003,lastEdit=abc123.gpkg")],
             "lastEdit=abc123",
         )
         == expected_serial_number
@@ -720,7 +740,10 @@ def test_next_serial_number_ignores_malformed_filenames() -> None:
     expected_serial_number = 3
     assert (
         peri_scribe.operations.next_serial_number(
-            ["old-style.gpkg", "000002,lastEdit=abc123.gpkg"],
+            [
+                pathlib.Path("old-style.gpkg"),
+                pathlib.Path("000002,lastEdit=abc123.gpkg"),
+            ],
             "lastEdit=def456",
         )
         == expected_serial_number
@@ -728,12 +751,15 @@ def test_next_serial_number_ignores_malformed_filenames() -> None:
 
 
 def test_snapshot_path_for_watermark_returns_matching_path(
-    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    directory = tmp_path / "sources" / "CA_Perimeters_NIFC_FIRIS_public_view_0"
-    directory.mkdir(parents=True)
-    (directory / "000017,lastEdit=abc123.gpkg").touch()
-    (directory / "000018,lastEdit=def789.gpkg").touch()
+    directory = pathlib.Path("/sources/CA_Perimeters_NIFC_FIRIS_public_view_0")
+    files = [
+        directory / "000017,lastEdit=abc123.gpkg",
+        directory / "000018,lastEdit=def789.gpkg",
+    ]
+    monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: True)
+    monkeypatch.setattr(pathlib.Path, "iterdir", lambda _self: iter(files))
     assert (
         peri_scribe.operations.snapshot_path_for_watermark(
             directory,
@@ -744,11 +770,12 @@ def test_snapshot_path_for_watermark_returns_matching_path(
 
 
 def test_snapshot_path_for_watermark_returns_none_without_match(
-    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    directory = tmp_path / "sources" / "CA_Perimeters_NIFC_FIRIS_public_view_0"
-    directory.mkdir(parents=True)
-    (directory / "000017,lastEdit=abc123.gpkg").touch()
+    directory = pathlib.Path("/sources/CA_Perimeters_NIFC_FIRIS_public_view_0")
+    files = [directory / "000017,lastEdit=abc123.gpkg"]
+    monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: True)
+    monkeypatch.setattr(pathlib.Path, "iterdir", lambda _self: iter(files))
     assert (
         peri_scribe.operations.snapshot_path_for_watermark(
             directory,
@@ -759,11 +786,12 @@ def test_snapshot_path_for_watermark_returns_none_without_match(
 
 
 def test_snapshot_path_for_watermark_ignores_malformed_filenames(
-    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    directory = tmp_path / "sources" / "CA_Perimeters_NIFC_FIRIS_public_view_0"
-    directory.mkdir(parents=True)
-    (directory / "old-style.gpkg").touch()
+    directory = pathlib.Path("/sources/CA_Perimeters_NIFC_FIRIS_public_view_0")
+    files = [directory / "old-style.gpkg"]
+    monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: True)
+    monkeypatch.setattr(pathlib.Path, "iterdir", lambda _self: iter(files))
     assert (
         peri_scribe.operations.snapshot_path_for_watermark(
             directory,
@@ -787,15 +815,17 @@ def change_feed(
     Returns:
         The feed.
     """
-    return peri_scribe.models.build_feeds([
-        {
-            "feed_type": "ArcGISFeed",
-            "url": "https://example.test/ArcGIS/rest/services/Fires/FeatureServer/0",
-            "fire_name_column": "name",
-            "status_column": "status",
-            "modified_column": modified_column,
-        },
-    ])[0]
+    return next(
+        peri_scribe.models.build_feeds([
+            {
+                "feed_type": "ArcGISFeed",
+                "url": "https://example.test/ArcGIS/rest/services/Fires/FeatureServer/0",
+                "fire_name_column": "name",
+                "status_column": "status",
+                "modified_column": modified_column,
+            },
+        ]),
+    )
 
 
 def change_dataframe(
@@ -877,6 +907,20 @@ def test_modified_datetime_from_returns_none_for_invalid_string() -> None:
 def test_modified_datetime_from_parses_epoch_milliseconds() -> None:
     result = peri_scribe.operations.modified_datetime_from(0)
     assert result == datetime.datetime(1970, 1, 1, 0, 0, 0, tzinfo=UTC)
+
+
+def test_existing_features_returns_none_without_files(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    feed = change_feed()
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "existing_geopackage_filenames",
+        lambda _directory: [],
+    )
+    assert (
+        peri_scribe.operations.existing_features(pathlib.Path("/sources"), feed) is None
+    )
 
 
 def test_latest_modified_datetime_returns_none_without_existing() -> None:
@@ -1021,29 +1065,31 @@ def test_latest_snapshot_path_returns_none_without_files() -> None:
 def test_latest_snapshot_path_returns_last_file() -> None:
     result = peri_scribe.operations.latest_snapshot_path(
         pathlib.Path("/d"),
-        ["000000.gpkg", "000001.gpkg"],
+        [pathlib.Path("000000.gpkg"), pathlib.Path("000001.gpkg")],
     )
     assert result == pathlib.Path("/d/000001.gpkg")
 
 
-def test_fetch_feed_dataframe_raises_without_modified_column(
-    tmp_path: pathlib.Path,
-) -> None:
+def test_fetch_feed_dataframe_raises_without_modified_column() -> None:
     feed = change_feed(modified_column=None)
     with pytest.raises(ValueError, match="no modified column"):
         peri_scribe.operations.fetch_feed_dataframe(
             feed,
             object(),  # ty: ignore
-            ["000000.gpkg"],
-            tmp_path,
+            [pathlib.Path("000000.gpkg")],
+            pathlib.Path("/sources"),
         )
 
 
 def test_fetch_feed_dataframe_returns_none_without_changed_ids(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: pathlib.Path,
 ) -> None:
     feed = change_feed()
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "existing_features",
+        lambda _directory, _feed: None,
+    )
     monkeypatch.setattr(
         peri_scribe.geo_data,
         "query_object_ids_with_retry",
@@ -1052,17 +1098,21 @@ def test_fetch_feed_dataframe_returns_none_without_changed_ids(
     result = peri_scribe.operations.fetch_feed_dataframe(
         feed,
         object(),  # ty: ignore
-        ["000000.gpkg"],
-        tmp_path,
+        [pathlib.Path("000000.gpkg")],
+        pathlib.Path("/sources"),
     )
     assert result is None
 
 
 def test_fetch_feed_dataframe_returns_none_when_dedupe_removes_all(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: pathlib.Path,
 ) -> None:
     feed = change_feed()
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "existing_features",
+        lambda _directory, _feed: None,
+    )
     monkeypatch.setattr(
         peri_scribe.geo_data,
         "query_object_ids_with_retry",
@@ -1086,15 +1136,14 @@ def test_fetch_feed_dataframe_returns_none_when_dedupe_removes_all(
     result = peri_scribe.operations.fetch_feed_dataframe(
         feed,
         object(),  # ty: ignore
-        ["000000.gpkg"],
-        tmp_path,
+        [pathlib.Path("000000.gpkg")],
+        pathlib.Path("/sources"),
     )
     assert result is None
 
 
 def test_fetch_feed_dataframe_fetches_full_when_directory_empty(
     monkeypatch: pytest.MonkeyPatch,
-    tmp_path: pathlib.Path,
 ) -> None:
     feed = change_feed()
     sentinel = object()
@@ -1112,6 +1161,6 @@ def test_fetch_feed_dataframe_fetches_full_when_directory_empty(
         feed,
         object(),  # ty: ignore
         [],
-        tmp_path,
+        pathlib.Path("/sources"),
     )
     assert result is sentinel

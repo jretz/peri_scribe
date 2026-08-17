@@ -40,28 +40,26 @@ def load_feeds_config() -> list[dict[str, typing.Any]]:
 
 def build_feeds(
     configs: list[dict[str, typing.Any]],
-) -> list[peri_scribe.feed_types.Feed]:
-    """Build feed instances from a list of configuration dictionaries.
+) -> typing.Iterator[peri_scribe.feed_types.Feed]:
+    """Yield feed instances built from configuration dictionaries.
 
     Each dictionary must have a ``feed_type`` key whose value is the class name
     of a registered feed type. The remaining keys are forwarded as keyword
     arguments to the feed class constructor.
 
-    Returns:
-        A list of feed instances, one per configuration dictionary.
+    Yields:
+        One feed instance per configuration dictionary.
     """
-    feeds: list[peri_scribe.feed_types.Feed] = []
     for config in configs:
         feed_type_name = config["feed_type"]
         feed_class = peri_scribe.feed_types.FeedTypes.get_feed_class(feed_type_name)
         feed_parameters = {
             key: value for key, value in config.items() if key != "feed_type"
         }
-        feeds.append(feed_class(**feed_parameters))
-    return feeds
+        yield feed_class(**feed_parameters)
 
 
-FEEDS: list[peri_scribe.feed_types.Feed] = build_feeds(load_feeds_config())
+FEEDS: list[peri_scribe.feed_types.Feed] = list(build_feeds(load_feeds_config()))
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
