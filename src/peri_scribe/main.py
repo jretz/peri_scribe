@@ -42,7 +42,7 @@ def fetch() -> None:
 
 @cli.command()
 def feed_config() -> None:
-    """Print the configured feeds."""
+    """Log the configured feeds."""
     for i, feed in enumerate(peri_scribe.models.FEEDS):
         logger.info(
             "Feed %d",

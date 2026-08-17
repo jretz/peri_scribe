@@ -1,3 +1,88 @@
+[tasks.main]
+description = "Run the main module"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked --module peri_scribe.main"
+
+[tasks.feed-config]
+description = "Log the configured data feeds"
+depends = ["venv"]
+run = "uv run --locked --module peri_scribe.main feed-config"
+
+[tasks.current-watermarks]
+description = "Log the current watermark for each configured feed"
+depends = ["venv"]
+run = "uv run --locked --module peri_scribe.main current-watermarks"
+
+[tasks.list-fires]
+description = "Log the name, status, and identifier of each fire"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked --module peri_scribe.main list-fires"
+
+[tasks.fetch]
+description = "Fetch each configured feed into a GeoPackage"
+depends = ["venv"]
+run = "uv run --locked --module peri_scribe.main --log-level debug fetch"
+
+[tasks.lint]
+description = "Check and fix style/format with ruff"
+depends = ["venv"]
+run = "uv run ruff check --fix"
+
+[tasks.typecheck]
+description = "Check type hints with ty"
+depends = ["venv"]
+run = "uv run ty check"
+
+[tasks.pytest]
+description = "Run tests, then lint and typecheck"
+depends = ["venv"]
+run = "uv run --locked --module pytest"
+
+[tasks.test]
+description = "Run tests, then lint and typecheck"
+run = [
+    { task = "pytest" },
+    { task = "lint" },
+    { task = "typecheck" },
+]
+
+[tasks.install-tools]
+description = "Install all tools managed by mise"
+sources = ["mise.toml"]
+run = "mise install"
+
+[tasks.upgrade-tools]
+description = "Upgrade tools managed by mise"
+run = "mise upgrade --local --minimum-release-age 3d"
+
+[tasks.lock]
+description = "Regenerate mise.lock from mise.toml"
+depends = ["install-tools"]
+sources = ["mise.toml"]
+outputs = ["mise.lock"]
+run = "mise lock"
+
+[tasks.venv]
+description = "Create or sync the uv virtual environment"
+depends = ["install-tools"]
+sources = ["mise.toml", "pyproject.toml", "uv.lock"]
+run = "uv sync"
+
+[tasks.gitignore]
+description = "Regenerate .gitignore from gitnr templates"
+run = [
+    "gitnr create tt:Python tt:linux tt:macOS tt:VisualStudioCode > .gitignore",
+    "echo '.codewhale' >> .gitignore",
+    "echo '*.gpkg' >> .gitignore",
+    "echo '*.kml' >> .gitignore",
+    "echo '*.kmz' >> .gitignore",
+]
+
+[settings]
+task.output = "quiet"
+
 [tools]
 "cargo:gitnr" = "latest"
 uv = "latest"
