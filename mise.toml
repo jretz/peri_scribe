@@ -7,11 +7,13 @@ run = "uv run --locked --module peri_scribe.main"
 [tasks.feed-config]
 description = "Log the configured data feeds"
 depends = ["venv"]
+raw_args = true
 run = "uv run --locked --module peri_scribe.main feed-config"
 
 [tasks.current-watermarks]
 description = "Log the current watermark for each configured feed"
 depends = ["venv"]
+raw_args = true
 run = "uv run --locked --module peri_scribe.main current-watermarks"
 
 [tasks.list-fires]
@@ -23,6 +25,7 @@ run = "uv run --locked --module peri_scribe.main list-fires"
 [tasks.fetch]
 description = "Fetch each configured feed into a GeoPackage"
 depends = ["venv"]
+raw_args = true
 run = "uv run --locked --module peri_scribe.main --log-level debug fetch"
 
 [tasks.lint]
