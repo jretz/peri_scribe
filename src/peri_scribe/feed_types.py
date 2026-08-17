@@ -1,14 +1,16 @@
-"""Feed classes, their registry, and watermark observation for peri_scribe."""
+"""Feed classes and watermark observation for peri_scribe."""
 
 from __future__ import annotations
 
-import dataclasses
 import time
 import typing
 import urllib.parse
 
+import pydantic
 import requests
 import structlog
+
+import peri_scribe.retry
 
 
 logger = structlog.get_logger()
@@ -17,23 +19,79 @@ REQUEST_TIMEOUT_SECONDS = 30
 USER_AGENT = "peri_scribe-watcher/0.1"
 
 
+def fetch_watermark_payload(url: str) -> object:
+    """Fetch and parse the layer metadata for *url*.
+
+    Args:
+        url: The layer's REST endpoint URL.
+
+    Returns:
+        The parsed JSON metadata payload.
+    """
+    parameters = {"f": "json", "_cb": time.time_ns()}
+    response = requests.get(
+        url,
+        params=parameters,
+        headers={"User-Agent": USER_AGENT},
+        timeout=REQUEST_TIMEOUT_SECONDS,
+    )
+    response.raise_for_status()
+    return response.json()
+
+
 @typing.runtime_checkable
 class Feed(typing.Protocol):
     """Minimal interface for a feed that provides layer data.
 
-    Concrete feed classes satisfy this protocol and are looked up through the
-    :class:`FeedTypes` registry at runtime.
+    Concrete feed classes satisfy this protocol and are validated from the JSON
+    configuration at runtime. All members are read-only, since a feed's configuration
+    does not change after it is loaded.
     """
 
-    name: str
-    url: str
-    fire_name_column: str
-    status_column: str
-    fire_identifier_column: str | None
-    complex_identifier_column: str | None
-    complex_name_column: str | None
-    is_complex_child_column: str | None
-    modified_column: str | None
+    @property
+    def name(self) -> str:
+        """The feed's name."""
+        ...
+
+    @property
+    def url(self) -> str:
+        """The feed's layer REST endpoint URL."""
+        ...
+
+    @property
+    def fire_name_column(self) -> str:
+        """The column holding each fire's name."""
+        ...
+
+    @property
+    def status_column(self) -> str:
+        """The column holding each fire's status."""
+        ...
+
+    @property
+    def fire_identifier_column(self) -> str | None:
+        """The column holding each fire's stable identifier, or None."""
+        ...
+
+    @property
+    def complex_identifier_column(self) -> str | None:
+        """The column holding each fire's complex identifier, or None."""
+        ...
+
+    @property
+    def complex_name_column(self) -> str | None:
+        """The column holding each fire's complex name, or None."""
+        ...
+
+    @property
+    def is_complex_child_column(self) -> str | None:
+        """The column marking complex children, or None."""
+        ...
+
+    @property
+    def modified_column(self) -> str | None:
+        """The column holding each feature's modified timestamp, or None."""
+        ...
 
     @property
     def current_watermark(self) -> str | None:
@@ -41,50 +99,12 @@ class Feed(typing.Protocol):
         ...
 
 
-RegisteredFeed = typing.TypeVar("RegisteredFeed", bound=type)
+class ArcGISFeed(pydantic.BaseModel):
+    """A validated ArcGIS feature layer feed."""
 
+    model_config = pydantic.ConfigDict(frozen=True, extra="forbid")
 
-class FeedTypes:
-    """Registry of feed classes, keyed by their class name.
-
-    Feed classes are decorated with ``@FeedTypes.register`` at definition time.
-    The ``feed_type`` string in the JSON configuration file is used to look up the
-    corresponding class via :meth:`get_feed_class`.
-    """
-
-    registry: typing.ClassVar[dict[str, type]] = {}
-
-    @classmethod
-    def register(cls, feed_class: RegisteredFeed) -> RegisteredFeed:
-        """Class decorator that registers *feed_class*.
-
-        Args:
-            feed_class: The feed class to register.
-
-        Returns:
-            The *feed_class* unchanged, so it can be stacked with other
-            decorators.
-        """
-        cls.registry[feed_class.__name__] = feed_class
-        return feed_class
-
-    @classmethod
-    def get_feed_class(cls, name: str) -> type:
-        """Return the feed class registered under *name*.
-
-        Args:
-            name: The ``feed_type`` value from the JSON configuration (the feed
-                class's ``__name__``).
-
-        Returns:
-            The registered class.
-        """
-        return cls.registry[name]
-
-
-@FeedTypes.register
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class ArcGISFeed:
+    feed_type: typing.Literal["ArcGISFeed"] = "ArcGISFeed"
     url: str
     fire_name_column: str
     status_column: str
@@ -120,21 +140,17 @@ class ArcGISFeed:
 
         The watermark is the layer's ``editingInfo.lastEditDate`` value, prefixed
         with ``lastEdit=``. The server only updates that timestamp when the data is
-        actually edited.
+        actually edited. Transient network failures and rate-limit responses are
+        retried before giving up.
 
         Returns:
             The observed watermark, or None when an observation fails.
         """
-        parameters = {"f": "json", "_cb": time.time_ns()}
         try:
-            response = requests.get(
-                self.url,
-                params=parameters,
-                headers={"User-Agent": USER_AGENT},
-                timeout=REQUEST_TIMEOUT_SECONDS,
+            payload = peri_scribe.retry.run_with_retry(
+                self.name,
+                lambda: fetch_watermark_payload(self.url),
             )
-            response.raise_for_status()
-            payload = response.json()
         except (requests.exceptions.RequestException, ValueError) as error:
             logger.warning(
                 "Watermark check failed",
@@ -149,7 +165,10 @@ class ArcGISFeed:
                 error="unexpected response shape",
             )
             return None
-        last_edit = (payload.get("editingInfo") or {}).get("lastEditDate")
+        editing_info = payload.get("editingInfo")
+        last_edit = (
+            editing_info.get("lastEditDate") if isinstance(editing_info, dict) else None
+        )
         if last_edit is None:
             logger.warning(
                 "Watermark check failed",

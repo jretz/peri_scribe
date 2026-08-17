@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import importlib.resources
 import json
-import pathlib
 import typing
 from typing import TYPE_CHECKING
 
@@ -34,7 +34,7 @@ def load_feeds_config() -> list[dict[str, typing.Any]]:
     Returns:
         The parsed feed configuration as a list of dictionaries.
     """
-    config_path = pathlib.Path(__file__).parent / "feeds.json"
+    config_path = importlib.resources.files("peri_scribe").joinpath("feeds.json")
     return json.loads(config_path.read_text())
 
 
@@ -43,20 +43,15 @@ def build_feeds(
 ) -> typing.Iterator[peri_scribe.feed_types.Feed]:
     """Yield feed instances built from configuration dictionaries.
 
-    Each dictionary must have a ``feed_type`` key whose value is the class name
-    of a registered feed type. The remaining keys are forwarded as keyword
-    arguments to the feed class constructor.
+    Each dictionary must describe an ArcGIS feed: a ``feed_type`` of ``"ArcGISFeed"``
+    plus the fields that feed class declares. Unknown configuration keys and values of
+    the wrong type are rejected with a validation error.
 
     Yields:
         One feed instance per configuration dictionary.
     """
     for config in configs:
-        feed_type_name = config["feed_type"]
-        feed_class = peri_scribe.feed_types.FeedTypes.get_feed_class(feed_type_name)
-        feed_parameters = {
-            key: value for key, value in config.items() if key != "feed_type"
-        }
-        yield feed_class(**feed_parameters)
+        yield peri_scribe.feed_types.ArcGISFeed.model_validate(config)
 
 
 FEEDS: list[peri_scribe.feed_types.Feed] = list(build_feeds(load_feeds_config()))

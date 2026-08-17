@@ -1,4 +1,5 @@
-import dataclasses
+import pydantic
+import pytest
 
 import peri_scribe.feed_types
 import peri_scribe.models
@@ -31,20 +32,31 @@ def test_build_feeds_creates_arc_gis_feed_from_config() -> None:
     assert feed.name == SAMPLE_FEED_NAME
 
 
-def test_build_feeds_uses_decorator_style_registration() -> None:
-    """build_feeds works with classes registered via the decorator."""
+def test_build_feeds_rejects_unknown_feed_type() -> None:
+    configs = [
+        {
+            "feed_type": "UnknownFeed",
+            "url": SAMPLE_FEED_URL,
+            "fire_name_column": SAMPLE_FIRE_NAME_COLUMN,
+            "status_column": SAMPLE_STATUS_COLUMN,
+        },
+    ]
+    with pytest.raises(pydantic.ValidationError):
+        list(peri_scribe.models.build_feeds(configs))
 
-    @peri_scribe.feed_types.FeedTypes.register
-    @dataclasses.dataclass(frozen=True, kw_only=True)
-    class TestFeed:
-        label: str
 
-    configs = [{"feed_type": "TestFeed", "label": "hello"}]
-    feeds = list(peri_scribe.models.build_feeds(configs))
-    assert len(feeds) == 1
-    feed = feeds[0]
-    assert isinstance(feed, TestFeed)
-    assert feed.label == "hello"
+def test_build_feeds_rejects_unknown_configuration_key() -> None:
+    configs = [
+        {
+            "feed_type": "ArcGISFeed",
+            "url": SAMPLE_FEED_URL,
+            "fire_name_column": SAMPLE_FIRE_NAME_COLUMN,
+            "status_column": SAMPLE_STATUS_COLUMN,
+            "not_a_feed_column": "value",
+        },
+    ]
+    with pytest.raises(pydantic.ValidationError):
+        list(peri_scribe.models.build_feeds(configs))
 
 
 def test_build_feeds_constructs_multiple_feeds() -> None:

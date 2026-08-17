@@ -8,7 +8,6 @@ reads fires and complex memberships from GeoPackage files.
 from __future__ import annotations
 
 import pathlib
-import time
 import typing
 
 import geopandas
@@ -137,10 +136,31 @@ def fire_status_from(value: object) -> peri_scribe.models.FireStatus | None:
     return None
 
 
+def is_missing(value: object) -> bool:
+    """Return True when *value* is a missing (null) value.
+
+    Pandas missing values are treated as missing, except for strings and bytes, which
+    are never treated as missing here (an empty string is a present value). Values that
+    pandas cannot truth-test (e.g. lists) are treated as present.
+
+    Args:
+        value: The value to test.
+
+    Returns:
+        True when *value* is missing.
+    """
+    if value is None:
+        return True
+    try:
+        return bool(pd.isna(value)) and not isinstance(value, (str, bytes))
+    except TypeError, ValueError:
+        return False
+
+
 def normalize_identifier(value: object) -> str | None:
     """Normalize a raw identifier value, or return None when it is missing.
 
-    Identifiers are casefolded and stripped of surrounding braces so that equal
+    Identifiers are case-folded and stripped of surrounding braces so that equal
     identifiers match regardless of formatting, e.g. ``{286B7F1D-8945-4A5D-9D81-
     5235C18AF1FE}`` and ``286b7f1d-8945-4a5d-9d81-5235c18af1fe``. Blank values
     (including None and NaN) are treated as missing and return None.
@@ -151,7 +171,7 @@ def normalize_identifier(value: object) -> str | None:
     Returns:
         The normalized identifier, or None when the value is missing.
     """
-    if value is None or pd.isna(value):
+    if is_missing(value):
         return None
     text = str(value).strip()
     if not text:
@@ -162,9 +182,9 @@ def normalize_identifier(value: object) -> str | None:
 def is_complex_child_from(value: object) -> bool:
     """Classify a feed's raw complex child value.
 
-    Blank values (including None) are treated as false. Values that do not
-    represent a known boolean raise an error, since they point at a
-    misconfigured column or unexpected data.
+    Blank values (including None) are treated as false. Values that do not represent a
+    known boolean raise an error, since they point at a misconfigured column or
+    unexpected data.
 
     Args:
         value: The raw complex child value from a feed.
@@ -195,8 +215,8 @@ def fire_names(
 
     The GeoPackage is only read, never written. Every layer must correspond to a
     configured feed, which says which columns hold each fire's name, status, and
-    identifier. Rows without a name or without a status are omitted; rows
-    without an identifier are still yielded, with a None identifier.
+    identifier. Rows without a name or without a status are omitted; rows without an
+    identifier are still yielded, with a None identifier.
 
     Args:
         path: The GeoPackage file to read.
@@ -239,10 +259,9 @@ def complex_memberships(
 ) -> typing.Generator[peri_scribe.models.ComplexMembership]:
     """Yield the complex memberships in every layer of the GeoPackage at *path*.
 
-    The GeoPackage is only read, never written. Only layers whose feed declares
-    complex columns are considered. Rows that are not marked as complex
-    children, or that lack a fire identifier, complex identifier, or complex
-    name, are omitted.
+    The GeoPackage is only read, never written. Only layers whose feed declares complex
+    columns are considered. Rows that are not marked as complex children, or that lack a
+    fire identifier, complex identifier, or complex name, are omitted.
 
     Args:
         path: The GeoPackage file to read.
@@ -298,58 +317,6 @@ def complex_memberships(
             )
 
 
-def retry_query[QueryResult](
-    feed_name: str,
-    query: typing.Callable[[], QueryResult],
-    *,
-    max_retries: int = peri_scribe.retry.DEFAULT_MAX_RETRIES,
-) -> QueryResult:
-    """Run *query*, retrying on transient and rate-limit errors.
-
-    Rate-limit errors (HTTP 429 from the ArcGIS REST API) use the server-suggested
-    ``Retry after`` delay. Other transient network errors use exponential backoff
-    starting at ``BACKOFF_BASE_SECONDS`` and capped at ``BACKOFF_MAXIMUM_SECONDS``.
-
-    Args:
-        feed_name: Human-readable feed identifier for log messages.
-        query: The zero-argument callable that performs a single query attempt.
-        max_retries: Maximum number of retries before giving up.
-
-    Returns:
-        The result returned by *query*.
-    """
-    attempts_made = 0
-    while True:
-        attempts_made += 1
-        try:
-            return query()
-        except Exception as error:
-            retry_seconds = peri_scribe.retry.rate_limit_retry_seconds(error)
-            if retry_seconds is not None:
-                retry_reason = "Rate-limited; retrying after server-suggested delay"
-            elif peri_scribe.retry.is_transient_error(error):
-                retry_seconds = peri_scribe.retry.compute_backoff(attempts_made)
-                retry_reason = "Transient network error; retrying after backoff"
-            else:
-                raise
-
-            if attempts_made > max_retries:
-                logger.exception(
-                    "Retries exhausted",
-                    feed=feed_name,
-                    attempts=attempts_made,
-                    reason=retry_reason,
-                )
-                raise
-            logger.warning(
-                retry_reason,
-                feed=feed_name,
-                attempt=attempts_made,
-                retry_seconds=retry_seconds,
-            )
-            time.sleep(retry_seconds)
-
-
 def query_with_retry(
     feed_name: str,
     layer: arcgis.features.FeatureLayer,
@@ -369,7 +336,7 @@ def query_with_retry(
         The FeatureSet returned by a successful query.
     """
     query_parameters = {} if parameters is None else parameters
-    return retry_query(
+    return peri_scribe.retry.run_with_retry(
         feed_name,
         lambda: layer.query(**query_parameters),
         max_retries=max_retries,
@@ -385,8 +352,8 @@ def query_object_ids_with_retry(
 ) -> list[int]:
     """Return the OBJECTIDs of the features in *layer* matching *where*.
 
-    The query requests only identifiers, so the response is a few bytes for most
-    layers. An empty list means no features matched.
+    The query requests only identifiers, so the response is a few bytes for most layers.
+    An empty list means no features matched.
 
     Args:
         feed_name: Human-readable feed identifier for log messages.
@@ -400,7 +367,7 @@ def query_object_ids_with_retry(
     Raises:
         NoFeaturesError: If the service does not return an object id list.
     """
-    result = retry_query(
+    result = peri_scribe.retry.run_with_retry(
         feed_name,
         lambda: layer.query(where=where, return_ids_only=True),
         max_retries=max_retries,

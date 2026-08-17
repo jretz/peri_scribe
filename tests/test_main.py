@@ -2,7 +2,9 @@
 
 import dataclasses
 import datetime
+import http
 import pathlib
+import time
 import typing
 from typing import TYPE_CHECKING
 
@@ -11,10 +13,10 @@ import pandas as pd
 import pyproj
 import pytest
 import structlog
+import time_machine
 
 import peri_scribe.exceptions
 import peri_scribe.feed_types
-import peri_scribe.geo_data
 import peri_scribe.main
 import peri_scribe.models
 import peri_scribe.operations
@@ -35,13 +37,25 @@ if TYPE_CHECKING:
 
 # Error messages matching the ArcGIS REST API 429 rate-limit response format.
 RATE_LIMIT_RETRY_AFTER_SECONDS = 60
-RATE_LIMIT_ERROR_BODY = (
-    "{'error': {'code': 429, 'message': 'Unable to perform query. "
-    "Too many requests.', 'details': ['API calls quota exceeded "
-    "(120975 request units)! maximum allowed request units (115200) "
-    f"per Minute. Retry after {RATE_LIMIT_RETRY_AFTER_SECONDS} sec.']}}"
-)
-LOOSE_429_ERROR_BODY = "{'error': {'code': 429, 'message': 'Too many requests.'}}"
+RATE_LIMIT_ERROR_PAYLOAD = {
+    "error": {
+        "code": http.HTTPStatus.TOO_MANY_REQUESTS,
+        "message": "Unable to perform query. Too many requests.",
+        "details": [
+            (
+                "API calls quota exceeded (120975 request units)! maximum allowed "
+                "request units (115200) per Minute. "
+                f"Retry after {RATE_LIMIT_RETRY_AFTER_SECONDS} sec."
+            ),
+        ],
+    },
+}
+LOOSE_429_ERROR_PAYLOAD = {
+    "error": {
+        "code": http.HTTPStatus.TOO_MANY_REQUESTS,
+        "message": "Too many requests.",
+    },
+}
 
 SAMPLE_WATERMARK = "lastEdit=2"
 
@@ -229,8 +243,8 @@ class RecordingFeatureLayerStub:
 def fetch_setup(
     monkeypatch: pytest.MonkeyPatch,
     geo_package_store: GeoPackageStore,
-) -> None:
-    """Point the fetch command's boundaries at in-memory stubs."""
+) -> typing.Iterator[None]:
+    """Point the fetch command's boundaries at in-memory stubs and fix the date."""
     monkeypatch.setattr(
         pathlib.Path,
         "cwd",
@@ -252,16 +266,12 @@ def fetch_setup(
             ),
         ],
     )
-
-    class FakeDate(datetime.date):
-        """A date whose today() is fixed to 2026 for deterministic snapshots."""
-
-        @classmethod
-        def today(cls) -> datetime.date:
-            return datetime.date(2026, 1, 1)
-
-    monkeypatch.setattr(peri_scribe.operations.datetime, "date", FakeDate)
     monkeypatch.setattr(peri_scribe.operations.arcgis.gis, "GIS", object)
+    with time_machine.travel(
+        datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        tick=False,
+    ):
+        yield
 
 
 def snapshot_path(
@@ -544,8 +554,8 @@ def test_fetch_retries_on_429_and_succeeds(
     geo_package_store: GeoPackageStore,
 ) -> None:
     sleep_calls: list[float] = []
-    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
-    rate_limit_error = ValueError(RATE_LIMIT_ERROR_BODY)
+    monkeypatch.setattr(time, "sleep", sleep_calls.append)
+    rate_limit_error = ValueError(RATE_LIMIT_ERROR_PAYLOAD)
     outcomes: list[arcgis.features.FeatureSet | Exception] = [
         rate_limit_error,
         feature_set_with_geometry,
@@ -571,8 +581,8 @@ def test_fetch_exhausts_retries_and_exits(
     geo_package_store: GeoPackageStore,
 ) -> None:
     sleep_calls: list[float] = []
-    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
-    rate_limit_error = ValueError(RATE_LIMIT_ERROR_BODY)
+    monkeypatch.setattr(time, "sleep", sleep_calls.append)
+    rate_limit_error = ValueError(RATE_LIMIT_ERROR_PAYLOAD)
     max_retries = peri_scribe.retry.DEFAULT_MAX_RETRIES
     outcomes: list[arcgis.features.FeatureSet | Exception] = [rate_limit_error] * (
         max_retries + 2
@@ -585,7 +595,8 @@ def test_fetch_exhausts_retries_and_exits(
     result = runner.invoke(peri_scribe.main.cli, ["fetch"])
     assert result.exit_code == 1
     assert (
-        f"Failed to fetch {SAMPLE_FEED_NAME}: {RATE_LIMIT_ERROR_BODY}" in result.output
+        f"Failed to fetch {SAMPLE_FEED_NAME}: {RATE_LIMIT_ERROR_PAYLOAD}"
+        in result.output
     )
     assert sleep_calls == [60.0] * max_retries
     assert not geo_package_store.has(snapshot_path())

@@ -6,14 +6,18 @@ dependencies = [
     "arcgis",
     "click",
     "geopandas",
+    "pydantic",
     "pygments",  # For pytest code highlighting
     "pyproj",
     "pytest-cov",
     "pytest",
     "requests",
+    "requests-mock",
     "ruff",
     "setuptools",  # For https://github.com/Esri/arcgis-python-api/issues/2428
     "structlog",
+    "tenacity",
+    "time-machine",
     "ty",
 ]
 

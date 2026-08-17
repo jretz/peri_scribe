@@ -24,6 +24,7 @@ import peri_scribe.output
 
 if typing.TYPE_CHECKING:
     import geopandas
+    import shapely
 
 
 logger = structlog.get_logger()
@@ -31,9 +32,9 @@ logger = structlog.get_logger()
 DATA_DIRECTORY_NAME = "data"
 SOURCES_DIRECTORY_NAME = "sources"
 
-# When fetching only changed features, the cutoff for the query is moved back by
-# this amount so that recently edited features are re-fetched and re-checked rather
-# than missed because of clock skew or in-flight edits.
+# When fetching only changed features, the cutoff for the query is moved back by this
+# amount so that recently edited features are re-fetched and re-checked rather than
+# missed because of clock skew or in-flight edits.
 OVERLAP = datetime.timedelta(minutes=5)
 
 
@@ -224,15 +225,10 @@ def modified_datetime_from(value: object) -> datetime.datetime | None:
         value: The raw modified timestamp value.
 
     Returns:
-        The parsed UTC datetime, or None when *value* is blank or unparseable.
+        The parsed UTC datetime, or None when *value* is blank or not parseable.
     """
-    if value is None:
+    if peri_scribe.geo_data.is_missing(value):
         return None
-    try:
-        if pd.isna(value) and not isinstance(value, (str, bytes)):
-            return None
-    except TypeError, ValueError:
-        pass
 
     parsed: datetime.datetime | None
     if isinstance(value, datetime.datetime):
@@ -359,13 +355,8 @@ def normalized_attribute_value(value: object) -> object:
     Returns:
         The comparable form of *value*.
     """
-    if value is None:
+    if peri_scribe.geo_data.is_missing(value):
         return None
-    try:
-        if pd.isna(value) and not isinstance(value, (str, bytes)):
-            return None
-    except TypeError, ValueError:
-        pass
     if isinstance(value, datetime.datetime):
         return value.replace(microsecond=0)
     return value
@@ -397,6 +388,31 @@ def attribute_columns(
     ]
 
 
+def feature_signature(
+    values: dict[str, object],
+    columns: list[str],
+    geometry: object,
+) -> tuple[tuple[object, ...], bytes | None]:
+    """Return the content signature of a single feature row.
+
+    The signature combines the row's normalized attribute values with the well-known
+    binary of its geometry, so two features are identical only when both their
+    attributes and their geometry match.
+
+    Args:
+        values: The row's attribute values, keyed by column name.
+        columns: The attribute columns to include in the signature.
+        geometry: The row's geometry, or None when the feature has none.
+
+    Returns:
+        The feature's content signature.
+    """
+    attributes = tuple(normalized_attribute_value(values[column]) for column in columns)
+    shapely_geometry = typing.cast("shapely.Geometry | None", geometry)
+    geometry_key = shapely_geometry.wkb if shapely_geometry is not None else None
+    return (attributes, geometry_key)
+
+
 def feature_signatures(
     dataframe: geopandas.GeoDataFrame,
     columns: list[str],
@@ -419,12 +435,11 @@ def feature_signatures(
     for row in dataframe.itertuples(index=False, name=None):
         values = dict(zip(dataframe.columns, row, strict=True))
         object_id = int(values["OBJECTID"])
-        attributes = tuple(
-            normalized_attribute_value(values[column]) for column in columns
+        signatures[object_id] = feature_signature(
+            values,
+            columns,
+            values[geometry_name],
         )
-        geometry = values[geometry_name]
-        geometry_key = geometry.wkb if geometry is not None else None
-        signatures[object_id] = (attributes, geometry_key)
     return signatures
 
 
@@ -454,12 +469,10 @@ def drop_features_already_present(
     for row in new_dataframe.itertuples(index=False, name=None):
         values = dict(zip(new_dataframe.columns, row, strict=True))
         object_id = int(values["OBJECTID"])
-        geometry = values[geometry_name]
-        signature = (
-            tuple(normalized_attribute_value(values[column]) for column in columns),
-            geometry.wkb if geometry is not None else None,
+        keep.append(
+            existing_signatures.get(object_id)
+            != feature_signature(values, columns, values[geometry_name]),
         )
-        keep.append(existing_signatures.get(object_id) != signature)
     return new_dataframe[keep].reset_index(drop=True)
 
 
@@ -698,7 +711,7 @@ def list_fires(directory: pathlib.Path) -> list[peri_scribe.models.Fire]:
 def normalize_fire_name(name: str) -> str:
     """Normalize a fire name for comparison.
 
-    Names are casefolded, stripped of surrounding whitespace, and internal whitespace
+    Names are case-folded, stripped of surrounding whitespace, and internal whitespace
     runs are collapsed to a single space.
 
     Args:

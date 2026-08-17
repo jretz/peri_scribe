@@ -1,11 +1,14 @@
+import http
 import pathlib
 import re
+import time
 import typing
 
 import arcgis.features
 import pandas as pd
 import pyproj
 import pytest
+import requests
 import shapely
 import shapely.geometry
 import structlog
@@ -158,6 +161,22 @@ def test_fire_names_reads_normalized_identifiers(
         ),
         peri_scribe.models.Fire(name="BUG", status=INACTIVE, identifier=None),
     ]
+
+
+def test_is_missing_detects_none() -> None:
+    assert peri_scribe.geo_data.is_missing(None) is True
+
+
+def test_is_missing_detects_nan() -> None:
+    assert peri_scribe.geo_data.is_missing(float("nan")) is True
+
+
+def test_is_missing_treats_strings_as_present() -> None:
+    assert peri_scribe.geo_data.is_missing("") is False
+
+
+def test_is_missing_treats_non_scalar_values_as_present() -> None:
+    assert peri_scribe.geo_data.is_missing([1, 2]) is False
 
 
 def test_normalize_identifier() -> None:
@@ -421,13 +440,25 @@ def test_dataframe_for_layer_warns_when_features_lack_geometry() -> None:
 
 
 RATE_LIMIT_RETRY_AFTER_SECONDS = 60
-RATE_LIMIT_ERROR_BODY = (
-    "{'error': {'code': 429, 'message': 'Unable to perform query. "
-    "Too many requests.', 'details': ['API calls quota exceeded "
-    "(120975 request units)! maximum allowed request units (115200) "
-    f"per Minute. Retry after {RATE_LIMIT_RETRY_AFTER_SECONDS} sec.']}}"
-)
-LOOSE_429_ERROR_BODY = "{'error': {'code': 429, 'message': 'Too many requests.'}}"
+RATE_LIMIT_ERROR_PAYLOAD = {
+    "error": {
+        "code": http.HTTPStatus.TOO_MANY_REQUESTS,
+        "message": "Unable to perform query. Too many requests.",
+        "details": [
+            (
+                "API calls quota exceeded (120975 request units)! maximum allowed "
+                "request units (115200) per Minute. "
+                f"Retry after {RATE_LIMIT_RETRY_AFTER_SECONDS} sec."
+            ),
+        ],
+    },
+}
+LOOSE_429_ERROR_PAYLOAD = {
+    "error": {
+        "code": http.HTTPStatus.TOO_MANY_REQUESTS,
+        "message": "Too many requests.",
+    },
+}
 
 
 class QueryStub:
@@ -450,7 +481,7 @@ def test_query_with_retry_succeeds_on_first_attempt(
     feature_set_with_geometry: arcgis.features.FeatureSet,
 ) -> None:
     sleep_calls: list[float] = []
-    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
+    monkeypatch.setattr(time, "sleep", sleep_calls.append)
     outcomes: list[arcgis.features.FeatureSet | Exception] = [
         feature_set_with_geometry,
     ]
@@ -468,8 +499,8 @@ def test_query_with_retry_retries_on_429_with_retry_after(
     feature_set_with_geometry: arcgis.features.FeatureSet,
 ) -> None:
     sleep_calls: list[float] = []
-    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
-    rate_limit_error = ValueError(RATE_LIMIT_ERROR_BODY)
+    monkeypatch.setattr(time, "sleep", sleep_calls.append)
+    rate_limit_error = ValueError(RATE_LIMIT_ERROR_PAYLOAD)
     outcomes: list[arcgis.features.FeatureSet | Exception] = [
         rate_limit_error,
         feature_set_with_geometry,
@@ -488,8 +519,8 @@ def test_query_with_retry_retries_on_loose_429(
     feature_set_with_geometry: arcgis.features.FeatureSet,
 ) -> None:
     sleep_calls: list[float] = []
-    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
-    loose_429_error = ValueError(LOOSE_429_ERROR_BODY)
+    monkeypatch.setattr(time, "sleep", sleep_calls.append)
+    loose_429_error = ValueError(LOOSE_429_ERROR_PAYLOAD)
     outcomes: list[arcgis.features.FeatureSet | Exception] = [
         loose_429_error,
         feature_set_with_geometry,
@@ -509,14 +540,14 @@ def test_query_with_retry_exhausts_retries_and_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sleep_calls: list[float] = []
-    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
-    rate_limit_error = ValueError(RATE_LIMIT_ERROR_BODY)
+    monkeypatch.setattr(time, "sleep", sleep_calls.append)
+    rate_limit_error = ValueError(RATE_LIMIT_ERROR_PAYLOAD)
     max_retries = peri_scribe.retry.DEFAULT_MAX_RETRIES
     outcomes: list[arcgis.features.FeatureSet | Exception] = [rate_limit_error] * (
         max_retries + 2
     )
     layer = QueryStub(outcomes)
-    with pytest.raises(ValueError, match=re.escape(RATE_LIMIT_ERROR_BODY)):
+    with pytest.raises(ValueError, match=re.escape(str(RATE_LIMIT_ERROR_PAYLOAD))):
         peri_scribe.geo_data.query_with_retry(
             SAMPLE_FEED_NAME,
             layer,  # ty: ignore
@@ -529,7 +560,7 @@ def test_query_with_retry_fails_immediately_on_non_429(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sleep_calls: list[float] = []
-    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
+    monkeypatch.setattr(time, "sleep", sleep_calls.append)
     generic_error = RuntimeError("something else broke")
     outcomes: list[arcgis.features.FeatureSet | Exception] = [generic_error]
     layer = QueryStub(outcomes)
@@ -546,8 +577,10 @@ def test_query_with_retry_retries_on_transient_error(
     feature_set_with_geometry: arcgis.features.FeatureSet,
 ) -> None:
     sleep_calls: list[float] = []
-    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
-    transient_error = ValueError("Connection broken: IncompleteRead(…)")
+    monkeypatch.setattr(time, "sleep", sleep_calls.append)
+    transient_error = requests.exceptions.ConnectionError(
+        "Connection broken: IncompleteRead(…)",
+    )
     outcomes: list[arcgis.features.FeatureSet | Exception] = [
         transient_error,
         feature_set_with_geometry,
@@ -566,17 +599,20 @@ def test_query_with_retry_exhausts_transient_retries_and_raises(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sleep_calls: list[float] = []
-    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
-    transient_error = ValueError("Connection broken: IncompleteRead(…)")
-    max_retries = peri_scribe.retry.DEFAULT_MAX_RETRIES
+    monkeypatch.setattr(time, "sleep", sleep_calls.append)
+    transient_error = requests.exceptions.ConnectionError(
+        "Connection broken: IncompleteRead(…)",
+    )
+    retries = 3
     outcomes: list[arcgis.features.FeatureSet | Exception] = [transient_error] * (
-        max_retries + 2
+        retries + 2
     )
     layer = QueryStub(outcomes)
-    with pytest.raises(ValueError, match="Connection broken"):
+    with pytest.raises(requests.exceptions.ConnectionError, match="Connection broken"):
         peri_scribe.geo_data.query_with_retry(
             SAMPLE_FEED_NAME,
             layer,  # ty: ignore
+            max_retries=retries,
         )
     # Backoff for attempts 1, 2, 3: 2.0s, 4.0s, 8.0s
     assert sleep_calls == [2.0, 4.0, 8.0]
@@ -587,8 +623,8 @@ def test_query_with_retry_logs_rate_limit_reason(
     feature_set_with_geometry: arcgis.features.FeatureSet,
 ) -> None:
     sleep_calls: list[float] = []
-    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
-    rate_limit_error = ValueError(RATE_LIMIT_ERROR_BODY)
+    monkeypatch.setattr(time, "sleep", sleep_calls.append)
+    rate_limit_error = ValueError(RATE_LIMIT_ERROR_PAYLOAD)
     outcomes: list[arcgis.features.FeatureSet | Exception] = [
         rate_limit_error,
         feature_set_with_geometry,
@@ -609,8 +645,10 @@ def test_query_with_retry_logs_transient_reason(
     feature_set_with_geometry: arcgis.features.FeatureSet,
 ) -> None:
     sleep_calls: list[float] = []
-    monkeypatch.setattr(peri_scribe.geo_data.time, "sleep", sleep_calls.append)
-    transient_error = ValueError("Connection broken: IncompleteRead(…)")
+    monkeypatch.setattr(time, "sleep", sleep_calls.append)
+    transient_error = requests.exceptions.ConnectionError(
+        "Connection broken: IncompleteRead(…)",
+    )
     outcomes: list[arcgis.features.FeatureSet | Exception] = [
         transient_error,
         feature_set_with_geometry,
