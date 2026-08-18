@@ -8,6 +8,7 @@ import pathlib
 import click
 import structlog
 
+import peri_scribe.administrative_boundaries
 import peri_scribe.models
 import peri_scribe.operations
 import peri_scribe.output
@@ -146,6 +147,12 @@ def index_fire_sources(year_directory: pathlib.Path | None = None) -> None:
     if year_directory is None:
         year_directory = default_year_directory()
     peri_scribe.operations.index_fire_sources(year_directory)
+
+
+@cli.command()
+def ensure_admin_boundaries() -> None:
+    """Ensure needed administrative boundaries are available."""
+    peri_scribe.administrative_boundaries.ensure_administrative_boundaries()
 
 
 if __name__ == "__main__":

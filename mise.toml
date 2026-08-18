@@ -10,6 +10,12 @@ depends = ["venv"]
 raw_args = true
 run = "uv run --locked --module peri_scribe.main feed-config"
 
+[tasks.ensure-admin-boundaries]
+description = "Ensure needed administrative boundaries are available"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked --module peri_scribe.main ensure-admin-boundaries"
+
 [tasks.current-watermarks]
 description = "Log the current watermark for each configured feed"
 depends = ["venv"]

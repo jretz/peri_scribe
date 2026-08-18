@@ -11,6 +11,10 @@ class FeedFetchError(ValueError):
     """Raised when a configured feed cannot be fetched."""
 
 
+class AdministrativeBoundariesError(ValueError):
+    """Raised when administrative boundary data cannot be produced."""
+
+
 class NoSpatialReferenceError(ValueError):
     """Raised when a layer's spatial reference cannot be determined."""
 

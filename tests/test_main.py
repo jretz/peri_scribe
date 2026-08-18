@@ -14,6 +14,7 @@ import pytest
 import structlog
 import time_machine
 
+import peri_scribe.administrative_boundaries
 import peri_scribe.exceptions
 import peri_scribe.main
 import peri_scribe.models
@@ -1122,3 +1123,60 @@ def test_index_fire_sources_builds_index(
     )
     assert result.exit_code == 0
     assert indexed == [pathlib.Path("data/2026")]
+
+
+def test_ensure_administrative_boundaries_calls_module(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+) -> None:
+    called: list[pathlib.Path | None] = []
+
+    def ensure_administrative_boundaries(
+        base_directory: pathlib.Path | None = None,
+    ) -> pathlib.Path:
+        called.append(base_directory)
+        return pathlib.Path("/boundaries.gpkg")
+
+    monkeypatch.setattr(
+        peri_scribe.administrative_boundaries,
+        "ensure_administrative_boundaries",
+        ensure_administrative_boundaries,
+    )
+    result = runner.invoke(
+        peri_scribe.main.cli,
+        ["ensure-administrative_boundaries"],
+    )
+    assert result.exit_code == 0
+    assert called == [None]
+
+
+def test_ensure_administrative_boundaries_propagates_error(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+) -> None:
+    def fail() -> typing.Never:
+        message = "boom"
+        raise peri_scribe.exceptions.AdministrativeBoundariesError(message)
+
+    monkeypatch.setattr(
+        peri_scribe.administrative_boundaries,
+        "ensure_administrative_boundaries",
+        fail,
+    )
+    result = runner.invoke(
+        peri_scribe.main.cli,
+        ["ensure-administrative_boundaries"],
+    )
+    assert result.exit_code == 1
+    assert isinstance(
+        result.exception,
+        peri_scribe.exceptions.AdministrativeBoundariesError,
+    )
+
+
+def test_cli_help_lists_ensure_administrative_boundaries(
+    runner: click.testing.CliRunner,
+) -> None:
+    result = runner.invoke(peri_scribe.main.cli, ["--help"])
+    assert result.exit_code == 0
+    assert "ensure-administrative_boundaries" in result.output
