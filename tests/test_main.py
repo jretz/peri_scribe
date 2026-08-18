@@ -1144,7 +1144,7 @@ def test_ensure_administrative_boundaries_calls_module(
     )
     result = runner.invoke(
         peri_scribe.main.cli,
-        ["ensure-administrative_boundaries"],
+        ["ensure-admin-boundaries"],
     )
     assert result.exit_code == 0
     assert called == [None]
@@ -1165,7 +1165,7 @@ def test_ensure_administrative_boundaries_propagates_error(
     )
     result = runner.invoke(
         peri_scribe.main.cli,
-        ["ensure-administrative_boundaries"],
+        ["ensure-admin-boundaries"],
     )
     assert result.exit_code == 1
     assert isinstance(
@@ -1179,4 +1179,4 @@ def test_cli_help_lists_ensure_administrative_boundaries(
 ) -> None:
     result = runner.invoke(peri_scribe.main.cli, ["--help"])
     assert result.exit_code == 0
-    assert "ensure-administrative_boundaries" in result.output
+    assert "ensure-admin-boundaries" in result.output

@@ -77,8 +77,7 @@ def test_rate_limit_retry_seconds_uses_retry_after_header() -> None:
     response.headers["Retry-After"] = str(RETRY_AFTER_HEADER_SECONDS)
     error = requests.exceptions.HTTPError("rate limited", response=response)
     assert (
-        peri_scribe.retry.rate_limit_retry_seconds(error)
-        == RETRY_AFTER_HEADER_SECONDS
+        peri_scribe.retry.rate_limit_retry_seconds(error) == RETRY_AFTER_HEADER_SECONDS
     )
 
 
@@ -193,36 +192,39 @@ def test_retry_reason_describes_transient() -> None:
     )
 
 
-def test_retry_wait_uses_server_hint() -> None:
+def test_retry_wait_seconds_uses_server_hint() -> None:
     retry_state = failed_retry_state(ValueError(RATE_LIMIT_ERROR_PAYLOAD))
-    assert peri_scribe.retry.retry_wait(retry_state) == RATE_LIMIT_RETRY_AFTER_SECONDS
+    assert (
+        peri_scribe.retry.retry_wait_seconds(retry_state)
+        == RATE_LIMIT_RETRY_AFTER_SECONDS
+    )
 
 
-def test_retry_wait_uses_fallback_for_loose_429() -> None:
+def test_retry_wait_seconds_uses_fallback_for_loose_429() -> None:
     retry_state = failed_retry_state(ValueError(LOOSE_429_ERROR_PAYLOAD))
     assert (
-        peri_scribe.retry.retry_wait(retry_state)
+        peri_scribe.retry.retry_wait_seconds(retry_state)
         == peri_scribe.retry.FALLBACK_RETRY_SECONDS
     )
 
 
-def test_retry_wait_uses_exponential_backoff() -> None:
+def test_retry_wait_seconds_uses_exponential_backoff() -> None:
     retry_state = failed_retry_state(
         requests.exceptions.ConnectionError("Connection broken"),
     )
     retry_state.attempt_number = 3
-    assert peri_scribe.retry.retry_wait(retry_state) == pytest.approx(
+    assert peri_scribe.retry.retry_wait_seconds(retry_state) == pytest.approx(
         peri_scribe.retry.BACKOFF_BASE_SECONDS * 4,
     )
 
 
-def test_retry_wait_caps_backoff_at_maximum() -> None:
+def test_retry_wait_seconds_caps_backoff_at_maximum() -> None:
     retry_state = failed_retry_state(
         requests.exceptions.ConnectionError("Connection broken"),
     )
     retry_state.attempt_number = 20
     assert (
-        peri_scribe.retry.retry_wait(retry_state)
+        peri_scribe.retry.retry_wait_seconds(retry_state)
         == peri_scribe.retry.BACKOFF_MAXIMUM_SECONDS
     )
 

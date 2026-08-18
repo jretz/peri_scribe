@@ -117,14 +117,14 @@ def line_parts(geometry: shapely.Geometry) -> list[shapely.LineString]:
     return []
 
 
-def total_line_length(geometry: shapely.Geometry) -> float:
-    """Return the total planar length of the LineStrings in *geometry*.
+def total_line_length_in_degrees(geometry: shapely.Geometry) -> float:
+    """Return the total planar length of the LineStrings in *geometry*, in degrees.
 
     Args:
         geometry: The geometry to measure.
 
     Returns:
-        The summed planar length of the contained LineStrings.
+        The summed planar length of the contained LineStrings, in degrees.
     """
     return sum(part.length for part in line_parts(geometry))
 
@@ -156,7 +156,7 @@ def shared_border(
             neighbor_geometry.buffer(INTERSECTION_TOLERANCE_DEGREES),
         ),
     ]
-    best = max(candidates, key=total_line_length)
+    best = max(candidates, key=total_line_length_in_degrees)
     parts = line_parts(best)
     if not parts:
         message = "California and its neighbor share no border"

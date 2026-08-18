@@ -183,8 +183,8 @@ def last_error(retry_state: tenacity.RetryCallState) -> BaseException:
     return typing.cast("BaseException", outcome.exception())
 
 
-def retry_wait(retry_state: tenacity.RetryCallState) -> float:
-    """Return the delay before the next attempt after a failed one.
+def retry_wait_seconds(retry_state: tenacity.RetryCallState) -> float:
+    """Return the delay in seconds before the next attempt after a failed one.
 
     Rate-limit errors use the server-suggested ``Retry after`` delay (or the fallback
     for a loose 429 response); other transient errors use exponential backoff from the
@@ -251,7 +251,7 @@ def run_with_retry[Result](
 
     retrying = tenacity.Retrying(
         retry=tenacity.retry_if_exception(is_retryable_error),
-        wait=retry_wait,
+        wait=retry_wait_seconds,
         stop=tenacity.stop_after_attempt(max_retries + 1),
         before_sleep=log_before_sleep,
         retry_error_callback=log_exhaustion,

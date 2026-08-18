@@ -76,7 +76,7 @@ def bounds_of(
     return x_minimum, x_maximum, y_minimum, y_maximum
 
 
-def projected_maximum_magnitude(crs: pyproj.CRS) -> float:
+def projected_maximum_magnitude_in_crs_units(crs: pyproj.CRS) -> float:
     """Return the largest coordinate magnitude a projected CRS plausibly produces.
 
     Derived from the CRS's area of use: its corners are transformed into the CRS, giving
@@ -84,13 +84,14 @@ def projected_maximum_magnitude(crs: pyproj.CRS) -> float:
 
     Returns:
         The largest coordinate magnitude the CRS plausibly produces, or the
-        `PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK` constant when the CRS has no area of use.
+        `PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK_IN_METERS` constant when the CRS has no
+        area of use.
     """
     area = crs.area_of_use
     if area is None:
-        return peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK
+        return peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK_IN_METERS
     transformer = pyproj.Transformer.from_crs("EPSG:4326", crs, always_xy=True)
-    maximum_magnitude = 0.0
+    maximum_magnitude_in_crs_units = 0.0
     for longitude, latitude in (
         (area.west, area.south),
         (area.east, area.south),
@@ -102,14 +103,14 @@ def projected_maximum_magnitude(crs: pyproj.CRS) -> float:
         except pyproj.exceptions.ProjError, ValueError:
             continue
         if math.isfinite(x_coordinate) and math.isfinite(y_coordinate):
-            maximum_magnitude = max(
-                maximum_magnitude,
+            maximum_magnitude_in_crs_units = max(
+                maximum_magnitude_in_crs_units,
                 abs(x_coordinate),
                 abs(y_coordinate),
             )
-    if not maximum_magnitude:
-        return peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK
-    return maximum_magnitude
+    if not maximum_magnitude_in_crs_units:
+        return peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK_IN_METERS
+    return maximum_magnitude_in_crs_units
 
 
 def spatial_reference_domain(
@@ -134,14 +135,14 @@ def spatial_reference_domain(
     if not crs.is_projected:
         return None
     unit = crs.axis_info[0].unit_name if crs.axis_info else "unknown"
-    maximum_magnitude = projected_maximum_magnitude(crs)
+    maximum_magnitude_in_crs_units = projected_maximum_magnitude_in_crs_units(crs)
     return peri_scribe.models.SpatialReferenceDomain(
         crs,
         (
-            peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE,
-            maximum_magnitude,
-            peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE,
-            maximum_magnitude,
+            peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE_IN_METERS,
+            maximum_magnitude_in_crs_units,
+            peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE_IN_METERS,
+            maximum_magnitude_in_crs_units,
         ),
         f"projected ({unit})",
     )
@@ -150,19 +151,19 @@ def spatial_reference_domain(
 def axis_fits(
     low: float,
     high: float,
-    minimum_magnitude: float,
-    maximum_magnitude: float,
+    minimum_magnitude_in_crs_units: float,
+    maximum_magnitude_in_crs_units: float,
 ) -> bool:
     """Return True if every value in [low, high] has magnitude in the band.
 
     Returns:
         True if every value in [low, high] has magnitude in the band.
     """
-    if max(abs(low), abs(high)) > maximum_magnitude:
+    if max(abs(low), abs(high)) > maximum_magnitude_in_crs_units:
         return False
-    if minimum_magnitude > 0 and low <= 0 <= high:
+    if minimum_magnitude_in_crs_units > 0 and low <= 0 <= high:
         return False
-    return min(abs(low), abs(high)) >= minimum_magnitude
+    return min(abs(low), abs(high)) >= minimum_magnitude_in_crs_units
 
 
 def coordinates_match_domain(

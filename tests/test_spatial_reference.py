@@ -12,7 +12,7 @@ from tests.conftest import (
     NAD83_WKID,
     NAVD88_HEIGHT_WKID,
     UNKNOWN_WKID,
-    WEB_MERCATOR_MAXIMUM_MAGNITUDE,
+    WEB_MERCATOR_MAXIMUM_MAGNITUDE_IN_METERS,
     WEB_MERCATOR_WKID,
     WGS84_WKID,
     FeatureSetStub,
@@ -147,31 +147,33 @@ def test_bounds_of_polygon() -> None:
     assert peri_scribe.spatial_reference.bounds_of(geometries) == (0.0, 10.0, 0.0, 5.0)
 
 
-def test_projected_maximum_magnitude_web_mercator() -> None:
+def test_projected_maximum_magnitude_in_crs_units_web_mercator() -> None:
     crs = pyproj.CRS.from_epsg(WEB_MERCATOR_WKID)
-    assert peri_scribe.spatial_reference.projected_maximum_magnitude(
+    assert peri_scribe.spatial_reference.projected_maximum_magnitude_in_crs_units(
         crs,
     ) == pytest.approx(
-        WEB_MERCATOR_MAXIMUM_MAGNITUDE,
+        WEB_MERCATOR_MAXIMUM_MAGNITUDE_IN_METERS,
     )
 
 
-def test_projected_maximum_magnitude_fallback_without_area_of_use() -> None:
+def test_projected_maximum_magnitude_in_crs_units_fallback_without_area_of_use() -> (
+    None
+):
     crs = pyproj.CRS.from_proj4("+proj=aeqd +lat_0=0 +lon_0=0 +datum=WGS84 +units=m")
     assert (
-        peri_scribe.spatial_reference.projected_maximum_magnitude(crs)
-        == peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK
+        peri_scribe.spatial_reference.projected_maximum_magnitude_in_crs_units(crs)
+        == peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK_IN_METERS
     )
 
 
-def test_projected_maximum_magnitude_falls_back_when_all_corner_transforms_fail(
+def test_projected_maximum_magnitude_in_crs_units_uses_fallback_when_transforms_fail(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(pyproj.Transformer, "from_crs", failing_from_crs)
     crs = pyproj.CRS.from_epsg(WEB_MERCATOR_WKID)
     assert (
-        peri_scribe.spatial_reference.projected_maximum_magnitude(crs)
-        == peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK
+        peri_scribe.spatial_reference.projected_maximum_magnitude_in_crs_units(crs)
+        == peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK_IN_METERS
     )
 
 
@@ -188,10 +190,10 @@ def test_spatial_reference_domain_projected() -> None:
     assert domain is not None
     assert domain.crs.is_projected
     x_minimum_band, x_maximum_band, y_minimum_band, y_maximum_band = domain.bands
-    assert x_minimum_band == peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE
-    assert x_maximum_band == pytest.approx(WEB_MERCATOR_MAXIMUM_MAGNITUDE)
-    assert y_minimum_band == peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE
-    assert y_maximum_band == pytest.approx(WEB_MERCATOR_MAXIMUM_MAGNITUDE)
+    assert x_minimum_band == peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE_IN_METERS
+    assert x_maximum_band == pytest.approx(WEB_MERCATOR_MAXIMUM_MAGNITUDE_IN_METERS)
+    assert y_minimum_band == peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE_IN_METERS
+    assert y_maximum_band == pytest.approx(WEB_MERCATOR_MAXIMUM_MAGNITUDE_IN_METERS)
     assert domain.description == "projected (metre)"
 
 

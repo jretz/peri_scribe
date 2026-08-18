@@ -25,13 +25,13 @@ if TYPE_CHECKING:
 
 GEOMETRY_COLUMN_NAME = "geom"
 
-# Minimum plausible magnitude for coordinates in a projected (metre) reference. Smaller
-# magnitudes are indistinguishable from degrees.
-MINIMUM_PROJECTED_MAGNITUDE = 1_000.0
+# Minimum plausible coordinate magnitude, in meters, for a projected reference.
+# Smaller magnitudes are indistinguishable from degrees.
+MINIMUM_PROJECTED_MAGNITUDE_IN_METERS = 1_000.0
 
-# Fallback maximum magnitude for a projected reference with no known area of use;
-# roughly the widest extent any Earth-based projection produces.
-PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK = 25_000_000.0
+# Fallback maximum coordinate magnitude, in meters, for a projected reference with no
+# known area of use; roughly the widest extent any Earth-based projection produces.
+PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK_IN_METERS = 25_000_000.0
 
 
 def load_feeds_config() -> list[dict[str, typing.Any]]:

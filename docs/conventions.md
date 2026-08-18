@@ -22,6 +22,8 @@ In general, avoid using `from <module> import <name>`. Instead, use `import <mod
 
 Abbreviations are not used in this codebase. All variable names, function names, and constants are written out in full. Exceptions are reserved for universally understood abbreviations (e.g., KML, ID, URL) and conventional single-letter loop variables (`i`, `j` for indices; `a`, `b` for sort comparators). Terms like longitude, latitude, minimum, and maximum are written out in full, rather than abbreviated to `lon`, `lat`, `min`, and `max`.
 
+When the value for a variable or parameter, or the return value for a function has real-world units, encode the units in the name. For example, `distance_in_meters` and `time_in_seconds`.
+
 ## Calling Functions and Methods
 
 When a function or method, whether in this project's source code or in a library, has a default value for an argument, never pass the default value for that argument (unless it happens to be the result of a dynamic expression).
