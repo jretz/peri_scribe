@@ -443,9 +443,10 @@ def test_cli_configures_logging_from_log_level(
         "configure_logging",
         configured_levels.append,
     )
+    monkeypatch.setattr(peri_scribe.models, "FEEDS", [])
     result = runner.invoke(
         peri_scribe.main.cli,
-        ["--log-level", "DEBUG", "feed-config"],
+        ["--log-level", "DEBUG", "current-watermarks"],
     )
     assert result.exit_code == 0
     assert configured_levels == ["debug"]
@@ -516,27 +517,6 @@ def test_fetch_fails_fast_when_feed_returns_no_features(
         f"Feed {SAMPLE_FEED_NAME} returned no features; no output was written"
     ) in result.output
     assert not geo_package_store.has(snapshot_path())
-
-
-def test_feed_config_logs_each_configured_feed(
-    monkeypatch: pytest.MonkeyPatch,
-    runner: click.testing.CliRunner,
-) -> None:
-    monkeypatch.setattr(
-        peri_scribe.output,
-        "configure_logging",
-        lambda log_level: log_level,
-    )
-    with structlog.testing.capture_logs() as captured:
-        result = runner.invoke(peri_scribe.main.cli, ["feed-config"])
-    assert result.exit_code == 0
-    assert len(captured) == len(peri_scribe.models.FEEDS)
-    for index, (event, feed) in enumerate(
-        zip(captured, peri_scribe.models.FEEDS, strict=True),
-    ):
-        assert event["event"] == f"Feed {index + 1}"
-        assert event["name"] == feed.name
-        assert event["url"] == feed.url
 
 
 def test_current_watermarks_logs_each_feed_watermark(

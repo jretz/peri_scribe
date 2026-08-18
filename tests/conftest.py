@@ -51,18 +51,17 @@ SAMPLE_FIRE_NAME_COLUMN = "name"
 SAMPLE_STATUS_COLUMN = "status"
 
 
-def sample_feed_config() -> dict[str, str]:
-    """A feed configuration for the sample ArcGIS feed.
+def sample_feed() -> peri_scribe.feed_types.ArcGISFeed:
+    """Return the sample ArcGIS feed.
 
     Returns:
-        The configuration for the sample ArcGIS feed.
+        The sample ArcGIS feed.
     """
-    return {
-        "feed_type": "ArcGISFeed",
-        "url": SAMPLE_FEED_URL,
-        "fire_name_column": SAMPLE_FIRE_NAME_COLUMN,
-        "status_column": SAMPLE_STATUS_COLUMN,
-    }
+    return peri_scribe.feed_types.ArcGISFeed(
+        url=SAMPLE_FEED_URL,
+        fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
+        status_column=SAMPLE_STATUS_COLUMN,
+    )
 
 
 class LayerStub(arcgis.features.FeatureLayer):
@@ -179,22 +178,18 @@ def configured_feeds(
     Returns:
         The two feeds, configured with fire name and status columns.
     """
-    feeds = list(
-        peri_scribe.models.build_feeds([
-            {
-                "feed_type": "ArcGISFeed",
-                "url": "https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
-                "fire_name_column": "incident_name",
-                "status_column": "displayStatus",
-            },
-            {
-                "feed_type": "ArcGISFeed",
-                "url": "https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
-                "fire_name_column": "IncidentName",
-                "status_column": "ActiveFireCandidate",
-            },
-        ]),
-    )
+    feeds = [
+        peri_scribe.feed_types.ArcGISFeed(
+            url="https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
+            fire_name_column="incident_name",
+            status_column="displayStatus",
+        ),
+        peri_scribe.feed_types.ArcGISFeed(
+            url="https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
+            fire_name_column="IncidentName",
+            status_column="ActiveFireCandidate",
+        ),
+    ]
     monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
     return feeds
 
@@ -212,27 +207,23 @@ def configured_feeds_with_identifiers(
         The two feeds, configured with fire name, status, identifier, and
         complex columns.
     """
-    feeds = list(
-        peri_scribe.models.build_feeds([
-            {
-                "feed_type": "ArcGISFeed",
-                "url": "https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
-                "fire_name_column": "incident_name",
-                "status_column": "displayStatus",
-                "fire_identifier_columns": ["incident_number"],
-            },
-            {
-                "feed_type": "ArcGISFeed",
-                "url": "https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
-                "fire_name_column": "IncidentName",
-                "status_column": "ActiveFireCandidate",
-                "fire_identifier_columns": ["IrwinID"],
-                "complex_identifier_column": "CpxID",
-                "complex_name_column": "CpxName",
-                "is_complex_child_column": "IsCpxChild",
-            },
-        ]),
-    )
+    feeds = [
+        peri_scribe.feed_types.ArcGISFeed(
+            url="https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
+            fire_name_column="incident_name",
+            status_column="displayStatus",
+            fire_identifier_columns=("incident_number",),
+        ),
+        peri_scribe.feed_types.ArcGISFeed(
+            url="https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
+            fire_name_column="IncidentName",
+            status_column="ActiveFireCandidate",
+            fire_identifier_columns=("IrwinID",),
+            complex_identifier_column="CpxID",
+            complex_name_column="CpxName",
+            is_complex_child_column="IsCpxChild",
+        ),
+    ]
     monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
     return feeds
 
@@ -247,19 +238,16 @@ def configured_feeds_with_mission(
         The feed, configured with name, status, identifier, mission, and observation
         time columns.
     """
-    feeds = list(
-        peri_scribe.models.build_feeds([
-            {
-                "feed_type": "ArcGISFeed",
-                "url": "https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
-                "fire_name_column": "incident_name",
-                "status_column": "displayStatus",
-                "fire_identifier_columns": ["incident_number"],
-                "mission_column": "mission",
-                "observation_time_column": "poly_DateCurrent",
-            },
-        ]),
-    )
+    feeds = [
+        peri_scribe.feed_types.ArcGISFeed(
+            url="https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
+            fire_name_column="incident_name",
+            status_column="displayStatus",
+            fire_identifier_columns=("incident_number",),
+            mission_column="mission",
+            observation_time_column="poly_DateCurrent",
+        ),
+    ]
     monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
     return feeds
 
@@ -274,20 +262,17 @@ def configured_feeds_with_point_of_origin(
         The feed, configured with name, status, identifier, mission, and point of
         origin columns.
     """
-    feeds = list(
-        peri_scribe.models.build_feeds([
-            {
-                "feed_type": "ArcGISFeed",
-                "url": "https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
-                "fire_name_column": "IncidentName",
-                "status_column": "ActiveFireCandidate",
-                "fire_identifier_columns": ["IrwinID"],
-                "mission_column": "mission",
-                "point_of_origin_state_column": "POOState",
-                "point_of_origin_fips_column": "POOFips",
-            },
-        ]),
-    )
+    feeds = [
+        peri_scribe.feed_types.ArcGISFeed(
+            url="https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
+            fire_name_column="IncidentName",
+            status_column="ActiveFireCandidate",
+            fire_identifier_columns=("IrwinID",),
+            mission_column="mission",
+            point_of_origin_state_column="POOState",
+            point_of_origin_fips_column="POOFips",
+        ),
+    ]
     monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
     return feeds
 

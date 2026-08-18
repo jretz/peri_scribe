@@ -14,9 +14,7 @@ When the output KML files are updated, a notification is sent to a configurable 
 
 ### Data Sources and Notification Recipients
 
-There is a JSON file that contains a list of data sources. Each data source has properties indicating how to pull the data and when (time based? frequency based? triggered? multiple of these options?).
-
-The same JSON file contains a list of notification recipients. Each recipient has properties indicating how to send the notification (email? text message? other?) and when (e.g., Any perimeter grew by a certain percentage or number of acres? Update to a fire that started in the last day and is over a certain number of acres?).
+A JSON file contains a list of notification recipients. Each recipient has properties indicating how to send the notification (email? text message? other?) and when (e.g., Any perimeter grew by a certain percentage or number of acres? Update to a fire that started in the last day and is over a certain number of acres?).
 
 ### Symbolization
 

@@ -2,7 +2,7 @@
 
 ## Form
 
-peri_scribe is a command line tool. It accepts the commands `fetch`, `feed-config`, `current-watermarks`, and `list-fires`.
+peri_scribe is a command line tool. It accepts the commands `fetch`, `current-watermarks`, and `list-fires`.
 
 `fetch` retrieves data from the configured sources, one source at a time. Each source's data is written to its own GeoPackage snapshot, named by serial number and the observed watermark, under `data/<year>/sources/<feed name>/`. A source with no prior snapshots is fetched in full; a source that already has snapshots is fetched incrementally, and existing snapshots are never modified. When the current watermark already matches an existing snapshot, that source is skipped.
 

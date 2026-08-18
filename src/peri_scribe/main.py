@@ -55,19 +55,6 @@ def fetch() -> None:
 
 
 @cli.command()
-def feed_config() -> None:
-    """Log the configured feeds."""
-    for i, feed in enumerate(peri_scribe.models.FEEDS):
-        logger.info(
-            "Feed %d",
-            i + 1,
-            feed_type=type(feed).__name__,
-            name=feed.name,
-            url=feed.url,
-        )
-
-
-@cli.command()
 def current_watermarks() -> None:
     """Log the current watermark for each configured feed."""
     for index, feed in enumerate(peri_scribe.models.FEEDS, start=1):

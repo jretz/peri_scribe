@@ -1099,16 +1099,11 @@ def change_feed(
     Returns:
         The feed.
     """
-    return next(
-        peri_scribe.models.build_feeds([
-            {
-                "feed_type": "ArcGISFeed",
-                "url": "https://example.test/ArcGIS/rest/services/Fires/FeatureServer/0",
-                "fire_name_column": "name",
-                "status_column": "status",
-                "modified_column": modified_column,
-            },
-        ]),
+    return peri_scribe.feed_types.ArcGISFeed(
+        url="https://example.test/ArcGIS/rest/services/Fires/FeatureServer/0",
+        fire_name_column="name",
+        status_column="status",
+        modified_column=modified_column,
     )
 
 

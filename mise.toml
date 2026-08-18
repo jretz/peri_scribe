@@ -4,12 +4,6 @@ depends = ["venv"]
 raw_args = true
 run = "uv run --locked --module peri_scribe.main"
 
-[tasks.feed-config]
-description = "Log the configured feeds"
-depends = ["venv"]
-raw_args = true
-run = "uv run --locked --module peri_scribe.main feed-config"
-
 [tasks.ensure-admin-boundaries]
 description = "Ensure needed administrative boundaries are available"
 depends = ["venv"]
