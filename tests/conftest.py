@@ -15,12 +15,14 @@ import shapely.geometry
 import peri_scribe.feed_types
 import peri_scribe.geo_data
 import peri_scribe.models
-import peri_scribe.operations
 import peri_scribe.output
+import peri_scribe.snapshots
 
 
 if typing.TYPE_CHECKING:
     import pandas as pd
+
+    import tests.factories
 
 
 WGS84_WKID = 4326
@@ -214,6 +216,59 @@ def sample_geo_dataframe() -> geopandas.GeoDataFrame:
         ],
         crs=pyproj.CRS.from_epsg(WGS84_WKID),
     )
+
+
+@pytest.fixture
+def stub_fire_reader(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tests.factories.StubFireReader:
+    """Point the GeoPackage readers at in-memory fires and memberships.
+
+    Returns:
+        A function that installs stand-ins serving the given fires and
+        memberships per GeoPackage path.
+    """
+
+    def stub(
+        records_by_path: dict[pathlib.Path, list[peri_scribe.models.FireRecord]],
+        memberships_by_path: dict[
+            pathlib.Path,
+            list[peri_scribe.models.ComplexMembership],
+        ]
+        | None = None,
+    ) -> None:
+        def fake_fire_records(
+            path: pathlib.Path,
+        ) -> typing.Iterator[peri_scribe.models.FireRecord]:
+            yield from records_by_path.get(path, [])
+
+        def fake_complex_memberships(
+            path: pathlib.Path,
+        ) -> typing.Iterator[peri_scribe.models.ComplexMembership]:
+            yield from (memberships_by_path or {}).get(path, [])
+
+        def fake_geo_package_files(
+            _directory: pathlib.Path,
+        ) -> list[pathlib.Path]:
+            return sorted(set(records_by_path) | set(memberships_by_path or {}))
+
+        monkeypatch.setattr(
+            peri_scribe.geo_data,
+            "fire_records",
+            fake_fire_records,
+        )
+        monkeypatch.setattr(
+            peri_scribe.geo_data,
+            "complex_memberships",
+            fake_complex_memberships,
+        )
+        monkeypatch.setattr(
+            peri_scribe.snapshots,
+            "geo_package_files",
+            fake_geo_package_files,
+        )
+
+    return stub
 
 
 @pytest.fixture
@@ -465,7 +520,7 @@ def geo_package_store(
     store = GeoPackageStore()
     monkeypatch.setattr(peri_scribe.output, "write_geopackage", store.write)
     monkeypatch.setattr(
-        peri_scribe.operations,
+        peri_scribe.snapshots,
         "existing_geopackage_filenames",
         store.filenames,
     )

@@ -15,11 +15,13 @@ import time_machine
 
 import peri_scribe.administrative_boundaries
 import peri_scribe.exceptions
+import peri_scribe.fetching
+import peri_scribe.fire_index
 import peri_scribe.main
 import peri_scribe.models
-import peri_scribe.operations
 import peri_scribe.output
 import peri_scribe.retry
+import peri_scribe.snapshots
 from tests.conftest import (
     CLICK_USAGE_ERROR_EXIT_CODE,
     RATE_LIMIT_ERROR_PAYLOAD,
@@ -155,9 +157,9 @@ def fetch_setup(
             ),
         ],
     )
-    monkeypatch.setattr(peri_scribe.operations.arcgis.gis, "GIS", object)
+    monkeypatch.setattr(peri_scribe.fetching.arcgis.gis, "GIS", object)
     monkeypatch.setattr(
-        peri_scribe.operations,
+        peri_scribe.fire_index,
         "index_fire_sources",
         lambda _year_directory: None,
     )
@@ -180,7 +182,7 @@ def snapshot_path(
         The snapshot path, assuming the 2026 test year, no prior snapshots, and a
         first serial number of 0.
     """
-    return peri_scribe.operations.source_geopackage_path(
+    return peri_scribe.snapshots.source_geopackage_path(
         BASE_DIRECTORY,
         2026,
         feed_name,
@@ -221,7 +223,7 @@ def test_list_fires_defaults_to_current_year_directory(
         })
 
     monkeypatch.setattr(
-        peri_scribe.operations,
+        peri_scribe.fire_index,
         "load_fire_index",
         load_fire_index,
     )
@@ -258,7 +260,7 @@ def test_list_fires_logs_fire_names_and_statuses(
         ],
     })
     monkeypatch.setattr(
-        peri_scribe.operations,
+        peri_scribe.fire_index,
         "load_fire_index",
         lambda _year_directory: index,
     )
@@ -287,7 +289,7 @@ def test_list_fires_propagates_index_build_error(
         )
 
     monkeypatch.setattr(
-        peri_scribe.operations,
+        peri_scribe.fire_index,
         "load_fire_index",
         fail,
     )
@@ -350,7 +352,7 @@ def test_fetch_writes_geo_package(
     geo_package_store: GeoPackageStore,
 ) -> None:
     monkeypatch.setattr(
-        peri_scribe.operations.arcgis.features,
+        peri_scribe.fetching.arcgis.features,
         "FeatureLayer",
         lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
     )
@@ -370,7 +372,7 @@ def test_fetch_fails_fast_when_query_fails(
     geo_package_store: GeoPackageStore,
 ) -> None:
     monkeypatch.setattr(
-        peri_scribe.operations.arcgis.features,
+        peri_scribe.fetching.arcgis.features,
         "FeatureLayer",
         lambda url, gis: FeatureLayerStub(
             url,
@@ -392,7 +394,7 @@ def test_fetch_fails_fast_when_feed_returns_no_features(
     geo_package_store: GeoPackageStore,
 ) -> None:
     monkeypatch.setattr(
-        peri_scribe.operations.arcgis.features,
+        peri_scribe.fetching.arcgis.features,
         "FeatureLayer",
         lambda url, gis: FeatureLayerStub(
             url,
@@ -460,7 +462,7 @@ def test_fetch_retries_on_429_and_succeeds(
         feature_set_with_geometry,
     ]
     monkeypatch.setattr(
-        peri_scribe.operations.arcgis.features,
+        peri_scribe.fetching.arcgis.features,
         "FeatureLayer",
         lambda url, gis: MultiQueryLayerStub(url, gis, outcomes),
     )
@@ -487,7 +489,7 @@ def test_fetch_exhausts_retries_and_exits(
         max_retries + 2
     )
     monkeypatch.setattr(
-        peri_scribe.operations.arcgis.features,
+        peri_scribe.fetching.arcgis.features,
         "FeatureLayer",
         lambda url, gis: MultiQueryLayerStub(url, gis, outcomes),
     )
@@ -522,7 +524,7 @@ def test_fetch_writes_one_file_per_source_named_by_watermark(
     )
     monkeypatch.setattr(peri_scribe.models, "FEEDS", [first, second])
     monkeypatch.setattr(
-        peri_scribe.operations.arcgis.features,
+        peri_scribe.fetching.arcgis.features,
         "FeatureLayer",
         lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
     )
@@ -572,7 +574,7 @@ def test_fetch_increments_serial_number_for_new_watermark(
     ])
     delta = wgs84_feature_set([(3, "c", 5.0, 6.0)])
     monkeypatch.setattr(
-        peri_scribe.operations.arcgis.features,
+        peri_scribe.fetching.arcgis.features,
         "FeatureLayer",
         lambda url, gis: DeltaFeatureLayerStub(url, gis, full, delta),
     )
@@ -636,7 +638,7 @@ def test_fetch_writes_no_new_file_when_nothing_changed(
         (2, "b", 3.0, 4.0),
     ])
     monkeypatch.setattr(
-        peri_scribe.operations.arcgis.features,
+        peri_scribe.fetching.arcgis.features,
         "FeatureLayer",
         lambda url, gis: DeltaFeatureLayerStub(
             url,
@@ -692,7 +694,7 @@ def test_fetch_reuses_serial_number_for_unchanged_watermark(
 ) -> None:
     watermark = "lastEdit=1"
     monkeypatch.setattr(
-        peri_scribe.operations.arcgis.features,
+        peri_scribe.fetching.arcgis.features,
         "FeatureLayer",
         lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
     )
@@ -752,7 +754,7 @@ def test_fetch_observes_watermark_before_downloading(
     )
     monkeypatch.setattr(peri_scribe.models, "FEEDS", [feed])
     monkeypatch.setattr(
-        peri_scribe.operations.arcgis.features,
+        peri_scribe.fetching.arcgis.features,
         "FeatureLayer",
         lambda url, gis: RecordingFeatureLayerStub(
             url,
@@ -781,7 +783,7 @@ def test_fetch_skips_download_when_watermark_already_present(
     )
     monkeypatch.setattr(peri_scribe.models, "FEEDS", [feed])
     monkeypatch.setattr(
-        peri_scribe.operations.arcgis.features,
+        peri_scribe.fetching.arcgis.features,
         "FeatureLayer",
         lambda url, gis: RecordingFeatureLayerStub(
             url,
@@ -816,13 +818,13 @@ def test_fetch_reindexes_fire_sources_after_successful_fetch(
     feature_set_with_geometry: arcgis.features.FeatureSet,
 ) -> None:
     monkeypatch.setattr(
-        peri_scribe.operations.arcgis.features,
+        peri_scribe.fetching.arcgis.features,
         "FeatureLayer",
         lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
     )
     indexed: list[pathlib.Path] = []
     monkeypatch.setattr(
-        peri_scribe.operations,
+        peri_scribe.fire_index,
         "index_fire_sources",
         indexed.append,
     )
@@ -861,13 +863,13 @@ def test_fetch_reindexes_after_a_feed_fails(
         return FeatureLayerStub(url, gis, feature_set_with_geometry)
 
     monkeypatch.setattr(
-        peri_scribe.operations.arcgis.features,
+        peri_scribe.fetching.arcgis.features,
         "FeatureLayer",
         layer_factory,
     )
     indexed: list[pathlib.Path] = []
     monkeypatch.setattr(
-        peri_scribe.operations,
+        peri_scribe.fire_index,
         "index_fire_sources",
         indexed.append,
     )
@@ -885,7 +887,7 @@ def test_fetch_does_not_reindex_when_no_feed_succeeds(
     runner: click.testing.CliRunner,
 ) -> None:
     monkeypatch.setattr(
-        peri_scribe.operations.arcgis.features,
+        peri_scribe.fetching.arcgis.features,
         "FeatureLayer",
         lambda url, gis: FeatureLayerStub(
             url,
@@ -896,7 +898,7 @@ def test_fetch_does_not_reindex_when_no_feed_succeeds(
     )
     indexed: list[pathlib.Path] = []
     monkeypatch.setattr(
-        peri_scribe.operations,
+        peri_scribe.fire_index,
         "index_fire_sources",
         indexed.append,
     )
@@ -917,7 +919,7 @@ def test_index_fire_sources_defaults_to_current_year_directory(
     )
     indexed: list[pathlib.Path] = []
     monkeypatch.setattr(
-        peri_scribe.operations,
+        peri_scribe.fire_index,
         "index_fire_sources",
         indexed.append,
     )
@@ -966,7 +968,7 @@ def test_index_fire_sources_builds_index(
     )
     indexed: list[pathlib.Path] = []
     monkeypatch.setattr(
-        peri_scribe.operations,
+        peri_scribe.fire_index,
         "index_fire_sources",
         indexed.append,
     )

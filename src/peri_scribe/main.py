@@ -9,9 +9,11 @@ import click
 import structlog
 
 import peri_scribe.administrative_boundaries
+import peri_scribe.fetching
+import peri_scribe.fire_index
 import peri_scribe.models
-import peri_scribe.operations
 import peri_scribe.output
+import peri_scribe.snapshots
 
 
 logger = structlog.get_logger()
@@ -23,7 +25,7 @@ def default_year_directory() -> pathlib.Path:
     Returns:
         The path to ``data/<current year>`` under the current working directory.
     """
-    return peri_scribe.operations.year_directory_path(
+    return peri_scribe.snapshots.year_directory_path(
         pathlib.Path.cwd(),
         datetime.date.today().year,
     )
@@ -51,7 +53,7 @@ def cli(log_level: str) -> None:
 @cli.command()
 def fetch() -> None:
     """Fetch each configured feed into a GeoPackage."""
-    peri_scribe.operations.fetch_all_feeds()
+    peri_scribe.fetching.fetch_all_feeds()
 
 
 @cli.command()
@@ -102,7 +104,7 @@ def list_fires(year_directory: pathlib.Path | None = None) -> None:
     if year_directory is None:
         year_directory = default_year_directory()
     for index, fire in enumerate(
-        peri_scribe.operations.load_fire_index(year_directory).fires,
+        peri_scribe.fire_index.load_fire_index(year_directory).fires,
         start=1,
     ):
         logger.info(
@@ -133,7 +135,7 @@ def list_fires(year_directory: pathlib.Path | None = None) -> None:
 def index_fire_sources(year_directory: pathlib.Path | None = None) -> None:
     if year_directory is None:
         year_directory = default_year_directory()
-    peri_scribe.operations.index_fire_sources(year_directory)
+    peri_scribe.fire_index.index_fire_sources(year_directory)
 
 
 @cli.command()
