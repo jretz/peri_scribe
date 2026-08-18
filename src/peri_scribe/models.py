@@ -25,8 +25,6 @@ if TYPE_CHECKING:
 
 GEOMETRY_COLUMN_NAME = "geom"
 
-DATA_DIRECTORY_NAME = "data"
-
 # Minimum plausible coordinate magnitude, in meters, for a projected reference.
 # Smaller magnitudes are indistinguishable from degrees.
 MINIMUM_PROJECTED_MAGNITUDE_IN_METERS = 1_000.0

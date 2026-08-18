@@ -1,11 +1,4 @@
-"""Administrative boundary GeoPackages: fetching, computation, and upkeep.
-
-The California ArcGIS service publishes the state's boundary as a single polygon
-feature. The portions of that boundary shared with the neighboring US states (Arizona,
-Nevada, and Oregon) are computed by intersecting the state boundary with each neighbor's
-polygon from the same-source generalized states dataset, and are written to a
-GeoPackage. This module is independent of the configured feeds.
-"""
+"""Administrative boundary GeoPackages: fetching, computation, and upkeep."""
 
 from __future__ import annotations
 
@@ -21,11 +14,11 @@ import geopandas
 import pyproj
 import shapely
 import structlog
+import us
 
 import peri_scribe.exceptions
 import peri_scribe.geo_data
 import peri_scribe.models
-import peri_scribe.operations
 import peri_scribe.output
 
 
@@ -46,7 +39,7 @@ NEIGHBOR_LAYER_URL = (
 
 # The neighboring US states whose shared borders with California are kept, in the order
 # the features are written.
-NEIGHBOR_STATE_ABBREVIATIONS = ("AZ", "NV", "OR")
+NEIGHBOR_STATES = [us.states.AZ, us.states.NV, us.states.OR]
 
 CALIFORNIA_WHERE_CLAUSE = "STATE_ABBR='CA'"
 NEIGHBOR_WHERE_CLAUSE = "STATE_ABBR IN ('AZ','NV','OR')"
@@ -67,7 +60,7 @@ OUTPUT_SPATIAL_REFERENCE_ID = 4326
 # meter. In degrees this is roughly one meter.
 INTERSECTION_TOLERANCE_DEGREES = 1e-5
 
-EXPECTED_FEATURE_COUNT = len(NEIGHBOR_STATE_ABBREVIATIONS)
+EXPECTED_FEATURE_COUNT = len(NEIGHBOR_STATES)
 EXPECTED_COLUMNS = frozenset(
     {
         NEIGHBOR_COLUMN_NAME,
@@ -101,7 +94,7 @@ def output_geopackage_path(base_dir: pathlib.Path) -> pathlib.Path:
     """
     return (
         base_dir
-        / peri_scribe.operations.DATA_DIRECTORY_NAME
+        / peri_scribe.output.DATA_DIRECTORY
         / OUTPUT_DIRECTORY_NAME
         / OUTPUT_FILENAME
     )
@@ -524,10 +517,13 @@ def ordered_border_coordinates(
     start_key = min(odd_endpoints, key=operator.itemgetter(0))
     ordered = [representatives[start_key]]
     current_key = start_key
-    previous_segment: tuple[
-        tuple[float, float],
-        tuple[float, float],
-    ] | None = None
+    previous_segment: (
+        tuple[
+            tuple[float, float],
+            tuple[float, float],
+        ]
+        | None
+    ) = None
     while True:
         incident = [
             segment

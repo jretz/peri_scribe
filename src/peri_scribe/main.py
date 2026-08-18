@@ -90,7 +90,7 @@ def year_directory_default_help() -> str:
     """
     return (
         f"YEAR_DIRECTORY defaults to "
-        f"{peri_scribe.operations.DATA_DIRECTORY_NAME}/"
+        f"{peri_scribe.output.DATA_DIRECTORY}/"
         f"{datetime.date.today().year}."
     )
 

@@ -11,6 +11,9 @@ if TYPE_CHECKING:
     import peri_scribe.models
 
 
+DATA_DIRECTORY = pathlib.Path("data")
+
+
 def write_geopackage(
     path: pathlib.Path,
     layers: list[peri_scribe.models.LayerData],

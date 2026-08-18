@@ -19,6 +19,7 @@ dependencies = [
     "tenacity",
     "time-machine",
     "ty",
+    "us",
 ]
 
 [build-system]

@@ -25,6 +25,7 @@ import typing
 import numpy as np
 import pyproj
 import shapely
+import us.states
 
 import peri_scribe.administrative_boundaries
 import peri_scribe.models
@@ -34,69 +35,11 @@ CALIFORNIA_ALBERS_SPATIAL_REFERENCE_ID = 3310
 
 SQUARE_METERS_PER_ACRE = 4046.8564224
 
-CALIFORNIA_STATE_ABBREVIATION = "ca"
-CALIFORNIA_STATE_CODE = "us-ca"
-CALIFORNIA_FIPS_PREFIX = "06"
+CALIFORNIA_STATE_ABBREVIATION = us.states.CA.abbr.casefold()
+CALIFORNIA_STATE_CODE = f"us-{us.states.CA.abbr.casefold()}"
+CALIFORNIA_FIPS_PREFIX = typing.cast("str", us.states.CA.fips)
 
 STATE_CODE_LENGTH = 2
-
-# Every US state (and the District of Columbia) abbreviation, lowercased, used to detect
-# a state code embedded in a fire unit prefix.
-US_STATE_ABBREVIATIONS = frozenset(
-    {
-        "al",
-        "ak",
-        "az",
-        "ar",
-        "ca",
-        "co",
-        "ct",
-        "de",
-        "dc",
-        "fl",
-        "ga",
-        "hi",
-        "id",
-        "il",
-        "in",
-        "ia",
-        "ks",
-        "ky",
-        "la",
-        "me",
-        "md",
-        "ma",
-        "mi",
-        "mn",
-        "ms",
-        "mo",
-        "mt",
-        "ne",
-        "nv",
-        "nh",
-        "nj",
-        "nm",
-        "ny",
-        "nc",
-        "nd",
-        "oh",
-        "ok",
-        "or",
-        "pa",
-        "ri",
-        "sc",
-        "sd",
-        "tn",
-        "tx",
-        "ut",
-        "vt",
-        "va",
-        "wa",
-        "wv",
-        "wi",
-        "wy",
-    },
-)
 
 
 class FireSourceKind(enum.Enum):
@@ -513,7 +456,7 @@ def unit_state_code_is_out_of_state(token: str) -> bool:
         return False
     state_code = folded[:STATE_CODE_LENGTH]
     return (
-        state_code in US_STATE_ABBREVIATIONS
+        us.states.lookup(state_code) is not None
         and state_code != CALIFORNIA_STATE_ABBREVIATION
     )
 

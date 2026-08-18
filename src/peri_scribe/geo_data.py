@@ -16,6 +16,7 @@ import geopandas
 import pandas as pd
 import pyproj
 import structlog
+import us.states
 
 import peri_scribe.exceptions
 import peri_scribe.feed_types
@@ -212,7 +213,6 @@ def is_complex_child_from(value: object) -> bool:
 
 MISSION_TAIL_PATTERN = re.compile(r"^[a-z]?\d{2}[a-z]$")
 
-STATE_CODE_LENGTH = 2
 MINIMUM_UNIT_CODE_LENGTH = 3
 UNIT_PREFIX_TOKEN_COUNT = 2
 
@@ -266,8 +266,7 @@ def mission_name_from(value: object) -> peri_scribe.models.MissionName | None:
     start = 0
     if (
         len(folded) >= UNIT_PREFIX_TOKEN_COUNT
-        and len(folded[0]) == STATE_CODE_LENGTH
-        and folded[0].isalpha()
+        and us.states.lookup(folded[0]) is not None
         and len(folded[1]) >= MINIMUM_UNIT_CODE_LENGTH
         and folded[1].isalnum()
     ):

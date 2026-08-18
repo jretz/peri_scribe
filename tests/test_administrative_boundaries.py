@@ -245,10 +245,13 @@ def test_border_length_in_kilometers_sums_line_parts() -> None:
 
 
 def test_border_dataframe_builds_neighbor_rows() -> None:
+    neighbor_states = peri_scribe.administrative_boundaries.NEIGHBOR_STATES
+    neighbor_state_names = [state.name for state in neighbor_states]
+    neighbor_state_abbreviations = [state.abbr for state in neighbor_states]
     neighbors = geopandas.GeoDataFrame(
         {
-            "STATE_NAME": ["Arizona", "Nevada", "Oregon"],
-            "STATE_ABBR": ["AZ", "NV", "OR"],
+            "STATE_NAME": neighbor_state_names,
+            "STATE_ABBR": neighbor_state_abbreviations,
         },
         geometry=[ARIZONA, NEVADA, OREGON],
         crs=pyproj.CRS.from_epsg(4326),
@@ -257,11 +260,8 @@ def test_border_dataframe_builds_neighbor_rows() -> None:
         CALIFORNIA,
         neighbors,
     )
-    assert list(border["NEIGHBOR"]) == ["Arizona", "Nevada", "Oregon"]
-    assert list(border["NEIGHBOR_ABBR"]) == ["AZ", "NV", "OR"]
-    assert list(border["NEIGHBOR_ABBR"]) == list(
-        peri_scribe.administrative_boundaries.NEIGHBOR_STATE_ABBREVIATIONS,
-    )
+    assert list(border["NEIGHBOR"]) == neighbor_state_names
+    assert list(border["NEIGHBOR_ABBR"]) == neighbor_state_abbreviations
     assert border.geometry.name == "geom"
     assert (
         border.crs.to_epsg()

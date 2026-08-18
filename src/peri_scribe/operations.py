@@ -34,7 +34,6 @@ if typing.TYPE_CHECKING:
 
 logger = structlog.get_logger()
 
-DATA_DIRECTORY_NAME = peri_scribe.models.DATA_DIRECTORY_NAME
 SOURCES_DIRECTORY_NAME = "sources"
 FIRE_INDEX_FILENAME = "fires.json"
 
@@ -236,7 +235,7 @@ def year_directory_path(base_dir: pathlib.Path, year: int) -> pathlib.Path:
     Returns:
         The path to the year's data directory.
     """
-    return base_dir / DATA_DIRECTORY_NAME / str(year)
+    return base_dir / peri_scribe.output.DATA_DIRECTORY / str(year)
 
 
 def sources_directory_path(year_directory: pathlib.Path) -> pathlib.Path:
@@ -707,7 +706,7 @@ def fetch_all_feeds(
             continue
         source_directory = (
             base_dir
-            / DATA_DIRECTORY_NAME
+            / peri_scribe.output.DATA_DIRECTORY
             / str(year)
             / SOURCES_DIRECTORY_NAME
             / feed.name

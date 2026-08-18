@@ -350,7 +350,7 @@ def test_list_fires_help_names_current_year_default(
     result = runner.invoke(peri_scribe.main.cli, ["list-fires", "--help"])
     assert result.exit_code == 0
     assert (
-        f"{peri_scribe.operations.DATA_DIRECTORY_NAME}/{datetime.date.today().year}"
+        f"{peri_scribe.output.DATA_DIRECTORY}/{datetime.date.today().year}"
     ) in result.output
     assert "data/<current year>" not in result.output
 
@@ -1086,7 +1086,7 @@ def test_index_fire_sources_help_names_current_year_default(
     )
     assert result.exit_code == 0
     assert (
-        f"{peri_scribe.operations.DATA_DIRECTORY_NAME}/{datetime.date.today().year}"
+        f"{peri_scribe.output.DATA_DIRECTORY}/{datetime.date.today().year}"
     ) in result.output
     assert "data/<current year>" not in result.output
 
