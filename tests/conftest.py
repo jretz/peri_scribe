@@ -219,17 +219,44 @@ def configured_feeds_with_identifiers(
                 "url": "https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
                 "fire_name_column": "incident_name",
                 "status_column": "displayStatus",
-                "fire_identifier_column": "incident_number",
+                "fire_identifier_columns": ["incident_number"],
             },
             {
                 "feed_type": "ArcGISFeed",
                 "url": "https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
                 "fire_name_column": "IncidentName",
                 "status_column": "ActiveFireCandidate",
-                "fire_identifier_column": "IrwinID",
+                "fire_identifier_columns": ["IrwinID"],
                 "complex_identifier_column": "CpxID",
                 "complex_name_column": "CpxName",
                 "is_complex_child_column": "IsCpxChild",
+            },
+        ]),
+    )
+    monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
+    return feeds
+
+
+@pytest.fixture
+def configured_feeds_with_mission(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[peri_scribe.feed_types.Feed]:
+    """Point models.FEEDS at a CA-layer-like feed with mission and time columns.
+
+    Returns:
+        The feed, configured with name, status, identifier, mission, and observation
+        time columns.
+    """
+    feeds = list(
+        peri_scribe.models.build_feeds([
+            {
+                "feed_type": "ArcGISFeed",
+                "url": "https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
+                "fire_name_column": "incident_name",
+                "status_column": "displayStatus",
+                "fire_identifier_columns": ["incident_number"],
+                "mission_column": "mission",
+                "observation_time_column": "poly_DateCurrent",
             },
         ]),
     )

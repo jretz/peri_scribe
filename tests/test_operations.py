@@ -11,6 +11,7 @@ import pandas as pd
 import pydantic
 import pyproj
 import pytest
+import shapely
 import shapely.geometry
 import structlog
 
@@ -31,13 +32,51 @@ class StubFireReader(typing.Protocol):
 
     def __call__(
         self,
-        fires_by_path: dict[pathlib.Path, list[peri_scribe.models.Fire]],
+        records_by_path: dict[pathlib.Path, list[peri_scribe.models.FireRecord]],
         memberships_by_path: dict[
             pathlib.Path,
             list[peri_scribe.models.ComplexMembership],
         ]
         | None = None,
     ) -> None: ...
+
+
+def fire_record(
+    name: str,
+    status: peri_scribe.models.FireStatus,
+    identifiers: typing.Iterable[str] = (),
+    *,
+    names: typing.Iterable[str] | None = None,
+    geometry: shapely.Geometry | None = None,
+    observed_at: datetime.datetime | None = None,
+) -> peri_scribe.models.FireRecord:
+    """Build a fire record for a test.
+
+    Args:
+        name: The record's display name.
+        status: The record's status.
+        identifiers: The record's normalized identifiers.
+        names: The record's normalized name keys; defaults to the display name's
+            normalization.
+        geometry: The record's geometry.
+        observed_at: The record's observation time.
+
+    Returns:
+        The record.
+    """
+    name_keys = (
+        frozenset(names)
+        if names is not None
+        else frozenset({peri_scribe.models.normalize_fire_name(name)})
+    )
+    return peri_scribe.models.FireRecord(
+        name=name,
+        status=status,
+        identifiers=frozenset(identifiers),
+        names=name_keys,
+        geometry=geometry,
+        observed_at=observed_at,
+    )
 
 
 @pytest.fixture
@@ -52,17 +91,17 @@ def stub_fire_reader(
     """
 
     def stub(
-        fires_by_path: dict[pathlib.Path, list[peri_scribe.models.Fire]],
+        records_by_path: dict[pathlib.Path, list[peri_scribe.models.FireRecord]],
         memberships_by_path: dict[
             pathlib.Path,
             list[peri_scribe.models.ComplexMembership],
         ]
         | None = None,
     ) -> None:
-        def fake_fire_names(
+        def fake_fire_records(
             path: pathlib.Path,
-        ) -> typing.Iterator[peri_scribe.models.Fire]:
-            yield from fires_by_path.get(path, [])
+        ) -> typing.Iterator[peri_scribe.models.FireRecord]:
+            yield from records_by_path.get(path, [])
 
         def fake_complex_memberships(
             path: pathlib.Path,
@@ -72,12 +111,12 @@ def stub_fire_reader(
         def fake_geo_package_files(
             _directory: pathlib.Path,
         ) -> list[pathlib.Path]:
-            return sorted(set(fires_by_path) | set(memberships_by_path or {}))
+            return sorted(set(records_by_path) | set(memberships_by_path or {}))
 
         monkeypatch.setattr(
             peri_scribe.geo_data,
-            "fire_names",
-            fake_fire_names,
+            "fire_records",
+            fake_fire_records,
         )
         monkeypatch.setattr(
             peri_scribe.geo_data,
@@ -111,12 +150,13 @@ def listed_fires(directory: pathlib.Path) -> list[peri_scribe.models.Fire]:
 def test_fire_sources_prefers_most_common_mixed_case_spelling(
     stub_fire_reader: StubFireReader,
 ) -> None:
+    location = shapely.geometry.Point(0, 0)
     stub_fire_reader({
         pathlib.Path("one.gpkg"): [
-            peri_scribe.models.Fire(name="PARK FIRE", status=ACTIVE),
-            peri_scribe.models.Fire(name="PARK FIRE", status=ACTIVE),
-            peri_scribe.models.Fire(name="PARK FIRE", status=ACTIVE),
-            peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
+            fire_record("PARK FIRE", ACTIVE, geometry=location),
+            fire_record("PARK FIRE", ACTIVE, geometry=location),
+            fire_record("PARK FIRE", ACTIVE, geometry=location),
+            fire_record("Park Fire", ACTIVE, geometry=location),
         ],
     })
     fires = listed_fires(pathlib.Path("sources"))
@@ -126,11 +166,12 @@ def test_fire_sources_prefers_most_common_mixed_case_spelling(
 def test_fire_sources_uses_most_common_spelling_when_none_is_mixed_case(
     stub_fire_reader: StubFireReader,
 ) -> None:
+    location = shapely.geometry.Point(0, 0)
     stub_fire_reader({
         pathlib.Path("one.gpkg"): [
-            peri_scribe.models.Fire(name="PARK FIRE", status=INACTIVE),
-            peri_scribe.models.Fire(name="park fire", status=INACTIVE),
-            peri_scribe.models.Fire(name="park fire", status=INACTIVE),
+            fire_record("PARK FIRE", INACTIVE, geometry=location),
+            fire_record("park fire", INACTIVE, geometry=location),
+            fire_record("park fire", INACTIVE, geometry=location),
         ],
     })
     fires = listed_fires(pathlib.Path("sources"))
@@ -140,10 +181,11 @@ def test_fire_sources_uses_most_common_spelling_when_none_is_mixed_case(
 def test_fire_sources_breaks_mixed_case_ties_by_first_spelling(
     stub_fire_reader: StubFireReader,
 ) -> None:
+    location = shapely.geometry.Point(0, 0)
     stub_fire_reader({
         pathlib.Path("one.gpkg"): [
-            peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
-            peri_scribe.models.Fire(name="PARK Fire", status=ACTIVE),
+            fire_record("Park Fire", ACTIVE, geometry=location),
+            fire_record("PARK Fire", ACTIVE, geometry=location),
         ],
     })
     fires = listed_fires(pathlib.Path("sources"))
@@ -153,10 +195,11 @@ def test_fire_sources_breaks_mixed_case_ties_by_first_spelling(
 def test_fire_sources_marks_fire_active_when_any_record_is_active(
     stub_fire_reader: StubFireReader,
 ) -> None:
+    location = shapely.geometry.Point(0, 0)
     stub_fire_reader({
         pathlib.Path("one.gpkg"): [
-            peri_scribe.models.Fire(name="ALTA", status=INACTIVE),
-            peri_scribe.models.Fire(name="Alta", status=ACTIVE),
+            fire_record("ALTA", INACTIVE, geometry=location),
+            fire_record("Alta", ACTIVE, geometry=location),
         ],
     })
     fires = listed_fires(pathlib.Path("sources"))
@@ -166,14 +209,15 @@ def test_fire_sources_marks_fire_active_when_any_record_is_active(
 def test_fire_sources_merges_names_across_files(
     stub_fire_reader: StubFireReader,
 ) -> None:
+    location = shapely.geometry.Point(0, 0)
     stub_fire_reader({
         pathlib.Path("one.gpkg"): [
-            peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
-            peri_scribe.models.Fire(name="ALTA", status=INACTIVE),
+            fire_record("Park Fire", ACTIVE, geometry=location),
+            fire_record("ALTA", INACTIVE, geometry=shapely.geometry.Point(1, 1)),
         ],
         pathlib.Path("two.gpkg"): [
-            peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
-            peri_scribe.models.Fire(name="Creek Fire", status=ACTIVE),
+            fire_record("Park Fire", ACTIVE, geometry=location),
+            fire_record("Creek Fire", ACTIVE, geometry=shapely.geometry.Point(2, 2)),
         ],
     })
     fires = listed_fires(pathlib.Path("sources"))
@@ -190,16 +234,8 @@ def test_fire_sources_merges_records_with_same_identifier_under_different_names(
     crosswhite_id = "1b0219ee-5298-4fef-9927-c2666d9d53fc"
     stub_fire_reader({
         pathlib.Path("one.gpkg"): [
-            peri_scribe.models.Fire(
-                name="0445 CROSSWHITE",
-                status=ACTIVE,
-                identifier=crosswhite_id,
-            ),
-            peri_scribe.models.Fire(
-                name="Crosswhite",
-                status=ACTIVE,
-                identifier=crosswhite_id,
-            ),
+            fire_record("0445 CROSSWHITE", ACTIVE, identifiers={crosswhite_id}),
+            fire_record("Crosswhite", ACTIVE, identifiers={crosswhite_id}),
         ],
     })
     fires = listed_fires(pathlib.Path("sources"))
@@ -208,6 +244,7 @@ def test_fire_sources_merges_records_with_same_identifier_under_different_names(
             name="Crosswhite",
             status=ACTIVE,
             identifier=crosswhite_id,
+            aliases=frozenset({crosswhite_id}),
         ),
     ]
 
@@ -215,17 +252,21 @@ def test_fire_sources_merges_records_with_same_identifier_under_different_names(
 def test_fire_sources_keeps_same_named_fires_with_different_identifiers_separate(
     stub_fire_reader: StubFireReader,
 ) -> None:
+    # The same name in different regions is a different fire, even when both are
+    # identified, so the spatial gate keeps them apart.
     stub_fire_reader({
         pathlib.Path("one.gpkg"): [
-            peri_scribe.models.Fire(
-                name="CANYON",
-                status=INACTIVE,
-                identifier="2026-cacdd-007101",
+            fire_record(
+                "CANYON",
+                INACTIVE,
+                identifiers={"2026-cacdd-007101"},
+                geometry=shapely.geometry.Point(0, 0),
             ),
-            peri_scribe.models.Fire(
-                name="Canyon",
-                status=ACTIVE,
-                identifier="1dc015ad-5690-48c4-b8f3-fe02445b2369",
+            fire_record(
+                "Canyon",
+                ACTIVE,
+                identifiers={"1dc015ad-5690-48c4-b8f3-fe02445b2369"},
+                geometry=shapely.geometry.Point(10, 10),
             ),
         ],
     })
@@ -235,11 +276,39 @@ def test_fire_sources_keeps_same_named_fires_with_different_identifiers_separate
             name="CANYON",
             status=INACTIVE,
             identifier="2026-cacdd-007101",
+            aliases=frozenset({"2026-cacdd-007101"}),
         ),
         peri_scribe.models.Fire(
             name="Canyon",
             status=ACTIVE,
             identifier="1dc015ad-5690-48c4-b8f3-fe02445b2369",
+            aliases=frozenset({"1dc015ad-5690-48c4-b8f3-fe02445b2369"}),
+        ),
+    ]
+
+
+def test_fire_sources_merges_ufi_and_guid_through_a_shared_record(
+    stub_fire_reader: StubFireReader,
+) -> None:
+    # The CA layer's FIRIS records carry the unique fire identifier; the WFIGS records
+    # carry both the GUID and the unique fire identifier, linking them all.
+    location = shapely.geometry.Point(0, 0)
+    unique_id = "2026-nvccd-030683"
+    guid = "286b7f1d-8945-4a5d-9d81-5235c18af1fe"
+    stub_fire_reader({
+        pathlib.Path("one.gpkg"): [
+            fire_record("BUG", INACTIVE, geometry=location),
+            fire_record("Bug", ACTIVE, identifiers={unique_id}, geometry=location),
+            fire_record("Bug", ACTIVE, identifiers={unique_id, guid}),
+        ],
+    })
+    fires = listed_fires(pathlib.Path("sources"))
+    assert fires == [
+        peri_scribe.models.Fire(
+            name="Bug",
+            status=ACTIVE,
+            identifier=unique_id,
+            aliases=frozenset({unique_id, guid}),
         ),
     ]
 
@@ -247,21 +316,12 @@ def test_fire_sources_keeps_same_named_fires_with_different_identifiers_separate
 def test_fire_sources_merges_unidentified_records_with_same_named_identified_records(
     stub_fire_reader: StubFireReader,
 ) -> None:
-    # The CA layer's FIRIS records carry no identifier; the WFIGS records for the
-    # same fire do. All of them are the same fire (Bug).
+    location = shapely.geometry.Point(0, 0)
+    unique_id = "2026-nvccd-030683"
     stub_fire_reader({
         pathlib.Path("one.gpkg"): [
-            peri_scribe.models.Fire(name="BUG", status=INACTIVE),
-            peri_scribe.models.Fire(
-                name="Bug",
-                status=ACTIVE,
-                identifier="2026-nvccd-030683",
-            ),
-            peri_scribe.models.Fire(
-                name="Bug",
-                status=ACTIVE,
-                identifier="286b7f1d-8945-4a5d-9d81-5235c18af1fe",
-            ),
+            fire_record("BUG", INACTIVE, geometry=location),
+            fire_record("Bug", ACTIVE, identifiers={unique_id}, geometry=location),
         ],
     })
     fires = listed_fires(pathlib.Path("sources"))
@@ -269,93 +329,149 @@ def test_fire_sources_merges_unidentified_records_with_same_named_identified_rec
         peri_scribe.models.Fire(
             name="Bug",
             status=ACTIVE,
-            identifier="2026-nvccd-030683",
+            identifier=unique_id,
+            aliases=frozenset({unique_id}),
         ),
     ]
 
 
-def test_fire_sources_merges_keyed_record_with_later_unidentified_same_named_record(
+def test_fire_sources_keeps_same_named_unidentified_records_separate_when_far_apart(
     stub_fire_reader: StubFireReader,
 ) -> None:
-    bug_id = "286b7f1d-8945-4a5d-9d81-5235c18af1fe"
     stub_fire_reader({
         pathlib.Path("one.gpkg"): [
-            peri_scribe.models.Fire(name="Bug", status=ACTIVE, identifier=bug_id),
-            peri_scribe.models.Fire(name="BUG", status=INACTIVE),
+            fire_record("CANYON", ACTIVE, geometry=shapely.geometry.Point(0, 0)),
+            fire_record("Canyon", ACTIVE, geometry=shapely.geometry.Point(10, 10)),
+        ],
+    })
+    fires = listed_fires(pathlib.Path("sources"))
+    assert [fire.name for fire in fires] == ["CANYON", "Canyon"]
+
+
+def test_fire_sources_does_not_merge_same_named_fires_across_regions(
+    stub_fire_reader: StubFireReader,
+) -> None:
+    # The CA "RIVER" perimeter and a distant WFIGS "River" location are distinct fires.
+    stub_fire_reader({
+        pathlib.Path("one.gpkg"): [
+            fire_record("RIVER", ACTIVE, geometry=shapely.geometry.Point(0, 0)),
+            fire_record(
+                "River",
+                ACTIVE,
+                identifiers={"67e0a229-1214-4e17-a80d-c819f88013e8"},
+                geometry=shapely.geometry.Point(10, 10),
+            ),
+        ],
+    })
+    fires = listed_fires(pathlib.Path("sources"))
+    assert [fire.name for fire in fires] == ["RIVER", "River"]
+
+
+def test_fire_sources_merges_same_named_fires_at_the_same_location(
+    stub_fire_reader: StubFireReader,
+) -> None:
+    # Two records of the same fire can carry different identifiers, for example a
+    # re-mapping that received a new GUID. At the same location they are one fire.
+    location = shapely.geometry.Point(0, 0)
+    may_guid = "a4eb258a-f5d1-46c3-9560-8fbc8042d9c3"
+    june_guid = "1ce6519c-30a2-4615-a8a2-a25fbff2faa2"
+    stub_fire_reader({
+        pathlib.Path("one.gpkg"): [
+            fire_record("SANDY", INACTIVE, identifiers={may_guid}, geometry=location),
+            fire_record("SANDY", ACTIVE, identifiers={june_guid}, geometry=location),
         ],
     })
     fires = listed_fires(pathlib.Path("sources"))
     assert fires == [
-        peri_scribe.models.Fire(name="Bug", status=ACTIVE, identifier=bug_id),
+        peri_scribe.models.Fire(
+            name="SANDY",
+            status=ACTIVE,
+            identifier=june_guid,
+            aliases=frozenset({may_guid, june_guid}),
+        ),
     ]
 
 
-def test_fire_sources_merges_identified_records_through_a_shared_unidentified_record(
+def test_fire_sources_merges_mission_name_variants(
     stub_fire_reader: StubFireReader,
 ) -> None:
-    # Two records with different identifiers and an unidentified record of the
-    # same name are all one fire, since the unidentified record connects them.
+    # "RUMSEY" and the unidentified "RUMSEY-UPDATED" record share the base name from
+    # the mission code, so they are one fire.
+    location = shapely.geometry.Point(0, 0)
     stub_fire_reader({
         pathlib.Path("one.gpkg"): [
-            peri_scribe.models.Fire(
-                name="Bug",
-                status=ACTIVE,
-                identifier="286b7f1d-8945-4a5d-9d81-5235c18af1fe",
+            fire_record(
+                "RUMSEY",
+                ACTIVE,
+                identifiers={"5f1293e8-bc81-4265-83ed-d06ee6361bd6"},
+                geometry=location,
             ),
-            peri_scribe.models.Fire(name="BUG", status=INACTIVE),
-            peri_scribe.models.Fire(
-                name="Bug",
-                status=ACTIVE,
-                identifier="2026-nvccd-030683",
+            fire_record(
+                "RUMSEY-UPDATED",
+                ACTIVE,
+                names=frozenset({"rumsey updated", "rumsey"}),
+                geometry=location,
             ),
         ],
     })
     fires = listed_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(
-            name="Bug",
+            name="RUMSEY",
             status=ACTIVE,
-            identifier="286b7f1d-8945-4a5d-9d81-5235c18af1fe",
+            identifier="5f1293e8-bc81-4265-83ed-d06ee6361bd6",
+            aliases=frozenset({"5f1293e8-bc81-4265-83ed-d06ee6361bd6"}),
         ),
     ]
 
 
 def test_group_fire_records_preserves_first_encountered_order() -> None:
     records = [
-        peri_scribe.models.Fire(name="A", status=ACTIVE, identifier="id-a"),
-        peri_scribe.models.Fire(name="B", status=ACTIVE, identifier="id-b"),
-        peri_scribe.models.Fire(name="A", status=ACTIVE, identifier="id-a"),
+        fire_record("A", ACTIVE, identifiers={"id-a"}),
+        fire_record("B", ACTIVE, identifiers={"id-b"}),
+        fire_record("A", ACTIVE, identifiers={"id-a"}),
     ]
     groups = peri_scribe.operations.group_fire_records(records)
     assert [group[0].name for group in groups] == ["A", "B"]
 
 
 def test_group_fire_records_merges_names_differing_only_in_whitespace() -> None:
+    location = shapely.geometry.Point(0, 0)
     records = [
-        peri_scribe.models.Fire(name="PARK FIRE", status=ACTIVE),
-        peri_scribe.models.Fire(name="  park   fire ", status=INACTIVE),
+        fire_record("PARK FIRE", ACTIVE, geometry=location),
+        fire_record("  park   fire ", INACTIVE, geometry=location),
     ]
     groups = peri_scribe.operations.group_fire_records(records)
     assert groups == [records]
 
 
-def test_normalize_fire_name() -> None:
-    assert peri_scribe.operations.normalize_fire_name("  Park   FIRE ") == "park fire"
-
-
-def test_most_common_fire_uses_first_identifier() -> None:
-    bug_id = "286b7f1d-8945-4a5d-9d81-5235c18af1fe"
+def test_most_common_fire_prefers_unique_fire_identifier_over_guid() -> None:
+    unique_id = "2026-nvccd-030683"
+    guid = "286b7f1d-8945-4a5d-9d81-5235c18af1fe"
     occurrences = [
-        peri_scribe.models.Fire(name="Bug", status=ACTIVE),
-        peri_scribe.models.Fire(name="Bug", status=ACTIVE, identifier=bug_id),
+        fire_record("Bug", ACTIVE, identifiers={guid}),
+        fire_record("Bug", ACTIVE, identifiers={unique_id, guid}),
+    ]
+    assert peri_scribe.operations.most_common_fire(occurrences) == (
         peri_scribe.models.Fire(
             name="Bug",
             status=ACTIVE,
-            identifier="2026-nvccd-030683",
-        ),
-    ]
+            identifier=unique_id,
+            aliases=frozenset({unique_id, guid}),
+        )
+    )
+
+
+def test_most_common_fire_uses_guid_without_unique_fire_identifier() -> None:
+    guid = "286b7f1d-8945-4a5d-9d81-5235c18af1fe"
+    occurrences = [fire_record("Bug", ACTIVE, identifiers={guid})]
     assert peri_scribe.operations.most_common_fire(occurrences) == (
-        peri_scribe.models.Fire(name="Bug", status=ACTIVE, identifier=bug_id)
+        peri_scribe.models.Fire(
+            name="Bug",
+            status=ACTIVE,
+            identifier=guid,
+            aliases=frozenset({guid}),
+        )
     )
 
 
@@ -366,6 +482,182 @@ def test_is_mixed_case() -> None:
     assert not peri_scribe.operations.is_mixed_case("3-1")
 
 
+def test_geometries_are_compatible() -> None:
+    point = shapely.geometry.Point(0, 0)
+    assert not peri_scribe.operations.geometries_are_compatible(None, point)
+    assert not peri_scribe.operations.geometries_are_compatible(
+        shapely.geometry.Point(),
+        point,
+    )
+    assert peri_scribe.operations.geometries_are_compatible(point, point)
+    assert peri_scribe.operations.geometries_are_compatible(
+        point,
+        shapely.geometry.Point(0.01, 0),
+    )
+    assert not peri_scribe.operations.geometries_are_compatible(
+        point,
+        shapely.geometry.Point(1, 1),
+    )
+
+
+def test_group_fire_records_merges_through_intermediate_locations() -> None:
+    # Each adjacent pair is within the proximity tolerance, so the chain of records is
+    # one fire even though the ends are farther apart than the tolerance.
+    records = [
+        fire_record("RIVER", ACTIVE, geometry=shapely.geometry.Point(0, 0)),
+        fire_record("RIVER", ACTIVE, geometry=shapely.geometry.Point(0.04, 0)),
+        fire_record("RIVER", ACTIVE, geometry=shapely.geometry.Point(0.08, 0)),
+    ]
+    groups = peri_scribe.operations.group_fire_records(records)
+    assert groups == [records]
+
+
+def test_group_fire_records_does_not_merge_named_records_without_geometry() -> None:
+    # Records without a geometry cannot be spatially compatible, so sharing only a
+    # name is not enough to merge them.
+    records = [
+        fire_record("RIVER", ACTIVE),
+        fire_record("RIVER", INACTIVE),
+    ]
+    groups = peri_scribe.operations.group_fire_records(records)
+    assert groups == [[records[0]], [records[1]]]
+
+
+def test_group_fire_records_keeps_many_same_named_records_far_apart_separate() -> None:
+    # A name shared by many distant fires stays separate for each region; the spatial
+    # index must not merge records whose geometries are not actually close.
+    records = [
+        fire_record(
+            "CANYON",
+            ACTIVE,
+            geometry=shapely.geometry.Point(index, 0),
+        )
+        for index in range(200)
+    ]
+    groups = peri_scribe.operations.group_fire_records(records)
+    assert groups == [[record] for record in records]
+
+
+def test_warn_for_inconsistent_fires_ignores_group_without_geometries() -> None:
+    records = [
+        fire_record("RIVER", ACTIVE),
+        fire_record("RIVER", INACTIVE),
+    ]
+    groups = [[0, 1]]
+    fires = [
+        peri_scribe.models.Fire(
+            name="RIVER",
+            status=ACTIVE,
+        ),
+    ]
+    with structlog.testing.capture_logs() as captured:
+        peri_scribe.operations.warn_for_inconsistent_fires(records, groups, fires)
+    assert captured == []
+
+
+def test_warn_for_inconsistent_fires_logs_outlier_for_record_without_geometry() -> None:
+    records = [
+        fire_record("RIVER", ACTIVE, geometry=shapely.geometry.Point(0, 0)),
+        fire_record("RIVER", INACTIVE),
+    ]
+    groups = [[0, 1]]
+    fires = [
+        peri_scribe.models.Fire(
+            name="RIVER",
+            status=ACTIVE,
+        ),
+    ]
+    with structlog.testing.capture_logs() as captured:
+        peri_scribe.operations.warn_for_inconsistent_fires(records, groups, fires)
+    assert [event["event"] for event in captured] == [
+        "Fire records span distant locations",
+    ]
+
+
+def test_warn_for_inconsistent_fires_logs_outlier_when_other_geometries_empty() -> None:
+    records = [
+        fire_record(
+            "RIVER",
+            ACTIVE,
+            geometry=shapely.geometry.Point(),
+        ),
+        fire_record(
+            "RIVER",
+            INACTIVE,
+            geometry=shapely.geometry.Point(0, 0),
+        ),
+    ]
+    groups = [[0, 1]]
+    fires = [
+        peri_scribe.models.Fire(
+            name="RIVER",
+            status=ACTIVE,
+        ),
+    ]
+    with structlog.testing.capture_logs() as captured:
+        peri_scribe.operations.warn_for_inconsistent_fires(records, groups, fires)
+    assert [event["event"] for event in captured] == [
+        "Fire records span distant locations",
+    ]
+
+
+def test_warn_for_inconsistent_fires_logs_spatial_outlier() -> None:
+    records = [
+        fire_record("RIVER", ACTIVE, geometry=shapely.geometry.Point(0, 0)),
+        fire_record(
+            "River",
+            ACTIVE,
+            identifiers={"67e0a229-1214-4e17-a80d-c819f88013e8"},
+            geometry=shapely.geometry.Point(10, 10),
+        ),
+    ]
+    groups = [[0, 1]]
+    fires = [
+        peri_scribe.models.Fire(
+            name="River",
+            status=ACTIVE,
+            identifier="67e0a229-1214-4e17-a80d-c819f88013e8",
+        ),
+    ]
+    with structlog.testing.capture_logs() as captured:
+        peri_scribe.operations.warn_for_inconsistent_fires(records, groups, fires)
+    assert [event["event"] for event in captured] == [
+        "Fire records span distant locations",
+    ]
+
+
+def test_warn_for_inconsistent_fires_logs_temporal_outlier() -> None:
+    location = shapely.geometry.Point(0, 0)
+    records = [
+        fire_record(
+            "RIVER",
+            ACTIVE,
+            geometry=location,
+            observed_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        ),
+        fire_record(
+            "River",
+            ACTIVE,
+            identifiers={"67e0a229-1214-4e17-a80d-c819f88013e8"},
+            geometry=location,
+            observed_at=datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC),
+        ),
+    ]
+    groups = [[0, 1]]
+    fires = [
+        peri_scribe.models.Fire(
+            name="River",
+            status=ACTIVE,
+            identifier="67e0a229-1214-4e17-a80d-c819f88013e8",
+        ),
+    ]
+    with structlog.testing.capture_logs() as captured:
+        peri_scribe.operations.warn_for_inconsistent_fires(records, groups, fires)
+    assert [event["event"] for event in captured] == [
+        "Fire records span distant times",
+    ]
+
+
 def test_fire_sources_excludes_complex_parents(
     stub_fire_reader: StubFireReader,
 ) -> None:
@@ -374,16 +666,8 @@ def test_fire_sources_excludes_complex_parents(
     stub_fire_reader(
         {
             pathlib.Path("one.gpkg"): [
-                peri_scribe.models.Fire(
-                    name="ROWE CREEK COMPLEX",
-                    status=ACTIVE,
-                    identifier=parent_id,
-                ),
-                peri_scribe.models.Fire(
-                    name="0445 CROSSWHITE",
-                    status=ACTIVE,
-                    identifier=child_id,
-                ),
+                fire_record("ROWE CREEK COMPLEX", ACTIVE, identifiers={parent_id}),
+                fire_record("0445 CROSSWHITE", ACTIVE, identifiers={child_id}),
             ],
         },
         {
@@ -402,6 +686,7 @@ def test_fire_sources_excludes_complex_parents(
             name="0445 CROSSWHITE",
             status=ACTIVE,
             identifier=child_id,
+            aliases=frozenset({child_id}),
         ),
     ]
 
@@ -414,16 +699,8 @@ def test_fire_sources_links_member_fires_to_their_complex(
     stub_fire_reader(
         {
             pathlib.Path("one.gpkg"): [
-                peri_scribe.models.Fire(
-                    name="ROWE CREEK COMPLEX",
-                    status=ACTIVE,
-                    identifier=parent_id,
-                ),
-                peri_scribe.models.Fire(
-                    name="0445 CROSSWHITE",
-                    status=ACTIVE,
-                    identifier=child_id,
-                ),
+                fire_record("ROWE CREEK COMPLEX", ACTIVE, identifiers={parent_id}),
+                fire_record("0445 CROSSWHITE", ACTIVE, identifiers={child_id}),
             ],
         },
         {
@@ -458,18 +735,10 @@ def test_fire_sources_builds_one_complex_from_memberships_across_files(
     stub_fire_reader(
         {
             pathlib.Path("one.gpkg"): [
-                peri_scribe.models.Fire(
-                    name="0445 CROSSWHITE",
-                    status=ACTIVE,
-                    identifier=child_id,
-                ),
+                fire_record("0445 CROSSWHITE", ACTIVE, identifiers={child_id}),
             ],
             pathlib.Path("two.gpkg"): [
-                peri_scribe.models.Fire(
-                    name="Crosswhite",
-                    status=ACTIVE,
-                    identifier=child_id,
-                ),
+                fire_record("Crosswhite", ACTIVE, identifiers={child_id}),
             ],
         },
         {
@@ -483,45 +752,44 @@ def test_fire_sources_builds_one_complex_from_memberships_across_files(
             name="Crosswhite",
             status=ACTIVE,
             identifier=child_id,
+            aliases=frozenset({child_id}),
         ),
     ]
     assert fires[0].complex is not None
     assert len(fires[0].complex.fires) == 1
 
 
-def test_fire_sources_excludes_parent_group_merged_with_unidentified_records(
+def test_fire_sources_excludes_parent_group_with_multiple_identifiers(
     stub_fire_reader: StubFireReader,
 ) -> None:
-    parent_id = "b0b0e959-6d11-4831-951a-c464f0f3ab45"
+    parent_guid = "b0b0e959-6d11-4831-951a-c464f0f3ab45"
+    parent_ufi = "2026-cabdu-011375"
+    child_id = "ef21ead9-ce4d-48f6-964f-46a398857263"
+    location = shapely.geometry.Point(0, 0)
     stub_fire_reader(
         {
             pathlib.Path("one.gpkg"): [
-                peri_scribe.models.Fire(
-                    name="CINDER COMPLEX",
-                    status=INACTIVE,
+                fire_record("CINDER COMPLEX", INACTIVE, geometry=location),
+                fire_record(
+                    "CINDER COMPLEX",
+                    INACTIVE,
+                    identifiers={parent_ufi},
+                    geometry=location,
                 ),
-                peri_scribe.models.Fire(
-                    name="CINDER COMPLEX",
-                    status=INACTIVE,
-                    identifier="2026-cabdu-011375",
+                fire_record(
+                    "CINDER COMPLEX",
+                    ACTIVE,
+                    identifiers={parent_guid, parent_ufi},
+                    geometry=location,
                 ),
-                peri_scribe.models.Fire(
-                    name="CINDER COMPLEX",
-                    status=ACTIVE,
-                    identifier=parent_id,
-                ),
-                peri_scribe.models.Fire(
-                    name="5-3",
-                    status=ACTIVE,
-                    identifier="ef21ead9-ce4d-48f6-964f-46a398857263",
-                ),
+                fire_record("5-3", ACTIVE, identifiers={child_id}),
             ],
         },
         {
             pathlib.Path("one.gpkg"): [
                 peri_scribe.models.ComplexMembership(
-                    fire_identifier="ef21ead9-ce4d-48f6-964f-46a398857263",
-                    complex_identifier=parent_id,
+                    fire_identifier=child_id,
+                    complex_identifier=parent_guid,
                     complex_name="CINDER COMPLEX",
                 ),
             ],
@@ -532,7 +800,8 @@ def test_fire_sources_excludes_parent_group_merged_with_unidentified_records(
         peri_scribe.models.Fire(
             name="5-3",
             status=ACTIVE,
-            identifier="ef21ead9-ce4d-48f6-964f-46a398857263",
+            identifier=child_id,
+            aliases=frozenset({child_id}),
         ),
     ]
 
@@ -545,11 +814,7 @@ def test_fire_complexes_skips_membership_for_unidentified_fire(
     stub_fire_reader(
         {
             pathlib.Path("one.gpkg"): [
-                peri_scribe.models.Fire(
-                    name="Crosswhite",
-                    status=ACTIVE,
-                    identifier=child_id,
-                ),
+                fire_record("Crosswhite", ACTIVE, identifiers={child_id}),
             ],
         },
         {
@@ -578,6 +843,7 @@ def test_fire_complexes_skips_membership_for_unidentified_fire(
             name="Crosswhite",
             status=ACTIVE,
             identifier=child_id,
+            aliases=frozenset({child_id}),
         ),
     ]
     assert fires[0].complex is not None
@@ -587,7 +853,7 @@ def test_fire_complexes_skips_membership_for_unidentified_fire(
 def test_fire_sources_propagates_unknown_layer_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake_fire_names(_path: pathlib.Path) -> typing.Never:
+    def fake_fire_records(_path: pathlib.Path) -> typing.Never:
         layer_name = "Mystery_Layer_0"
         raise peri_scribe.exceptions.UnknownLayerError(
             layer_name,
@@ -596,8 +862,8 @@ def test_fire_sources_propagates_unknown_layer_error(
 
     monkeypatch.setattr(
         peri_scribe.geo_data,
-        "fire_names",
-        fake_fire_names,
+        "fire_records",
+        fake_fire_records,
     )
     monkeypatch.setattr(
         peri_scribe.operations,
@@ -614,14 +880,14 @@ def test_fire_sources_propagates_unknown_layer_error(
 def test_fire_sources_raises_system_exit_for_unreadable_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake_fire_names(_path: pathlib.Path) -> typing.Never:
+    def fake_fire_records(_path: pathlib.Path) -> typing.Never:
         message = "no such file"
         raise FileNotFoundError(message)
 
     monkeypatch.setattr(
         peri_scribe.geo_data,
-        "fire_names",
-        fake_fire_names,
+        "fire_records",
+        fake_fire_records,
     )
     monkeypatch.setattr(
         peri_scribe.operations,
@@ -1190,9 +1456,10 @@ def test_fire_sources_collects_paths_for_each_fire(
 ) -> None:
     one = pathlib.Path("one.gpkg")
     two = pathlib.Path("two.gpkg")
+    location = shapely.geometry.Point(0, 0)
     stub_fire_reader({
-        one: [peri_scribe.models.Fire(name="Park Fire", status=ACTIVE)],
-        two: [peri_scribe.models.Fire(name="Park Fire", status=ACTIVE)],
+        one: [fire_record("Park Fire", ACTIVE, geometry=location)],
+        two: [fire_record("Park Fire", ACTIVE, geometry=location)],
     })
     sources = peri_scribe.operations.fire_sources(pathlib.Path("sources"))
     assert sources == [
@@ -1207,10 +1474,11 @@ def test_fire_sources_deduplicates_paths_for_a_fire(
     stub_fire_reader: StubFireReader,
 ) -> None:
     path = pathlib.Path("one.gpkg")
+    location = shapely.geometry.Point(0, 0)
     stub_fire_reader({
         path: [
-            peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
-            peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
+            fire_record("Park Fire", ACTIVE, geometry=location),
+            fire_record("Park Fire", ACTIVE, geometry=location),
         ],
     })
     sources = peri_scribe.operations.fire_sources(pathlib.Path("sources"))
@@ -1230,6 +1498,7 @@ def test_fire_index_entries_sorts_fires_and_paths() -> None:
                 name="zulu",
                 status=INACTIVE,
                 identifier="z-1",
+                aliases=frozenset({"z-1"}),
             ),
             paths=(
                 sources_directory / "b.gpkg",
@@ -1249,6 +1518,7 @@ def test_fire_index_entries_sorts_fires_and_paths() -> None:
             "name": "Alpha",
             "status": "active",
             "identifier": None,
+            "aliases": [],
             "complex": None,
             "paths": ["one.gpkg"],
         },
@@ -1256,6 +1526,7 @@ def test_fire_index_entries_sorts_fires_and_paths() -> None:
             "name": "zulu",
             "status": "inactive",
             "identifier": "z-1",
+            "aliases": ["z-1"],
             "complex": None,
             "paths": ["a.gpkg", "b.gpkg"],
         },
@@ -1267,6 +1538,7 @@ def test_fire_document_describes_complex_membership() -> None:
         name="Crosswhite",
         status=ACTIVE,
         identifier="child-id",
+        aliases=frozenset({"child-id"}),
     )
     peri_scribe.models.FireComplex(
         name="ROWE CREEK COMPLEX",
@@ -1277,6 +1549,7 @@ def test_fire_document_describes_complex_membership() -> None:
         "name": "Crosswhite",
         "status": "active",
         "identifier": "child-id",
+        "aliases": ["child-id"],
         "complex": {
             "name": "ROWE CREEK COMPLEX",
             "identifier": "parent-id",
@@ -1338,6 +1611,7 @@ def test_index_fire_sources_writes_index_file(
                 "name": "Park Fire",
                 "status": "active",
                 "identifier": None,
+                "aliases": [],
                 "complex": None,
                 "paths": ["one.gpkg"],
             },
@@ -1351,6 +1625,7 @@ def test_fire_index_document_wraps_entries_with_version_and_fires_last() -> None
             "name": "Park Fire",
             "status": "active",
             "identifier": None,
+            "aliases": [],
             "complex": None,
             "paths": ["one.gpkg"],
         },
@@ -1380,6 +1655,7 @@ def test_load_fire_index_reads_existing_index(
                 "name": "Park Fire",
                 "status": "active",
                 "identifier": None,
+                "aliases": [],
                 "complex": None,
                 "paths": ["one.gpkg"],
             },

@@ -185,3 +185,43 @@ def test_fire_complex_repr_does_not_recurse() -> None:
     assert "ROWE CREEK COMPLEX" in repr(fire_complex)
     assert "Crosswhite" in repr(fire_complex)
     assert "complex" not in repr(fire)
+
+
+def test_is_globally_unique_identifier() -> None:
+    assert peri_scribe.models.is_globally_unique_identifier(
+        "286b7f1d-8945-4a5d-9d81-5235c18af1fe",
+    )
+    assert not peri_scribe.models.is_globally_unique_identifier("2026-nvccd-030683")
+    assert not peri_scribe.models.is_globally_unique_identifier("not-a-guid")
+
+
+def test_is_unique_fire_identifier() -> None:
+    assert peri_scribe.models.is_unique_fire_identifier("2026-nvccd-030683")
+    assert not peri_scribe.models.is_unique_fire_identifier(
+        "286b7f1d-8945-4a5d-9d81-5235c18af1fe",
+    )
+    assert not peri_scribe.models.is_unique_fire_identifier("z-1")
+
+
+def test_canonical_fire_identifier_prefers_unique_then_guid_then_other() -> None:
+    guid = "286b7f1d-8945-4a5d-9d81-5235c18af1fe"
+    unique = "2026-nvccd-030683"
+    assert peri_scribe.models.canonical_fire_identifier({unique, guid}) == unique
+    assert peri_scribe.models.canonical_fire_identifier({guid}) == guid
+    assert peri_scribe.models.canonical_fire_identifier({"z-1"}) == "z-1"
+    assert peri_scribe.models.canonical_fire_identifier(set()) is None
+
+
+def test_normalize_fire_name_treats_separators_as_spaces() -> None:
+    assert peri_scribe.models.normalize_fire_name("  Park   FIRE ") == "park fire"
+    assert peri_scribe.models.normalize_fire_name("SANTA-ROSA") == "santa rosa"
+    assert peri_scribe.models.normalize_fire_name("3-1") == "3 1"
+
+
+def test_fire_aliases_default_to_empty() -> None:
+    fire = peri_scribe.models.Fire(
+        name="Crosswhite",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        identifier="1b0219ee-5298-4fef-9927-c2666d9d53fc",
+    )
+    assert fire.aliases == frozenset()

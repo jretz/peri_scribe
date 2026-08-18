@@ -69,8 +69,18 @@ class Feed(typing.Protocol):
         ...
 
     @property
-    def fire_identifier_column(self) -> str | None:
-        """The column holding each fire's stable identifier, or None."""
+    def fire_identifier_columns(self) -> tuple[str, ...]:
+        """The columns holding each fire's identifiers, primary first."""
+        ...
+
+    @property
+    def mission_column(self) -> str | None:
+        """The column holding each feature's mapping mission code, or None."""
+        ...
+
+    @property
+    def observation_time_column(self) -> str | None:
+        """The column holding each feature's observation time, or None."""
         ...
 
     @property
@@ -108,7 +118,9 @@ class ArcGISFeed(pydantic.BaseModel):
     url: str
     fire_name_column: str
     status_column: str
-    fire_identifier_column: str | None = None
+    fire_identifier_columns: tuple[str, ...] = ()
+    mission_column: str | None = None
+    observation_time_column: str | None = None
     complex_identifier_column: str | None = None
     complex_name_column: str | None = None
     is_complex_child_column: str | None = None

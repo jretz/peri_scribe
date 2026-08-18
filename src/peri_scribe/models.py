@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import enum
 import importlib.resources
 import json
 import pathlib
+import re
 import typing
 from typing import TYPE_CHECKING
 
@@ -18,6 +20,7 @@ import peri_scribe.feed_types
 if TYPE_CHECKING:
     import geopandas
     import pyproj
+    import shapely
 
 
 GEOMETRY_COLUMN_NAME = "geom"
@@ -73,18 +76,136 @@ class FireStatus(enum.Enum):
     INACTIVE = "inactive"
 
 
+GLOBALLY_UNIQUE_IDENTIFIER_PATTERN = re.compile(
+    r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+    re.IGNORECASE,
+)
+
+UNIQUE_FIRE_IDENTIFIER_PATTERN = re.compile(
+    r"^20\d{2}-[a-z0-9]+-\d+$",
+    re.IGNORECASE,
+)
+
+SEPARATOR_PATTERN = re.compile(r"[-_/]+")
+
+
+def is_globally_unique_identifier(value: str) -> bool:
+    """Return True when *value* is a hyphenated 128-bit GUID.
+
+    Args:
+        value: A normalized identifier to classify.
+
+    Returns:
+        True when *value* matches the GUID shape.
+    """
+    return GLOBALLY_UNIQUE_IDENTIFIER_PATTERN.fullmatch(value) is not None
+
+
+def is_unique_fire_identifier(value: str) -> bool:
+    """Return True when *value* is a ``YYYY-UNIT-######`` fire identifier.
+
+    Args:
+        value: A normalized identifier to classify.
+
+    Returns:
+        True when *value* matches the unique fire identifier shape.
+    """
+    if is_globally_unique_identifier(value):
+        return False
+    return UNIQUE_FIRE_IDENTIFIER_PATTERN.fullmatch(value) is not None
+
+
+def canonical_fire_identifier(identifiers: typing.Iterable[str]) -> str | None:
+    """Return the most canonical identifier among *identifiers*.
+
+    A unique fire identifier (``YYYY-UNIT-######``) is preferred over a GUID, which is
+    preferred over any other identifier. Ties within a kind are broken by sorting, so
+    the result is stable.
+
+    Args:
+        identifiers: The normalized identifiers known for a fire.
+
+    Returns:
+        The canonical identifier, or None when there are none.
+    """
+    unique = sorted(
+        identifier
+        for identifier in identifiers
+        if is_unique_fire_identifier(identifier)
+    )
+    if unique:
+        return unique[0]
+    globally_unique = sorted(
+        identifier
+        for identifier in identifiers
+        if is_globally_unique_identifier(identifier)
+    )
+    if globally_unique:
+        return globally_unique[0]
+    others = sorted(set(identifiers))
+    return others[0] if others else None
+
+
+def normalize_fire_name(name: str) -> str:
+    """Normalize a fire name for comparison.
+
+    Names are case-folded, surrounding whitespace is stripped, runs of internal
+    whitespace are collapsed, and separator characters (``-``, ``_``, ``/``) are treated
+    as spaces so that ``SANTA-ROSA`` and ``SANTA ROSA`` compare equal.
+
+    Args:
+        name: The fire name to normalize.
+
+    Returns:
+        The normalized name.
+    """
+    return " ".join(SEPARATOR_PATTERN.sub(" ", name.casefold()).split())
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class MissionName:
+    """The fire-name parts of a mapping mission code.
+
+    A mission code such as ``CA-LNU-RUMSEY-UPDATED-N40Y`` names the fire both as the
+    source recorded it (`name`) and with mapping-revision markers removed (`base_name`),
+    so an updated re-mapping can still be matched to the original fire.
+    """
+
+    name: str | None = None
+    base_name: str | None = None
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class FireRecord:
+    """One fire as observed in a single source row.
+
+    A record carries every identifier the row provides, every name spelling the row is
+    known by (normalized), and the row's geometry and observation time. Geometry and
+    time gate name-based grouping so distinct fires that share a name are not merged.
+    """
+
+    name: str
+    status: FireStatus
+    identifiers: frozenset[str] = dataclasses.field(default_factory=frozenset)
+    names: frozenset[str] = dataclasses.field(default_factory=frozenset)
+    geometry: shapely.Geometry | None = None
+    observed_at: datetime.datetime | None = None
+
+
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Fire:
-    """A fire, identified by name and a stable identifier when one is known.
+    """A fire, identified by name, a canonical identifier, and every alias.
 
-    The identifier is normalized (case-folded, stripped of surrounding braces) so that
-    equal identifiers match regardless of formatting. When the fire is part of a
-    complex, `complex` points at the FireComplex that owns it.
+    `identifier` is the canonical identifier: the preferred unique fire identifier
+    (``YYYY-UNIT-######``) when one is known, else a GUID. `aliases` holds every
+    normalized identifier the fire is known by, including the canonical one. When the
+    fire is part of a complex, `complex` points at the FireComplex that owns it.
     """
 
     name: str
     status: FireStatus
     identifier: str | None = None
+    aliases: frozenset[str] = dataclasses.field(default_factory=frozenset)
     complex: FireComplex | None = dataclasses.field(
         default=None,
         compare=False,
@@ -144,6 +265,7 @@ class FireIndexEntry(pydantic.BaseModel):
     name: str
     status: typing.Literal["active", "inactive"]
     identifier: str | None = None
+    aliases: list[str] = pydantic.Field(default_factory=list)
     complex: FireIndexComplex | None = None
     paths: list[str]
 

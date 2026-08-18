@@ -87,12 +87,16 @@ def test_arc_gis_feed_exposes_identifier_and_complex_columns() -> None:
         url=SAMPLE_FEED_URL,
         fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
         status_column=SAMPLE_STATUS_COLUMN,
-        fire_identifier_column="incident_number",
+        fire_identifier_columns=("incident_number", "other_number"),
+        mission_column="mission",
+        observation_time_column="poly_DateCurrent",
         complex_identifier_column="CpxID",
         complex_name_column="CpxName",
         is_complex_child_column="IsCpxChild",
     )
-    assert feed.fire_identifier_column == "incident_number"
+    assert feed.fire_identifier_columns == ("incident_number", "other_number")
+    assert feed.mission_column == "mission"
+    assert feed.observation_time_column == "poly_DateCurrent"
     assert feed.complex_identifier_column == "CpxID"
     assert feed.complex_name_column == "CpxName"
     assert feed.is_complex_child_column == "IsCpxChild"

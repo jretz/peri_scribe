@@ -7,7 +7,9 @@ reads fires and complex memberships from GeoPackage files.
 
 from __future__ import annotations
 
+import datetime
 import pathlib
+import re
 import typing
 
 import geopandas
@@ -123,7 +125,7 @@ def fire_status_from(value: object) -> peri_scribe.models.FireStatus | None:
     Raises:
         ValueError: If the value does not represent a known status.
     """
-    if value is None:
+    if is_missing(value):
         return None
     normalized = str(value).strip().casefold()
     if normalized in {"1", "true", "active"}:
@@ -208,21 +210,131 @@ def is_complex_child_from(value: object) -> bool:
     return False
 
 
-def fire_names(
+MISSION_TAIL_PATTERN = re.compile(r"^[a-z]?\d{2}[a-z]$")
+
+STATE_CODE_LENGTH = 2
+MINIMUM_UNIT_CODE_LENGTH = 3
+UNIT_PREFIX_TOKEN_COUNT = 2
+
+MISSION_NAME_NOISE_TOKENS = frozenset({
+    "updated",
+    "update",
+    "revised",
+    "final",
+    "copy",
+})
+
+
+def fire_name_from(value: object) -> str | None:
+    """Return *value* as a non-blank fire name, or None when it is missing.
+
+    Args:
+        value: A raw fire name value.
+
+    Returns:
+        The stripped name, or None when *value* is missing or blank.
+    """
+    if is_missing(value):
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def mission_name_from(value: object) -> peri_scribe.models.MissionName | None:
+    """Return the fire-name parts of a mapping mission code, or None.
+
+    A mission code such as ``CA-LNU-RUMSEY-UPDATED-N40Y`` is parsed into the fire name
+    (``rumsey-updated``) and a base name with mapping-revision markers removed
+    (``rumsey``), so an updated re-mapping can still be matched to the original fire.
+    The leading state and unit tokens and a trailing aircraft-tail token are dropped
+    when present.
+
+    Args:
+        value: A raw mission code value.
+
+    Returns:
+        The mission name parts, or None when *value* is missing, blank, or does not
+        name a fire.
+    """
+    if is_missing(value):
+        return None
+    text = str(value).strip()
+    if not text:
+        return None
+    tokens = text.split("-")
+    folded = [token.casefold() for token in tokens]
+    start = 0
+    if (
+        len(folded) >= UNIT_PREFIX_TOKEN_COUNT
+        and len(folded[0]) == STATE_CODE_LENGTH
+        and folded[0].isalpha()
+        and len(folded[1]) >= MINIMUM_UNIT_CODE_LENGTH
+        and folded[1].isalnum()
+    ):
+        start = 2
+    end = len(folded)
+    if end > start and MISSION_TAIL_PATTERN.fullmatch(folded[end - 1]) is not None:
+        end -= 1
+    name_tokens = tokens[start:end]
+    if not name_tokens:
+        return None
+    folded_name_tokens = folded[start:end]
+    base_tokens = list(name_tokens)
+    folded_base_tokens = list(folded_name_tokens)
+    while folded_base_tokens and folded_base_tokens[-1] in MISSION_NAME_NOISE_TOKENS:
+        folded_base_tokens.pop()
+        base_tokens.pop()
+    name = "-".join(name_tokens)
+    base_name = "-".join(base_tokens) if base_tokens else name
+    return peri_scribe.models.MissionName(name=name, base_name=base_name)
+
+
+def observation_time_from(value: object) -> datetime.datetime | None:
+    """Parse an observation timestamp into an aware UTC datetime.
+
+    Blank values are treated as missing. Naive datetimes are assumed to be UTC.
+
+    Args:
+        value: The raw observation timestamp value.
+
+    Returns:
+        The parsed UTC datetime, or None when *value* is blank or not parseable.
+    """
+    if is_missing(value):
+        return None
+    parsed: datetime.datetime | None
+    if isinstance(value, datetime.datetime):
+        parsed = value
+    elif isinstance(value, str):
+        try:
+            parsed = datetime.datetime.fromisoformat(value.strip())
+        except ValueError:
+            parsed = None
+    else:
+        parsed = None
+    if parsed is None:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=datetime.UTC)
+    return parsed.astimezone(datetime.UTC)
+
+
+def fire_records(
     path: pathlib.Path,
-) -> typing.Generator[peri_scribe.models.Fire]:
-    """Yield the fires in every layer of the GeoPackage at *path*.
+) -> typing.Generator[peri_scribe.models.FireRecord]:
+    """Yield the fire records in every layer of the GeoPackage at *path*.
 
     The GeoPackage is only read, never written. Every layer must correspond to a
-    configured feed, which says which columns hold each fire's name, status, and
-    identifier. Rows without a name or without a status are omitted; rows without an
-    identifier are still yielded, with a None identifier.
+    configured feed, which says which columns hold each fire's name, status,
+    identifiers, mission, and observation time. Rows without a status are omitted; rows
+    whose name is blank are named from the mission code when one is available, and rows
+    with no name at all are omitted.
 
     Args:
         path: The GeoPackage file to read.
 
     Yields:
-        The fires found in the file, one per row, in the order encountered.
+        The fire records found in the file, one per row, in the order encountered.
 
     Raises:
         UnknownLayerError: If a layer does not correspond to a configured feed.
@@ -233,25 +345,49 @@ def fire_names(
         if feed is None:
             raise peri_scribe.exceptions.UnknownLayerError(layer_name, path)
         dataframe = geopandas.read_file(path, layer=feed.name)
-        rows = dataframe[[feed.fire_name_column, feed.status_column]].dropna()
-        identifier_column = feed.fire_identifier_column
-        if identifier_column is None:
-            identifiers: typing.Sequence[object] = [None] * len(rows)
-        else:
-            identifiers = dataframe.loc[rows.index, identifier_column]
-        for (name, raw_status), raw_identifier in zip(
-            rows.itertuples(index=False, name=None),
-            identifiers,
-            strict=True,
-        ):
-            fire_name = str(name)
-            status = fire_status_from(raw_status)
-            if fire_name.strip() and status is not None:
-                yield peri_scribe.models.Fire(
-                    name=fire_name,
-                    status=status,
-                    identifier=normalize_identifier(raw_identifier),
+        for index in range(len(dataframe)):
+            row = dataframe.iloc[index]
+            status = fire_status_from(row[feed.status_column])
+            if status is None:
+                continue
+            recorded_name = fire_name_from(row[feed.fire_name_column])
+            mission = mission_name_from(
+                row[feed.mission_column]
+                if feed.mission_column is not None
+                else None,
+            )
+            name = recorded_name or (
+                mission.name if mission is not None else None
+            )
+            if name is None:
+                continue
+            identifiers = frozenset(
+                normalized
+                for column in feed.fire_identifier_columns
+                if (normalized := normalize_identifier(row[column])) is not None
+            )
+            names = frozenset(
+                peri_scribe.models.normalize_fire_name(candidate)
+                for candidate in (
+                    recorded_name,
+                    mission.name if mission is not None else None,
+                    mission.base_name if mission is not None else None,
                 )
+                if candidate is not None
+            )
+            observed_at = (
+                observation_time_from(row[feed.observation_time_column])
+                if feed.observation_time_column is not None
+                else None
+            )
+            yield peri_scribe.models.FireRecord(
+                name=name,
+                status=status,
+                identifiers=identifiers,
+                names=names,
+                geometry=dataframe.geometry.iloc[index],
+                observed_at=observed_at,
+            )
 
 
 def complex_memberships(
@@ -279,14 +415,14 @@ def complex_memberships(
         if feed is None:
             raise peri_scribe.exceptions.UnknownLayerError(layer_name, path)
         if (
-            feed.fire_identifier_column is None
+            not feed.fire_identifier_columns
             or feed.complex_identifier_column is None
             or feed.complex_name_column is None
             or feed.is_complex_child_column is None
         ):
             continue
         columns = [
-            feed.fire_identifier_column,
+            feed.fire_identifier_columns[0],
             feed.complex_identifier_column,
             feed.complex_name_column,
             feed.is_complex_child_column,
