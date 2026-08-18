@@ -6,8 +6,11 @@ import dataclasses
 import enum
 import importlib.resources
 import json
+import pathlib
 import typing
 from typing import TYPE_CHECKING
+
+import pydantic
 
 import peri_scribe.feed_types
 
@@ -114,6 +117,42 @@ class ComplexMembership:
     fire_identifier: str
     complex_identifier: str
     complex_name: str
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class FireSources:
+    """A distinct fire and the GeoPackage files that mention it.
+
+    The same fire can appear in many snapshots across one or more sources, so ``paths``
+    holds every GeoPackage file whose rows record that fire.
+    """
+
+    fire: Fire
+    paths: tuple[pathlib.Path, ...]
+
+
+class FireIndexComplex(pydantic.BaseModel):
+    """A fire's complex membership as recorded in the fire source index."""
+
+    name: str
+    identifier: str
+
+
+class FireIndexEntry(pydantic.BaseModel):
+    """One fire's entry in the fire source index."""
+
+    name: str
+    status: typing.Literal["active", "inactive"]
+    identifier: str | None = None
+    complex: FireIndexComplex | None = None
+    paths: list[str]
+
+
+class FireIndex(pydantic.BaseModel):
+    """The fire source index: every fire and the files that mention it."""
+
+    version: str
+    fires: list[FireIndexEntry]
 
 
 @dataclasses.dataclass(frozen=True)

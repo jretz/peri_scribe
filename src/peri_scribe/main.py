@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import pathlib
 
 import click
@@ -13,6 +14,18 @@ import peri_scribe.output
 
 
 logger = structlog.get_logger()
+
+
+def default_year_directory() -> pathlib.Path:
+    """Return the current year's data directory under the working directory.
+
+    Returns:
+        The path to ``data/<current year>`` under the current working directory.
+    """
+    return peri_scribe.operations.year_directory_path(
+        pathlib.Path.cwd(),
+        datetime.date.today().year,
+    )
 
 
 @click.group()
@@ -66,31 +79,73 @@ def current_watermarks() -> None:
         )
 
 
-@cli.command()
+def year_directory_default_help() -> str:
+    """Return the help sentence naming the default year directory.
+
+    The default moves forward each new year, so the sentence names the current year.
+
+    Returns:
+        The sentence naming the default year directory.
+    """
+    return (
+        f"YEAR_DIRECTORY defaults to "
+        f"{peri_scribe.operations.DATA_DIRECTORY_NAME}/"
+        f"{datetime.date.today().year}."
+    )
+
+
+@cli.command(
+    help=(
+        "Log the name, status, and identifier of each fire.\n\n"
+        "Reads YEAR_DIRECTORY/sources/fires.json, building it from the GeoPackage "
+        f"files first when it is missing. {year_directory_default_help()}"
+    ),
+)
 @click.argument(
-    "directory",
+    "year_directory",
     type=click.Path(
         path_type=pathlib.Path,
         exists=True,
         file_okay=False,
     ),
+    required=False,
 )
-def list_fires(directory: pathlib.Path) -> None:
-    """Log the name, status, and identifier of each fire.
-
-    Reads every GeoPackage file anywhere below DIRECTORY.
-    """
+def list_fires(year_directory: pathlib.Path | None = None) -> None:
+    if year_directory is None:
+        year_directory = default_year_directory()
     for index, fire in enumerate(
-        peri_scribe.operations.list_fires(directory),
+        peri_scribe.operations.load_fire_index(year_directory).fires,
         start=1,
     ):
         logger.info(
             "Fire %d",
             index,
             name=fire.name,
-            status=fire.status.value,
+            status=fire.status,
             identifier=fire.identifier,
         )
+
+
+@cli.command(
+    help=(
+        "Build the fire source index for YEAR_DIRECTORY.\n\n"
+        "The index is written to YEAR_DIRECTORY/sources/fires.json. "
+        f"{year_directory_default_help()}"
+    ),
+)
+@click.argument(
+    "year_directory",
+    type=click.Path(
+        path_type=pathlib.Path,
+        exists=True,
+        file_okay=False,
+    ),
+    required=False,
+)
+def index_fire_sources(year_directory: pathlib.Path | None = None) -> None:
+    if year_directory is None:
+        year_directory = default_year_directory()
+    peri_scribe.operations.index_fire_sources(year_directory)
 
 
 if __name__ == "__main__":

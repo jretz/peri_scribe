@@ -7,6 +7,10 @@ class NoFeaturesError(ValueError):
     """Raised when a feed returns no features."""
 
 
+class FeedFetchError(ValueError):
+    """Raised when a configured feed cannot be fetched."""
+
+
 class NoSpatialReferenceError(ValueError):
     """Raised when a layer's spatial reference cannot be determined."""
 

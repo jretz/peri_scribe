@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+import json
 import logging
 import pathlib
 import typing
@@ -13,6 +15,30 @@ import peri_scribe.output
 
 if typing.TYPE_CHECKING:
     import pytest
+
+
+class RecordingFile:
+    """In-memory file stand-in that keeps its contents after being closed."""
+
+    def __init__(self) -> None:
+        self.stream = io.StringIO()
+
+    def write(self, text: str) -> int:
+        return self.stream.write(text)
+
+    def getvalue(self) -> str:
+        return self.stream.getvalue()
+
+    def __enter__(self) -> typing.Self:
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: object,
+        _exc_value: object,
+        _traceback: object,
+    ) -> None:
+        return None
 
 
 def test_write_geopackage_writes_every_layer(
@@ -97,3 +123,42 @@ def test_configure_logging_debug_level_enables_every_level() -> None:
         logger = structlog.get_logger()
         assert logger.is_enabled_for(logging.DEBUG)
         assert logger.is_enabled_for(logging.CRITICAL)
+
+
+def test_write_fire_index_writes_pretty_printed_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = pathlib.Path("/fires.json")
+    document = peri_scribe.models.FireIndex.model_validate({
+        "version": "2026-08-17",
+        "fires": [
+            {
+                "name": "Park Fire",
+                "status": "active",
+                "paths": ["one.gpkg"],
+            },
+        ],
+    })
+    files: list[RecordingFile] = []
+
+    def fake_open(
+        _self: pathlib.Path,
+        mode: str,
+        encoding: str,
+    ) -> RecordingFile:
+        assert mode == "w"
+        assert encoding == "utf-8"
+        file = RecordingFile()
+        files.append(file)
+        return file
+
+    monkeypatch.setattr(pathlib.Path, "open", fake_open)
+    with structlog.testing.capture_logs() as captured:
+        peri_scribe.output.write_fire_index(path, document)
+    written = files[0].getvalue()
+    assert json.loads(written) == document.model_dump()
+    assert list(json.loads(written)) == ["version", "fires"]
+    assert "\n    " in written
+    assert captured[0]["event"] == "Wrote fire index"
+    assert captured[0]["path"] == "fires.json"
+    assert captured[0]["fires"] == 1

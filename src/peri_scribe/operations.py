@@ -31,6 +31,11 @@ logger = structlog.get_logger()
 
 DATA_DIRECTORY_NAME = "data"
 SOURCES_DIRECTORY_NAME = "sources"
+FIRE_INDEX_FILENAME = "fires.json"
+
+# The current version of the fire source index format; bump it when the format
+# changes so that consumers can tell which format a file uses.
+FIRE_INDEX_VERSION = "2026-08-17"
 
 # When fetching only changed features, the cutoff for the query is moved back by this
 # amount so that recently edited features are re-fetched and re-checked rather than
@@ -190,13 +195,47 @@ def source_geopackage_path(
         The path to the snapshot's GeoPackage file.
     """
     return (
-        base_dir
-        / DATA_DIRECTORY_NAME
-        / str(year)
-        / SOURCES_DIRECTORY_NAME
+        sources_directory_path(year_directory_path(base_dir, year))
         / source_name
         / geopackage_filename(serial_number, watermark)
     )
+
+
+def year_directory_path(base_dir: pathlib.Path, year: int) -> pathlib.Path:
+    """Return the directory that holds *year*'s data under *base_dir*.
+
+    Args:
+        base_dir: The base directory that holds the ``data`` directory.
+        year: The year whose data directory is returned.
+
+    Returns:
+        The path to the year's data directory.
+    """
+    return base_dir / DATA_DIRECTORY_NAME / str(year)
+
+
+def sources_directory_path(year_directory: pathlib.Path) -> pathlib.Path:
+    """Return the sources directory inside *year_directory*.
+
+    Args:
+        year_directory: The year directory that holds the ``sources`` directory.
+
+    Returns:
+        The path to the year's sources directory.
+    """
+    return year_directory / SOURCES_DIRECTORY_NAME
+
+
+def fire_index_path(year_directory: pathlib.Path) -> pathlib.Path:
+    """Return the path of the fire index for *year_directory*.
+
+    Args:
+        year_directory: The year directory that holds the ``sources`` directory.
+
+    Returns:
+        The path to the year's fire index file.
+    """
+    return sources_directory_path(year_directory) / FIRE_INDEX_FILENAME
 
 
 def parse_iso_datetime(text: str) -> datetime.datetime | None:
@@ -556,6 +595,42 @@ def fetch_feed_dataframe(
     return geodataframe
 
 
+def fetch_feed(
+    feed: peri_scribe.feed_types.Feed,
+    gis: arcgis.gis.GIS,
+    existing_filenames: list[pathlib.Path],
+    source_directory: pathlib.Path,
+) -> geopandas.GeoDataFrame | None:
+    """Fetch a feed's new or changed features, or None when there are none.
+
+    Failures are translated into a FeedFetchError so that the caller can report them
+    without aborting the remaining feeds.
+
+    Args:
+        feed: The feed to fetch.
+        gis: The ArcGIS connection used to open the feed's layer.
+        existing_filenames: The feed's stored snapshot filenames, in serial order.
+        source_directory: The directory holding the feed's snapshots.
+
+    Returns:
+        The GeoDataFrame of features to write, or None when nothing changed.
+
+    Raises:
+        FeedFetchError: If the feed cannot be fetched.
+    """
+    try:
+        layer = arcgis.features.FeatureLayer(feed.url, gis)
+        return fetch_feed_dataframe(
+            feed,
+            layer,
+            existing_filenames,
+            source_directory,
+        )
+    except Exception as error:
+        message = f"Failed to fetch {feed.name}: {error}"
+        raise peri_scribe.exceptions.FeedFetchError(message) from error
+
+
 def fetch_all_feeds(
     base_dir: pathlib.Path | None = None,
     *,
@@ -569,6 +644,11 @@ def fetch_all_feeds(
     snapshot for the observed watermark already exists, the feed is skipped entirely
     because the data is already present.
 
+    A feed that fails does not stop the other feeds from being fetched. When at least
+    one feed writes a new snapshot, the fire source index is rebuilt so that it reflects
+    the newly written snapshots. When any feed fails, all of the failures are reported
+    together after the remaining feeds and the re-index have been attempted.
+
     Args:
         base_dir: Directory under which the ``data`` directory tree is created.
             Defaults to the current working directory.
@@ -580,8 +660,9 @@ def fetch_all_feeds(
         existing snapshot path instead.
 
     Raises:
-        SystemExit: If a feed is unreachable, returns no features, cannot observe a
-            watermark, or lacks a modified column for an incremental fetch.
+        SystemExit: If any feed is unreachable, returns no features, cannot observe a
+            watermark, or lacks a modified column for an incremental fetch. The message
+            lists every feed that failed.
     """
     if base_dir is None:
         base_dir = pathlib.Path.cwd()
@@ -589,12 +670,16 @@ def fetch_all_feeds(
         year = datetime.date.today().year
     gis = arcgis.gis.GIS()
     snapshot_paths: list[pathlib.Path] = []
+    errors: list[str] = []
+    wrote_snapshot = False
     for feed in peri_scribe.models.FEEDS:
         logger.info("Fetching", feed=feed.name, url=feed.url)
         watermark = feed.current_watermark
         if watermark is None:
-            message = f"Failed to fetch {feed.name}: no watermark could be observed"
-            raise SystemExit(message)
+            errors.append(
+                f"Failed to fetch {feed.name}: no watermark could be observed",
+            )
+            continue
         source_directory = (
             base_dir
             / DATA_DIRECTORY_NAME
@@ -614,17 +699,15 @@ def fetch_all_feeds(
             continue
         existing_filenames = existing_geopackage_filenames(source_directory)
         try:
-            layer = arcgis.features.FeatureLayer(feed.url, gis)
-            geodataframe = fetch_feed_dataframe(
+            geodataframe = fetch_feed(
                 feed,
-                layer,
+                gis,
                 existing_filenames,
                 source_directory,
             )
-        except Exception as error:
-            # Fail fast with a readable message if a feed is unreachable.
-            message = f"Failed to fetch {feed.name}: {error}"
-            raise SystemExit(message) from error
+        except peri_scribe.exceptions.FeedFetchError as error:
+            errors.append(str(error))
+            continue
         if geodataframe is None:
             latest_path = latest_snapshot_path(source_directory, existing_filenames)
             if latest_path is not None:
@@ -657,12 +740,17 @@ def fetch_all_feeds(
             ],
         )
         snapshot_paths.append(output_path)
+        wrote_snapshot = True
+    if wrote_snapshot:
+        index_fire_sources(year_directory_path(base_dir, year))
+    if errors:
+        raise SystemExit("\n".join(errors))
     logger.info("Done")
     return tuple(snapshot_paths)
 
 
-def list_fires(directory: pathlib.Path) -> list[peri_scribe.models.Fire]:
-    """Collect the fires in the GeoPackage files under *directory*.
+def fire_sources(directory: pathlib.Path) -> list[peri_scribe.models.FireSources]:
+    """Collect the distinct fires and their source files under *directory*.
 
     Every GeoPackage file anywhere below *directory* is read, so snapshots stored under
     ``sources/{feed}/{serial}.gpkg`` are all found. Fire records are identified by their
@@ -673,42 +761,195 @@ def list_fires(directory: pathlib.Path) -> list[peri_scribe.models.Fire]:
     Fires that are complex parents are represented by a FireComplex instead of listed as
     fires, and member fires carry a circular link to their complex.
 
+    Each result records the GeoPackage files whose rows mention the fire, so the same
+    fire can be traced back to every snapshot it appears in.
+
     Args:
         directory: The directory tree holding GeoPackage files with fire data.
 
     Returns:
-        The fires, in the order first encountered.
+        The fires, in the order first encountered, each with the paths of the GeoPackage
+        files that mention it.
 
     Raises:
         SystemExit: If a GeoPackage file cannot be read.
         UnknownLayerError: If a layer does not correspond to a configured feed.
     """
     records: list[peri_scribe.models.Fire] = []
+    record_paths: list[pathlib.Path] = []
     memberships: list[peri_scribe.models.ComplexMembership] = []
     for path in geo_package_files(directory):
         try:
-            records.extend(peri_scribe.geo_data.fire_names(path))
-            memberships.extend(peri_scribe.geo_data.complex_memberships(path))
+            file_records = list(peri_scribe.geo_data.fire_names(path))
+            file_memberships = list(
+                peri_scribe.geo_data.complex_memberships(path),
+            )
         except peri_scribe.exceptions.UnknownLayerError:
             raise
         except Exception as error:
             # Fail fast with a readable message if a GeoPackage is unreadable.
             message = f"Failed to read {path}: {error}"
             raise SystemExit(message) from error
-    groups = group_fire_records(records)
-    fires = [most_common_fire(group) for group in groups]
+        records.extend(file_records)
+        record_paths.extend([path] * len(file_records))
+        memberships.extend(file_memberships)
+    groups = group_fire_record_indices(records)
+    fires = [most_common_fire([records[index] for index in group]) for group in groups]
     fires_by_identifier: dict[str, peri_scribe.models.Fire] = {}
     for group, fire in zip(groups, fires, strict=True):
-        for record in group:
-            if record.identifier is not None:
-                fires_by_identifier.setdefault(record.identifier, fire)
+        for index in group:
+            identifier = records[index].identifier
+            if identifier is not None:
+                fires_by_identifier.setdefault(identifier, fire)
     complexes = fire_complexes(memberships, fires_by_identifier)
     complex_identifiers = {complex_.identifier for complex_ in complexes}
+    sources: list[peri_scribe.models.FireSources] = []
+    for fire, group in zip(fires, groups, strict=True):
+        if any(records[index].identifier in complex_identifiers for index in group):
+            continue
+        sources.append(
+            peri_scribe.models.FireSources(
+                fire=fire,
+                paths=tuple(
+                    sorted({record_paths[index] for index in group}),
+                ),
+            ),
+        )
+    return sources
+
+
+def fire_document(fire: peri_scribe.models.Fire) -> dict[str, object]:
+    """Return a JSON-serializable document describing *fire*.
+
+    A fire in a complex is described with the complex's name and identifier. The
+    complex's member list is not included, because it links back to the fire and would
+    make the document circular.
+
+    Args:
+        fire: The fire to describe.
+
+    Returns:
+        The fire's attributes as a JSON-serializable dictionary.
+    """
+    complex_document: dict[str, object] | None
+    if fire.complex is None:
+        complex_document = None
+    else:
+        complex_document = {
+            "name": fire.complex.name,
+            "identifier": fire.complex.identifier,
+        }
+    return {
+        "name": fire.name,
+        "status": fire.status.value,
+        "identifier": fire.identifier,
+        "complex": complex_document,
+    }
+
+
+def fire_sources_document(
+    source: peri_scribe.models.FireSources,
+    sources_directory: pathlib.Path,
+) -> dict[str, object]:
+    """Return a JSON-serializable document for *source*.
+
+    The document has all of the fire's attributes plus the paths of the GeoPackage files
+    that mention it, relative to *sources_directory* and sorted by path.
+
+    Args:
+        source: The fire and its source files.
+        sources_directory: The directory that holds the index file, used to make the
+            GeoPackage paths relative.
+
+    Returns:
+        The fire and its source paths as a JSON-serializable dictionary.
+    """
+    return {
+        **fire_document(source.fire),
+        "paths": sorted(
+            str(path.relative_to(sources_directory)) for path in source.paths
+        ),
+    }
+
+
+def fire_index_entries(
+    sources: list[peri_scribe.models.FireSources],
+    sources_directory: pathlib.Path,
+) -> list[dict[str, object]]:
+    """Return the fire index documents for *sources*, sorted by fire name.
+
+    Args:
+        sources: The fires and their source files.
+        sources_directory: The directory that holds the index file, used to make the
+            GeoPackage paths relative.
+
+    Returns:
+        One document per fire, sorted by fire name.
+    """
     return [
-        fire
-        for fire, group in zip(fires, groups, strict=True)
-        if not any(record.identifier in complex_identifiers for record in group)
+        fire_sources_document(source, sources_directory)
+        for source in sorted(sources, key=lambda source: source.fire.name)
     ]
+
+
+def fire_index_document(
+    entries: list[dict[str, object]],
+) -> peri_scribe.models.FireIndex:
+    """Validate *entries* as the fire index for the current version.
+
+    Args:
+        entries: The fire index entry documents.
+
+    Returns:
+        The validated fire index document.
+    """
+    return peri_scribe.models.FireIndex.model_validate({
+        "version": FIRE_INDEX_VERSION,
+        "fires": entries,
+    })
+
+
+def index_fire_sources(year_directory: pathlib.Path) -> None:
+    """Build the fire source index for *year_directory*.
+
+    The index lists every distinct fire in the GeoPackage files under
+    ``{year_directory}/sources``, along with the GeoPackage files that mention each
+    fire. It is written to ``{year_directory}/sources/fires.json``.
+
+    Args:
+        year_directory: The year directory that holds the ``sources`` directory.
+    """
+    sources_directory = sources_directory_path(year_directory)
+    index = fire_index_document(
+        fire_index_entries(
+            fire_sources(sources_directory),
+            sources_directory,
+        ),
+    )
+    output_path = fire_index_path(year_directory)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    peri_scribe.output.write_fire_index(output_path, index)
+
+
+def load_fire_index(year_directory: pathlib.Path) -> peri_scribe.models.FireIndex:
+    """Return the fire index for *year_directory*, building it first if needed.
+
+    The index is read from ``{year_directory}/sources/fires.json``. When the file is
+    missing, it is built from the GeoPackage files under the sources directory before
+    it is read, so the index is always available once this returns.
+
+    Args:
+        year_directory: The year directory that holds the ``sources`` directory.
+
+    Returns:
+        The validated fire index.
+    """
+    index_path = fire_index_path(year_directory)
+    if not index_path.is_file():
+        index_fire_sources(year_directory)
+    return peri_scribe.models.FireIndex.model_validate_json(
+        index_path.read_text(encoding="utf-8"),
+    )
 
 
 def normalize_fire_name(name: str) -> str:
@@ -744,6 +985,27 @@ def group_fire_records(
     Returns:
         The groups of records, in the order first encountered.
     """
+    return [
+        [records[index] for index in group]
+        for group in group_fire_record_indices(records)
+    ]
+
+
+def group_fire_record_indices(
+    records: list[peri_scribe.models.Fire],
+) -> list[list[int]]:
+    """Group the indices of fire records that identify the same fire.
+
+    The grouping rules are the same as `group_fire_records`, but each group holds the
+    indices of its records instead of the records themselves, so callers can look up
+    associated data such as each record's source file.
+
+    Args:
+        records: The fire records to group.
+
+    Returns:
+        The groups of record indices, in the order first encountered.
+    """
     parent = list(range(len(records)))
 
     def find(index: int) -> int:
@@ -777,14 +1039,14 @@ def group_fire_records(
             else:
                 by_unidentified_name[name] = index
             union(index, by_name[name])
-    groups_by_root: dict[int, list[peri_scribe.models.Fire]] = {}
+    groups_by_root: dict[int, list[int]] = {}
     order: list[int] = []
-    for index, fire in enumerate(records):
+    for index in range(len(records)):
         root = find(index)
         if root not in groups_by_root:
             order.append(root)
             groups_by_root[root] = []
-        groups_by_root[root].append(fire)
+        groups_by_root[root].append(index)
     return [groups_by_root[root] for root in order]
 
 

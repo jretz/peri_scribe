@@ -1,5 +1,6 @@
 """Output operations for peri_scribe."""
 
+import json
 import pathlib
 from typing import TYPE_CHECKING
 
@@ -32,6 +33,22 @@ def write_geopackage(
             features=len(layer_data.dataframe),
         )
         mode = "a"
+
+
+def write_fire_index(
+    path: pathlib.Path,
+    document: peri_scribe.models.FireIndex,
+) -> None:
+    """Write *document* to *path* as pretty-printed JSON.
+
+    Args:
+        path: The JSON file to write.
+        document: The validated fire index to serialize.
+    """
+    logger = structlog.get_logger()
+    with path.open("w", encoding="utf-8") as file:
+        json.dump(document.model_dump(), file, indent=4)
+    logger.info("Wrote fire index", path=path.name, fires=len(document.fires))
 
 
 def configure_logging(log_level: str) -> None:

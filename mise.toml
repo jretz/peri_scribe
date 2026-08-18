@@ -5,7 +5,7 @@ raw_args = true
 run = "uv run --locked --module peri_scribe.main"
 
 [tasks.feed-config]
-description = "Log the configured data feeds"
+description = "Log the configured feeds"
 depends = ["venv"]
 raw_args = true
 run = "uv run --locked --module peri_scribe.main feed-config"
@@ -26,7 +26,13 @@ run = "uv run --locked --module peri_scribe.main list-fires"
 description = "Fetch each configured feed into a GeoPackage"
 depends = ["venv"]
 raw_args = true
-run = "uv run --locked --module peri_scribe.main --log-level debug fetch"
+run = "uv run --locked --module peri_scribe.main fetch"
+
+[tasks.index-fire-sources]
+description = "Build the fire source index for YEAR_DIRECTORY"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked --module peri_scribe.main index-fire-sources"
 
 [tasks.lint]
 description = "Check and fix style/format with ruff"
@@ -78,9 +84,9 @@ description = "Regenerate .gitignore from gitnr templates"
 run = [
     "gitnr create tt:Python tt:linux tt:macOS tt:VisualStudioCode > .gitignore",
     "echo '.codewhale' >> .gitignore",
-    "echo '*.gpkg' >> .gitignore",
     "echo '*.kml' >> .gitignore",
     "echo '*.kmz' >> .gitignore",
+    "echo 'data/' >> .gitignore",
 ]
 
 [settings]

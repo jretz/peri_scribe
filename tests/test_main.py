@@ -9,14 +9,12 @@ import typing
 from typing import TYPE_CHECKING
 
 import arcgis.features
-import pandas as pd
 import pyproj
 import pytest
 import structlog
 import time_machine
 
 import peri_scribe.exceptions
-import peri_scribe.feed_types
 import peri_scribe.main
 import peri_scribe.models
 import peri_scribe.operations
@@ -267,6 +265,11 @@ def fetch_setup(
         ],
     )
     monkeypatch.setattr(peri_scribe.operations.arcgis.gis, "GIS", object)
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "index_fire_sources",
+        lambda _year_directory: None,
+    )
     with time_machine.travel(
         datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         tick=False,
@@ -305,39 +308,68 @@ def list_fires_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def test_list_fires_requires_directory(
+@pytest.mark.usefixtures("list_fires_setup")
+def test_list_fires_defaults_to_current_year_directory(
+    monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
 ) -> None:
-    result = runner.invoke(peri_scribe.main.cli, ["list-fires"])
-    assert result.exit_code == CLICK_USAGE_ERROR_EXIT_CODE
-    assert "Missing argument 'DIRECTORY'." in result.output
+    monkeypatch.setattr(
+        pathlib.Path,
+        "cwd",
+        staticmethod(lambda: BASE_DIRECTORY),
+    )
+    indexed: list[pathlib.Path] = []
+
+    def load_fire_index(
+        year_directory: pathlib.Path,
+    ) -> peri_scribe.models.FireIndex:
+        indexed.append(year_directory)
+        return peri_scribe.models.FireIndex.model_validate({
+            "version": "2026-08-17",
+            "fires": [],
+        })
+
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "load_fire_index",
+        load_fire_index,
+    )
+    with time_machine.travel(
+        datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        tick=False,
+    ):
+        result = runner.invoke(peri_scribe.main.cli, ["list-fires"])
+    assert result.exit_code == 0
+    assert indexed == [BASE_DIRECTORY / "data" / "2026"]
+
+
+def test_list_fires_help_names_current_year_default(
+    runner: click.testing.CliRunner,
+) -> None:
+    result = runner.invoke(peri_scribe.main.cli, ["list-fires", "--help"])
+    assert result.exit_code == 0
+    assert (
+        f"{peri_scribe.operations.DATA_DIRECTORY_NAME}/{datetime.date.today().year}"
+    ) in result.output
+    assert "data/<current year>" not in result.output
 
 
 @pytest.mark.usefixtures("list_fires_setup")
 def test_list_fires_logs_fire_names_and_statuses(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
-    configured_feeds: list[peri_scribe.feed_types.Feed],
-    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_geo_package(
-        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Polygon"]}),
-        {
-            "Fires_One_0": pd.DataFrame({
-                "incident_name": ["Park Fire", "ALTA"],
-                "displayStatus": ["Active", "Inactive"],
-            }),
-        },
-    )
-    directory = pathlib.Path("/data")
-    snapshots = [
-        directory / "sources" / "Fires_One_0" / "000000,lastEdit=one.gpkg",
-        directory / "sources" / "Fires_One_0" / "000001,lastEdit=two.gpkg",
-    ]
+    index = peri_scribe.models.FireIndex.model_validate({
+        "version": "2026-08-17",
+        "fires": [
+            {"name": "Park Fire", "status": "active", "paths": []},
+            {"name": "ALTA", "status": "inactive", "paths": []},
+        ],
+    })
     monkeypatch.setattr(
         peri_scribe.operations,
-        "geo_package_files",
-        lambda _directory: snapshots,
+        "load_fire_index",
+        lambda _year_directory: index,
     )
     with structlog.testing.capture_logs() as captured:
         result = runner.invoke(
@@ -352,25 +384,21 @@ def test_list_fires_logs_fire_names_and_statuses(
 
 
 @pytest.mark.usefixtures("list_fires_setup")
-def test_list_fires_propagates_unconfigured_layer_error(
+def test_list_fires_propagates_index_build_error(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
-    configured_feeds: list[peri_scribe.feed_types.Feed],
-    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_geo_package(
-        pd.DataFrame({"name": ["Mystery_Layer_0"], "geometry_type": ["Polygon"]}),
-        {
-            "Mystery_Layer_0": pd.DataFrame({
-                "incident_name": ["Park Fire"],
-                "displayStatus": ["Active"],
-            }),
-        },
-    )
+    def fail(_year_directory: pathlib.Path) -> typing.Never:
+        layer_name = "Mystery_Layer_0"
+        raise peri_scribe.exceptions.UnknownLayerError(
+            layer_name,
+            pathlib.Path("fires.gpkg"),
+        )
+
     monkeypatch.setattr(
         peri_scribe.operations,
-        "geo_package_files",
-        lambda _directory: [pathlib.Path("fires.gpkg")],
+        "load_fire_index",
+        fail,
     )
     result = runner.invoke(peri_scribe.main.cli, ["list-fires", "."])
     assert result.exit_code == 1
@@ -925,3 +953,172 @@ def test_fetch_skips_download_when_watermark_already_present(
     assert skip_event["feed"] == SAMPLE_FEED_NAME
     assert skip_event["watermark"] == SAMPLE_WATERMARK
     assert skip_event["path"] == snapshot_path()
+
+
+@pytest.mark.usefixtures("fetch_setup")
+def test_fetch_reindexes_fire_sources_after_successful_fetch(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+    feature_set_with_geometry: arcgis.features.FeatureSet,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.operations.arcgis.features,
+        "FeatureLayer",
+        lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
+    )
+    indexed: list[pathlib.Path] = []
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "index_fire_sources",
+        indexed.append,
+    )
+    result = runner.invoke(peri_scribe.main.cli, ["fetch"])
+    assert result.exit_code == 0
+    assert indexed == [BASE_DIRECTORY / "data" / "2026"]
+
+
+@pytest.mark.usefixtures("fetch_setup")
+def test_fetch_reindexes_after_a_feed_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+    feature_set_with_geometry: arcgis.features.FeatureSet,
+    geo_package_store: GeoPackageStore,
+) -> None:
+    failing = FetchFeedStub(
+        name="Failing_0",
+        url="https://example.test/failing",
+        watermark=SAMPLE_WATERMARK,
+    )
+    working = FetchFeedStub(
+        name="Working_0",
+        url="https://example.test/working",
+        watermark=SAMPLE_WATERMARK,
+    )
+    monkeypatch.setattr(peri_scribe.models, "FEEDS", [failing, working])
+
+    def layer_factory(url: str, gis: object) -> FeatureLayerStub:
+        if url == failing.url:
+            return FeatureLayerStub(
+                url,
+                gis,
+                arcgis.features.FeatureSet([]),
+                query_error=RuntimeError("boom"),
+            )
+        return FeatureLayerStub(url, gis, feature_set_with_geometry)
+
+    monkeypatch.setattr(
+        peri_scribe.operations.arcgis.features,
+        "FeatureLayer",
+        layer_factory,
+    )
+    indexed: list[pathlib.Path] = []
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "index_fire_sources",
+        indexed.append,
+    )
+    result = runner.invoke(peri_scribe.main.cli, ["fetch"])
+    assert result.exit_code == 1
+    assert indexed == [BASE_DIRECTORY / "data" / "2026"]
+    assert geo_package_store.has(snapshot_path(feed_name=working.name))
+    assert not geo_package_store.has(snapshot_path(feed_name=failing.name))
+    assert f"Failed to fetch {failing.name}: boom" in result.output
+
+
+@pytest.mark.usefixtures("fetch_setup")
+def test_fetch_does_not_reindex_when_no_feed_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.operations.arcgis.features,
+        "FeatureLayer",
+        lambda url, gis: FeatureLayerStub(
+            url,
+            gis,
+            arcgis.features.FeatureSet([]),
+            query_error=RuntimeError("boom"),
+        ),
+    )
+    indexed: list[pathlib.Path] = []
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "index_fire_sources",
+        indexed.append,
+    )
+    result = runner.invoke(peri_scribe.main.cli, ["fetch"])
+    assert result.exit_code == 1
+    assert indexed == []
+    assert f"Failed to fetch {SAMPLE_FEED_NAME}: boom" in result.output
+
+
+def test_index_fire_sources_defaults_to_current_year_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+) -> None:
+    monkeypatch.setattr(
+        pathlib.Path,
+        "cwd",
+        staticmethod(lambda: BASE_DIRECTORY),
+    )
+    indexed: list[pathlib.Path] = []
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "index_fire_sources",
+        indexed.append,
+    )
+    with time_machine.travel(
+        datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        tick=False,
+    ):
+        result = runner.invoke(peri_scribe.main.cli, ["index-fire-sources"])
+    assert result.exit_code == 0
+    assert indexed == [BASE_DIRECTORY / "data" / "2026"]
+
+
+def test_index_fire_sources_help_names_current_year_default(
+    runner: click.testing.CliRunner,
+) -> None:
+    result = runner.invoke(
+        peri_scribe.main.cli,
+        ["index-fire-sources", "--help"],
+    )
+    assert result.exit_code == 0
+    assert (
+        f"{peri_scribe.operations.DATA_DIRECTORY_NAME}/{datetime.date.today().year}"
+    ) in result.output
+    assert "data/<current year>" not in result.output
+
+
+def test_index_fire_sources_rejects_missing_directory(
+    runner: click.testing.CliRunner,
+) -> None:
+    result = runner.invoke(
+        peri_scribe.main.cli,
+        ["index-fire-sources", "no-such-directory"],
+    )
+    assert result.exit_code == CLICK_USAGE_ERROR_EXIT_CODE
+    assert "does not exist" in result.output
+
+
+def test_index_fire_sources_builds_index(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.output,
+        "configure_logging",
+        lambda log_level: log_level,
+    )
+    indexed: list[pathlib.Path] = []
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "index_fire_sources",
+        indexed.append,
+    )
+    result = runner.invoke(
+        peri_scribe.main.cli,
+        ["index-fire-sources", "data/2026"],
+    )
+    assert result.exit_code == 0
+    assert indexed == [pathlib.Path("data/2026")]

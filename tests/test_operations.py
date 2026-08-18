@@ -1,12 +1,14 @@
 """Tests for peri_scribe.operations."""
 
 import datetime
+import json
 import pathlib
 import re
 import typing
 
 import geopandas
 import pandas as pd
+import pydantic
 import pyproj
 import pytest
 import shapely.geometry
@@ -17,6 +19,7 @@ import peri_scribe.feed_types
 import peri_scribe.geo_data
 import peri_scribe.models
 import peri_scribe.operations
+import peri_scribe.output
 
 
 ACTIVE = peri_scribe.models.FireStatus.ACTIVE
@@ -90,7 +93,22 @@ def stub_fire_reader(
     return stub
 
 
-def test_list_fires_prefers_most_common_mixed_case_spelling(
+def listed_fires(directory: pathlib.Path) -> list[peri_scribe.models.Fire]:
+    """Return the fires indexed from the GeoPackage files under *directory*.
+
+    Args:
+        directory: The directory tree holding GeoPackage files with fire data.
+
+    Returns:
+        The fires, in the order first encountered.
+    """
+    return [
+        source.fire
+        for source in peri_scribe.operations.fire_sources(directory)
+    ]
+
+
+def test_fire_sources_prefers_most_common_mixed_case_spelling(
     stub_fire_reader: StubFireReader,
 ) -> None:
     stub_fire_reader({
@@ -101,11 +119,11 @@ def test_list_fires_prefers_most_common_mixed_case_spelling(
             peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
         ],
     })
-    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
+    fires = listed_fires(pathlib.Path("sources"))
     assert fires == [peri_scribe.models.Fire(name="Park Fire", status=ACTIVE)]
 
 
-def test_list_fires_uses_most_common_spelling_when_none_is_mixed_case(
+def test_fire_sources_uses_most_common_spelling_when_none_is_mixed_case(
     stub_fire_reader: StubFireReader,
 ) -> None:
     stub_fire_reader({
@@ -115,11 +133,11 @@ def test_list_fires_uses_most_common_spelling_when_none_is_mixed_case(
             peri_scribe.models.Fire(name="park fire", status=INACTIVE),
         ],
     })
-    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
+    fires = listed_fires(pathlib.Path("sources"))
     assert fires == [peri_scribe.models.Fire(name="park fire", status=INACTIVE)]
 
 
-def test_list_fires_breaks_mixed_case_ties_by_first_spelling(
+def test_fire_sources_breaks_mixed_case_ties_by_first_spelling(
     stub_fire_reader: StubFireReader,
 ) -> None:
     stub_fire_reader({
@@ -128,11 +146,11 @@ def test_list_fires_breaks_mixed_case_ties_by_first_spelling(
             peri_scribe.models.Fire(name="PARK Fire", status=ACTIVE),
         ],
     })
-    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
+    fires = listed_fires(pathlib.Path("sources"))
     assert fires == [peri_scribe.models.Fire(name="Park Fire", status=ACTIVE)]
 
 
-def test_list_fires_marks_fire_active_when_any_record_is_active(
+def test_fire_sources_marks_fire_active_when_any_record_is_active(
     stub_fire_reader: StubFireReader,
 ) -> None:
     stub_fire_reader({
@@ -141,11 +159,11 @@ def test_list_fires_marks_fire_active_when_any_record_is_active(
             peri_scribe.models.Fire(name="Alta", status=ACTIVE),
         ],
     })
-    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
+    fires = listed_fires(pathlib.Path("sources"))
     assert fires == [peri_scribe.models.Fire(name="Alta", status=ACTIVE)]
 
 
-def test_list_fires_merges_names_across_files(
+def test_fire_sources_merges_names_across_files(
     stub_fire_reader: StubFireReader,
 ) -> None:
     stub_fire_reader({
@@ -158,7 +176,7 @@ def test_list_fires_merges_names_across_files(
             peri_scribe.models.Fire(name="Creek Fire", status=ACTIVE),
         ],
     })
-    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
+    fires = listed_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
         peri_scribe.models.Fire(name="ALTA", status=INACTIVE),
@@ -166,7 +184,7 @@ def test_list_fires_merges_names_across_files(
     ]
 
 
-def test_list_fires_merges_records_with_same_identifier_under_different_names(
+def test_fire_sources_merges_records_with_same_identifier_under_different_names(
     stub_fire_reader: StubFireReader,
 ) -> None:
     crosswhite_id = "1b0219ee-5298-4fef-9927-c2666d9d53fc"
@@ -184,7 +202,7 @@ def test_list_fires_merges_records_with_same_identifier_under_different_names(
             ),
         ],
     })
-    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
+    fires = listed_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(
             name="Crosswhite",
@@ -194,7 +212,7 @@ def test_list_fires_merges_records_with_same_identifier_under_different_names(
     ]
 
 
-def test_list_fires_keeps_same_named_fires_with_different_identifiers_separate(
+def test_fire_sources_keeps_same_named_fires_with_different_identifiers_separate(
     stub_fire_reader: StubFireReader,
 ) -> None:
     stub_fire_reader({
@@ -211,7 +229,7 @@ def test_list_fires_keeps_same_named_fires_with_different_identifiers_separate(
             ),
         ],
     })
-    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
+    fires = listed_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(
             name="CANYON",
@@ -226,7 +244,7 @@ def test_list_fires_keeps_same_named_fires_with_different_identifiers_separate(
     ]
 
 
-def test_list_fires_merges_unidentified_records_with_same_named_identified_records(
+def test_fire_sources_merges_unidentified_records_with_same_named_identified_records(
     stub_fire_reader: StubFireReader,
 ) -> None:
     # The CA layer's FIRIS records carry no identifier; the WFIGS records for the
@@ -246,7 +264,7 @@ def test_list_fires_merges_unidentified_records_with_same_named_identified_recor
             ),
         ],
     })
-    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
+    fires = listed_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(
             name="Bug",
@@ -256,7 +274,7 @@ def test_list_fires_merges_unidentified_records_with_same_named_identified_recor
     ]
 
 
-def test_list_fires_merges_keyed_record_with_later_unidentified_same_named_record(
+def test_fire_sources_merges_keyed_record_with_later_unidentified_same_named_record(
     stub_fire_reader: StubFireReader,
 ) -> None:
     bug_id = "286b7f1d-8945-4a5d-9d81-5235c18af1fe"
@@ -266,13 +284,13 @@ def test_list_fires_merges_keyed_record_with_later_unidentified_same_named_recor
             peri_scribe.models.Fire(name="BUG", status=INACTIVE),
         ],
     })
-    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
+    fires = listed_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(name="Bug", status=ACTIVE, identifier=bug_id),
     ]
 
 
-def test_list_fires_merges_identified_records_through_a_shared_unidentified_record(
+def test_fire_sources_merges_identified_records_through_a_shared_unidentified_record(
     stub_fire_reader: StubFireReader,
 ) -> None:
     # Two records with different identifiers and an unidentified record of the
@@ -292,7 +310,7 @@ def test_list_fires_merges_identified_records_through_a_shared_unidentified_reco
             ),
         ],
     })
-    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
+    fires = listed_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(
             name="Bug",
@@ -348,7 +366,7 @@ def test_is_mixed_case() -> None:
     assert not peri_scribe.operations.is_mixed_case("3-1")
 
 
-def test_list_fires_excludes_complex_parents(
+def test_fire_sources_excludes_complex_parents(
     stub_fire_reader: StubFireReader,
 ) -> None:
     parent_id = "b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3"
@@ -378,7 +396,7 @@ def test_list_fires_excludes_complex_parents(
             ],
         },
     )
-    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
+    fires = listed_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(
             name="0445 CROSSWHITE",
@@ -388,7 +406,7 @@ def test_list_fires_excludes_complex_parents(
     ]
 
 
-def test_list_fires_links_member_fires_to_their_complex(
+def test_fire_sources_links_member_fires_to_their_complex(
     stub_fire_reader: StubFireReader,
 ) -> None:
     parent_id = "b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3"
@@ -418,7 +436,7 @@ def test_list_fires_links_member_fires_to_their_complex(
             ],
         },
     )
-    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
+    fires = listed_fires(pathlib.Path("sources"))
     fire = fires[0]
     assert fire.complex is not None
     assert fire.complex.name == "ROWE CREEK COMPLEX"
@@ -427,7 +445,7 @@ def test_list_fires_links_member_fires_to_their_complex(
     assert next(iter(fire.complex.fires)).complex is fire.complex
 
 
-def test_list_fires_builds_one_complex_from_memberships_across_files(
+def test_fire_sources_builds_one_complex_from_memberships_across_files(
     stub_fire_reader: StubFireReader,
 ) -> None:
     parent_id = "b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3"
@@ -459,7 +477,7 @@ def test_list_fires_builds_one_complex_from_memberships_across_files(
             pathlib.Path("two.gpkg"): [membership],
         },
     )
-    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
+    fires = listed_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(
             name="Crosswhite",
@@ -471,7 +489,7 @@ def test_list_fires_builds_one_complex_from_memberships_across_files(
     assert len(fires[0].complex.fires) == 1
 
 
-def test_list_fires_excludes_parent_group_merged_with_unidentified_records(
+def test_fire_sources_excludes_parent_group_merged_with_unidentified_records(
     stub_fire_reader: StubFireReader,
 ) -> None:
     parent_id = "b0b0e959-6d11-4831-951a-c464f0f3ab45"
@@ -509,7 +527,7 @@ def test_list_fires_excludes_parent_group_merged_with_unidentified_records(
             ],
         },
     )
-    fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
+    fires = listed_fires(pathlib.Path("sources"))
     assert fires == [
         peri_scribe.models.Fire(
             name="5-3",
@@ -550,7 +568,7 @@ def test_fire_complexes_skips_membership_for_unidentified_fire(
         },
     )
     with structlog.testing.capture_logs() as captured:
-        fires = peri_scribe.operations.list_fires(pathlib.Path("sources"))
+        fires = listed_fires(pathlib.Path("sources"))
     assert captured[0]["event"] == (
         "Complex membership references an unidentified fire"
     )
@@ -566,7 +584,7 @@ def test_fire_complexes_skips_membership_for_unidentified_fire(
     assert fires[0].complex.fires == frozenset({fires[0]})
 
 
-def test_list_fires_propagates_unknown_layer_error(
+def test_fire_sources_propagates_unknown_layer_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def fake_fire_names(_path: pathlib.Path) -> typing.Never:
@@ -590,10 +608,10 @@ def test_list_fires_propagates_unknown_layer_error(
         peri_scribe.exceptions.UnknownLayerError,
         match=re.escape("layer Mystery_Layer_0 in fires.gpkg"),
     ):
-        peri_scribe.operations.list_fires(pathlib.Path("sources"))
+        listed_fires(pathlib.Path("sources"))
 
 
-def test_list_fires_raises_system_exit_for_unreadable_file(
+def test_fire_sources_raises_system_exit_for_unreadable_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     def fake_fire_names(_path: pathlib.Path) -> typing.Never:
@@ -614,7 +632,7 @@ def test_list_fires_raises_system_exit_for_unreadable_file(
         SystemExit,
         match=re.escape("Failed to read fires.gpkg: no such file"),
     ):
-        peri_scribe.operations.list_fires(pathlib.Path("sources"))
+        listed_fires(pathlib.Path("sources"))
 
 
 def test_existing_geopackage_filenames_returns_empty_list_without_directory(
@@ -1165,3 +1183,256 @@ def test_fetch_feed_dataframe_fetches_full_when_directory_empty(
         pathlib.Path("/sources"),
     )
     assert result is sentinel
+
+
+def test_fire_sources_collects_paths_for_each_fire(
+    stub_fire_reader: StubFireReader,
+) -> None:
+    one = pathlib.Path("one.gpkg")
+    two = pathlib.Path("two.gpkg")
+    stub_fire_reader({
+        one: [peri_scribe.models.Fire(name="Park Fire", status=ACTIVE)],
+        two: [peri_scribe.models.Fire(name="Park Fire", status=ACTIVE)],
+    })
+    sources = peri_scribe.operations.fire_sources(pathlib.Path("sources"))
+    assert sources == [
+        peri_scribe.models.FireSources(
+            fire=peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
+            paths=(one, two),
+        ),
+    ]
+
+
+def test_fire_sources_deduplicates_paths_for_a_fire(
+    stub_fire_reader: StubFireReader,
+) -> None:
+    path = pathlib.Path("one.gpkg")
+    stub_fire_reader({
+        path: [
+            peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
+            peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
+        ],
+    })
+    sources = peri_scribe.operations.fire_sources(pathlib.Path("sources"))
+    assert sources == [
+        peri_scribe.models.FireSources(
+            fire=peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
+            paths=(path,),
+        ),
+    ]
+
+
+def test_fire_index_entries_sorts_fires_and_paths() -> None:
+    sources_directory = pathlib.Path("/index/sources")
+    sources = [
+        peri_scribe.models.FireSources(
+            fire=peri_scribe.models.Fire(
+                name="zulu",
+                status=INACTIVE,
+                identifier="z-1",
+            ),
+            paths=(
+                sources_directory / "b.gpkg",
+                sources_directory / "a.gpkg",
+            ),
+        ),
+        peri_scribe.models.FireSources(
+            fire=peri_scribe.models.Fire(name="Alpha", status=ACTIVE),
+            paths=(sources_directory / "one.gpkg",),
+        ),
+    ]
+    assert peri_scribe.operations.fire_index_entries(
+        sources,
+        sources_directory,
+    ) == [
+        {
+            "name": "Alpha",
+            "status": "active",
+            "identifier": None,
+            "complex": None,
+            "paths": ["one.gpkg"],
+        },
+        {
+            "name": "zulu",
+            "status": "inactive",
+            "identifier": "z-1",
+            "complex": None,
+            "paths": ["a.gpkg", "b.gpkg"],
+        },
+    ]
+
+
+def test_fire_document_describes_complex_membership() -> None:
+    child = peri_scribe.models.Fire(
+        name="Crosswhite",
+        status=ACTIVE,
+        identifier="child-id",
+    )
+    peri_scribe.models.FireComplex(
+        name="ROWE CREEK COMPLEX",
+        identifier="parent-id",
+        fires=frozenset({child}),
+    )
+    assert peri_scribe.operations.fire_document(child) == {
+        "name": "Crosswhite",
+        "status": "active",
+        "identifier": "child-id",
+        "complex": {
+            "name": "ROWE CREEK COMPLEX",
+            "identifier": "parent-id",
+        },
+    }
+
+
+def test_year_directory_path_groups_year_under_data() -> None:
+    assert peri_scribe.operations.year_directory_path(
+        pathlib.Path("/base"),
+        2026,
+    ) == pathlib.Path("/base/data/2026")
+
+
+def test_sources_directory_path_places_sources_under_year() -> None:
+    assert peri_scribe.operations.sources_directory_path(
+        pathlib.Path("/data/2026"),
+    ) == pathlib.Path("/data/2026/sources")
+
+
+def test_fire_index_path_places_index_in_sources_directory() -> None:
+    assert peri_scribe.operations.fire_index_path(
+        pathlib.Path("/data/2026"),
+    ) == pathlib.Path("/data/2026/sources/fires.json")
+
+
+def test_index_fire_sources_writes_index_file(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    year_directory = pathlib.Path("/index/2026")
+    sources = [
+        peri_scribe.models.FireSources(
+            fire=peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
+            paths=(pathlib.Path("/index/2026/sources/one.gpkg"),),
+        ),
+    ]
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "fire_sources",
+        lambda _directory: sources,
+    )
+    writes: list[tuple[pathlib.Path, peri_scribe.models.FireIndex]] = []
+    monkeypatch.setattr(
+        peri_scribe.output,
+        "write_fire_index",
+        lambda path, document: writes.append((path, document)),
+    )
+    monkeypatch.setattr(
+        pathlib.Path,
+        "mkdir",
+        lambda *_arguments, **_keywords: None,
+    )
+    peri_scribe.operations.index_fire_sources(year_directory)
+    assert writes[0][0] == pathlib.Path("/index/2026/sources/fires.json")
+    assert writes[0][1].model_dump() == {
+        "version": peri_scribe.operations.FIRE_INDEX_VERSION,
+        "fires": [
+            {
+                "name": "Park Fire",
+                "status": "active",
+                "identifier": None,
+                "complex": None,
+                "paths": ["one.gpkg"],
+            },
+        ],
+    }
+
+
+def test_fire_index_document_wraps_entries_with_version_and_fires_last() -> None:
+    entries: list[dict[str, object]] = [
+        {
+            "name": "Park Fire",
+            "status": "active",
+            "identifier": None,
+            "complex": None,
+            "paths": ["one.gpkg"],
+        },
+    ]
+    index = peri_scribe.operations.fire_index_document(entries)
+    document = index.model_dump()
+    assert list(document) == ["version", "fires"]
+    assert document["version"] == peri_scribe.operations.FIRE_INDEX_VERSION
+    assert document["fires"] == entries
+
+
+def test_fire_index_document_rejects_invalid_entry() -> None:
+    with pytest.raises(pydantic.ValidationError):
+        peri_scribe.operations.fire_index_document([
+            {"name": "Park Fire", "status": "exploded", "paths": []},
+        ])
+
+
+def test_load_fire_index_reads_existing_index(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    year_directory = pathlib.Path("/index/2026")
+    document = {
+        "version": peri_scribe.operations.FIRE_INDEX_VERSION,
+        "fires": [
+            {
+                "name": "Park Fire",
+                "status": "active",
+                "identifier": None,
+                "complex": None,
+                "paths": ["one.gpkg"],
+            },
+        ],
+    }
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "index_fire_sources",
+        lambda _year_directory: pytest.fail("index built for existing file"),
+    )
+    monkeypatch.setattr(pathlib.Path, "is_file", lambda _self: True)
+    monkeypatch.setattr(
+        pathlib.Path,
+        "read_text",
+        lambda _self, *_arguments, **_keywords: json.dumps(document),
+    )
+    index = peri_scribe.operations.load_fire_index(year_directory)
+    assert index.model_dump() == document
+
+
+def test_load_fire_index_builds_index_when_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    year_directory = pathlib.Path("/index/2026")
+    document = {
+        "version": peri_scribe.operations.FIRE_INDEX_VERSION,
+        "fires": [],
+    }
+    built: list[pathlib.Path] = []
+    monkeypatch.setattr(
+        peri_scribe.operations,
+        "index_fire_sources",
+        built.append,
+    )
+    monkeypatch.setattr(pathlib.Path, "is_file", lambda _self: False)
+    monkeypatch.setattr(
+        pathlib.Path,
+        "read_text",
+        lambda _self, *_arguments, **_keywords: json.dumps(document),
+    )
+    index = peri_scribe.operations.load_fire_index(year_directory)
+    assert built == [year_directory]
+    assert index.model_dump() == document
+
+
+def test_load_fire_index_rejects_invalid_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(pathlib.Path, "is_file", lambda _self: True)
+    monkeypatch.setattr(
+        pathlib.Path,
+        "read_text",
+        lambda _self, *_arguments, **_keywords: "not json",
+    )
+    with pytest.raises(pydantic.ValidationError):
+        peri_scribe.operations.load_fire_index(pathlib.Path("/index/2026"))
