@@ -47,7 +47,7 @@ def write_fire_index(
     """
     logger = structlog.get_logger()
     with path.open("w", encoding="utf-8") as file:
-        json.dump(document.model_dump(), file, indent=4)
+        json.dump(document.model_dump(mode="json"), file, indent=4)
     logger.info("Wrote fire index", path=path.name, fires=len(document.fires))
 
 

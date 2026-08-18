@@ -9,6 +9,9 @@ GeoPackage. This module is independent of the configured feeds.
 
 from __future__ import annotations
 
+import collections
+import itertools
+import operator
 import pathlib
 import typing
 
@@ -72,6 +75,19 @@ EXPECTED_COLUMNS = frozenset(
         LENGTH_COLUMN_NAME,
     },
 )
+
+# The southern and western edges of the "California box" polygon. The box traces the
+# interstate border and closes with straight lines that run far enough south and west to
+# keep all of California inside it. California's southernmost point is the border with
+# Mexico near the Colorado River, at about 32.5°N; one degree of latitude is about
+# 111 km, so 31.0°N sits roughly 170 km further south. California's westernmost point
+# is Cape Mendocino at about 124.4°W; at that latitude one degree of longitude is about
+# 85 km, so 126.0°W sits roughly 135 km further west, beyond every island.
+CALIFORNIA_BOX_SOUTHERN_LATITUDE = 31.0
+CALIFORNIA_BOX_WESTERN_LONGITUDE = -126.0
+
+# A single continuous border path has exactly two free endpoints.
+BORDER_PATH_ENDPOINT_COUNT = 2
 
 
 def output_geopackage_path(base_dir: pathlib.Path) -> pathlib.Path:
@@ -428,3 +444,133 @@ def ensure_administrative_boundaries(
         features=len(border),
     )
     return output_path
+
+
+def load_border_geometry(
+    base_dir: pathlib.Path,
+) -> shapely.Geometry:
+    """Return the California border lines from the stored GeoPackage.
+
+    The three neighbor borders are returned as a single MultiLineString (or a
+    LineString when they collapse into one part), in WGS84.
+
+    Args:
+        base_dir: The base directory that holds the ``data`` directory.
+
+    Returns:
+        The California border lines in WGS84.
+    """
+    path = output_geopackage_path(base_dir)
+    dataframe = geopandas.read_file(path, layer=OUTPUT_LAYER_NAME)
+    parts = [
+        part
+        for geometry in dataframe.geometry
+        for part in line_parts(typing.cast("shapely.Geometry", geometry))
+    ]
+    if len(parts) == 1:
+        return parts[0]
+    return shapely.MultiLineString(parts)
+
+
+def ordered_border_coordinates(
+    parts: list[shapely.LineString],
+) -> list[tuple[float, float]]:
+    """Return the border coordinates ordered from the Pacific end to the Mexico end.
+
+    The shared borders are stored as one line per neighbor and may not meet exactly at
+    the state corners, so the parts are chained by endpoint proximity into one path.
+    The path begins at the westernmost endpoint, which is the corner California shares
+    with Oregon and the Pacific Ocean.
+
+    Args:
+        parts: The border LineStrings to chain.
+
+    Returns:
+        The border coordinates in path order.
+
+    Raises:
+        AdministrativeBoundariesError: If the parts do not form a single path.
+    """
+    segments: list[tuple[tuple[float, float], tuple[float, float]]] = []
+    for part in parts:
+        segments.extend(itertools.pairwise(part.coords))
+    if not segments:
+        message = "California border has no line segments"
+        raise peri_scribe.exceptions.AdministrativeBoundariesError(message)
+
+    # Endpoints that round to the same four-decimal coordinate are the same corner.
+    # The stored borders are offset by roughly a meter at the corners, so this snaps
+    # them together without merging the far-apart vertices that trace the border.
+    def snapped(point: tuple[float, float]) -> tuple[float, float]:
+        return (round(point[0], 4), round(point[1], 4))
+
+    adjacency: dict[
+        tuple[float, float],
+        list[tuple[tuple[float, float], tuple[float, float]]],
+    ] = collections.defaultdict(list)
+    representatives: dict[tuple[float, float], tuple[float, float]] = {}
+    for segment in segments:
+        for endpoint in segment:
+            key = snapped(endpoint)
+            adjacency[key].append(segment)
+            representatives.setdefault(key, endpoint)
+
+    odd_endpoints = [
+        key for key, incident in adjacency.items() if len(incident) % 2 == 1
+    ]
+    if len(odd_endpoints) != BORDER_PATH_ENDPOINT_COUNT:
+        message = "California border is not a single continuous path"
+        raise peri_scribe.exceptions.AdministrativeBoundariesError(message)
+    start_key = min(odd_endpoints, key=operator.itemgetter(0))
+    ordered = [representatives[start_key]]
+    current_key = start_key
+    previous_segment: tuple[
+        tuple[float, float],
+        tuple[float, float],
+    ] | None = None
+    while True:
+        incident = [
+            segment
+            for segment in adjacency[current_key]
+            if segment is not previous_segment
+        ]
+        if not incident:
+            break
+        segment = incident[0]
+        start_endpoint, end_endpoint = segment
+        next_endpoint = (
+            end_endpoint if snapped(start_endpoint) == current_key else start_endpoint
+        )
+        ordered.append(next_endpoint)
+        previous_segment = segment
+        current_key = snapped(next_endpoint)
+    return ordered
+
+
+def california_box_polygon(border: shapely.Geometry) -> shapely.Polygon:
+    """Return the "California box" polygon built from *border*.
+
+    The box traces the interstate border from its Pacific/Oregon end to its
+    Mexico/Arizona end and closes with straight lines that run due south into Mexico,
+    due west into the Pacific Ocean, straight north, and straight east back to the
+    Pacific/Oregon end. The landward edges of the box follow the interstate border
+    exactly, while the southern and western edges sit beyond every point of California,
+    so the box contains all of California and nothing on the far side of the border.
+
+    Args:
+        border: The California border lines in WGS84.
+
+    Returns:
+        The California box polygon in WGS84.
+    """
+    ordered = ordered_border_coordinates(line_parts(border))
+    northwest_corner = ordered[0]
+    southeast_corner = ordered[-1]
+    ring = [
+        *ordered,
+        (southeast_corner[0], CALIFORNIA_BOX_SOUTHERN_LATITUDE),
+        (CALIFORNIA_BOX_WESTERN_LONGITUDE, CALIFORNIA_BOX_SOUTHERN_LATITUDE),
+        (CALIFORNIA_BOX_WESTERN_LONGITUDE, northwest_corner[1]),
+        northwest_corner,
+    ]
+    return shapely.Polygon(ring)

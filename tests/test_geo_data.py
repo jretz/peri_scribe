@@ -279,6 +279,32 @@ def test_fire_records_reads_geometry_and_observation_time(
     )
 
 
+def test_fire_records_reads_mission_and_point_of_origin(
+    configured_feeds_with_point_of_origin: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    stub_geo_package(
+        pd.DataFrame({"name": ["Fires_Two_0"], "geometry_type": ["Point"]}),
+        {
+            "Fires_Two_0": geopandas.GeoDataFrame(
+                {
+                    "IncidentName": ["Bug"],
+                    "ActiveFireCandidate": ["Active"],
+                    "IrwinID": ["2026-nvccd-030683"],
+                    "mission": ["2026-NVCCD-030683"],
+                    "POOState": ["US-CA"],
+                    "POOFips": ["06035"],
+                },
+                geometry=[shapely.geometry.Point(0, 0)],
+            ),
+        },
+    )
+    record = next(peri_scribe.geo_data.fire_records(pathlib.Path("fires.gpkg")))
+    assert record.mission == "2026-NVCCD-030683"
+    assert record.point_of_origin_state == "US-CA"
+    assert record.point_of_origin_fips == "06035"
+
+
 def test_is_missing_detects_none() -> None:
     assert peri_scribe.geo_data.is_missing(None) is True
 

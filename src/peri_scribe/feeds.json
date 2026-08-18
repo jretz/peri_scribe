@@ -21,6 +21,8 @@
         "complex_identifier_column": "attr_CpxID",
         "complex_name_column": "attr_CpxName",
         "is_complex_child_column": "attr_IsCpxChild",
+        "point_of_origin_state_column": "attr_POOState",
+        "point_of_origin_fips_column": "attr_POOFips",
         "observation_time_column": "poly_PolygonDateTime",
         "modified_column": "attr_ModifiedOnDateTime_dt"
     },
@@ -36,6 +38,8 @@
         "complex_identifier_column": "CpxID",
         "complex_name_column": "CpxName",
         "is_complex_child_column": "IsCpxChild",
+        "point_of_origin_state_column": "POOState",
+        "point_of_origin_fips_column": "POOFips",
         "modified_column": "ModifiedOnDateTime_dt"
     }
 ]

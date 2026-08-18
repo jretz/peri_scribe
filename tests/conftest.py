@@ -265,6 +265,34 @@ def configured_feeds_with_mission(
 
 
 @pytest.fixture
+def configured_feeds_with_point_of_origin(
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[peri_scribe.feed_types.Feed]:
+    """Point models.FEEDS at a WFIGS-like feed with point of origin columns.
+
+    Returns:
+        The feed, configured with name, status, identifier, mission, and point of
+        origin columns.
+    """
+    feeds = list(
+        peri_scribe.models.build_feeds([
+            {
+                "feed_type": "ArcGISFeed",
+                "url": "https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
+                "fire_name_column": "IncidentName",
+                "status_column": "ActiveFireCandidate",
+                "fire_identifier_columns": ["IrwinID"],
+                "mission_column": "mission",
+                "point_of_origin_state_column": "POOState",
+                "point_of_origin_fips_column": "POOFips",
+            },
+        ]),
+    )
+    monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
+    return feeds
+
+
+@pytest.fixture
 def stub_geo_package(
     monkeypatch: pytest.MonkeyPatch,
 ) -> typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None]:

@@ -25,6 +25,8 @@ if TYPE_CHECKING:
 
 GEOMETRY_COLUMN_NAME = "geom"
 
+DATA_DIRECTORY_NAME = "data"
+
 # Minimum plausible coordinate magnitude, in meters, for a projected reference.
 # Smaller magnitudes are indistinguishable from degrees.
 MINIMUM_PROJECTED_MAGNITUDE_IN_METERS = 1_000.0
@@ -74,6 +76,25 @@ class FireStatus(enum.Enum):
 
     ACTIVE = "active"
     INACTIVE = "inactive"
+
+
+class BorderClassification(enum.Enum):
+    """Where a fire sits relative to the California state boundary."""
+
+    INSIDE_CALIFORNIA = "inside_california"
+    INSIDE_CALIFORNIA_NEAR_BORDER = "inside_california_near_border"
+    CROSSES_CALIFORNIA_BORDER = "crosses_california_border"
+    OUTSIDE_CALIFORNIA_NEAR_BORDER = "outside_california_near_border"
+    OUTSIDE_CALIFORNIA = "outside_california"
+
+
+class BorderSignal(enum.Enum):
+    """The evidence signals that contributed to a border classification."""
+
+    GEOMETRY_OUTSIDE = "geometry_outside"
+    GEOMETRY_NEAR = "geometry_near"
+    EXTENT_DISAGREEMENT = "extent_disagreement"
+    IDENTIFIER_UNIT = "identifier_unit"
 
 
 GLOBALLY_UNIQUE_IDENTIFIER_PATTERN = re.compile(
@@ -190,6 +211,9 @@ class FireRecord:
     names: frozenset[str] = dataclasses.field(default_factory=frozenset)
     geometry: shapely.Geometry | None = None
     observed_at: datetime.datetime | None = None
+    mission: str | None = None
+    point_of_origin_state: str | None = None
+    point_of_origin_fips: str | None = None
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -259,6 +283,17 @@ class FireIndexComplex(pydantic.BaseModel):
     identifier: str
 
 
+class FireClassification(pydantic.BaseModel):
+    """A fire's border classification and the evidence behind it."""
+
+    classification: BorderClassification
+    distance_to_boundary_in_meters: float
+    outside_area_fraction: float
+    inside_area_fraction: float
+    wfigs_to_firis_area_ratio: float | None = None
+    signals: list[BorderSignal] = pydantic.Field(default_factory=list)
+
+
 class FireIndexEntry(pydantic.BaseModel):
     """One fire's entry in the fire source index."""
 
@@ -267,6 +302,7 @@ class FireIndexEntry(pydantic.BaseModel):
     identifier: str | None = None
     aliases: list[str] = pydantic.Field(default_factory=list)
     complex: FireIndexComplex | None = None
+    classification: FireClassification | None = None
     paths: list[str]
 
 

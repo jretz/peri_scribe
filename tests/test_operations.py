@@ -15,6 +15,7 @@ import shapely
 import shapely.geometry
 import structlog
 
+import peri_scribe.california_border_classification
 import peri_scribe.exceptions
 import peri_scribe.feed_types
 import peri_scribe.geo_data
@@ -1578,18 +1579,18 @@ def test_fire_index_path_places_index_in_sources_directory() -> None:
 
 def test_index_fire_sources_writes_index_file(
     monkeypatch: pytest.MonkeyPatch,
+    stub_fire_reader: StubFireReader,
 ) -> None:
     year_directory = pathlib.Path("/index/2026")
-    sources = [
-        peri_scribe.models.FireSources(
-            fire=peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
-            paths=(pathlib.Path("/index/2026/sources/one.gpkg"),),
-        ),
-    ]
+    stub_fire_reader({
+        pathlib.Path("/index/2026/sources/one.gpkg"): [
+            fire_record("Park Fire", ACTIVE),
+        ],
+    })
     monkeypatch.setattr(
         peri_scribe.operations,
-        "fire_sources",
-        lambda _directory: sources,
+        "classify_fire_sources",
+        lambda _record_groups, _base_dir: {},
     )
     writes: list[tuple[pathlib.Path, peri_scribe.models.FireIndex]] = []
     monkeypatch.setattr(
@@ -1613,6 +1614,7 @@ def test_index_fire_sources_writes_index_file(
                 "identifier": None,
                 "aliases": [],
                 "complex": None,
+                "classification": None,
                 "paths": ["one.gpkg"],
             },
         ],
@@ -1627,6 +1629,7 @@ def test_fire_index_document_wraps_entries_with_version_and_fires_last() -> None
             "identifier": None,
             "aliases": [],
             "complex": None,
+            "classification": None,
             "paths": ["one.gpkg"],
         },
     ]
@@ -1657,6 +1660,7 @@ def test_load_fire_index_reads_existing_index(
                 "identifier": None,
                 "aliases": [],
                 "complex": None,
+                "classification": None,
                 "paths": ["one.gpkg"],
             },
         ],
@@ -1712,3 +1716,121 @@ def test_load_fire_index_rejects_invalid_json(
     )
     with pytest.raises(pydantic.ValidationError):
         peri_scribe.operations.load_fire_index(pathlib.Path("/index/2026"))
+
+
+def test_fire_sources_document_includes_classification() -> None:
+    sources_directory = pathlib.Path("/index/2026/sources")
+    source = peri_scribe.models.FireSources(
+        fire=peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
+        paths=(sources_directory / "one.gpkg",),
+    )
+    classification = peri_scribe.models.FireClassification(
+        classification=peri_scribe.models.BorderClassification.INSIDE_CALIFORNIA_NEAR_BORDER,
+        distance_to_boundary_in_meters=4.0,
+        outside_area_fraction=0.0,
+        inside_area_fraction=1.0,
+        signals=[peri_scribe.models.BorderSignal.GEOMETRY_NEAR],
+    )
+    document = peri_scribe.operations.fire_sources_document(
+        source,
+        sources_directory,
+        classification,
+    )
+    assert document["classification"] == classification.model_dump(mode="json")
+
+
+def _record_groups(
+    *,
+    fire: peri_scribe.models.Fire,
+    complex_identifiers: frozenset[str] = frozenset(),
+) -> peri_scribe.operations.FireRecordGroups:
+    identifiers = frozenset({fire.identifier}) if fire.identifier else frozenset()
+    record = fire_record(
+        "Park Fire",
+        ACTIVE,
+        identifiers=identifiers,
+        geometry=shapely.geometry.Point(-120.0, 39.0),
+    )
+    path = pathlib.Path(
+        "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/000000.gpkg",
+    )
+    return peri_scribe.operations.FireRecordGroups(
+        records=(record,),
+        record_paths=(path,),
+        fires=(fire,),
+        groups=((0,),),
+        complex_identifiers=complex_identifiers,
+    )
+
+
+def test_classify_fire_sources_returns_empty_without_non_complex_fires() -> None:
+    fire = peri_scribe.models.Fire(
+        name="Park Fire",
+        status=ACTIVE,
+        identifier="parent",
+        aliases=frozenset({"parent"}),
+    )
+    record_groups = _record_groups(
+        fire=fire,
+        complex_identifiers=frozenset({"parent"}),
+    )
+    assert peri_scribe.operations.classify_fire_sources(
+        record_groups,
+        pathlib.Path("/base"),
+    ) == {}
+
+
+def test_classify_fire_sources_returns_empty_when_boundaries_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fire = peri_scribe.models.Fire(name="Park Fire", status=ACTIVE)
+
+    def fail(_base_dir: pathlib.Path) -> object:
+        message = "missing"
+        raise FileNotFoundError(message)
+
+    monkeypatch.setattr(
+        peri_scribe.california_border_classification,
+        "load_boundaries",
+        fail,
+    )
+    with structlog.testing.capture_logs() as captured:
+        result = peri_scribe.operations.classify_fire_sources(
+            _record_groups(fire=fire),
+            pathlib.Path("/base"),
+        )
+    assert result == {}
+    assert [event["event"] for event in captured] == [
+        "Skipping border classification",
+    ]
+
+
+def test_classify_fire_sources_classifies_each_fire(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fire = peri_scribe.models.Fire(name="Park Fire", status=ACTIVE)
+    boundary = peri_scribe.california_border_classification.Boundaries(
+        box=shapely.geometry.box(0.0, 0.0, 10.0, 10.0),
+        border=shapely.geometry.LineString([(10.0, 0.0), (10.0, 10.0)]),
+    )
+    classification = peri_scribe.models.FireClassification(
+        classification=peri_scribe.models.BorderClassification.INSIDE_CALIFORNIA,
+        distance_to_boundary_in_meters=1.0,
+        outside_area_fraction=0.0,
+        inside_area_fraction=1.0,
+    )
+    monkeypatch.setattr(
+        peri_scribe.california_border_classification,
+        "load_boundaries",
+        lambda _base_dir: boundary,
+    )
+    monkeypatch.setattr(
+        peri_scribe.california_border_classification,
+        "classify_fire",
+        lambda **_keywords: classification,
+    )
+    result = peri_scribe.operations.classify_fire_sources(
+        _record_groups(fire=fire),
+        pathlib.Path("/base"),
+    )
+    assert result == {id(fire): classification}

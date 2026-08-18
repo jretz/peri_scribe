@@ -84,6 +84,16 @@ class Feed(typing.Protocol):
         ...
 
     @property
+    def point_of_origin_state_column(self) -> str | None:
+        """The column holding each feature's point of origin state, or None."""
+        ...
+
+    @property
+    def point_of_origin_fips_column(self) -> str | None:
+        """The column holding each feature's point of origin FIPS code, or None."""
+        ...
+
+    @property
     def complex_identifier_column(self) -> str | None:
         """The column holding each fire's complex identifier, or None."""
         ...
@@ -121,6 +131,8 @@ class ArcGISFeed(pydantic.BaseModel):
     fire_identifier_columns: tuple[str, ...] = ()
     mission_column: str | None = None
     observation_time_column: str | None = None
+    point_of_origin_state_column: str | None = None
+    point_of_origin_fips_column: str | None = None
     complex_identifier_column: str | None = None
     complex_name_column: str | None = None
     is_complex_child_column: str | None = None

@@ -6,7 +6,11 @@ This module contains the core business logic shared across all user interfaces.
 from __future__ import annotations
 
 import collections
+import concurrent.futures
+import dataclasses
 import datetime
+import functools
+import os
 import pathlib
 import typing
 
@@ -16,6 +20,7 @@ import pandas as pd
 import shapely
 import structlog
 
+import peri_scribe.california_border_classification
 import peri_scribe.exceptions
 import peri_scribe.feed_types
 import peri_scribe.geo_data
@@ -29,13 +34,13 @@ if typing.TYPE_CHECKING:
 
 logger = structlog.get_logger()
 
-DATA_DIRECTORY_NAME = "data"
+DATA_DIRECTORY_NAME = peri_scribe.models.DATA_DIRECTORY_NAME
 SOURCES_DIRECTORY_NAME = "sources"
 FIRE_INDEX_FILENAME = "fires.json"
 
 # The current version of the fire source index format; bump it when the format
 # changes so that consumers can tell which format a file uses.
-FIRE_INDEX_VERSION = "2026-08-17"
+FIRE_INDEX_VERSION = "2026-08-18"
 
 # When fetching only changed features, the cutoff for the query is moved back by this
 # amount so that recently edited features are re-fetched and re-checked rather than
@@ -769,29 +774,36 @@ def fetch_all_feeds(
     return tuple(snapshot_paths)
 
 
-def fire_sources(directory: pathlib.Path) -> list[peri_scribe.models.FireSources]:
-    """Collect the distinct fires and their source files under *directory*.
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class FireRecordGroups:
+    """Fire records grouped by fire, with each record's source file."""
+
+    records: tuple[peri_scribe.models.FireRecord, ...]
+    record_paths: tuple[pathlib.Path, ...]
+    fires: tuple[peri_scribe.models.Fire, ...]
+    groups: tuple[tuple[int, ...], ...]
+    complex_identifiers: frozenset[str]
+
+
+def fire_record_groups(directory: pathlib.Path) -> FireRecordGroups:
+    """Read and group the fire records under *directory*.
 
     Every GeoPackage file anywhere below *directory* is read, so snapshots stored under
     ``sources/{feed}/{serial}.gpkg`` are all found. Fire records sharing any identifier
     are the same fire; records sharing only a name are merged only when they are
     spatially compatible, so distinct fires that happen to share a name (e.g. "Canyon"
-    in California vs. Alaska) stay separate. The
-    most common spelling of each name is the one kept, and a fire is active when any of
-    its records is active. A fire whose records are spatially or temporally spread out
-    is reported with a warning. Fires that are complex parents are represented by a
-    FireComplex instead of listed as fires, and member fires carry a circular link to
-    their complex.
-
-    Each result records the GeoPackage files whose rows mention the fire, so the same
-    fire can be traced back to every snapshot it appears in.
+    in California vs. Alaska) stay separate. The most common spelling of each name is
+    the one kept, and a fire is active when any of its records is active. A fire whose
+    records are spatially or temporally spread out is reported with a warning. Fires
+    that are complex parents are represented by a FireComplex instead of listed as
+    fires, and member fires carry a circular link to their complex.
 
     Args:
         directory: The directory tree holding GeoPackage files with fire data.
 
     Returns:
-        The fires, in the order first encountered, each with the paths of the GeoPackage
-        files that mention it.
+        The records, their source files, the grouped fires, and the identifiers of the
+        fires that are complex parents.
 
     Raises:
         SystemExit: If a GeoPackage file cannot be read.
@@ -825,23 +837,176 @@ def fire_sources(directory: pathlib.Path) -> list[peri_scribe.models.FireSources
                 fires_by_identifier.setdefault(identifier, fire)
     complexes = fire_complexes(memberships, fires_by_identifier)
     complex_identifiers = {complex_.identifier for complex_ in complexes}
-    sources: list[peri_scribe.models.FireSources] = []
-    for fire, group in zip(fires, groups, strict=True):
-        if any(
-            identifier in complex_identifiers
-            for index in group
-            for identifier in records[index].identifiers
-        ):
+    return FireRecordGroups(
+        records=tuple(records),
+        record_paths=tuple(record_paths),
+        fires=tuple(fires),
+        groups=tuple(tuple(group) for group in groups),
+        complex_identifiers=frozenset(complex_identifiers),
+    )
+
+
+def fire_is_complex_parent(
+    record_groups: FireRecordGroups,
+    group: tuple[int, ...],
+) -> bool:
+    """Return whether the fire identified by *group* is a complex parent.
+
+    Args:
+        record_groups: The grouped fire records.
+        group: The record indices of one fire.
+
+    Returns:
+        True when any record in the group identifies the fire as a complex parent.
+    """
+    return any(
+        identifier in record_groups.complex_identifiers
+        for index in group
+        for identifier in record_groups.records[index].identifiers
+    )
+
+
+def non_complex_fire_sources(
+    record_groups: FireRecordGroups,
+) -> list[tuple[peri_scribe.models.FireSources, tuple[int, ...]]]:
+    """Return the non-complex fires with their record indices and source files.
+
+    Args:
+        record_groups: The grouped fire records.
+
+    Returns:
+        One `(FireSources, record indices)` pair per non-complex fire, in group order.
+    """
+    sources: list[
+        tuple[peri_scribe.models.FireSources, tuple[int, ...]]
+    ] = []
+    for fire, group in zip(
+        record_groups.fires,
+        record_groups.groups,
+        strict=True,
+    ):
+        if fire_is_complex_parent(record_groups, group):
             continue
         sources.append(
-            peri_scribe.models.FireSources(
-                fire=fire,
-                paths=tuple(
-                    sorted({record_paths[index] for index in group}),
+            (
+                peri_scribe.models.FireSources(
+                    fire=fire,
+                    paths=tuple(
+                        sorted(
+                            {
+                                record_groups.record_paths[index]
+                                for index in group
+                            },
+                        ),
+                    ),
                 ),
+                group,
             ),
         )
     return sources
+
+
+def fire_sources_from_groups(
+    record_groups: FireRecordGroups,
+) -> list[peri_scribe.models.FireSources]:
+    """Return the non-complex fires from *record_groups*.
+
+    Args:
+        record_groups: The grouped fire records.
+
+    Returns:
+        The non-complex fires in group order.
+    """
+    return [
+        source
+        for source, _group in non_complex_fire_sources(record_groups)
+    ]
+
+
+def fire_sources(directory: pathlib.Path) -> list[peri_scribe.models.FireSources]:
+    """Collect the distinct fires and their source files under *directory*.
+
+    Each result records the GeoPackage files whose rows mention the fire, so the same
+    fire can be traced back to every snapshot it appears in. Complex parents are
+    represented by a FireComplex instead of being listed as fires.
+
+    Args:
+        directory: The directory tree holding GeoPackage files with fire data.
+
+    Returns:
+        The fires, in the order first encountered, each with the paths of the GeoPackage
+        files that mention it.
+    """
+    return fire_sources_from_groups(fire_record_groups(directory))
+
+
+def classify_fire_group(
+    group: tuple[int, ...],
+    record_groups: FireRecordGroups,
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> peri_scribe.models.FireClassification:
+    """Classify the fire identified by *group* in *record_groups*.
+
+    Args:
+        group: The record indices of one fire.
+        record_groups: The grouped fire records.
+        boundaries: The California polygon and border in California Albers.
+
+    Returns:
+        The fire's border classification and evidence.
+    """
+    return peri_scribe.california_border_classification.classify_fire(
+        records=[record_groups.records[index] for index in group],
+        record_paths=[record_groups.record_paths[index] for index in group],
+        boundaries=boundaries,
+    )
+
+
+def classify_fire_sources(
+    record_groups: FireRecordGroups,
+    base_dir: pathlib.Path,
+) -> dict[int, peri_scribe.models.FireClassification]:
+    """Classify each non-complex fire relative to the California boundary.
+
+    Each fire's classification is independent, and the geometry work in
+    California Albers releases the GIL, so the fires are classified in parallel
+    and the results are collected in group order.
+
+    Args:
+        record_groups: The grouped fire records.
+        base_dir: The base directory that holds the administrative boundary data.
+
+    Returns:
+        Each non-complex fire's classification, keyed by the fire object's identity.
+    """
+    pairs = non_complex_fire_sources(record_groups)
+    if not pairs:
+        return {}
+    try:
+        boundaries = peri_scribe.california_border_classification.load_boundaries(
+            base_dir,
+        )
+    except (OSError, RuntimeError, ValueError) as error:
+        logger.warning("Skipping border classification", error=str(error))
+        return {}
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=os.cpu_count() or 1,
+    ) as executor:
+        return {
+            id(source.fire): classification
+            for (source, _group), classification in zip(
+                pairs,
+                executor.map(
+                    functools.partial(
+                        classify_fire_group,
+                        record_groups=record_groups,
+                        boundaries=boundaries,
+                    ),
+                    [group for _source, group in pairs],
+                ),
+                strict=True,
+            )
+        }
 
 
 def fire_document(fire: peri_scribe.models.Fire) -> dict[str, object]:
@@ -877,31 +1042,42 @@ def fire_document(fire: peri_scribe.models.Fire) -> dict[str, object]:
 def fire_sources_document(
     source: peri_scribe.models.FireSources,
     sources_directory: pathlib.Path,
+    classification: peri_scribe.models.FireClassification | None = None,
 ) -> dict[str, object]:
     """Return a JSON-serializable document for *source*.
 
     The document has all of the fire's attributes plus the paths of the GeoPackage files
-    that mention it, relative to *sources_directory* and sorted by path.
+    that mention it, relative to *sources_directory* and sorted by path, and the fire's
+    border classification when one is known.
 
     Args:
         source: The fire and its source files.
         sources_directory: The directory that holds the index file, used to make the
             GeoPackage paths relative.
+        classification: The fire's border classification, or None.
 
     Returns:
         The fire and its source paths as a JSON-serializable dictionary.
     """
-    return {
+    document: dict[str, object] = {
         **fire_document(source.fire),
         "paths": sorted(
             str(path.relative_to(sources_directory)) for path in source.paths
         ),
     }
+    if classification is not None:
+        document["classification"] = classification.model_dump(mode="json")
+    return document
 
 
 def fire_index_entries(
     sources: list[peri_scribe.models.FireSources],
     sources_directory: pathlib.Path,
+    classifications: dict[
+        int,
+        peri_scribe.models.FireClassification,
+    ]
+    | None = None,
 ) -> list[dict[str, object]]:
     """Return the fire index documents for *sources*, sorted by fire name.
 
@@ -909,12 +1085,20 @@ def fire_index_entries(
         sources: The fires and their source files.
         sources_directory: The directory that holds the index file, used to make the
             GeoPackage paths relative.
+        classifications: Each fire's border classification, keyed by the fire object's
+            identity, or None when no classifications are known.
 
     Returns:
         One document per fire, sorted by fire name.
     """
+    if classifications is None:
+        classifications = {}
     return [
-        fire_sources_document(source, sources_directory)
+        fire_sources_document(
+            source,
+            sources_directory,
+            classifications.get(id(source.fire)),
+        )
         for source in sorted(sources, key=lambda source: source.fire.name)
     ]
 
@@ -940,17 +1124,24 @@ def index_fire_sources(year_directory: pathlib.Path) -> None:
     """Build the fire source index for *year_directory*.
 
     The index lists every distinct fire in the GeoPackage files under
-    ``{year_directory}/sources``, along with the GeoPackage files that mention each
-    fire. It is written to ``{year_directory}/sources/fires.json``.
+    ``{year_directory}/sources``, along with the GeoPackage files that mention each fire
+    and each fire's border classification when the administrative boundary data is
+    available. It is written to ``{year_directory}/sources/fires.json``.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
     """
     sources_directory = sources_directory_path(year_directory)
+    record_groups = fire_record_groups(sources_directory)
+    classifications = classify_fire_sources(
+        record_groups,
+        year_directory.parent.parent,
+    )
     index = fire_index_document(
         fire_index_entries(
-            fire_sources(sources_directory),
+            fire_sources_from_groups(record_groups),
             sources_directory,
+            classifications=classifications,
         ),
     )
     output_path = fire_index_path(year_directory)

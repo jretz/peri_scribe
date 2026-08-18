@@ -672,3 +672,139 @@ def test_ensure_administrative_boundaries_raises_when_fetch_fails(
         match="Failed to build administrative boundaries: boom",
     ):
         peri_scribe.administrative_boundaries.ensure_administrative_boundaries()
+
+
+def test_load_border_geometry_returns_stored_lines(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.administrative_boundaries,
+        "output_geopackage_path",
+        lambda _base_dir: pathlib.Path("/data/border.gpkg"),
+    )
+    monkeypatch.setattr(
+        peri_scribe.administrative_boundaries.geopandas,
+        "read_file",
+        lambda _path, **_keywords: good_border_dataframe(),
+    )
+    result = peri_scribe.administrative_boundaries.load_border_geometry(BASE_DIRECTORY)
+    assert isinstance(result, shapely.geometry.MultiLineString)
+
+
+def test_load_border_geometry_returns_single_line_when_one_part(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.administrative_boundaries,
+        "output_geopackage_path",
+        lambda _base_dir: pathlib.Path("/data/border.gpkg"),
+    )
+    single = geopandas.GeoDataFrame(
+        {
+            "NEIGHBOR": ["Oregon"],
+            "NEIGHBOR_ABBR": ["OR"],
+            "LENGTH_KM": [10.0],
+        },
+        geometry=[shapely.geometry.LineString([(0.0, 0.0), (10.0, 0.0)])],
+        crs=pyproj.CRS.from_epsg(4326),
+    )
+    monkeypatch.setattr(
+        peri_scribe.administrative_boundaries.geopandas,
+        "read_file",
+        lambda _path, **_keywords: single,
+    )
+    result = peri_scribe.administrative_boundaries.load_border_geometry(BASE_DIRECTORY)
+    assert isinstance(result, shapely.geometry.LineString)
+
+
+def california_like_border() -> shapely.geometry.MultiLineString:
+    """Return a synthetic border shaped like California's interstate border.
+
+    Returns:
+        An Oregon segment across the top and a Nevada/Arizona segment down the east.
+    """
+    return shapely.geometry.MultiLineString([
+        shapely.geometry.LineString([(-124.0, 42.0), (-120.0, 42.0)]),
+        shapely.geometry.LineString([(-120.0, 42.0), (-114.0, 32.7)]),
+    ])
+
+
+def test_ordered_border_coordinates_orders_single_path() -> None:
+    parts = [
+        shapely.geometry.LineString([(0.0, 10.0), (5.0, 10.0), (10.0, 5.0)]),
+    ]
+    assert peri_scribe.administrative_boundaries.ordered_border_coordinates(parts) == [
+        (0.0, 10.0),
+        (5.0, 10.0),
+        (10.0, 5.0),
+    ]
+
+
+def test_ordered_border_coordinates_orders_multiple_parts() -> None:
+    parts = [
+        shapely.geometry.LineString([(0.0, 10.0), (5.0, 10.0)]),
+        shapely.geometry.LineString([(5.0, 10.0), (10.0, 5.0)]),
+    ]
+    assert peri_scribe.administrative_boundaries.ordered_border_coordinates(parts) == [
+        (0.0, 10.0),
+        (5.0, 10.0),
+        (10.0, 5.0),
+    ]
+
+
+def test_ordered_border_coordinates_bridges_small_gaps() -> None:
+    parts = [
+        shapely.geometry.LineString([(0.0, 10.0), (5.0, 10.0)]),
+        shapely.geometry.LineString([(5.00001, 10.0), (10.0, 5.0)]),
+    ]
+    assert peri_scribe.administrative_boundaries.ordered_border_coordinates(parts) == [
+        (0.0, 10.0),
+        (5.0, 10.0),
+        (10.0, 5.0),
+    ]
+
+
+def test_ordered_border_coordinates_raises_when_no_segments() -> None:
+    with pytest.raises(
+        peri_scribe.exceptions.AdministrativeBoundariesError,
+        match="no line segments",
+    ):
+        peri_scribe.administrative_boundaries.ordered_border_coordinates([])
+
+
+def test_ordered_border_coordinates_raises_when_not_a_single_path() -> None:
+    parts = [
+        shapely.geometry.LineString([(0.0, 0.0), (1.0, 0.0)]),
+        shapely.geometry.LineString([(10.0, 0.0), (11.0, 0.0)]),
+    ]
+    with pytest.raises(
+        peri_scribe.exceptions.AdministrativeBoundariesError,
+        match="not a single continuous path",
+    ):
+        peri_scribe.administrative_boundaries.ordered_border_coordinates(parts)
+
+
+def test_california_box_polygon_contains_california() -> None:
+    box = peri_scribe.administrative_boundaries.california_box_polygon(
+        california_like_border(),
+    )
+    assert box.is_valid
+    assert box.contains(shapely.geometry.Point(-120.0, 40.0))
+    assert box.contains(shapely.geometry.Point(-123.0, 34.0))
+
+
+def test_california_box_polygon_excludes_neighboring_states() -> None:
+    box = peri_scribe.administrative_boundaries.california_box_polygon(
+        california_like_border(),
+    )
+    assert not box.contains(shapely.geometry.Point(-117.0, 40.0))
+    assert not box.contains(shapely.geometry.Point(-120.0, 43.0))
+
+
+def test_california_box_polygon_absorbs_maritime_and_mexico() -> None:
+    box = peri_scribe.administrative_boundaries.california_box_polygon(
+        california_like_border(),
+    )
+    assert box.contains(shapely.geometry.Point(-116.0, 32.3))
+    assert not box.contains(shapely.geometry.Point(-116.0, 30.0))
+    assert not box.contains(shapely.geometry.Point(-127.0, 38.0))

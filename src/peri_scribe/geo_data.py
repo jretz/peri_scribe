@@ -380,6 +380,21 @@ def fire_records(
                 if feed.observation_time_column is not None
                 else None
             )
+            mission_code = (
+                fire_name_from(row[feed.mission_column])
+                if feed.mission_column is not None
+                else None
+            )
+            point_of_origin_state = (
+                fire_name_from(row[feed.point_of_origin_state_column])
+                if feed.point_of_origin_state_column is not None
+                else None
+            )
+            point_of_origin_fips = (
+                fire_name_from(row[feed.point_of_origin_fips_column])
+                if feed.point_of_origin_fips_column is not None
+                else None
+            )
             yield peri_scribe.models.FireRecord(
                 name=name,
                 status=status,
@@ -387,6 +402,9 @@ def fire_records(
                 names=names,
                 geometry=dataframe.geometry.iloc[index],
                 observed_at=observed_at,
+                mission=mission_code,
+                point_of_origin_state=point_of_origin_state,
+                point_of_origin_fips=point_of_origin_fips,
             )
 
 
