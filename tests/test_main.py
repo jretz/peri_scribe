@@ -2,7 +2,6 @@
 
 import dataclasses
 import datetime
-import http
 import pathlib
 import time
 import typing
@@ -23,38 +22,20 @@ import peri_scribe.output
 import peri_scribe.retry
 from tests.conftest import (
     CLICK_USAGE_ERROR_EXIT_CODE,
+    RATE_LIMIT_ERROR_PAYLOAD,
     SAMPLE_FEED_NAME,
     SAMPLE_FEED_URL,
     WGS84_WKID,
+    FeatureLayerStub,
+    FeatureLayerStubBase,
     GeoPackageStore,
+    wgs84_feature_set,
 )
 
 
 if TYPE_CHECKING:
     import click.testing
 
-
-# Error messages matching the ArcGIS REST API 429 rate-limit response format.
-RATE_LIMIT_RETRY_AFTER_SECONDS = 60
-RATE_LIMIT_ERROR_PAYLOAD = {
-    "error": {
-        "code": http.HTTPStatus.TOO_MANY_REQUESTS,
-        "message": "Unable to perform query. Too many requests.",
-        "details": [
-            (
-                "API calls quota exceeded (120975 request units)! maximum allowed "
-                "request units (115200) per Minute. "
-                f"Retry after {RATE_LIMIT_RETRY_AFTER_SECONDS} sec."
-            ),
-        ],
-    },
-}
-LOOSE_429_ERROR_PAYLOAD = {
-    "error": {
-        "code": http.HTTPStatus.TOO_MANY_REQUESTS,
-        "message": "Too many requests.",
-    },
-}
 
 SAMPLE_WATERMARK = "lastEdit=2"
 
@@ -63,7 +44,7 @@ SAMPLE_WATERMARK = "lastEdit=2"
 BASE_DIRECTORY = pathlib.Path("/fetch")
 
 
-class MultiQueryLayerStub:
+class MultiQueryLayerStub(FeatureLayerStubBase):
     """FeatureLayer stand-in that returns/raises successive results per call."""
 
     def __init__(
@@ -72,17 +53,9 @@ class MultiQueryLayerStub:
         gis: object,
         query_outcomes: list[arcgis.features.FeatureSet | Exception],
     ) -> None:
-        self.url = url
-        self.gis = gis
+        super().__init__(url, gis)
         self.query_outcomes = list(query_outcomes)
         self.call_count = 0
-        self.layer_properties: dict[str, object] = {
-            "spatialReference": {"wkid": WGS84_WKID},
-        }
-
-    @property
-    def properties(self) -> dict[str, object]:
-        return self.layer_properties
 
     def query(self) -> arcgis.features.FeatureSet:
         outcome = self.query_outcomes[self.call_count]
@@ -92,40 +65,7 @@ class MultiQueryLayerStub:
         return outcome
 
 
-class FeatureLayerStub:
-    """Minimal stand-in for an ArcGIS FeatureLayer with a fixed query result."""
-
-    def __init__(
-        self,
-        url: str,
-        gis: object,
-        feature_set: arcgis.features.FeatureSet,
-        query_error: Exception | None = None,
-    ) -> None:
-        self.url = url
-        self.gis = gis
-        self.feature_set = feature_set
-        self.query_error = query_error
-        self.layer_properties: dict[str, object] = {
-            "spatialReference": {"wkid": WGS84_WKID},
-        }
-
-    @property
-    def properties(self) -> dict[str, object]:
-        return self.layer_properties
-
-    def query(
-        self,
-        **parameters: object,
-    ) -> arcgis.features.FeatureSet | dict[str, object]:
-        if self.query_error is not None:
-            raise self.query_error
-        if parameters.get("return_ids_only"):
-            return {"objectIdFieldName": "OBJECTID", "objectIds": [1, 2]}
-        return self.feature_set
-
-
-class DeltaFeatureLayerStub:
+class DeltaFeatureLayerStub(FeatureLayerStubBase):
     """FeatureLayer stand-in serving a full set, then an incremental delta."""
 
     def __init__(
@@ -135,17 +75,9 @@ class DeltaFeatureLayerStub:
         full: arcgis.features.FeatureSet,
         delta: arcgis.features.FeatureSet,
     ) -> None:
-        self.url = url
-        self.gis = gis
+        super().__init__(url, gis)
         self.full = full
         self.delta = delta
-        self.layer_properties: dict[str, object] = {
-            "spatialReference": {"wkid": WGS84_WKID},
-        }
-
-    @property
-    def properties(self) -> dict[str, object]:
-        return self.layer_properties
 
     def query(
         self,
@@ -162,48 +94,14 @@ class DeltaFeatureLayerStub:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class WatermarkFeedStub:
+class FeedStub:
     """Minimal feed stand-in with a fixed current watermark."""
-
-    name: str
-    url: str
-    watermark: str
-    modified_column: str = "ModifiedOnDateTime_dt"
-
-    @property
-    def current_watermark(self) -> str | None:
-        return self.watermark
-
-
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class FetchFeedStub:
-    """Feed stand-in with a fixed watermark for fetch command tests."""
 
     name: str
     url: str
     watermark: str | None
     modified_column: str = "ModifiedOnDateTime_dt"
-
-    @property
-    def current_watermark(self) -> str | None:
-        return self.watermark
-
-
-class RecordingFeedStub:
-    """Feed stand-in that records when its watermark is observed."""
-
-    def __init__(
-        self,
-        name: str,
-        url: str,
-        watermark: str,
-        events: list[str],
-    ) -> None:
-        self.name = name
-        self.url = url
-        self.watermark = watermark
-        self.modified_column = "ModifiedOnDateTime_dt"
-        self.events = events
+    events: list[str] = dataclasses.field(default_factory=list)
 
     @property
     def current_watermark(self) -> str | None:
@@ -211,7 +109,7 @@ class RecordingFeedStub:
         return self.watermark
 
 
-class RecordingFeatureLayerStub:
+class RecordingFeatureLayerStub(FeatureLayerStubBase):
     """FeatureLayer stand-in that records when its data is downloaded."""
 
     def __init__(
@@ -221,17 +119,9 @@ class RecordingFeatureLayerStub:
         feature_set: arcgis.features.FeatureSet,
         events: list[str],
     ) -> None:
-        self.url = url
-        self.gis = gis
+        super().__init__(url, gis)
         self.feature_set = feature_set
         self.events = events
-        self.layer_properties: dict[str, object] = {
-            "spatialReference": {"wkid": WGS84_WKID},
-        }
-
-    @property
-    def properties(self) -> dict[str, object]:
-        return self.layer_properties
 
     def query(self) -> arcgis.features.FeatureSet:
         self.events.append("download")
@@ -258,7 +148,7 @@ def fetch_setup(
         peri_scribe.models,
         "FEEDS",
         [
-            FetchFeedStub(
+            FeedStub(
                 name=SAMPLE_FEED_NAME,
                 url=SAMPLE_FEED_URL,
                 watermark=SAMPLE_WATERMARK,
@@ -529,12 +419,12 @@ def test_current_watermarks_logs_each_feed_watermark(
         lambda log_level: log_level,
     )
     feeds = [
-        WatermarkFeedStub(
+        FeedStub(
             name="One",
             url="https://example.test/one",
             watermark="lastEdit=1",
         ),
-        WatermarkFeedStub(
+        FeedStub(
             name="Two",
             url="https://example.test/two",
             watermark="lastEdit=2",
@@ -620,12 +510,12 @@ def test_fetch_writes_one_file_per_source_named_by_watermark(
 ) -> None:
     first_watermark = "lastEdit=1"
     second_watermark = "lastEdit=2"
-    first = FetchFeedStub(
+    first = FeedStub(
         name="First_Source_0",
         url="https://example.test/first",
         watermark=first_watermark,
     )
-    second = FetchFeedStub(
+    second = FeedStub(
         name="Second_Source_0",
         url="https://example.test/second",
         watermark=second_watermark,
@@ -676,22 +566,11 @@ def test_fetch_increments_serial_number_for_new_watermark(
 ) -> None:
     first_watermark = "lastEdit=1"
     second_watermark = "lastEdit=2"
-    full = arcgis.features.FeatureSet([
-        arcgis.features.Feature(
-            geometry={"x": 1.0, "y": 2.0, "spatialReference": {"wkid": WGS84_WKID}},
-            attributes={"OBJECTID": 1, "name": "a"},
-        ),
-        arcgis.features.Feature(
-            geometry={"x": 3.0, "y": 4.0, "spatialReference": {"wkid": WGS84_WKID}},
-            attributes={"OBJECTID": 2, "name": "b"},
-        ),
+    full = wgs84_feature_set([
+        (1, "a", 1.0, 2.0),
+        (2, "b", 3.0, 4.0),
     ])
-    delta = arcgis.features.FeatureSet([
-        arcgis.features.Feature(
-            geometry={"x": 5.0, "y": 6.0, "spatialReference": {"wkid": WGS84_WKID}},
-            attributes={"OBJECTID": 3, "name": "c"},
-        ),
-    ])
+    delta = wgs84_feature_set([(3, "c", 5.0, 6.0)])
     monkeypatch.setattr(
         peri_scribe.operations.arcgis.features,
         "FeatureLayer",
@@ -701,7 +580,7 @@ def test_fetch_increments_serial_number_for_new_watermark(
         peri_scribe.models,
         "FEEDS",
         [
-            FetchFeedStub(
+            FeedStub(
                 name=SAMPLE_FEED_NAME,
                 url=SAMPLE_FEED_URL,
                 watermark=first_watermark,
@@ -713,7 +592,7 @@ def test_fetch_increments_serial_number_for_new_watermark(
         peri_scribe.models,
         "FEEDS",
         [
-            FetchFeedStub(
+            FeedStub(
                 name=SAMPLE_FEED_NAME,
                 url=SAMPLE_FEED_URL,
                 watermark=second_watermark,
@@ -752,15 +631,9 @@ def test_fetch_writes_no_new_file_when_nothing_changed(
 ) -> None:
     first_watermark = "lastEdit=1"
     second_watermark = "lastEdit=2"
-    full = arcgis.features.FeatureSet([
-        arcgis.features.Feature(
-            geometry={"x": 1.0, "y": 2.0, "spatialReference": {"wkid": WGS84_WKID}},
-            attributes={"OBJECTID": 1, "name": "a"},
-        ),
-        arcgis.features.Feature(
-            geometry={"x": 3.0, "y": 4.0, "spatialReference": {"wkid": WGS84_WKID}},
-            attributes={"OBJECTID": 2, "name": "b"},
-        ),
+    full = wgs84_feature_set([
+        (1, "a", 1.0, 2.0),
+        (2, "b", 3.0, 4.0),
     ])
     monkeypatch.setattr(
         peri_scribe.operations.arcgis.features,
@@ -776,7 +649,7 @@ def test_fetch_writes_no_new_file_when_nothing_changed(
         peri_scribe.models,
         "FEEDS",
         [
-            FetchFeedStub(
+            FeedStub(
                 name=SAMPLE_FEED_NAME,
                 url=SAMPLE_FEED_URL,
                 watermark=first_watermark,
@@ -788,7 +661,7 @@ def test_fetch_writes_no_new_file_when_nothing_changed(
         peri_scribe.models,
         "FEEDS",
         [
-            FetchFeedStub(
+            FeedStub(
                 name=SAMPLE_FEED_NAME,
                 url=SAMPLE_FEED_URL,
                 watermark=second_watermark,
@@ -827,7 +700,7 @@ def test_fetch_reuses_serial_number_for_unchanged_watermark(
         peri_scribe.models,
         "FEEDS",
         [
-            FetchFeedStub(
+            FeedStub(
                 name=SAMPLE_FEED_NAME,
                 url=SAMPLE_FEED_URL,
                 watermark=watermark,
@@ -853,7 +726,7 @@ def test_fetch_fails_fast_when_watermark_cannot_be_observed(
     monkeypatch.setattr(
         peri_scribe.models,
         "FEEDS",
-        [FetchFeedStub(name=SAMPLE_FEED_NAME, url=SAMPLE_FEED_URL, watermark=None)],
+        [FeedStub(name=SAMPLE_FEED_NAME, url=SAMPLE_FEED_URL, watermark=None)],
     )
     result = runner.invoke(peri_scribe.main.cli, ["fetch"])
     assert result.exit_code == 1
@@ -871,7 +744,7 @@ def test_fetch_observes_watermark_before_downloading(
     feature_set_with_geometry: arcgis.features.FeatureSet,
 ) -> None:
     events: list[str] = []
-    feed = RecordingFeedStub(
+    feed = FeedStub(
         name=SAMPLE_FEED_NAME,
         url=SAMPLE_FEED_URL,
         watermark=SAMPLE_WATERMARK,
@@ -900,7 +773,7 @@ def test_fetch_skips_download_when_watermark_already_present(
     feature_set_with_geometry: arcgis.features.FeatureSet,
 ) -> None:
     events: list[str] = []
-    feed = RecordingFeedStub(
+    feed = FeedStub(
         name=SAMPLE_FEED_NAME,
         url=SAMPLE_FEED_URL,
         watermark=SAMPLE_WATERMARK,
@@ -965,12 +838,12 @@ def test_fetch_reindexes_after_a_feed_fails(
     feature_set_with_geometry: arcgis.features.FeatureSet,
     geo_package_store: GeoPackageStore,
 ) -> None:
-    failing = FetchFeedStub(
+    failing = FeedStub(
         name="Failing_0",
         url="https://example.test/failing",
         watermark=SAMPLE_WATERMARK,
     )
-    working = FetchFeedStub(
+    working = FeedStub(
         name="Working_0",
         url="https://example.test/working",
         watermark=SAMPLE_WATERMARK,

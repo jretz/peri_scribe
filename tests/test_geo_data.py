@@ -1,5 +1,4 @@
 import datetime
-import http
 import pathlib
 import re
 import time
@@ -21,6 +20,9 @@ import peri_scribe.geo_data
 import peri_scribe.models
 import peri_scribe.retry
 from tests.conftest import (
+    LOOSE_429_ERROR_PAYLOAD,
+    RATE_LIMIT_ERROR_PAYLOAD,
+    RATE_LIMIT_RETRY_AFTER_SECONDS,
     SAMPLE_FEED_NAME,
     WGS84_WKID,
     LayerStub,
@@ -634,28 +636,6 @@ def test_dataframe_for_layer_warns_when_features_lack_geometry() -> None:
     assert captured[0]["log_level"] == "warning"
     assert "all features lack geometry" in captured[0]["event"]
     assert list(result.geometry) == [None, None]
-
-
-RATE_LIMIT_RETRY_AFTER_SECONDS = 60
-RATE_LIMIT_ERROR_PAYLOAD = {
-    "error": {
-        "code": http.HTTPStatus.TOO_MANY_REQUESTS,
-        "message": "Unable to perform query. Too many requests.",
-        "details": [
-            (
-                "API calls quota exceeded (120975 request units)! maximum allowed "
-                "request units (115200) per Minute. "
-                f"Retry after {RATE_LIMIT_RETRY_AFTER_SECONDS} sec."
-            ),
-        ],
-    },
-}
-LOOSE_429_ERROR_PAYLOAD = {
-    "error": {
-        "code": http.HTTPStatus.TOO_MANY_REQUESTS,
-        "message": "Too many requests.",
-    },
-}
 
 
 class QueryStub:

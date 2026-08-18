@@ -8,30 +8,14 @@ import requests
 import tenacity
 
 import peri_scribe.retry
+from tests.conftest import (
+    LOOSE_429_ERROR_PAYLOAD,
+    RATE_LIMIT_ERROR_PAYLOAD,
+    RATE_LIMIT_RETRY_AFTER_SECONDS,
+)
 
 
-# Error payloads matching the ArcGIS REST API 429 rate-limit response format.
-RATE_LIMIT_RETRY_AFTER_SECONDS = 60
 RETRY_AFTER_HEADER_SECONDS = 7
-RATE_LIMIT_ERROR_PAYLOAD = {
-    "error": {
-        "code": http.HTTPStatus.TOO_MANY_REQUESTS,
-        "message": "Unable to perform query. Too many requests.",
-        "details": [
-            (
-                "API calls quota exceeded (120975 request units)! maximum allowed "
-                "request units (115200) per Minute. "
-                f"Retry after {RATE_LIMIT_RETRY_AFTER_SECONDS} sec."
-            ),
-        ],
-    },
-}
-LOOSE_429_ERROR_PAYLOAD = {
-    "error": {
-        "code": http.HTTPStatus.TOO_MANY_REQUESTS,
-        "message": "Too many requests.",
-    },
-}
 
 # JSON wire-format strings of the payloads, used to exercise the string fallback
 # classification.

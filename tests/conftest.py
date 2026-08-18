@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import http
 import pathlib
 import typing
 
@@ -32,6 +33,28 @@ UNKNOWN_WKID = 999999
 WEB_MERCATOR_MAXIMUM_MAGNITUDE_IN_METERS = 20048966.104014598
 
 CLICK_USAGE_ERROR_EXIT_CODE = 2
+
+# Error messages matching the ArcGIS REST API 429 rate-limit response format.
+RATE_LIMIT_RETRY_AFTER_SECONDS = 60
+RATE_LIMIT_ERROR_PAYLOAD = {
+    "error": {
+        "code": http.HTTPStatus.TOO_MANY_REQUESTS,
+        "message": "Unable to perform query. Too many requests.",
+        "details": [
+            (
+                "API calls quota exceeded (120975 request units)! maximum allowed "
+                "request units (115200) per Minute. "
+                f"Retry after {RATE_LIMIT_RETRY_AFTER_SECONDS} sec."
+            ),
+        ],
+    },
+}
+LOOSE_429_ERROR_PAYLOAD = {
+    "error": {
+        "code": http.HTTPStatus.TOO_MANY_REQUESTS,
+        "message": "Too many requests.",
+    },
+}
 
 SAMPLE_FEED_URL = (
     "https://example.test/ArcGIS/rest/services/Fire_Layers/FeatureServer/3"
@@ -86,7 +109,22 @@ class FeatureSetStub(arcgis.features.FeatureSet):
         return self.stored_spatial_reference
 
 
-class FeatureLayerStub:
+class FeatureLayerStubBase:
+    """Base stand-in for an ArcGIS FeatureLayer exposing WGS84 properties."""
+
+    def __init__(self, url: str, gis: object) -> None:
+        self.url = url
+        self.gis = gis
+        self.layer_properties: dict[str, object] = {
+            "spatialReference": {"wkid": WGS84_WKID},
+        }
+
+    @property
+    def properties(self) -> dict[str, object]:
+        return self.layer_properties
+
+
+class FeatureLayerStub(FeatureLayerStubBase):
     """Minimal stand-in for an ArcGIS FeatureLayer with a fixed query result."""
 
     def __init__(
@@ -96,21 +134,18 @@ class FeatureLayerStub:
         feature_set: arcgis.features.FeatureSet,
         query_error: Exception | None = None,
     ) -> None:
-        self.url = url
-        self.gis = gis
+        super().__init__(url, gis)
         self.feature_set = feature_set
         self.query_error = query_error
-        self.layer_properties: dict[str, object] = {
-            "spatialReference": {"wkid": WGS84_WKID},
-        }
 
-    @property
-    def properties(self) -> dict[str, object]:
-        return self.layer_properties
-
-    def query(self) -> arcgis.features.FeatureSet:
+    def query(
+        self,
+        **parameters: object,
+    ) -> arcgis.features.FeatureSet | dict[str, object]:
         if self.query_error is not None:
             raise self.query_error
+        if parameters.get("return_ids_only"):
+            return {"objectIdFieldName": "OBJECTID", "objectIds": [1, 2]}
         return self.feature_set
 
 
@@ -135,6 +170,52 @@ def failing_from_crs(
     return FailingTransformer()
 
 
+def wgs84_feature_set(
+    points: list[tuple[int | None, str, float, float]],
+) -> arcgis.features.FeatureSet:
+    """Build a WGS84 FeatureSet from (OBJECTID, name, x, y) point rows.
+
+    Args:
+        points: The OBJECTID (None to omit it), name, longitude, and latitude of
+            each feature.
+
+    Returns:
+        The FeatureSet.
+    """
+    features = []
+    for object_id, name, x, y in points:
+        attributes: dict[str, object] = {"name": name}
+        if object_id is not None:
+            attributes["OBJECTID"] = object_id
+        features.append(
+            arcgis.features.Feature(
+                geometry={
+                    "x": x,
+                    "y": y,
+                    "spatialReference": {"wkid": WGS84_WKID},
+                },
+                attributes=attributes,
+            ),
+        )
+    return arcgis.features.FeatureSet(features)
+
+
+def sample_geo_dataframe() -> geopandas.GeoDataFrame:
+    """Return the canonical two-point WGS84 GeoDataFrame.
+
+    Returns:
+        A GeoDataFrame with two point features in WGS84.
+    """
+    return geopandas.GeoDataFrame(
+        {"name": ["a", "b"]},
+        geometry=[
+            shapely.geometry.Point(1.0, 2.0),
+            shapely.geometry.Point(3.0, 4.0),
+        ],
+        crs=pyproj.CRS.from_epsg(WGS84_WKID),
+    )
+
+
 @pytest.fixture
 def runner() -> click.testing.CliRunner:
     return click.testing.CliRunner()
@@ -147,26 +228,10 @@ def feature_set_with_geometry() -> arcgis.features.FeatureSet:
     Returns:
         A FeatureSet with two point features in WGS84.
     """
-    return arcgis.features.FeatureSet(
-        [
-            arcgis.features.Feature(
-                geometry={
-                    "x": 1.0,
-                    "y": 2.0,
-                    "spatialReference": {"wkid": WGS84_WKID},
-                },
-                attributes={"name": "a"},
-            ),
-            arcgis.features.Feature(
-                geometry={
-                    "x": 3.0,
-                    "y": 4.0,
-                    "spatialReference": {"wkid": WGS84_WKID},
-                },
-                attributes={"name": "b"},
-            ),
-        ],
-    )
+    return wgs84_feature_set([
+        (None, "a", 1.0, 2.0),
+        (None, "b", 3.0, 4.0),
+    ])
 
 
 @pytest.fixture
@@ -312,15 +377,10 @@ def layer_data_factory() -> typing.Callable[[str], peri_scribe.models.LayerData]
     """
 
     def make_layer_data(name: str) -> peri_scribe.models.LayerData:
-        dataframe = geopandas.GeoDataFrame(
-            {"name": ["a", "b"]},
-            geometry=[
-                shapely.geometry.Point(1.0, 2.0),
-                shapely.geometry.Point(3.0, 4.0),
-            ],
-            crs=pyproj.CRS.from_epsg(WGS84_WKID),
+        return peri_scribe.models.LayerData(
+            name=name,
+            dataframe=sample_geo_dataframe(),
         )
-        return peri_scribe.models.LayerData(name=name, dataframe=dataframe)
 
     return make_layer_data
 
