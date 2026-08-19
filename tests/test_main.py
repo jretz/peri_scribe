@@ -18,6 +18,7 @@ import peri_scribe.exceptions
 import peri_scribe.fetching
 import peri_scribe.fire_differential
 import peri_scribe.fire_index
+import peri_scribe.kml_template
 import peri_scribe.main
 import peri_scribe.models
 import peri_scribe.output
@@ -1094,3 +1095,31 @@ def test_cli_help_lists_derive_geo_history(
     result = runner.invoke(peri_scribe.main.cli, ["--help"])
     assert result.exit_code == 0
     assert "derive-geo-history" in result.output
+
+
+def test_create_kml_template_calls_module(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+) -> None:
+    called: list[None] = []
+
+    def create_template() -> pathlib.Path:
+        called.append(None)
+        return pathlib.Path("/templates/new_template.kml")
+
+    monkeypatch.setattr(
+        peri_scribe.kml_template,
+        "create_template",
+        create_template,
+    )
+    result = runner.invoke(peri_scribe.main.cli, ["create-kml-template"])
+    assert result.exit_code == 0
+    assert called == [None]
+
+
+def test_cli_help_lists_create_kml_template(
+    runner: click.testing.CliRunner,
+) -> None:
+    result = runner.invoke(peri_scribe.main.cli, ["--help"])
+    assert result.exit_code == 0
+    assert "create-kml-template" in result.output

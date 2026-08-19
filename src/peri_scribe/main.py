@@ -12,6 +12,7 @@ import peri_scribe.administrative_boundaries
 import peri_scribe.fetching
 import peri_scribe.fire_differential
 import peri_scribe.fire_index
+import peri_scribe.kml_template
 import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.snapshots
@@ -172,3 +173,10 @@ def derive_geo_history(year_directory: pathlib.Path | None = None) -> None:
         year_directory,
     )
     logger.info("Wrote differential history", path=output_path)
+
+
+@cli.command()
+def create_kml_template() -> None:
+    """Generate the KML template used to specify symbolization."""
+    output_path = peri_scribe.kml_template.create_template()
+    logger.info("Wrote KML template", path=output_path)

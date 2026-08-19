@@ -5,6 +5,7 @@ requires-python = "==3.14.*"
 dependencies = [
     "arcgis",
     "click",
+    "fastkml[lxml]",
     "geopandas",
     "pydantic",
     "pygments",  # For pytest code highlighting
