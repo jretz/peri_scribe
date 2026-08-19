@@ -912,3 +912,124 @@ def test_read_layer_dataframe_reads_feed_layer(
     path = pathlib.Path("/fires.gpkg")
     assert peri_scribe.geo_data.read_layer_dataframe(path, feed) is sentinel
     assert calls == [(path, SAMPLE_FEED_NAME)]
+
+
+def test_fire_row_records_yields_full_rows(
+    configured_feeds: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    object_id = 7
+    area_acres = 12
+    stub_geo_package(
+        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Point"]}),
+        {
+            "Fires_One_0": geopandas.GeoDataFrame(
+                {
+                    "incident_name": ["Park Fire"],
+                    "displayStatus": ["Active"],
+                    "OBJECTID": [object_id],
+                    "area_acres": [area_acres],
+                },
+                geometry=[shapely.geometry.Point(0, 0)],
+            ),
+        },
+    )
+    rows = list(peri_scribe.geo_data.fire_row_records(pathlib.Path("fires.gpkg")))
+    assert len(rows) == 1
+    assert rows[0].object_id == object_id
+    assert rows[0].source_name == "Fires_One_0"
+    assert rows[0].record.name == "Park Fire"
+    assert rows[0].attributes["area_acres"] == area_acres
+    assert "geometry" not in rows[0].attributes
+
+
+def test_fire_row_records_omits_missing_object_id(
+    configured_feeds: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    stub_geo_package(
+        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Point"]}),
+        {
+            "Fires_One_0": geopandas.GeoDataFrame(
+                {
+                    "incident_name": ["Park Fire"],
+                    "displayStatus": ["Active"],
+                },
+                geometry=[shapely.geometry.Point(0, 0)],
+            ),
+        },
+    )
+    rows = list(peri_scribe.geo_data.fire_row_records(pathlib.Path("fires.gpkg")))
+    assert rows[0].object_id is None
+
+
+def test_object_id_from_returns_none_for_missing_value() -> None:
+    assert peri_scribe.geo_data.object_id_from(
+        pd.Series({"OBJECTID": float("nan")}),
+    ) is None
+
+
+def test_row_attributes_excludes_geometry_column() -> None:
+    row = pd.Series({
+        "OBJECTID": 1,
+        "geometry": shapely.geometry.Point(0, 0),
+    })
+    assert peri_scribe.geo_data.row_attributes(row, "geometry") == {"OBJECTID": 1}
+
+
+def test_fire_row_records_raises_for_unknown_layer(
+    configured_feeds: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    stub_geo_package(
+        pd.DataFrame({"name": ["Unknown_0"], "geometry_type": ["Point"]}),
+        {
+            "Unknown_0": geopandas.GeoDataFrame(
+                {
+                    "incident_name": ["Park Fire"],
+                    "displayStatus": ["Active"],
+                },
+                geometry=[shapely.geometry.Point(0, 0)],
+            ),
+        },
+    )
+    with pytest.raises(peri_scribe.exceptions.UnknownLayerError):
+        list(peri_scribe.geo_data.fire_row_records(pathlib.Path("fires.gpkg")))
+
+
+def test_fire_row_records_skips_rows_without_status(
+    configured_feeds: list[peri_scribe.feed_types.Feed],
+    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
+) -> None:
+    stub_geo_package(
+        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Point"]}),
+        {
+            "Fires_One_0": geopandas.GeoDataFrame(
+                {
+                    "incident_name": ["Park Fire", "No Status"],
+                    "displayStatus": ["Active", None],
+                },
+                geometry=[
+                    shapely.geometry.Point(0, 0),
+                    shapely.geometry.Point(1, 1),
+                ],
+            ),
+        },
+    )
+    rows = list(peri_scribe.geo_data.fire_row_records(pathlib.Path("fires.gpkg")))
+    assert [row.record.name for row in rows] == ["Park Fire"]
+
+
+def test_observation_time_from_preserves_aware_datetime() -> None:
+    aware = datetime.datetime(
+        2026,
+        8,
+        16,
+        0,
+        10,
+        45,
+        tzinfo=datetime.timezone(datetime.timedelta(hours=1)),
+    )
+    assert peri_scribe.geo_data.observation_time_from(aware) == aware.astimezone(
+        datetime.UTC,
+    )

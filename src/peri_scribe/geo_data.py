@@ -7,6 +7,7 @@ reads fires and complex memberships from GeoPackage files.
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import pathlib
 import re
@@ -318,6 +319,86 @@ def observation_time_from(value: object) -> datetime.datetime | None:
     return parsed.astimezone(datetime.UTC)
 
 
+def fire_record_from_row(
+    row: pd.Series,
+    feed: peri_scribe.feed_types.Feed,
+    geometry: shapely.Geometry | None,
+) -> peri_scribe.models.FireRecord | None:
+    """Return the fire record described by *row*, or None when it has none.
+
+    A row yields no record when its status is missing or when neither its name column
+    nor its mission code names a fire. Every identifier, name spelling, and timestamp
+    is read from the columns the feed configures.
+
+    Args:
+        row: One feature row from a GeoPackage layer.
+        feed: The feed that names the row's columns.
+        geometry: The row's shapely geometry.
+
+    Returns:
+        The fire record, or None when the row does not describe a fire.
+    """
+    status = fire_status_from(row[feed.status_column])
+    if status is None:
+        return None
+    recorded_name = fire_name_from(row[feed.fire_name_column])
+    mission = mission_name_from(
+        row[feed.mission_column]
+        if feed.mission_column is not None
+        else None,
+    )
+    name = recorded_name or (
+        mission.name if mission is not None else None
+    )
+    if name is None:
+        return None
+    identifiers = frozenset(
+        normalized
+        for column in feed.fire_identifier_columns
+        if (normalized := normalize_identifier(row[column])) is not None
+    )
+    names = frozenset(
+        peri_scribe.models.normalize_fire_name(candidate)
+        for candidate in (
+            recorded_name,
+            mission.name if mission is not None else None,
+            mission.base_name if mission is not None else None,
+        )
+        if candidate is not None
+    )
+    observed_at = (
+        observation_time_from(row[feed.observation_time_column])
+        if feed.observation_time_column is not None
+        else None
+    )
+    mission_code = (
+        fire_name_from(row[feed.mission_column])
+        if feed.mission_column is not None
+        else None
+    )
+    point_of_origin_state = (
+        fire_name_from(row[feed.point_of_origin_state_column])
+        if feed.point_of_origin_state_column is not None
+        else None
+    )
+    point_of_origin_fips = (
+        fire_name_from(row[feed.point_of_origin_fips_column])
+        if feed.point_of_origin_fips_column is not None
+        else None
+    )
+    return peri_scribe.models.FireRecord(
+        name=name,
+        status=status,
+        identifiers=identifiers,
+        names=names,
+        geometry=geometry,
+        observed_at=observed_at,
+        mission=mission_code,
+        point_of_origin_state=point_of_origin_state,
+        point_of_origin_fips=point_of_origin_fips,
+    )
+
+
 def fire_records(
     path: pathlib.Path,
 ) -> typing.Generator[peri_scribe.models.FireRecord]:
@@ -345,65 +426,100 @@ def fire_records(
             raise peri_scribe.exceptions.UnknownLayerError(layer_name, path)
         dataframe = geopandas.read_file(path, layer=feed.name)
         for index in range(len(dataframe)):
+            record = fire_record_from_row(
+                dataframe.iloc[index],
+                feed,
+                dataframe.geometry.iloc[index],
+            )
+            if record is not None:
+                yield record
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class FireRowRecord:
+    """One fire source row with its identifying record and full attributes.
+
+    The record carries the fire's identifying fields; the attributes carry every
+    non-geometry column so downstream consumers can bring the row's own fields along.
+    """
+
+    record: peri_scribe.models.FireRecord
+    object_id: int | None
+    source_name: str
+    attributes: dict[str, object]
+
+
+def object_id_from(row: pd.Series) -> int | None:
+    """Return the row's OBJECTID, or None when it is missing.
+
+    Args:
+        row: One feature row.
+
+    Returns:
+        The row's OBJECTID as an integer, or None when the row has none.
+    """
+    if "OBJECTID" not in row.index:
+        return None
+    value = row["OBJECTID"]
+    if is_missing(value):
+        return None
+    return int(value)
+
+
+def row_attributes(
+    row: pd.Series,
+    geometry_name: str,
+) -> dict[str, object]:
+    """Return the row's non-geometry columns as a dictionary.
+
+    Args:
+        row: One feature row.
+        geometry_name: The row's geometry column name.
+
+    Returns:
+        The row's attribute columns, keyed by column name.
+    """
+    return {
+        str(column): row[column]
+        for column in row.index
+        if str(column) != geometry_name
+    }
+
+
+def fire_row_records(
+    path: pathlib.Path,
+) -> typing.Generator[FireRowRecord]:
+    """Yield each fire row of the GeoPackage at *path* with its full attributes.
+
+    Rows are yielded in the same order as `fire_records`, so a caller can read the slim
+    records for grouping and the full rows for attributes and pair them by index.
+
+    Args:
+        path: The GeoPackage file to read.
+
+    Yields:
+        Each fire row, one per row, in the order encountered.
+
+    Raises:
+        UnknownLayerError: If a layer does not correspond to a configured feed.
+    """
+    feeds_by_name = {feed.name: feed for feed in peri_scribe.models.FEEDS}
+    for layer_name in geopandas.list_layers(path)["name"]:
+        feed = feeds_by_name.get(layer_name)
+        if feed is None:
+            raise peri_scribe.exceptions.UnknownLayerError(layer_name, path)
+        dataframe = geopandas.read_file(path, layer=feed.name)
+        geometry_name = dataframe.geometry.name
+        for index in range(len(dataframe)):
             row = dataframe.iloc[index]
-            status = fire_status_from(row[feed.status_column])
-            if status is None:
+            record = fire_record_from_row(row, feed, row[geometry_name])
+            if record is None:
                 continue
-            recorded_name = fire_name_from(row[feed.fire_name_column])
-            mission = mission_name_from(
-                row[feed.mission_column]
-                if feed.mission_column is not None
-                else None,
-            )
-            name = recorded_name or (
-                mission.name if mission is not None else None
-            )
-            if name is None:
-                continue
-            identifiers = frozenset(
-                normalized
-                for column in feed.fire_identifier_columns
-                if (normalized := normalize_identifier(row[column])) is not None
-            )
-            names = frozenset(
-                peri_scribe.models.normalize_fire_name(candidate)
-                for candidate in (
-                    recorded_name,
-                    mission.name if mission is not None else None,
-                    mission.base_name if mission is not None else None,
-                )
-                if candidate is not None
-            )
-            observed_at = (
-                observation_time_from(row[feed.observation_time_column])
-                if feed.observation_time_column is not None
-                else None
-            )
-            mission_code = (
-                fire_name_from(row[feed.mission_column])
-                if feed.mission_column is not None
-                else None
-            )
-            point_of_origin_state = (
-                fire_name_from(row[feed.point_of_origin_state_column])
-                if feed.point_of_origin_state_column is not None
-                else None
-            )
-            point_of_origin_fips = (
-                fire_name_from(row[feed.point_of_origin_fips_column])
-                if feed.point_of_origin_fips_column is not None
-                else None
-            )
-            yield peri_scribe.models.FireRecord(
-                name=name,
-                status=status,
-                identifiers=identifiers,
-                names=names,
-                geometry=dataframe.geometry.iloc[index],
-                observed_at=observed_at,
-                mission=mission_code,
-                point_of_origin_state=point_of_origin_state,
-                point_of_origin_fips=point_of_origin_fips,
+            yield FireRowRecord(
+                record=record,
+                object_id=object_id_from(row),
+                source_name=feed.name,
+                attributes=row_attributes(row, geometry_name),
             )
 
 

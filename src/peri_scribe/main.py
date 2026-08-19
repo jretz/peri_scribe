@@ -10,6 +10,7 @@ import structlog
 
 import peri_scribe.administrative_boundaries
 import peri_scribe.fetching
+import peri_scribe.fire_history
 import peri_scribe.fire_index
 import peri_scribe.models
 import peri_scribe.output
@@ -142,6 +143,32 @@ def index_fire_sources(year_directory: pathlib.Path | None = None) -> None:
 def ensure_admin_boundaries() -> None:
     """Ensure needed administrative boundaries are available."""
     peri_scribe.administrative_boundaries.ensure_administrative_boundaries()
+
+
+@cli.command(
+    help=(
+        "Derive the full point and perimeter history for YEAR_DIRECTORY.\n\n"
+        "Writes YEAR_DIRECTORY/derived/history_of_full_geography.gpkg with a "
+        "perimeter_history layer and a point_history layer. "
+        f"{year_directory_default_help()}"
+    ),
+)
+@click.argument(
+    "year_directory",
+    type=click.Path(
+        path_type=pathlib.Path,
+        exists=True,
+        file_okay=False,
+    ),
+    required=False,
+)
+def derive_full_geo(year_directory: pathlib.Path | None = None) -> None:
+    if year_directory is None:
+        year_directory = default_year_directory()
+    output_path = peri_scribe.fire_history.write_history_of_full_geography(
+        year_directory,
+    )
+    logger.info("Wrote history", path=output_path)
 
 
 if __name__ == "__main__":

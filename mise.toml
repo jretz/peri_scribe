@@ -28,6 +28,12 @@ depends = ["venv"]
 raw_args = true
 run = "uv run --locked --module peri_scribe.main fetch"
 
+[tasks.derive-full-geo]
+description = "Derive the full point and perimeter history for YEAR_DIRECTORY"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked --module peri_scribe.main derive-full-geo"
+
 [tasks.index-fire-sources]
 description = "Build the fire source index for YEAR_DIRECTORY"
 depends = ["venv"]
