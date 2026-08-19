@@ -169,7 +169,3 @@ def derive_full_geo(year_directory: pathlib.Path | None = None) -> None:
         year_directory,
     )
     logger.info("Wrote history", path=output_path)
-
-
-if __name__ == "__main__":
-    cli()

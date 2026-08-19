@@ -22,6 +22,9 @@ dependencies = [
     "us",
 ]
 
+[project.scripts]
+peri_scribe = "peri_scribe.main:cli"
+
 [build-system]
 requires = ["uv_build < 0.13"]
 build-backend = "uv_build"
