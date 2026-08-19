@@ -22,19 +22,58 @@ if typing.TYPE_CHECKING:
     from tests.factories import StubFireReader
 
 
-def listed_fires(directory: pathlib.Path) -> list[peri_scribe.models.Fire]:
+CROSSWHITE_ID = "1b0219ee-5298-4fef-9927-c2666d9d53fc"
+ROWE_CREEK_COMPLEX_ID = "b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3"
+
+
+def listed_fires(
+    directory: pathlib.Path = pathlib.Path("sources"),
+) -> list[peri_scribe.models.Fire]:
     """Return the fires indexed from the GeoPackage files under *directory*.
 
     Args:
         directory: The directory tree holding GeoPackage files with fire data.
+            Defaults to the canonical ``sources`` directory.
 
     Returns:
         The fires, in the order first encountered.
     """
-    return [
-        source.fire
-        for source in peri_scribe.fire_sources.fire_sources(directory)
-    ]
+    return [source.fire for source in peri_scribe.fire_sources.fire_sources(directory)]
+
+
+def complex_parent_and_child_fires(
+    stub_fire_reader: StubFireReader,
+) -> list[peri_scribe.models.Fire]:
+    """Return fires indexed from the canonical parent/child GeoPackage.
+
+    Args:
+        stub_fire_reader: The fixture installing in-memory fire reads.
+
+    Returns:
+        The parent and child fires, with the child linked to its complex.
+    """
+    stub_fire_reader(
+        {
+            pathlib.Path("one.gpkg"): [
+                fire_record(
+                    "ROWE CREEK COMPLEX",
+                    ACTIVE,
+                    identifiers={ROWE_CREEK_COMPLEX_ID},
+                ),
+                fire_record("0445 CROSSWHITE", ACTIVE, identifiers={CROSSWHITE_ID}),
+            ],
+        },
+        {
+            pathlib.Path("one.gpkg"): [
+                peri_scribe.models.ComplexMembership(
+                    fire_identifier=CROSSWHITE_ID,
+                    complex_identifier=ROWE_CREEK_COMPLEX_ID,
+                    complex_name="ROWE CREEK COMPLEX",
+                ),
+            ],
+        },
+    )
+    return listed_fires()
 
 
 def test_fire_sources_prefers_most_common_mixed_case_spelling(
@@ -49,7 +88,7 @@ def test_fire_sources_prefers_most_common_mixed_case_spelling(
             fire_record("Park Fire", ACTIVE, geometry=location),
         ],
     })
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = listed_fires()
     assert fires == [peri_scribe.models.Fire(name="Park Fire", status=ACTIVE)]
 
 
@@ -64,7 +103,7 @@ def test_fire_sources_uses_most_common_spelling_when_none_is_mixed_case(
             fire_record("park fire", INACTIVE, geometry=location),
         ],
     })
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = listed_fires()
     assert fires == [peri_scribe.models.Fire(name="park fire", status=INACTIVE)]
 
 
@@ -78,7 +117,7 @@ def test_fire_sources_breaks_mixed_case_ties_by_first_spelling(
             fire_record("PARK Fire", ACTIVE, geometry=location),
         ],
     })
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = listed_fires()
     assert fires == [peri_scribe.models.Fire(name="Park Fire", status=ACTIVE)]
 
 
@@ -92,7 +131,7 @@ def test_fire_sources_marks_fire_active_when_any_record_is_active(
             fire_record("Alta", ACTIVE, geometry=location),
         ],
     })
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = listed_fires()
     assert fires == [peri_scribe.models.Fire(name="Alta", status=ACTIVE)]
 
 
@@ -110,7 +149,7 @@ def test_fire_sources_merges_names_across_files(
             fire_record("Creek Fire", ACTIVE, geometry=shapely.geometry.Point(2, 2)),
         ],
     })
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = listed_fires()
     assert fires == [
         peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
         peri_scribe.models.Fire(name="ALTA", status=INACTIVE),
@@ -121,20 +160,19 @@ def test_fire_sources_merges_names_across_files(
 def test_fire_sources_merges_records_with_same_identifier_under_different_names(
     stub_fire_reader: StubFireReader,
 ) -> None:
-    crosswhite_id = "1b0219ee-5298-4fef-9927-c2666d9d53fc"
     stub_fire_reader({
         pathlib.Path("one.gpkg"): [
-            fire_record("0445 CROSSWHITE", ACTIVE, identifiers={crosswhite_id}),
-            fire_record("Crosswhite", ACTIVE, identifiers={crosswhite_id}),
+            fire_record("0445 CROSSWHITE", ACTIVE, identifiers={CROSSWHITE_ID}),
+            fire_record("Crosswhite", ACTIVE, identifiers={CROSSWHITE_ID}),
         ],
     })
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = listed_fires()
     assert fires == [
         peri_scribe.models.Fire(
             name="Crosswhite",
             status=ACTIVE,
-            identifier=crosswhite_id,
-            aliases=frozenset({crosswhite_id}),
+            identifier=CROSSWHITE_ID,
+            aliases=frozenset({CROSSWHITE_ID}),
         ),
     ]
 
@@ -160,7 +198,7 @@ def test_fire_sources_keeps_same_named_fires_with_different_identifiers_separate
             ),
         ],
     })
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = listed_fires()
     assert fires == [
         peri_scribe.models.Fire(
             name="CANYON",
@@ -192,7 +230,7 @@ def test_fire_sources_merges_ufi_and_guid_through_a_shared_record(
             fire_record("Bug", ACTIVE, identifiers={unique_id, guid}),
         ],
     })
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = listed_fires()
     assert fires == [
         peri_scribe.models.Fire(
             name="Bug",
@@ -214,7 +252,7 @@ def test_fire_sources_merges_unidentified_records_with_same_named_identified_rec
             fire_record("Bug", ACTIVE, identifiers={unique_id}, geometry=location),
         ],
     })
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = listed_fires()
     assert fires == [
         peri_scribe.models.Fire(
             name="Bug",
@@ -234,7 +272,7 @@ def test_fire_sources_keeps_same_named_unidentified_records_separate_when_far_ap
             fire_record("Canyon", ACTIVE, geometry=shapely.geometry.Point(10, 10)),
         ],
     })
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = listed_fires()
     assert [fire.name for fire in fires] == ["CANYON", "Canyon"]
 
 
@@ -253,7 +291,7 @@ def test_fire_sources_does_not_merge_same_named_fires_across_regions(
             ),
         ],
     })
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = listed_fires()
     assert [fire.name for fire in fires] == ["RIVER", "River"]
 
 
@@ -271,7 +309,7 @@ def test_fire_sources_merges_same_named_fires_at_the_same_location(
             fire_record("SANDY", ACTIVE, identifiers={june_guid}, geometry=location),
         ],
     })
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = listed_fires()
     assert fires == [
         peri_scribe.models.Fire(
             name="SANDY",
@@ -304,7 +342,7 @@ def test_fire_sources_merges_mission_name_variants(
             ),
         ],
     })
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = listed_fires()
     assert fires == [
         peri_scribe.models.Fire(
             name="RUMSEY",
@@ -318,32 +356,13 @@ def test_fire_sources_merges_mission_name_variants(
 def test_fire_sources_excludes_complex_parents(
     stub_fire_reader: StubFireReader,
 ) -> None:
-    parent_id = "b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3"
-    child_id = "1b0219ee-5298-4fef-9927-c2666d9d53fc"
-    stub_fire_reader(
-        {
-            pathlib.Path("one.gpkg"): [
-                fire_record("ROWE CREEK COMPLEX", ACTIVE, identifiers={parent_id}),
-                fire_record("0445 CROSSWHITE", ACTIVE, identifiers={child_id}),
-            ],
-        },
-        {
-            pathlib.Path("one.gpkg"): [
-                peri_scribe.models.ComplexMembership(
-                    fire_identifier=child_id,
-                    complex_identifier=parent_id,
-                    complex_name="ROWE CREEK COMPLEX",
-                ),
-            ],
-        },
-    )
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = complex_parent_and_child_fires(stub_fire_reader)
     assert fires == [
         peri_scribe.models.Fire(
             name="0445 CROSSWHITE",
             status=ACTIVE,
-            identifier=child_id,
-            aliases=frozenset({child_id}),
+            identifier=CROSSWHITE_ID,
+            aliases=frozenset({CROSSWHITE_ID}),
         ),
     ]
 
@@ -351,30 +370,11 @@ def test_fire_sources_excludes_complex_parents(
 def test_fire_sources_links_member_fires_to_their_complex(
     stub_fire_reader: StubFireReader,
 ) -> None:
-    parent_id = "b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3"
-    child_id = "1b0219ee-5298-4fef-9927-c2666d9d53fc"
-    stub_fire_reader(
-        {
-            pathlib.Path("one.gpkg"): [
-                fire_record("ROWE CREEK COMPLEX", ACTIVE, identifiers={parent_id}),
-                fire_record("0445 CROSSWHITE", ACTIVE, identifiers={child_id}),
-            ],
-        },
-        {
-            pathlib.Path("one.gpkg"): [
-                peri_scribe.models.ComplexMembership(
-                    fire_identifier=child_id,
-                    complex_identifier=parent_id,
-                    complex_name="ROWE CREEK COMPLEX",
-                ),
-            ],
-        },
-    )
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = complex_parent_and_child_fires(stub_fire_reader)
     fire = fires[0]
     assert fire.complex is not None
     assert fire.complex.name == "ROWE CREEK COMPLEX"
-    assert fire.complex.identifier == parent_id
+    assert fire.complex.identifier == ROWE_CREEK_COMPLEX_ID
     assert fire.complex.fires == frozenset({fire})
     assert next(iter(fire.complex.fires)).complex is fire.complex
 
@@ -382,20 +382,18 @@ def test_fire_sources_links_member_fires_to_their_complex(
 def test_fire_sources_builds_one_complex_from_memberships_across_files(
     stub_fire_reader: StubFireReader,
 ) -> None:
-    parent_id = "b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3"
-    child_id = "1b0219ee-5298-4fef-9927-c2666d9d53fc"
     membership = peri_scribe.models.ComplexMembership(
-        fire_identifier=child_id,
-        complex_identifier=parent_id,
+        fire_identifier=CROSSWHITE_ID,
+        complex_identifier=ROWE_CREEK_COMPLEX_ID,
         complex_name="ROWE CREEK COMPLEX",
     )
     stub_fire_reader(
         {
             pathlib.Path("one.gpkg"): [
-                fire_record("0445 CROSSWHITE", ACTIVE, identifiers={child_id}),
+                fire_record("0445 CROSSWHITE", ACTIVE, identifiers={CROSSWHITE_ID}),
             ],
             pathlib.Path("two.gpkg"): [
-                fire_record("Crosswhite", ACTIVE, identifiers={child_id}),
+                fire_record("Crosswhite", ACTIVE, identifiers={CROSSWHITE_ID}),
             ],
         },
         {
@@ -403,13 +401,13 @@ def test_fire_sources_builds_one_complex_from_memberships_across_files(
             pathlib.Path("two.gpkg"): [membership],
         },
     )
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = listed_fires()
     assert fires == [
         peri_scribe.models.Fire(
             name="Crosswhite",
             status=ACTIVE,
-            identifier=child_id,
-            aliases=frozenset({child_id}),
+            identifier=CROSSWHITE_ID,
+            aliases=frozenset({CROSSWHITE_ID}),
         ),
     ]
     assert fires[0].complex is not None
@@ -452,7 +450,7 @@ def test_fire_sources_excludes_parent_group_with_multiple_identifiers(
             ],
         },
     )
-    fires = listed_fires(pathlib.Path("sources"))
+    fires = listed_fires()
     assert fires == [
         peri_scribe.models.Fire(
             name="5-3",
@@ -466,31 +464,29 @@ def test_fire_sources_excludes_parent_group_with_multiple_identifiers(
 def test_fire_complexes_skips_membership_for_unidentified_fire(
     stub_fire_reader: StubFireReader,
 ) -> None:
-    parent_id = "b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3"
-    child_id = "1b0219ee-5298-4fef-9927-c2666d9d53fc"
     stub_fire_reader(
         {
             pathlib.Path("one.gpkg"): [
-                fire_record("Crosswhite", ACTIVE, identifiers={child_id}),
+                fire_record("Crosswhite", ACTIVE, identifiers={CROSSWHITE_ID}),
             ],
         },
         {
             pathlib.Path("one.gpkg"): [
                 peri_scribe.models.ComplexMembership(
                     fire_identifier="unknown-fire",
-                    complex_identifier=parent_id,
+                    complex_identifier=ROWE_CREEK_COMPLEX_ID,
                     complex_name="ROWE CREEK COMPLEX",
                 ),
                 peri_scribe.models.ComplexMembership(
-                    fire_identifier=child_id,
-                    complex_identifier=parent_id,
+                    fire_identifier=CROSSWHITE_ID,
+                    complex_identifier=ROWE_CREEK_COMPLEX_ID,
                     complex_name="ROWE CREEK COMPLEX",
                 ),
             ],
         },
     )
     with structlog.testing.capture_logs() as captured:
-        fires = listed_fires(pathlib.Path("sources"))
+        fires = listed_fires()
     assert captured[0]["event"] == (
         "Complex membership references an unidentified fire"
     )
@@ -499,8 +495,8 @@ def test_fire_complexes_skips_membership_for_unidentified_fire(
         peri_scribe.models.Fire(
             name="Crosswhite",
             status=ACTIVE,
-            identifier=child_id,
-            aliases=frozenset({child_id}),
+            identifier=CROSSWHITE_ID,
+            aliases=frozenset({CROSSWHITE_ID}),
         ),
     ]
     assert fires[0].complex is not None
@@ -531,7 +527,7 @@ def test_fire_sources_propagates_unknown_layer_error(
         peri_scribe.exceptions.UnknownLayerError,
         match=re.escape("layer Mystery_Layer_0 in fires.gpkg"),
     ):
-        listed_fires(pathlib.Path("sources"))
+        listed_fires()
 
 
 def test_fire_sources_raises_system_exit_for_unreadable_file(
@@ -555,7 +551,7 @@ def test_fire_sources_raises_system_exit_for_unreadable_file(
         SystemExit,
         match=re.escape("Failed to read fires.gpkg: no such file"),
     ):
-        listed_fires(pathlib.Path("sources"))
+        listed_fires()
 
 
 def test_fire_sources_collects_paths_for_each_fire(

@@ -23,6 +23,27 @@ RATE_LIMIT_ERROR_STRING = json.dumps(RATE_LIMIT_ERROR_PAYLOAD)
 LOOSE_429_ERROR_STRING = json.dumps(LOOSE_429_ERROR_PAYLOAD)
 
 
+def http_error(
+    status_code: int,
+    *,
+    retry_after: str | None = None,
+) -> requests.exceptions.HTTPError:
+    """Build an HTTPError whose response has the given status and header.
+
+    Args:
+        status_code: The response status code.
+        retry_after: The Retry-After header value, if any.
+
+    Returns:
+        The HTTPError.
+    """
+    response = requests.Response()
+    response.status_code = status_code
+    if retry_after is not None:
+        response.headers["Retry-After"] = retry_after
+    return requests.exceptions.HTTPError("boom", response=response)
+
+
 def test_rate_limit_retry_seconds_uses_server_hint() -> None:
     error = ValueError(RATE_LIMIT_ERROR_PAYLOAD)
     assert (
@@ -56,19 +77,17 @@ def test_rate_limit_retry_seconds_uses_fallback_for_loose_429_string() -> None:
 
 
 def test_rate_limit_retry_seconds_uses_retry_after_header() -> None:
-    response = requests.Response()
-    response.status_code = http.HTTPStatus.TOO_MANY_REQUESTS
-    response.headers["Retry-After"] = str(RETRY_AFTER_HEADER_SECONDS)
-    error = requests.exceptions.HTTPError("rate limited", response=response)
+    error = http_error(
+        http.HTTPStatus.TOO_MANY_REQUESTS,
+        retry_after=str(RETRY_AFTER_HEADER_SECONDS),
+    )
     assert (
         peri_scribe.retry.rate_limit_retry_seconds(error) == RETRY_AFTER_HEADER_SECONDS
     )
 
 
 def test_rate_limit_retry_seconds_uses_fallback_without_retry_after_header() -> None:
-    response = requests.Response()
-    response.status_code = http.HTTPStatus.TOO_MANY_REQUESTS
-    error = requests.exceptions.HTTPError("rate limited", response=response)
+    error = http_error(http.HTTPStatus.TOO_MANY_REQUESTS)
     assert (
         peri_scribe.retry.rate_limit_retry_seconds(error)
         == peri_scribe.retry.FALLBACK_RETRY_SECONDS
@@ -76,10 +95,7 @@ def test_rate_limit_retry_seconds_uses_fallback_without_retry_after_header() -> 
 
 
 def test_rate_limit_retry_seconds_uses_fallback_for_non_numeric_header() -> None:
-    response = requests.Response()
-    response.status_code = http.HTTPStatus.TOO_MANY_REQUESTS
-    response.headers["Retry-After"] = "later"
-    error = requests.exceptions.HTTPError("rate limited", response=response)
+    error = http_error(http.HTTPStatus.TOO_MANY_REQUESTS, retry_after="later")
     assert (
         peri_scribe.retry.rate_limit_retry_seconds(error)
         == peri_scribe.retry.FALLBACK_RETRY_SECONDS
@@ -87,9 +103,7 @@ def test_rate_limit_retry_seconds_uses_fallback_for_non_numeric_header() -> None
 
 
 def test_rate_limit_retry_seconds_returns_none_for_other_http_errors() -> None:
-    response = requests.Response()
-    response.status_code = http.HTTPStatus.INTERNAL_SERVER_ERROR
-    error = requests.exceptions.HTTPError("server error", response=response)
+    error = http_error(http.HTTPStatus.INTERNAL_SERVER_ERROR)
     assert peri_scribe.retry.rate_limit_retry_seconds(error) is None
 
 

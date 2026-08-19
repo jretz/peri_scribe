@@ -25,7 +25,16 @@ PLANAR_CONFIG = peri_scribe.california_border_classification.BorderClassificatio
     near_border_buffer_in_meters=10.0,
 )
 
+FIRIS = peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER
+WFIGS_PERIMETER = (
+    peri_scribe.california_border_classification.FireSourceKind.WFIGS_PERIMETER
+)
+WFIGS_LOCATION = (
+    peri_scribe.california_border_classification.FireSourceKind.WFIGS_LOCATION
+)
 
+
+@pytest.fixture
 def boundaries() -> peri_scribe.california_border_classification.Boundaries:
     """Return a synthetic California box and border in planar coordinates.
 
@@ -38,6 +47,7 @@ def boundaries() -> peri_scribe.california_border_classification.Boundaries:
     )
 
 
+@pytest.fixture
 def wgs84_boundaries() -> peri_scribe.california_border_classification.Boundaries:
     """Return a synthetic California box and border in California Albers.
 
@@ -84,7 +94,7 @@ def observation(
     )
 
 
-def fire_record(
+def classifiable_record(
     *,
     geometry: shapely.geometry.base.BaseGeometry,
     observed_at: datetime.datetime | None = None,
@@ -93,10 +103,10 @@ def fire_record(
     point_of_origin_state: str | None = None,
     point_of_origin_fips: str | None = None,
 ) -> peri_scribe.models.FireRecord:
-    """Build a fire record for a test.
+    """Build a fire record for classification tests.
 
     Returns:
-        The fire record.
+        The fire record, named "Fire" and active.
     """
     return peri_scribe.models.FireRecord(
         name="Fire",
@@ -110,12 +120,54 @@ def fire_record(
     )
 
 
+def geometry_signal(
+    *,
+    distance_to_boundary_in_meters: float = 100.0,
+    outside_area_fraction: float = 0.0,
+    outside_area_in_acres: float = 0.0,
+    inside_area_fraction: float = 1.0,
+    crosses: bool = False,
+    near: bool = False,
+    inside: bool = True,
+) -> peri_scribe.california_border_classification.GeometrySignal:
+    """Build a geometry signal, defaulting to a fire fully inside California.
+
+    Returns:
+        The geometry signal.
+    """
+    return peri_scribe.california_border_classification.GeometrySignal(
+        distance_to_boundary_in_meters=distance_to_boundary_in_meters,
+        outside_area_fraction=outside_area_fraction,
+        outside_area_in_acres=outside_area_in_acres,
+        inside_area_fraction=inside_area_fraction,
+        crosses=crosses,
+        near=near,
+        inside=inside,
+    )
+
+
+def extent_signal(
+    *,
+    wfigs_to_firis_area_ratio: float | None = None,
+    disagrees: bool = False,
+) -> peri_scribe.california_border_classification.ExtentSignal:
+    """Build an extent signal, defaulting to no disagreement.
+
+    Returns:
+        The extent signal.
+    """
+    return peri_scribe.california_border_classification.ExtentSignal(
+        wfigs_to_firis_area_ratio=wfigs_to_firis_area_ratio,
+        disagrees=disagrees,
+    )
+
+
 def test_source_kind_for_feed_name_recognizes_firis() -> None:
     assert (
         peri_scribe.california_border_classification.source_kind_for_feed_name(
             "CA_Perimeters_NIFC_FIRIS_public_view_0",
         )
-        is peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER
+        is FIRIS
     )
 
 
@@ -124,7 +176,7 @@ def test_source_kind_for_feed_name_recognizes_wfigs_perimeter() -> None:
         peri_scribe.california_border_classification.source_kind_for_feed_name(
             "WFIGS_Interagency_Perimeters_Current_0",
         )
-        is peri_scribe.california_border_classification.FireSourceKind.WFIGS_PERIMETER
+        is WFIGS_PERIMETER
     )
 
 
@@ -133,7 +185,7 @@ def test_source_kind_for_feed_name_recognizes_wfigs_location() -> None:
         peri_scribe.california_border_classification.source_kind_for_feed_name(
             "WFIGS_Incident_Locations_Current_0",
         )
-        is peri_scribe.california_border_classification.FireSourceKind.WFIGS_LOCATION
+        is WFIGS_LOCATION
     )
 
 
@@ -198,23 +250,21 @@ def test_load_boundaries_builds_box_and_reprojects(
 
 
 def test_union_geometry_returns_none_without_geometries() -> None:
-    assert (
-        peri_scribe.california_border_classification.union_geometry([]) is None
-    )
+    assert peri_scribe.california_border_classification.union_geometry([]) is None
 
 
 def test_union_geometry_skips_missing_and_empty_geometries() -> None:
     observations = [
         observation(
-            peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER,
+            FIRIS,
             shapely.geometry.Point(-120.0, 39.0),
         ),
         observation(
-            peri_scribe.california_border_classification.FireSourceKind.WFIGS_PERIMETER,
+            WFIGS_PERIMETER,
             None,
         ),
         observation(
-            peri_scribe.california_border_classification.FireSourceKind.WFIGS_LOCATION,
+            WFIGS_LOCATION,
             shapely.geometry.Polygon(),
         ),
     ]
@@ -222,10 +272,12 @@ def test_union_geometry_skips_missing_and_empty_geometries() -> None:
     assert isinstance(union, shapely.geometry.Point)
 
 
-def test_geometry_signal_inside_california() -> None:
+def test_geometry_signal_inside_california(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
     result = peri_scribe.california_border_classification.geometry_signal(
         shapely.geometry.box(0.0, 0.0, 50.0, 50.0),
-        boundaries(),
+        boundaries,
         PLANAR_CONFIG,
     )
     assert result.inside
@@ -237,10 +289,12 @@ def test_geometry_signal_inside_california() -> None:
     assert result.distance_to_boundary_in_meters == pytest.approx(50.0)
 
 
-def test_geometry_signal_inside_near_border() -> None:
+def test_geometry_signal_inside_near_border(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
     result = peri_scribe.california_border_classification.geometry_signal(
         shapely.geometry.box(90.0, 0.0, 99.0, 100.0),
-        boundaries(),
+        boundaries,
         PLANAR_CONFIG,
     )
     assert result.inside
@@ -249,10 +303,12 @@ def test_geometry_signal_inside_near_border() -> None:
     assert result.distance_to_boundary_in_meters == pytest.approx(1.0)
 
 
-def test_geometry_signal_outside_california() -> None:
+def test_geometry_signal_outside_california(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
     result = peri_scribe.california_border_classification.geometry_signal(
         shapely.geometry.box(150.0, 0.0, 190.0, 100.0),
-        boundaries(),
+        boundaries,
         PLANAR_CONFIG,
     )
     assert not result.inside
@@ -261,10 +317,12 @@ def test_geometry_signal_outside_california() -> None:
     assert not result.near
 
 
-def test_geometry_signal_outside_near_border() -> None:
+def test_geometry_signal_outside_near_border(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
     result = peri_scribe.california_border_classification.geometry_signal(
         shapely.geometry.box(101.0, 0.0, 102.0, 100.0),
-        boundaries(),
+        boundaries,
         PLANAR_CONFIG,
     )
     assert not result.inside
@@ -273,10 +331,12 @@ def test_geometry_signal_outside_near_border() -> None:
     assert result.distance_to_boundary_in_meters == pytest.approx(1.0)
 
 
-def test_geometry_signal_crosses_border_by_fraction() -> None:
+def test_geometry_signal_crosses_border_by_fraction(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
     result = peri_scribe.california_border_classification.geometry_signal(
         shapely.geometry.box(90.0, 0.0, 110.0, 100.0),
-        boundaries(),
+        boundaries,
         CONFIG,
     )
     assert result.crosses
@@ -285,32 +345,38 @@ def test_geometry_signal_crosses_border_by_fraction() -> None:
     assert result.outside_area_in_acres > 0.0
 
 
-def test_geometry_signal_crosses_border_by_absolute_area() -> None:
+def test_geometry_signal_crosses_border_by_absolute_area(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
     config = peri_scribe.california_border_classification.BorderClassificationConfig(
         outside_area_fraction_threshold=1.0,
         outside_area_threshold_in_acres=0.01,
     )
     result = peri_scribe.california_border_classification.geometry_signal(
         shapely.geometry.box(90.0, 0.0, 110.0, 100.0),
-        boundaries(),
+        boundaries,
         config,
     )
     assert result.crosses
 
 
-def test_geometry_signal_requires_presence_inside_california_to_cross() -> None:
+def test_geometry_signal_requires_presence_inside_california_to_cross(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
     result = peri_scribe.california_border_classification.geometry_signal(
         shapely.geometry.box(150.0, 0.0, 190.0, 100.0),
-        boundaries(),
+        boundaries,
         CONFIG,
     )
     assert not result.crosses
 
 
-def test_geometry_signal_handles_missing_union() -> None:
+def test_geometry_signal_handles_missing_union(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
     result = peri_scribe.california_border_classification.geometry_signal(
         None,
-        boundaries(),
+        boundaries,
         CONFIG,
     )
     assert not result.inside
@@ -321,12 +387,12 @@ def test_geometry_signal_handles_missing_union() -> None:
 
 def test_freshest_observation_prefers_later_observation_time() -> None:
     earlier = observation(
-        peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER,
+        FIRIS,
         shapely.geometry.Point(-120.0, 39.0),
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
     later = observation(
-        peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER,
+        FIRIS,
         shapely.geometry.Point(-120.0, 39.0),
         observed_at=datetime.datetime(2026, 8, 17, tzinfo=datetime.UTC),
     )
@@ -341,13 +407,13 @@ def test_freshest_observation_prefers_later_observation_time() -> None:
 
 def test_freshest_observation_breaks_time_ties_by_serial_number() -> None:
     older_snapshot = observation(
-        peri_scribe.california_border_classification.FireSourceKind.WFIGS_PERIMETER,
+        WFIGS_PERIMETER,
         shapely.geometry.Point(-120.0, 39.0),
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
         serial_number=1,
     )
     newer_snapshot = observation(
-        peri_scribe.california_border_classification.FireSourceKind.WFIGS_PERIMETER,
+        WFIGS_PERIMETER,
         shapely.geometry.Point(-120.0, 39.0),
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
         serial_number=2,
@@ -362,11 +428,11 @@ def test_freshest_observation_breaks_time_ties_by_serial_number() -> None:
 
 def test_freshest_observation_treats_missing_time_as_oldest() -> None:
     untimed = observation(
-        peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER,
+        FIRIS,
         shapely.geometry.Point(-120.0, 39.0),
     )
     timed = observation(
-        peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER,
+        FIRIS,
         shapely.geometry.Point(-120.0, 39.0),
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
@@ -386,11 +452,11 @@ def test_freshest_observation_raises_for_empty_list() -> None:
 
 def test_are_contemporaneous_true_when_both_times_missing() -> None:
     left = observation(
-        peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER,
+        FIRIS,
         shapely.geometry.Point(-120.0, 39.0),
     )
     right = observation(
-        peri_scribe.california_border_classification.FireSourceKind.WFIGS_PERIMETER,
+        WFIGS_PERIMETER,
         shapely.geometry.Point(-120.0, 39.0),
     )
     assert peri_scribe.california_border_classification.are_contemporaneous(
@@ -402,12 +468,12 @@ def test_are_contemporaneous_true_when_both_times_missing() -> None:
 
 def test_are_contemporaneous_false_when_one_time_missing() -> None:
     left = observation(
-        peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER,
+        FIRIS,
         shapely.geometry.Point(-120.0, 39.0),
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
     right = observation(
-        peri_scribe.california_border_classification.FireSourceKind.WFIGS_PERIMETER,
+        WFIGS_PERIMETER,
         shapely.geometry.Point(-120.0, 39.0),
     )
     assert not peri_scribe.california_border_classification.are_contemporaneous(
@@ -419,12 +485,12 @@ def test_are_contemporaneous_false_when_one_time_missing() -> None:
 
 def test_are_contemporaneous_true_within_tolerance() -> None:
     left = observation(
-        peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER,
+        FIRIS,
         shapely.geometry.Point(-120.0, 39.0),
         observed_at=datetime.datetime(2026, 8, 13, 0, 0, tzinfo=datetime.UTC),
     )
     right = observation(
-        peri_scribe.california_border_classification.FireSourceKind.WFIGS_PERIMETER,
+        WFIGS_PERIMETER,
         shapely.geometry.Point(-120.0, 39.0),
         observed_at=datetime.datetime(2026, 8, 13, 12, 0, tzinfo=datetime.UTC),
     )
@@ -437,12 +503,12 @@ def test_are_contemporaneous_true_within_tolerance() -> None:
 
 def test_are_contemporaneous_false_beyond_tolerance() -> None:
     left = observation(
-        peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER,
+        FIRIS,
         shapely.geometry.Point(-120.0, 39.0),
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
     right = observation(
-        peri_scribe.california_border_classification.FireSourceKind.WFIGS_PERIMETER,
+        WFIGS_PERIMETER,
         shapely.geometry.Point(-120.0, 39.0),
         observed_at=datetime.datetime(2026, 8, 17, tzinfo=datetime.UTC),
     )
@@ -456,7 +522,7 @@ def test_are_contemporaneous_false_beyond_tolerance() -> None:
 def test_extent_signal_returns_none_without_both_sources() -> None:
     only_firis = [
         observation(
-            peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER,
+            FIRIS,
             shapely.geometry.box(-120.5, 39.0, -120.0, 39.1),
             observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
         ),
@@ -471,12 +537,12 @@ def test_extent_signal_returns_none_without_both_sources() -> None:
 
 def test_extent_signal_skips_non_contemporaneous_perimeters() -> None:
     firis = observation(
-        peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER,
+        FIRIS,
         shapely.geometry.box(-120.5, 39.0, -120.0, 39.1),
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
     wfigs = observation(
-        peri_scribe.california_border_classification.FireSourceKind.WFIGS_PERIMETER,
+        WFIGS_PERIMETER,
         shapely.geometry.box(-120.5, 39.0, -119.0, 39.2),
         observed_at=datetime.datetime(2026, 8, 17, tzinfo=datetime.UTC),
     )
@@ -490,12 +556,12 @@ def test_extent_signal_skips_non_contemporaneous_perimeters() -> None:
 
 def test_extent_signal_disagrees_when_wfigs_is_larger() -> None:
     firis = observation(
-        peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER,
+        FIRIS,
         shapely.geometry.box(-120.5, 39.0, -120.0, 39.1),
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
     wfigs = observation(
-        peri_scribe.california_border_classification.FireSourceKind.WFIGS_PERIMETER,
+        WFIGS_PERIMETER,
         shapely.geometry.box(-120.5, 39.0, -118.5, 39.2),
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
@@ -510,12 +576,12 @@ def test_extent_signal_disagrees_when_wfigs_is_larger() -> None:
 
 def test_extent_signal_disagrees_when_symmetric_difference_is_large() -> None:
     firis = observation(
-        peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER,
+        FIRIS,
         shapely.geometry.box(-120.5, 39.0, -120.0, 39.1),
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
     wfigs = observation(
-        peri_scribe.california_border_classification.FireSourceKind.WFIGS_PERIMETER,
+        WFIGS_PERIMETER,
         shapely.geometry.box(-120.0, 40.0, -119.5, 40.102),
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
@@ -529,12 +595,12 @@ def test_extent_signal_disagrees_when_symmetric_difference_is_large() -> None:
 def test_extent_signal_agrees_when_perimeters_match() -> None:
     geometry = shapely.geometry.box(-120.5, 39.0, -120.0, 39.1)
     firis = observation(
-        peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER,
+        FIRIS,
         geometry,
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
     wfigs = observation(
-        peri_scribe.california_border_classification.FireSourceKind.WFIGS_PERIMETER,
+        WFIGS_PERIMETER,
         geometry,
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
@@ -548,12 +614,12 @@ def test_extent_signal_agrees_when_perimeters_match() -> None:
 
 def test_extent_signal_ignores_zero_area_firis_perimeter() -> None:
     firis = observation(
-        peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER,
+        FIRIS,
         shapely.geometry.LineString([(-120.5, 39.0), (-120.0, 39.1)]),
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
     wfigs = observation(
-        peri_scribe.california_border_classification.FireSourceKind.WFIGS_PERIMETER,
+        WFIGS_PERIMETER,
         shapely.geometry.box(-120.5, 39.0, -120.0, 39.1),
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
@@ -630,7 +696,7 @@ def test_out_of_state_unit_from_ignores_mission_name_tokens() -> None:
 def test_identifier_signal_detects_out_of_state_point_of_origin() -> None:
     observations = [
         observation(
-            peri_scribe.california_border_classification.FireSourceKind.WFIGS_LOCATION,
+            WFIGS_LOCATION,
             shapely.geometry.Point(-120.0, 39.0),
             point_of_origin_state="US-NV",
             point_of_origin_fips="32001",
@@ -642,7 +708,7 @@ def test_identifier_signal_detects_out_of_state_point_of_origin() -> None:
 def test_identifier_signal_ignores_california_point_of_origin() -> None:
     observations = [
         observation(
-            peri_scribe.california_border_classification.FireSourceKind.WFIGS_LOCATION,
+            WFIGS_LOCATION,
             shapely.geometry.Point(-120.0, 39.0),
             point_of_origin_state="US-CA",
             point_of_origin_fips="06035",
@@ -656,7 +722,7 @@ def test_identifier_signal_ignores_california_point_of_origin() -> None:
 def test_identifier_signal_detects_non_california_fips() -> None:
     observations = [
         observation(
-            peri_scribe.california_border_classification.FireSourceKind.WFIGS_LOCATION,
+            WFIGS_LOCATION,
             shapely.geometry.Point(-120.0, 39.0),
             point_of_origin_state="US-CA",
             point_of_origin_fips="32001",
@@ -666,19 +732,15 @@ def test_identifier_signal_detects_non_california_fips() -> None:
 
 
 def test_classify_crosses_border() -> None:
-    geometry = peri_scribe.california_border_classification.GeometrySignal(
+    geometry = geometry_signal(
         distance_to_boundary_in_meters=0.0,
         outside_area_fraction=0.5,
         outside_area_in_acres=100.0,
         inside_area_fraction=0.5,
         crosses=True,
         near=True,
-        inside=True,
     )
-    extent = peri_scribe.california_border_classification.ExtentSignal(
-        wfigs_to_firis_area_ratio=None,
-        disagrees=False,
-    )
+    extent = extent_signal()
     result = peri_scribe.california_border_classification.classify(
         geometry=geometry,
         extent=extent,
@@ -692,19 +754,8 @@ def test_classify_crosses_border() -> None:
 
 
 def test_classify_inside_near_border_from_geometry() -> None:
-    geometry = peri_scribe.california_border_classification.GeometrySignal(
-        distance_to_boundary_in_meters=5.0,
-        outside_area_fraction=0.0,
-        outside_area_in_acres=0.0,
-        inside_area_fraction=1.0,
-        crosses=False,
-        near=True,
-        inside=True,
-    )
-    extent = peri_scribe.california_border_classification.ExtentSignal(
-        wfigs_to_firis_area_ratio=None,
-        disagrees=False,
-    )
+    geometry = geometry_signal(distance_to_boundary_in_meters=5.0, near=True)
+    extent = extent_signal()
     result = peri_scribe.california_border_classification.classify(
         geometry=geometry,
         extent=extent,
@@ -717,19 +768,8 @@ def test_classify_inside_near_border_from_geometry() -> None:
 
 
 def test_classify_inside_near_border_from_extent_disagreement() -> None:
-    geometry = peri_scribe.california_border_classification.GeometrySignal(
-        distance_to_boundary_in_meters=100.0,
-        outside_area_fraction=0.0,
-        inside_area_fraction=1.0,
-        outside_area_in_acres=0.0,
-        crosses=False,
-        near=False,
-        inside=True,
-    )
-    extent = peri_scribe.california_border_classification.ExtentSignal(
-        wfigs_to_firis_area_ratio=1.5,
-        disagrees=True,
-    )
+    geometry = geometry_signal()
+    extent = extent_signal(wfigs_to_firis_area_ratio=1.5, disagrees=True)
     result = peri_scribe.california_border_classification.classify(
         geometry=geometry,
         extent=extent,
@@ -742,19 +782,15 @@ def test_classify_inside_near_border_from_extent_disagreement() -> None:
 
 
 def test_classify_outside_near_border_from_geometry() -> None:
-    geometry = peri_scribe.california_border_classification.GeometrySignal(
+    geometry = geometry_signal(
         distance_to_boundary_in_meters=2.0,
         outside_area_fraction=1.0,
         outside_area_in_acres=5000.0,
         inside_area_fraction=0.0,
-        crosses=False,
         near=True,
         inside=False,
     )
-    extent = peri_scribe.california_border_classification.ExtentSignal(
-        wfigs_to_firis_area_ratio=None,
-        disagrees=False,
-    )
+    extent = extent_signal()
     result = peri_scribe.california_border_classification.classify(
         geometry=geometry,
         extent=extent,
@@ -767,19 +803,8 @@ def test_classify_outside_near_border_from_geometry() -> None:
 
 
 def test_classify_inside_california() -> None:
-    geometry = peri_scribe.california_border_classification.GeometrySignal(
-        distance_to_boundary_in_meters=100.0,
-        outside_area_fraction=0.0,
-        inside_area_fraction=1.0,
-        outside_area_in_acres=0.0,
-        crosses=False,
-        near=False,
-        inside=True,
-    )
-    extent = peri_scribe.california_border_classification.ExtentSignal(
-        wfigs_to_firis_area_ratio=None,
-        disagrees=False,
-    )
+    geometry = geometry_signal()
+    extent = extent_signal()
     result = peri_scribe.california_border_classification.classify(
         geometry=geometry,
         extent=extent,
@@ -792,19 +817,12 @@ def test_classify_inside_california() -> None:
 
 
 def test_classify_outside_california() -> None:
-    geometry = peri_scribe.california_border_classification.GeometrySignal(
+    geometry = geometry_signal(
         distance_to_boundary_in_meters=2000.0,
-        outside_area_fraction=0.0,
-        outside_area_in_acres=0.0,
         inside_area_fraction=0.0,
-        crosses=False,
-        near=False,
         inside=False,
     )
-    extent = peri_scribe.california_border_classification.ExtentSignal(
-        wfigs_to_firis_area_ratio=None,
-        disagrees=False,
-    )
+    extent = extent_signal()
     result = peri_scribe.california_border_classification.classify(
         geometry=geometry,
         extent=extent,
@@ -817,19 +835,8 @@ def test_classify_outside_california() -> None:
 
 
 def test_classify_identifier_alone_stays_inside_california() -> None:
-    geometry = peri_scribe.california_border_classification.GeometrySignal(
-        distance_to_boundary_in_meters=100.0,
-        outside_area_fraction=0.0,
-        inside_area_fraction=1.0,
-        outside_area_in_acres=0.0,
-        crosses=False,
-        near=False,
-        inside=True,
-    )
-    extent = peri_scribe.california_border_classification.ExtentSignal(
-        wfigs_to_firis_area_ratio=None,
-        disagrees=False,
-    )
+    geometry = geometry_signal()
+    extent = extent_signal()
     result = peri_scribe.california_border_classification.classify(
         geometry=geometry,
         extent=extent,
@@ -842,10 +849,11 @@ def test_classify_identifier_alone_stays_inside_california() -> None:
     assert result.signals == [peri_scribe.models.BorderSignal.IDENTIFIER_UNIT]
 
 
-def test_classify_fire_classifies_cross_border_fire() -> None:
-    boundaries = wgs84_boundaries()
+def test_classify_fire_classifies_cross_border_fire(
+    wgs84_boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
     records = [
-        fire_record(
+        classifiable_record(
             geometry=shapely.geometry.box(-120.5, 39.0, -118.5, 39.5),
             observed_at=datetime.datetime(2026, 8, 16, tzinfo=datetime.UTC),
         ),
@@ -856,7 +864,7 @@ def test_classify_fire_classifies_cross_border_fire() -> None:
     result = peri_scribe.california_border_classification.classify_fire(
         records=records,
         record_paths=record_paths,
-        boundaries=boundaries,
+        boundaries=wgs84_boundaries,
     )
     assert (
         result.classification
@@ -864,10 +872,11 @@ def test_classify_fire_classifies_cross_border_fire() -> None:
     )
 
 
-def test_classify_fire_classifies_inside_california_fire() -> None:
-    boundaries = wgs84_boundaries()
+def test_classify_fire_classifies_inside_california_fire(
+    wgs84_boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
     records = [
-        fire_record(
+        classifiable_record(
             geometry=shapely.geometry.box(-120.5, 39.0, -120.0, 39.5),
             observed_at=datetime.datetime(2026, 8, 16, tzinfo=datetime.UTC),
         ),
@@ -878,7 +887,7 @@ def test_classify_fire_classifies_inside_california_fire() -> None:
     result = peri_scribe.california_border_classification.classify_fire(
         records=records,
         record_paths=record_paths,
-        boundaries=boundaries,
+        boundaries=wgs84_boundaries,
     )
     assert (
         result.classification
@@ -886,10 +895,11 @@ def test_classify_fire_classifies_inside_california_fire() -> None:
     )
 
 
-def test_classify_fire_classifies_outside_california_fire() -> None:
-    boundaries = wgs84_boundaries()
+def test_classify_fire_classifies_outside_california_fire(
+    wgs84_boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
     records = [
-        fire_record(
+        classifiable_record(
             geometry=shapely.geometry.box(-117.5, 39.0, -116.0, 39.5),
         ),
     ]
@@ -899,7 +909,7 @@ def test_classify_fire_classifies_outside_california_fire() -> None:
     result = peri_scribe.california_border_classification.classify_fire(
         records=records,
         record_paths=record_paths,
-        boundaries=boundaries,
+        boundaries=wgs84_boundaries,
     )
     assert (
         result.classification
@@ -907,10 +917,11 @@ def test_classify_fire_classifies_outside_california_fire() -> None:
     )
 
 
-def test_classify_fire_captures_identifier_signal() -> None:
-    boundaries = wgs84_boundaries()
+def test_classify_fire_captures_identifier_signal(
+    wgs84_boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
     records = [
-        fire_record(
+        classifiable_record(
             geometry=shapely.geometry.box(-120.5, 39.0, -120.0, 39.5),
             identifiers=frozenset({"2026-nvccd-030683"}),
         ),
@@ -921,15 +932,16 @@ def test_classify_fire_captures_identifier_signal() -> None:
     result = peri_scribe.california_border_classification.classify_fire(
         records=records,
         record_paths=record_paths,
-        boundaries=boundaries,
+        boundaries=wgs84_boundaries,
     )
     assert peri_scribe.models.BorderSignal.IDENTIFIER_UNIT in result.signals
 
 
-def test_classify_fire_keeps_coastal_fire_inside() -> None:
-    boundaries = wgs84_boundaries()
+def test_classify_fire_keeps_coastal_fire_inside(
+    wgs84_boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
     records = [
-        fire_record(
+        classifiable_record(
             geometry=shapely.geometry.box(-121.5, 39.0, -119.5, 39.5),
         ),
     ]
@@ -939,7 +951,7 @@ def test_classify_fire_keeps_coastal_fire_inside() -> None:
     result = peri_scribe.california_border_classification.classify_fire(
         records=records,
         record_paths=record_paths,
-        boundaries=boundaries,
+        boundaries=wgs84_boundaries,
     )
     assert (
         result.classification

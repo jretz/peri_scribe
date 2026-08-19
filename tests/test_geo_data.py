@@ -26,12 +26,55 @@ from tests.conftest import (
     SAMPLE_FEED_NAME,
     WGS84_WKID,
     LayerStub,
-    sample_feed,
 )
 
 
 ACTIVE = peri_scribe.models.FireStatus.ACTIVE
 INACTIVE = peri_scribe.models.FireStatus.INACTIVE
+
+
+def stub_single_layer(
+    stub_geo_package: typing.Callable[
+        [pd.DataFrame, dict[str, pd.DataFrame]],
+        None,
+    ],
+    layer_name: str,
+    geometry_type: str,
+    dataframe: pd.DataFrame,
+) -> None:
+    """Point the GeoPackage reader at a single layer.
+
+    Args:
+        stub_geo_package: The fixture installing in-memory GeoPackage reads.
+        layer_name: The layer's name, matching a configured feed.
+        geometry_type: The layer's reported geometry type.
+        dataframe: The layer's rows.
+    """
+    stub_geo_package(
+        pd.DataFrame({"name": [layer_name], "geometry_type": [geometry_type]}),
+        {layer_name: dataframe},
+    )
+
+
+def wgs84_dataframe(
+    columns: dict[str, list[object]],
+    geometry: list[shapely.Geometry | None] | None = None,
+) -> geopandas.GeoDataFrame:
+    """Build an unprojected GeoDataFrame with the given columns.
+
+    Args:
+        columns: The attribute columns.
+        geometry: The feature geometries; defaults to two WGS84 points.
+
+    Returns:
+        The GeoDataFrame, without an explicit CRS.
+    """
+    if geometry is None:
+        geometry = [
+            shapely.geometry.Point(0, 0),
+            shapely.geometry.Point(1, 1),
+        ]
+    return geopandas.GeoDataFrame(columns, geometry=geometry)
 
 
 def test_fire_records_yields_records_from_every_layer(
@@ -81,20 +124,14 @@ def test_fire_records_is_a_generator(
     configured_feeds: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_geo_package(
-        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Polygon"]}),
-        {
-            "Fires_One_0": geopandas.GeoDataFrame(
-                {
-                    "incident_name": ["Park Fire", "ALTA"],
-                    "displayStatus": ["Active", "Inactive"],
-                },
-                geometry=[
-                    shapely.geometry.Point(0, 0),
-                    shapely.geometry.Point(1, 1),
-                ],
-            ),
-        },
+    stub_single_layer(
+        stub_geo_package,
+        "Fires_One_0",
+        "Polygon",
+        wgs84_dataframe({
+            "incident_name": ["Park Fire", "ALTA"],
+            "displayStatus": ["Active", "Inactive"],
+        }),
     )
     records = peri_scribe.geo_data.fire_records(pathlib.Path("fires.gpkg"))
     assert next(records).name == "Park Fire"
@@ -105,20 +142,14 @@ def test_fire_records_omits_rows_without_status(
     configured_feeds: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_geo_package(
-        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Polygon"]}),
-        {
-            "Fires_One_0": geopandas.GeoDataFrame(
-                {
-                    "incident_name": ["Park Fire", "ALTA"],
-                    "displayStatus": ["Active", None],
-                },
-                geometry=[
-                    shapely.geometry.Point(0, 0),
-                    shapely.geometry.Point(1, 1),
-                ],
-            ),
-        },
+    stub_single_layer(
+        stub_geo_package,
+        "Fires_One_0",
+        "Polygon",
+        wgs84_dataframe({
+            "incident_name": ["Park Fire", "ALTA"],
+            "displayStatus": ["Active", None],
+        }),
     )
     assert [
         record.name
@@ -132,23 +163,17 @@ def test_fire_records_names_blank_rows_from_mission(
     configured_feeds_with_mission: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_geo_package(
-        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Polygon"]}),
-        {
-            "Fires_One_0": geopandas.GeoDataFrame(
-                {
-                    "incident_name": [None, "Woodside"],
-                    "displayStatus": ["Active", "Active"],
-                    "incident_number": [None, None],
-                    "mission": ["CA-HUU-WOODS-N40Y", "WOODSIDE"],
-                    "poly_DateCurrent": [None, None],
-                },
-                geometry=[
-                    shapely.geometry.Point(0, 0),
-                    shapely.geometry.Point(1, 1),
-                ],
-            ),
-        },
+    stub_single_layer(
+        stub_geo_package,
+        "Fires_One_0",
+        "Polygon",
+        wgs84_dataframe({
+            "incident_name": [None, "Woodside"],
+            "displayStatus": ["Active", "Active"],
+            "incident_number": [None, None],
+            "mission": ["CA-HUU-WOODS-N40Y", "WOODSIDE"],
+            "poly_DateCurrent": [None, None],
+        }),
     )
     records = list(peri_scribe.geo_data.fire_records(pathlib.Path("fires.gpkg")))
     assert [record.name for record in records] == ["WOODS", "Woodside"]
@@ -158,17 +183,17 @@ def test_fire_records_omits_rows_with_no_name_at_all(
     configured_feeds: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_geo_package(
-        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Polygon"]}),
-        {
-            "Fires_One_0": geopandas.GeoDataFrame(
-                {
-                    "incident_name": [None],
-                    "displayStatus": ["Active"],
-                },
-                geometry=[shapely.geometry.Point(0, 0)],
-            ),
-        },
+    stub_single_layer(
+        stub_geo_package,
+        "Fires_One_0",
+        "Polygon",
+        wgs84_dataframe(
+            {
+                "incident_name": [None],
+                "displayStatus": ["Active"],
+            },
+            geometry=[shapely.geometry.Point(0, 0)],
+        ),
     )
     assert list(peri_scribe.geo_data.fire_records(pathlib.Path("fires.gpkg"))) == []
 
@@ -223,24 +248,18 @@ def test_fire_records_reads_normalized_identifiers(
     configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_geo_package(
-        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Polygon"]}),
-        {
-            "Fires_One_0": geopandas.GeoDataFrame(
-                {
-                    "incident_name": ["Bug", "BUG"],
-                    "displayStatus": ["Active", "Inactive"],
-                    "incident_number": [
-                        "{E3094E35-8B33-4A82-BE4B-D2E83652C29F}",
-                        None,
-                    ],
-                },
-                geometry=[
-                    shapely.geometry.Point(0, 0),
-                    shapely.geometry.Point(1, 1),
-                ],
-            ),
-        },
+    stub_single_layer(
+        stub_geo_package,
+        "Fires_One_0",
+        "Polygon",
+        wgs84_dataframe({
+            "incident_name": ["Bug", "BUG"],
+            "displayStatus": ["Active", "Inactive"],
+            "incident_number": [
+                "{E3094E35-8B33-4A82-BE4B-D2E83652C29F}",
+                None,
+            ],
+        }),
     )
     records = list(peri_scribe.geo_data.fire_records(pathlib.Path("fires.gpkg")))
     assert [record.identifiers for record in records] == [
@@ -253,20 +272,20 @@ def test_fire_records_reads_geometry_and_observation_time(
     configured_feeds_with_mission: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_geo_package(
-        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Polygon"]}),
-        {
-            "Fires_One_0": geopandas.GeoDataFrame(
-                {
-                    "incident_name": ["Bug"],
-                    "displayStatus": ["Active"],
-                    "incident_number": [None],
-                    "mission": [None],
-                    "poly_DateCurrent": [datetime.datetime(2026, 8, 9, 1, 28, 25)],
-                },
-                geometry=[shapely.geometry.Point(0, 0)],
-            ),
-        },
+    stub_single_layer(
+        stub_geo_package,
+        "Fires_One_0",
+        "Polygon",
+        wgs84_dataframe(
+            {
+                "incident_name": ["Bug"],
+                "displayStatus": ["Active"],
+                "incident_number": [None],
+                "mission": [None],
+                "poly_DateCurrent": [datetime.datetime(2026, 8, 9, 1, 28, 25)],
+            },
+            geometry=[shapely.geometry.Point(0, 0)],
+        ),
     )
     record = next(peri_scribe.geo_data.fire_records(pathlib.Path("fires.gpkg")))
     assert record.geometry == shapely.geometry.Point(0, 0)
@@ -285,21 +304,21 @@ def test_fire_records_reads_mission_and_point_of_origin(
     configured_feeds_with_point_of_origin: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_geo_package(
-        pd.DataFrame({"name": ["Fires_Two_0"], "geometry_type": ["Point"]}),
-        {
-            "Fires_Two_0": geopandas.GeoDataFrame(
-                {
-                    "IncidentName": ["Bug"],
-                    "ActiveFireCandidate": ["Active"],
-                    "IrwinID": ["2026-nvccd-030683"],
-                    "mission": ["2026-NVCCD-030683"],
-                    "POOState": ["US-CA"],
-                    "POOFips": ["06035"],
-                },
-                geometry=[shapely.geometry.Point(0, 0)],
-            ),
-        },
+    stub_single_layer(
+        stub_geo_package,
+        "Fires_Two_0",
+        "Point",
+        wgs84_dataframe(
+            {
+                "IncidentName": ["Bug"],
+                "ActiveFireCandidate": ["Active"],
+                "IrwinID": ["2026-nvccd-030683"],
+                "mission": ["2026-NVCCD-030683"],
+                "POOState": ["US-CA"],
+                "POOFips": ["06035"],
+            },
+            geometry=[shapely.geometry.Point(0, 0)],
+        ),
     )
     record = next(peri_scribe.geo_data.fire_records(pathlib.Path("fires.gpkg")))
     assert record.mission == "2026-NVCCD-030683"
@@ -414,21 +433,21 @@ def test_complex_memberships_yields_complex_children(
     configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_geo_package(
-        pd.DataFrame({"name": ["Fires_Two_0"], "geometry_type": ["Point"]}),
-        {
-            "Fires_Two_0": pd.DataFrame({
-                "IncidentName": ["0445 CROSSWHITE", "ROWE CREEK COMPLEX"],
-                "ActiveFireCandidate": [1, 1],
-                "IrwinID": [
-                    "{1B0219EE-5298-4FEF-9927-C2666D9D53FC}",
-                    "{B8431C26-6A9B-4EF0-88D8-F7EA9A3F56C3}",
-                ],
-                "CpxID": ["{B8431C26-6A9B-4EF0-88D8-F7EA9A3F56C3}", None],
-                "CpxName": ["ROWE CREEK COMPLEX", None],
-                "IsCpxChild": [1, 0],
-            }),
-        },
+    stub_single_layer(
+        stub_geo_package,
+        "Fires_Two_0",
+        "Point",
+        pd.DataFrame({
+            "IncidentName": ["0445 CROSSWHITE", "ROWE CREEK COMPLEX"],
+            "ActiveFireCandidate": [1, 1],
+            "IrwinID": [
+                "{1B0219EE-5298-4FEF-9927-C2666D9D53FC}",
+                "{B8431C26-6A9B-4EF0-88D8-F7EA9A3F56C3}",
+            ],
+            "CpxID": ["{B8431C26-6A9B-4EF0-88D8-F7EA9A3F56C3}", None],
+            "CpxName": ["ROWE CREEK COMPLEX", None],
+            "IsCpxChild": [1, 0],
+        }),
     )
     assert list(
         peri_scribe.geo_data.complex_memberships(pathlib.Path("fires.gpkg")),
@@ -445,15 +464,15 @@ def test_complex_memberships_skips_layers_without_complex_columns(
     configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_geo_package(
-        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Polygon"]}),
-        {
-            "Fires_One_0": pd.DataFrame({
-                "incident_name": ["Bug"],
-                "displayStatus": ["Active"],
-                "incident_number": ["some-id"],
-            }),
-        },
+    stub_single_layer(
+        stub_geo_package,
+        "Fires_One_0",
+        "Polygon",
+        pd.DataFrame({
+            "incident_name": ["Bug"],
+            "displayStatus": ["Active"],
+            "incident_number": ["some-id"],
+        }),
     )
     assert (
         list(
@@ -467,18 +486,18 @@ def test_complex_memberships_skips_rows_not_marked_as_complex_children(
     configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_geo_package(
-        pd.DataFrame({"name": ["Fires_Two_0"], "geometry_type": ["Point"]}),
-        {
-            "Fires_Two_0": pd.DataFrame({
-                "IncidentName": ["Creek Fire"],
-                "ActiveFireCandidate": [1],
-                "IrwinID": ["some-id"],
-                "CpxID": ["{B8431C26-6A9B-4EF0-88D8-F7EA9A3F56C3}"],
-                "CpxName": ["ROWE CREEK COMPLEX"],
-                "IsCpxChild": [0],
-            }),
-        },
+    stub_single_layer(
+        stub_geo_package,
+        "Fires_Two_0",
+        "Point",
+        pd.DataFrame({
+            "IncidentName": ["Creek Fire"],
+            "ActiveFireCandidate": [1],
+            "IrwinID": ["some-id"],
+            "CpxID": ["{B8431C26-6A9B-4EF0-88D8-F7EA9A3F56C3}"],
+            "CpxName": ["ROWE CREEK COMPLEX"],
+            "IsCpxChild": [0],
+        }),
     )
     assert (
         list(
@@ -492,18 +511,18 @@ def test_complex_memberships_omits_rows_with_blank_values(
     configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_geo_package(
-        pd.DataFrame({"name": ["Fires_Two_0"], "geometry_type": ["Point"]}),
-        {
-            "Fires_Two_0": pd.DataFrame({
-                "IncidentName": ["A", "B"],
-                "ActiveFireCandidate": [1, 1],
-                "IrwinID": ["", "id-b"],
-                "CpxID": ["{B8431C26-6A9B-4EF0-88D8-F7EA9A3F56C3}", ""],
-                "CpxName": ["", "ROWE CREEK COMPLEX"],
-                "IsCpxChild": [1, 1],
-            }),
-        },
+    stub_single_layer(
+        stub_geo_package,
+        "Fires_Two_0",
+        "Point",
+        pd.DataFrame({
+            "IncidentName": ["A", "B"],
+            "ActiveFireCandidate": [1, 1],
+            "IrwinID": ["", "id-b"],
+            "CpxID": ["{B8431C26-6A9B-4EF0-88D8-F7EA9A3F56C3}", ""],
+            "CpxName": ["", "ROWE CREEK COMPLEX"],
+            "IsCpxChild": [1, 1],
+        }),
     )
     assert (
         list(
@@ -591,8 +610,9 @@ def test_geo_data_frame_from_allows_null_geometries() -> None:
     assert list(result.geometry) == [None]
 
 
-def test_dataframe_for_layer_raises_no_features_error_when_feed_is_empty() -> None:
-    feed = sample_feed()
+def test_dataframe_for_layer_raises_no_features_error_when_feed_is_empty(
+    feed: peri_scribe.feed_types.Feed,
+) -> None:
     layer = LayerStub(properties={})
     feature_set = arcgis.features.FeatureSet([])
     with pytest.raises(
@@ -603,9 +623,9 @@ def test_dataframe_for_layer_raises_no_features_error_when_feed_is_empty() -> No
 
 
 def test_dataframe_for_layer_builds_geo_data_frame(
+    feed: peri_scribe.feed_types.Feed,
     feature_set_with_geometry: arcgis.features.FeatureSet,
 ) -> None:
-    feed = sample_feed()
     layer = LayerStub(properties={"spatialReference": {"wkid": WGS84_WKID}})
     result = peri_scribe.geo_data.dataframe_for_layer(
         feed,
@@ -621,8 +641,9 @@ def test_dataframe_for_layer_builds_geo_data_frame(
     ]
 
 
-def test_dataframe_for_layer_warns_when_features_lack_geometry() -> None:
-    feed = sample_feed()
+def test_dataframe_for_layer_warns_when_features_lack_geometry(
+    feed: peri_scribe.feed_types.Feed,
+) -> None:
     layer = LayerStub(properties={"spatialReference": {"wkid": WGS84_WKID}})
     feature_set = arcgis.features.FeatureSet(
         [
@@ -879,8 +900,8 @@ def test_query_object_ids_with_retry_raises_without_object_ids() -> None:
 
 def test_read_layer_dataframe_reads_feed_layer(
     monkeypatch: pytest.MonkeyPatch,
+    feed: peri_scribe.feed_types.Feed,
 ) -> None:
-    feed = sample_feed()
     sentinel = object()
     calls: list[tuple[pathlib.Path, str]] = []
     monkeypatch.setattr(

@@ -41,13 +41,18 @@ class RecordingFile:
         return None
 
 
-def test_write_geopackage_writes_every_layer(
+def stub_to_file(
     monkeypatch: pytest.MonkeyPatch,
-    layer_data_factory: typing.Callable[[str], peri_scribe.models.LayerData],
-) -> None:
-    path = pathlib.Path("/out.gpkg")
+) -> list[tuple[pathlib.Path, str, str, str]]:
+    """Record GeoDataFrame.to_file calls.
+
+    Args:
+        monkeypatch: The monkeypatch fixture.
+
+    Returns:
+        The recorded (path, driver, layer, mode) calls.
+    """
     calls: list[tuple[pathlib.Path, str, str, str]] = []
-    monkeypatch.setattr(pathlib.Path, "exists", lambda _self: False)
     monkeypatch.setattr(
         geopandas.GeoDataFrame,
         "to_file",
@@ -55,6 +60,16 @@ def test_write_geopackage_writes_every_layer(
             (path, driver, layer, mode),
         ),
     )
+    return calls
+
+
+def test_write_geopackage_writes_every_layer(
+    monkeypatch: pytest.MonkeyPatch,
+    layer_data_factory: typing.Callable[[str], peri_scribe.models.LayerData],
+) -> None:
+    path = pathlib.Path("/out.gpkg")
+    calls = stub_to_file(monkeypatch)
+    monkeypatch.setattr(pathlib.Path, "exists", lambda _self: False)
     with structlog.testing.capture_logs() as captured:
         peri_scribe.output.write_geopackage(
             path,
@@ -83,20 +98,13 @@ def test_write_geopackage_replaces_existing_file(
 ) -> None:
     path = pathlib.Path("/out.gpkg")
     unlinked: list[pathlib.Path] = []
-    calls: list[tuple[pathlib.Path, str, str, str]] = []
+    calls = stub_to_file(monkeypatch)
     monkeypatch.setattr(pathlib.Path, "exists", lambda _self: True)
 
     def fake_unlink(_self: pathlib.Path) -> None:
         unlinked.append(_self)
 
     monkeypatch.setattr(pathlib.Path, "unlink", fake_unlink)
-    monkeypatch.setattr(
-        geopandas.GeoDataFrame,
-        "to_file",
-        lambda _self, path, driver, layer, mode: calls.append(
-            (path, driver, layer, mode),
-        ),
-    )
     with structlog.testing.capture_logs() as captured:
         peri_scribe.output.write_geopackage(
             path,

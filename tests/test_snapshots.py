@@ -11,6 +11,20 @@ import pytest
 import peri_scribe.snapshots
 
 
+def stub_directory(
+    monkeypatch: pytest.MonkeyPatch,
+    files: list[pathlib.Path],
+) -> None:
+    """Point Path.is_dir and iterdir at the given files.
+
+    Args:
+        monkeypatch: The monkeypatch fixture.
+        files: The directory's contents.
+    """
+    monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: True)
+    monkeypatch.setattr(pathlib.Path, "iterdir", lambda _self: iter(files))
+
+
 def test_existing_geopackage_filenames_returns_empty_list_without_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -147,12 +161,13 @@ def test_snapshot_path_for_watermark_returns_matching_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     directory = pathlib.Path("/sources/CA_Perimeters_NIFC_FIRIS_public_view_0")
-    files = [
-        directory / "000017,lastEdit=abc123.gpkg",
-        directory / "000018,lastEdit=def789.gpkg",
-    ]
-    monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: True)
-    monkeypatch.setattr(pathlib.Path, "iterdir", lambda _self: iter(files))
+    stub_directory(
+        monkeypatch,
+        [
+            directory / "000017,lastEdit=abc123.gpkg",
+            directory / "000018,lastEdit=def789.gpkg",
+        ],
+    )
     assert (
         peri_scribe.snapshots.snapshot_path_for_watermark(
             directory,
@@ -166,9 +181,7 @@ def test_snapshot_path_for_watermark_returns_none_without_match(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     directory = pathlib.Path("/sources/CA_Perimeters_NIFC_FIRIS_public_view_0")
-    files = [directory / "000017,lastEdit=abc123.gpkg"]
-    monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: True)
-    monkeypatch.setattr(pathlib.Path, "iterdir", lambda _self: iter(files))
+    stub_directory(monkeypatch, [directory / "000017,lastEdit=abc123.gpkg"])
     assert (
         peri_scribe.snapshots.snapshot_path_for_watermark(
             directory,
@@ -182,9 +195,7 @@ def test_snapshot_path_for_watermark_ignores_malformed_filenames(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     directory = pathlib.Path("/sources/CA_Perimeters_NIFC_FIRIS_public_view_0")
-    files = [directory / "old-style.gpkg"]
-    monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: True)
-    monkeypatch.setattr(pathlib.Path, "iterdir", lambda _self: iter(files))
+    stub_directory(monkeypatch, [directory / "old-style.gpkg"])
     assert (
         peri_scribe.snapshots.snapshot_path_for_watermark(
             directory,

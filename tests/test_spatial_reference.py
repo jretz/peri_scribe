@@ -21,6 +21,9 @@ from tests.conftest import (
 )
 
 
+CALIFORNIA_BOUNDS = (-121.0, -120.0, 33.0, 34.0)
+
+
 def test_spatial_reference_wkids_none_is_empty() -> None:
     assert peri_scribe.spatial_reference.spatial_reference_wkids(None) == set()
 
@@ -325,7 +328,7 @@ def test_coordinates_in_area_inside_california_albers() -> None:
     crs = pyproj.CRS.from_epsg(CALIFORNIA_ALBERS_WKID)
     assert peri_scribe.spatial_reference.coordinates_in_area(
         crs,
-        (-121.0, -120.0, 33.0, 34.0),
+        CALIFORNIA_BOUNDS,
     )
 
 
@@ -420,7 +423,7 @@ def test_choose_spatial_reference_id_multiple_candidates_without_geometry_fails(
 def test_choose_spatial_reference_id_uses_query_spatial_reference() -> None:
     layer = LayerStub(properties={})
     feature_set = FeatureSetStub(spatial_reference={"wkid": WGS84_WKID})
-    bounds = (-121.0, -120.0, 33.0, 34.0)
+    bounds = CALIFORNIA_BOUNDS
     chosen = peri_scribe.spatial_reference.choose_spatial_reference_id(
         layer,
         feature_set,
@@ -432,7 +435,7 @@ def test_choose_spatial_reference_id_uses_query_spatial_reference() -> None:
 def test_choose_spatial_reference_id_single_match_without_exclusions_is_quiet() -> None:
     layer = LayerStub(properties={"spatialReference": {"wkid": WGS84_WKID}})
     feature_set = FeatureSetStub(spatial_reference=None)
-    bounds = (-121.0, -120.0, 33.0, 34.0)
+    bounds = CALIFORNIA_BOUNDS
     with structlog.testing.capture_logs() as captured:
         chosen = peri_scribe.spatial_reference.choose_spatial_reference_id(
             layer,
@@ -443,14 +446,48 @@ def test_choose_spatial_reference_id_single_match_without_exclusions_is_quiet() 
     assert captured == []
 
 
-def test_choose_spatial_reference_id_reports_excluded_projected_candidate() -> None:
-    layer = LayerStub(
-        properties={
-            "spatialReference": {"wkid": WGS84_WKID, "latestWkid": WEB_MERCATOR_WKID},
-        },
-    )
+@pytest.mark.parametrize(
+    ("properties", "bounds", "expected_substrings"),
+    [
+        pytest.param(
+            {
+                "spatialReference": {
+                    "wkid": WGS84_WKID,
+                    "latestWkid": WEB_MERCATOR_WKID,
+                },
+            },
+            CALIFORNIA_BOUNDS,
+            ["picked spatial reference EPSG:4326", "excluded 3857"],
+            id="projected",
+        ),
+        pytest.param(
+            {
+                "spatialReference": {"wkid": WGS84_WKID, "latestWkid": NAD83_WKID},
+            },
+            (150.0, 151.0, -35.0, -34.0),
+            ["excluded 4269", "coordinates outside its area of use"],
+            id="out_of_area",
+        ),
+        pytest.param(
+            {
+                "spatialReference": {
+                    "wkid": WGS84_WKID,
+                    "latestWkid": UNKNOWN_WKID,
+                },
+            },
+            CALIFORNIA_BOUNDS,
+            ["no expected coordinate range known"],
+            id="unknown_wkid",
+        ),
+    ],
+)
+def test_choose_spatial_reference_id_reports_excluded_candidate(
+    properties: dict[str, object],
+    bounds: tuple[float, float, float, float],
+    expected_substrings: list[str],
+) -> None:
+    layer = LayerStub(properties=properties)
     feature_set = FeatureSetStub(spatial_reference=None)
-    bounds = (-121.0, -120.0, 33.0, 34.0)
     with structlog.testing.capture_logs() as captured:
         chosen = peri_scribe.spatial_reference.choose_spatial_reference_id(
             layer,
@@ -460,53 +497,14 @@ def test_choose_spatial_reference_id_reports_excluded_projected_candidate() -> N
     assert chosen == WGS84_WKID
     assert len(captured) == 1
     assert captured[0]["log_level"] == "warning"
-    assert "picked spatial reference EPSG:4326" in captured[0]["event"]
-    assert "excluded 3857" in captured[0]["event"]
-
-
-def test_choose_spatial_reference_id_reports_excluded_out_of_area_candidate() -> None:
-    layer = LayerStub(
-        properties={"spatialReference": {"wkid": WGS84_WKID, "latestWkid": NAD83_WKID}},
-    )
-    feature_set = FeatureSetStub(spatial_reference=None)
-    bounds = (150.0, 151.0, -35.0, -34.0)
-    with structlog.testing.capture_logs() as captured:
-        chosen = peri_scribe.spatial_reference.choose_spatial_reference_id(
-            layer,
-            feature_set,
-            bounds,
-        )
-    assert chosen == WGS84_WKID
-    assert len(captured) == 1
-    assert captured[0]["log_level"] == "warning"
-    assert "excluded 4269" in captured[0]["event"]
-    assert "coordinates outside its area of use" in captured[0]["event"]
-
-
-def test_choose_spatial_reference_id_reports_excluded_unknown_wkid() -> None:
-    layer = LayerStub(
-        properties={
-            "spatialReference": {"wkid": WGS84_WKID, "latestWkid": UNKNOWN_WKID},
-        },
-    )
-    feature_set = FeatureSetStub(spatial_reference=None)
-    bounds = (-121.0, -120.0, 33.0, 34.0)
-    with structlog.testing.capture_logs() as captured:
-        chosen = peri_scribe.spatial_reference.choose_spatial_reference_id(
-            layer,
-            feature_set,
-            bounds,
-        )
-    assert chosen == WGS84_WKID
-    assert len(captured) == 1
-    assert captured[0]["log_level"] == "warning"
-    assert "no expected coordinate range known" in captured[0]["event"]
+    for substring in expected_substrings:
+        assert substring in captured[0]["event"]
 
 
 def test_choose_spatial_reference_id_fails_when_no_candidate_matches() -> None:
     layer = LayerStub(properties={"spatialReference": {"wkid": WEB_MERCATOR_WKID}})
     feature_set = FeatureSetStub(spatial_reference=None)
-    bounds = (-121.0, -120.0, 33.0, 34.0)
+    bounds = CALIFORNIA_BOUNDS
     with pytest.raises(
         peri_scribe.exceptions.NoSpatialReferenceError,
         match="no reported spatial reference wkid matches",
@@ -523,7 +521,7 @@ def test_choose_spatial_reference_id_fails_when_several_candidates_match() -> No
         properties={"spatialReference": {"wkid": WGS84_WKID, "latestWkid": NAD83_WKID}},
     )
     feature_set = FeatureSetStub(spatial_reference=None)
-    bounds = (-121.0, -120.0, 33.0, 34.0)
+    bounds = CALIFORNIA_BOUNDS
     with pytest.raises(
         peri_scribe.exceptions.NoSpatialReferenceError,
         match="ambiguous spatial reference",
@@ -567,7 +565,7 @@ def test_select_spatial_reference_wkid_ambiguous_without_bounds() -> None:
 def test_select_spatial_reference_wkid_single_match_keeps_exclusions() -> None:
     selection = peri_scribe.spatial_reference.select_spatial_reference_wkid(
         {WGS84_WKID, WEB_MERCATOR_WKID},
-        (-121.0, -120.0, 33.0, 34.0),
+        CALIFORNIA_BOUNDS,
     )
     assert selection.wkid == WGS84_WKID
     assert selection.failure_message == ""
@@ -578,7 +576,7 @@ def test_select_spatial_reference_wkid_single_match_keeps_exclusions() -> None:
 def test_select_spatial_reference_wkid_no_match_reports_exclusions() -> None:
     selection = peri_scribe.spatial_reference.select_spatial_reference_wkid(
         {WEB_MERCATOR_WKID},
-        (-121.0, -120.0, 33.0, 34.0),
+        CALIFORNIA_BOUNDS,
     )
     assert selection.wkid is None
     assert selection.failure_message is not None
@@ -589,7 +587,7 @@ def test_select_spatial_reference_wkid_no_match_reports_exclusions() -> None:
 def test_select_spatial_reference_wkid_ambiguous_with_bounds() -> None:
     selection = peri_scribe.spatial_reference.select_spatial_reference_wkid(
         {WGS84_WKID, NAD83_WKID},
-        (-121.0, -120.0, 33.0, 34.0),
+        CALIFORNIA_BOUNDS,
     )
     assert selection.wkid is None
     assert selection.failure_message is not None

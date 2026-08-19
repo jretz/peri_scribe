@@ -140,6 +140,53 @@ def stub_geopackage_reads(
     )
 
 
+def is_usable_dataframe(
+    *,
+    geometry: list[shapely.Geometry | None],
+    crs: object | None = pyproj.CRS.from_epsg(4326),
+) -> geopandas.GeoDataFrame:
+    """Build a candidate border dataframe for the is_usable checks.
+
+    Args:
+        geometry: The border line geometries.
+        crs: The dataframe's CRS, or None to omit it.
+
+    Returns:
+        The GeoDataFrame with the expected border columns.
+    """
+    return geopandas.GeoDataFrame(
+        {
+            "NEIGHBOR": ["Arizona", "Nevada", "Oregon"],
+            "NEIGHBOR_ABBR": ["AZ", "NV", "OR"],
+            "LENGTH_KM": [1.0, 2.0, 3.0],
+        },
+        geometry=geometry,
+        crs=crs,
+    )
+
+
+def stub_border_file(
+    monkeypatch: pytest.MonkeyPatch,
+    dataframe: geopandas.GeoDataFrame,
+) -> None:
+    """Point load_border_geometry's file reads at *dataframe*.
+
+    Args:
+        monkeypatch: The monkeypatch fixture.
+        dataframe: The stored border dataframe.
+    """
+    monkeypatch.setattr(
+        peri_scribe.administrative_boundaries,
+        "output_geopackage_path",
+        lambda _base_dir: pathlib.Path("/data/border.gpkg"),
+    )
+    monkeypatch.setattr(
+        peri_scribe.administrative_boundaries.geopandas,
+        "read_file",
+        lambda _path, **_keywords: dataframe,
+    )
+
+
 def test_output_geopackage_path() -> None:
     path = peri_scribe.administrative_boundaries.output_geopackage_path(
         BASE_DIRECTORY,
@@ -483,16 +530,11 @@ def test_is_usable_false_when_columns_wrong(
 def test_is_usable_false_when_geometry_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    dataframe = geopandas.GeoDataFrame(
-        {
-            "NEIGHBOR": ["Arizona", "Nevada", "Oregon"],
-            "NEIGHBOR_ABBR": ["AZ", "NV", "OR"],
-            "LENGTH_KM": [1.0, 2.0, 3.0],
-        },
-        geometry=[None, None, None],
-        crs=pyproj.CRS.from_epsg(4326),
+    stub_geopackage_reads(
+        monkeypatch,
+        [OUTPUT_LAYER_NAME],
+        is_usable_dataframe(geometry=[None, None, None]),
     )
-    stub_geopackage_reads(monkeypatch, [OUTPUT_LAYER_NAME], dataframe)
     assert not peri_scribe.administrative_boundaries.is_usable(
         pathlib.Path("/data/file.gpkg"),
     )
@@ -501,20 +543,17 @@ def test_is_usable_false_when_geometry_missing(
 def test_is_usable_false_when_geometry_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    dataframe = geopandas.GeoDataFrame(
-        {
-            "NEIGHBOR": ["Arizona", "Nevada", "Oregon"],
-            "NEIGHBOR_ABBR": ["AZ", "NV", "OR"],
-            "LENGTH_KM": [1.0, 2.0, 3.0],
-        },
-        geometry=[
-            shapely.geometry.LineString(),
-            shapely.geometry.LineString(),
-            shapely.geometry.LineString(),
-        ],
-        crs=pyproj.CRS.from_epsg(4326),
+    stub_geopackage_reads(
+        monkeypatch,
+        [OUTPUT_LAYER_NAME],
+        is_usable_dataframe(
+            geometry=[
+                shapely.geometry.LineString(),
+                shapely.geometry.LineString(),
+                shapely.geometry.LineString(),
+            ],
+        ),
     )
-    stub_geopackage_reads(monkeypatch, [OUTPUT_LAYER_NAME], dataframe)
     assert not peri_scribe.administrative_boundaries.is_usable(
         pathlib.Path("/data/file.gpkg"),
     )
@@ -536,19 +575,18 @@ def test_is_usable_false_when_spatial_reference_wrong(
 def test_is_usable_false_when_no_spatial_reference(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    dataframe = geopandas.GeoDataFrame(
-        {
-            "NEIGHBOR": ["Arizona", "Nevada", "Oregon"],
-            "NEIGHBOR_ABBR": ["AZ", "NV", "OR"],
-            "LENGTH_KM": [1.0, 2.0, 3.0],
-        },
-        geometry=[
-            shapely.geometry.LineString([(0, 0), (1, 1)]),
-            shapely.geometry.LineString([(2, 2), (3, 3)]),
-            shapely.geometry.LineString([(4, 4), (5, 5)]),
-        ],
+    stub_geopackage_reads(
+        monkeypatch,
+        [OUTPUT_LAYER_NAME],
+        is_usable_dataframe(
+            geometry=[
+                shapely.geometry.LineString([(0, 0), (1, 1)]),
+                shapely.geometry.LineString([(2, 2), (3, 3)]),
+                shapely.geometry.LineString([(4, 4), (5, 5)]),
+            ],
+            crs=None,
+        ),
     )
-    stub_geopackage_reads(monkeypatch, [OUTPUT_LAYER_NAME], dataframe)
     assert not peri_scribe.administrative_boundaries.is_usable(
         pathlib.Path("/data/file.gpkg"),
     )
@@ -677,16 +715,7 @@ def test_ensure_administrative_boundaries_raises_when_fetch_fails(
 def test_load_border_geometry_returns_stored_lines(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        peri_scribe.administrative_boundaries,
-        "output_geopackage_path",
-        lambda _base_dir: pathlib.Path("/data/border.gpkg"),
-    )
-    monkeypatch.setattr(
-        peri_scribe.administrative_boundaries.geopandas,
-        "read_file",
-        lambda _path, **_keywords: good_border_dataframe(),
-    )
+    stub_border_file(monkeypatch, good_border_dataframe())
     result = peri_scribe.administrative_boundaries.load_border_geometry(BASE_DIRECTORY)
     assert isinstance(result, shapely.geometry.MultiLineString)
 
@@ -694,11 +723,6 @@ def test_load_border_geometry_returns_stored_lines(
 def test_load_border_geometry_returns_single_line_when_one_part(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        peri_scribe.administrative_boundaries,
-        "output_geopackage_path",
-        lambda _base_dir: pathlib.Path("/data/border.gpkg"),
-    )
     single = geopandas.GeoDataFrame(
         {
             "NEIGHBOR": ["Oregon"],
@@ -708,11 +732,7 @@ def test_load_border_geometry_returns_single_line_when_one_part(
         geometry=[shapely.geometry.LineString([(0.0, 0.0), (10.0, 0.0)])],
         crs=pyproj.CRS.from_epsg(4326),
     )
-    monkeypatch.setattr(
-        peri_scribe.administrative_boundaries.geopandas,
-        "read_file",
-        lambda _path, **_keywords: single,
-    )
+    stub_border_file(monkeypatch, single)
     result = peri_scribe.administrative_boundaries.load_border_geometry(BASE_DIRECTORY)
     assert isinstance(result, shapely.geometry.LineString)
 

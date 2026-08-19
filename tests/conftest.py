@@ -290,6 +290,87 @@ def feature_set_with_geometry() -> arcgis.features.FeatureSet:
 
 
 @pytest.fixture
+def feed() -> peri_scribe.feed_types.ArcGISFeed:
+    """Return the sample ArcGIS feed.
+
+    Returns:
+        The sample ArcGIS feed.
+    """
+    return sample_feed()
+
+
+FIRES_ONE_URL = "https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0"
+FIRES_TWO_URL = "https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0"
+
+
+def arc_gis_feed(
+    url: str,
+    fire_name_column: str,
+    status_column: str,
+    *,
+    fire_identifier_columns: tuple[str, ...] = (),
+    mission_column: str | None = None,
+    observation_time_column: str | None = None,
+    point_of_origin_state_column: str | None = None,
+    point_of_origin_fips_column: str | None = None,
+    complex_identifier_column: str | None = None,
+    complex_name_column: str | None = None,
+    is_complex_child_column: str | None = None,
+    modified_column: str | None = None,
+) -> peri_scribe.feed_types.ArcGISFeed:
+    """Build an ArcGIS feed with the given name and status columns.
+
+    Args:
+        url: The feed's REST URL.
+        fire_name_column: The column holding each fire's name.
+        status_column: The column holding each fire's status.
+        fire_identifier_columns: The columns holding fire identifiers.
+        mission_column: The column holding each fire's mission.
+        observation_time_column: The column holding each fire's observation time.
+        point_of_origin_state_column: The column holding the point of origin state.
+        point_of_origin_fips_column: The column holding the point of origin FIPS.
+        complex_identifier_column: The column holding each complex's identifier.
+        complex_name_column: The column holding each complex's name.
+        is_complex_child_column: The column marking complex child rows.
+        modified_column: The column holding each feature's modified time.
+
+    Returns:
+        The ArcGIS feed.
+    """
+    return peri_scribe.feed_types.ArcGISFeed(
+        url=url,
+        fire_name_column=fire_name_column,
+        status_column=status_column,
+        fire_identifier_columns=fire_identifier_columns,
+        mission_column=mission_column,
+        observation_time_column=observation_time_column,
+        point_of_origin_state_column=point_of_origin_state_column,
+        point_of_origin_fips_column=point_of_origin_fips_column,
+        complex_identifier_column=complex_identifier_column,
+        complex_name_column=complex_name_column,
+        is_complex_child_column=is_complex_child_column,
+        modified_column=modified_column,
+    )
+
+
+def configure_feeds(
+    monkeypatch: pytest.MonkeyPatch,
+    feeds: list[peri_scribe.feed_types.Feed],
+) -> list[peri_scribe.feed_types.Feed]:
+    """Point models.FEEDS at *feeds* and return them.
+
+    Args:
+        monkeypatch: The monkeypatch fixture.
+        feeds: The feeds to serve as the configured feeds.
+
+    Returns:
+        The configured feeds.
+    """
+    monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
+    return feeds
+
+
+@pytest.fixture
 def configured_feeds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[peri_scribe.feed_types.Feed]:
@@ -298,20 +379,13 @@ def configured_feeds(
     Returns:
         The two feeds, configured with fire name and status columns.
     """
-    feeds = [
-        peri_scribe.feed_types.ArcGISFeed(
-            url="https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
-            fire_name_column="incident_name",
-            status_column="displayStatus",
-        ),
-        peri_scribe.feed_types.ArcGISFeed(
-            url="https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
-            fire_name_column="IncidentName",
-            status_column="ActiveFireCandidate",
-        ),
-    ]
-    monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
-    return feeds
+    return configure_feeds(
+        monkeypatch,
+        [
+            arc_gis_feed(FIRES_ONE_URL, "incident_name", "displayStatus"),
+            arc_gis_feed(FIRES_TWO_URL, "IncidentName", "ActiveFireCandidate"),
+        ],
+    )
 
 
 @pytest.fixture
@@ -327,25 +401,26 @@ def configured_feeds_with_identifiers(
         The two feeds, configured with fire name, status, identifier, and
         complex columns.
     """
-    feeds = [
-        peri_scribe.feed_types.ArcGISFeed(
-            url="https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
-            fire_name_column="incident_name",
-            status_column="displayStatus",
-            fire_identifier_columns=("incident_number",),
-        ),
-        peri_scribe.feed_types.ArcGISFeed(
-            url="https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
-            fire_name_column="IncidentName",
-            status_column="ActiveFireCandidate",
-            fire_identifier_columns=("IrwinID",),
-            complex_identifier_column="CpxID",
-            complex_name_column="CpxName",
-            is_complex_child_column="IsCpxChild",
-        ),
-    ]
-    monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
-    return feeds
+    return configure_feeds(
+        monkeypatch,
+        [
+            arc_gis_feed(
+                FIRES_ONE_URL,
+                "incident_name",
+                "displayStatus",
+                fire_identifier_columns=("incident_number",),
+            ),
+            arc_gis_feed(
+                FIRES_TWO_URL,
+                "IncidentName",
+                "ActiveFireCandidate",
+                fire_identifier_columns=("IrwinID",),
+                complex_identifier_column="CpxID",
+                complex_name_column="CpxName",
+                is_complex_child_column="IsCpxChild",
+            ),
+        ],
+    )
 
 
 @pytest.fixture
@@ -358,18 +433,19 @@ def configured_feeds_with_mission(
         The feed, configured with name, status, identifier, mission, and observation
         time columns.
     """
-    feeds = [
-        peri_scribe.feed_types.ArcGISFeed(
-            url="https://example.test/ArcGIS/rest/services/Fires_One/FeatureServer/0",
-            fire_name_column="incident_name",
-            status_column="displayStatus",
-            fire_identifier_columns=("incident_number",),
-            mission_column="mission",
-            observation_time_column="poly_DateCurrent",
-        ),
-    ]
-    monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
-    return feeds
+    return configure_feeds(
+        monkeypatch,
+        [
+            arc_gis_feed(
+                FIRES_ONE_URL,
+                "incident_name",
+                "displayStatus",
+                fire_identifier_columns=("incident_number",),
+                mission_column="mission",
+                observation_time_column="poly_DateCurrent",
+            ),
+        ],
+    )
 
 
 @pytest.fixture
@@ -382,19 +458,20 @@ def configured_feeds_with_point_of_origin(
         The feed, configured with name, status, identifier, mission, and point of
         origin columns.
     """
-    feeds = [
-        peri_scribe.feed_types.ArcGISFeed(
-            url="https://example.test/ArcGIS/rest/services/Fires_Two/FeatureServer/0",
-            fire_name_column="IncidentName",
-            status_column="ActiveFireCandidate",
-            fire_identifier_columns=("IrwinID",),
-            mission_column="mission",
-            point_of_origin_state_column="POOState",
-            point_of_origin_fips_column="POOFips",
-        ),
-    ]
-    monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
-    return feeds
+    return configure_feeds(
+        monkeypatch,
+        [
+            arc_gis_feed(
+                FIRES_TWO_URL,
+                "IncidentName",
+                "ActiveFireCandidate",
+                fire_identifier_columns=("IrwinID",),
+                mission_column="mission",
+                point_of_origin_state_column="POOState",
+                point_of_origin_fips_column="POOFips",
+            ),
+        ],
+    )
 
 
 @pytest.fixture

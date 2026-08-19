@@ -21,6 +21,29 @@ if typing.TYPE_CHECKING:
 
 UTC = datetime.UTC
 
+SAMPLE_FEATURE_ROW = (1, "a", (0.0, 0.0))
+
+
+def modified_dataframe(
+    rows: list[tuple[int, str, tuple[float, float]]],
+) -> geopandas.GeoDataFrame:
+    """Return a GeoDataFrame with OBJECTID and modified-time columns.
+
+    Args:
+        rows: The OBJECTID, modified time, and coordinates of each feature.
+
+    Returns:
+        The GeoDataFrame.
+    """
+    return geopandas.GeoDataFrame(
+        {
+            "OBJECTID": [row[0] for row in rows],
+            "ModifiedOnDateTime_dt": [row[1] for row in rows],
+        },
+        geometry=[shapely.geometry.Point(row[2]) for row in rows],
+        crs=pyproj.CRS.from_epsg(4326),
+    )
+
 
 def test_parse_iso_datetime_returns_datetime() -> None:
     assert peri_scribe.changes.parse_iso_datetime(
@@ -91,9 +114,7 @@ def test_existing_features_returns_none_without_files(
         "existing_geopackage_filenames",
         lambda _directory: [],
     )
-    assert (
-        peri_scribe.changes.existing_features(pathlib.Path("/sources"), feed) is None
-    )
+    assert peri_scribe.changes.existing_features(pathlib.Path("/sources"), feed) is None
 
 
 def test_latest_modified_datetime_returns_none_without_existing() -> None:
@@ -109,26 +130,16 @@ def test_latest_modified_datetime_returns_none_for_empty() -> None:
 
 def test_latest_modified_datetime_returns_none_without_modified_column() -> None:
     feed = change_feed()
-    existing = change_dataframe([(1, "a", (0.0, 0.0))])
+    existing = change_dataframe([SAMPLE_FEATURE_ROW])
     assert peri_scribe.changes.latest_modified_datetime(existing, feed) is None
 
 
 def test_latest_modified_datetime_returns_maximum() -> None:
     feed = change_feed()
-    existing = geopandas.GeoDataFrame(
-        {
-            "OBJECTID": [1, 2],
-            "ModifiedOnDateTime_dt": [
-                "2026-01-01T00:00:00Z",
-                "2026-02-01T00:00:00Z",
-            ],
-        },
-        geometry=[
-            shapely.geometry.Point(0.0, 0.0),
-            shapely.geometry.Point(1.0, 1.0),
-        ],
-        crs=pyproj.CRS.from_epsg(4326),
-    )
+    existing = modified_dataframe([
+        (1, "2026-01-01T00:00:00Z", (0.0, 0.0)),
+        (2, "2026-02-01T00:00:00Z", (1.0, 1.0)),
+    ])
     result = peri_scribe.changes.latest_modified_datetime(existing, feed)
     assert result == datetime.datetime(2026, 2, 1, 0, 0, 0, tzinfo=UTC)
 
@@ -143,14 +154,7 @@ def test_incremental_cutoff_returns_epoch_without_existing() -> None:
 
 def test_incremental_cutoff_subtracts_overlap() -> None:
     feed = change_feed()
-    existing = geopandas.GeoDataFrame(
-        {
-            "OBJECTID": [1],
-            "ModifiedOnDateTime_dt": ["2026-01-01T00:10:00Z"],
-        },
-        geometry=[shapely.geometry.Point(0.0, 0.0)],
-        crs=pyproj.CRS.from_epsg(4326),
-    )
+    existing = modified_dataframe([(1, "2026-01-01T00:10:00Z", (0.0, 0.0))])
     result = peri_scribe.changes.incremental_cutoff(existing, feed)
     assert result == datetime.datetime(2026, 1, 1, 0, 10, 0, tzinfo=UTC) - (
         peri_scribe.changes.OVERLAP
@@ -185,8 +189,8 @@ def test_normalized_attribute_value_passes_through_other_values() -> None:
 
 
 def test_attribute_columns_excludes_geometry() -> None:
-    new = change_dataframe([(1, "a", (0.0, 0.0))])
-    existing = change_dataframe([(1, "a", (0.0, 0.0))])
+    new = change_dataframe([SAMPLE_FEATURE_ROW])
+    existing = change_dataframe([SAMPLE_FEATURE_ROW])
     assert peri_scribe.changes.attribute_columns(new, existing) == [
         "OBJECTID",
         "name",
@@ -195,7 +199,7 @@ def test_attribute_columns_excludes_geometry() -> None:
 
 def test_feature_signatures_keys_by_object_id() -> None:
     dataframe = change_dataframe(
-        [(1, "a", (0.0, 0.0)), (2, "b", (1.0, 1.0))],
+        [SAMPLE_FEATURE_ROW, (2, "b", (1.0, 1.0))],
     )
     signatures = peri_scribe.changes.feature_signatures(
         dataframe,
@@ -207,28 +211,28 @@ def test_feature_signatures_keys_by_object_id() -> None:
 
 
 def test_drop_features_already_present_returns_new_when_no_existing() -> None:
-    new = change_dataframe([(1, "a", (0.0, 0.0))])
+    new = change_dataframe([SAMPLE_FEATURE_ROW])
     result = peri_scribe.changes.drop_features_already_present(new, None)
     assert result is new
 
 
 def test_drop_features_already_present_keeps_new_object_id() -> None:
     new = change_dataframe([(3, "c", (2.0, 2.0))])
-    existing = change_dataframe([(1, "a", (0.0, 0.0)), (2, "b", (1.0, 1.0))])
+    existing = change_dataframe([SAMPLE_FEATURE_ROW, (2, "b", (1.0, 1.0))])
     result = peri_scribe.changes.drop_features_already_present(new, existing)
     assert list(result["OBJECTID"]) == [3]
 
 
 def test_drop_features_already_present_drops_identical_feature() -> None:
-    new = change_dataframe([(1, "a", (0.0, 0.0))])
-    existing = change_dataframe([(1, "a", (0.0, 0.0))])
+    new = change_dataframe([SAMPLE_FEATURE_ROW])
+    existing = change_dataframe([SAMPLE_FEATURE_ROW])
     result = peri_scribe.changes.drop_features_already_present(new, existing)
     assert result.empty
 
 
 def test_drop_features_already_present_keeps_changed_feature() -> None:
     new = change_dataframe([(1, "changed", (0.0, 0.0))])
-    existing = change_dataframe([(1, "a", (0.0, 0.0))])
+    existing = change_dataframe([SAMPLE_FEATURE_ROW])
     result = peri_scribe.changes.drop_features_already_present(new, existing)
     assert list(result["name"]) == ["changed"]
 

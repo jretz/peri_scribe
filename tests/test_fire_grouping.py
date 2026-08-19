@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import typing
 
 import shapely.geometry
 import structlog
@@ -10,6 +11,25 @@ import structlog
 import peri_scribe.fire_grouping
 import peri_scribe.models
 from tests.factories import ACTIVE, INACTIVE, fire_record
+
+
+def warning_events(
+    records: list[peri_scribe.models.FireRecord],
+    fires: list[peri_scribe.models.Fire],
+) -> list[typing.MutableMapping[str, object]]:
+    """Return events logged while warning about inconsistent *records*.
+
+    Args:
+        records: The grouped fire records.
+        fires: The fires built from the groups.
+
+    Returns:
+        The logged events.
+    """
+    groups = [[0, 1]]
+    with structlog.testing.capture_logs() as captured:
+        peri_scribe.fire_grouping.warn_for_inconsistent_fires(records, groups, fires)
+    return captured
 
 
 def test_group_fire_records_preserves_first_encountered_order() -> None:
@@ -130,16 +150,13 @@ def test_warn_for_inconsistent_fires_ignores_group_without_geometries() -> None:
         fire_record("RIVER", ACTIVE),
         fire_record("RIVER", INACTIVE),
     ]
-    groups = [[0, 1]]
     fires = [
         peri_scribe.models.Fire(
             name="RIVER",
             status=ACTIVE,
         ),
     ]
-    with structlog.testing.capture_logs() as captured:
-        peri_scribe.fire_grouping.warn_for_inconsistent_fires(records, groups, fires)
-    assert captured == []
+    assert warning_events(records, fires) == []
 
 
 def test_warn_for_inconsistent_fires_logs_outlier_for_record_without_geometry() -> None:
@@ -147,16 +164,13 @@ def test_warn_for_inconsistent_fires_logs_outlier_for_record_without_geometry() 
         fire_record("RIVER", ACTIVE, geometry=shapely.geometry.Point(0, 0)),
         fire_record("RIVER", INACTIVE),
     ]
-    groups = [[0, 1]]
     fires = [
         peri_scribe.models.Fire(
             name="RIVER",
             status=ACTIVE,
         ),
     ]
-    with structlog.testing.capture_logs() as captured:
-        peri_scribe.fire_grouping.warn_for_inconsistent_fires(records, groups, fires)
-    assert [event["event"] for event in captured] == [
+    assert [event["event"] for event in warning_events(records, fires)] == [
         "Fire records span distant locations",
     ]
 
@@ -174,16 +188,13 @@ def test_warn_for_inconsistent_fires_logs_outlier_when_other_geometries_empty() 
             geometry=shapely.geometry.Point(0, 0),
         ),
     ]
-    groups = [[0, 1]]
     fires = [
         peri_scribe.models.Fire(
             name="RIVER",
             status=ACTIVE,
         ),
     ]
-    with structlog.testing.capture_logs() as captured:
-        peri_scribe.fire_grouping.warn_for_inconsistent_fires(records, groups, fires)
-    assert [event["event"] for event in captured] == [
+    assert [event["event"] for event in warning_events(records, fires)] == [
         "Fire records span distant locations",
     ]
 
@@ -198,7 +209,6 @@ def test_warn_for_inconsistent_fires_logs_spatial_outlier() -> None:
             geometry=shapely.geometry.Point(10, 10),
         ),
     ]
-    groups = [[0, 1]]
     fires = [
         peri_scribe.models.Fire(
             name="River",
@@ -206,9 +216,7 @@ def test_warn_for_inconsistent_fires_logs_spatial_outlier() -> None:
             identifier="67e0a229-1214-4e17-a80d-c819f88013e8",
         ),
     ]
-    with structlog.testing.capture_logs() as captured:
-        peri_scribe.fire_grouping.warn_for_inconsistent_fires(records, groups, fires)
-    assert [event["event"] for event in captured] == [
+    assert [event["event"] for event in warning_events(records, fires)] == [
         "Fire records span distant locations",
     ]
 
@@ -230,7 +238,6 @@ def test_warn_for_inconsistent_fires_logs_temporal_outlier() -> None:
             observed_at=datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC),
         ),
     ]
-    groups = [[0, 1]]
     fires = [
         peri_scribe.models.Fire(
             name="River",
@@ -238,8 +245,6 @@ def test_warn_for_inconsistent_fires_logs_temporal_outlier() -> None:
             identifier="67e0a229-1214-4e17-a80d-c819f88013e8",
         ),
     ]
-    with structlog.testing.capture_logs() as captured:
-        peri_scribe.fire_grouping.warn_for_inconsistent_fires(records, groups, fires)
-    assert [event["event"] for event in captured] == [
+    assert [event["event"] for event in warning_events(records, fires)] == [
         "Fire records span distant times",
     ]
