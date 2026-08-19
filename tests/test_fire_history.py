@@ -592,6 +592,17 @@ def test_float_attribute_returns_number_or_none() -> None:
         is None
     )
     assert peri_scribe.fire_history.float_attribute({}, "area_acres") is None
+    assert (
+        peri_scribe.fire_history.float_attribute({"area_acres": True}, "area_acres")
+        is None
+    )
+    assert (
+        peri_scribe.fire_history.float_attribute(
+            {"area_acres": [1, 2]},
+            "area_acres",
+        )
+        is None
+    )
 
 
 def test_datetime_attribute_returns_datetime_or_none() -> None:

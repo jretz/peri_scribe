@@ -112,6 +112,31 @@ def test_rate_limit_retry_seconds_returns_none_for_other_errors() -> None:
     assert peri_scribe.retry.rate_limit_retry_seconds(error) is None
 
 
+def test_rate_limit_retry_seconds_returns_none_for_non_dict_payload_error() -> None:
+    error = ValueError({"error": "boom"})
+    assert peri_scribe.retry.rate_limit_retry_seconds(error) is None
+
+
+def test_rate_limit_retry_seconds_returns_none_for_non_rate_limit_code() -> None:
+    error = ValueError({"error": {"code": http.HTTPStatus.INTERNAL_SERVER_ERROR}})
+    assert peri_scribe.retry.rate_limit_retry_seconds(error) is None
+
+
+def test_rate_limit_retry_seconds_uses_fallback_for_non_list_details() -> None:
+    error = ValueError(
+        {
+            "error": {
+                "code": http.HTTPStatus.TOO_MANY_REQUESTS,
+                "details": "oops",
+            },
+        },
+    )
+    assert (
+        peri_scribe.retry.rate_limit_retry_seconds(error)
+        == peri_scribe.retry.FALLBACK_RETRY_SECONDS
+    )
+
+
 @pytest.mark.parametrize(
     "error",
     [

@@ -42,7 +42,7 @@ addopts = [
     "--showlocals",
 
     # pytest-cov
-    "--cov-fail-under=99",
+    "--cov-fail-under=100",
     "--cov-report=xml:coverage.xml",
     "--cov-report=html",
     "--cov=src",

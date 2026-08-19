@@ -11,6 +11,7 @@ import pyproj
 import shapely.geometry
 
 import peri_scribe.changes
+import peri_scribe.geo_data
 import peri_scribe.snapshots
 from tests.factories import change_dataframe, change_feed
 
@@ -117,6 +118,25 @@ def test_existing_features_returns_none_without_files(
     assert peri_scribe.changes.existing_features(pathlib.Path("/sources"), feed) is None
 
 
+def test_existing_features_returns_none_without_object_id_column(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    feed = change_feed()
+    monkeypatch.setattr(
+        peri_scribe.snapshots,
+        "existing_geopackage_filenames",
+        lambda _directory: ["000000.gpkg"],
+    )
+    monkeypatch.setattr(
+        peri_scribe.geo_data,
+        "read_layer_dataframe",
+        lambda _path, _feed: change_dataframe([SAMPLE_FEATURE_ROW]).drop(
+            columns=["OBJECTID"],
+        ),
+    )
+    assert peri_scribe.changes.existing_features(pathlib.Path("/sources"), feed) is None
+
+
 def test_latest_modified_datetime_returns_none_without_existing() -> None:
     feed = change_feed()
     assert peri_scribe.changes.latest_modified_datetime(None, feed) is None
@@ -142,6 +162,15 @@ def test_latest_modified_datetime_returns_maximum() -> None:
     ])
     result = peri_scribe.changes.latest_modified_datetime(existing, feed)
     assert result == datetime.datetime(2026, 2, 1, 0, 0, 0, tzinfo=UTC)
+
+
+def test_latest_modified_datetime_returns_none_when_no_values_parse() -> None:
+    feed = change_feed()
+    existing = modified_dataframe([
+        (1, "nope", (0.0, 0.0)),
+        (2, "also-nope", (1.0, 1.0)),
+    ])
+    assert peri_scribe.changes.latest_modified_datetime(existing, feed) is None
 
 
 def test_incremental_cutoff_returns_epoch_without_existing() -> None:
