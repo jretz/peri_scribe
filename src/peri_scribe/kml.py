@@ -8,6 +8,7 @@ reuse the style URLs the template assigns to the corresponding placemarks.
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import pathlib
 import typing
 
@@ -15,6 +16,7 @@ import typing
 # stdlib XML parser needs no defusedxml hardening.
 import xml.etree.ElementTree as ET  # ruff: ignore[suspicious-xml-etree-import]
 import zipfile
+import zoneinfo
 
 import geopandas
 import simplekml
@@ -39,10 +41,25 @@ INACTIVE_FIRES_FOLDER_NAME = "Inactive Fires"
 
 KMZ_DOCUMENT_FILENAME = "doc.kml"
 
+# Google Earth shows observation times in the output placemark names, and those
+# times are written in California local time.
+CALIFORNIA_TIME_ZONE = zoneinfo.ZoneInfo("America/Los_Angeles")
+
+MAPPING_NAME = "Mapping"
+UNKNOWN_MAPPING_NAME = "Unknown Mapping"
+
 # DEFLATE is the compression Google Earth expects inside a KMZ, and level 9 is the
 # highest compression level it offers.
 KMZ_COMPRESSION = zipfile.ZIP_DEFLATED
 KMZ_COMPRESSION_LEVEL = 9
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class Perimeter:
+    """One perimeter geometry and the time it was observed."""
+
+    geometry: shapely.Geometry
+    observation_time: datetime.datetime | None
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -52,7 +69,7 @@ class FireGeometry:
     name: str
     status: peri_scribe.models.FireStatus
     point: shapely.Point | None
-    perimeters: tuple[shapely.Geometry, ...]
+    perimeters: tuple[Perimeter, ...]
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -147,12 +164,13 @@ def identifiers(
 def perimeter_groups(
     perimeters: geopandas.GeoDataFrame,
 ) -> tuple[
-    dict[str, list[shapely.Geometry]],
-    dict[str, list[shapely.Geometry]],
+    dict[str, list[Perimeter]],
+    dict[str, list[Perimeter]],
 ]:
-    """Group perimeter geometries by fire, preserving chronological order.
+    """Group perimeters by fire, preserving chronological order.
 
-    Fires are keyed by identifier when one is known, and by name otherwise.
+    Each perimeter keeps its geometry and observation time. Fires are keyed by
+    identifier when one is known, and by name otherwise.
 
     Args:
         perimeters: The perimeter history layer.
@@ -160,18 +178,25 @@ def perimeter_groups(
     Returns:
         Perimeters keyed by identifier and by name.
     """
-    by_identifier: dict[str, list[shapely.Geometry]] = {}
-    by_name: dict[str, list[shapely.Geometry]] = {}
-    for identifier, name, geometry in zip(
+    by_identifier: dict[str, list[Perimeter]] = {}
+    by_name: dict[str, list[Perimeter]] = {}
+    for identifier, name, observation_time, geometry in zip(
         perimeters["fire_identifier"],
         perimeters["fire_name"],
+        perimeters["observation_time"],
         perimeters.geometry,
         strict=True,
     ):
+        perimeter = Perimeter(
+            geometry=geometry,
+            observation_time=peri_scribe.geo_data.observation_time_from(
+                observation_time,
+            ),
+        )
         if peri_scribe.geo_data.is_missing(identifier):
-            by_name.setdefault(str(name), []).append(geometry)
+            by_name.setdefault(str(name), []).append(perimeter)
         else:
-            by_identifier.setdefault(str(identifier), []).append(geometry)
+            by_identifier.setdefault(str(identifier), []).append(perimeter)
     return by_identifier, by_name
 
 
@@ -234,7 +259,7 @@ def fire_point_location(
     entry_name: str,
     point_by_identifier: dict[str, shapely.Point],
     point_by_name: dict[str, shapely.Point],
-    perimeters: tuple[shapely.Geometry, ...],
+    perimeters: tuple[Perimeter, ...],
 ) -> shapely.Point | None:
     """Return the point location to show for one fire, or None.
 
@@ -264,16 +289,16 @@ def fire_point_location(
     if point is not None:
         return point
     if perimeters:
-        return perimeters[-1].representative_point()
+        return perimeters[-1].geometry.representative_point()
     return None
 
 
 def fire_perimeters(
     fire_identifiers: frozenset[str],
     entry_name: str,
-    perimeter_by_identifier: dict[str, list[shapely.Geometry]],
-    perimeter_by_name: dict[str, list[shapely.Geometry]],
-) -> tuple[shapely.Geometry, ...]:
+    perimeter_by_identifier: dict[str, list[Perimeter]],
+    perimeter_by_name: dict[str, list[Perimeter]],
+) -> tuple[Perimeter, ...]:
     """Return one fire's perimeters in chronological order.
 
     Args:
@@ -285,7 +310,7 @@ def fire_perimeters(
     Returns:
         The fire's perimeters, oldest first.
     """
-    perimeters: list[shapely.Geometry] = []
+    perimeters: list[Perimeter] = []
     for identifier in sorted(fire_identifiers):
         perimeters.extend(perimeter_by_identifier.get(identifier, []))
     if not fire_identifiers:
@@ -316,7 +341,7 @@ def fire_geometries(
     fires: list[FireGeometry] = []
     for entry in index.fires:
         fire_identifiers = identifiers(entry)
-        perimeter_geometries = fire_perimeters(
+        perimeter_observations = fire_perimeters(
             fire_identifiers,
             entry.name,
             perimeter_by_identifier,
@@ -331,9 +356,9 @@ def fire_geometries(
                     entry.name,
                     point_by_identifier,
                     point_by_name,
-                    perimeter_geometries,
+                    perimeter_observations,
                 ),
-                perimeters=perimeter_geometries,
+                perimeters=perimeter_observations,
             ),
         )
     return sorted(fires, key=lambda fire: fire.name.casefold())
@@ -483,6 +508,56 @@ def perimeter_placemark(
     perimeter_geometry(container, name, style_url, geometry, draw_order)
 
 
+def time_label(observation_time: datetime.datetime | None) -> str | None:
+    """Return the California-time label for *observation_time*, or None.
+
+    The label reads like ``08-05 01:30 pm``: month and day, a 12-hour clock time,
+    and a lowercase am/pm marker.
+
+    Args:
+        observation_time: The observation time as an aware UTC datetime, or None.
+
+    Returns:
+        The label, or None when *observation_time* is None.
+    """
+    if observation_time is None:
+        return None
+    pacific_time = observation_time.astimezone(CALIFORNIA_TIME_ZONE)
+    return f"{pacific_time:%m-%d %I:%M %p}".lower()
+
+
+def interior_placemark_name(observation_time: datetime.datetime | None) -> str:
+    """Return the filled-interior placemark name for *observation_time*.
+
+    Args:
+        observation_time: The observation time of the latest perimeter, or None.
+
+    Returns:
+        The placemark name, ``<date> Interior`` when the time is known and
+        ``Interior`` otherwise.
+    """
+    label = time_label(observation_time)
+    if label is None:
+        return peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name
+    return f"{label} {peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name}"
+
+
+def mapping_placemark_name(observation_time: datetime.datetime | None) -> str:
+    """Return the outline placemark name for *observation_time*.
+
+    Args:
+        observation_time: The observation time of the perimeter, or None.
+
+    Returns:
+        The placemark name, ``<date> Mapping`` when the time is known and
+        ``Unknown Mapping`` otherwise.
+    """
+    label = time_label(observation_time)
+    if label is None:
+        return UNKNOWN_MAPPING_NAME
+    return f"{label} {MAPPING_NAME}"
+
+
 def fire_folder(
     container: simplekml.Container,
     fire: FireGeometry,
@@ -515,11 +590,12 @@ def fire_folder(
             peri_scribe.kml_template.point_draw_order(outline_count),
         )
     if fire.perimeters:
+        latest_perimeter = fire.perimeters[-1]
         perimeter_placemark(
             folder,
-            peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name,
+            interior_placemark_name(latest_perimeter.observation_time),
             style_urls[peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name],
-            fire.perimeters[-1],
+            latest_perimeter.geometry,
             peri_scribe.kml_template.LATEST_AREA_DRAW_ORDER,
         )
     for index, template in enumerate(
@@ -527,11 +603,12 @@ def fire_folder(
     ):
         if len(fire.perimeters) <= index:
             break
+        perimeter = fire.perimeters[-(index + 1)]
         perimeter_placemark(
             folder,
-            template.name,
+            mapping_placemark_name(perimeter.observation_time),
             style_urls[template.name],
-            fire.perimeters[-(index + 1)],
+            perimeter.geometry,
             peri_scribe.kml_template.outline_draw_order(outline_count, index),
         )
 

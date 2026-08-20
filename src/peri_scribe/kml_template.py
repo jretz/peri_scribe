@@ -83,7 +83,7 @@ class PerimeterTemplate:
 
 
 FILLED_PERIMETER_TEMPLATE = PerimeterTemplate(
-    name="Latest Area",
+    name="Interior",
     style_id="perimeter-fill",
     side_length_in_meters=800,
     color="#FF0000",
@@ -91,19 +91,19 @@ FILLED_PERIMETER_TEMPLATE = PerimeterTemplate(
 
 OUTLINED_PERIMETER_TEMPLATES = (
     PerimeterTemplate(
-        name="Latest Outline",
+        name="Latest Mapping",
         style_id="perimeter-outline-1",
         side_length_in_meters=800,
         color="#FF0000",
     ),
     PerimeterTemplate(
-        name="Penultimate Outline",
+        name="Penultimate Mapping",
         style_id="perimeter-outline-2",
         side_length_in_meters=700,
         color="#FFFF00",
     ),
     PerimeterTemplate(
-        name="Antepenultimate Outline",
+        name="Antepenultimate Mapping",
         style_id="perimeter-outline-3",
         side_length_in_meters=600,
         color="#FFFFFF",

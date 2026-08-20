@@ -449,7 +449,7 @@ def test_template_kml_filled_perimeter_folder(document: ET.Element) -> None:
     point = placemark_named(filled, "Point Location")
     assert placemark_style_url(point) == "#point-icon"
 
-    fill = placemark_named(filled, "Latest Area")
+    fill = placemark_named(filled, "Interior")
     assert placemark_style_url(fill) == "#perimeter-fill"
     assert interior_coordinates(fill) == []
     fill_style = style_with_id(document, "perimeter-fill")
@@ -462,12 +462,12 @@ def test_template_kml_filled_perimeter_folder(document: ET.Element) -> None:
         child
         for child in filled
         if child.tag == kml_tag("Placemark")
-        and child.findtext(kml_tag("name")) not in {"Point Location", "Latest Area"}
+        and child.findtext(kml_tag("name")) not in {"Point Location", "Interior"}
     ]
     expected_colors = {
-        "Latest Outline": "ff0000ff",
-        "Penultimate Outline": "ff00ffff",
-        "Antepenultimate Outline": "ffffffff",
+        "Latest Mapping": "ff0000ff",
+        "Penultimate Mapping": "ff00ffff",
+        "Antepenultimate Mapping": "ffffffff",
     }
     assert len(outline_placemarks) == len(expected_colors)
     for name, color in expected_colors.items():
@@ -492,10 +492,10 @@ def test_template_kml_filled_perimeter_orders_placemarks(
     )
     assert placemark_names(filled) == [
         "Point Location",
-        "Latest Area",
-        "Latest Outline",
-        "Penultimate Outline",
-        "Antepenultimate Outline",
+        "Interior",
+        "Latest Mapping",
+        "Penultimate Mapping",
+        "Antepenultimate Mapping",
     ]
 
 
@@ -511,7 +511,7 @@ def test_template_kml_filled_perimeter_geometry_is_two_kilometers_due_west(
     point_longitude, point_latitude = point_coordinates(point)
     assert_two_kilometers_due_west(point_longitude, point_latitude)
 
-    fill = placemark_named(filled, "Latest Area")
+    fill = placemark_named(filled, "Interior")
     polygons = [
         fill,
         *[
@@ -536,16 +536,16 @@ def test_template_kml_filled_perimeter_draw_orders(document: ET.Element) -> None
         name: draw_order(placemark_named(filled, name))
         for name in (
             "Point Location",
-            "Latest Area",
-            "Latest Outline",
-            "Penultimate Outline",
-            "Antepenultimate Outline",
+            "Interior",
+            "Latest Mapping",
+            "Penultimate Mapping",
+            "Antepenultimate Mapping",
         )
     } == {
-        "Latest Area": peri_scribe.kml_template.LATEST_AREA_DRAW_ORDER,
-        "Antepenultimate Outline": 1,
-        "Penultimate Outline": 2,
-        "Latest Outline": 3,
+        "Interior": peri_scribe.kml_template.LATEST_AREA_DRAW_ORDER,
+        "Antepenultimate Mapping": 1,
+        "Penultimate Mapping": 2,
+        "Latest Mapping": 3,
         "Point Location": 4,
     }
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import pathlib
 import typing
 
@@ -67,15 +68,37 @@ def square(side: float) -> shapely.geometry.Polygon:
     return shapely.geometry.box(-half, -half, half, half)
 
 
+def perimeter_with_time(
+    geometry: shapely.Geometry,
+    observation_time: datetime.datetime | None = None,
+) -> peri_scribe.kml.Perimeter:
+    """Build a perimeter with *geometry* and *observation_time*.
+
+    Args:
+        geometry: The perimeter geometry.
+        observation_time: The perimeter's observation time, or None.
+
+    Returns:
+        The perimeter.
+    """
+    return peri_scribe.kml.Perimeter(
+        geometry=geometry,
+        observation_time=observation_time,
+    )
+
+
 def geometry_frame(
     rows: list[
         tuple[str | None, str, shapely.geometry.base.BaseGeometry]
     ],
+    observation_times: list[datetime.datetime | None] | None = None,
 ) -> geopandas.GeoDataFrame:
     """Build a history GeoDataFrame from (identifier, name, geometry) rows.
 
     Args:
         rows: The identifier, name, and geometry of each row.
+        observation_times: The observation time of each row, or None for every
+            row when omitted.
 
     Returns:
         The rows as a GeoDataFrame.
@@ -86,6 +109,11 @@ def geometry_frame(
                 identifier for identifier, _name, _geometry in rows
             ],
             "fire_name": [name for _identifier, name, _geometry in rows],
+            "observation_time": (
+                [None] * len(rows)
+                if observation_times is None
+                else observation_times
+            ),
         },
         geometry=[geometry for _identifier, _name, geometry in rows],
         crs="EPSG:4326",
@@ -396,14 +424,27 @@ def test_identifiers_omits_none_identifier() -> None:
 def test_perimeter_groups_keys_by_identifier_and_preserves_order() -> None:
     first = square(1.0)
     second = square(2.0)
-    perimeters = geometry_frame([
-        ("id-a", "Bug", first),
-        ("id-a", "Bug", second),
-        (None, "Nameless", square(3.0)),
-    ])
+    nameless = square(3.0)
+    first_time = datetime.datetime(2026, 8, 5, tzinfo=datetime.UTC)
+    second_time = datetime.datetime(2026, 8, 6, tzinfo=datetime.UTC)
+    perimeters = geometry_frame(
+        [
+            ("id-a", "Bug", first),
+            ("id-a", "Bug", second),
+            (None, "Nameless", nameless),
+        ],
+        observation_times=[first_time, second_time, None],
+    )
     by_identifier, by_name = peri_scribe.kml.perimeter_groups(perimeters)
-    assert by_identifier == {"id-a": [first, second]}
-    assert list(by_name) == ["Nameless"]
+    assert by_identifier == {
+        "id-a": [
+            perimeter_with_time(first, first_time),
+            perimeter_with_time(second, second_time),
+        ],
+    }
+    assert by_name == {
+        "Nameless": [perimeter_with_time(nameless, None)],
+    }
 
 
 def test_point_locations_keep_last_point_per_fire() -> None:
@@ -455,7 +496,10 @@ def test_fire_point_returns_none_when_identifier_missing() -> None:
 
 
 def test_fire_perimeters_matches_identifier() -> None:
-    perimeters = (square(1.0), square(2.0))
+    perimeters = (
+        perimeter_with_time(square(1.0)),
+        perimeter_with_time(square(2.0)),
+    )
     result = peri_scribe.kml.fire_perimeters(
         frozenset({"id-a"}),
         "Bug",
@@ -466,7 +510,7 @@ def test_fire_perimeters_matches_identifier() -> None:
 
 
 def test_fire_perimeters_falls_back_to_name() -> None:
-    perimeters = (square(1.0),)
+    perimeters = (perimeter_with_time(square(1.0)),)
     result = peri_scribe.kml.fire_perimeters(
         frozenset(),
         "Bug",
@@ -507,10 +551,10 @@ def test_fire_geometries_matches_aliases_and_sorts_by_name() -> None:
     bug, sorrento = fires
     assert bug.status is peri_scribe.models.FireStatus.INACTIVE
     assert bug.point is bug_point
-    assert bug.perimeters == (square(1.0),)
+    assert bug.perimeters == (perimeter_with_time(square(1.0)),)
     assert sorrento.status is peri_scribe.models.FireStatus.ACTIVE
     assert sorrento.point == sorrento_perimeter.representative_point()
-    assert sorrento.perimeters == (sorrento_perimeter,)
+    assert sorrento.perimeters == (perimeter_with_time(sorrento_perimeter),)
 
 
 def test_fire_point_location_uses_known_point() -> None:
@@ -520,7 +564,7 @@ def test_fire_point_location_uses_known_point() -> None:
         "Bug",
         {"id-a": point},
         {},
-        (square(2.0),),
+        (perimeter_with_time(square(2.0)),),
     )
     assert result is point
 
@@ -533,7 +577,10 @@ def test_fire_point_location_derives_point_from_latest_perimeter() -> None:
         "Bug",
         {},
         {},
-        (earlier, latest),
+        (
+            perimeter_with_time(earlier),
+            perimeter_with_time(latest),
+        ),
     )
     assert result == latest.representative_point()
 
@@ -564,7 +611,7 @@ def test_fire_geometries_derives_point_for_inactive_fire_without_location() -> N
     (fire,) = fires
     assert fire.status is peri_scribe.models.FireStatus.INACTIVE
     assert fire.point == perimeter.representative_point()
-    assert fire.perimeters == (perimeter,)
+    assert fire.perimeters == (perimeter_with_time(perimeter),)
 
 
 def test_fire_geometries_sorts_by_case_folded_name() -> None:
@@ -731,15 +778,46 @@ def test_perimeter_placemark_names_and_styles_polygon() -> None:
     kml = simplekml.Kml()
     peri_scribe.kml.perimeter_placemark(
         kml.document,
-        "Latest Area",
+        "Interior",
         "#perimeter-fill",
         square(1.0),
         0,
     )
-    placemark = placemark_named(document_from(kml.kml()), "Latest Area")
+    placemark = placemark_named(document_from(kml.kml()), "Interior")
     assert placemark_style_url(placemark) == "#perimeter-fill"
     assert placemark.find(kml_tag("Polygon")) is not None
     assert draw_order(placemark) == 0
+
+
+def test_time_label_returns_none_without_observation_time() -> None:
+    assert peri_scribe.kml.time_label(None) is None
+
+
+def test_time_label_formats_california_time() -> None:
+    observation_time = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.time_label(observation_time) == "08-05 01:30 pm"
+
+
+def test_interior_placemark_name_without_observation_time() -> None:
+    assert peri_scribe.kml.interior_placemark_name(None) == "Interior"
+
+
+def test_interior_placemark_name_with_observation_time() -> None:
+    observation_time = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.interior_placemark_name(observation_time) == (
+        "08-05 01:30 pm Interior"
+    )
+
+
+def test_mapping_placemark_name_without_observation_time() -> None:
+    assert peri_scribe.kml.mapping_placemark_name(None) == "Unknown Mapping"
+
+
+def test_mapping_placemark_name_with_observation_time() -> None:
+    observation_time = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.mapping_placemark_name(observation_time) == (
+        "08-05 01:30 pm Mapping"
+    )
 
 
 @pytest.fixture
@@ -753,40 +831,47 @@ def test_fire_folder_includes_point_and_progression(
     style_urls: dict[str, str],
 ) -> None:
     point = shapely.geometry.Point(1.0, 1.0)
+    antepenultimate_time = datetime.datetime(2026, 8, 3, 23, 0, tzinfo=datetime.UTC)
+    penultimate_time = datetime.datetime(2026, 8, 4, 16, 15, tzinfo=datetime.UTC)
+    latest_time = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
     fire = peri_scribe.kml.FireGeometry(
         name="Bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
         point=point,
-        perimeters=(square(1.0), square(2.0), square(3.0)),
+        perimeters=(
+            perimeter_with_time(square(1.0), antepenultimate_time),
+            perimeter_with_time(square(2.0), penultimate_time),
+            perimeter_with_time(square(3.0), latest_time),
+        ),
     )
     kml = simplekml.Kml()
     peri_scribe.kml.fire_folder(kml.document, fire, style_urls)
     folder = folder_named(document_from(kml.kml()), "Bug")
     assert placemark_names(folder) == [
         "Bug",
-        "Latest Area",
-        "Latest Outline",
-        "Penultimate Outline",
-        "Antepenultimate Outline",
+        "08-05 01:30 pm Interior",
+        "08-05 01:30 pm Mapping",
+        "08-04 09:15 am Mapping",
+        "08-03 04:00 pm Mapping",
     ]
     assert placemark_style_url(placemark_named(folder, "Bug")) == "#point-icon"
     assert placemark_style_url(
-        placemark_named(folder, "Latest Area"),
+        placemark_named(folder, "08-05 01:30 pm Interior"),
     ) == "#perimeter-fill"
     assert {
         name: draw_order(placemark_named(folder, name))
         for name in (
-            "Latest Area",
-            "Latest Outline",
-            "Penultimate Outline",
-            "Antepenultimate Outline",
+            "08-05 01:30 pm Interior",
+            "08-05 01:30 pm Mapping",
+            "08-04 09:15 am Mapping",
+            "08-03 04:00 pm Mapping",
             "Bug",
         )
     } == {
-        "Latest Area": 0,
-        "Antepenultimate Outline": 1,
-        "Penultimate Outline": 2,
-        "Latest Outline": 3,
+        "08-05 01:30 pm Interior": 0,
+        "08-03 04:00 pm Mapping": 1,
+        "08-04 09:15 am Mapping": 2,
+        "08-05 01:30 pm Mapping": 3,
         "Bug": 4,
     }
 
@@ -798,18 +883,18 @@ def test_fire_folder_shows_only_available_perimeters(
         name="Bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
         point=shapely.geometry.Point(1.0, 1.0),
-        perimeters=(square(1.0),),
+        perimeters=(perimeter_with_time(square(1.0)),),
     )
     kml = simplekml.Kml()
     peri_scribe.kml.fire_folder(kml.document, fire, style_urls)
     folder = folder_named(document_from(kml.kml()), "Bug")
-    assert placemark_names(folder) == ["Bug", "Latest Area", "Latest Outline"]
+    assert placemark_names(folder) == ["Bug", "Interior", "Unknown Mapping"]
     assert {
         name: draw_order(placemark_named(folder, name))
-        for name in ("Latest Area", "Latest Outline", "Bug")
+        for name in ("Interior", "Unknown Mapping", "Bug")
     } == {
-        "Latest Area": 0,
-        "Latest Outline": 1,
+        "Interior": 0,
+        "Unknown Mapping": 1,
         "Bug": 2,
     }
 
@@ -901,10 +986,10 @@ def test_placemark_style_urls_descends_into_folders() -> None:
     document = document_from(peri_scribe.kml_template.template_kml())
     urls = peri_scribe.kml.placemark_style_urls(document)
     assert urls["Point Location"] == "#point-icon"
-    assert urls["Latest Area"] == "#perimeter-fill"
-    assert urls["Latest Outline"] == "#perimeter-outline-1"
-    assert urls["Penultimate Outline"] == "#perimeter-outline-2"
-    assert urls["Antepenultimate Outline"] == "#perimeter-outline-3"
+    assert urls["Interior"] == "#perimeter-fill"
+    assert urls["Latest Mapping"] == "#perimeter-outline-1"
+    assert urls["Penultimate Mapping"] == "#perimeter-outline-2"
+    assert urls["Antepenultimate Mapping"] == "#perimeter-outline-3"
 
 
 def test_collect_placemark_style_urls_skips_placemarks_without_style() -> None:
@@ -974,11 +1059,18 @@ def test_fire_kml_builds_active_and_inactive_folders() -> None:
         fire_index_entry("Bug", "active", identifier="id-bug"),
         fire_index_entry("ALTA", "inactive", identifier="id-alta"),
     ])
-    perimeters = geometry_frame([
-        ("id-bug", "Bug", square(1.0)),
-        ("id-bug", "Bug", square(2.0)),
-        ("id-bug", "Bug", square(3.0)),
-    ])
+    perimeters = geometry_frame(
+        [
+            ("id-bug", "Bug", square(1.0)),
+            ("id-bug", "Bug", square(2.0)),
+            ("id-bug", "Bug", square(3.0)),
+        ],
+        observation_times=[
+            datetime.datetime(2026, 8, 3, 23, 0, tzinfo=datetime.UTC),
+            datetime.datetime(2026, 8, 4, 16, 15, tzinfo=datetime.UTC),
+            datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC),
+        ],
+    )
     points = geometry_frame([
         ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
         ("id-alta", "ALTA", shapely.geometry.Point(2.0, 2.0)),
@@ -998,10 +1090,10 @@ def test_fire_kml_builds_active_and_inactive_folders() -> None:
     bug_folder = folder_named(active_perimeters, "Bug")
     assert placemark_names(bug_folder) == [
         "Bug",
-        "Latest Area",
-        "Latest Outline",
-        "Penultimate Outline",
-        "Antepenultimate Outline",
+        "08-05 01:30 pm Interior",
+        "08-05 01:30 pm Mapping",
+        "08-04 09:15 am Mapping",
+        "08-03 04:00 pm Mapping",
     ]
     inactive = folder_named(document, "Inactive Fires")
     inactive_perimeters = folder_named(
@@ -1043,8 +1135,8 @@ def test_fire_kml_shows_derived_point_for_inactive_fire_without_location() -> No
     alta_folder = folder_named(perimeters_folder, "ALTA")
     assert placemark_names(alta_folder) == [
         "ALTA",
-        "Latest Area",
-        "Latest Outline",
+        "Interior",
+        "Unknown Mapping",
     ]
     assert placemark_style_url(placemark_named(alta_folder, "ALTA")) == "#point-icon"
 
