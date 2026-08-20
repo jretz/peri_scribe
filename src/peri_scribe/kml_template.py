@@ -275,13 +275,19 @@ def set_draw_order(
 
     simplekml exposes gx:drawOrder only on LineString, but every geometry
     serializes from the same internal element map, so the tag is set there for
-    points, polygons, and multi-geometries alike.
+    points and polygons alike. A multi-geometry carries no draw order of its
+    own: the order goes on each geometry it contains, because Google Earth
+    ignores the tag on the MultiGeometry element itself.
 
     Args:
         geometry: The geometry to order.
         draw_order: Lower values draw first, underneath later features.
     """
-    geometry._kml["gx:drawOrder"] = draw_order  # ruff: ignore[private-member-access]
+    if isinstance(geometry, simplekml.MultiGeometry):
+        for contained_geometry in geometry._geometries:  # ruff: ignore[private-member-access]
+            set_draw_order(contained_geometry, draw_order)
+    else:
+        geometry._kml["gx:drawOrder"] = draw_order  # ruff: ignore[private-member-access]
 
 
 def outline_draw_order(outline_count: int, newest_first_index: int) -> int:

@@ -208,6 +208,9 @@ def placemark_style_url(placemark: ET.Element) -> str:
 def draw_order(placemark: ET.Element) -> int:
     """Return the gx:drawOrder of *placemark*'s geometry.
 
+    A multi-geometry's order is set on each geometry it contains rather than on
+    the multi-geometry itself, so the order is read from the first polygon.
+
     Args:
         placemark: The placemark to inspect.
 
@@ -215,11 +218,16 @@ def draw_order(placemark: ET.Element) -> int:
         The geometry's draw order.
     """
     for child in placemark:
-        if child.tag in {
-            kml_tag("Point"),
-            kml_tag("Polygon"),
-            kml_tag("MultiGeometry"),
-        }:
+        if child.tag == kml_tag("MultiGeometry"):
+            for polygon in child:
+                if polygon.tag != kml_tag("Polygon"):
+                    continue
+                text = polygon.findtext(gx_tag("drawOrder"))
+                if text is None:
+                    pytest.fail("MultiGeometry polygon has no gx:drawOrder")
+                return int(text)
+            pytest.fail("MultiGeometry has no polygons")
+        if child.tag in {kml_tag("Point"), kml_tag("Polygon")}:
             text = child.findtext(gx_tag("drawOrder"))
             if text is None:
                 pytest.fail("Placemark has no gx:drawOrder")
@@ -561,18 +569,39 @@ def test_polygon_geometry_includes_holes() -> None:
     assert draw_order(placemark) == 0
 
 
+def polygon_draw_orders(multi_geometry: ET.Element) -> list[int]:
+    """Return the gx:drawOrder of each polygon in *multi_geometry*.
+
+    Args:
+        multi_geometry: The MultiGeometry element to inspect.
+
+    Returns:
+        The polygons' draw orders, in order.
+    """
+    orders: list[int] = []
+    for polygon in multi_geometry:
+        if polygon.tag != kml_tag("Polygon"):
+            continue
+        text = polygon.findtext(gx_tag("drawOrder"))
+        if text is None:
+            pytest.fail("MultiGeometry polygon has no gx:drawOrder")
+        orders.append(int(text))
+    return orders
+
+
 def test_multi_polygon_geometry_holds_each_polygon() -> None:
     multi_polygon = shapely.geometry.MultiPolygon([
         shapely.geometry.box(0.0, 0.0, 1.0, 1.0),
         shapely.geometry.box(2.0, 2.0, 3.0, 3.0),
     ])
+    expected_draw_order = 2
     kml = simplekml.Kml()
     peri_scribe.kml.multi_polygon_geometry(
         kml.document,
         "Bug",
         "#perimeter-fill",
         multi_polygon,
-        0,
+        expected_draw_order,
     )
     placemark = placemark_named(document_from(kml.kml()), "Bug")
     geometry = placemark.find(kml_tag("MultiGeometry"))
@@ -582,7 +611,12 @@ def test_multi_polygon_geometry_holds_each_polygon() -> None:
         child for child in geometry if child.tag == kml_tag("Polygon")
     ]
     assert len(polygons) == len(multi_polygon.geoms)
-    assert draw_order(placemark) == 0
+    assert geometry.find(gx_tag("drawOrder")) is None
+    assert polygon_draw_orders(geometry) == [
+        expected_draw_order,
+        expected_draw_order,
+    ]
+    assert draw_order(placemark) == expected_draw_order
 
 
 def test_perimeter_geometry_converts_polygon() -> None:
@@ -601,17 +635,25 @@ def test_perimeter_geometry_converts_polygon() -> None:
 
 def test_perimeter_geometry_converts_multi_polygon() -> None:
     multi_polygon = shapely.geometry.MultiPolygon([square(1.0), square(2.0)])
+    expected_draw_order = 5
     kml = simplekml.Kml()
     peri_scribe.kml.perimeter_geometry(
         kml.document,
         "Bug",
         "#perimeter-fill",
         multi_polygon,
-        0,
+        expected_draw_order,
     )
     placemark = placemark_named(document_from(kml.kml()), "Bug")
-    assert placemark.find(kml_tag("MultiGeometry")) is not None
-    assert draw_order(placemark) == 0
+    geometry = placemark.find(kml_tag("MultiGeometry"))
+    if geometry is None:
+        pytest.fail("Placemark has no MultiGeometry")
+    assert geometry.find(gx_tag("drawOrder")) is None
+    assert polygon_draw_orders(geometry) == [
+        expected_draw_order,
+        expected_draw_order,
+    ]
+    assert draw_order(placemark) == expected_draw_order
 
 
 def test_point_placemark_names_and_styles_point() -> None:
