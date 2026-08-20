@@ -229,6 +229,45 @@ def fire_point(
     return None
 
 
+def fire_point_location(
+    fire_identifiers: frozenset[str],
+    entry_name: str,
+    point_by_identifier: dict[str, shapely.Point],
+    point_by_name: dict[str, shapely.Point],
+    perimeters: tuple[shapely.Geometry, ...],
+) -> shapely.Point | None:
+    """Return the point location to show for one fire, or None.
+
+    The last known point location is used when the fire has one. A fire without a
+    known location falls back to a representative point of its latest perimeter,
+    because its icon still needs somewhere to draw. The point source drops
+    inactive fires while their perimeters remain available, so this fallback
+    keeps their icons in the output.
+
+    Args:
+        fire_identifiers: The fire's identifiers.
+        entry_name: The fire's name.
+        point_by_identifier: Points keyed by identifier.
+        point_by_name: Points keyed by name.
+        perimeters: The fire's perimeters in chronological order.
+
+    Returns:
+        The fire's point location, or None when it has neither a known location
+        nor any perimeter to derive one from.
+    """
+    point = fire_point(
+        fire_identifiers,
+        entry_name,
+        point_by_identifier,
+        point_by_name,
+    )
+    if point is not None:
+        return point
+    if perimeters:
+        return perimeters[-1].representative_point()
+    return None
+
+
 def fire_perimeters(
     fire_identifiers: frozenset[str],
     entry_name: str,
@@ -261,6 +300,9 @@ def fire_geometries(
 ) -> list[FireGeometry]:
     """Return each indexed fire's geometry, sorted by case-folded name.
 
+    Each fire's point is its last known location, or a representative point of its
+    latest perimeter when no location is known.
+
     Args:
         index: The fire index that names each fire and its status.
         perimeters: The perimeter history layer.
@@ -274,22 +316,24 @@ def fire_geometries(
     fires: list[FireGeometry] = []
     for entry in index.fires:
         fire_identifiers = identifiers(entry)
+        perimeter_geometries = fire_perimeters(
+            fire_identifiers,
+            entry.name,
+            perimeter_by_identifier,
+            perimeter_by_name,
+        )
         fires.append(
             FireGeometry(
                 name=entry.name,
                 status=peri_scribe.models.FireStatus(entry.status),
-                point=fire_point(
+                point=fire_point_location(
                     fire_identifiers,
                     entry.name,
                     point_by_identifier,
                     point_by_name,
+                    perimeter_geometries,
                 ),
-                perimeters=fire_perimeters(
-                    fire_identifiers,
-                    entry.name,
-                    perimeter_by_identifier,
-                    perimeter_by_name,
-                ),
+                perimeters=perimeter_geometries,
             ),
         )
     return sorted(fires, key=lambda fire: fire.name.casefold())

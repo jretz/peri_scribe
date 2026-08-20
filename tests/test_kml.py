@@ -509,8 +509,62 @@ def test_fire_geometries_matches_aliases_and_sorts_by_name() -> None:
     assert bug.point is bug_point
     assert bug.perimeters == (square(1.0),)
     assert sorrento.status is peri_scribe.models.FireStatus.ACTIVE
-    assert sorrento.point is None
+    assert sorrento.point == sorrento_perimeter.representative_point()
     assert sorrento.perimeters == (sorrento_perimeter,)
+
+
+def test_fire_point_location_uses_known_point() -> None:
+    point = shapely.geometry.Point(1.0, 1.0)
+    result = peri_scribe.kml.fire_point_location(
+        frozenset({"id-a"}),
+        "Bug",
+        {"id-a": point},
+        {},
+        (square(2.0),),
+    )
+    assert result is point
+
+
+def test_fire_point_location_derives_point_from_latest_perimeter() -> None:
+    earlier = square(1.0)
+    latest = square(2.0)
+    result = peri_scribe.kml.fire_point_location(
+        frozenset({"id-a"}),
+        "Bug",
+        {},
+        {},
+        (earlier, latest),
+    )
+    assert result == latest.representative_point()
+
+
+def test_fire_point_location_returns_none_without_geometry() -> None:
+    assert (
+        peri_scribe.kml.fire_point_location(
+            frozenset({"id-a"}),
+            "Bug",
+            {},
+            {},
+            (),
+        )
+        is None
+    )
+
+
+def test_fire_geometries_derives_point_for_inactive_fire_without_location() -> None:
+    index = fire_index([
+        fire_index_entry("ALTA", "inactive", identifier="id-alta"),
+    ])
+    perimeter = square(2.0)
+    fires = peri_scribe.kml.fire_geometries(
+        index,
+        geometry_frame([("id-alta", "ALTA", perimeter)]),
+        geometry_frame([]),
+    )
+    (fire,) = fires
+    assert fire.status is peri_scribe.models.FireStatus.INACTIVE
+    assert fire.point == perimeter.representative_point()
+    assert fire.perimeters == (perimeter,)
 
 
 def test_fire_geometries_sorts_by_case_folded_name() -> None:
@@ -966,6 +1020,33 @@ def test_fire_kml_builds_active_and_inactive_folders() -> None:
     assert "point-icon" in style_ids
     assert "perimeter-fill" in style_ids
     assert "perimeter-outline-1" in style_ids
+
+
+def test_fire_kml_shows_derived_point_for_inactive_fire_without_location() -> None:
+    index = fire_index([
+        fire_index_entry("ALTA", "inactive", identifier="id-alta"),
+    ])
+    fires = peri_scribe.kml.fire_geometries(
+        index,
+        geometry_frame([("id-alta", "ALTA", square(2.0))]),
+        geometry_frame([]),
+    )
+    template = peri_scribe.kml.template_from(
+        peri_scribe.kml_template.template_kml(),
+    )
+    document = document_from(peri_scribe.kml.fire_kml(fires, template))
+    inactive = folder_named(document, "Inactive Fires")
+    perimeters_folder = folder_named(
+        inactive,
+        peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
+    alta_folder = folder_named(perimeters_folder, "ALTA")
+    assert placemark_names(alta_folder) == [
+        "ALTA",
+        "Latest Area",
+        "Latest Outline",
+    ]
+    assert placemark_style_url(placemark_named(alta_folder, "ALTA")) == "#point-icon"
 
 
 class FakeArchive:
