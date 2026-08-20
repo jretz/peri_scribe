@@ -12,6 +12,7 @@ import peri_scribe.administrative_boundaries
 import peri_scribe.fetching
 import peri_scribe.fire_differential
 import peri_scribe.fire_index
+import peri_scribe.kml
 import peri_scribe.kml_template
 import peri_scribe.models
 import peri_scribe.output
@@ -176,7 +177,38 @@ def derive_geo_history(year_directory: pathlib.Path | None = None) -> None:
 
 
 @cli.command()
-def create_kml_template() -> None:
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Write the KML template, even if it already exists.",
+)
+def create_kml_template(*, force: bool) -> None:
     """Generate the KML template used to specify symbolization."""
-    output_path = peri_scribe.kml_template.create_template()
+    output_path = peri_scribe.kml_template.create_template(force=force)
+    if output_path is None:
+        return
     logger.info("Wrote KML template", path=output_path)
+
+
+@cli.command(
+    help=(
+        "Build the KML output for YEAR_DIRECTORY.\n\n"
+        "Reads YEAR_DIRECTORY/derived/history_of_full_geography.gpkg and writes a "
+        "compressed KMZ file to YEAR_DIRECTORY/maps. "
+        f"{year_directory_default_help()}"
+    ),
+)
+@click.argument(
+    "year_directory",
+    type=click.Path(
+        path_type=pathlib.Path,
+        exists=True,
+        file_okay=False,
+    ),
+    required=False,
+)
+def create_kml(year_directory: pathlib.Path | None = None) -> None:
+    if year_directory is None:
+        year_directory = default_year_directory()
+    output_path = peri_scribe.kml.create_kmz(year_directory)
+    logger.info("Wrote KMZ", path=output_path)

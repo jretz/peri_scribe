@@ -4,6 +4,12 @@ depends = ["venv"]
 raw_args = true
 run = "uv run --locked peri_scribe"
 
+[tasks.create-kml]
+description = "Build the KML file for the specified year"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked peri_scribe create-kml"
+
 [tasks.create-kml-template]
 description = "Generate the KML template used to specify symbolization"
 depends = ["venv"]

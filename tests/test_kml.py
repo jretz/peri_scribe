@@ -1,0 +1,752 @@
+"""Tests for peri_scribe.kml."""
+
+from __future__ import annotations
+
+import pathlib
+import typing
+import zipfile
+import zlib
+
+import fastkml
+import geopandas
+import pytest
+import shapely.geometry
+
+import peri_scribe.fire_history
+import peri_scribe.fire_index
+import peri_scribe.kml
+import peri_scribe.kml_template
+import peri_scribe.models
+
+
+YEAR = 2026
+
+
+def square(side: float) -> shapely.geometry.Polygon:
+    """Return a square of the given side, centered at the origin.
+
+    Args:
+        side: The length of each side.
+
+    Returns:
+        The square.
+    """
+    half = side / 2
+    return shapely.geometry.box(-half, -half, half, half)
+
+
+def geometry_frame(
+    rows: list[
+        tuple[str | None, str, shapely.geometry.base.BaseGeometry]
+    ],
+) -> geopandas.GeoDataFrame:
+    """Build a history GeoDataFrame from (identifier, name, geometry) rows.
+
+    Args:
+        rows: The identifier, name, and geometry of each row.
+
+    Returns:
+        The rows as a GeoDataFrame.
+    """
+    return geopandas.GeoDataFrame(
+        {
+            "fire_identifier": [
+                identifier for identifier, _name, _geometry in rows
+            ],
+            "fire_name": [name for _identifier, name, _geometry in rows],
+        },
+        geometry=[geometry for _identifier, _name, geometry in rows],
+        crs="EPSG:4326",
+    )
+
+
+def fire_index_entry(
+    name: str,
+    status: typing.Literal["active", "inactive"],
+    *,
+    identifier: str | None = None,
+    aliases: list[str] | None = None,
+) -> peri_scribe.models.FireIndexEntry:
+    """Build a fire index entry with empty paths.
+
+    Args:
+        name: The fire name.
+        status: The fire status.
+        identifier: The canonical identifier.
+        aliases: Every alias identifier.
+
+    Returns:
+        The fire index entry.
+    """
+    return peri_scribe.models.FireIndexEntry(
+        name=name,
+        status=status,
+        identifier=identifier,
+        aliases=[] if aliases is None else aliases,
+        paths=[],
+    )
+
+
+def fire_index(
+    entries: list[peri_scribe.models.FireIndexEntry],
+) -> peri_scribe.models.FireIndex:
+    """Build a fire index from *entries*.
+
+    Args:
+        entries: The fire index entries.
+
+    Returns:
+        The fire index.
+    """
+    return peri_scribe.models.FireIndex(
+        version="2026-08-18",
+        fires=entries,
+    )
+
+
+def document_from(kml_text: str) -> fastkml.Document:
+    """Parse *kml_text* and return its Document.
+
+    Args:
+        kml_text: The KML document.
+
+    Returns:
+        The document.
+    """
+    kml = fastkml.KML.from_string(kml_text)
+    return typing.cast("fastkml.Document", kml.features[0])
+
+
+def folder_named(
+    container: fastkml.Document | fastkml.Folder,
+    name: str,
+) -> fastkml.Folder:
+    for feature in container.features:
+        if isinstance(feature, fastkml.Folder) and feature.name == name:
+            return feature
+    pytest.fail(f"Folder {name!r} not found")
+
+
+def placemark_named(folder: fastkml.Folder, name: str) -> fastkml.Placemark:
+    for feature in folder.features:
+        if isinstance(feature, fastkml.Placemark) and feature.name == name:
+            return feature
+    pytest.fail(f"Placemark {name!r} not found")
+
+
+def placemark_style_url(placemark: fastkml.Placemark) -> str:
+    style_url = placemark.style_url
+    if style_url is None or style_url.url is None:
+        pytest.fail("Placemark has no styleUrl")
+    return style_url.url
+
+
+def point_coordinates(placemark: fastkml.Placemark) -> tuple[float, float]:
+    geometry = placemark.kml_geometry
+    if not isinstance(geometry, fastkml.Point):
+        pytest.fail("Placemark has no point geometry")
+    point = geometry.geometry
+    if point is None:
+        pytest.fail("Point has no coordinates")
+    return point.x, point.y
+
+
+def test_year_from_reads_directory_name() -> None:
+    assert peri_scribe.kml.year_from(pathlib.Path(f"data/{YEAR}")) == YEAR
+
+
+def test_kmz_filename_names_year() -> None:
+    assert (
+        peri_scribe.kml.kmz_filename(2026)
+        == "PeriScribe Fires 2026.kmz"
+    )
+
+
+def test_kmz_path_places_file_in_maps_directory() -> None:
+    assert peri_scribe.kml.kmz_path(pathlib.Path("data/2026")) == (
+        pathlib.Path("data/2026/maps/PeriScribe Fires 2026.kmz")
+    )
+
+
+def test_read_history_layer_reads_named_layer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = pathlib.Path("/derived/full.gpkg")
+    frame = geometry_frame([])
+    calls: list[tuple[pathlib.Path, str]] = []
+
+    def read_file(read_path: pathlib.Path, *, layer: str) -> geopandas.GeoDataFrame:
+        calls.append((read_path, layer))
+        return frame
+
+    monkeypatch.setattr(geopandas, "read_file", read_file)
+    result = peri_scribe.kml.read_history_layer(path, "perimeter_history")
+    assert result is frame
+    assert calls == [(path, "perimeter_history")]
+
+
+def test_identifiers_includes_identifier_and_aliases() -> None:
+    entry = fire_index_entry(
+        "Sorrento",
+        "active",
+        identifier="2026-casnd-150541",
+        aliases=["2026-casnd-26150541", "guid"],
+    )
+    assert peri_scribe.kml.identifiers(entry) == {
+        "2026-casnd-150541",
+        "2026-casnd-26150541",
+        "guid",
+    }
+
+
+def test_identifiers_omits_none_identifier() -> None:
+    entry = fire_index_entry("Bug", "active", identifier=None)
+    assert peri_scribe.kml.identifiers(entry) == frozenset()
+
+
+def test_perimeter_groups_keys_by_identifier_and_preserves_order() -> None:
+    first = square(1.0)
+    second = square(2.0)
+    perimeters = geometry_frame([
+        ("id-a", "Bug", first),
+        ("id-a", "Bug", second),
+        (None, "Nameless", square(3.0)),
+    ])
+    by_identifier, by_name = peri_scribe.kml.perimeter_groups(perimeters)
+    assert by_identifier == {"id-a": [first, second]}
+    assert list(by_name) == ["Nameless"]
+
+
+def test_point_locations_keep_last_point_per_fire() -> None:
+    earlier = shapely.geometry.Point(1.0, 1.0)
+    later = shapely.geometry.Point(2.0, 2.0)
+    points = geometry_frame([
+        ("id-a", "Bug", earlier),
+        ("id-a", "Bug", later),
+        (None, "Nameless", shapely.geometry.Point(3.0, 3.0)),
+    ])
+    by_identifier, by_name = peri_scribe.kml.point_locations(points)
+    assert by_identifier == {"id-a": later}
+    assert list(by_name) == ["Nameless"]
+
+
+def test_fire_point_matches_identifier() -> None:
+    point = shapely.geometry.Point(1.0, 1.0)
+    result = peri_scribe.kml.fire_point(
+        frozenset({"id-a"}),
+        "Bug",
+        {"id-a": point},
+        {},
+    )
+    assert result is point
+
+
+def test_fire_point_falls_back_to_name() -> None:
+    point = shapely.geometry.Point(1.0, 1.0)
+    result = peri_scribe.kml.fire_point(
+        frozenset(),
+        "Bug",
+        {},
+        {"Bug": point},
+    )
+    assert result is point
+
+
+def test_fire_point_returns_none_when_name_missing() -> None:
+    assert peri_scribe.kml.fire_point(frozenset(), "Bug", {}, {}) is None
+
+
+def test_fire_point_returns_none_when_identifier_missing() -> None:
+    assert peri_scribe.kml.fire_point(
+        frozenset({"id-a"}),
+        "Bug",
+        {},
+        {},
+    ) is None
+
+
+def test_fire_perimeters_matches_identifier() -> None:
+    perimeters = (square(1.0), square(2.0))
+    result = peri_scribe.kml.fire_perimeters(
+        frozenset({"id-a"}),
+        "Bug",
+        {"id-a": list(perimeters)},
+        {},
+    )
+    assert result == perimeters
+
+
+def test_fire_perimeters_falls_back_to_name() -> None:
+    perimeters = (square(1.0),)
+    result = peri_scribe.kml.fire_perimeters(
+        frozenset(),
+        "Bug",
+        {},
+        {"Bug": list(perimeters)},
+    )
+    assert result == perimeters
+
+
+def test_fire_perimeters_returns_empty_when_unknown() -> None:
+    assert peri_scribe.kml.fire_perimeters(
+        frozenset({"id-a"}),
+        "Bug",
+        {},
+        {},
+    ) == ()
+
+
+def test_fire_geometries_matches_aliases_and_sorts_by_name() -> None:
+    index = fire_index([
+        fire_index_entry(
+            "Sorrento",
+            "active",
+            identifier="2026-casnd-150541",
+            aliases=["2026-casnd-26150541"],
+        ),
+        fire_index_entry("Bug", "inactive", identifier="id-bug"),
+    ])
+    sorrento_perimeter = square(3.0)
+    perimeters = geometry_frame([
+        ("2026-casnd-26150541", "Sorrento", sorrento_perimeter),
+        ("id-bug", "Bug", square(1.0)),
+    ])
+    bug_point = shapely.geometry.Point(1.0, 1.0)
+    points = geometry_frame([("id-bug", "Bug", bug_point)])
+    fires = peri_scribe.kml.fire_geometries(index, perimeters, points)
+    assert [fire.name for fire in fires] == ["Bug", "Sorrento"]
+    bug, sorrento = fires
+    assert bug.status is peri_scribe.models.FireStatus.INACTIVE
+    assert bug.point is bug_point
+    assert bug.perimeters == (square(1.0),)
+    assert sorrento.status is peri_scribe.models.FireStatus.ACTIVE
+    assert sorrento.point is None
+    assert sorrento.perimeters == (sorrento_perimeter,)
+
+
+def test_fire_geometries_sorts_by_case_folded_name() -> None:
+    index = fire_index([
+        fire_index_entry(name, "active", identifier=f"id-{name}")
+        for name in ("aB", "Ac", "AD", "ae")
+    ])
+    fires = peri_scribe.kml.fire_geometries(
+        index,
+        geometry_frame([]),
+        geometry_frame([]),
+    )
+    assert [fire.name for fire in fires] == ["aB", "Ac", "AD", "ae"]
+
+
+def test_linear_ring_converts_coordinates() -> None:
+    ring = shapely.geometry.LinearRing([(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 0.0)])
+    result = peri_scribe.kml.linear_ring(ring)
+    geometry = result.geometry
+    assert geometry is not None
+    assert list(geometry.coords) == [
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (1.0, 1.0),
+        (0.0, 0.0),
+    ]
+
+
+def test_polygon_geometry_includes_holes() -> None:
+    polygon = shapely.geometry.Polygon(
+        [(0.0, 0.0), (0.0, 2.0), (2.0, 2.0), (2.0, 0.0), (0.0, 0.0)],
+        [[(0.5, 0.5), (0.5, 1.5), (1.5, 1.5), (1.5, 0.5), (0.5, 0.5)]],
+    )
+    result = peri_scribe.kml.polygon_geometry(polygon)
+    assert result.outer_boundary is not None
+    assert result.outer_boundary.geometry is not None
+    assert list(result.outer_boundary.geometry.coords) == [
+        (0.0, 0.0),
+        (0.0, 2.0),
+        (2.0, 2.0),
+        (2.0, 0.0),
+        (0.0, 0.0),
+    ]
+    assert len(result.inner_boundaries) == 1
+    assert result.inner_boundaries[0].geometry is not None
+    assert list(result.inner_boundaries[0].geometry.coords) == [
+        (0.5, 0.5),
+        (0.5, 1.5),
+        (1.5, 1.5),
+        (1.5, 0.5),
+        (0.5, 0.5),
+    ]
+
+
+def test_multi_polygon_geometry_holds_each_polygon() -> None:
+    multi_polygon = shapely.geometry.MultiPolygon([
+        shapely.geometry.box(0.0, 0.0, 1.0, 1.0),
+        shapely.geometry.box(2.0, 2.0, 3.0, 3.0),
+    ])
+    result = peri_scribe.kml.multi_polygon_geometry(multi_polygon)
+    assert len(result.kml_geometries) == len(multi_polygon.geoms)
+
+
+def test_perimeter_geometry_converts_polygon() -> None:
+    result = peri_scribe.kml.perimeter_geometry(square(1.0))
+    assert isinstance(result, fastkml.Polygon)
+
+
+def test_perimeter_geometry_converts_multi_polygon() -> None:
+    multi_polygon = shapely.geometry.MultiPolygon([square(1.0), square(2.0)])
+    result = peri_scribe.kml.perimeter_geometry(multi_polygon)
+    assert isinstance(result, fastkml.MultiGeometry)
+
+
+def test_point_placemark_names_and_styles_point() -> None:
+    point = shapely.geometry.Point(1.0, 2.0)
+    result = peri_scribe.kml.point_placemark("Bug", "#point-icon", point)
+    assert result.name == "Bug"
+    assert placemark_style_url(result) == "#point-icon"
+    assert point_coordinates(result) == (1.0, 2.0)
+
+
+def test_perimeter_placemark_names_and_styles_polygon() -> None:
+    result = peri_scribe.kml.perimeter_placemark(
+        "Latest Area",
+        "#perimeter-fill",
+        square(1.0),
+    )
+    assert result.name == "Latest Area"
+    assert placemark_style_url(result) == "#perimeter-fill"
+    assert isinstance(result.kml_geometry, fastkml.Polygon)
+
+
+@pytest.fixture
+def style_urls() -> dict[str, str]:
+    return peri_scribe.kml.template_from(
+        peri_scribe.kml_template.template_kml(),
+    ).style_urls
+
+
+def test_fire_folder_includes_point_and_progression(
+    style_urls: dict[str, str],
+) -> None:
+    point = shapely.geometry.Point(1.0, 1.0)
+    fire = peri_scribe.kml.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=point,
+        perimeters=(square(1.0), square(2.0), square(3.0)),
+    )
+    folder = peri_scribe.kml.fire_folder(fire, style_urls)
+    assert folder.name == "Bug"
+    assert [feature.name for feature in folder.features] == [
+        "Bug",
+        "Latest Area",
+        "Latest Outline",
+        "Penultimate Outline",
+        "Antepenultimate Outline",
+    ]
+    assert placemark_style_url(placemark_named(folder, "Bug")) == "#point-icon"
+    assert placemark_style_url(
+        placemark_named(folder, "Latest Area"),
+    ) == "#perimeter-fill"
+
+
+def test_fire_folder_shows_only_available_perimeters(
+    style_urls: dict[str, str],
+) -> None:
+    fire = peri_scribe.kml.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=shapely.geometry.Point(1.0, 1.0),
+        perimeters=(square(1.0),),
+    )
+    folder = peri_scribe.kml.fire_folder(fire, style_urls)
+    assert [feature.name for feature in folder.features] == [
+        "Bug",
+        "Latest Area",
+        "Latest Outline",
+    ]
+
+
+def test_fire_folder_without_point_or_perimeters_is_empty(
+    style_urls: dict[str, str],
+) -> None:
+    fire = peri_scribe.kml.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=None,
+        perimeters=(),
+    )
+    folder = peri_scribe.kml.fire_folder(fire, style_urls)
+    assert list(folder.features) == []
+
+
+def test_latest_perimeters_folder_names_and_holds_fires(
+    style_urls: dict[str, str],
+) -> None:
+    fires = [
+        peri_scribe.kml.FireGeometry(
+            name="Bug",
+            status=peri_scribe.models.FireStatus.ACTIVE,
+            point=None,
+            perimeters=(),
+        ),
+    ]
+    folder = peri_scribe.kml.latest_perimeters_folder(fires, style_urls)
+    assert folder.name == peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME
+    assert [feature.name for feature in folder.features] == ["Bug"]
+
+
+def test_status_folder_name_for_active() -> None:
+    assert (
+        peri_scribe.kml.status_folder_name(
+            peri_scribe.models.FireStatus.ACTIVE,
+        )
+        == "Active Fires"
+    )
+
+
+def test_status_folder_name_for_inactive() -> None:
+    assert (
+        peri_scribe.kml.status_folder_name(
+            peri_scribe.models.FireStatus.INACTIVE,
+        )
+        == "Inactive Fires"
+    )
+
+
+def test_status_folder_filters_by_status(style_urls: dict[str, str]) -> None:
+    active = peri_scribe.kml.FireGeometry(
+        name="Active Fire",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=None,
+        perimeters=(),
+    )
+    inactive = peri_scribe.kml.FireGeometry(
+        name="Inactive Fire",
+        status=peri_scribe.models.FireStatus.INACTIVE,
+        point=None,
+        perimeters=(),
+    )
+    folder = peri_scribe.kml.status_folder(
+        [active, inactive],
+        peri_scribe.models.FireStatus.ACTIVE,
+        style_urls,
+    )
+    assert folder.name == "Active Fires"
+    perimeters_folder = folder_named(
+        folder,
+        peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
+    assert [feature.name for feature in perimeters_folder.features] == ["Active Fire"]
+
+
+def test_placemark_style_urls_descends_into_folders() -> None:
+    document = document_from(peri_scribe.kml_template.template_kml())
+    urls = peri_scribe.kml.placemark_style_urls(document)
+    assert urls["Point Location"] == "#point-icon"
+    assert urls["Latest Area"] == "#perimeter-fill"
+    assert urls["Latest Outline"] == "#perimeter-outline-1"
+    assert urls["Penultimate Outline"] == "#perimeter-outline-2"
+    assert urls["Antepenultimate Outline"] == "#perimeter-outline-3"
+
+
+def test_collect_placemark_style_urls_skips_placemarks_without_style() -> None:
+    folder = fastkml.Folder(name="Folder")
+    folder.append(fastkml.Placemark(name="Unstyled", kml_geometry=fastkml.Point()))
+    folder.append(fastkml.Placemark(name=None, kml_geometry=fastkml.Point()))
+    urls: dict[str, str] = {}
+    peri_scribe.kml.collect_placemark_style_urls([folder], urls)
+    assert urls == {}
+
+
+def test_template_from_collects_styles_and_style_urls() -> None:
+    template = peri_scribe.kml.template_from(
+        peri_scribe.kml_template.template_kml(),
+    )
+    assert [style.id for style in template.styles] == [
+        "point-icon",
+        "perimeter-fill",
+        "perimeter-outline-1",
+        "perimeter-outline-2",
+        "perimeter-outline-3",
+        "days-fill-1",
+        "days-fill-2",
+        "days-fill-3",
+        "days-fill-4",
+        "days-fill-5",
+        "days-fill-6",
+        "days-fill-7",
+        "days-fill-8",
+    ]
+    assert template.style_urls["Point Location"] == "#point-icon"
+
+
+def test_read_template_reads_file(monkeypatch: pytest.MonkeyPatch) -> None:
+    text = peri_scribe.kml_template.template_kml()
+
+    def read_text(_self: pathlib.Path, encoding: str) -> str:
+        assert encoding == "utf-8"
+        return text
+
+    monkeypatch.setattr(pathlib.Path, "read_text", read_text)
+    template = peri_scribe.kml.read_template(
+        pathlib.Path("/templates/PeriScribe Template.kml"),
+    )
+    assert template.style_urls == peri_scribe.kml.template_from(text).style_urls
+
+
+def test_fire_kml_builds_active_and_inactive_folders() -> None:
+    index = fire_index([
+        fire_index_entry("Bug", "active", identifier="id-bug"),
+        fire_index_entry("ALTA", "inactive", identifier="id-alta"),
+    ])
+    perimeters = geometry_frame([
+        ("id-bug", "Bug", square(1.0)),
+        ("id-bug", "Bug", square(2.0)),
+        ("id-bug", "Bug", square(3.0)),
+    ])
+    points = geometry_frame([
+        ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
+        ("id-alta", "ALTA", shapely.geometry.Point(2.0, 2.0)),
+    ])
+    fires = peri_scribe.kml.fire_geometries(index, perimeters, points)
+    template = peri_scribe.kml.template_from(
+        peri_scribe.kml_template.template_kml(),
+    )
+    document = document_from(peri_scribe.kml.fire_kml(fires, template))
+
+    assert [feature.name for feature in document.features] == [
+        "Active Fires",
+        "Inactive Fires",
+    ]
+    active = folder_named(document, "Active Fires")
+    active_perimeters = folder_named(
+        active,
+        peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
+    bug_folder = folder_named(active_perimeters, "Bug")
+    assert [feature.name for feature in bug_folder.features] == [
+        "Bug",
+        "Latest Area",
+        "Latest Outline",
+        "Penultimate Outline",
+        "Antepenultimate Outline",
+    ]
+    inactive = folder_named(document, "Inactive Fires")
+    inactive_perimeters = folder_named(
+        inactive,
+        peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
+    alta_folder = folder_named(inactive_perimeters, "ALTA")
+    assert [feature.name for feature in alta_folder.features] == ["ALTA"]
+
+    style_ids = {style.id for style in document.styles}
+    assert "point-icon" in style_ids
+    assert "perimeter-fill" in style_ids
+    assert "perimeter-outline-1" in style_ids
+
+
+class FakeArchive:
+    """In-memory zip archive stand-in that records its writes."""
+
+    def __init__(self, *arguments: object, **keywords: object) -> None:
+        self.arguments = arguments
+        self.keywords = keywords
+        self.writes: list[tuple[str, str]] = []
+
+    def __enter__(self) -> typing.Self:
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: object,
+        _exc_value: object,
+        _traceback: object,
+    ) -> None:
+        return None
+
+    def writestr(self, name: str, text: str) -> None:
+        self.writes.append((name, text))
+
+
+def test_write_kmz_writes_compressed_document(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = pathlib.Path("/maps/PeriScribe Fires 2026.kmz")
+    made_directories: list[pathlib.Path] = []
+    archives: list[FakeArchive] = []
+
+    def fake_zipfile(
+        *arguments: object,
+        **keywords: object,
+    ) -> FakeArchive:
+        archive = FakeArchive(*arguments, **keywords)
+        archives.append(archive)
+        return archive
+
+    monkeypatch.setattr(
+        pathlib.Path,
+        "mkdir",
+        lambda _self, **_keywords: made_directories.append(_self),
+    )
+    monkeypatch.setattr(zipfile, "ZipFile", fake_zipfile)
+
+    peri_scribe.kml.write_kmz(path, "<kml/>")
+
+    assert made_directories == [pathlib.Path("/maps")]
+    assert len(archives) == 1
+    archive = archives[0]
+    assert archive.arguments == (path, "w")
+    assert archive.keywords["compression"] == zipfile.ZIP_DEFLATED
+    assert archive.keywords["compresslevel"] == zlib.Z_BEST_COMPRESSION
+    assert archive.writes == [("doc.kml", "<kml/>")]
+
+
+def test_create_kmz_reads_history_and_writes_kmz(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    year_directory = pathlib.Path("data/2026")
+    index = fire_index([
+        fire_index_entry("Bug", "active", identifier="id-bug"),
+    ])
+    monkeypatch.setattr(
+        peri_scribe.fire_index,
+        "load_fire_index",
+        lambda _directory: index,
+    )
+    monkeypatch.setattr(
+        peri_scribe.fire_history,
+        "history_geopackage_path",
+        lambda _directory: pathlib.Path("/derived/full.gpkg"),
+    )
+    perimeters = geometry_frame([("id-bug", "Bug", square(1.0))])
+    points = geometry_frame([
+        ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
+    ])
+
+    def read_layer(
+        _path: pathlib.Path,
+        layer_name: str,
+    ) -> geopandas.GeoDataFrame:
+        return perimeters if layer_name == "perimeter_history" else points
+
+    monkeypatch.setattr(peri_scribe.kml, "read_history_layer", read_layer)
+    template = peri_scribe.kml.template_from(
+        peri_scribe.kml_template.template_kml(),
+    )
+    monkeypatch.setattr(
+        peri_scribe.kml,
+        "read_template",
+        lambda _path: template,
+    )
+    writes: list[tuple[pathlib.Path, str]] = []
+    monkeypatch.setattr(
+        peri_scribe.kml,
+        "write_kmz",
+        lambda path, kml_text: writes.append((path, kml_text)),
+    )
+
+    result = peri_scribe.kml.create_kmz(year_directory)
+
+    assert result == peri_scribe.kml.kmz_path(year_directory)
+    assert len(writes) == 1
+    path, kml_text = writes[0]
+    assert path == result
+    assert "Active Fires" in kml_text

@@ -24,6 +24,7 @@
         "NAVD",
         "NIFC",
         "numprocesses",
+        "placemark",
         "pydantic",
         "pygments",
         "pyproj",

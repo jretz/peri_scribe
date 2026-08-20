@@ -178,7 +178,7 @@ def test_template_path_returns_data_templates_file() -> None:
     assert peri_scribe.kml_template.template_path() == pathlib.Path(
         "data",
         "templates",
-        "new_template.kml",
+        "PeriScribe Template.kml",
     )
 
 
@@ -251,18 +251,21 @@ def test_template_kml_has_two_top_level_folders(document: fastkml.Document) -> N
         if isinstance(feature, fastkml.Folder)
     ]
     assert names == [
-        "Filled Perimeter w/ Progression Outlines",
-        "Progression Map",
+        peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
+        "Perimeter Progression Maps",
     ]
 
 
 def test_template_kml_filled_perimeter_folder(document: fastkml.Document) -> None:
-    filled = folder_named(document, "Filled Perimeter w/ Progression Outlines")
+    filled = folder_named(
+        document,
+        peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
 
     point = placemark_named(filled, "Point Location")
     assert placemark_style_url(point) == "#point-icon"
 
-    fill = placemark_named(filled, "perimeter[-1] Fill")
+    fill = placemark_named(filled, "Latest Area")
     assert placemark_style_url(fill) == "#perimeter-fill"
     assert interior_coordinates(fill) == []
     fill_style = style_with_id(document, "perimeter-fill")
@@ -271,20 +274,20 @@ def test_template_kml_filled_perimeter_folder(document: fastkml.Document) -> Non
     assert fill_poly_style.fill is True
     assert fill_poly_style.outline is False
 
-    outline_folder = folder_named(filled, "Progression Outlines")
     outline_placemarks = [
         feature
-        for feature in outline_folder.features
+        for feature in filled.features
         if isinstance(feature, fastkml.Placemark)
+        and feature.name not in {"Point Location", "Latest Area"}
     ]
     expected_colors = {
-        "perimeter[-1] Outline": "ff0000ff",
-        "perimeter[-2] Outline": "ff00ffff",
-        "perimeter[-3] Outline": "ffffffff",
+        "Latest Outline": "ff0000ff",
+        "Penultimate Outline": "ff00ffff",
+        "Antepenultimate Outline": "ffffffff",
     }
     assert len(outline_placemarks) == len(expected_colors)
     for name, color in expected_colors.items():
-        outline_placemark = placemark_named(outline_folder, name)
+        outline_placemark = placemark_named(filled, name)
         style_id = placemark_style_url(outline_placemark).removeprefix("#")
         outline_style = style_with_id(document, style_id)
         line_style = line_style_of(outline_style)
@@ -296,21 +299,44 @@ def test_template_kml_filled_perimeter_folder(document: fastkml.Document) -> Non
         assert outline_poly_style.outline is True
 
 
+def test_template_kml_filled_perimeter_orders_placemarks(
+    document: fastkml.Document,
+) -> None:
+    filled = folder_named(
+        document,
+        peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
+    placemark_names = [
+        feature.name
+        for feature in filled.features
+        if isinstance(feature, fastkml.Placemark)
+    ]
+    assert placemark_names == [
+        "Point Location",
+        "Latest Area",
+        "Latest Outline",
+        "Penultimate Outline",
+        "Antepenultimate Outline",
+    ]
+
+
 def test_template_kml_filled_perimeter_geometry_is_two_kilometers_due_west(
     document: fastkml.Document,
 ) -> None:
-    filled = folder_named(document, "Filled Perimeter w/ Progression Outlines")
+    filled = folder_named(
+        document,
+        peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
 
     point = placemark_named(filled, "Point Location")
     point_longitude, point_latitude = point_coordinates(point)
     assert_two_kilometers_due_west(point_longitude, point_latitude)
 
-    fill = placemark_named(filled, "perimeter[-1] Fill")
-    outline_folder = folder_named(filled, "Progression Outlines")
+    fill = placemark_named(filled, "Latest Area")
     polygons = [
         fill,
         *[
-            placemark_named(outline_folder, template.name)
+            placemark_named(filled, template.name)
             for template in peri_scribe.kml_template.OUTLINED_PERIMETER_TEMPLATES
         ],
     ]
@@ -323,7 +349,7 @@ def test_template_kml_filled_perimeter_geometry_is_two_kilometers_due_west(
 
 
 def test_template_kml_progression_map_folder(document: fastkml.Document) -> None:
-    progression = folder_named(document, "Progression Map")
+    progression = folder_named(document, "Perimeter Progression Maps")
 
     point = placemark_named(progression, "Point Location")
     assert placemark_style_url(point) == "#point-icon"
@@ -334,14 +360,14 @@ def test_template_kml_progression_map_folder(document: fastkml.Document) -> None
         if isinstance(feature, fastkml.Placemark) and feature.name != "Point Location"
     ]
     expected_colors = {
-        "days[-1:]": "7f002aff",
-        "days[-3:-1]": "7f0073ff",
-        "days[-7:-3]": "7f00aaff",
-        "days[-15:-7]": "7f3359b3",
-        "days[-31:-15]": "7f3b476e",
-        "days[-63:-31]": "7f4a4a4a",
-        "days[-127:-63]": "7f8a827a",
-        "days[:-127]": "7fbdb7b0",
+        "Latest Day": "7f002aff",
+        "2 Days Before That": "7f0073ff",
+        "4 Days Before That": "7f00aaff",
+        "8 Days Before That": "7f3359b3",
+        "16 Days Before That": "7f3b476e",
+        "32 Days Before That": "7f4a4a4a",
+        "64 Days Before That": "7f8a827a",
+        "128+ Days Before That": "7fbdb7b0",
     }
     assert len(fill_placemarks) == len(expected_colors)
     for name, color in expected_colors.items():
@@ -357,7 +383,7 @@ def test_template_kml_progression_map_folder(document: fastkml.Document) -> None
 def test_template_kml_progression_map_geometry_stays_at_point(
     document: fastkml.Document,
 ) -> None:
-    progression = folder_named(document, "Progression Map")
+    progression = folder_named(document, "Perimeter Progression Maps")
     point = placemark_named(progression, "Point Location")
     longitude, latitude = point_coordinates(point)
     assert longitude == pytest.approx(
@@ -371,7 +397,7 @@ def test_template_kml_progression_map_geometry_stays_at_point(
 def test_template_kml_progression_map_polygons_exclude_smaller_squares(
     document: fastkml.Document,
 ) -> None:
-    progression = folder_named(document, "Progression Map")
+    progression = folder_named(document, "Perimeter Progression Maps")
     templates = peri_scribe.kml_template.PROGRESSION_FILL_TEMPLATES
     for index, template in enumerate(templates[:-1]):
         next_template = templates[index + 1]
@@ -412,7 +438,7 @@ class RecordingFile:
 def test_write_template_writes_template_kml(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    path = pathlib.Path("/templates/new_template.kml")
+    path = pathlib.Path("/templates/PeriScribe Template.kml")
     files: list[RecordingFile] = []
     made_directories: list[pathlib.Path] = []
 
@@ -448,13 +474,65 @@ def test_write_template_writes_template_kml(
 
 def test_create_template_writes_to_template_path(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
 ) -> None:
+    output_path = tmp_path / "PeriScribe Template.kml"
+    monkeypatch.setattr(
+        peri_scribe.kml_template,
+        "template_path",
+        lambda: output_path,
+    )
     writes: list[pathlib.Path] = []
     monkeypatch.setattr(
         peri_scribe.kml_template,
         "write_template",
         writes.append,
     )
-    output_path = peri_scribe.kml_template.create_template()
-    assert output_path == peri_scribe.kml_template.template_path()
+    output = peri_scribe.kml_template.create_template()
+    assert output == output_path
+    assert writes == [output_path]
+
+
+def test_create_template_refuses_to_overwrite_existing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    output_path = tmp_path / "PeriScribe Template.kml"
+    output_path.write_text("existing", encoding="utf-8")
+    monkeypatch.setattr(
+        peri_scribe.kml_template,
+        "template_path",
+        lambda: output_path,
+    )
+    writes: list[pathlib.Path] = []
+    monkeypatch.setattr(
+        peri_scribe.kml_template,
+        "write_template",
+        writes.append,
+    )
+    output = peri_scribe.kml_template.create_template()
+    assert output is None
+    assert writes == []
+    assert output_path.read_text(encoding="utf-8") == "existing"
+
+
+def test_create_template_force_overwrites_existing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    output_path = tmp_path / "PeriScribe Template.kml"
+    output_path.write_text("existing", encoding="utf-8")
+    monkeypatch.setattr(
+        peri_scribe.kml_template,
+        "template_path",
+        lambda: output_path,
+    )
+    writes: list[pathlib.Path] = []
+    monkeypatch.setattr(
+        peri_scribe.kml_template,
+        "write_template",
+        writes.append,
+    )
+    output = peri_scribe.kml_template.create_template(force=True)
+    assert output == output_path
     assert writes == [output_path]

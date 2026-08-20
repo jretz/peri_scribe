@@ -13,12 +13,16 @@ import pathlib
 
 import fastkml
 import pyproj
+import structlog
 
 import peri_scribe.output
 
 
+logger = structlog.get_logger()
+
+
 TEMPLATE_DIRECTORY = peri_scribe.output.DATA_DIRECTORY / "templates"
-TEMPLATE_FILENAME = "new_template.kml"
+TEMPLATE_FILENAME = "PeriScribe Template.kml"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -34,13 +38,17 @@ POINT_CENTER = Center(longitude=10.869791666666667, latitude=45.66499166666667)
 
 POINT_ICON_URL = "http://maps.google.com/mapfiles/kml/shapes/firedept.png"
 POINT_STYLE_ID = "point-icon"
+POINT_LOCATION_NAME = "Point Location"
 
 # Opacity and outline values shared by every perimeter style in the template.
 FILL_OPACITY_PERCENT = 50
 OUTLINE_OPACITY_PERCENT = 100
 OUTLINE_WIDTH = 1.5
 
-# The distance the "Filled Perimeter w/ Progression Outlines" folder's geometry is
+# The folder that holds each fire's point and perimeter progression outlines.
+LATEST_PERIMETERS_FOLDER_NAME = "Latest Perimeters w/ Progression Outlines"
+
+# The distance the "Latest Perimeters w/ Progression Outlines" folder's geometry is
 # centered west of the point location.
 FILLED_PERIMETER_CENTER_DISTANCE_IN_METERS = 2_000
 
@@ -57,7 +65,7 @@ class PerimeterTemplate:
 
 
 FILLED_PERIMETER_TEMPLATE = PerimeterTemplate(
-    name="perimeter[-1] Fill",
+    name="Latest Area",
     style_id="perimeter-fill",
     side_length_in_meters=800,
     color="#FF0000",
@@ -65,19 +73,19 @@ FILLED_PERIMETER_TEMPLATE = PerimeterTemplate(
 
 OUTLINED_PERIMETER_TEMPLATES = (
     PerimeterTemplate(
-        name="perimeter[-1] Outline",
+        name="Latest Outline",
         style_id="perimeter-outline-1",
         side_length_in_meters=800,
         color="#FF0000",
     ),
     PerimeterTemplate(
-        name="perimeter[-2] Outline",
+        name="Penultimate Outline",
         style_id="perimeter-outline-2",
         side_length_in_meters=700,
         color="#FFFF00",
     ),
     PerimeterTemplate(
-        name="perimeter[-3] Outline",
+        name="Antepenultimate Outline",
         style_id="perimeter-outline-3",
         side_length_in_meters=600,
         color="#FFFFFF",
@@ -88,56 +96,56 @@ OUTLINED_PERIMETER_TEMPLATES = (
 # it has a hole where the next smaller polygon sits.
 PROGRESSION_FILL_TEMPLATES = (
     PerimeterTemplate(
-        name="days[-1:]",
+        name="Latest Day",
         style_id="days-fill-1",
         side_length_in_meters=800,
         hole_side_length_in_meters=700,
         color="#FF2A00",
     ),
     PerimeterTemplate(
-        name="days[-3:-1]",
+        name="2 Days Before That",
         style_id="days-fill-2",
         side_length_in_meters=700,
         hole_side_length_in_meters=600,
         color="#FF7300",
     ),
     PerimeterTemplate(
-        name="days[-7:-3]",
+        name="4 Days Before That",
         style_id="days-fill-3",
         side_length_in_meters=600,
         hole_side_length_in_meters=500,
         color="#FFAA00",
     ),
     PerimeterTemplate(
-        name="days[-15:-7]",
+        name="8 Days Before That",
         style_id="days-fill-4",
         side_length_in_meters=500,
         hole_side_length_in_meters=400,
         color="#B35933",
     ),
     PerimeterTemplate(
-        name="days[-31:-15]",
+        name="16 Days Before That",
         style_id="days-fill-5",
         side_length_in_meters=400,
         hole_side_length_in_meters=300,
         color="#6E473B",
     ),
     PerimeterTemplate(
-        name="days[-63:-31]",
+        name="32 Days Before That",
         style_id="days-fill-6",
         side_length_in_meters=300,
         hole_side_length_in_meters=200,
         color="#4A4A4A",
     ),
     PerimeterTemplate(
-        name="days[-127:-63]",
+        name="64 Days Before That",
         style_id="days-fill-7",
         side_length_in_meters=200,
         hole_side_length_in_meters=100,
         color="#7A828A",
     ),
     PerimeterTemplate(
-        name="days[:-127]",
+        name="128+ Days Before That",
         style_id="days-fill-8",
         side_length_in_meters=100,
         color="#B0B7BD",
@@ -149,7 +157,7 @@ def template_path() -> pathlib.Path:
     """Return the path where the KML template is written.
 
     Returns:
-        The path to ``data/templates/new_template.kml``.
+        The path to ``data/templates/PeriScribe Template.kml``.
     """
     return TEMPLATE_DIRECTORY / TEMPLATE_FILENAME
 
@@ -254,16 +262,16 @@ def point_style() -> fastkml.Style:
 
 
 def point_placemark(center: Center) -> fastkml.Placemark:
-    """Return the placemark for the fictional point location at *center*.
+    """Return the placemark for a point location at *center*.
 
     Args:
         center: The point location.
 
     Returns:
-        The placemark, named "Point Location".
+        The placemark.
     """
     return fastkml.Placemark(
-        name="Point Location",
+        name=POINT_LOCATION_NAME,
         style_url=fastkml.StyleUrl(url=f"#{POINT_STYLE_ID}"),
         kml_geometry=fastkml.Point(
             kml_coordinates=fastkml.Coordinates(
@@ -382,7 +390,7 @@ def perimeter_placemark(
 
 
 def filled_perimeter_folder() -> fastkml.Folder:
-    """Return the "Filled Perimeter w/ Progression Outlines" folder.
+    """Return the "Latest Perimeters w/ Progression Outlines" folder.
 
     The folder's geometry is centered 2 km due west of the point location.
 
@@ -390,24 +398,21 @@ def filled_perimeter_folder() -> fastkml.Folder:
         The folder.
     """
     center = center_west_of(POINT_CENTER, FILLED_PERIMETER_CENTER_DISTANCE_IN_METERS)
-    folder = fastkml.Folder(name="Filled Perimeter w/ Progression Outlines")
+    folder = fastkml.Folder(name=LATEST_PERIMETERS_FOLDER_NAME)
     folder.append(point_placemark(center))
     folder.append(perimeter_placemark(FILLED_PERIMETER_TEMPLATE, center))
-
-    outline_folder = fastkml.Folder(name="Progression Outlines")
     for template in OUTLINED_PERIMETER_TEMPLATES:
-        outline_folder.append(perimeter_placemark(template, center))
-    folder.append(outline_folder)
+        folder.append(perimeter_placemark(template, center))
     return folder
 
 
 def progression_map_folder() -> fastkml.Folder:
-    """Return the "Progression Map" folder.
+    """Return the "Perimeter Progression Maps" folder.
 
     Returns:
         The folder.
     """
-    folder = fastkml.Folder(name="Progression Map")
+    folder = fastkml.Folder(name="Perimeter Progression Maps")
     folder.append(point_placemark(POINT_CENTER))
     for template in PROGRESSION_FILL_TEMPLATES:
         folder.append(perimeter_placemark(template, POINT_CENTER))
@@ -451,12 +456,22 @@ def write_template(path: pathlib.Path) -> None:
         file.write(template_kml())
 
 
-def create_template() -> pathlib.Path:
+def create_template(*, force: bool = False) -> pathlib.Path | None:
     """Build and write the KML symbolization template.
 
+    Args:
+        force: Overwrite the template when it already exists.
+
     Returns:
-        The path of the written template.
+        The path of the written template, or None when the template already
+        exists and *force* is False.
     """
     output_path = template_path()
+    if output_path.exists() and not force:
+        logger.error(
+            "KML template already exists; not overwriting",
+            path=output_path,
+        )
+        return None
     write_template(output_path)
     return output_path
