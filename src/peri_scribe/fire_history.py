@@ -138,6 +138,36 @@ class SourceObservation:
     attributes: dict[str, object]
 
 
+COMPUTED_AREA_COLUMNS = (
+    "poly_Acres_AutoCalc",
+    "poly_GISAcres",
+    "area_acres",
+)
+
+INCIDENT_SIZE_COLUMNS = (
+    "attr_IncidentSize",
+    "attr_FinalAcres",
+)
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class PerimeterSizeFilterConfig:
+    """Thresholds for dropping a perimeter whose geometry collapsed.
+
+    A perimeter is dropped when its geometry area is smaller than one of these
+    fractions of the size the source reports for the same row. The computed-area
+    fraction is generous because the polygon's computed area should match its
+    geometry; the incident-size fraction is strict because the incident size
+    legitimately runs ahead of the mapped extent early in a fire.
+    """
+
+    minimum_computed_area_fraction: float = 0.2
+    minimum_incident_area_fraction: float = 0.01
+
+
+DEFAULT_SIZE_FILTER_CONFIG = PerimeterSizeFilterConfig()
+
+
 def watermark_time_from(path: pathlib.Path) -> datetime.datetime | None:
     """Return the snapshot watermark time encoded in *path*, or None.
 
@@ -228,9 +258,7 @@ def perimeter_sort_key(
     """
     time = effective_time(observation)
     resolved = (
-        time
-        if time is not None
-        else datetime.datetime.min.replace(tzinfo=datetime.UTC)
+        time if time is not None else datetime.datetime.min.replace(tzinfo=datetime.UTC)
     )
     return (resolved, observation.serial_number, observation.object_id or -1)
 
@@ -510,6 +538,125 @@ def reconcile_perimeter_versions(
     return drop_losing_source_versions(versions, preferred)
 
 
+def geometry_area_in_acres(
+    geometry: shapely.Geometry | None,
+) -> float | None:
+    """Return *geometry*'s area in acres, or None when it has none.
+
+    The area is computed geodesically so it is accurate anywhere on Earth.
+
+    Args:
+        geometry: The perimeter geometry, in degree coordinates, or None.
+
+    Returns:
+        The absolute area in acres, or None when *geometry* is missing or empty.
+    """
+    if geometry is None or geometry.is_empty:
+        return None
+    area_in_square_meters, _perimeter = pyproj.Geod(
+        ellps="WGS84",
+    ).geometry_area_perimeter(geometry)
+    return (
+        abs(area_in_square_meters)
+        / peri_scribe.california_border_classification.SQUARE_METERS_PER_ACRE
+    )
+
+
+def computed_area_in_acres(
+    attributes: dict[str, object],
+) -> float | None:
+    """Return the polygon's computed area for one row, in acres.
+
+    The computed-area columns hold the source's own area for the polygon, so a healthy
+    row's geometry should nearly equal this value.
+
+    Args:
+        attributes: The row's attributes.
+
+    Returns:
+        The first positive computed area in acres, or None when the row reports none.
+    """
+    for column in COMPUTED_AREA_COLUMNS:
+        value = float_attribute(attributes, column)
+        if value is not None and value > 0:
+            return value
+    return None
+
+
+def incident_size_in_acres(
+    attributes: dict[str, object],
+) -> float | None:
+    """Return the incident's reported size for one row, in acres.
+
+    The incident size is a human report that can outrun the mapped perimeter, so it is
+    only used as a collapse reference with a much stricter threshold.
+
+    Args:
+        attributes: The row's attributes.
+
+    Returns:
+        The first positive incident size in acres, or None when the row reports none.
+    """
+    for column in INCIDENT_SIZE_COLUMNS:
+        value = float_attribute(attributes, column)
+        if value is not None and value > 0:
+            return value
+    return None
+
+
+def perimeter_is_implausibly_small(
+    observation: SourceObservation,
+    config: PerimeterSizeFilterConfig = DEFAULT_SIZE_FILTER_CONFIG,
+) -> bool:
+    """Return whether *observation*'s geometry collapsed below its reported size.
+
+    The geometry is judged against the polygon's computed area and, more strictly,
+    against the incident's reported size. Either reference can reveal a collapse: the
+    computed area when the polygon alone shrank, and the incident size when the polygon
+    and its computed area shrank together.
+
+    Args:
+        observation: The perimeter observation to judge.
+        config: The size-filter thresholds.
+
+    Returns:
+        True when the geometry has area but is smaller than one of the configured
+        fractions of the row's reported sizes.
+    """
+    geometry_acres = geometry_area_in_acres(observation.geometry)
+    if geometry_acres is None:
+        return False
+    computed_acres = computed_area_in_acres(observation.attributes)
+    incident_acres = incident_size_in_acres(observation.attributes)
+    return (
+        computed_acres is not None
+        and geometry_acres < config.minimum_computed_area_fraction * computed_acres
+    ) or (
+        incident_acres is not None
+        and geometry_acres < config.minimum_incident_area_fraction * incident_acres
+    )
+
+
+def drop_implausibly_small_perimeters(
+    observations: list[SourceObservation],
+    config: PerimeterSizeFilterConfig = DEFAULT_SIZE_FILTER_CONFIG,
+) -> list[SourceObservation]:
+    """Return *observations* without perimeters whose geometry collapsed.
+
+    Args:
+        observations: The reconciled perimeter versions for one fire.
+        config: The size-filter thresholds.
+
+    Returns:
+        The observations whose geometry matches their reported size, in order.
+    """
+    return [
+        observation
+        for observation in observations
+        if not perimeter_is_implausibly_small(observation, config)
+    ]
+
+
 def attributes_are_equal(
     left: dict[str, object],
     right: dict[str, object],
@@ -683,10 +830,7 @@ def json_safe_value(value: object) -> object:
     if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
         return value.isoformat()
     if isinstance(value, dict):
-        return {
-            str(key): json_safe_value(item)
-            for key, item in value.items()
-        }
+        return {str(key): json_safe_value(item) for key, item in value.items()}
     if isinstance(value, (list, tuple)):
         return [json_safe_value(item) for item in value]
     if isinstance(value, np.generic):
@@ -871,8 +1015,7 @@ def build_dataframe(
     geometries = [row["geometry"] for row in rows]
     attribute_columns = [column for column in columns if column != "geometry"]
     attribute_rows = [
-        {column: row.get(column) for column in attribute_columns}
-        for row in rows
+        {column: row.get(column) for column in attribute_columns} for row in rows
     ]
     return geopandas.GeoDataFrame(
         attribute_rows,
@@ -957,9 +1100,9 @@ def history_rows_for_fire(
         collapse_identical_consecutive_perimeters(wfigs_observations),
         classification,
     )
+    perimeter_versions = drop_implausibly_small_perimeters(perimeter_versions)
     perimeter_rows = [
-        perimeter_row(fire, classification, version)
-        for version in perimeter_versions
+        perimeter_row(fire, classification, version) for version in perimeter_versions
     ]
     point_rows = [
         point_row(fire, classification, version)

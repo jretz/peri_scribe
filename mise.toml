@@ -4,6 +4,19 @@ depends = ["venv"]
 raw_args = true
 run = "uv run --locked peri_scribe"
 
+[tasks.full-pipeline]
+description = "Produce maps for a year starting from source caches"
+depends = ["venv"]
+usage = '''
+    arg <year_directory> default="data/{{ exec(command='date +%Y') }}"
+'''
+run = [
+    { task = "fetch" },
+    { task = "ensure-admin-boundaries" },
+    { task = "derive-geo-history", args = ["{{ usage.year_directory }}"] },
+    { task = "create-kml", args = ["{{ usage.year_directory }}"] },
+]
+
 [tasks.create-kml]
 description = "Build the KML file for the specified year"
 depends = ["venv"]

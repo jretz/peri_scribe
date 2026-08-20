@@ -507,6 +507,107 @@ def test_reconcile_perimeter_versions_prefers_firis_for_inside_near() -> None:
     ]
 
 
+def test_geometry_area_in_acres_returns_area_for_polygon() -> None:
+    geometry = polygon((0, 0), (1, 0), (1, 1), (0, 0))
+    area = peri_scribe.fire_history.geometry_area_in_acres(geometry)
+    assert area is not None
+    assert area > 0
+
+
+def test_geometry_area_in_acres_returns_none_without_geometry() -> None:
+    assert peri_scribe.fire_history.geometry_area_in_acres(None) is None
+    assert (
+        peri_scribe.fire_history.geometry_area_in_acres(
+            shapely.geometry.Polygon(),
+        )
+        is None
+    )
+
+
+def test_computed_area_in_acres_returns_first_positive_value() -> None:
+    area = peri_scribe.fire_history.computed_area_in_acres(
+        {"poly_Acres_AutoCalc": 123, "poly_GISAcres": 456, "area_acres": 789},
+    )
+    assert area == pytest.approx(123)
+
+
+def test_computed_area_in_acres_skips_missing_and_nonpositive() -> None:
+    area = peri_scribe.fire_history.computed_area_in_acres(
+        {"poly_Acres_AutoCalc": 0, "poly_GISAcres": None, "area_acres": 456},
+    )
+    assert area == pytest.approx(456)
+
+
+def test_computed_area_in_acres_returns_none_without_sizes() -> None:
+    assert peri_scribe.fire_history.computed_area_in_acres({}) is None
+
+
+def test_incident_size_in_acres_returns_first_positive_value() -> None:
+    size = peri_scribe.fire_history.incident_size_in_acres(
+        {"attr_IncidentSize": 100, "attr_FinalAcres": 200},
+    )
+    assert size == pytest.approx(100)
+
+
+def test_incident_size_in_acres_skips_missing_and_nonpositive() -> None:
+    size = peri_scribe.fire_history.incident_size_in_acres(
+        {"attr_IncidentSize": np.nan, "attr_FinalAcres": 200},
+    )
+    assert size == pytest.approx(200)
+
+
+def test_incident_size_in_acres_returns_none_without_sizes() -> None:
+    assert peri_scribe.fire_history.incident_size_in_acres({}) is None
+
+
+def test_perimeter_is_implausibly_small_flags_collapsed_geometry() -> None:
+    tiny = polygon((0, 0), (0.0001, 0), (0.0001, 0.0001), (0, 0))
+    version = observation(geometry=tiny, attributes={"area_acres": 1000})
+    assert peri_scribe.fire_history.perimeter_is_implausibly_small(version)
+
+
+def test_perimeter_is_implausibly_small_flags_small_incident_size() -> None:
+    tiny = polygon((0, 0), (0.0001, 0), (0.0001, 0.0001), (0, 0))
+    version = observation(geometry=tiny, attributes={"attr_IncidentSize": 100_000})
+    assert peri_scribe.fire_history.perimeter_is_implausibly_small(version)
+
+
+def test_perimeter_is_implausibly_small_keeps_matching_geometry() -> None:
+    large = polygon((0, 0), (1, 0), (1, 1), (0, 0))
+    version = observation(geometry=large, attributes={"area_acres": 3_000_000})
+    assert not peri_scribe.fire_history.perimeter_is_implausibly_small(version)
+
+
+def test_perimeter_is_implausibly_small_keeps_incident_running_ahead() -> None:
+    medium = polygon((0, 0), (0.01, 0), (0.01, 0.01), (0, 0))
+    version = observation(geometry=medium, attributes={"attr_IncidentSize": 4000})
+    assert not peri_scribe.fire_history.perimeter_is_implausibly_small(version)
+
+
+def test_perimeter_is_implausibly_small_keeps_without_reported_size() -> None:
+    tiny = polygon((0, 0), (0.0001, 0), (0.0001, 0.0001), (0, 0))
+    version = observation(geometry=tiny, attributes={})
+    assert not peri_scribe.fire_history.perimeter_is_implausibly_small(version)
+
+
+def test_perimeter_is_implausibly_small_keeps_without_geometry() -> None:
+    version = observation(geometry=None, attributes={"area_acres": 1000})
+    assert not peri_scribe.fire_history.perimeter_is_implausibly_small(version)
+
+
+def test_drop_implausibly_small_perimeters_drops_collapsed() -> None:
+    tiny = polygon((0, 0), (0.0001, 0), (0.0001, 0.0001), (0, 0))
+    large = polygon((0, 0), (1, 0), (1, 1), (0, 0))
+    observations = [
+        observation(geometry=large, attributes={"area_acres": 3_000_000}),
+        observation(geometry=tiny, attributes={"area_acres": 1000}),
+    ]
+    survivors = peri_scribe.fire_history.drop_implausibly_small_perimeters(
+        observations,
+    )
+    assert survivors == [observations[0]]
+
+
 def test_attributes_are_equal_compares_keys_and_values() -> None:
     assert peri_scribe.fire_history.attributes_are_equal(
         {"a": 1, "b": 2},
@@ -789,6 +890,35 @@ def test_history_rows_for_fire_builds_perimeter_and_point_rows() -> None:
     assert len(point_rows) == 1
     assert perimeter_rows[0]["area_acres"] == pytest.approx(100)
     assert point_rows[0]["incident_size"] == pytest.approx(100)
+
+
+def test_history_rows_for_fire_drops_implausibly_small_perimeter() -> None:
+    sources_directory = pathlib.Path("data/2026/sources")
+    perimeter_path = (
+        sources_directory / FIRIS_FEED_NAME / "000000,lastEdit=1786929991427.gpkg"
+    )
+    tiny = polygon((0, 0), (0.0001, 0), (0.0001, 0.0001), (0, 0))
+    perimeter_row_record = peri_scribe.geo_data.FireRowRecord(
+        record=tests.factories.fire_record(
+            "Bug",
+            ACTIVE,
+            identifiers=frozenset({"2026-nvccd-030683"}),
+            geometry=tiny,
+            observed_at=utc(2026, 8, 16, 0, 10),
+        ),
+        object_id=1,
+        source_name=FIRIS_FEED_NAME,
+        attributes={"area_acres": 1000},
+    )
+    perimeter_rows, _point_rows = peri_scribe.fire_history.history_rows_for_fire(
+        fire(),
+        (0,),
+        [perimeter_row_record],
+        [perimeter_path],
+        sources_directory=sources_directory,
+        classification=None,
+    )
+    assert perimeter_rows == []
 
 
 def test_history_layer_rows_skips_complex_parents(
