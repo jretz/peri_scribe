@@ -11,8 +11,8 @@ import dataclasses
 import math
 import pathlib
 
-import fastkml
 import pyproj
+import simplekml
 import structlog
 
 import peri_scribe.output
@@ -23,6 +23,18 @@ logger = structlog.get_logger()
 
 TEMPLATE_DIRECTORY = peri_scribe.output.DATA_DIRECTORY / "templates"
 TEMPLATE_FILENAME = "PeriScribe Template.kml"
+
+
+class Style(simplekml.Style):
+    """A style whose id the template assigns.
+
+    simplekml otherwise numbers every style's id itself; the template's styles need
+    stable ids so placemarks can reference them by URL.
+    """
+
+    def __init__(self, style_id: str) -> None:
+        super().__init__()
+        self._id = style_id
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -249,77 +261,18 @@ def reversed_ring(coordinates: list[tuple[float, float]]) -> list[tuple[float, f
     return [coordinates[0], *reversed(coordinates[1:-1]), coordinates[0]]
 
 
-def point_style() -> fastkml.Style:
+def point_style() -> Style:
     """Return the style for the fictional point location.
 
     Returns:
         The style, holding the point's icon.
     """
-    return fastkml.Style(
-        id=POINT_STYLE_ID,
-        styles=[fastkml.IconStyle(icon_href=POINT_ICON_URL)],
-    )
+    style = Style(POINT_STYLE_ID)
+    style.iconstyle.icon.href = POINT_ICON_URL
+    return style
 
 
-def point_placemark(center: Center) -> fastkml.Placemark:
-    """Return the placemark for a point location at *center*.
-
-    Args:
-        center: The point location.
-
-    Returns:
-        The placemark.
-    """
-    return fastkml.Placemark(
-        name=POINT_LOCATION_NAME,
-        style_url=fastkml.StyleUrl(url=f"#{POINT_STYLE_ID}"),
-        kml_geometry=fastkml.Point(
-            kml_coordinates=fastkml.Coordinates(
-                coords=[(center.longitude, center.latitude)],
-            ),
-        ),
-    )
-
-
-def square_polygon(
-    side_length_in_meters: int,
-    center: Center,
-    hole_side_length_in_meters: int | None = None,
-) -> fastkml.Polygon:
-    """Return a square KML polygon centered on *center*.
-
-    Args:
-        side_length_in_meters: The length of each side of the square.
-        center: The center point of the square.
-        hole_side_length_in_meters: The length of each side of a centered hole, or
-            None for a solid square.
-
-    Returns:
-        The polygon.
-    """
-    outer_boundary = fastkml.OuterBoundaryIs(
-        kml_geometry=fastkml.LinearRing(
-            kml_coordinates=fastkml.Coordinates(
-                coords=square_coordinates(side_length_in_meters, center),
-            ),
-        ),
-    )
-    if hole_side_length_in_meters is None:
-        return fastkml.Polygon(outer_boundary=outer_boundary)
-    hole_ring = fastkml.LinearRing(
-        kml_coordinates=fastkml.Coordinates(
-            coords=reversed_ring(
-                square_coordinates(hole_side_length_in_meters, center),
-            ),
-        ),
-    )
-    return fastkml.Polygon(
-        outer_boundary=outer_boundary,
-        inner_boundaries=[fastkml.InnerBoundaryIs(kml_geometry=hole_ring)],
-    )
-
-
-def filled_perimeter_style(template: PerimeterTemplate) -> fastkml.Style:
+def filled_perimeter_style(template: PerimeterTemplate) -> Style:
     """Return the fill style for *template*.
 
     Args:
@@ -328,19 +281,14 @@ def filled_perimeter_style(template: PerimeterTemplate) -> fastkml.Style:
     Returns:
         The style, with a filled polygon style.
     """
-    return fastkml.Style(
-        id=template.style_id,
-        styles=[
-            fastkml.PolyStyle(
-                color=kml_color(template.color, FILL_OPACITY_PERCENT),
-                fill=True,
-                outline=False,
-            ),
-        ],
-    )
+    style = Style(template.style_id)
+    style.polystyle.color = kml_color(template.color, FILL_OPACITY_PERCENT)
+    style.polystyle.fill = 1
+    style.polystyle.outline = 0
+    return style
 
 
-def outlined_perimeter_style(template: PerimeterTemplate) -> fastkml.Style:
+def outlined_perimeter_style(template: PerimeterTemplate) -> Style:
     """Return the outline style for *template*.
 
     Args:
@@ -349,74 +297,91 @@ def outlined_perimeter_style(template: PerimeterTemplate) -> fastkml.Style:
     Returns:
         The style, with a line style and a transparently filled polygon style.
     """
-    return fastkml.Style(
-        id=template.style_id,
-        styles=[
-            fastkml.LineStyle(
-                color=kml_color(template.color, OUTLINE_OPACITY_PERCENT),
-                width=OUTLINE_WIDTH,
-            ),
-            fastkml.PolyStyle(
-                color=TRANSPARENT_FILL_COLOR,
-                fill=True,
-                outline=True,
-            ),
-        ],
+    style = Style(template.style_id)
+    style.linestyle.color = kml_color(template.color, OUTLINE_OPACITY_PERCENT)
+    style.linestyle.width = OUTLINE_WIDTH
+    style.polystyle.color = TRANSPARENT_FILL_COLOR
+    style.polystyle.fill = 1
+    style.polystyle.outline = 1
+    return style
+
+
+def point_placemark(container: simplekml.Container, center: Center) -> None:
+    """Add the point location placemark at *center* to *container*.
+
+    Args:
+        container: The folder that holds the placemark.
+        center: The point location.
+    """
+    point = container.newpoint(
+        name=POINT_LOCATION_NAME,
+        coords=[(center.longitude, center.latitude)],
     )
+    point.placemark.styleurl = f"#{POINT_STYLE_ID}"
 
 
 def perimeter_placemark(
+    container: simplekml.Container,
     template: PerimeterTemplate,
     center: Center,
-) -> fastkml.Placemark:
-    """Return the placemark for the fictional perimeter *template* centered on *center*.
+) -> None:
+    """Add the fictional perimeter *template* centered on *center* to *container*.
+
+    The perimeter is a square; the square inside its hole is cut out of it.
 
     Args:
+        container: The folder that holds the placemark.
         template: The perimeter to represent.
         center: The center point of the perimeter.
-
-    Returns:
-        The placemark.
     """
-    return fastkml.Placemark(
+    polygon = container.newpolygon(
         name=template.name,
-        style_url=fastkml.StyleUrl(url=f"#{template.style_id}"),
-        kml_geometry=square_polygon(
+        outerboundaryis=square_coordinates(
             template.side_length_in_meters,
             center,
-            template.hole_side_length_in_meters,
         ),
     )
+    polygon.placemark.styleurl = f"#{template.style_id}"
+    if template.hole_side_length_in_meters is not None:
+        polygon.innerboundaryis = [
+            reversed_ring(
+                square_coordinates(
+                    template.hole_side_length_in_meters,
+                    center,
+                ),
+            ),
+        ]
 
 
-def filled_perimeter_folder() -> fastkml.Folder:
-    """Return the "Latest Perimeters w/ Progression Outlines" folder.
+def filled_perimeter_folder(document: simplekml.Document) -> None:
+    """Add the "Latest Perimeters w/ Progression Outlines" folder to *document*.
 
     The folder's geometry is centered 2 km due west of the point location.
 
-    Returns:
-        The folder.
+    Args:
+        document: The template's document.
     """
-    center = center_west_of(POINT_CENTER, FILLED_PERIMETER_CENTER_DISTANCE_IN_METERS)
-    folder = fastkml.Folder(name=LATEST_PERIMETERS_FOLDER_NAME)
-    folder.append(point_placemark(center))
-    folder.append(perimeter_placemark(FILLED_PERIMETER_TEMPLATE, center))
+    folder = document.newfolder(name=LATEST_PERIMETERS_FOLDER_NAME)
+    center = center_west_of(
+        POINT_CENTER,
+        FILLED_PERIMETER_CENTER_DISTANCE_IN_METERS,
+    )
+    point_placemark(folder, center)
+    perimeter_placemark(folder, FILLED_PERIMETER_TEMPLATE, center)
     for template in OUTLINED_PERIMETER_TEMPLATES:
-        folder.append(perimeter_placemark(template, center))
-    return folder
+        perimeter_placemark(folder, template, center)
 
 
-def progression_map_folder() -> fastkml.Folder:
-    """Return the "Perimeter Progression Maps" folder.
+def progression_map_folder(document: simplekml.Document) -> None:
+    """Add the "Perimeter Progression Maps" folder to *document*.
 
-    Returns:
-        The folder.
+    Args:
+        document: The template's document.
     """
-    folder = fastkml.Folder(name="Perimeter Progression Maps")
-    folder.append(point_placemark(POINT_CENTER))
+    folder = document.newfolder(name="Perimeter Progression Maps")
+    point_placemark(folder, POINT_CENTER)
     for template in PROGRESSION_FILL_TEMPLATES:
-        folder.append(perimeter_placemark(template, POINT_CENTER))
-    return folder
+        perimeter_placemark(folder, template, POINT_CENTER)
 
 
 def template_kml() -> str:
@@ -429,9 +394,11 @@ def template_kml() -> str:
     Returns:
         The KML template.
     """
-    kml = fastkml.KML()
-    document = fastkml.Document()
-    kml.append(document)
+    # simplekml numbers every element's id from a process-wide counter; resetting it
+    # keeps the template byte-for-byte reproducible across calls.
+    simplekml.Kml.resetidcounter()
+    kml = simplekml.Kml()
+    document = kml.document
 
     document.styles.append(point_style())
     document.styles.append(filled_perimeter_style(FILLED_PERIMETER_TEMPLATE))
@@ -440,9 +407,9 @@ def template_kml() -> str:
     for template in PROGRESSION_FILL_TEMPLATES:
         document.styles.append(filled_perimeter_style(template))
 
-    document.append(filled_perimeter_folder())
-    document.append(progression_map_folder())
-    return kml.to_string()
+    filled_perimeter_folder(document)
+    progression_map_folder(document)
+    return kml.kml()
 
 
 def write_template(path: pathlib.Path) -> None:

@@ -10,10 +10,14 @@ from __future__ import annotations
 import dataclasses
 import pathlib
 import typing
+
+# The template is a local, user-edited file rather than untrusted input, so the
+# stdlib XML parser needs no defusedxml hardening.
+import xml.etree.ElementTree as ET  # ruff: ignore[suspicious-xml-etree-import]
 import zipfile
 
-import fastkml
 import geopandas
+import simplekml
 
 import peri_scribe.fire_history
 import peri_scribe.fire_index
@@ -25,6 +29,8 @@ import peri_scribe.models
 if typing.TYPE_CHECKING:
     import shapely
 
+
+KML_NAMESPACE = "http://www.opengis.net/kml/2.2"
 
 MAPS_DIRECTORY_NAME = "maps"
 
@@ -53,8 +59,20 @@ class FireGeometry:
 class Template:
     """The parsed KML template's styles and placemark style URLs."""
 
-    styles: tuple[fastkml.Style | fastkml.StyleMap, ...]
+    styles: tuple[peri_scribe.kml_template.Style, ...]
     style_urls: dict[str, str]
+
+
+def kml_tag(name: str) -> str:
+    """Return the namespaced element tag for *name*.
+
+    Args:
+        name: The KML element name.
+
+    Returns:
+        The tag ElementTree uses for the element.
+    """
+    return f"{{{KML_NAMESPACE}}}{name}"
 
 
 def year_from(year_directory: pathlib.Path) -> int:
@@ -91,9 +109,7 @@ def kmz_path(year_directory: pathlib.Path) -> pathlib.Path:
         The output KMZ path.
     """
     return (
-        year_directory
-        / MAPS_DIRECTORY_NAME
-        / kmz_filename(year_from(year_directory))
+        year_directory / MAPS_DIRECTORY_NAME / kmz_filename(year_from(year_directory))
     )
 
 
@@ -125,9 +141,7 @@ def identifiers(
         The entry's canonical identifier and aliases.
     """
     candidates = [entry.identifier, *entry.aliases]
-    return frozenset(
-        identifier for identifier in candidates if identifier is not None
-    )
+    return frozenset(identifier for identifier in candidates if identifier is not None)
 
 
 def perimeter_groups(
@@ -281,196 +295,194 @@ def fire_geometries(
     return sorted(fires, key=lambda fire: fire.name.casefold())
 
 
-def linear_ring(ring: shapely.LinearRing) -> fastkml.LinearRing:
-    """Return the KML linear ring for *ring*.
+def ring_coordinates(ring: shapely.LinearRing) -> list[tuple[float, float]]:
+    """Return the KML coordinates of *ring*.
 
     Args:
         ring: The shapely ring to convert.
 
     Returns:
-        The KML linear ring.
+        The ring's (longitude, latitude) coordinates.
     """
-    return fastkml.LinearRing(
-        kml_coordinates=fastkml.Coordinates(
-            coords=[(float(x), float(y)) for x, y in ring.coords],
-        ),
-    )
-
-
-def polygon_geometry(polygon: shapely.Polygon) -> fastkml.Polygon:
-    """Return the KML polygon for *polygon*.
-
-    Args:
-        polygon: The shapely polygon to convert.
-
-    Returns:
-        The KML polygon, including any holes.
-    """
-    outer_boundary = fastkml.OuterBoundaryIs(
-        kml_geometry=linear_ring(polygon.exterior),
-    )
-    inner_boundaries = [
-        fastkml.InnerBoundaryIs(kml_geometry=linear_ring(interior))
-        for interior in polygon.interiors
-    ]
-    return fastkml.Polygon(
-        outer_boundary=outer_boundary,
-        inner_boundaries=inner_boundaries,
-    )
-
-
-def multi_polygon_geometry(
-    multi_polygon: shapely.MultiPolygon,
-) -> fastkml.MultiGeometry:
-    """Return the KML multi-geometry for *multi_polygon*.
-
-    Args:
-        multi_polygon: The shapely multi-polygon to convert.
-
-    Returns:
-        The KML multi-geometry holding each polygon.
-    """
-    return fastkml.MultiGeometry(
-        kml_geometries=[
-            polygon_geometry(typing.cast("shapely.Polygon", polygon))
-            for polygon in multi_polygon.geoms
-        ],
-    )
-
-
-def perimeter_geometry(
-    geometry: shapely.Geometry,
-) -> fastkml.Polygon | fastkml.MultiGeometry:
-    """Return the KML geometry for *geometry*.
-
-    Args:
-        geometry: A shapely polygon or multi-polygon.
-
-    Returns:
-        The KML polygon or multi-geometry.
-    """
-    if geometry.geom_type == "Polygon":
-        return polygon_geometry(typing.cast("shapely.Polygon", geometry))
-    return multi_polygon_geometry(
-        typing.cast("shapely.MultiPolygon", geometry),
-    )
+    return [(float(x), float(y)) for x, y in ring.coords]
 
 
 def point_placemark(
+    container: simplekml.Container,
     name: str,
     style_url: str,
     point: shapely.Point,
-) -> fastkml.Placemark:
-    """Return the point placemark for *point* named *name*.
+) -> None:
+    """Add the point placemark for *point* named *name* to *container*.
 
     Args:
+        container: The folder that holds the placemark.
         name: The name to show for the point.
         style_url: The style URL to apply.
         point: The point geometry.
-
-    Returns:
-        The placemark.
     """
-    return fastkml.Placemark(
+    placemark = container.newpoint(name=name, coords=[(point.x, point.y)])
+    placemark.placemark.styleurl = style_url
+
+
+def polygon_geometry(
+    container: simplekml.Container,
+    name: str,
+    style_url: str,
+    polygon: shapely.Polygon,
+) -> None:
+    """Add the polygon placemark for *polygon* to *container*.
+
+    Args:
+        container: The folder that holds the placemark.
+        name: The placemark name.
+        style_url: The style URL to apply.
+        polygon: The shapely polygon to convert.
+    """
+    placemark = container.newpolygon(
         name=name,
-        style_url=fastkml.StyleUrl(url=style_url),
-        kml_geometry=fastkml.Point(
-            kml_coordinates=fastkml.Coordinates(coords=[(point.x, point.y)]),
-        ),
+        outerboundaryis=ring_coordinates(polygon.exterior),
     )
+    placemark.placemark.styleurl = style_url
+    if polygon.interiors:
+        placemark.innerboundaryis = [
+            ring_coordinates(interior) for interior in polygon.interiors
+        ]
 
 
-def perimeter_placemark(
+def multi_polygon_geometry(
+    container: simplekml.Container,
+    name: str,
+    style_url: str,
+    multi_polygon: shapely.MultiPolygon,
+) -> None:
+    """Add the multi-geometry placemark for *multi_polygon* to *container*.
+
+    Args:
+        container: The folder that holds the placemark.
+        name: The placemark name.
+        style_url: The style URL to apply.
+        multi_polygon: The shapely multi-polygon to convert.
+    """
+    geometry = container.newmultigeometry(name=name)
+    geometry.placemark.styleurl = style_url
+    for polygon in multi_polygon.geoms:
+        polygon = typing.cast("shapely.Polygon", polygon)
+        geometry.newpolygon(
+            outerboundaryis=ring_coordinates(polygon.exterior),
+            innerboundaryis=[
+                ring_coordinates(interior) for interior in polygon.interiors
+            ],
+        )
+
+
+def perimeter_geometry(
+    container: simplekml.Container,
     name: str,
     style_url: str,
     geometry: shapely.Geometry,
-) -> fastkml.Placemark:
-    """Return the perimeter placemark for *geometry*.
+) -> None:
+    """Add the placemark for *geometry* to *container*.
 
     Args:
+        container: The folder that holds the placemark.
+        name: The placemark name.
+        style_url: The style URL to apply.
+        geometry: A shapely polygon or multi-polygon.
+    """
+    if geometry.geom_type == "Polygon":
+        polygon_geometry(
+            container,
+            name,
+            style_url,
+            typing.cast("shapely.Polygon", geometry),
+        )
+    else:
+        multi_polygon_geometry(
+            container,
+            name,
+            style_url,
+            typing.cast("shapely.MultiPolygon", geometry),
+        )
+
+
+def perimeter_placemark(
+    container: simplekml.Container,
+    name: str,
+    style_url: str,
+    geometry: shapely.Geometry,
+) -> None:
+    """Add the perimeter placemark for *geometry* to *container*.
+
+    Args:
+        container: The folder that holds the placemark.
         name: The placemark name.
         style_url: The style URL to apply.
         geometry: The perimeter geometry.
-
-    Returns:
-        The placemark.
     """
-    return fastkml.Placemark(
-        name=name,
-        style_url=fastkml.StyleUrl(url=style_url),
-        kml_geometry=perimeter_geometry(geometry),
-    )
+    perimeter_geometry(container, name, style_url, geometry)
 
 
 def fire_folder(
+    container: simplekml.Container,
     fire: FireGeometry,
     style_urls: typing.Mapping[str, str],
-) -> fastkml.Folder:
-    """Return the folder symbolizing *fire*.
+) -> None:
+    """Add the folder symbolizing *fire* to *container*.
 
     The folder holds the fire's point location and its latest, penultimate, and
     antepenultimate perimeters, each shown when the fire's history has one.
 
     Args:
+        container: The folder that holds the fire's folder.
         fire: The fire to symbolize.
         style_urls: The style URL for each template placemark name.
-
-    Returns:
-        The fire's folder.
     """
-    folder = fastkml.Folder(name=fire.name)
+    folder = container.newfolder(name=fire.name)
     if fire.point is not None:
-        folder.append(
-            point_placemark(
-                fire.name,
-                style_urls[peri_scribe.kml_template.POINT_LOCATION_NAME],
-                fire.point,
-            ),
+        point_placemark(
+            folder,
+            fire.name,
+            style_urls[peri_scribe.kml_template.POINT_LOCATION_NAME],
+            fire.point,
         )
     if fire.perimeters:
-        folder.append(
-            perimeter_placemark(
-                peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name,
-                style_urls[
-                    peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name
-                ],
-                fire.perimeters[-1],
-            ),
+        perimeter_placemark(
+            folder,
+            peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name,
+            style_urls[peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name],
+            fire.perimeters[-1],
         )
     for index, template in enumerate(
         peri_scribe.kml_template.OUTLINED_PERIMETER_TEMPLATES,
     ):
         if len(fire.perimeters) <= index:
             break
-        folder.append(
-            perimeter_placemark(
-                template.name,
-                style_urls[template.name],
-                fire.perimeters[-(index + 1)],
-            ),
+        perimeter_placemark(
+            folder,
+            template.name,
+            style_urls[template.name],
+            fire.perimeters[-(index + 1)],
         )
-    return folder
 
 
 def latest_perimeters_folder(
+    container: simplekml.Container,
     fires: list[FireGeometry],
     style_urls: typing.Mapping[str, str],
-) -> fastkml.Folder:
-    """Return the folder holding each fire's symbolized geometry.
+) -> None:
+    """Add the folder holding each fire's symbolized geometry to *container*.
 
     Args:
+        container: The folder that holds the perimeters folder.
         fires: The fires to place in the folder.
         style_urls: The style URL for each template placemark name.
-
-    Returns:
-        The folder.
     """
-    folder = fastkml.Folder(
+    folder = container.newfolder(
         name=peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
     )
     for fire in fires:
-        folder.append(fire_folder(fire, style_urls))
-    return folder
+        fire_folder(folder, fire, style_urls)
 
 
 def status_folder_name(status: peri_scribe.models.FireStatus) -> str:
@@ -488,63 +500,108 @@ def status_folder_name(status: peri_scribe.models.FireStatus) -> str:
 
 
 def status_folder(
+    container: simplekml.Container,
     fires: list[FireGeometry],
     status: peri_scribe.models.FireStatus,
     style_urls: typing.Mapping[str, str],
-) -> fastkml.Folder:
-    """Return the top-level folder for fires of *status*.
+) -> None:
+    """Add the top-level folder for fires of *status* to *container*.
 
     Args:
+        container: The document that holds the status folder.
         fires: Every fire.
         status: The status whose fires belong in the folder.
         style_urls: The style URL for each template placemark name.
+    """
+    folder = container.newfolder(name=status_folder_name(status))
+    latest_perimeters_folder(
+        folder,
+        [fire for fire in fires if fire.status is status],
+        style_urls,
+    )
+
+
+def style_from(element: ET.Element) -> peri_scribe.kml_template.Style:
+    """Return the template style that *element* defines.
+
+    The template's styles are icon, line, and polygon styles, so those are the
+    sub-styles read from *element*.
+
+    Args:
+        element: The parsed ``Style`` element.
 
     Returns:
-        The folder holding the matching fires' geometry.
+        The style, holding the sub-styles *element* defines.
+
+    Raises:
+        ValueError: When *element* has no id attribute.
     """
-    folder = fastkml.Folder(name=status_folder_name(status))
-    folder.append(
-        latest_perimeters_folder(
-            [fire for fire in fires if fire.status is status],
-            style_urls,
-        ),
-    )
-    return folder
+    style_id = element.get("id")
+    if style_id is None:
+        message = "KML Style element has no id attribute"
+        raise ValueError(message)
+    style = peri_scribe.kml_template.Style(style_id)
+    icon_style = element.find(kml_tag("IconStyle"))
+    if icon_style is not None:
+        icon_href = icon_style.findtext(
+            f"{kml_tag('Icon')}/{kml_tag('href')}",
+        )
+        if icon_href is not None:
+            style.iconstyle.icon.href = icon_href
+    line_style = element.find(kml_tag("LineStyle"))
+    if line_style is not None:
+        line_color = line_style.findtext(kml_tag("color"))
+        if line_color is not None:
+            style.linestyle.color = line_color
+        line_width = line_style.findtext(kml_tag("width"))
+        if line_width is not None:
+            style.linestyle.width = float(line_width)
+    poly_style = element.find(kml_tag("PolyStyle"))
+    if poly_style is not None:
+        poly_color = poly_style.findtext(kml_tag("color"))
+        if poly_color is not None:
+            style.polystyle.color = poly_color
+        fill = poly_style.findtext(kml_tag("fill"))
+        if fill is not None:
+            style.polystyle.fill = int(fill)
+        outline = poly_style.findtext(kml_tag("outline"))
+        if outline is not None:
+            style.polystyle.outline = int(outline)
+    return style
 
 
-def placemark_style_urls(document: fastkml.Document) -> dict[str, str]:
+def placemark_style_urls(document: ET.Element) -> dict[str, str]:
     """Return each template placemark's style URL, keyed by name.
 
     Args:
-        document: The parsed template document.
+        document: The parsed template document element.
 
     Returns:
         The style URL for each placemark name.
     """
     urls: dict[str, str] = {}
-    collect_placemark_style_urls(document.features, urls)
+    collect_placemark_style_urls(document, urls)
     return urls
 
 
 def collect_placemark_style_urls(
-    features: typing.Iterable[object],
+    element: ET.Element,
     urls: dict[str, str],
 ) -> None:
-    """Record each placemark's style URL into *urls*.
+    """Record each named placemark's style URL into *urls*.
 
     Args:
-        features: The features to search, descending into folders.
+        element: The element to search, descending into folders.
         urls: The mapping being built.
     """
-    for feature in features:
-        if isinstance(feature, fastkml.Folder):
-            collect_placemark_style_urls(feature.features, urls)
-        elif isinstance(feature, fastkml.Placemark):
-            if feature.name is None:
-                continue
-            style_url = feature.style_url
-            if style_url is not None and style_url.url is not None:
-                urls[feature.name] = style_url.url
+    for child in element:
+        if child.tag == kml_tag("Folder"):
+            collect_placemark_style_urls(child, urls)
+        elif child.tag == kml_tag("Placemark"):
+            name = child.findtext(kml_tag("name"))
+            style_url = child.findtext(kml_tag("styleUrl"))
+            if name is not None and style_url is not None:
+                urls[name] = style_url
 
 
 def template_from(kml_text: str) -> Template:
@@ -555,11 +612,19 @@ def template_from(kml_text: str) -> Template:
 
     Returns:
         The template.
+
+    Raises:
+        ValueError: When *kml_text* has no Document element.
     """
-    kml = fastkml.KML.from_string(kml_text)
-    document = typing.cast("fastkml.Document", kml.features[0])
+    root = ET.fromstring(kml_text)  # ruff: ignore[suspicious-xml-element-tree-usage]
+    document = root.find(kml_tag("Document"))
+    if document is None:
+        message = "KML template has no Document element"
+        raise ValueError(message)
     return Template(
-        styles=tuple(document.styles),
+        styles=tuple(
+            style_from(style) for style in document if style.tag == kml_tag("Style")
+        ),
         style_urls=placemark_style_urls(document),
     )
 
@@ -592,28 +657,25 @@ def fire_kml(
     Returns:
         The KML document.
     """
-    kml = fastkml.KML()
-    document = fastkml.Document()
-    kml.append(document)
+    kml = simplekml.Kml()
+    document = kml.document
 
     for style in template.styles:
         document.styles.append(style)
 
-    document.append(
-        status_folder(
-            fires,
-            peri_scribe.models.FireStatus.ACTIVE,
-            template.style_urls,
-        ),
+    status_folder(
+        document,
+        fires,
+        peri_scribe.models.FireStatus.ACTIVE,
+        template.style_urls,
     )
-    document.append(
-        status_folder(
-            fires,
-            peri_scribe.models.FireStatus.INACTIVE,
-            template.style_urls,
-        ),
+    status_folder(
+        document,
+        fires,
+        peri_scribe.models.FireStatus.INACTIVE,
+        template.style_urls,
     )
-    return kml.to_string()
+    return kml.kml()
 
 
 def write_kmz(path: pathlib.Path, kml_text: str) -> None:

@@ -5,7 +5,6 @@ requires-python = "==3.14.*"
 dependencies = [
     "arcgis",
     "click",
-    "fastkml[lxml]",
     "geopandas",
     "pydantic",
     "pygments",  # For pytest code highlighting
@@ -16,6 +15,7 @@ dependencies = [
     "requests-mock",
     "ruff",
     "setuptools",  # For https://github.com/Esri/arcgis-python-api/issues/2428
+    "simplekml",
     "structlog",
     "tenacity",
     "time-machine",
