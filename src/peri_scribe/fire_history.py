@@ -27,6 +27,7 @@ import peri_scribe.fire_sources
 import peri_scribe.geo_data
 import peri_scribe.models
 import peri_scribe.output
+import peri_scribe.perimeter_cleaning
 import peri_scribe.snapshots
 
 
@@ -794,7 +795,9 @@ def perimeter_row(
             "mission": text_attribute(attributes, "mission"),
             "description": text_attribute(attributes, "description"),
             "source_attributes": attributes_json(attributes),
-            "geometry": observation.geometry,
+            "geometry": peri_scribe.perimeter_cleaning.clean_perimeter(
+                observation.geometry,
+            ),
         },
     )
     return row
