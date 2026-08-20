@@ -206,8 +206,19 @@ def test_effective_time_prefers_observation_time() -> None:
     observed = observation(
         observation_time=mapping_time,
         snapshot_time=snapshot_time,
+        attributes={"poly_DateCurrent": utc(2026, 8, 15, 22, 0)},
     )
     assert peri_scribe.fire_history.effective_time(observed) == mapping_time
+
+
+def test_effective_time_falls_back_to_current_date_before_snapshot_time() -> None:
+    current_date = utc(2026, 8, 16, 0, 10)
+    snapshot_time = utc(2026, 8, 17, 1, 42)
+    observed = observation(
+        snapshot_time=snapshot_time,
+        attributes={"poly_DateCurrent": current_date},
+    )
+    assert peri_scribe.fire_history.effective_time(observed) == current_date
 
 
 def test_effective_time_falls_back_to_snapshot_time() -> None:
@@ -780,6 +791,18 @@ def test_perimeter_row_builds_fields_and_geometry() -> None:
     assert row["area_acres"] == pytest.approx(area_acres)
     assert row["source_globalid"] == "abc"
     assert row["source"] == "firis_perimeter"
+
+
+def test_perimeter_row_falls_back_to_current_date() -> None:
+    geometry = polygon((0, 0), (1, 0), (1, 1), (0, 0))
+    current_date = utc(2026, 8, 16, 0, 10)
+    version = observation(
+        geometry=geometry,
+        snapshot_time=utc(2026, 8, 17, 1, 42),
+        attributes={"poly_DateCurrent": current_date},
+    )
+    row = peri_scribe.fire_history.perimeter_row(fire(), None, version)
+    assert row["observation_time"] == current_date
 
 
 def test_point_row_builds_fields_and_geometry() -> None:

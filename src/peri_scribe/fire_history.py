@@ -232,16 +232,26 @@ def source_observation_from_row(
 def effective_time(
     observation: SourceObservation,
 ) -> datetime.datetime | None:
-    """Return the observation's mapping time, falling back to its snapshot time.
+    """Return the observation's mapping time, falling back to its current date.
+
+    The mapping time is the feed's observation column when present. A perimeter whose
+    observation column is empty falls back to the row's current-date column
+    (``poly_DateCurrent``) before the snapshot watermark, so a WFIGS perimeter without a
+    polygon date still carries the date its source reports it is current for. Point
+    observations have no current-date column and fall straight through to the snapshot
+    time.
 
     Args:
         observation: The observation to time.
 
     Returns:
-        The mapping time when present, otherwise the snapshot time.
+        The mapping time, the current date, or the snapshot time, in that order.
     """
     if observation.observation_time is not None:
         return observation.observation_time
+    current_date = datetime_attribute(observation.attributes, "poly_DateCurrent")
+    if current_date is not None:
+        return current_date
     return observation.snapshot_time
 
 
@@ -903,7 +913,7 @@ def perimeter_row(
             "source_globalid": text_attribute(attributes, "GlobalID"),
             "source_file": observation.source_file,
             "source_serial": observation.serial_number,
-            "observation_time": observation.observation_time,
+            "observation_time": effective_time(observation),
             "created_time": datetime_attribute(
                 attributes,
                 "CreationDate",
