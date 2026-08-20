@@ -795,7 +795,7 @@ def test_time_label_returns_none_without_observation_time() -> None:
 
 def test_time_label_formats_california_time() -> None:
     observation_time = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
-    assert peri_scribe.kml.time_label(observation_time) == "08-05 01:30 pm"
+    assert peri_scribe.kml.time_label(observation_time) == "08/05 13:30"
 
 
 def test_interior_placemark_name_without_observation_time() -> None:
@@ -805,7 +805,7 @@ def test_interior_placemark_name_without_observation_time() -> None:
 def test_interior_placemark_name_with_observation_time() -> None:
     observation_time = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
     assert peri_scribe.kml.interior_placemark_name(observation_time) == (
-        "08-05 01:30 pm Interior"
+        "08/05 13:30 Interior"
     )
 
 
@@ -816,7 +816,7 @@ def test_mapping_placemark_name_without_observation_time() -> None:
 def test_mapping_placemark_name_with_observation_time() -> None:
     observation_time = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
     assert peri_scribe.kml.mapping_placemark_name(observation_time) == (
-        "08-05 01:30 pm Mapping"
+        "08/05 13:30 Perimeter"
     )
 
 
@@ -849,29 +849,29 @@ def test_fire_folder_includes_point_and_progression(
     folder = folder_named(document_from(kml.kml()), "Bug")
     assert placemark_names(folder) == [
         "Bug",
-        "08-05 01:30 pm Interior",
-        "08-05 01:30 pm Mapping",
-        "08-04 09:15 am Mapping",
-        "08-03 04:00 pm Mapping",
+        "08/05 13:30 Interior",
+        "08/05 13:30 Perimeter",
+        "08/04 09:15 Perimeter",
+        "08/03 16:00 Perimeter",
     ]
     assert placemark_style_url(placemark_named(folder, "Bug")) == "#point-icon"
     assert placemark_style_url(
-        placemark_named(folder, "08-05 01:30 pm Interior"),
+        placemark_named(folder, "08/05 13:30 Interior"),
     ) == "#perimeter-fill"
     assert {
         name: draw_order(placemark_named(folder, name))
         for name in (
-            "08-05 01:30 pm Interior",
-            "08-05 01:30 pm Mapping",
-            "08-04 09:15 am Mapping",
-            "08-03 04:00 pm Mapping",
+            "08/05 13:30 Interior",
+            "08/05 13:30 Perimeter",
+            "08/04 09:15 Perimeter",
+            "08/03 16:00 Perimeter",
             "Bug",
         )
     } == {
-        "08-05 01:30 pm Interior": 0,
-        "08-03 04:00 pm Mapping": 1,
-        "08-04 09:15 am Mapping": 2,
-        "08-05 01:30 pm Mapping": 3,
+        "08/05 13:30 Interior": 0,
+        "08/03 16:00 Perimeter": 1,
+        "08/04 09:15 Perimeter": 2,
+        "08/05 13:30 Perimeter": 3,
         "Bug": 4,
     }
 
@@ -987,9 +987,9 @@ def test_placemark_style_urls_descends_into_folders() -> None:
     urls = peri_scribe.kml.placemark_style_urls(document)
     assert urls["Point Location"] == "#point-icon"
     assert urls["Interior"] == "#perimeter-fill"
-    assert urls["Latest Mapping"] == "#perimeter-outline-1"
-    assert urls["Penultimate Mapping"] == "#perimeter-outline-2"
-    assert urls["Antepenultimate Mapping"] == "#perimeter-outline-3"
+    assert urls["Latest Perimeter"] == "#perimeter-outline-1"
+    assert urls["Penultimate Perimeter"] == "#perimeter-outline-2"
+    assert urls["Antepenultimate Perimeter"] == "#perimeter-outline-3"
 
 
 def test_collect_placemark_style_urls_skips_placemarks_without_style() -> None:
@@ -1090,10 +1090,10 @@ def test_fire_kml_builds_active_and_inactive_folders() -> None:
     bug_folder = folder_named(active_perimeters, "Bug")
     assert placemark_names(bug_folder) == [
         "Bug",
-        "08-05 01:30 pm Interior",
-        "08-05 01:30 pm Mapping",
-        "08-04 09:15 am Mapping",
-        "08-03 04:00 pm Mapping",
+        "08/05 13:30 Interior",
+        "08/05 13:30 Perimeter",
+        "08/04 09:15 Perimeter",
+        "08/03 16:00 Perimeter",
     ]
     inactive = folder_named(document, "Inactive Fires")
     inactive_perimeters = folder_named(

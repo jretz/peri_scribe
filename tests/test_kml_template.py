@@ -465,9 +465,9 @@ def test_template_kml_filled_perimeter_folder(document: ET.Element) -> None:
         and child.findtext(kml_tag("name")) not in {"Point Location", "Interior"}
     ]
     expected_colors = {
-        "Latest Mapping": "ff0000ff",
-        "Penultimate Mapping": "ff00ffff",
-        "Antepenultimate Mapping": "ffffffff",
+        "Latest Perimeter": "ff0000ff",
+        "Penultimate Perimeter": "ff00ffff",
+        "Antepenultimate Perimeter": "ffffffff",
     }
     assert len(outline_placemarks) == len(expected_colors)
     for name, color in expected_colors.items():
@@ -493,9 +493,9 @@ def test_template_kml_filled_perimeter_orders_placemarks(
     assert placemark_names(filled) == [
         "Point Location",
         "Interior",
-        "Latest Mapping",
-        "Penultimate Mapping",
-        "Antepenultimate Mapping",
+        "Latest Perimeter",
+        "Penultimate Perimeter",
+        "Antepenultimate Perimeter",
     ]
 
 
@@ -537,15 +537,15 @@ def test_template_kml_filled_perimeter_draw_orders(document: ET.Element) -> None
         for name in (
             "Point Location",
             "Interior",
-            "Latest Mapping",
-            "Penultimate Mapping",
-            "Antepenultimate Mapping",
+            "Latest Perimeter",
+            "Penultimate Perimeter",
+            "Antepenultimate Perimeter",
         )
     } == {
         "Interior": peri_scribe.kml_template.LATEST_AREA_DRAW_ORDER,
-        "Antepenultimate Mapping": 1,
-        "Penultimate Mapping": 2,
-        "Latest Mapping": 3,
+        "Antepenultimate Perimeter": 1,
+        "Penultimate Perimeter": 2,
+        "Latest Perimeter": 3,
         "Point Location": 4,
     }
 

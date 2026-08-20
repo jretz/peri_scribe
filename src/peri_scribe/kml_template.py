@@ -91,19 +91,19 @@ FILLED_PERIMETER_TEMPLATE = PerimeterTemplate(
 
 OUTLINED_PERIMETER_TEMPLATES = (
     PerimeterTemplate(
-        name="Latest Mapping",
+        name="Latest Perimeter",
         style_id="perimeter-outline-1",
         side_length_in_meters=800,
         color="#FF0000",
     ),
     PerimeterTemplate(
-        name="Penultimate Mapping",
+        name="Penultimate Perimeter",
         style_id="perimeter-outline-2",
         side_length_in_meters=700,
         color="#FFFF00",
     ),
     PerimeterTemplate(
-        name="Antepenultimate Mapping",
+        name="Antepenultimate Perimeter",
         style_id="perimeter-outline-3",
         side_length_in_meters=600,
         color="#FFFFFF",

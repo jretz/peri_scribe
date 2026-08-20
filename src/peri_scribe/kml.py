@@ -45,7 +45,7 @@ KMZ_DOCUMENT_FILENAME = "doc.kml"
 # times are written in California local time.
 CALIFORNIA_TIME_ZONE = zoneinfo.ZoneInfo("America/Los_Angeles")
 
-MAPPING_NAME = "Mapping"
+MAPPING_NAME = "Perimeter"
 UNKNOWN_MAPPING_NAME = "Unknown Mapping"
 
 # DEFLATE is the compression Google Earth expects inside a KMZ, and level 9 is the
@@ -511,8 +511,8 @@ def perimeter_placemark(
 def time_label(observation_time: datetime.datetime | None) -> str | None:
     """Return the California-time label for *observation_time*, or None.
 
-    The label reads like ``08-05 01:30 pm``: month and day, a 12-hour clock time,
-    and a lowercase am/pm marker.
+    The label reads like ``08/05 13:30``: month/day, then a 24-hour clock
+    time with leading zeros and no am/pm marker.
 
     Args:
         observation_time: The observation time as an aware UTC datetime, or None.
@@ -523,7 +523,7 @@ def time_label(observation_time: datetime.datetime | None) -> str | None:
     if observation_time is None:
         return None
     pacific_time = observation_time.astimezone(CALIFORNIA_TIME_ZONE)
-    return f"{pacific_time:%m-%d %I:%M %p}".lower()
+    return f"{pacific_time:%m/%d %H:%M}"
 
 
 def interior_placemark_name(observation_time: datetime.datetime | None) -> str:
@@ -549,7 +549,7 @@ def mapping_placemark_name(observation_time: datetime.datetime | None) -> str:
         observation_time: The observation time of the perimeter, or None.
 
     Returns:
-        The placemark name, ``<date> Mapping`` when the time is known and
+        The placemark name, ``<date> Perimeter`` when the time is known and
         ``Unknown Mapping`` otherwise.
     """
     label = time_label(observation_time)
