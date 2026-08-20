@@ -17,6 +17,8 @@ import peri_scribe.kml_template
 
 KML_NAMESPACE = "http://www.opengis.net/kml/2.2"
 
+GX_NAMESPACE = "http://www.google.com/kml/ext/2.2"
+
 
 def kml_tag(name: str) -> str:
     """Return the namespaced element tag for *name*.
@@ -28,6 +30,18 @@ def kml_tag(name: str) -> str:
         The tag ElementTree uses for the element.
     """
     return f"{{{KML_NAMESPACE}}}{name}"
+
+
+def gx_tag(name: str) -> str:
+    """Return the namespaced element tag for the Google extension *name*.
+
+    Args:
+        name: The Google extension element name.
+
+    Returns:
+        The tag ElementTree uses for the element.
+    """
+    return f"{{{GX_NAMESPACE}}}{name}"
 
 
 @pytest.fixture
@@ -149,6 +163,28 @@ def placemark_style_url(placemark: ET.Element) -> str:
     if style_url is None:
         pytest.fail("Placemark has no styleUrl")
     return style_url
+
+
+def draw_order(placemark: ET.Element) -> int:
+    """Return the gx:drawOrder of *placemark*'s geometry.
+
+    Args:
+        placemark: The placemark to inspect.
+
+    Returns:
+        The geometry's draw order.
+    """
+    for child in placemark:
+        if child.tag in {
+            kml_tag("Point"),
+            kml_tag("Polygon"),
+            kml_tag("MultiGeometry"),
+        }:
+            text = child.findtext(gx_tag("drawOrder"))
+            if text is None:
+                pytest.fail("Placemark has no gx:drawOrder")
+            return int(text)
+    pytest.fail("Placemark has no geometry")
 
 
 def poly_style_of(style: ET.Element) -> ET.Element:
@@ -368,6 +404,27 @@ def test_reversed_ring_reverses_direction_and_stays_closed() -> None:
     ]
 
 
+def test_outline_draw_order_stacks_oldest_to_newest() -> None:
+    newest = peri_scribe.kml_template.outline_draw_order(3, 0)
+    penultimate = peri_scribe.kml_template.outline_draw_order(3, 1)
+    antepenultimate = peri_scribe.kml_template.outline_draw_order(3, 2)
+    assert antepenultimate < penultimate < newest
+
+
+def test_band_draw_order_stacks_oldest_to_newest() -> None:
+    newest = peri_scribe.kml_template.band_draw_order(8, 0)
+    second_newest = peri_scribe.kml_template.band_draw_order(8, 1)
+    oldest = peri_scribe.kml_template.band_draw_order(8, 7)
+    assert oldest < second_newest < newest
+    assert oldest == 0
+
+
+def test_point_draw_order_draws_above_every_outline() -> None:
+    newest_outline = peri_scribe.kml_template.outline_draw_order(3, 0)
+    assert peri_scribe.kml_template.point_draw_order(3) > newest_outline
+    assert peri_scribe.kml_template.point_draw_order(0) == 1
+
+
 def test_template_kml_defines_point_style(document: ET.Element) -> None:
     point_style = style_with_id(document, "point-icon")
     icon_style = icon_style_of(point_style)
@@ -468,6 +525,57 @@ def test_template_kml_filled_perimeter_geometry_is_two_kilometers_due_west(
         )
         assert polygon_longitude == pytest.approx(point_longitude)
         assert polygon_latitude == pytest.approx(point_latitude)
+
+
+def test_template_kml_filled_perimeter_draw_orders(document: ET.Element) -> None:
+    filled = folder_named(
+        document,
+        peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
+    assert {
+        name: draw_order(placemark_named(filled, name))
+        for name in (
+            "Point Location",
+            "Latest Area",
+            "Latest Outline",
+            "Penultimate Outline",
+            "Antepenultimate Outline",
+        )
+    } == {
+        "Latest Area": peri_scribe.kml_template.LATEST_AREA_DRAW_ORDER,
+        "Antepenultimate Outline": 1,
+        "Penultimate Outline": 2,
+        "Latest Outline": 3,
+        "Point Location": 4,
+    }
+
+
+def test_template_kml_progression_map_draw_orders(document: ET.Element) -> None:
+    progression = folder_named(document, "Perimeter Progression Maps")
+    assert {
+        name: draw_order(placemark_named(progression, name))
+        for name in (
+            "Point Location",
+            "Latest Day",
+            "2 Days Before That",
+            "4 Days Before That",
+            "8 Days Before That",
+            "16 Days Before That",
+            "32 Days Before That",
+            "64 Days Before That",
+            "128+ Days Before That",
+        )
+    } == {
+        "Point Location": 8,
+        "Latest Day": 7,
+        "2 Days Before That": 6,
+        "4 Days Before That": 5,
+        "8 Days Before That": 4,
+        "16 Days Before That": 3,
+        "32 Days Before That": 2,
+        "64 Days Before That": 1,
+        "128+ Days Before That": 0,
+    }
 
 
 def test_template_kml_progression_map_folder(document: ET.Element) -> None:

@@ -312,6 +312,7 @@ def point_placemark(
     name: str,
     style_url: str,
     point: shapely.Point,
+    draw_order: int,
 ) -> None:
     """Add the point placemark for *point* named *name* to *container*.
 
@@ -320,9 +321,12 @@ def point_placemark(
         name: The name to show for the point.
         style_url: The style URL to apply.
         point: The point geometry.
+        draw_order: The order in which the point draws; it draws last, above the
+            perimeters.
     """
     placemark = container.newpoint(name=name, coords=[(point.x, point.y)])
     placemark.placemark.styleurl = style_url
+    peri_scribe.kml_template.set_draw_order(placemark, draw_order)
 
 
 def polygon_geometry(
@@ -330,6 +334,7 @@ def polygon_geometry(
     name: str,
     style_url: str,
     polygon: shapely.Polygon,
+    draw_order: int,
 ) -> None:
     """Add the polygon placemark for *polygon* to *container*.
 
@@ -338,6 +343,7 @@ def polygon_geometry(
         name: The placemark name.
         style_url: The style URL to apply.
         polygon: The shapely polygon to convert.
+        draw_order: The order in which the polygon draws.
     """
     placemark = container.newpolygon(
         name=name,
@@ -348,6 +354,7 @@ def polygon_geometry(
         placemark.innerboundaryis = [
             ring_coordinates(interior) for interior in polygon.interiors
         ]
+    peri_scribe.kml_template.set_draw_order(placemark, draw_order)
 
 
 def multi_polygon_geometry(
@@ -355,6 +362,7 @@ def multi_polygon_geometry(
     name: str,
     style_url: str,
     multi_polygon: shapely.MultiPolygon,
+    draw_order: int,
 ) -> None:
     """Add the multi-geometry placemark for *multi_polygon* to *container*.
 
@@ -363,6 +371,7 @@ def multi_polygon_geometry(
         name: The placemark name.
         style_url: The style URL to apply.
         multi_polygon: The shapely multi-polygon to convert.
+        draw_order: The order in which the multi-geometry draws.
     """
     geometry = container.newmultigeometry(name=name)
     geometry.placemark.styleurl = style_url
@@ -374,6 +383,7 @@ def multi_polygon_geometry(
                 ring_coordinates(interior) for interior in polygon.interiors
             ],
         )
+    peri_scribe.kml_template.set_draw_order(geometry, draw_order)
 
 
 def perimeter_geometry(
@@ -381,6 +391,7 @@ def perimeter_geometry(
     name: str,
     style_url: str,
     geometry: shapely.Geometry,
+    draw_order: int,
 ) -> None:
     """Add the placemark for *geometry* to *container*.
 
@@ -389,6 +400,7 @@ def perimeter_geometry(
         name: The placemark name.
         style_url: The style URL to apply.
         geometry: A shapely polygon or multi-polygon.
+        draw_order: The order in which the geometry draws.
     """
     if geometry.geom_type == "Polygon":
         polygon_geometry(
@@ -396,6 +408,7 @@ def perimeter_geometry(
             name,
             style_url,
             typing.cast("shapely.Polygon", geometry),
+            draw_order,
         )
     else:
         multi_polygon_geometry(
@@ -403,6 +416,7 @@ def perimeter_geometry(
             name,
             style_url,
             typing.cast("shapely.MultiPolygon", geometry),
+            draw_order,
         )
 
 
@@ -411,6 +425,7 @@ def perimeter_placemark(
     name: str,
     style_url: str,
     geometry: shapely.Geometry,
+    draw_order: int,
 ) -> None:
     """Add the perimeter placemark for *geometry* to *container*.
 
@@ -419,8 +434,9 @@ def perimeter_placemark(
         name: The placemark name.
         style_url: The style URL to apply.
         geometry: The perimeter geometry.
+        draw_order: The order in which the perimeter draws.
     """
-    perimeter_geometry(container, name, style_url, geometry)
+    perimeter_geometry(container, name, style_url, geometry, draw_order)
 
 
 def fire_folder(
@@ -431,7 +447,10 @@ def fire_folder(
     """Add the folder symbolizing *fire* to *container*.
 
     The folder holds the fire's point location and its latest, penultimate, and
-    antepenultimate perimeters, each shown when the fire's history has one.
+    antepenultimate perimeters, each shown when the fire's history has one. Draw
+    orders put the filled latest area on the bottom, stack the outline perimeters
+    from oldest to newest, and draw the point location last so its icon is never
+    covered.
 
     Args:
         container: The folder that holds the fire's folder.
@@ -439,12 +458,17 @@ def fire_folder(
         style_urls: The style URL for each template placemark name.
     """
     folder = container.newfolder(name=fire.name)
+    outline_count = min(
+        len(fire.perimeters),
+        len(peri_scribe.kml_template.OUTLINED_PERIMETER_TEMPLATES),
+    )
     if fire.point is not None:
         point_placemark(
             folder,
             fire.name,
             style_urls[peri_scribe.kml_template.POINT_LOCATION_NAME],
             fire.point,
+            peri_scribe.kml_template.point_draw_order(outline_count),
         )
     if fire.perimeters:
         perimeter_placemark(
@@ -452,6 +476,7 @@ def fire_folder(
             peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name,
             style_urls[peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name],
             fire.perimeters[-1],
+            peri_scribe.kml_template.LATEST_AREA_DRAW_ORDER,
         )
     for index, template in enumerate(
         peri_scribe.kml_template.OUTLINED_PERIMETER_TEMPLATES,
@@ -463,6 +488,7 @@ def fire_folder(
             template.name,
             style_urls[template.name],
             fire.perimeters[-(index + 1)],
+            peri_scribe.kml_template.outline_draw_order(outline_count, index),
         )
 
 

@@ -27,6 +27,8 @@ YEAR = 2026
 
 KML_NAMESPACE = "http://www.opengis.net/kml/2.2"
 
+GX_NAMESPACE = "http://www.google.com/kml/ext/2.2"
+
 
 def kml_tag(name: str) -> str:
     """Return the namespaced element tag for *name*.
@@ -38,6 +40,18 @@ def kml_tag(name: str) -> str:
         The tag ElementTree uses for the element.
     """
     return f"{{{KML_NAMESPACE}}}{name}"
+
+
+def gx_tag(name: str) -> str:
+    """Return the namespaced element tag for the Google extension *name*.
+
+    Args:
+        name: The Google extension element name.
+
+    Returns:
+        The tag ElementTree uses for the element.
+    """
+    return f"{{{GX_NAMESPACE}}}{name}"
 
 
 def square(side: float) -> shapely.geometry.Polygon:
@@ -189,6 +203,28 @@ def placemark_style_url(placemark: ET.Element) -> str:
     if style_url is None:
         pytest.fail("Placemark has no styleUrl")
     return style_url
+
+
+def draw_order(placemark: ET.Element) -> int:
+    """Return the gx:drawOrder of *placemark*'s geometry.
+
+    Args:
+        placemark: The placemark to inspect.
+
+    Returns:
+        The geometry's draw order.
+    """
+    for child in placemark:
+        if child.tag in {
+            kml_tag("Point"),
+            kml_tag("Polygon"),
+            kml_tag("MultiGeometry"),
+        }:
+            text = child.findtext(gx_tag("drawOrder"))
+            if text is None:
+                pytest.fail("Placemark has no gx:drawOrder")
+            return int(text)
+    pytest.fail("Placemark has no geometry")
 
 
 def point_coordinates(placemark: ET.Element) -> tuple[float, float]:
@@ -505,6 +541,7 @@ def test_polygon_geometry_includes_holes() -> None:
         "Bug",
         "#perimeter-fill",
         polygon,
+        0,
     )
     placemark = placemark_named(document_from(kml.kml()), "Bug")
     assert exterior_coordinates(placemark) == [
@@ -521,6 +558,7 @@ def test_polygon_geometry_includes_holes() -> None:
         (1.5, 0.5),
         (0.5, 0.5),
     ]
+    assert draw_order(placemark) == 0
 
 
 def test_multi_polygon_geometry_holds_each_polygon() -> None:
@@ -534,6 +572,7 @@ def test_multi_polygon_geometry_holds_each_polygon() -> None:
         "Bug",
         "#perimeter-fill",
         multi_polygon,
+        0,
     )
     placemark = placemark_named(document_from(kml.kml()), "Bug")
     geometry = placemark.find(kml_tag("MultiGeometry"))
@@ -543,6 +582,7 @@ def test_multi_polygon_geometry_holds_each_polygon() -> None:
         child for child in geometry if child.tag == kml_tag("Polygon")
     ]
     assert len(polygons) == len(multi_polygon.geoms)
+    assert draw_order(placemark) == 0
 
 
 def test_perimeter_geometry_converts_polygon() -> None:
@@ -552,9 +592,11 @@ def test_perimeter_geometry_converts_polygon() -> None:
         "Bug",
         "#perimeter-fill",
         square(1.0),
+        0,
     )
     placemark = placemark_named(document_from(kml.kml()), "Bug")
     assert placemark.find(kml_tag("Polygon")) is not None
+    assert draw_order(placemark) == 0
 
 
 def test_perimeter_geometry_converts_multi_polygon() -> None:
@@ -565,23 +607,28 @@ def test_perimeter_geometry_converts_multi_polygon() -> None:
         "Bug",
         "#perimeter-fill",
         multi_polygon,
+        0,
     )
     placemark = placemark_named(document_from(kml.kml()), "Bug")
     assert placemark.find(kml_tag("MultiGeometry")) is not None
+    assert draw_order(placemark) == 0
 
 
 def test_point_placemark_names_and_styles_point() -> None:
     point = shapely.geometry.Point(1.0, 2.0)
     kml = simplekml.Kml()
+    expected_draw_order = peri_scribe.kml_template.point_draw_order(3)
     peri_scribe.kml.point_placemark(
         kml.document,
         "Bug",
         "#point-icon",
         point,
+        expected_draw_order,
     )
     placemark = placemark_named(document_from(kml.kml()), "Bug")
     assert placemark_style_url(placemark) == "#point-icon"
     assert point_coordinates(placemark) == (1.0, 2.0)
+    assert draw_order(placemark) == expected_draw_order
 
 
 def test_perimeter_placemark_names_and_styles_polygon() -> None:
@@ -591,10 +638,12 @@ def test_perimeter_placemark_names_and_styles_polygon() -> None:
         "Latest Area",
         "#perimeter-fill",
         square(1.0),
+        0,
     )
     placemark = placemark_named(document_from(kml.kml()), "Latest Area")
     assert placemark_style_url(placemark) == "#perimeter-fill"
     assert placemark.find(kml_tag("Polygon")) is not None
+    assert draw_order(placemark) == 0
 
 
 @pytest.fixture
@@ -628,6 +677,22 @@ def test_fire_folder_includes_point_and_progression(
     assert placemark_style_url(
         placemark_named(folder, "Latest Area"),
     ) == "#perimeter-fill"
+    assert {
+        name: draw_order(placemark_named(folder, name))
+        for name in (
+            "Latest Area",
+            "Latest Outline",
+            "Penultimate Outline",
+            "Antepenultimate Outline",
+            "Bug",
+        )
+    } == {
+        "Latest Area": 0,
+        "Antepenultimate Outline": 1,
+        "Penultimate Outline": 2,
+        "Latest Outline": 3,
+        "Bug": 4,
+    }
 
 
 def test_fire_folder_shows_only_available_perimeters(
@@ -643,6 +708,14 @@ def test_fire_folder_shows_only_available_perimeters(
     peri_scribe.kml.fire_folder(kml.document, fire, style_urls)
     folder = folder_named(document_from(kml.kml()), "Bug")
     assert placemark_names(folder) == ["Bug", "Latest Area", "Latest Outline"]
+    assert {
+        name: draw_order(placemark_named(folder, name))
+        for name in ("Latest Area", "Latest Outline", "Bug")
+    } == {
+        "Latest Area": 0,
+        "Latest Outline": 1,
+        "Bug": 2,
+    }
 
 
 def test_fire_folder_without_point_or_perimeters_is_empty(
@@ -841,6 +914,7 @@ def test_fire_kml_builds_active_and_inactive_folders() -> None:
     )
     alta_folder = folder_named(inactive_perimeters, "ALTA")
     assert placemark_names(alta_folder) == ["ALTA"]
+    assert draw_order(placemark_named(alta_folder, "ALTA")) == 1
 
     style_ids = {
         child.get("id")

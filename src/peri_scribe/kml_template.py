@@ -64,6 +64,12 @@ LATEST_PERIMETERS_FOLDER_NAME = "Latest Perimeters w/ Progression Outlines"
 # centered west of the point location.
 FILLED_PERIMETER_CENTER_DISTANCE_IN_METERS = 2_000
 
+# Google Earth draws overlapping features in a nondeterministic order unless each
+# geometry states its place in the stack. Draw orders put the filled latest area on
+# the bottom, stack the outline perimeters from oldest to newest, and draw the point
+# location last so its icon is never covered. Lower values draw first.
+LATEST_AREA_DRAW_ORDER = 0
+
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class PerimeterTemplate:
@@ -261,6 +267,71 @@ def reversed_ring(coordinates: list[tuple[float, float]]) -> list[tuple[float, f
     return [coordinates[0], *reversed(coordinates[1:-1]), coordinates[0]]
 
 
+def set_draw_order(
+    geometry: simplekml.Point | simplekml.Polygon | simplekml.MultiGeometry,
+    draw_order: int,
+) -> None:
+    """Set the gx:drawOrder of *geometry* to *draw_order*.
+
+    simplekml exposes gx:drawOrder only on LineString, but every geometry
+    serializes from the same internal element map, so the tag is set there for
+    points, polygons, and multi-geometries alike.
+
+    Args:
+        geometry: The geometry to order.
+        draw_order: Lower values draw first, underneath later features.
+    """
+    geometry._kml["gx:drawOrder"] = draw_order  # ruff: ignore[private-member-access]
+
+
+def outline_draw_order(outline_count: int, newest_first_index: int) -> int:
+    """Return the draw order of the outline at *newest_first_index*.
+
+    Outlines draw from oldest to newest, so the oldest outline draws first and
+    the newest draws last, above the others.
+
+    Args:
+        outline_count: The number of outlines drawn for the fire.
+        newest_first_index: The outline's position counting from the newest
+            outline first, where 0 is the newest.
+
+    Returns:
+        The draw order, from 1 for the oldest outline to outline_count for the
+        newest.
+    """
+    return outline_count - newest_first_index
+
+
+def band_draw_order(band_count: int, newest_first_index: int) -> int:
+    """Return the draw order of the growth band at *newest_first_index*.
+
+    Bands draw from oldest to newest, so the oldest band draws first, at the
+    bottom of the stack, and the newest draws last, above the others.
+
+    Args:
+        band_count: The number of bands drawn in the progression map.
+        newest_first_index: The band's position counting from the newest band
+            first, where 0 is the newest.
+
+    Returns:
+        The draw order, from 0 for the oldest band to band_count - 1 for the
+        newest.
+    """
+    return band_count - 1 - newest_first_index
+
+
+def point_draw_order(outline_count: int) -> int:
+    """Return the draw order that draws the point location above every outline.
+
+    Args:
+        outline_count: The number of outlines drawn for the fire.
+
+    Returns:
+        The draw order, one above the newest outline's.
+    """
+    return outline_count + 1
+
+
 def point_style() -> Style:
     """Return the style for the fictional point location.
 
@@ -306,24 +377,33 @@ def outlined_perimeter_style(template: PerimeterTemplate) -> Style:
     return style
 
 
-def point_placemark(container: simplekml.Container, center: Center) -> None:
+def point_placemark(
+    container: simplekml.Container,
+    center: Center,
+    draw_order: int | None = None,
+) -> None:
     """Add the point location placemark at *center* to *container*.
 
     Args:
         container: The folder that holds the placemark.
         center: The point location.
+        draw_order: The order in which the point draws, or None to leave it
+            un-ordered.
     """
     point = container.newpoint(
         name=POINT_LOCATION_NAME,
         coords=[(center.longitude, center.latitude)],
     )
     point.placemark.styleurl = f"#{POINT_STYLE_ID}"
+    if draw_order is not None:
+        set_draw_order(point, draw_order)
 
 
 def perimeter_placemark(
     container: simplekml.Container,
     template: PerimeterTemplate,
     center: Center,
+    draw_order: int | None = None,
 ) -> None:
     """Add the fictional perimeter *template* centered on *center* to *container*.
 
@@ -333,6 +413,8 @@ def perimeter_placemark(
         container: The folder that holds the placemark.
         template: The perimeter to represent.
         center: The center point of the perimeter.
+        draw_order: The order in which the perimeter draws, or None to leave it
+            un-ordered.
     """
     polygon = container.newpolygon(
         name=template.name,
@@ -351,12 +433,17 @@ def perimeter_placemark(
                 ),
             ),
         ]
+    if draw_order is not None:
+        set_draw_order(polygon, draw_order)
 
 
 def filled_perimeter_folder(document: simplekml.Document) -> None:
     """Add the "Latest Perimeters w/ Progression Outlines" folder to *document*.
 
-    The folder's geometry is centered 2 km due west of the point location.
+    The folder's geometry is centered 2 km due west of the point location. Draw
+    orders put the filled latest area on the bottom, stack the outline perimeters
+    from oldest to newest, and draw the point location last so its icon is never
+    covered.
 
     Args:
         document: The template's document.
@@ -366,22 +453,43 @@ def filled_perimeter_folder(document: simplekml.Document) -> None:
         POINT_CENTER,
         FILLED_PERIMETER_CENTER_DISTANCE_IN_METERS,
     )
-    point_placemark(folder, center)
-    perimeter_placemark(folder, FILLED_PERIMETER_TEMPLATE, center)
-    for template in OUTLINED_PERIMETER_TEMPLATES:
-        perimeter_placemark(folder, template, center)
+    outline_count = len(OUTLINED_PERIMETER_TEMPLATES)
+    point_placemark(folder, center, point_draw_order(outline_count))
+    perimeter_placemark(
+        folder,
+        FILLED_PERIMETER_TEMPLATE,
+        center,
+        LATEST_AREA_DRAW_ORDER,
+    )
+    for index, template in enumerate(OUTLINED_PERIMETER_TEMPLATES):
+        perimeter_placemark(
+            folder,
+            template,
+            center,
+            outline_draw_order(outline_count, index),
+        )
 
 
 def progression_map_folder(document: simplekml.Document) -> None:
     """Add the "Perimeter Progression Maps" folder to *document*.
 
+    Draw orders put the oldest growth band on the bottom, stack the bands from
+    oldest to newest, and draw the point location last, above the newest band,
+    so its icon is never covered.
+
     Args:
         document: The template's document.
     """
     folder = document.newfolder(name="Perimeter Progression Maps")
-    point_placemark(folder, POINT_CENTER)
-    for template in PROGRESSION_FILL_TEMPLATES:
-        perimeter_placemark(folder, template, POINT_CENTER)
+    band_count = len(PROGRESSION_FILL_TEMPLATES)
+    point_placemark(folder, POINT_CENTER, band_count)
+    for index, template in enumerate(PROGRESSION_FILL_TEMPLATES):
+        perimeter_placemark(
+            folder,
+            template,
+            POINT_CENTER,
+            band_draw_order(band_count, index),
+        )
 
 
 def template_kml() -> str:
