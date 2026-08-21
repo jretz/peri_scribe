@@ -21,3 +21,72 @@ Prototyped:
 Planned:
 
 - **`report`** — generates reports about fires (largest, fastest growing, etc.).
+
+## Data Flow
+
+```
+  ┌─ EXTERNAL WORLD ─────────────────────────────────────────────────────────────────┐
+  │three ArcGIS feeds — the data that drives the maps:                               │
+  │   • CA Perimeters — CAL FIRE/NIFC; keeps every update of the season              │
+  │   • WFIGS Perimeters — USFS; only the latest perimeter per active fire           │
+  │   • WFIGS Locations — one incident point per fire                                │
+  │plus CA + AZ/NV/OR state-boundary services (for classification)                   │
+  └─────────────────────────┬───────────────────────────────────────────────────┬────┘
+              fire feeds    ↓                                 boundary services ↓
+  ┌─ 1 · FETCH ────────────────────────────────────────┐   ┌─ ADMIN BOUNDARIES ──────┐
+  │for each feed, query its ArcGIS layer:              │   │fetch the CA polygon and │
+  │  1. read the layer watermark (lastEdit); if a      │   │AZ/NV/OR neighbors from  │
+  │     snapshot already carries it, skip the feed     │   │ArcGIS; intersect to     │
+  │  2. else fetch only features changed since the     │   │get the shared border    │
+  │     stored cutoff − 5-min overlap, so in-flight    │   │lines; write one small   │
+  │     edits are re-checked rather than missed        │   │boundary GeoPackage:     │
+  │  3. drop rows already stored identically           │   │data/administrative      │
+  │why: snapshots are append-only and verbatim         │   │boundaries/CA_border.gpkg│
+  │(original CRS, columns, attributes), never modified │   └──────────────────────┬──┘
+  └─────────────────────────┬──────────────────────────┘                          │
+                            ↓  data/<year>/sources/<feed>/000142,lastEdit=….gpkg  │
+  ┌─ 2 · INDEX + CLASSIFY ─────────────────────────────┐                          │
+  │read every snapshot; group rows into distinct fires:│                          │
+  │  • any shared identifier → same fire; complexes    │                          │
+  │    link children via the complex ID                │                          │
+  │  • name-only matches merge only when spatially     │<─────────────────────────┤
+  │    compatible (“Canyon” in CA vs AK stay apart)    │                          │
+  │classify each fire vs the CA border (uses the       │                          │
+  │file from the right; picks the trusted source)      │                          │
+  └─────────────────────────┬──────────────────────────┘                          │
+                            ↓  sources/fires.json — identity + classification     │
+  ┌─ 3 · FULL HISTORY ─────────────────────────────────┐                          │
+  │build one cleaned, reconciled timeline per fire:    │                          │
+  │  • collapse consecutive identical perimeters       │                          │
+  │    (duplicate observations of the same moment)     │                          │
+  │  • reconcile CA vs WFIGS — the border              │<─────────────────────────┘
+  │    classification picks the preferred source       │
+  │  • drop implausibly small perimeters (a 2-acre     │
+  │    “update” of a 100k-acre fire is noise)          │
+  │  • clean geometry for Google Earth: tiny parts,    │
+  │    holes, collinear points, slits                  │
+  └─────────────────────────┬──────────────────────────┘
+                            ↓  derived/history_of_full_geography.gpkg
+  ┌─ 4 · DIFFERENTIAL HISTORY ─────────────────────────┐
+  │turn the full timeline into growth rings, per fire: │
+  │  • correct each ring: subtract every later         │
+  │    perimeter (a later shrink folds back as a       │
+  │    correction — only growth remains)               │
+  │  • keep rings that add area; compute deltas:       │
+  │    area, % contained, estimated cost               │
+  │points are copied through unchanged                 │
+  └─────────────────────────┬──────────────────────────┘
+                            ↓  derived/history_of_differential_geography.gpkg
+  ┌─ 5 · CREATE KMZ ───────────────────────────────────┐   ┌─ KML TEMPLATE ──────────┐
+  │per fire, build the symbolized KML:                 │   │data/templates/PeriScribe│
+  │  • Active / Inactive folders                       │   │Template.kml — fictional │
+  │  • Latest Perimeters: filled latest area + last 3  │   │fire; you edit its styles│
+  │    outlines + point icon, in explicit draw order   │   │in Google Earth (the KML │
+  │    (the icon is never covered)                     │   │editor is the styling UI)│
+  │  • Progression Maps: growth rings grouped into     │   │tool generates it once   │
+  │    day bands (1, 2, 4 … 128+), unioned & dated     │   │via create-kml-template  │
+  │  • styles copied from the KML template             │<──┤                         │
+  │write one compressed KMZ (zipped KML)               │   │consumed by CREATE KMZ   │
+  └─────────────────────────┬──────────────────────────┘   └─────────────────────────┘
+                            └─> maps/PeriScribe Fires 2026.kmz
+```
