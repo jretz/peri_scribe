@@ -9,8 +9,10 @@ import typing
 import pandas as pd
 
 import peri_scribe.feed_types
-import peri_scribe.geo_data
+import peri_scribe.geo_package
+import peri_scribe.models
 import peri_scribe.snapshots
+import peri_scribe.units
 
 
 if typing.TYPE_CHECKING:
@@ -52,7 +54,7 @@ def modified_datetime_from(value: object) -> datetime.datetime | None:
     Returns:
         The parsed UTC datetime, or None when *value* is blank or not parseable.
     """
-    if peri_scribe.geo_data.is_missing(value):
+    if peri_scribe.geo_package.is_missing(value):
         return None
 
     parsed: datetime.datetime | None
@@ -61,7 +63,10 @@ def modified_datetime_from(value: object) -> datetime.datetime | None:
     elif isinstance(value, str):
         parsed = parse_iso_datetime(value)
     elif isinstance(value, (int, float)) and not isinstance(value, bool):
-        parsed = datetime.datetime.fromtimestamp(value / 1000.0, tz=datetime.UTC)
+        parsed = datetime.datetime.fromtimestamp(
+            value / peri_scribe.units.MILLISECONDS_PER_SECOND,
+            tz=datetime.UTC,
+        )
     else:
         parsed = None
 
@@ -90,7 +95,7 @@ def existing_features(
         The most recent feature per OBJECTID, or None when there are none.
     """
     dataframes = [
-        peri_scribe.geo_data.read_layer_dataframe(directory / filename, feed)
+        peri_scribe.geo_package.read_layer_dataframe(directory / filename, feed)
         for filename in peri_scribe.snapshots.existing_geopackage_filenames(directory)
     ]
     if not dataframes:
@@ -99,9 +104,14 @@ def existing_features(
         "geopandas.GeoDataFrame",
         pd.concat(dataframes, ignore_index=True),
     )
-    if "OBJECTID" not in combined.columns:
+    if peri_scribe.models.OBJECT_ID_COLUMN_NAME not in combined.columns:
         return None
-    return combined[~combined.duplicated(subset=["OBJECTID"], keep="last")]
+    return combined[
+        ~combined.duplicated(
+            subset=[peri_scribe.models.OBJECT_ID_COLUMN_NAME],
+            keep="last",
+        )
+    ]
 
 
 def latest_modified_datetime(
@@ -135,10 +145,9 @@ def incremental_cutoff(
 ) -> datetime.datetime:
     """Return the cutoff for an incremental fetch.
 
-    The cutoff is the latest stored modified timestamp minus the overlap, so that
-    recently edited features are re-fetched and re-checked rather than missed because of
-    clock skew or in-flight edits. When no stored timestamp can be found, the Unix epoch
-    is used so the query returns every feature for deduplication to filter.
+    The cutoff is the latest stored modified timestamp minus `OVERLAP`. When no stored
+    timestamp can be found, the Unix epoch is used so the query returns every feature
+    for deduplication to filter.
 
     Args:
         existing: The latest stored feature per OBJECTID, or None.
@@ -183,7 +192,7 @@ def normalized_attribute_value(value: object) -> object:
     Returns:
         The comparable form of *value*.
     """
-    if peri_scribe.geo_data.is_missing(value):
+    if peri_scribe.geo_package.is_missing(value):
         return None
     if isinstance(value, datetime.datetime):
         return value.replace(microsecond=0)
@@ -262,7 +271,7 @@ def feature_signatures(
     signatures: dict[int, tuple[tuple[object, ...], bytes | None]] = {}
     for row in dataframe.itertuples(index=False, name=None):
         values = dict(zip(dataframe.columns, row, strict=True))
-        object_id = int(values["OBJECTID"])
+        object_id = int(values[peri_scribe.models.OBJECT_ID_COLUMN_NAME])
         signatures[object_id] = feature_signature(
             values,
             columns,
@@ -296,7 +305,7 @@ def drop_features_already_present(
     keep: list[bool] = []
     for row in new_dataframe.itertuples(index=False, name=None):
         values = dict(zip(new_dataframe.columns, row, strict=True))
-        object_id = int(values["OBJECTID"])
+        object_id = int(values[peri_scribe.models.OBJECT_ID_COLUMN_NAME])
         keep.append(
             existing_signatures.get(object_id)
             != feature_signature(values, columns, values[geometry_name]),

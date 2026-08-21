@@ -120,44 +120,56 @@ def test_band_for_age_returns_none_without_band() -> None:
 
 def test_band_label_names_single_date() -> None:
     latest_date = datetime.date(2026, 8, 15)
-    assert peri_scribe.perimeter_progression.band_label(
-        band("Latest Day"),
-        latest_date,
-        [datetime.date(2026, 8, 15)],
-    ) == "08/15"
+    assert (
+        peri_scribe.perimeter_progression.band_label(
+            band("Latest Day"),
+            latest_date,
+            [datetime.date(2026, 8, 15)],
+        )
+        == "08/15"
+    )
 
 
 def test_band_label_names_actual_date_range() -> None:
     latest_date = datetime.date(2026, 8, 15)
-    assert peri_scribe.perimeter_progression.band_label(
-        band("2 Days Before That"),
-        latest_date,
-        [
-            datetime.date(2026, 8, 13),
-            datetime.date(2026, 8, 14),
-        ],
-    ) == "08/13 - 08/14"
+    assert (
+        peri_scribe.perimeter_progression.band_label(
+            band("2 Days Before That"),
+            latest_date,
+            [
+                datetime.date(2026, 8, 13),
+                datetime.date(2026, 8, 14),
+            ],
+        )
+        == "08/13 - 08/14"
+    )
 
 
 def test_band_label_names_partial_range_without_full_window() -> None:
     latest_date = datetime.date(2026, 8, 15)
-    assert peri_scribe.perimeter_progression.band_label(
-        band("8 Days Before That"),
-        latest_date,
-        [
-            datetime.date(2026, 8, 6),
-            datetime.date(2026, 8, 8),
-        ],
-    ) == "08/06 - 08/08"
+    assert (
+        peri_scribe.perimeter_progression.band_label(
+            band("8 Days Before That"),
+            latest_date,
+            [
+                datetime.date(2026, 8, 6),
+                datetime.date(2026, 8, 8),
+            ],
+        )
+        == "08/06 - 08/08"
+    )
 
 
 def test_band_label_names_open_ended_band_by_boundary() -> None:
     latest_date = datetime.date(2026, 8, 15)
-    assert peri_scribe.perimeter_progression.band_label(
-        band("128+ Days Before That"),
-        latest_date,
-        [datetime.date(2026, 4, 5)],
-    ) == "≤ 04/10"
+    assert (
+        peri_scribe.perimeter_progression.band_label(
+            band("128+ Days Before That"),
+            latest_date,
+            [datetime.date(2026, 4, 5)],
+        )
+        == "≤ 04/10"
+    )
 
 
 def test_progression_bands_groups_rings_into_bands() -> None:
@@ -224,9 +236,12 @@ def test_progression_bands_skips_bands_with_empty_union() -> None:
 
 
 def test_progression_bands_skips_undated_rings() -> None:
-    assert peri_scribe.perimeter_progression.progression_bands(
-        (ring(square(1.0)),),
-    ) == ()
+    assert (
+        peri_scribe.perimeter_progression.progression_bands(
+            (ring(square(1.0)),),
+        )
+        == ()
+    )
 
 
 def test_progression_bands_returns_nothing_without_rings() -> None:

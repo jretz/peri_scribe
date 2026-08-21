@@ -12,7 +12,7 @@ import structlog
 
 import peri_scribe.exceptions
 import peri_scribe.fire_sources
-import peri_scribe.geo_data
+import peri_scribe.geo_package
 import peri_scribe.models
 import peri_scribe.snapshots
 from tests.factories import ACTIVE, INACTIVE, fire_record
@@ -506,7 +506,7 @@ def test_fire_complexes_skips_membership_for_unidentified_fire(
 def test_fire_sources_propagates_unknown_layer_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake_fire_records(_path: pathlib.Path) -> typing.Never:
+    def fake_read_geopackage(_path: pathlib.Path) -> typing.Never:
         layer_name = "Mystery_Layer_0"
         raise peri_scribe.exceptions.UnknownLayerError(
             layer_name,
@@ -514,9 +514,9 @@ def test_fire_sources_propagates_unknown_layer_error(
         )
 
     monkeypatch.setattr(
-        peri_scribe.geo_data,
-        "fire_records",
-        fake_fire_records,
+        peri_scribe.geo_package,
+        "read_geopackage",
+        fake_read_geopackage,
     )
     monkeypatch.setattr(
         peri_scribe.snapshots,
@@ -533,14 +533,14 @@ def test_fire_sources_propagates_unknown_layer_error(
 def test_fire_sources_raises_system_exit_for_unreadable_file(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fake_fire_records(_path: pathlib.Path) -> typing.Never:
+    def fake_read_geopackage(_path: pathlib.Path) -> typing.Never:
         message = "no such file"
         raise FileNotFoundError(message)
 
     monkeypatch.setattr(
-        peri_scribe.geo_data,
-        "fire_records",
-        fake_fire_records,
+        peri_scribe.geo_package,
+        "read_geopackage",
+        fake_read_geopackage,
     )
     monkeypatch.setattr(
         peri_scribe.snapshots,

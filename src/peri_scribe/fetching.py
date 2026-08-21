@@ -14,6 +14,7 @@ import structlog
 import peri_scribe.changes
 import peri_scribe.exceptions
 import peri_scribe.feed_types
+import peri_scribe.feeds
 import peri_scribe.fire_index
 import peri_scribe.geo_data
 import peri_scribe.models
@@ -176,7 +177,7 @@ def fetch_all_feeds(
     snapshot_paths: list[pathlib.Path] = []
     errors: list[str] = []
     wrote_snapshot = False
-    for feed in peri_scribe.models.FEEDS:
+    for feed in peri_scribe.feeds.FEEDS:
         logger.info("Fetching", feed=feed.name, url=feed.url)
         watermark = feed.current_watermark
         if watermark is None:
@@ -191,11 +192,9 @@ def fetch_all_feeds(
             / peri_scribe.snapshots.SOURCES_DIRECTORY_NAME
             / feed.name
         )
-        existing_path = (
-            peri_scribe.snapshots.snapshot_path_for_watermark(
-                source_directory,
-                watermark,
-            )
+        existing_path = peri_scribe.snapshots.snapshot_path_for_watermark(
+            source_directory,
+            watermark,
         )
         if existing_path is not None:
             logger.info(
@@ -206,10 +205,8 @@ def fetch_all_feeds(
             )
             snapshot_paths.append(existing_path)
             continue
-        existing_filenames = (
-            peri_scribe.snapshots.existing_geopackage_filenames(
-                source_directory,
-            )
+        existing_filenames = peri_scribe.snapshots.existing_geopackage_filenames(
+            source_directory,
         )
         try:
             geodataframe = fetch_feed(

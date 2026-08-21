@@ -11,9 +11,11 @@ import peri_scribe.california_border_classification
 import peri_scribe.classification
 import peri_scribe.fire_history
 import peri_scribe.fire_sources
-import peri_scribe.geo_data
+import peri_scribe.geo_package
+import peri_scribe.history_attributes
 import peri_scribe.models
 import peri_scribe.output
+import peri_scribe.perimeter_versions
 import peri_scribe.snapshots
 import tests.factories
 
@@ -75,7 +77,7 @@ def observation(
     object_id: int | None = 1,
     source_file: str = "source.gpkg",
     attributes: dict[str, object] | None = None,
-) -> peri_scribe.fire_history.SourceObservation:
+) -> peri_scribe.perimeter_versions.SourceObservation:
     """Build a source observation for a test.
 
     Args:
@@ -91,7 +93,7 @@ def observation(
     Returns:
         The observation.
     """
-    return peri_scribe.fire_history.SourceObservation(
+    return peri_scribe.perimeter_versions.SourceObservation(
         source_kind=source_kind,
         geometry=geometry,
         observation_time=observation_time,
@@ -179,25 +181,34 @@ def utc(
 def test_watermark_time_from_returns_snapshot_time() -> None:
     path = pathlib.Path("000000,lastEdit=1786955463975.gpkg")
     expected = datetime.datetime.fromtimestamp(1786955463975 / 1000.0, tz=datetime.UTC)
-    assert peri_scribe.fire_history.watermark_time_from(path) == expected
+    assert peri_scribe.perimeter_versions.watermark_time_from(path) == expected
 
 
 def test_watermark_time_from_returns_none_for_malformed_name() -> None:
-    assert peri_scribe.fire_history.watermark_time_from(
-        pathlib.Path("000000,no-time.gpkg"),
-    ) is None
+    assert (
+        peri_scribe.perimeter_versions.watermark_time_from(
+            pathlib.Path("000000,no-time.gpkg"),
+        )
+        is None
+    )
 
 
 def test_watermark_time_from_returns_none_for_non_numeric_watermark() -> None:
-    assert peri_scribe.fire_history.watermark_time_from(
-        pathlib.Path("000000,lastEdit=soon.gpkg"),
-    ) is None
+    assert (
+        peri_scribe.perimeter_versions.watermark_time_from(
+            pathlib.Path("000000,lastEdit=soon.gpkg"),
+        )
+        is None
+    )
 
 
 def test_watermark_time_from_returns_none_without_comma() -> None:
-    assert peri_scribe.fire_history.watermark_time_from(
-        pathlib.Path("snapshot.gpkg"),
-    ) is None
+    assert (
+        peri_scribe.perimeter_versions.watermark_time_from(
+            pathlib.Path("snapshot.gpkg"),
+        )
+        is None
+    )
 
 
 def test_effective_time_prefers_observation_time() -> None:
@@ -208,7 +219,7 @@ def test_effective_time_prefers_observation_time() -> None:
         snapshot_time=snapshot_time,
         attributes={"poly_DateCurrent": utc(2026, 8, 15, 22, 0)},
     )
-    assert peri_scribe.fire_history.effective_time(observed) == mapping_time
+    assert peri_scribe.perimeter_versions.effective_time(observed) == mapping_time
 
 
 def test_effective_time_falls_back_to_current_date_before_snapshot_time() -> None:
@@ -218,13 +229,13 @@ def test_effective_time_falls_back_to_current_date_before_snapshot_time() -> Non
         snapshot_time=snapshot_time,
         attributes={"poly_DateCurrent": current_date},
     )
-    assert peri_scribe.fire_history.effective_time(observed) == current_date
+    assert peri_scribe.perimeter_versions.effective_time(observed) == current_date
 
 
 def test_effective_time_falls_back_to_snapshot_time() -> None:
     snapshot_time = utc(2026, 8, 17, 1, 42)
     observed = observation(snapshot_time=snapshot_time)
-    assert peri_scribe.fire_history.effective_time(observed) == snapshot_time
+    assert peri_scribe.perimeter_versions.effective_time(observed) == snapshot_time
 
 
 def test_perimeter_sort_key_orders_by_effective_time() -> None:
@@ -236,8 +247,8 @@ def test_perimeter_sort_key_orders_by_effective_time() -> None:
         observation_time=utc(2026, 8, 16, 0, 11),
         serial_number=1,
     )
-    assert peri_scribe.fire_history.perimeter_sort_key(earlier) < (
-        peri_scribe.fire_history.perimeter_sort_key(later)
+    assert peri_scribe.perimeter_versions.perimeter_sort_key(earlier) < (
+        peri_scribe.perimeter_versions.perimeter_sort_key(later)
     )
 
 
@@ -245,19 +256,19 @@ def test_geometries_are_equal_compares_shapes() -> None:
     first = polygon((0, 0), (1, 0), (1, 1), (0, 0))
     second = polygon((0, 0), (1, 0), (1, 1), (0, 0))
     different = polygon((0, 0), (2, 0), (2, 1), (0, 0))
-    assert peri_scribe.fire_history.geometries_are_equal(first, second)
-    assert not peri_scribe.fire_history.geometries_are_equal(first, different)
+    assert peri_scribe.perimeter_versions.geometries_are_equal(first, second)
+    assert not peri_scribe.perimeter_versions.geometries_are_equal(first, different)
 
 
 def test_geometries_are_equal_treats_missing_geometries() -> None:
-    assert peri_scribe.fire_history.geometries_are_equal(None, None)
-    assert not peri_scribe.fire_history.geometries_are_equal(None, point(0, 0))
+    assert peri_scribe.perimeter_versions.geometries_are_equal(None, None)
+    assert not peri_scribe.perimeter_versions.geometries_are_equal(None, point(0, 0))
 
 
 def test_geometries_are_equal_treats_empty_geometries() -> None:
     empty = shapely.geometry.Polygon()
-    assert peri_scribe.fire_history.geometries_are_equal(empty, empty)
-    assert not peri_scribe.fire_history.geometries_are_equal(empty, point(0, 0))
+    assert peri_scribe.perimeter_versions.geometries_are_equal(empty, empty)
+    assert not peri_scribe.perimeter_versions.geometries_are_equal(empty, point(0, 0))
 
 
 def test_collapse_identical_consecutive_perimeters_collapses_runs() -> None:
@@ -274,7 +285,7 @@ def test_collapse_identical_consecutive_perimeters_collapses_runs() -> None:
         serial_number=1,
         attributes={"area_acres": 11},
     )
-    versions = peri_scribe.fire_history.collapse_identical_consecutive_perimeters(
+    versions = peri_scribe.perimeter_versions.collapse_identical_consecutive_perimeters(
         [older, newer],
     )
     assert versions == [newer]
@@ -291,7 +302,7 @@ def test_collapse_identical_consecutive_perimeters_keeps_distinct_geometries() -
         geometry=second,
         observation_time=utc(2026, 8, 16, 1, 10),
     )
-    versions = peri_scribe.fire_history.collapse_identical_consecutive_perimeters(
+    versions = peri_scribe.perimeter_versions.collapse_identical_consecutive_perimeters(
         [first_observation, second_observation],
     )
     assert versions == [first_observation, second_observation]
@@ -300,21 +311,24 @@ def test_collapse_identical_consecutive_perimeters_keeps_distinct_geometries() -
 def test_observations_are_contemporaneous_within_tolerance() -> None:
     left = observation(observation_time=utc(2026, 8, 16, 0, 10))
     right = observation(observation_time=utc(2026, 8, 16, 4, 10))
-    assert peri_scribe.fire_history.observations_are_contemporaneous(left, right)
+    assert peri_scribe.perimeter_versions.observations_are_contemporaneous(left, right)
 
 
 def test_observations_are_contemporaneous_beyond_tolerance() -> None:
     left = observation(observation_time=utc(2026, 8, 16, 0, 10))
     right = observation(observation_time=utc(2026, 8, 16, 4, 11))
-    assert not peri_scribe.fire_history.observations_are_contemporaneous(left, right)
+    assert not peri_scribe.perimeter_versions.observations_are_contemporaneous(
+        left,
+        right,
+    )
 
 
 def test_observations_are_contemporaneous_with_missing_times() -> None:
-    assert peri_scribe.fire_history.observations_are_contemporaneous(
+    assert peri_scribe.perimeter_versions.observations_are_contemporaneous(
         observation(),
         observation(),
     )
-    assert not peri_scribe.fire_history.observations_are_contemporaneous(
+    assert not peri_scribe.perimeter_versions.observations_are_contemporaneous(
         observation(observation_time=utc(2026, 8, 16, 0, 10)),
         observation(),
     )
@@ -328,7 +342,9 @@ def test_preferred_perimeter_source_prefers_wfigs_outside_california() -> None:
     ]
     for kind in kinds:
         assert (
-            peri_scribe.fire_history.preferred_perimeter_source(classification(kind))
+            peri_scribe.perimeter_versions.preferred_perimeter_source(
+                classification(kind),
+            )
             is WFIGS_PERIMETER
         )
 
@@ -340,24 +356,29 @@ def test_preferred_perimeter_source_prefers_firis_inside_california() -> None:
     ]
     for kind in kinds:
         assert (
-            peri_scribe.fire_history.preferred_perimeter_source(classification(kind))
+            peri_scribe.perimeter_versions.preferred_perimeter_source(
+                classification(kind),
+            )
             is FIRIS_PERIMETER
         )
 
 
 def test_preferred_perimeter_source_defaults_to_firis() -> None:
-    assert peri_scribe.fire_history.preferred_perimeter_source(None) is FIRIS_PERIMETER
+    assert (
+        peri_scribe.perimeter_versions.preferred_perimeter_source(None)
+        is FIRIS_PERIMETER
+    )
 
 
 def test_preferred_pair_returns_preferred_first() -> None:
     firis = observation(source_kind=FIRIS_PERIMETER)
     wfigs = observation(source_kind=WFIGS_PERIMETER)
-    assert peri_scribe.fire_history.preferred_pair(
+    assert peri_scribe.perimeter_versions.preferred_pair(
         firis,
         wfigs,
         FIRIS_PERIMETER,
     ) == (firis, wfigs)
-    assert peri_scribe.fire_history.preferred_pair(
+    assert peri_scribe.perimeter_versions.preferred_pair(
         firis,
         wfigs,
         WFIGS_PERIMETER,
@@ -375,7 +396,7 @@ def test_merge_observations_merges_attributes_winner_first() -> None:
         geometry=polygon((0, 0), (1, 0), (1, 1), (0, 0)),
         attributes={"area_acres": 99, "cost": 500},
     )
-    merged = peri_scribe.fire_history.merge_observations(winner, loser)
+    merged = peri_scribe.perimeter_versions.merge_observations(winner, loser)
     assert merged.source_kind is WFIGS_PERIMETER
     assert merged.attributes == {"area_acres": 100, "source": "NIFC", "cost": 500}
 
@@ -394,7 +415,7 @@ def test_merge_identical_observations_merges_matching_geometry() -> None:
         observation_time=utc(2026, 8, 16, 0, 10),
         attributes={"poly_GISAcres": 100, "attr_EstimatedCostToDate": 500},
     )
-    merged = peri_scribe.fire_history.merge_identical_observations(
+    merged = peri_scribe.perimeter_versions.merge_identical_observations(
         [firis, wfigs],
         WFIGS_PERIMETER,
     )
@@ -409,7 +430,7 @@ def test_merge_identical_observations_merges_matching_geometry() -> None:
 def test_keep_preferred_in_window_drops_loser_when_both_sources_present() -> None:
     firis = observation(source_kind=FIRIS_PERIMETER)
     wfigs = observation(source_kind=WFIGS_PERIMETER)
-    kept = peri_scribe.fire_history.keep_preferred_in_window(
+    kept = peri_scribe.perimeter_versions.keep_preferred_in_window(
         [firis, wfigs],
         WFIGS_PERIMETER,
     )
@@ -418,7 +439,7 @@ def test_keep_preferred_in_window_drops_loser_when_both_sources_present() -> Non
 
 def test_keep_preferred_in_window_keeps_single_source_window() -> None:
     firis = observation(source_kind=FIRIS_PERIMETER)
-    kept = peri_scribe.fire_history.keep_preferred_in_window(
+    kept = peri_scribe.perimeter_versions.keep_preferred_in_window(
         [firis],
         WFIGS_PERIMETER,
     )
@@ -434,7 +455,7 @@ def test_drop_losing_source_versions_drops_loser_in_window() -> None:
         source_kind=WFIGS_PERIMETER,
         observation_time=utc(2026, 7, 12, 0, 23),
     )
-    kept = peri_scribe.fire_history.drop_losing_source_versions(
+    kept = peri_scribe.perimeter_versions.drop_losing_source_versions(
         [firis, wfigs],
         FIRIS_PERIMETER,
     )
@@ -476,7 +497,7 @@ def test_reconcile_perimeter_versions_merges_identical_and_prefers_wfigs() -> No
             attributes={"poly_GISAcres": 300},
         ),
     ]
-    versions = peri_scribe.fire_history.reconcile_perimeter_versions(
+    versions = peri_scribe.perimeter_versions.reconcile_perimeter_versions(
         firis_observations,
         wfigs_observations,
         classification(
@@ -505,7 +526,7 @@ def test_reconcile_perimeter_versions_prefers_firis_for_inside_near() -> None:
             observation_time=utc(2026, 7, 12, 0, 23),
         ),
     ]
-    versions = peri_scribe.fire_history.reconcile_perimeter_versions(
+    versions = peri_scribe.perimeter_versions.reconcile_perimeter_versions(
         firis_observations,
         wfigs_observations,
         classification(
@@ -520,15 +541,15 @@ def test_reconcile_perimeter_versions_prefers_firis_for_inside_near() -> None:
 
 def test_geometry_area_in_acres_returns_area_for_polygon() -> None:
     geometry = polygon((0, 0), (1, 0), (1, 1), (0, 0))
-    area = peri_scribe.fire_history.geometry_area_in_acres(geometry)
+    area = peri_scribe.perimeter_versions.geometry_area_in_acres(geometry)
     assert area is not None
     assert area > 0
 
 
 def test_geometry_area_in_acres_returns_none_without_geometry() -> None:
-    assert peri_scribe.fire_history.geometry_area_in_acres(None) is None
+    assert peri_scribe.perimeter_versions.geometry_area_in_acres(None) is None
     assert (
-        peri_scribe.fire_history.geometry_area_in_acres(
+        peri_scribe.perimeter_versions.geometry_area_in_acres(
             shapely.geometry.Polygon(),
         )
         is None
@@ -536,74 +557,74 @@ def test_geometry_area_in_acres_returns_none_without_geometry() -> None:
 
 
 def test_computed_area_in_acres_returns_first_positive_value() -> None:
-    area = peri_scribe.fire_history.computed_area_in_acres(
+    area = peri_scribe.perimeter_versions.computed_area_in_acres(
         {"poly_Acres_AutoCalc": 123, "poly_GISAcres": 456, "area_acres": 789},
     )
     assert area == pytest.approx(123)
 
 
 def test_computed_area_in_acres_skips_missing_and_nonpositive() -> None:
-    area = peri_scribe.fire_history.computed_area_in_acres(
+    area = peri_scribe.perimeter_versions.computed_area_in_acres(
         {"poly_Acres_AutoCalc": 0, "poly_GISAcres": None, "area_acres": 456},
     )
     assert area == pytest.approx(456)
 
 
 def test_computed_area_in_acres_returns_none_without_sizes() -> None:
-    assert peri_scribe.fire_history.computed_area_in_acres({}) is None
+    assert peri_scribe.perimeter_versions.computed_area_in_acres({}) is None
 
 
 def test_incident_size_in_acres_returns_first_positive_value() -> None:
-    size = peri_scribe.fire_history.incident_size_in_acres(
+    size = peri_scribe.perimeter_versions.incident_size_in_acres(
         {"attr_IncidentSize": 100, "attr_FinalAcres": 200},
     )
     assert size == pytest.approx(100)
 
 
 def test_incident_size_in_acres_skips_missing_and_nonpositive() -> None:
-    size = peri_scribe.fire_history.incident_size_in_acres(
+    size = peri_scribe.perimeter_versions.incident_size_in_acres(
         {"attr_IncidentSize": np.nan, "attr_FinalAcres": 200},
     )
     assert size == pytest.approx(200)
 
 
 def test_incident_size_in_acres_returns_none_without_sizes() -> None:
-    assert peri_scribe.fire_history.incident_size_in_acres({}) is None
+    assert peri_scribe.perimeter_versions.incident_size_in_acres({}) is None
 
 
 def test_perimeter_is_implausibly_small_flags_collapsed_geometry() -> None:
     tiny = polygon((0, 0), (0.0001, 0), (0.0001, 0.0001), (0, 0))
     version = observation(geometry=tiny, attributes={"area_acres": 1000})
-    assert peri_scribe.fire_history.perimeter_is_implausibly_small(version)
+    assert peri_scribe.perimeter_versions.perimeter_is_implausibly_small(version)
 
 
 def test_perimeter_is_implausibly_small_flags_small_incident_size() -> None:
     tiny = polygon((0, 0), (0.0001, 0), (0.0001, 0.0001), (0, 0))
     version = observation(geometry=tiny, attributes={"attr_IncidentSize": 100_000})
-    assert peri_scribe.fire_history.perimeter_is_implausibly_small(version)
+    assert peri_scribe.perimeter_versions.perimeter_is_implausibly_small(version)
 
 
 def test_perimeter_is_implausibly_small_keeps_matching_geometry() -> None:
     large = polygon((0, 0), (1, 0), (1, 1), (0, 0))
     version = observation(geometry=large, attributes={"area_acres": 3_000_000})
-    assert not peri_scribe.fire_history.perimeter_is_implausibly_small(version)
+    assert not peri_scribe.perimeter_versions.perimeter_is_implausibly_small(version)
 
 
 def test_perimeter_is_implausibly_small_keeps_incident_running_ahead() -> None:
     medium = polygon((0, 0), (0.01, 0), (0.01, 0.01), (0, 0))
     version = observation(geometry=medium, attributes={"attr_IncidentSize": 4000})
-    assert not peri_scribe.fire_history.perimeter_is_implausibly_small(version)
+    assert not peri_scribe.perimeter_versions.perimeter_is_implausibly_small(version)
 
 
 def test_perimeter_is_implausibly_small_keeps_without_reported_size() -> None:
     tiny = polygon((0, 0), (0.0001, 0), (0.0001, 0.0001), (0, 0))
     version = observation(geometry=tiny, attributes={})
-    assert not peri_scribe.fire_history.perimeter_is_implausibly_small(version)
+    assert not peri_scribe.perimeter_versions.perimeter_is_implausibly_small(version)
 
 
 def test_perimeter_is_implausibly_small_keeps_without_geometry() -> None:
     version = observation(geometry=None, attributes={"area_acres": 1000})
-    assert not peri_scribe.fire_history.perimeter_is_implausibly_small(version)
+    assert not peri_scribe.perimeter_versions.perimeter_is_implausibly_small(version)
 
 
 def test_drop_implausibly_small_perimeters_drops_collapsed() -> None:
@@ -613,22 +634,22 @@ def test_drop_implausibly_small_perimeters_drops_collapsed() -> None:
         observation(geometry=large, attributes={"area_acres": 3_000_000}),
         observation(geometry=tiny, attributes={"area_acres": 1000}),
     ]
-    survivors = peri_scribe.fire_history.drop_implausibly_small_perimeters(
+    survivors = peri_scribe.perimeter_versions.drop_implausibly_small_perimeters(
         observations,
     )
     assert survivors == [observations[0]]
 
 
 def test_attributes_are_equal_compares_keys_and_values() -> None:
-    assert peri_scribe.fire_history.attributes_are_equal(
+    assert peri_scribe.perimeter_versions.attributes_are_equal(
         {"a": 1, "b": 2},
         {"a": 1, "b": 2},
     )
-    assert not peri_scribe.fire_history.attributes_are_equal(
+    assert not peri_scribe.perimeter_versions.attributes_are_equal(
         {"a": 1},
         {"a": 1, "b": 2},
     )
-    assert not peri_scribe.fire_history.attributes_are_equal(
+    assert not peri_scribe.perimeter_versions.attributes_are_equal(
         {"a": 1},
         {"a": 2},
     )
@@ -649,7 +670,7 @@ def test_point_versions_folds_geometry_move() -> None:
         serial_number=1,
         attributes={"IncidentSize": 100},
     )
-    versions = peri_scribe.fire_history.point_versions([first, moved])
+    versions = peri_scribe.perimeter_versions.point_versions([first, moved])
     assert [version.geometry for version in versions] == [point(1, 1)]
     assert versions[0].snapshot_time == moved.snapshot_time
 
@@ -667,49 +688,64 @@ def test_point_versions_creates_version_on_attribute_change() -> None:
         serial_number=1,
         attributes={"IncidentSize": 200},
     )
-    versions = peri_scribe.fire_history.point_versions([first, second])
+    versions = peri_scribe.perimeter_versions.point_versions([first, second])
     assert versions == [first, second]
 
 
 def test_attribute_value_returns_first_present_value() -> None:
     first = 10
     second = 11
-    assert peri_scribe.fire_history.attribute_value(
-        {"area_acres": first, "poly_GISAcres": second},
-        "area_acres",
-        "poly_GISAcres",
-    ) == first
-    assert peri_scribe.fire_history.attribute_value(
-        {"poly_GISAcres": second},
-        "area_acres",
-        "poly_GISAcres",
-    ) == second
-    assert peri_scribe.fire_history.attribute_value({}, "area_acres") is None
+    assert (
+        peri_scribe.history_attributes.attribute_value(
+            {"area_acres": first, "poly_GISAcres": second},
+            "area_acres",
+            "poly_GISAcres",
+        )
+        == first
+    )
+    assert (
+        peri_scribe.history_attributes.attribute_value(
+            {"poly_GISAcres": second},
+            "area_acres",
+            "poly_GISAcres",
+        )
+        == second
+    )
+    assert peri_scribe.history_attributes.attribute_value({}, "area_acres") is None
 
 
 def test_text_attribute_returns_non_blank_text() -> None:
-    assert peri_scribe.fire_history.text_attribute({"type": " Heat "}, "type") == "Heat"
-    assert peri_scribe.fire_history.text_attribute({"type": "  "}, "type") is None
-    assert peri_scribe.fire_history.text_attribute({}, "type") is None
+    assert (
+        peri_scribe.history_attributes.text_attribute({"type": " Heat "}, "type")
+        == "Heat"
+    )
+    assert peri_scribe.history_attributes.text_attribute({"type": "  "}, "type") is None
+    assert peri_scribe.history_attributes.text_attribute({}, "type") is None
 
 
 def test_float_attribute_returns_number_or_none() -> None:
     expected = 10.5
-    assert peri_scribe.fire_history.float_attribute(
+    assert peri_scribe.history_attributes.float_attribute(
         {"area_acres": "10.5"},
         "area_acres",
     ) == pytest.approx(expected)
     assert (
-        peri_scribe.fire_history.float_attribute({"area_acres": "x"}, "area_acres")
+        peri_scribe.history_attributes.float_attribute(
+            {"area_acres": "x"},
+            "area_acres",
+        )
         is None
     )
-    assert peri_scribe.fire_history.float_attribute({}, "area_acres") is None
+    assert peri_scribe.history_attributes.float_attribute({}, "area_acres") is None
     assert (
-        peri_scribe.fire_history.float_attribute({"area_acres": True}, "area_acres")
+        peri_scribe.history_attributes.float_attribute(
+            {"area_acres": True},
+            "area_acres",
+        )
         is None
     )
     assert (
-        peri_scribe.fire_history.float_attribute(
+        peri_scribe.history_attributes.float_attribute(
             {"area_acres": [1, 2]},
             "area_acres",
         )
@@ -720,8 +756,10 @@ def test_float_attribute_returns_number_or_none() -> None:
 def test_datetime_attribute_returns_datetime_or_none() -> None:
     value = "2026-08-16T00:10:45"
     expected = datetime.datetime(2026, 8, 16, 0, 10, 45, tzinfo=datetime.UTC)
-    assert peri_scribe.fire_history.datetime_attribute({"t": value}, "t") == expected
-    assert peri_scribe.fire_history.datetime_attribute({}, "t") is None
+    assert (
+        peri_scribe.history_attributes.datetime_attribute({"t": value}, "t") == expected
+    )
+    assert peri_scribe.history_attributes.datetime_attribute({}, "t") is None
 
 
 def test_classification_text_returns_value_or_none() -> None:
@@ -755,9 +793,12 @@ def test_json_safe_value_converts_nested_and_numpy_values() -> None:
     assert peri_scribe.fire_history.json_safe_value({"nested": [1, 2]}) == {
         "nested": [1, 2],
     }
-    assert peri_scribe.fire_history.json_safe_value(
-        np.int64(ITEM_VALUE),
-    ) == ITEM_VALUE
+    assert (
+        peri_scribe.fire_history.json_safe_value(
+            np.int64(ITEM_VALUE),
+        )
+        == ITEM_VALUE
+    )
 
 
 def test_identity_fields_includes_complex_when_present() -> None:
@@ -837,7 +878,7 @@ def test_read_full_rows_reads_every_file(monkeypatch: pytest.MonkeyPatch) -> Non
     first_path = pathlib.Path("a.gpkg")
     second_path = pathlib.Path("b.gpkg")
     first_rows = [
-        peri_scribe.geo_data.FireRowRecord(
+        peri_scribe.geo_package.FireRowRecord(
             record=tests.factories.fire_record("A", ACTIVE),
             object_id=1,
             source_name=FIRIS_FEED_NAME,
@@ -845,23 +886,32 @@ def test_read_full_rows_reads_every_file(monkeypatch: pytest.MonkeyPatch) -> Non
         ),
     ]
     second_rows = [
-        peri_scribe.geo_data.FireRowRecord(
+        peri_scribe.geo_package.FireRowRecord(
             record=tests.factories.fire_record("B", ACTIVE),
             object_id=2,
             source_name=FIRIS_FEED_NAME,
             attributes={},
         ),
     ]
-    rows_by_path = {first_path: first_rows, second_path: second_rows}
+    contents_by_path = {
+        first_path: peri_scribe.geo_package.GeopackageContents(
+            rows=tuple(first_rows),
+            memberships=(),
+        ),
+        second_path: peri_scribe.geo_package.GeopackageContents(
+            rows=tuple(second_rows),
+            memberships=(),
+        ),
+    }
     monkeypatch.setattr(
         peri_scribe.snapshots,
         "geo_package_files",
         lambda _directory: [first_path, second_path],
     )
     monkeypatch.setattr(
-        peri_scribe.geo_data,
-        "fire_row_records",
-        lambda path: iter(rows_by_path[path]),
+        peri_scribe.geo_package,
+        "read_geopackage",
+        lambda path: contents_by_path[path],
     )
     rows, paths = peri_scribe.fire_history.read_full_rows(pathlib.Path("sources"))
     assert rows == first_rows + second_rows
@@ -878,7 +928,7 @@ def test_history_rows_for_fire_builds_perimeter_and_point_rows() -> None:
         / WFIGS_LOCATION_FEED_NAME
         / "000000,lastEdit=1786955463975.gpkg"
     )
-    perimeter_row_record = peri_scribe.geo_data.FireRowRecord(
+    perimeter_row_record = peri_scribe.geo_package.FireRowRecord(
         record=tests.factories.fire_record(
             "Bug",
             ACTIVE,
@@ -890,7 +940,7 @@ def test_history_rows_for_fire_builds_perimeter_and_point_rows() -> None:
         source_name=FIRIS_FEED_NAME,
         attributes={"area_acres": 100},
     )
-    point_row_record = peri_scribe.geo_data.FireRowRecord(
+    point_row_record = peri_scribe.geo_package.FireRowRecord(
         record=tests.factories.fire_record(
             "Bug",
             ACTIVE,
@@ -921,7 +971,7 @@ def test_history_rows_for_fire_drops_implausibly_small_perimeter() -> None:
         sources_directory / FIRIS_FEED_NAME / "000000,lastEdit=1786929991427.gpkg"
     )
     tiny = polygon((0, 0), (0.0001, 0), (0.0001, 0.0001), (0, 0))
-    perimeter_row_record = peri_scribe.geo_data.FireRowRecord(
+    perimeter_row_record = peri_scribe.geo_package.FireRowRecord(
         record=tests.factories.fire_record(
             "Bug",
             ACTIVE,
@@ -986,20 +1036,25 @@ def test_write_history_of_full_geography_writes_two_layers(
         groups=((),),
         complex_identifiers=frozenset(),
     )
+    read = peri_scribe.fire_sources.ReadFireSources(
+        rows=(),
+        paths=(),
+        memberships=(),
+    )
     monkeypatch.setattr(
         peri_scribe.fire_sources,
-        "fire_record_groups",
-        lambda _directory: record_groups,
+        "read_fire_sources",
+        lambda _directory: read,
+    )
+    monkeypatch.setattr(
+        peri_scribe.fire_sources,
+        "group_fire_sources",
+        lambda _read: record_groups,
     )
     monkeypatch.setattr(
         peri_scribe.classification,
         "classify_fire_sources",
         lambda *_arguments: {},
-    )
-    monkeypatch.setattr(
-        peri_scribe.fire_history,
-        "read_full_rows",
-        lambda _directory: ([], []),
     )
     monkeypatch.setattr(
         pathlib.Path,

@@ -71,6 +71,11 @@ FILLED_PERIMETER_CENTER_DISTANCE_IN_METERS = 2_000
 # location last so its icon is never covered. Lower values draw first.
 LATEST_AREA_DRAW_ORDER = 0
 
+# Azimuths (degrees clockwise from north) of the four corners of a square, ordered
+# northwest, northeast, southeast, southwest.
+SQUARE_CORNER_AZIMUTHS = (315.0, 45.0, 135.0, 225.0)
+DUE_WEST_AZIMUTH = 270.0
+
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class PerimeterTemplate:
@@ -236,7 +241,7 @@ def square_coordinates(
     geodesic = pyproj.Geod(ellps="WGS84")
     half_diagonal_in_meters = side_length_in_meters * math.sqrt(2) / 2
     corners: list[tuple[float, float]] = []
-    for azimuth in (315.0, 45.0, 135.0, 225.0):
+    for azimuth in SQUARE_CORNER_AZIMUTHS:
         longitude, latitude, _ = geodesic.fwd(
             center.longitude,
             center.latitude,
@@ -262,7 +267,7 @@ def center_west_of(center: Center, distance_in_meters: int) -> Center:
     longitude, latitude, _ = geodesic.fwd(
         center.longitude,
         center.latitude,
-        270.0,
+        DUE_WEST_AZIMUTH,
         distance_in_meters,
     )
     return Center(longitude=longitude, latitude=latitude)

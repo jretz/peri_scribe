@@ -7,7 +7,7 @@ import pathlib
 
 import peri_scribe.exceptions
 import peri_scribe.fire_grouping
-import peri_scribe.geo_data
+import peri_scribe.geo_package
 import peri_scribe.models
 import peri_scribe.snapshots
 
@@ -23,48 +23,74 @@ class FireRecordGroups:
     complex_identifiers: frozenset[str]
 
 
-def fire_record_groups(directory: pathlib.Path) -> FireRecordGroups:
-    """Read and group the fire records under *directory*.
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ReadFireSources:
+    """Fire rows, memberships, and source files read from a source directory."""
+
+    rows: tuple[peri_scribe.geo_package.FireRowRecord, ...]
+    paths: tuple[pathlib.Path, ...]
+    memberships: tuple[peri_scribe.models.ComplexMembership, ...]
+
+
+def read_fire_sources(directory: pathlib.Path) -> ReadFireSources:
+    """Read the fire rows and complex memberships under *directory* in one pass.
 
     Every GeoPackage file anywhere below *directory* is read, so snapshots stored under
-    ``sources/{feed}/{serial}.gpkg`` are all found. Fire records sharing any identifier
-    are the same fire; records sharing only a name are merged only when they are
-    spatially compatible, so distinct fires that happen to share a name (e.g. "Canyon"
-    in California vs. Alaska) stay separate. The most common spelling of each name is
-    the one kept, and a fire is active when any of its records is active. A fire whose
-    records are spatially or temporally spread out is reported with a warning. Fires
-    that are complex parents are represented by a FireComplex instead of listed as
-    fires, and member fires carry a circular link to their complex.
+    ``sources/{feed}/{serial}.gpkg`` are all found. Each file is read once and its rows
+    and memberships are collected together, so the two never need to agree on ordering
+    from separate passes.
 
     Args:
         directory: The directory tree holding GeoPackage files with fire data.
 
     Returns:
-        The records, their source files, the grouped fires, and the identifiers of the
-        fires that are complex parents.
+        The fire rows, their source files, and the complex memberships.
 
     Raises:
         SystemExit: If a GeoPackage file cannot be read.
         UnknownLayerError: If a layer does not correspond to a configured feed.
     """
-    records: list[peri_scribe.models.FireRecord] = []
-    record_paths: list[pathlib.Path] = []
+    rows: list[peri_scribe.geo_package.FireRowRecord] = []
+    paths: list[pathlib.Path] = []
     memberships: list[peri_scribe.models.ComplexMembership] = []
     for path in peri_scribe.snapshots.geo_package_files(directory):
         try:
-            file_records = list(peri_scribe.geo_data.fire_records(path))
-            file_memberships = list(
-                peri_scribe.geo_data.complex_memberships(path),
-            )
+            contents = peri_scribe.geo_package.read_geopackage(path)
         except peri_scribe.exceptions.UnknownLayerError:
             raise
         except Exception as error:
             # Fail fast with a readable message if a GeoPackage is unreadable.
             message = f"Failed to read {path}: {error}"
             raise SystemExit(message) from error
-        records.extend(file_records)
-        record_paths.extend([path] * len(file_records))
-        memberships.extend(file_memberships)
+        rows.extend(contents.rows)
+        paths.extend([path] * len(contents.rows))
+        memberships.extend(contents.memberships)
+    return ReadFireSources(
+        rows=tuple(rows),
+        paths=tuple(paths),
+        memberships=tuple(memberships),
+    )
+
+
+def group_fire_sources(read: ReadFireSources) -> FireRecordGroups:
+    """Group the read fire rows and memberships into distinct fires.
+
+    Fire records sharing any identifier are the same fire; records sharing only a name
+    are merged only when they are spatially compatible, so distinct fires that happen to
+    share a name (e.g. "Canyon" in California vs. Alaska) stay separate. The most common
+    spelling of each name is the one kept, and a fire is active when any of its records
+    is active. A fire whose records are spatially or temporally spread out is reported
+    with a warning. Fires that are complex parents are represented by a FireComplex
+    instead of listed as fires, and member fires carry a circular link to their complex.
+
+    Args:
+        read: The fire rows, their source files, and the complex memberships.
+
+    Returns:
+        The records, their source files, the grouped fires, and the identifiers of the
+        fires that are complex parents.
+    """
+    records = [row.record for row in read.rows]
     groups = peri_scribe.fire_grouping.group_fire_record_indices(records)
     fires = [
         peri_scribe.fire_grouping.most_common_fire(
@@ -79,17 +105,30 @@ def fire_record_groups(directory: pathlib.Path) -> FireRecordGroups:
             for identifier in records[index].identifiers:
                 fires_by_identifier.setdefault(identifier, fire)
     complexes = peri_scribe.fire_grouping.fire_complexes(
-        memberships,
+        list(read.memberships),
         fires_by_identifier,
     )
     complex_identifiers = {complex_.identifier for complex_ in complexes}
     return FireRecordGroups(
         records=tuple(records),
-        record_paths=tuple(record_paths),
+        record_paths=read.paths,
         fires=tuple(fires),
         groups=tuple(tuple(group) for group in groups),
         complex_identifiers=frozenset(complex_identifiers),
     )
+
+
+def fire_record_groups(directory: pathlib.Path) -> FireRecordGroups:
+    """Read and group the fire records under *directory*.
+
+    Args:
+        directory: The directory tree holding GeoPackage files with fire data.
+
+    Returns:
+        The records, their source files, the grouped fires, and the identifiers of the
+        fires that are complex parents.
+    """
+    return group_fire_sources(read_fire_sources(directory))
 
 
 def fire_is_complex_parent(
@@ -123,9 +162,7 @@ def non_complex_fire_sources(
     Returns:
         One `(FireSources, record indices)` pair per non-complex fire, in group order.
     """
-    sources: list[
-        tuple[peri_scribe.models.FireSources, tuple[int, ...]]
-    ] = []
+    sources: list[tuple[peri_scribe.models.FireSources, tuple[int, ...]]] = []
     for fire, group in zip(
         record_groups.fires,
         record_groups.groups,
@@ -139,10 +176,7 @@ def non_complex_fire_sources(
                     fire=fire,
                     paths=tuple(
                         sorted(
-                            {
-                                record_groups.record_paths[index]
-                                for index in group
-                            },
+                            {record_groups.record_paths[index] for index in group},
                         ),
                     ),
                 ),
@@ -163,10 +197,7 @@ def fire_sources_from_groups(
     Returns:
         The non-complex fires in group order.
     """
-    return [
-        source
-        for source, _group in non_complex_fire_sources(record_groups)
-    ]
+    return [source for source, _group in non_complex_fire_sources(record_groups)]
 
 
 def fire_sources(directory: pathlib.Path) -> list[peri_scribe.models.FireSources]:

@@ -29,11 +29,8 @@ import us.states
 
 import peri_scribe.administrative_boundaries
 import peri_scribe.models
+import peri_scribe.units
 
-
-CALIFORNIA_ALBERS_SPATIAL_REFERENCE_ID = 3310
-
-SQUARE_METERS_PER_ACRE = 4046.8564224
 
 CALIFORNIA_STATE_ABBREVIATION = us.states.CA.abbr.casefold()
 CALIFORNIA_STATE_CODE = f"us-{us.states.CA.abbr.casefold()}"
@@ -51,9 +48,9 @@ class FireSourceKind(enum.Enum):
 
 
 SOURCE_SPATIAL_REFERENCE_IDS = {
-    FireSourceKind.FIRIS_PERIMETER: 4269,
-    FireSourceKind.WFIGS_PERIMETER: 4326,
-    FireSourceKind.WFIGS_LOCATION: 4269,
+    FireSourceKind.FIRIS_PERIMETER: peri_scribe.models.NAD83_SPATIAL_REFERENCE_ID,
+    FireSourceKind.WFIGS_PERIMETER: peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+    FireSourceKind.WFIGS_LOCATION: peri_scribe.models.NAD83_SPATIAL_REFERENCE_ID,
 }
 
 
@@ -167,7 +164,7 @@ def transformer_for_spatial_reference_id(
     """
     return pyproj.Transformer.from_crs(
         source_spatial_reference_id,
-        CALIFORNIA_ALBERS_SPATIAL_REFERENCE_ID,
+        peri_scribe.models.CALIFORNIA_ALBERS_SPATIAL_REFERENCE_ID,
         always_xy=True,
     )
 
@@ -302,7 +299,9 @@ def geometry_signal(
         if total_area_in_square_meters > 0
         else 0.0
     )
-    outside_area_in_acres = outside_area_in_square_meters / SQUARE_METERS_PER_ACRE
+    outside_area_in_acres = (
+        outside_area_in_square_meters / peri_scribe.units.SQUARE_METERS_PER_ACRE
+    )
     crosses = inside_area_fraction > 0 and (
         outside_area_fraction > config.outside_area_fraction_threshold
         or outside_area_in_acres > config.outside_area_threshold_in_acres
@@ -347,9 +346,7 @@ def freshest_observation(
         raise ValueError(message)
 
     def recency_key(observation: FireObservation) -> tuple[datetime.datetime, int]:
-        observed_at = observation.observed_at or datetime.datetime.min.replace(
-            tzinfo=datetime.UTC,
-        )
+        observed_at = observation.observed_at or peri_scribe.models.EARLIEST_DATETIME
         return observed_at, observation.serial_number
 
     return max(observations, key=recency_key)

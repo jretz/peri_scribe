@@ -11,12 +11,14 @@ import requests
 import structlog
 
 import peri_scribe.retry
+import peri_scribe.snapshots
 
 
 logger = structlog.get_logger()
 
 REQUEST_TIMEOUT_SECONDS = 30
-USER_AGENT = "peri_scribe-watcher/0.1"
+PERI_SCRIBE_VERSION = "0.1"
+USER_AGENT = f"peri_scribe-watcher/{PERI_SCRIBE_VERSION}"
 
 
 def fetch_watermark_payload(url: str) -> object:
@@ -200,4 +202,4 @@ class ArcGISFeed(pydantic.BaseModel):
                 error="no editingInfo.lastEditDate",
             )
             return None
-        return f"lastEdit={last_edit}"
+        return f"{peri_scribe.snapshots.WATERMARK_PREFIX}{last_edit}"

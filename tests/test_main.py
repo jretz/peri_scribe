@@ -15,6 +15,7 @@ import time_machine
 
 import peri_scribe.administrative_boundaries
 import peri_scribe.exceptions
+import peri_scribe.feeds
 import peri_scribe.fetching
 import peri_scribe.fire_differential
 import peri_scribe.fire_index
@@ -163,7 +164,7 @@ def fetch_setup(
         lambda log_level: log_level,
     )
     monkeypatch.setattr(
-        peri_scribe.models,
+        peri_scribe.feeds,
         "FEEDS",
         [
             FeedStub(
@@ -247,7 +248,7 @@ def fetch_stubs(
     """
 
     def stub_feeds(*feeds: FeedStub) -> None:
-        monkeypatch.setattr(peri_scribe.models, "FEEDS", list(feeds))
+        monkeypatch.setattr(peri_scribe.feeds, "FEEDS", list(feeds))
 
     def stub_feature_layers(factory: LayerFactory) -> None:
         monkeypatch.setattr(
@@ -453,7 +454,7 @@ def test_cli_configures_logging_from_log_level(
         "configure_logging",
         configured_levels.append,
     )
-    monkeypatch.setattr(peri_scribe.models, "FEEDS", [])
+    monkeypatch.setattr(peri_scribe.feeds, "FEEDS", [])
     result = runner.invoke(
         peri_scribe.main.cli,
         ["--log-level", "DEBUG", "current-watermarks"],
@@ -544,7 +545,7 @@ def test_current_watermarks_logs_each_feed_watermark(
             watermark="lastEdit=2",
         ),
     ]
-    monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
+    monkeypatch.setattr(peri_scribe.feeds, "FEEDS", feeds)
     with structlog.testing.capture_logs() as captured:
         result = runner.invoke(peri_scribe.main.cli, ["current-watermarks"])
     assert result.exit_code == 0

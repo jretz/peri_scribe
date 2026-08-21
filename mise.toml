@@ -58,8 +58,13 @@ depends = ["venv"]
 raw_args = true
 run = "uv run --locked peri_scribe index-fire-sources"
 
+[tasks.format]
+description = "Format with ruff"
+depends = ["venv"]
+run = "uv run ruff format"
+
 [tasks.lint]
-description = "Check and fix style/format with ruff"
+description = "Check and fix style with ruff"
 depends = ["venv"]
 run = "uv run ruff check --fix"
 

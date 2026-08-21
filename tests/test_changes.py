@@ -11,7 +11,7 @@ import pyproj
 import shapely.geometry
 
 import peri_scribe.changes
-import peri_scribe.geo_data
+import peri_scribe.geo_package
 import peri_scribe.snapshots
 from tests.factories import change_dataframe, change_feed
 
@@ -128,7 +128,7 @@ def test_existing_features_returns_none_without_object_id_column(
         lambda _directory: ["000000.gpkg"],
     )
     monkeypatch.setattr(
-        peri_scribe.geo_data,
+        peri_scribe.geo_package,
         "read_layer_dataframe",
         lambda _path, _feed: change_dataframe([SAMPLE_FEATURE_ROW]).drop(
             columns=["OBJECTID"],

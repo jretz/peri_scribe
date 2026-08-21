@@ -11,18 +11,17 @@ from __future__ import annotations
 import pathlib
 import typing
 
-import geopandas
-import pyproj
 import shapely
 
-import peri_scribe.california_border_classification
 import peri_scribe.fire_history
-import peri_scribe.geo_data
+import peri_scribe.geo_package
 import peri_scribe.models
 import peri_scribe.output
+import peri_scribe.units
 
 
 if typing.TYPE_CHECKING:
+    import geopandas
     import pandas as pd
 
 
@@ -89,37 +88,6 @@ def differential_geopackage_path(year_directory: pathlib.Path) -> pathlib.Path:
         year_directory
         / peri_scribe.fire_history.DERIVED_DIRECTORY_NAME
         / DIFFERENTIAL_OUTPUT_FILENAME
-    )
-
-
-def read_layer(path: pathlib.Path, layer_name: str) -> geopandas.GeoDataFrame:
-    """Read *layer_name* from the GeoPackage at *path*.
-
-    Args:
-        path: The GeoPackage to read.
-        layer_name: The layer to read.
-
-    Returns:
-        The layer as a GeoDataFrame.
-    """
-    return geopandas.read_file(path, layer=layer_name)
-
-
-def area_in_acres(geometry: shapely.Geometry) -> float:
-    """Return *geometry*'s area in acres.
-
-    Args:
-        geometry: The geometry to measure, in WGS 84 degrees.
-
-    Returns:
-        The area in acres, computed geodesically so it is accurate anywhere on Earth.
-    """
-    area_in_square_meters, _perimeter = pyproj.Geod(
-        ellps="WGS84",
-    ).geometry_area_perimeter(geometry)
-    return (
-        abs(area_in_square_meters)
-        / peri_scribe.california_border_classification.SQUARE_METERS_PER_ACRE
     )
 
 
@@ -261,29 +229,6 @@ def representative_indices(
     return representatives
 
 
-def numeric_value(value: object) -> float | None:
-    """Return *value* as a float, or None when it is missing or not numeric.
-
-    Args:
-        value: Any attribute value.
-
-    Returns:
-        The numeric value, or None when it cannot be interpreted as a number.
-    """
-    if peri_scribe.geo_data.is_missing(value):
-        return None
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        try:
-            return float(value)
-        except ValueError:
-            return None
-    return None
-
-
 def growth_difference(
     current: object,
     previous: list[object],
@@ -297,12 +242,12 @@ def growth_difference(
     Returns:
         The difference, or None when the current value is missing.
     """
-    current_value = numeric_value(current)
+    current_value = peri_scribe.geo_package.numeric_value(current)
     if current_value is None:
         return None
     subtrahend = 0.0
     for value in previous:
-        numeric = numeric_value(value)
+        numeric = peri_scribe.geo_package.numeric_value(value)
         if numeric is not None:
             subtrahend = numeric
             break
@@ -323,7 +268,7 @@ def identity_key(
         The identity values, with missing values replaced by None so rows compare.
     """
     return tuple(
-        None if peri_scribe.geo_data.is_missing(row[column]) else row[column]
+        None if peri_scribe.geo_package.is_missing(row[column]) else row[column]
         for column in identity_columns
     )
 
@@ -414,8 +359,10 @@ def differential_rows_for_fire(
                     for earlier in reversed(survivors[:position])
                 ],
             )
-        row["area_acres_from_geometry"] = area_in_acres(cumulative_geometry)
-        row["area_acres_from_geometry_differential"] = area_in_acres(
+        row["area_acres_from_geometry"] = peri_scribe.units.area_in_acres(
+            cumulative_geometry,
+        )
+        row["area_acres_from_geometry_differential"] = peri_scribe.units.area_in_acres(
             differential_geometry,
         )
         rows.append(row)
@@ -462,11 +409,11 @@ def write_history_of_differential_geography(
     full_path = peri_scribe.fire_history.write_history_of_full_geography(
         year_directory,
     )
-    full_perimeters = read_layer(
+    full_perimeters = peri_scribe.geo_package.read_layer(
         full_path,
         peri_scribe.fire_history.PERIMETER_LAYER_NAME,
     )
-    full_points = read_layer(
+    full_points = peri_scribe.geo_package.read_layer(
         full_path,
         peri_scribe.fire_history.POINT_LAYER_NAME,
     )

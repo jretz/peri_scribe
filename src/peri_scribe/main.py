@@ -9,12 +9,12 @@ import click
 import structlog
 
 import peri_scribe.administrative_boundaries
+import peri_scribe.feeds
 import peri_scribe.fetching
 import peri_scribe.fire_differential
 import peri_scribe.fire_index
 import peri_scribe.kml
 import peri_scribe.kml_template
-import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.snapshots
 
@@ -62,7 +62,7 @@ def fetch() -> None:
 @cli.command()
 def current_watermarks() -> None:
     """Log the current watermark for each configured feed."""
-    for index, feed in enumerate(peri_scribe.models.FEEDS, start=1):
+    for index, feed in enumerate(peri_scribe.feeds.FEEDS, start=1):
         logger.info(
             "Feed %d",
             index,

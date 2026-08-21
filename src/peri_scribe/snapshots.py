@@ -11,6 +11,10 @@ import peri_scribe.output
 SOURCES_DIRECTORY_NAME = "sources"
 FIRE_INDEX_FILENAME = "fires.json"
 
+# The prefix that turns a layer's ``editingInfo.lastEditDate`` value into the
+# watermark stored in a snapshot filename.
+WATERMARK_PREFIX = "lastEdit="
+
 
 def geopackage_filename(serial_number: int, watermark: str) -> pathlib.Path:
     """Return the filename for a snapshot with *serial_number* and *watermark*.

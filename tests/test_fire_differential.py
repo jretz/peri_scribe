@@ -10,6 +10,7 @@ import shapely.geometry
 
 import peri_scribe.fire_differential
 import peri_scribe.fire_history
+import peri_scribe.geo_package
 import peri_scribe.models
 import peri_scribe.output
 
@@ -55,25 +56,6 @@ def test_differential_geopackage_path_names_output() -> None:
     ) == pathlib.Path("data/2026/derived/history_of_differential_geography.gpkg")
 
 
-def test_read_layer_reads_layer(monkeypatch: pytest.MonkeyPatch) -> None:
-    path = pathlib.Path("data/2026/derived/full.gpkg")
-    frame = geopandas.GeoDataFrame(
-        {"fire_name": ["Bug"]},
-        geometry=[shapely.geometry.Point(0, 0)],
-        crs="EPSG:4326",
-    )
-    calls: list[tuple[pathlib.Path, str]] = []
-
-    def read_file(read_path: pathlib.Path, *, layer: str) -> geopandas.GeoDataFrame:
-        calls.append((read_path, layer))
-        return frame
-
-    monkeypatch.setattr(geopandas, "read_file", read_file)
-    result = peri_scribe.fire_differential.read_layer(path, "perimeter_history")
-    assert result is frame
-    assert calls == [(path, "perimeter_history")]
-
-
 def test_polygonal_area_keeps_polygon() -> None:
     geometry = square(1.0)
     assert peri_scribe.fire_differential.polygonal_area(geometry) is geometry
@@ -114,24 +96,6 @@ def test_polygonal_area_unions_multiple_polygons() -> None:
     result = peri_scribe.fire_differential.polygonal_area(collection)
     assert result is not None
     assert result.geom_type == "MultiPolygon"
-
-
-def test_area_in_acres_measures_geometry() -> None:
-    larger = peri_scribe.fire_differential.area_in_acres(square(2.0))
-    smaller = peri_scribe.fire_differential.area_in_acres(square(1.0))
-    assert larger > smaller > 0.0
-
-
-def test_area_in_acres_measures_geodesically_across_latitudes() -> None:
-    equatorial = peri_scribe.fire_differential.area_in_acres(
-        shapely.geometry.box(-0.5, -0.5, 0.5, 0.5),
-    )
-    northern = peri_scribe.fire_differential.area_in_acres(
-        shapely.geometry.box(-0.5, 65.5, 0.5, 66.5),
-    )
-    assert equatorial == pytest.approx(3_041_678, rel=0.01)
-    assert northern == pytest.approx(1_251_021, rel=0.01)
-    assert northern < equatorial
 
 
 def test_geometry_difference_returns_current_without_previous() -> None:
@@ -228,23 +192,6 @@ def test_growth_difference_falls_back_to_zero() -> None:
         150.0,
         [],
     ) == pytest.approx(150.0)
-
-
-def test_numeric_value_returns_none_for_bool() -> None:
-    value = True
-    assert peri_scribe.fire_differential.numeric_value(value) is None
-
-
-def test_numeric_value_parses_strings() -> None:
-    assert peri_scribe.fire_differential.numeric_value("12.5") == pytest.approx(12.5)
-
-
-def test_numeric_value_returns_none_for_unparsable_string() -> None:
-    assert peri_scribe.fire_differential.numeric_value("soon") is None
-
-
-def test_numeric_value_returns_none_for_other_types() -> None:
-    assert peri_scribe.fire_differential.numeric_value({"a": 1}) is None
 
 
 def test_identity_key_normalizes_missing() -> None:
@@ -394,7 +341,7 @@ def test_write_history_of_differential_geography_writes_two_layers(
         crs="EPSG:4326",
     )
     monkeypatch.setattr(
-        peri_scribe.fire_differential,
+        peri_scribe.geo_package,
         "read_layer",
         lambda _path, layer_name: (
             perimeters if layer_name == "perimeter_history" else points

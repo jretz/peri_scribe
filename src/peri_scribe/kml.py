@@ -11,29 +11,24 @@ import dataclasses
 import datetime
 import pathlib
 import typing
-
-# The template is a local, user-edited file rather than untrusted input, so the
-# stdlib XML parser needs no defusedxml hardening.
-import xml.etree.ElementTree as ET  # ruff: ignore[suspicious-xml-etree-import]
 import zipfile
 
-import geopandas
 import simplekml
 
 import peri_scribe.fire_differential
 import peri_scribe.fire_history
 import peri_scribe.fire_index
-import peri_scribe.geo_data
+import peri_scribe.geo_package
 import peri_scribe.kml_template
+import peri_scribe.kml_template_reader
 import peri_scribe.models
 import peri_scribe.perimeter_progression
 
 
 if typing.TYPE_CHECKING:
+    import geopandas
     import shapely
 
-
-KML_NAMESPACE = "http://www.opengis.net/kml/2.2"
 
 MAPS_DIRECTORY_NAME = "maps"
 
@@ -68,26 +63,6 @@ class FireGeometry:
     point: shapely.Point | None
     perimeters: tuple[Perimeter, ...]
     progression_rings: tuple[peri_scribe.perimeter_progression.Ring, ...] = ()
-
-
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class Template:
-    """The parsed KML template's styles and placemark style URLs."""
-
-    styles: tuple[peri_scribe.kml_template.Style, ...]
-    style_urls: dict[str, str]
-
-
-def kml_tag(name: str) -> str:
-    """Return the namespaced element tag for *name*.
-
-    Args:
-        name: The KML element name.
-
-    Returns:
-        The tag ElementTree uses for the element.
-    """
-    return f"{{{KML_NAMESPACE}}}{name}"
 
 
 def year_from(year_directory: pathlib.Path) -> int:
@@ -126,22 +101,6 @@ def kmz_path(year_directory: pathlib.Path) -> pathlib.Path:
     return (
         year_directory / MAPS_DIRECTORY_NAME / kmz_filename(year_from(year_directory))
     )
-
-
-def read_history_layer(
-    path: pathlib.Path,
-    layer_name: str,
-) -> geopandas.GeoDataFrame:
-    """Read *layer_name* from the GeoPackage at *path*.
-
-    Args:
-        path: The GeoPackage to read.
-        layer_name: The layer to read.
-
-    Returns:
-        The layer as a GeoDataFrame.
-    """
-    return geopandas.read_file(path, layer=layer_name)
 
 
 def identifiers(
@@ -187,11 +146,11 @@ def perimeter_groups(
     ):
         perimeter = Perimeter(
             geometry=geometry,
-            observation_time=peri_scribe.geo_data.observation_time_from(
+            observation_time=peri_scribe.geo_package.observation_time_from(
                 observation_time,
             ),
         )
-        if peri_scribe.geo_data.is_missing(identifier):
+        if peri_scribe.geo_package.is_missing(identifier):
             by_name.setdefault(str(name), []).append(perimeter)
         else:
             by_identifier.setdefault(str(identifier), []).append(perimeter)
@@ -220,7 +179,7 @@ def point_locations(
         points.geometry,
         strict=True,
     ):
-        if peri_scribe.geo_data.is_missing(identifier):
+        if peri_scribe.geo_package.is_missing(identifier):
             by_name[str(name)] = geometry
         else:
             by_identifier[str(identifier)] = geometry
@@ -730,129 +689,9 @@ def status_folder(
     progression_folder(folder, status_fires, style_urls)
 
 
-def style_from(element: ET.Element) -> peri_scribe.kml_template.Style:
-    """Return the template style that *element* defines.
-
-    The template's styles are icon, line, and polygon styles, so those are the
-    sub-styles read from *element*.
-
-    Args:
-        element: The parsed ``Style`` element.
-
-    Returns:
-        The style, holding the sub-styles *element* defines.
-
-    Raises:
-        ValueError: When *element* has no id attribute.
-    """
-    style_id = element.get("id")
-    if style_id is None:
-        message = "KML Style element has no id attribute"
-        raise ValueError(message)
-    style = peri_scribe.kml_template.Style(style_id)
-    icon_style = element.find(kml_tag("IconStyle"))
-    if icon_style is not None:
-        icon_href = icon_style.findtext(
-            f"{kml_tag('Icon')}/{kml_tag('href')}",
-        )
-        if icon_href is not None:
-            style.iconstyle.icon.href = icon_href
-    line_style = element.find(kml_tag("LineStyle"))
-    if line_style is not None:
-        line_color = line_style.findtext(kml_tag("color"))
-        if line_color is not None:
-            style.linestyle.color = line_color
-        line_width = line_style.findtext(kml_tag("width"))
-        if line_width is not None:
-            style.linestyle.width = float(line_width)
-    poly_style = element.find(kml_tag("PolyStyle"))
-    if poly_style is not None:
-        poly_color = poly_style.findtext(kml_tag("color"))
-        if poly_color is not None:
-            style.polystyle.color = poly_color
-        fill = poly_style.findtext(kml_tag("fill"))
-        if fill is not None:
-            style.polystyle.fill = int(fill)
-        outline = poly_style.findtext(kml_tag("outline"))
-        if outline is not None:
-            style.polystyle.outline = int(outline)
-    return style
-
-
-def placemark_style_urls(document: ET.Element) -> dict[str, str]:
-    """Return each template placemark's style URL, keyed by name.
-
-    Args:
-        document: The parsed template document element.
-
-    Returns:
-        The style URL for each placemark name.
-    """
-    urls: dict[str, str] = {}
-    collect_placemark_style_urls(document, urls)
-    return urls
-
-
-def collect_placemark_style_urls(
-    element: ET.Element,
-    urls: dict[str, str],
-) -> None:
-    """Record each named placemark's style URL into *urls*.
-
-    Args:
-        element: The element to search, descending into folders.
-        urls: The mapping being built.
-    """
-    for child in element:
-        if child.tag == kml_tag("Folder"):
-            collect_placemark_style_urls(child, urls)
-        elif child.tag == kml_tag("Placemark"):
-            name = child.findtext(kml_tag("name"))
-            style_url = child.findtext(kml_tag("styleUrl"))
-            if name is not None and style_url is not None:
-                urls[name] = style_url
-
-
-def template_from(kml_text: str) -> Template:
-    """Parse *kml_text* into the template's styles and style URLs.
-
-    Args:
-        kml_text: The KML template document.
-
-    Returns:
-        The template.
-
-    Raises:
-        ValueError: When *kml_text* has no Document element.
-    """
-    root = ET.fromstring(kml_text)  # ruff: ignore[suspicious-xml-element-tree-usage]
-    document = root.find(kml_tag("Document"))
-    if document is None:
-        message = "KML template has no Document element"
-        raise ValueError(message)
-    return Template(
-        styles=tuple(
-            style_from(style) for style in document if style.tag == kml_tag("Style")
-        ),
-        style_urls=placemark_style_urls(document),
-    )
-
-
-def read_template(path: pathlib.Path) -> Template:
-    """Read and parse the KML template at *path*.
-
-    Args:
-        path: The KML template file.
-
-    Returns:
-        The template.
-    """
-    return template_from(path.read_text(encoding="utf-8"))
-
-
 def fire_kml(
     fires: list[FireGeometry],
-    template: Template,
+    template: peri_scribe.kml_template_reader.Template,
 ) -> str:
     """Return the KML document string for *fires*.
 
@@ -920,22 +759,24 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
     """
     index = peri_scribe.fire_index.load_fire_index(year_directory)
     history_path = peri_scribe.fire_history.history_geopackage_path(year_directory)
-    perimeters = read_history_layer(
+    perimeters = peri_scribe.geo_package.read_layer(
         history_path,
         peri_scribe.fire_history.PERIMETER_LAYER_NAME,
     )
-    points = read_history_layer(
+    points = peri_scribe.geo_package.read_layer(
         history_path,
         peri_scribe.fire_history.POINT_LAYER_NAME,
     )
-    differential_path = (
-        peri_scribe.fire_differential.differential_geopackage_path(year_directory)
+    differential_path = peri_scribe.fire_differential.differential_geopackage_path(
+        year_directory,
     )
-    differential_perimeters = read_history_layer(
+    differential_perimeters = peri_scribe.geo_package.read_layer(
         differential_path,
         peri_scribe.fire_history.PERIMETER_LAYER_NAME,
     )
-    template = read_template(peri_scribe.kml_template.template_path())
+    template = peri_scribe.kml_template_reader.read_template(
+        peri_scribe.kml_template.template_path(),
+    )
     output_path = kmz_path(year_directory)
     write_kmz(
         output_path,

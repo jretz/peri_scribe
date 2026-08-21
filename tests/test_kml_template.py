@@ -449,9 +449,7 @@ def test_template_kml_progression_names_follow_shared_definition(
         peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
     )
     band_names = [
-        name
-        for name in placemark_names(progression)
-        if name != "Point Location"
+        name for name in placemark_names(progression) if name != "Point Location"
     ]
     assert band_names == [
         band.name for band in peri_scribe.perimeter_progression.PROGRESSION_BANDS

@@ -380,9 +380,7 @@ def most_common_fire(
         name_counts = collections.Counter(record.name for record in occurrences)
     most_common_name = name_counts.most_common(1)[0][0]
     identifiers = frozenset(
-        identifier
-        for record in occurrences
-        for identifier in record.identifiers
+        identifier for record in occurrences for identifier in record.identifiers
     )
     status = (
         peri_scribe.models.FireStatus.ACTIVE

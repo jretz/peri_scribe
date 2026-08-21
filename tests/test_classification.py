@@ -54,10 +54,13 @@ def test_classify_fire_sources_returns_empty_without_non_complex_fires() -> None
         fire=fire,
         complex_identifiers=frozenset({"parent"}),
     )
-    assert peri_scribe.classification.classify_fire_sources(
-        record_groups,
-        pathlib.Path("/base"),
-    ) == {}
+    assert (
+        peri_scribe.classification.classify_fire_sources(
+            record_groups,
+            pathlib.Path("/base"),
+        )
+        == {}
+    )
 
 
 def test_classify_fire_sources_returns_empty_when_boundaries_missing(

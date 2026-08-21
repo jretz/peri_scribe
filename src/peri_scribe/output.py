@@ -11,6 +11,9 @@ if TYPE_CHECKING:
     import peri_scribe.models
 
 
+logger = structlog.get_logger()
+
+
 DATA_DIRECTORY = pathlib.Path("data")
 
 
@@ -18,7 +21,6 @@ def write_geopackage(
     path: pathlib.Path,
     layers: list[peri_scribe.models.LayerData],
 ) -> None:
-    logger = structlog.get_logger()
     if path.exists():
         path.unlink()
         logger.info("Replaced existing", path=path.name)
@@ -48,7 +50,6 @@ def write_fire_index(
         path: The JSON file to write.
         document: The validated fire index to serialize.
     """
-    logger = structlog.get_logger()
     with path.open("w", encoding="utf-8") as file:
         json.dump(document.model_dump(mode="json"), file, indent=4)
     logger.info("Wrote fire index", path=path.name, fires=len(document.fires))

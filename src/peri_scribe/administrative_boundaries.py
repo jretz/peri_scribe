@@ -20,6 +20,7 @@ import peri_scribe.exceptions
 import peri_scribe.geo_data
 import peri_scribe.models
 import peri_scribe.output
+import peri_scribe.units
 
 
 logger = structlog.get_logger()
@@ -45,15 +46,12 @@ CALIFORNIA_WHERE_CLAUSE = "STATE_ABBR='CA'"
 NEIGHBOR_WHERE_CLAUSE = "STATE_ABBR IN ('AZ','NV','OR')"
 
 OUTPUT_DIRECTORY_NAME = "administrative_boundaries"
-OUTPUT_FILENAME = "CA_border_with_AZ_NV_and_OR.gpkg"
+BOUNDARY_OUTPUT_FILENAME = "CA_border_with_AZ_NV_and_OR.gpkg"
 OUTPUT_LAYER_NAME = "CA_border_with_AZ_NV_and_OR"
 
 NEIGHBOR_COLUMN_NAME = "NEIGHBOR"
 NEIGHBOR_ABBREVIATION_COLUMN_NAME = "NEIGHBOR_ABBR"
 LENGTH_COLUMN_NAME = "LENGTH_KM"
-
-# The spatial reference the border GeoPackage is written in.
-OUTPUT_SPATIAL_REFERENCE_ID = 4326
 
 # How far each neighbor polygon is grown before intersecting with California's boundary,
 # so shared borders line up even when the two source copies differ by a fraction of a
@@ -96,7 +94,7 @@ def output_geopackage_path(base_dir: pathlib.Path) -> pathlib.Path:
         base_dir
         / peri_scribe.output.DATA_DIRECTORY
         / OUTPUT_DIRECTORY_NAME
-        / OUTPUT_FILENAME
+        / BOUNDARY_OUTPUT_FILENAME
     )
 
 
@@ -185,7 +183,10 @@ def border_length_in_kilometers(geometry: shapely.Geometry) -> float:
         The geodesic length in kilometers.
     """
     geod = pyproj.Geod(ellps="WGS84")
-    return sum(geod.geometry_length(part) for part in line_parts(geometry)) / 1000.0
+    return (
+        sum(geod.geometry_length(part) for part in line_parts(geometry))
+        / peri_scribe.units.METERS_PER_KILOMETER
+    )
 
 
 def layer_dataframe(
@@ -196,9 +197,9 @@ def layer_dataframe(
 ) -> geopandas.GeoDataFrame:
     """Query *layer* and return its features as a GeoDataFrame in WGS84.
 
-    The query requests the features re-projected to `OUTPUT_SPATIAL_REFERENCE_ID` so the
-    two sources can be intersected in one spatial reference. A layer that returns no
-    features is an error, since no border can be computed from it.
+    The query requests the features re-projected to WGS 84 so the two sources can be
+    intersected in one spatial reference. A layer that returns no features is an
+    error, since no border can be computed from it.
 
     Args:
         layer: The layer to query.
@@ -216,7 +217,7 @@ def layer_dataframe(
         layer,
         parameters={
             "where": where,
-            "out_sr": OUTPUT_SPATIAL_REFERENCE_ID,
+            "out_sr": peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
         },
     )
     if not feature_set.features:
@@ -230,7 +231,7 @@ def layer_dataframe(
     return peri_scribe.geo_data.geo_data_frame_from(
         dataframe,
         geometries,
-        OUTPUT_SPATIAL_REFERENCE_ID,
+        peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
     )
 
 
@@ -334,7 +335,7 @@ def border_dataframe(
             LENGTH_COLUMN_NAME: lengths_in_kilometers,
         },
         geometry=borders,
-        crs=pyproj.CRS.from_epsg(OUTPUT_SPATIAL_REFERENCE_ID),
+        crs=pyproj.CRS.from_epsg(peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID),
     )
     return typing.cast(
         "geopandas.GeoDataFrame",
@@ -369,7 +370,7 @@ def is_usable(path: pathlib.Path) -> bool:
             and not dataframe.geometry.isna().any()
             and not dataframe.geometry.is_empty.any()
             and dataframe.crs is not None
-            and dataframe.crs.to_epsg() == OUTPUT_SPATIAL_REFERENCE_ID
+            and dataframe.crs.to_epsg() == peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID
         )
     except (OSError, RuntimeError, ValueError) as error:
         logger.warning(
@@ -471,9 +472,10 @@ def ordered_border_coordinates(
     """Return the border coordinates ordered from the Pacific end to the Mexico end.
 
     The shared borders are stored as one line per neighbor and may not meet exactly at
-    the state corners, so the parts are chained by endpoint proximity into one path.
-    The path begins at the westernmost endpoint, which is the corner California shares
-    with Oregon and the Pacific Ocean.
+    the state corners, so the parts are chained by endpoint proximity into one path
+    rather than merged with ``shapely.line_merge`` (which only joins segments that
+    actually touch). The path begins at the westernmost endpoint, which is the corner
+    California shares with Oregon and the Pacific Ocean.
 
     Args:
         parts: The border LineStrings to chain.

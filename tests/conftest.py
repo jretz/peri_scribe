@@ -13,7 +13,8 @@ import pytest
 import shapely.geometry
 
 import peri_scribe.feed_types
-import peri_scribe.geo_data
+import peri_scribe.feeds
+import peri_scribe.geo_package
 import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.snapshots
@@ -237,15 +238,23 @@ def stub_fire_reader(
         ]
         | None = None,
     ) -> None:
-        def fake_fire_records(
+        def fake_read_geopackage(
             path: pathlib.Path,
-        ) -> typing.Iterator[peri_scribe.models.FireRecord]:
-            yield from records_by_path.get(path, [])
-
-        def fake_complex_memberships(
-            path: pathlib.Path,
-        ) -> typing.Iterator[peri_scribe.models.ComplexMembership]:
-            yield from (memberships_by_path or {}).get(path, [])
+        ) -> peri_scribe.geo_package.GeopackageContents:
+            memberships = (memberships_by_path or {}).get(path, [])
+            rows = tuple(
+                peri_scribe.geo_package.FireRowRecord(
+                    record=record,
+                    object_id=None,
+                    source_name="",
+                    attributes={},
+                )
+                for record in records_by_path.get(path, [])
+            )
+            return peri_scribe.geo_package.GeopackageContents(
+                rows=rows,
+                memberships=tuple(memberships),
+            )
 
         def fake_geo_package_files(
             _directory: pathlib.Path,
@@ -253,14 +262,9 @@ def stub_fire_reader(
             return sorted(set(records_by_path) | set(memberships_by_path or {}))
 
         monkeypatch.setattr(
-            peri_scribe.geo_data,
-            "fire_records",
-            fake_fire_records,
-        )
-        monkeypatch.setattr(
-            peri_scribe.geo_data,
-            "complex_memberships",
-            fake_complex_memberships,
+            peri_scribe.geo_package,
+            "read_geopackage",
+            fake_read_geopackage,
         )
         monkeypatch.setattr(
             peri_scribe.snapshots,
@@ -357,7 +361,7 @@ def configure_feeds(
     monkeypatch: pytest.MonkeyPatch,
     feeds: list[peri_scribe.feed_types.Feed],
 ) -> list[peri_scribe.feed_types.Feed]:
-    """Point models.FEEDS at *feeds* and return them.
+    """Point feeds.FEEDS at *feeds* and return them.
 
     Args:
         monkeypatch: The monkeypatch fixture.
@@ -366,7 +370,7 @@ def configure_feeds(
     Returns:
         The configured feeds.
     """
-    monkeypatch.setattr(peri_scribe.models, "FEEDS", feeds)
+    monkeypatch.setattr(peri_scribe.feeds, "FEEDS", feeds)
     return feeds
 
 
@@ -374,7 +378,7 @@ def configure_feeds(
 def configured_feeds(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[peri_scribe.feed_types.Feed]:
-    """Point models.FEEDS at two configured feeds for GeoPackage reading.
+    """Point feeds.FEEDS at two configured feeds for GeoPackage reading.
 
     Returns:
         The two feeds, configured with fire name and status columns.
@@ -392,7 +396,7 @@ def configured_feeds(
 def configured_feeds_with_identifiers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[peri_scribe.feed_types.Feed]:
-    """Point models.FEEDS at feeds with identifier and complex columns.
+    """Point feeds.FEEDS at feeds with identifier and complex columns.
 
     The first feed is CA-layer-like, with an identifier column only. The second is
     WFIGS-like, with identifier and complex columns.
@@ -427,7 +431,7 @@ def configured_feeds_with_identifiers(
 def configured_feeds_with_mission(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[peri_scribe.feed_types.Feed]:
-    """Point models.FEEDS at a CA-layer-like feed with mission and time columns.
+    """Point feeds.FEEDS at a CA-layer-like feed with mission and time columns.
 
     Returns:
         The feed, configured with name, status, identifier, mission, and observation
@@ -452,7 +456,7 @@ def configured_feeds_with_mission(
 def configured_feeds_with_point_of_origin(
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[peri_scribe.feed_types.Feed]:
-    """Point models.FEEDS at a WFIGS-like feed with point of origin columns.
+    """Point feeds.FEEDS at a WFIGS-like feed with point of origin columns.
 
     Returns:
         The feed, configured with name, status, identifier, mission, and point of
@@ -487,12 +491,12 @@ def stub_geo_package(
 
     def stub(layers: pd.DataFrame, dataframes: dict[str, pd.DataFrame]) -> None:
         monkeypatch.setattr(
-            peri_scribe.geo_data.geopandas,
+            peri_scribe.geo_package.geopandas,
             "list_layers",
             lambda _path: layers,
         )
         monkeypatch.setattr(
-            peri_scribe.geo_data.geopandas,
+            peri_scribe.geo_package.geopandas,
             "read_file",
             lambda _path, layer: dataframes[layer],
         )
@@ -602,7 +606,7 @@ def geo_package_store(
         store.filenames,
     )
     monkeypatch.setattr(
-        peri_scribe.geo_data,
+        peri_scribe.geo_package,
         "read_layer_dataframe",
         store.read_layer,
     )

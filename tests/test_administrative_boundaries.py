@@ -15,6 +15,7 @@ import structlog
 
 import peri_scribe.administrative_boundaries
 import peri_scribe.exceptions
+import peri_scribe.models
 
 
 if typing.TYPE_CHECKING:
@@ -310,10 +311,7 @@ def test_border_dataframe_builds_neighbor_rows() -> None:
     assert list(border["NEIGHBOR"]) == neighbor_state_names
     assert list(border["NEIGHBOR_ABBR"]) == neighbor_state_abbreviations
     assert border.geometry.name == "geom"
-    assert (
-        border.crs.to_epsg()
-        == peri_scribe.administrative_boundaries.OUTPUT_SPATIAL_REFERENCE_ID
-    )
+    assert border.crs.to_epsg() == peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID
     assert all(border["LENGTH_KM"] > 0)
 
 
@@ -326,10 +324,7 @@ def test_layer_dataframe_queries_features_in_wgs84() -> None:
         where="STATE_ABBR IN ('AZ','NV','OR')",
     )
     assert len(dataframe) == 1
-    assert (
-        dataframe.crs.to_epsg()
-        == peri_scribe.administrative_boundaries.OUTPUT_SPATIAL_REFERENCE_ID
-    )
+    assert dataframe.crs.to_epsg() == peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID
     assert dataframe.geometry.name == "geom"
     assert layer.queries == [
         {
@@ -681,9 +676,7 @@ def test_ensure_administrative_boundaries_builds_when_file_unusable(
         "LENGTH_KM",
         "geom",
     ]
-    assert written.crs.to_epsg() == (
-        peri_scribe.administrative_boundaries.OUTPUT_SPATIAL_REFERENCE_ID
-    )
+    assert written.crs.to_epsg() == peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID
 
 
 def test_ensure_administrative_boundaries_raises_when_fetch_fails(

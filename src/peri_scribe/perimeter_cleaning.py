@@ -30,7 +30,7 @@ class PerimeterCleaningConfig:
     maximum_deviation_in_meters: float = 22.0
 
 
-DEFAULT_CONFIG = PerimeterCleaningConfig()
+DEFAULT_CLEANING_CONFIG = PerimeterCleaningConfig()
 
 
 def polygonal_parts(geometry: shapely.Geometry) -> list[shapely.Polygon]:
@@ -126,7 +126,7 @@ def without_degenerate_holes(
 
 def clean_perimeter(
     geometry: shapely.Geometry | None,
-    config: PerimeterCleaningConfig = DEFAULT_CONFIG,
+    config: PerimeterCleaningConfig = DEFAULT_CLEANING_CONFIG,
 ) -> shapely.Geometry | None:
     """Return *geometry* cleaned for rendering, or None when nothing remains.
 

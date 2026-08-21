@@ -19,8 +19,10 @@ import simplekml
 
 import peri_scribe.fire_history
 import peri_scribe.fire_index
+import peri_scribe.geo_package
 import peri_scribe.kml
 import peri_scribe.kml_template
+import peri_scribe.kml_template_reader
 import peri_scribe.models
 import peri_scribe.perimeter_progression
 
@@ -89,9 +91,7 @@ def perimeter_with_time(
 
 
 def geometry_frame(
-    rows: list[
-        tuple[str | None, str, shapely.geometry.base.BaseGeometry]
-    ],
+    rows: list[tuple[str | None, str, shapely.geometry.base.BaseGeometry]],
     observation_times: list[datetime.datetime | None] | None = None,
 ) -> geopandas.GeoDataFrame:
     """Build a history GeoDataFrame from (identifier, name, geometry) rows.
@@ -106,14 +106,10 @@ def geometry_frame(
     """
     return geopandas.GeoDataFrame(
         {
-            "fire_identifier": [
-                identifier for identifier, _name, _geometry in rows
-            ],
+            "fire_identifier": [identifier for identifier, _name, _geometry in rows],
             "fire_name": [name for _identifier, name, _geometry in rows],
             "observation_time": (
-                [None] * len(rows)
-                if observation_times is None
-                else observation_times
+                [None] * len(rows) if observation_times is None else observation_times
             ),
         },
         geometry=[geometry for _identifier, _name, geometry in rows],
@@ -374,33 +370,13 @@ def test_year_from_reads_directory_name() -> None:
 
 
 def test_kmz_filename_names_year() -> None:
-    assert (
-        peri_scribe.kml.kmz_filename(2026)
-        == "PeriScribe Fires 2026.kmz"
-    )
+    assert peri_scribe.kml.kmz_filename(2026) == "PeriScribe Fires 2026.kmz"
 
 
 def test_kmz_path_places_file_in_maps_directory() -> None:
     assert peri_scribe.kml.kmz_path(pathlib.Path("data/2026")) == (
         pathlib.Path("data/2026/maps/PeriScribe Fires 2026.kmz")
     )
-
-
-def test_read_history_layer_reads_named_layer(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    path = pathlib.Path("/derived/full.gpkg")
-    frame = geometry_frame([])
-    calls: list[tuple[pathlib.Path, str]] = []
-
-    def read_file(read_path: pathlib.Path, *, layer: str) -> geopandas.GeoDataFrame:
-        calls.append((read_path, layer))
-        return frame
-
-    monkeypatch.setattr(geopandas, "read_file", read_file)
-    result = peri_scribe.kml.read_history_layer(path, "perimeter_history")
-    assert result is frame
-    assert calls == [(path, "perimeter_history")]
 
 
 def test_identifiers_includes_identifier_and_aliases() -> None:
@@ -488,12 +464,15 @@ def test_fire_point_returns_none_when_name_missing() -> None:
 
 
 def test_fire_point_returns_none_when_identifier_missing() -> None:
-    assert peri_scribe.kml.fire_point(
-        frozenset({"id-a"}),
-        "Bug",
-        {},
-        {},
-    ) is None
+    assert (
+        peri_scribe.kml.fire_point(
+            frozenset({"id-a"}),
+            "Bug",
+            {},
+            {},
+        )
+        is None
+    )
 
 
 def test_fire_perimeters_matches_identifier() -> None:
@@ -522,12 +501,15 @@ def test_fire_perimeters_falls_back_to_name() -> None:
 
 
 def test_fire_perimeters_returns_empty_when_unknown() -> None:
-    assert peri_scribe.kml.fire_perimeters(
-        frozenset({"id-a"}),
-        "Bug",
-        {},
-        {},
-    ) == ()
+    assert (
+        peri_scribe.kml.fire_perimeters(
+            frozenset({"id-a"}),
+            "Bug",
+            {},
+            {},
+        )
+        == ()
+    )
 
 
 def test_fire_geometries_matches_aliases_and_sorts_by_name() -> None:
@@ -716,9 +698,7 @@ def test_multi_polygon_geometry_holds_each_polygon() -> None:
     geometry = placemark.find(kml_tag("MultiGeometry"))
     if geometry is None:
         pytest.fail("Placemark has no MultiGeometry")
-    polygons = [
-        child for child in geometry if child.tag == kml_tag("Polygon")
-    ]
+    polygons = [child for child in geometry if child.tag == kml_tag("Polygon")]
     assert len(polygons) == len(multi_polygon.geoms)
     assert geometry.find(gx_tag("drawOrder")) is None
     assert polygon_draw_orders(geometry) == [
@@ -830,7 +810,7 @@ def test_mapping_placemark_name_with_observation_time() -> None:
 
 @pytest.fixture
 def style_urls() -> dict[str, str]:
-    return peri_scribe.kml.template_from(
+    return peri_scribe.kml_template_reader.template_from(
         peri_scribe.kml_template.template_kml(),
     ).style_urls
 
@@ -863,9 +843,12 @@ def test_fire_folder_includes_point_and_progression(
         "08/03 16:00 Perimeter",
     ]
     assert placemark_style_url(placemark_named(folder, "Bug")) == "#point-icon"
-    assert placemark_style_url(
-        placemark_named(folder, "08/05 13:30 Interior"),
-    ) == "#perimeter-fill"
+    assert (
+        placemark_style_url(
+            placemark_named(folder, "08/05 13:30 Interior"),
+        )
+        == "#perimeter-fill"
+    )
     assert {
         name: draw_order(placemark_named(folder, name))
         for name in (
@@ -1007,19 +990,34 @@ def test_progression_folder_holds_point_and_bands(
             peri_scribe.perimeter_progression.Ring(
                 geometry=square(1.0),
                 observation_time=datetime.datetime(
-                    2026, 8, 13, 20, 0, tzinfo=datetime.UTC,
+                    2026,
+                    8,
+                    13,
+                    20,
+                    0,
+                    tzinfo=datetime.UTC,
                 ),
             ),
             peri_scribe.perimeter_progression.Ring(
                 geometry=square(2.0),
                 observation_time=datetime.datetime(
-                    2026, 8, 14, 20, 0, tzinfo=datetime.UTC,
+                    2026,
+                    8,
+                    14,
+                    20,
+                    0,
+                    tzinfo=datetime.UTC,
                 ),
             ),
             peri_scribe.perimeter_progression.Ring(
                 geometry=square(3.0),
                 observation_time=datetime.datetime(
-                    2026, 8, 15, 20, 0, tzinfo=datetime.UTC,
+                    2026,
+                    8,
+                    15,
+                    20,
+                    0,
+                    tzinfo=datetime.UTC,
                 ),
             ),
         ),
@@ -1035,9 +1033,12 @@ def test_progression_folder_holds_point_and_bands(
     assert placemark_names(bug_folder) == ["Bug", "08/15", "08/13 - 08/14"]
     assert placemark_style_url(placemark_named(bug_folder, "Bug")) == "#point-icon"
     assert placemark_style_url(placemark_named(bug_folder, "08/15")) == "#days-fill-1"
-    assert placemark_style_url(
-        placemark_named(bug_folder, "08/13 - 08/14"),
-    ) == "#days-fill-2"
+    assert (
+        placemark_style_url(
+            placemark_named(bug_folder, "08/13 - 08/14"),
+        )
+        == "#days-fill-2"
+    )
     assert {
         name: draw_order(placemark_named(bug_folder, name))
         for name in ("08/13 - 08/14", "08/15", "Bug")
@@ -1052,9 +1053,11 @@ def test_progression_folder_holds_point_and_bands(
         (1.5, 1.5),
         (-1.5, 1.5),
     }
-    assert set(exterior_coordinates(
-        placemark_named(bug_folder, "08/13 - 08/14"),
-    )) == {
+    assert set(
+        exterior_coordinates(
+            placemark_named(bug_folder, "08/13 - 08/14"),
+        ),
+    ) == {
         (-1.0, -1.0),
         (1.0, -1.0),
         (1.0, 1.0),
@@ -1079,7 +1082,7 @@ def test_fire_kml_includes_progression_maps_folder() -> None:
         ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
         ("id-alta", "ALTA", shapely.geometry.Point(2.0, 2.0)),
     ])
-    template = peri_scribe.kml.template_from(
+    template = peri_scribe.kml_template_reader.template_from(
         peri_scribe.kml_template.template_kml(),
     )
     fires = peri_scribe.kml.fire_geometries(
@@ -1158,7 +1161,7 @@ def test_status_folder_filters_by_status(style_urls: dict[str, str]) -> None:
 
 def test_placemark_style_urls_descends_into_folders() -> None:
     document = document_from(peri_scribe.kml_template.template_kml())
-    urls = peri_scribe.kml.placemark_style_urls(document)
+    urls = peri_scribe.kml_template_reader.placemark_style_urls(document)
     assert urls["Point Location"] == "#point-icon"
     assert urls["Interior"] == "#perimeter-fill"
     assert urls["Latest Perimeter"] == "#perimeter-outline-1"
@@ -1175,18 +1178,18 @@ def test_collect_placemark_style_urls_skips_placemarks_without_style() -> None:
     unnamed = ET.SubElement(folder, kml_tag("Placemark"))
     ET.SubElement(unnamed, kml_tag("Point"))
     urls: dict[str, str] = {}
-    peri_scribe.kml.collect_placemark_style_urls(document, urls)
+    peri_scribe.kml_template_reader.collect_placemark_style_urls(document, urls)
     assert urls == {}
 
 
 def test_style_from_requires_style_id() -> None:
     style_element = ET.Element(kml_tag("Style"))
     with pytest.raises(ValueError, match="no id attribute"):
-        peri_scribe.kml.style_from(style_element)
+        peri_scribe.kml_template_reader.style_from(style_element)
 
 
 def test_template_from_collects_styles_and_style_urls() -> None:
-    template = peri_scribe.kml.template_from(
+    template = peri_scribe.kml_template_reader.template_from(
         peri_scribe.kml_template.template_kml(),
     )
     assert [style.id for style in template.styles] == [
@@ -1211,7 +1214,7 @@ def test_template_from_requires_document() -> None:
     root = ET.Element(kml_tag("kml"))
     kml_text = ET.tostring(root, encoding="unicode")
     with pytest.raises(ValueError, match="no Document element"):
-        peri_scribe.kml.template_from(kml_text)
+        peri_scribe.kml_template_reader.template_from(kml_text)
 
 
 def test_read_template_reads_file(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1222,10 +1225,13 @@ def test_read_template_reads_file(monkeypatch: pytest.MonkeyPatch) -> None:
         return text
 
     monkeypatch.setattr(pathlib.Path, "read_text", read_text)
-    template = peri_scribe.kml.read_template(
+    template = peri_scribe.kml_template_reader.read_template(
         pathlib.Path("/templates/PeriScribe Template.kml"),
     )
-    assert template.style_urls == peri_scribe.kml.template_from(text).style_urls
+    assert (
+        template.style_urls
+        == peri_scribe.kml_template_reader.template_from(text).style_urls
+    )
 
 
 def test_fire_kml_builds_active_and_inactive_folders() -> None:
@@ -1255,7 +1261,7 @@ def test_fire_kml_builds_active_and_inactive_folders() -> None:
         points,
         geometry_frame([]),
     )
-    template = peri_scribe.kml.template_from(
+    template = peri_scribe.kml_template_reader.template_from(
         peri_scribe.kml_template.template_kml(),
     )
     document = document_from(peri_scribe.kml.fire_kml(fires, template))
@@ -1283,11 +1289,7 @@ def test_fire_kml_builds_active_and_inactive_folders() -> None:
     assert placemark_names(alta_folder) == ["ALTA"]
     assert draw_order(placemark_named(alta_folder, "ALTA")) == 1
 
-    style_ids = {
-        child.get("id")
-        for child in document
-        if child.tag == kml_tag("Style")
-    }
+    style_ids = {child.get("id") for child in document if child.tag == kml_tag("Style")}
     assert "point-icon" in style_ids
     assert "perimeter-fill" in style_ids
     assert "perimeter-outline-1" in style_ids
@@ -1303,7 +1305,7 @@ def test_fire_kml_shows_derived_point_for_inactive_fire_without_location() -> No
         geometry_frame([]),
         geometry_frame([]),
     )
-    template = peri_scribe.kml.template_from(
+    template = peri_scribe.kml_template_reader.template_from(
         peri_scribe.kml_template.template_kml(),
     )
     document = document_from(peri_scribe.kml.fire_kml(fires, template))
@@ -1405,12 +1407,12 @@ def test_create_kmz_reads_history_and_writes_kmz(
     ) -> geopandas.GeoDataFrame:
         return perimeters if layer_name == "perimeter_history" else points
 
-    monkeypatch.setattr(peri_scribe.kml, "read_history_layer", read_layer)
-    template = peri_scribe.kml.template_from(
+    monkeypatch.setattr(peri_scribe.geo_package, "read_layer", read_layer)
+    template = peri_scribe.kml_template_reader.template_from(
         peri_scribe.kml_template.template_kml(),
     )
     monkeypatch.setattr(
-        peri_scribe.kml,
+        peri_scribe.kml_template_reader,
         "read_template",
         lambda _path: template,
     )
