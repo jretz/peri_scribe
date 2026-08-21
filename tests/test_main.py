@@ -136,6 +136,16 @@ class RecordingFeatureLayerStub(FeatureLayerStubBase):
         return self.feature_set
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class FullPipelineStubs:
+    """Fetch outcome and recorded step calls for full-pipeline tests."""
+
+    fetch_result: peri_scribe.fetching.FetchResult
+    ensure_boundary_calls: list[pathlib.Path | None]
+    history_calls: list[pathlib.Path]
+    kmz_calls: list[pathlib.Path]
+
+
 @pytest.fixture
 def fetch_setup(
     monkeypatch: pytest.MonkeyPatch,
@@ -267,6 +277,54 @@ def current_year(
         tick=False,
     ):
         yield
+
+
+@pytest.fixture
+def full_pipeline_stubs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> typing.Callable[..., FullPipelineStubs]:
+    """Install step stubs for the full-pipeline command.
+
+    Returns:
+        A callable taking whether the fetch changed something and returning the
+        installed fetch outcome and the lists recording each step's calls.
+    """
+
+    def install(*, changed: bool) -> FullPipelineStubs:
+        stubs = FullPipelineStubs(
+            fetch_result=peri_scribe.fetching.FetchResult(
+                snapshot_paths=(),
+                changed=changed,
+            ),
+            ensure_boundary_calls=[],
+            history_calls=[],
+            kmz_calls=[],
+        )
+        monkeypatch.setattr(
+            peri_scribe.fetching,
+            "fetch_all_feeds",
+            lambda: stubs.fetch_result,
+        )
+        monkeypatch.setattr(
+            peri_scribe.administrative_boundaries,
+            "ensure_administrative_boundaries",
+            lambda base_directory=None: stubs.ensure_boundary_calls.append(
+                base_directory,
+            ),
+        )
+        monkeypatch.setattr(
+            peri_scribe.fire_differential,
+            "write_history_of_differential_geography",
+            stubs.history_calls.append,
+        )
+        monkeypatch.setattr(
+            peri_scribe.kml,
+            "create_kmz",
+            stubs.kmz_calls.append,
+        )
+        return stubs
+
+    return install
 
 
 @pytest.mark.usefixtures("list_fires_setup")
@@ -1207,3 +1265,140 @@ def test_cli_help_lists_create_kml(
     result = runner.invoke(peri_scribe.main.cli, ["--help"])
     assert result.exit_code == 0
     assert "create-kml" in result.output
+
+
+def test_full_pipeline_runs_all_steps_when_fetch_changed(
+    runner: click.testing.CliRunner,
+    full_pipeline_stubs: typing.Callable[..., FullPipelineStubs],
+) -> None:
+    stubs = full_pipeline_stubs(changed=True)
+    result = runner.invoke(
+        peri_scribe.main.cli,
+        ["full-pipeline", "data/2026"],
+    )
+    assert result.exit_code == 0
+    year_directory = pathlib.Path("data/2026")
+    assert stubs.ensure_boundary_calls == [None]
+    assert stubs.history_calls == [year_directory]
+    assert stubs.kmz_calls == [year_directory]
+
+
+@pytest.mark.usefixtures("current_year")
+def test_full_pipeline_defaults_to_current_year_directory(
+    runner: click.testing.CliRunner,
+    full_pipeline_stubs: typing.Callable[..., FullPipelineStubs],
+) -> None:
+    stubs = full_pipeline_stubs(changed=True)
+    result = runner.invoke(peri_scribe.main.cli, ["full-pipeline"])
+    assert result.exit_code == 0
+    year_directory = BASE_DIRECTORY / "data" / "2026"
+    assert stubs.ensure_boundary_calls == [None]
+    assert stubs.history_calls == [year_directory]
+    assert stubs.kmz_calls == [year_directory]
+
+
+@pytest.mark.usefixtures("current_year")
+def test_full_pipeline_skips_remaining_steps_when_fetch_unchanged(
+    runner: click.testing.CliRunner,
+    full_pipeline_stubs: typing.Callable[..., FullPipelineStubs],
+) -> None:
+    stubs = full_pipeline_stubs(changed=False)
+    result = runner.invoke(peri_scribe.main.cli, ["full-pipeline"])
+    assert result.exit_code == 0
+    assert stubs.ensure_boundary_calls == []
+    assert stubs.history_calls == []
+    assert stubs.kmz_calls == []
+
+
+@pytest.mark.usefixtures("current_year")
+def test_full_pipeline_force_runs_remaining_steps_when_fetch_unchanged(
+    runner: click.testing.CliRunner,
+    full_pipeline_stubs: typing.Callable[..., FullPipelineStubs],
+) -> None:
+    stubs = full_pipeline_stubs(changed=False)
+    result = runner.invoke(
+        peri_scribe.main.cli,
+        ["full-pipeline", "--force"],
+    )
+    assert result.exit_code == 0
+    year_directory = BASE_DIRECTORY / "data" / "2026"
+    assert stubs.ensure_boundary_calls == [None]
+    assert stubs.history_calls == [year_directory]
+    assert stubs.kmz_calls == [year_directory]
+
+
+@pytest.mark.usefixtures("current_year")
+def test_full_pipeline_stops_when_fetch_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+    full_pipeline_stubs: typing.Callable[..., FullPipelineStubs],
+) -> None:
+    def fail() -> typing.Never:
+        message = "boom"
+        raise SystemExit(message)
+
+    stubs = full_pipeline_stubs(changed=True)
+    monkeypatch.setattr(peri_scribe.fetching, "fetch_all_feeds", fail)
+    result = runner.invoke(
+        peri_scribe.main.cli,
+        ["full-pipeline", "--force"],
+    )
+    assert result.exit_code == 1
+    assert "boom" in result.output
+    assert stubs.ensure_boundary_calls == []
+    assert stubs.history_calls == []
+    assert stubs.kmz_calls == []
+
+
+@pytest.mark.usefixtures("current_year")
+def test_full_pipeline_stops_when_a_step_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+    full_pipeline_stubs: typing.Callable[..., FullPipelineStubs],
+) -> None:
+    def fail(_year_directory: pathlib.Path) -> typing.Never:
+        message = "boom"
+        raise ValueError(message)
+
+    stubs = full_pipeline_stubs(changed=True)
+    monkeypatch.setattr(
+        peri_scribe.fire_differential,
+        "write_history_of_differential_geography",
+        fail,
+    )
+    result = runner.invoke(peri_scribe.main.cli, ["full-pipeline"])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, ValueError)
+    assert stubs.ensure_boundary_calls == [None]
+    assert stubs.history_calls == []
+    assert stubs.kmz_calls == []
+
+
+def test_full_pipeline_help_names_current_year_default(
+    runner: click.testing.CliRunner,
+) -> None:
+    result = runner.invoke(peri_scribe.main.cli, ["full-pipeline", "--help"])
+    assert result.exit_code == 0
+    assert (
+        f"{peri_scribe.output.DATA_DIRECTORY}/{datetime.date.today().year}"
+    ) in result.output
+    assert "data/<current year>" not in result.output
+
+
+def test_full_pipeline_rejects_missing_directory(
+    runner: click.testing.CliRunner,
+) -> None:
+    result = runner.invoke(
+        peri_scribe.main.cli,
+        ["full-pipeline", "no-such-directory"],
+    )
+    assert result.exit_code == CLICK_USAGE_ERROR_EXIT_CODE
+    assert "does not exist" in result.output
+
+
+def test_cli_help_lists_full_pipeline(
+    runner: click.testing.CliRunner,
+) -> None:
+    result = runner.invoke(peri_scribe.main.cli, ["--help"])
+    assert result.exit_code == 0
+    assert "full-pipeline" in result.output

@@ -212,3 +212,48 @@ def create_kml(year_directory: pathlib.Path | None = None) -> None:
         year_directory = default_year_directory()
     output_path = peri_scribe.kml.create_kmz(year_directory)
     logger.info("Wrote KMZ", path=output_path)
+
+
+@cli.command(
+    help=(
+        "Fetch feeds, then derive and symbolize fire geography for "
+        "YEAR_DIRECTORY.\n\n"
+        "Runs the fetch step first and exits when it wrote no new snapshot. "
+        "When the fetch changed something, the administrative boundaries are "
+        "ensured and the full and differential geography history and KML for "
+        "YEAR_DIRECTORY are built. --force runs the later steps even when the "
+        "fetch changed nothing; an error in any step stops the pipeline. "
+        f"{year_directory_default_help()}"
+    ),
+)
+@click.argument(
+    "year_directory",
+    type=click.Path(
+        path_type=pathlib.Path,
+        exists=True,
+        file_okay=False,
+    ),
+    required=False,
+)
+@click.option(
+    "--force",
+    is_flag=True,
+    help="Run the later steps even when the fetch changed nothing.",
+)
+def full_pipeline(
+    year_directory: pathlib.Path | None = None,
+    *,
+    force: bool = False,
+) -> None:
+    """Check for new source data and use it to generate new maps."""
+    if year_directory is None:
+        year_directory = default_year_directory()
+    result = peri_scribe.fetching.fetch_all_feeds()
+    if not result.changed and not force:
+        logger.info("Nothing changed; skipping remaining pipeline steps")
+        return
+    peri_scribe.administrative_boundaries.ensure_administrative_boundaries()
+    peri_scribe.fire_differential.write_history_of_differential_geography(
+        year_directory,
+    )
+    peri_scribe.kml.create_kmz(year_directory)

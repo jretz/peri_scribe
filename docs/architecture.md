@@ -2,13 +2,9 @@
 
 ## Form
 
-peri_scribe is a command line tool. It accepts the commands `fetch`, `current-watermarks`, and `list-fires`.
+peri_scribe is a command line tool with commands for retrieving data from sources, cleaning and organizing that data, and generating maps. All of that is in place and maturing. At least one additional command is planned:
 
-`fetch` retrieves data from the configured sources, one source at a time. Each source's data is written to its own GeoPackage snapshot, named by serial number and the observed watermark, under `data/<year>/sources/<feed name>/`. A source with no prior snapshots is fetched in full; a source that already has snapshots is fetched incrementally, and existing snapshots are never modified. When the current watermark already matches an existing snapshot, that source is skipped.
-
-`symbolize` (PLANNED) will read GeoPackage files for the most recent days, along with a template KML file, and generate a KML file with the styles from the template applied to the geography data from the GeoPackage files.
-
-`report` (FUTURE IDEA) will read GeoPackage files for the most recent days and generate a report about fires. Examples might include:
+`report` will read GeoPackage files for the most recent days and generate a report about fires. Examples might include:
     - The top 10 active fires by area
     - The fastest growing fires
       - By absolute area growth
@@ -23,9 +19,15 @@ peri_scribe is a command line tool. It accepts the commands `fetch`, `current-wa
   - [GeoPandas](https://pypi.org/project/geopandas/) is used to handle data in memory, and to write it to disk as GeoPackage files.
   - [pyproj](https://pypi.org/project/pyproj/) is used to handle coordinate reference system analysis.
 
-## Data Validation
+## Data Validation and Cleansing
 
 Some feeds provide conflicting information about what coordinate reference system is used for their data. The system does its best to detect the correct coordinate reference system from one of those indicated by the feed (e.g., by checking the scale of the coordinates to determine meters vs. degrees).
+
+Many kinds of issues with fire perimeter polygons are detected and corrected in a copy of the data (the original download cache is append-only and is never modified). These include:
+
+- Small perimeters (e.g., 2 acres) published as new perimeter mappings of large fires (e.g., 100,000 acres). These are ignored.
+- A series of thousands of collinear points. These excess points are removed.
+- Thousands of points in a very small area (one case had 40K points within 10 meters of each other) . These are reduced to a small number of points.
 
 ## Code Structure
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import pathlib
 import typing
@@ -25,6 +26,14 @@ if typing.TYPE_CHECKING:
 
 
 logger = structlog.get_logger()
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class FetchResult:
+    """The outcome of fetching every configured feed."""
+
+    snapshot_paths: tuple[pathlib.Path, ...]
+    changed: bool
 
 
 def fetch_feed_dataframe(
@@ -129,7 +138,7 @@ def fetch_all_feeds(
     base_dir: pathlib.Path | None = None,
     *,
     year: int | None = None,
-) -> tuple[pathlib.Path, ...]:
+) -> FetchResult:
     """Fetch each configured feed into its own GeoPackage snapshot.
 
     A feed with no stored snapshots is fetched in full. A feed that already has
@@ -149,8 +158,9 @@ def fetch_all_feeds(
         year: Year to group the snapshots under. Defaults to the current year.
 
     Returns:
-        The paths to the GeoPackage files holding each feed's data, one per feed, in
-        feed order. A feed that produced no new snapshot contributes its most recent
+        The outcome of the fetch: the paths to the GeoPackage files holding each
+        feed's data, one per feed, in feed order, and whether any feed wrote a new
+        snapshot. A feed that produced no new snapshot contributes its most recent
         existing snapshot path instead.
 
     Raises:
@@ -257,4 +267,7 @@ def fetch_all_feeds(
     if errors:
         raise SystemExit("\n".join(errors))
     logger.info("Done")
-    return tuple(snapshot_paths)
+    return FetchResult(
+        snapshot_paths=tuple(snapshot_paths),
+        changed=wrote_snapshot,
+    )
