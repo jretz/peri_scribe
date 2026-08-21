@@ -16,6 +16,7 @@ import simplekml
 import structlog
 
 import peri_scribe.output
+import peri_scribe.perimeter_progression
 
 
 logger = structlog.get_logger()
@@ -110,64 +111,79 @@ OUTLINED_PERIMETER_TEMPLATES = (
     ),
 )
 
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ProgressionRendering:
+    """The fictional geometry and color for one progression band in the template."""
+
+    side_length_in_meters: int
+    hole_side_length_in_meters: int | None = None
+    color: str
+
+
 # Each polygon is a growth band: it fills only the area added in its day range, so
-# it has a hole where the next smaller polygon sits.
-PROGRESSION_FILL_TEMPLATES = (
-    PerimeterTemplate(
-        name="Latest Day",
-        style_id="days-fill-1",
+# it has a hole where the next smaller polygon sits. The renderings give the shared
+# progression day ranges their fictional geometry; the ranges themselves come from
+# the shared definition, so the template always names the same bands the KMZ output
+# builds.
+PROGRESSION_BAND_RENDERINGS = (
+    ProgressionRendering(
         side_length_in_meters=800,
         hole_side_length_in_meters=700,
         color="#FF2A00",
     ),
-    PerimeterTemplate(
-        name="2 Days Before That",
-        style_id="days-fill-2",
+    ProgressionRendering(
         side_length_in_meters=700,
         hole_side_length_in_meters=600,
         color="#FF7300",
     ),
-    PerimeterTemplate(
-        name="4 Days Before That",
-        style_id="days-fill-3",
+    ProgressionRendering(
         side_length_in_meters=600,
         hole_side_length_in_meters=500,
         color="#FFAA00",
     ),
-    PerimeterTemplate(
-        name="8 Days Before That",
-        style_id="days-fill-4",
+    ProgressionRendering(
         side_length_in_meters=500,
         hole_side_length_in_meters=400,
         color="#B35933",
     ),
-    PerimeterTemplate(
-        name="16 Days Before That",
-        style_id="days-fill-5",
+    ProgressionRendering(
         side_length_in_meters=400,
         hole_side_length_in_meters=300,
         color="#6E473B",
     ),
-    PerimeterTemplate(
-        name="32 Days Before That",
-        style_id="days-fill-6",
+    ProgressionRendering(
         side_length_in_meters=300,
         hole_side_length_in_meters=200,
         color="#4A4A4A",
     ),
-    PerimeterTemplate(
-        name="64 Days Before That",
-        style_id="days-fill-7",
+    ProgressionRendering(
         side_length_in_meters=200,
         hole_side_length_in_meters=100,
         color="#7A828A",
     ),
-    PerimeterTemplate(
-        name="128+ Days Before That",
-        style_id="days-fill-8",
+    ProgressionRendering(
         side_length_in_meters=100,
         color="#B0B7BD",
     ),
+)
+
+
+PROGRESSION_FILL_TEMPLATES = tuple(
+    PerimeterTemplate(
+        name=band.name,
+        style_id=f"days-fill-{index + 1}",
+        side_length_in_meters=rendering.side_length_in_meters,
+        hole_side_length_in_meters=rendering.hole_side_length_in_meters,
+        color=rendering.color,
+    )
+    for index, (band, rendering) in enumerate(
+        zip(
+            peri_scribe.perimeter_progression.PROGRESSION_BANDS,
+            PROGRESSION_BAND_RENDERINGS,
+            strict=True,
+        ),
+    )
 )
 
 
@@ -486,7 +502,9 @@ def progression_map_folder(document: simplekml.Document) -> None:
     Args:
         document: The template's document.
     """
-    folder = document.newfolder(name="Perimeter Progression Maps")
+    folder = document.newfolder(
+        name=peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
     band_count = len(PROGRESSION_FILL_TEMPLATES)
     point_placemark(folder, POINT_CENTER, band_count)
     for index, template in enumerate(PROGRESSION_FILL_TEMPLATES):

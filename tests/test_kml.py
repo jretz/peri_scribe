@@ -22,6 +22,7 @@ import peri_scribe.fire_index
 import peri_scribe.kml
 import peri_scribe.kml_template
 import peri_scribe.models
+import peri_scribe.perimeter_progression
 
 
 YEAR = 2026
@@ -546,7 +547,12 @@ def test_fire_geometries_matches_aliases_and_sorts_by_name() -> None:
     ])
     bug_point = shapely.geometry.Point(1.0, 1.0)
     points = geometry_frame([("id-bug", "Bug", bug_point)])
-    fires = peri_scribe.kml.fire_geometries(index, perimeters, points)
+    fires = peri_scribe.kml.fire_geometries(
+        index,
+        perimeters,
+        points,
+        geometry_frame([]),
+    )
     assert [fire.name for fire in fires] == ["Bug", "Sorrento"]
     bug, sorrento = fires
     assert bug.status is peri_scribe.models.FireStatus.INACTIVE
@@ -607,6 +613,7 @@ def test_fire_geometries_derives_point_for_inactive_fire_without_location() -> N
         index,
         geometry_frame([("id-alta", "ALTA", perimeter)]),
         geometry_frame([]),
+        geometry_frame([]),
     )
     (fire,) = fires
     assert fire.status is peri_scribe.models.FireStatus.INACTIVE
@@ -621,6 +628,7 @@ def test_fire_geometries_sorts_by_case_folded_name() -> None:
     ])
     fires = peri_scribe.kml.fire_geometries(
         index,
+        geometry_frame([]),
         geometry_frame([]),
         geometry_frame([]),
     )
@@ -935,6 +943,172 @@ def test_latest_perimeters_folder_names_and_holds_fires(
     assert folder_names(folder) == ["Bug"]
 
 
+def test_fire_geometries_includes_progression_rings() -> None:
+    index = fire_index([
+        fire_index_entry("Bug", "active", identifier="id-bug"),
+    ])
+    first_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
+    second_time = datetime.datetime(2026, 8, 7, 20, 0, tzinfo=datetime.UTC)
+    rings = geometry_frame(
+        [
+            ("id-bug", "Bug", square(1.0)),
+            ("id-bug", "Bug", square(2.0)),
+        ],
+        observation_times=[first_time, second_time],
+    )
+    fires = peri_scribe.kml.fire_geometries(
+        index,
+        geometry_frame([]),
+        geometry_frame([]),
+        rings,
+    )
+    (fire,) = fires
+    assert fire.progression_rings == (
+        peri_scribe.perimeter_progression.Ring(
+            geometry=square(1.0),
+            observation_time=first_time,
+        ),
+        peri_scribe.perimeter_progression.Ring(
+            geometry=square(2.0),
+            observation_time=second_time,
+        ),
+    )
+
+
+def test_progression_folder_excludes_fires_without_rings(
+    style_urls: dict[str, str],
+) -> None:
+    fire = peri_scribe.kml.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=shapely.geometry.Point(1.0, 1.0),
+        perimeters=(),
+    )
+    kml = simplekml.Kml()
+    peri_scribe.kml.progression_folder(kml.document, [fire], style_urls)
+    document = document_from(kml.kml())
+    folder = folder_named(
+        document,
+        peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
+    assert folder_names(folder) == []
+
+
+def test_progression_folder_holds_point_and_bands(
+    style_urls: dict[str, str],
+) -> None:
+    point = shapely.geometry.Point(1.0, 1.0)
+    fire = peri_scribe.kml.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=point,
+        perimeters=(),
+        progression_rings=(
+            peri_scribe.perimeter_progression.Ring(
+                geometry=square(1.0),
+                observation_time=datetime.datetime(
+                    2026, 8, 13, 20, 0, tzinfo=datetime.UTC,
+                ),
+            ),
+            peri_scribe.perimeter_progression.Ring(
+                geometry=square(2.0),
+                observation_time=datetime.datetime(
+                    2026, 8, 14, 20, 0, tzinfo=datetime.UTC,
+                ),
+            ),
+            peri_scribe.perimeter_progression.Ring(
+                geometry=square(3.0),
+                observation_time=datetime.datetime(
+                    2026, 8, 15, 20, 0, tzinfo=datetime.UTC,
+                ),
+            ),
+        ),
+    )
+    kml = simplekml.Kml()
+    peri_scribe.kml.progression_folder(kml.document, [fire], style_urls)
+    document = document_from(kml.kml())
+    folder = folder_named(
+        document,
+        peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
+    bug_folder = folder_named(folder, "Bug")
+    assert placemark_names(bug_folder) == ["Bug", "08/15", "08/13 - 08/14"]
+    assert placemark_style_url(placemark_named(bug_folder, "Bug")) == "#point-icon"
+    assert placemark_style_url(placemark_named(bug_folder, "08/15")) == "#days-fill-1"
+    assert placemark_style_url(
+        placemark_named(bug_folder, "08/13 - 08/14"),
+    ) == "#days-fill-2"
+    assert {
+        name: draw_order(placemark_named(bug_folder, name))
+        for name in ("08/13 - 08/14", "08/15", "Bug")
+    } == {
+        "08/13 - 08/14": 0,
+        "08/15": 1,
+        "Bug": 2,
+    }
+    assert set(exterior_coordinates(placemark_named(bug_folder, "08/15"))) == {
+        (-1.5, -1.5),
+        (1.5, -1.5),
+        (1.5, 1.5),
+        (-1.5, 1.5),
+    }
+    assert set(exterior_coordinates(
+        placemark_named(bug_folder, "08/13 - 08/14"),
+    )) == {
+        (-1.0, -1.0),
+        (1.0, -1.0),
+        (1.0, 1.0),
+        (-1.0, 1.0),
+    }
+
+
+def test_fire_kml_includes_progression_maps_folder() -> None:
+    index = fire_index([
+        fire_index_entry("Bug", "active", identifier="id-bug"),
+        fire_index_entry("ALTA", "inactive", identifier="id-alta"),
+    ])
+    observation_time = datetime.datetime(2026, 8, 15, 20, 0, tzinfo=datetime.UTC)
+    perimeters = geometry_frame(
+        [
+            ("id-bug", "Bug", square(1.0)),
+            ("id-alta", "ALTA", square(2.0)),
+        ],
+        observation_times=[observation_time, observation_time],
+    )
+    points = geometry_frame([
+        ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
+        ("id-alta", "ALTA", shapely.geometry.Point(2.0, 2.0)),
+    ])
+    template = peri_scribe.kml.template_from(
+        peri_scribe.kml_template.template_kml(),
+    )
+    fires = peri_scribe.kml.fire_geometries(
+        index,
+        perimeters,
+        points,
+        perimeters,
+    )
+    document = document_from(peri_scribe.kml.fire_kml(fires, template))
+
+    active = folder_named(document, "Active Fires")
+    active_progression = folder_named(
+        active,
+        peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
+    assert folder_names(active_progression) == ["Bug"]
+    bug_folder = folder_named(active_progression, "Bug")
+    assert placemark_names(bug_folder) == ["Bug", "08/15"]
+
+    inactive = folder_named(document, "Inactive Fires")
+    inactive_progression = folder_named(
+        inactive,
+        peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
+    assert folder_names(inactive_progression) == ["ALTA"]
+    alta_folder = folder_named(inactive_progression, "ALTA")
+    assert placemark_names(alta_folder) == ["ALTA", "08/15"]
+
+
 def test_status_folder_name_for_active() -> None:
     assert (
         peri_scribe.kml.status_folder_name(
@@ -1075,7 +1249,12 @@ def test_fire_kml_builds_active_and_inactive_folders() -> None:
         ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
         ("id-alta", "ALTA", shapely.geometry.Point(2.0, 2.0)),
     ])
-    fires = peri_scribe.kml.fire_geometries(index, perimeters, points)
+    fires = peri_scribe.kml.fire_geometries(
+        index,
+        perimeters,
+        points,
+        geometry_frame([]),
+    )
     template = peri_scribe.kml.template_from(
         peri_scribe.kml_template.template_kml(),
     )
@@ -1121,6 +1300,7 @@ def test_fire_kml_shows_derived_point_for_inactive_fire_without_location() -> No
     fires = peri_scribe.kml.fire_geometries(
         index,
         geometry_frame([("id-alta", "ALTA", square(2.0))]),
+        geometry_frame([]),
         geometry_frame([]),
     )
     template = peri_scribe.kml.template_from(

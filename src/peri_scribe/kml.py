@@ -16,16 +16,17 @@ import typing
 # stdlib XML parser needs no defusedxml hardening.
 import xml.etree.ElementTree as ET  # ruff: ignore[suspicious-xml-etree-import]
 import zipfile
-import zoneinfo
 
 import geopandas
 import simplekml
 
+import peri_scribe.fire_differential
 import peri_scribe.fire_history
 import peri_scribe.fire_index
 import peri_scribe.geo_data
 import peri_scribe.kml_template
 import peri_scribe.models
+import peri_scribe.perimeter_progression
 
 
 if typing.TYPE_CHECKING:
@@ -40,10 +41,6 @@ ACTIVE_FIRES_FOLDER_NAME = "Active Fires"
 INACTIVE_FIRES_FOLDER_NAME = "Inactive Fires"
 
 KMZ_DOCUMENT_FILENAME = "doc.kml"
-
-# Google Earth shows observation times in the output placemark names, and those
-# times are written in California local time.
-CALIFORNIA_TIME_ZONE = zoneinfo.ZoneInfo("America/Los_Angeles")
 
 MAPPING_NAME = "Perimeter"
 UNKNOWN_MAPPING_NAME = "Unknown Mapping"
@@ -64,12 +61,13 @@ class Perimeter:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class FireGeometry:
-    """One fire's point and perimeters, ready to symbolize."""
+    """One fire's point, perimeters, and growth rings, ready to symbolize."""
 
     name: str
     status: peri_scribe.models.FireStatus
     point: shapely.Point | None
     perimeters: tuple[Perimeter, ...]
+    progression_rings: tuple[peri_scribe.perimeter_progression.Ring, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -322,21 +320,25 @@ def fire_geometries(
     index: peri_scribe.models.FireIndex,
     perimeters: geopandas.GeoDataFrame,
     points: geopandas.GeoDataFrame,
+    differential_perimeters: geopandas.GeoDataFrame,
 ) -> list[FireGeometry]:
     """Return each indexed fire's geometry, sorted by case-folded name.
 
     Each fire's point is its last known location, or a representative point of its
-    latest perimeter when no location is known.
+    latest perimeter when no location is known. The full perimeters feed the latest
+    perimeters folder, and the differential growth rings feed the progression maps.
 
     Args:
         index: The fire index that names each fire and its status.
         perimeters: The perimeter history layer.
         points: The point history layer.
+        differential_perimeters: The differential perimeter history layer.
 
     Returns:
         One entry per indexed fire, sorted by case-folded name.
     """
     perimeter_by_identifier, perimeter_by_name = perimeter_groups(perimeters)
+    ring_by_identifier, ring_by_name = perimeter_groups(differential_perimeters)
     point_by_identifier, point_by_name = point_locations(points)
     fires: list[FireGeometry] = []
     for entry in index.fires:
@@ -346,6 +348,12 @@ def fire_geometries(
             entry.name,
             perimeter_by_identifier,
             perimeter_by_name,
+        )
+        ring_observations = fire_perimeters(
+            fire_identifiers,
+            entry.name,
+            ring_by_identifier,
+            ring_by_name,
         )
         fires.append(
             FireGeometry(
@@ -359,6 +367,13 @@ def fire_geometries(
                     perimeter_observations,
                 ),
                 perimeters=perimeter_observations,
+                progression_rings=tuple(
+                    peri_scribe.perimeter_progression.Ring(
+                        geometry=ring.geometry,
+                        observation_time=ring.observation_time,
+                    )
+                    for ring in ring_observations
+                ),
             ),
         )
     return sorted(fires, key=lambda fire: fire.name.casefold())
@@ -522,7 +537,9 @@ def time_label(observation_time: datetime.datetime | None) -> str | None:
     """
     if observation_time is None:
         return None
-    pacific_time = observation_time.astimezone(CALIFORNIA_TIME_ZONE)
+    pacific_time = observation_time.astimezone(
+        peri_scribe.perimeter_progression.CALIFORNIA_TIME_ZONE,
+    )
     return f"{pacific_time:%m/%d %H:%M}"
 
 
@@ -632,6 +649,53 @@ def latest_perimeters_folder(
         fire_folder(folder, fire, style_urls)
 
 
+def progression_folder(
+    container: simplekml.Container,
+    fires: list[FireGeometry],
+    style_urls: typing.Mapping[str, str],
+) -> None:
+    """Add the folder holding each fire's progression map to *container*.
+
+    Each fire with growth rings gets a folder holding its point location and one
+    growth band per day range it covers; fires with no rings are left out, because
+    there is nothing to map. Draw orders put the oldest band on the bottom, stack
+    the bands from oldest to newest, and draw the point location last so its icon
+    is never covered.
+
+    Args:
+        container: The folder that holds the progression maps folder.
+        fires: The fires to place in the folder.
+        style_urls: The style URL for each template placemark name.
+    """
+    folder = container.newfolder(
+        name=peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
+    for fire in fires:
+        bands = peri_scribe.perimeter_progression.progression_bands(
+            fire.progression_rings,
+        )
+        if not bands:
+            continue
+        fire_folder = folder.newfolder(name=fire.name)
+        band_count = len(bands)
+        if fire.point is not None:
+            point_placemark(
+                fire_folder,
+                fire.name,
+                style_urls[peri_scribe.kml_template.POINT_LOCATION_NAME],
+                fire.point,
+                band_count,
+            )
+        for index, band in enumerate(bands):
+            perimeter_placemark(
+                fire_folder,
+                band.label,
+                style_urls[band.name],
+                band.geometry,
+                peri_scribe.kml_template.band_draw_order(band_count, index),
+            )
+
+
 def status_folder_name(status: peri_scribe.models.FireStatus) -> str:
     """Return the top-level folder name for *status*.
 
@@ -661,11 +725,9 @@ def status_folder(
         style_urls: The style URL for each template placemark name.
     """
     folder = container.newfolder(name=status_folder_name(status))
-    latest_perimeters_folder(
-        folder,
-        [fire for fire in fires if fire.status is status],
-        style_urls,
-    )
+    status_fires = [fire for fire in fires if fire.status is status]
+    latest_perimeters_folder(folder, status_fires, style_urls)
+    progression_folder(folder, status_fires, style_urls)
 
 
 def style_from(element: ET.Element) -> peri_scribe.kml_template.Style:
@@ -845,9 +907,10 @@ def write_kmz(path: pathlib.Path, kml_text: str) -> None:
 def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
     """Build and write the KMZ output for *year_directory*.
 
-    The full history GeoPackage is read for geometry, the fire index supplies each
-    fire's name and status, and the KML template file supplies the symbolization. The
-    output is written under the year's ``maps`` directory.
+    The full history GeoPackage is read for geometry, the differential history
+    supplies each fire's growth rings, the fire index supplies each fire's name and
+    status, and the KML template file supplies the symbolization. The output is
+    written under the year's ``maps`` directory.
 
     Args:
         year_directory: The year directory that holds the ``derived`` directory.
@@ -865,10 +928,25 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
         history_path,
         peri_scribe.fire_history.POINT_LAYER_NAME,
     )
+    differential_path = (
+        peri_scribe.fire_differential.differential_geopackage_path(year_directory)
+    )
+    differential_perimeters = read_history_layer(
+        differential_path,
+        peri_scribe.fire_history.PERIMETER_LAYER_NAME,
+    )
     template = read_template(peri_scribe.kml_template.template_path())
     output_path = kmz_path(year_directory)
     write_kmz(
         output_path,
-        fire_kml(fire_geometries(index, perimeters, points), template),
+        fire_kml(
+            fire_geometries(
+                index,
+                perimeters,
+                points,
+                differential_perimeters,
+            ),
+            template,
+        ),
     )
     return output_path

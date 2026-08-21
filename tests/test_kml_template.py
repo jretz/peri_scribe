@@ -13,6 +13,7 @@ import pyproj
 import pytest
 
 import peri_scribe.kml_template
+import peri_scribe.perimeter_progression
 
 
 KML_NAMESPACE = "http://www.opengis.net/kml/2.2"
@@ -436,7 +437,24 @@ def test_template_kml_defines_point_style(document: ET.Element) -> None:
 def test_template_kml_has_two_top_level_folders(document: ET.Element) -> None:
     assert folder_names(document) == [
         peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
-        "Perimeter Progression Maps",
+        peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
+    ]
+
+
+def test_template_kml_progression_names_follow_shared_definition(
+    document: ET.Element,
+) -> None:
+    progression = folder_named(
+        document,
+        peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
+    band_names = [
+        name
+        for name in placemark_names(progression)
+        if name != "Point Location"
+    ]
+    assert band_names == [
+        band.name for band in peri_scribe.perimeter_progression.PROGRESSION_BANDS
     ]
 
 
