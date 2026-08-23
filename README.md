@@ -32,7 +32,7 @@ Planned:
   │   • WFIGS Locations — one incident point per fire                                │
   │plus CA + AZ/NV/OR state-boundary services (for classification)                   │
   └──────────────────┬──────────────────────────────────────────────────────────┬────┘
-       fire feeds    ↓                                 boundary services ↓
+       fire feeds    ↓                                        boundary services ↓
   ┌─ 1 · FETCH ────────────────────────────────────────┐   ┌─ ADMIN BOUNDARIES ──────┐
   │for each feed, query its ArcGIS layer:              │   │fetch the CA polygon and │
   │  1. read the layer timestamp (lastEdit); if a      │   │AZ/NV/OR neighbors from  │
@@ -54,7 +54,7 @@ Planned:
   │classify each fire vs the CA border (uses the       │                          │
   │file from the right; picks the trusted source)      │                          │
   └──────────────────┬─────────────────────────────────┘                          │
-                     ↓  sources/fires.json — identity + classification     │
+                     ↓  sources/fires.json — identity + classification            │
   ┌─ 3 · FULL HISTORY ─────────────────────────────────┐                          │
   │build one cleaned, reconciled timeline per fire:    │                          │
   │  • collapse consecutive identical perimeters       │                          │
