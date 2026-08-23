@@ -109,7 +109,7 @@ def last_edit_time_from(path: pathlib.Path) -> datetime.datetime | None:
     """
     try:
         last_edit_timestamp = peri_scribe.snapshots.SourceFile.from_path(
-            path
+            path,
         ).last_edit_timestamp
     except ValueError:
         return None

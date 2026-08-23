@@ -860,7 +860,7 @@ def test_classify_fire_classifies_cross_border_fire(
     ]
     record_paths = [
         pathlib.Path(
-            "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/000___/000000,lastEdit=0.gpkg"
+            "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/000___/000000,lastEdit=0.gpkg",
         ),
     ]
     result = peri_scribe.california_border_classification.classify_fire(
@@ -885,7 +885,7 @@ def test_classify_fire_classifies_inside_california_fire(
     ]
     record_paths = [
         pathlib.Path(
-            "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/000___/000000,lastEdit=0.gpkg"
+            "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/000___/000000,lastEdit=0.gpkg",
         ),
     ]
     result = peri_scribe.california_border_classification.classify_fire(
@@ -909,7 +909,7 @@ def test_classify_fire_classifies_outside_california_fire(
     ]
     record_paths = [
         pathlib.Path(
-            "sources/WFIGS_Interagency_Perimeters_Current_0/000___/000000,lastEdit=0.gpkg"
+            "sources/WFIGS_Interagency_Perimeters_Current_0/000___/000000,lastEdit=0.gpkg",
         ),
     ]
     result = peri_scribe.california_border_classification.classify_fire(
@@ -934,7 +934,7 @@ def test_classify_fire_captures_identifier_signal(
     ]
     record_paths = [
         pathlib.Path(
-            "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/000___/000000,lastEdit=0.gpkg"
+            "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/000___/000000,lastEdit=0.gpkg",
         ),
     ]
     result = peri_scribe.california_border_classification.classify_fire(
@@ -955,7 +955,7 @@ def test_classify_fire_keeps_coastal_fire_inside(
     ]
     record_paths = [
         pathlib.Path(
-            "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/000___/000000,lastEdit=0.gpkg"
+            "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/000___/000000,lastEdit=0.gpkg",
         ),
     ]
     result = peri_scribe.california_border_classification.classify_fire(
