@@ -27,6 +27,9 @@ if TYPE_CHECKING:
     import requests_mock
 
 
+SAMPLE_LAST_EDIT_DATE = 123
+
+
 def feed_document(**overrides: object) -> dict[str, object]:
     """Return the sample feed's configuration document with *overrides*.
 
@@ -131,15 +134,18 @@ def test_arc_gis_feed_rejects_missing_url() -> None:
         peri_scribe.feed_types.ArcGISFeed.model_validate(document)
 
 
-def test_arc_gis_feed_current_watermark(
+def test_arc_gis_feed_current_last_edit_timestamp(
     feed: peri_scribe.feed_types.ArcGISFeed,
     requests_mock: requests_mock.Mocker,
 ) -> None:
-    requests_mock.get(SAMPLE_FEED_URL, json={"editingInfo": {"lastEditDate": 123}})
-    assert feed.current_watermark == "lastEdit=123"
+    requests_mock.get(
+        SAMPLE_FEED_URL,
+        json={"editingInfo": {"lastEditDate": SAMPLE_LAST_EDIT_DATE}},
+    )
+    assert feed.current_last_edit_timestamp == SAMPLE_LAST_EDIT_DATE
 
 
-def test_arc_gis_feed_current_watermark_retries_on_429(
+def test_arc_gis_feed_current_last_edit_timestamp_retries_on_429(
     monkeypatch: pytest.MonkeyPatch,
     feed: peri_scribe.feed_types.ArcGISFeed,
     requests_mock: requests_mock.Mocker,
@@ -153,14 +159,14 @@ def test_arc_gis_feed_current_watermark_retries_on_429(
                 "status_code": http.HTTPStatus.TOO_MANY_REQUESTS,
                 "headers": {"Retry-After": "5"},
             },
-            {"json": {"editingInfo": {"lastEditDate": 123}}},
+            {"json": {"editingInfo": {"lastEditDate": SAMPLE_LAST_EDIT_DATE}}},
         ],
     )
-    assert feed.current_watermark == "lastEdit=123"
+    assert feed.current_last_edit_timestamp == SAMPLE_LAST_EDIT_DATE
     assert sleep_calls == [5.0]
 
 
-def test_arc_gis_feed_current_watermark_retries_on_transient_error(
+def test_arc_gis_feed_current_last_edit_timestamp_retries_on_transient_error(
     monkeypatch: pytest.MonkeyPatch,
     feed: peri_scribe.feed_types.ArcGISFeed,
     requests_mock: requests_mock.Mocker,
@@ -171,14 +177,14 @@ def test_arc_gis_feed_current_watermark_retries_on_transient_error(
         SAMPLE_FEED_URL,
         [
             {"exc": requests.exceptions.ConnectionError("Connection broken")},
-            {"json": {"editingInfo": {"lastEditDate": 123}}},
+            {"json": {"editingInfo": {"lastEditDate": SAMPLE_LAST_EDIT_DATE}}},
         ],
     )
-    assert feed.current_watermark == "lastEdit=123"
+    assert feed.current_last_edit_timestamp == SAMPLE_LAST_EDIT_DATE
     assert sleep_calls == [peri_scribe.retry.BACKOFF_BASE_SECONDS]
 
 
-def test_arc_gis_feed_current_watermark_returns_none_on_get_error(
+def test_arc_gis_feed_current_last_edit_timestamp_returns_none_on_get_error(
     feed: peri_scribe.feed_types.ArcGISFeed,
     requests_mock: requests_mock.Mocker,
 ) -> None:
@@ -186,39 +192,39 @@ def test_arc_gis_feed_current_watermark_returns_none_on_get_error(
         SAMPLE_FEED_URL,
         status_code=http.HTTPStatus.INTERNAL_SERVER_ERROR,
     )
-    assert feed.current_watermark is None
+    assert feed.current_last_edit_timestamp is None
 
 
-def test_arc_gis_feed_current_watermark_returns_none_on_invalid_json(
+def test_arc_gis_feed_current_last_edit_timestamp_returns_none_on_invalid_json(
     feed: peri_scribe.feed_types.ArcGISFeed,
     requests_mock: requests_mock.Mocker,
 ) -> None:
     requests_mock.get(SAMPLE_FEED_URL, text="not json")
-    assert feed.current_watermark is None
+    assert feed.current_last_edit_timestamp is None
 
 
-def test_arc_gis_feed_current_watermark_returns_none_for_non_dict_payload(
+def test_arc_gis_feed_current_last_edit_timestamp_returns_none_for_non_dict_payload(
     feed: peri_scribe.feed_types.ArcGISFeed,
     requests_mock: requests_mock.Mocker,
 ) -> None:
     requests_mock.get(SAMPLE_FEED_URL, json=["not", "a", "dict"])
-    assert feed.current_watermark is None
+    assert feed.current_last_edit_timestamp is None
 
 
-def test_arc_gis_feed_current_watermark_returns_none_without_editing_info(
+def test_arc_gis_feed_current_last_edit_timestamp_returns_none_without_editing_info(
     feed: peri_scribe.feed_types.ArcGISFeed,
     requests_mock: requests_mock.Mocker,
 ) -> None:
     requests_mock.get(SAMPLE_FEED_URL, json={"other": 1})
-    assert feed.current_watermark is None
+    assert feed.current_last_edit_timestamp is None
 
 
-def test_arc_gis_feed_current_watermark_returns_none_without_last_edit_date(
+def test_arc_gis_feed_current_last_edit_timestamp_returns_none_without_last_edit_date(
     feed: peri_scribe.feed_types.ArcGISFeed,
     requests_mock: requests_mock.Mocker,
 ) -> None:
     requests_mock.get(SAMPLE_FEED_URL, json={"editingInfo": {}})
-    assert feed.current_watermark is None
+    assert feed.current_last_edit_timestamp is None
 
 
 def test_arc_gis_feed_satisfies_feed_protocol(

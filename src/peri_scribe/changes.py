@@ -95,8 +95,11 @@ def existing_features(
         The most recent feature per OBJECTID, or None when there are none.
     """
     dataframes = [
-        peri_scribe.geo_package.read_layer_dataframe(directory / filename, feed)
-        for filename in peri_scribe.snapshots.existing_geopackage_filenames(directory)
+        peri_scribe.geo_package.read_layer_dataframe(
+            directory / source_file.relative_path,
+            feed,
+        )
+        for source_file in peri_scribe.snapshots.existing_source_files(directory)
     ]
     if not dataframes:
         return None
@@ -315,17 +318,17 @@ def drop_features_already_present(
 
 def latest_snapshot_path(
     directory: pathlib.Path,
-    existing_filenames: list[pathlib.Path],
+    existing_source_files: list[peri_scribe.snapshots.SourceFile],
 ) -> pathlib.Path | None:
     """Return the most recent snapshot path, or None when there are none.
 
     Args:
         directory: The directory holding the source's GeoPackage files.
-        existing_filenames: The source's GeoPackage filenames, in serial order.
+        existing_source_files: The source's source files, in serial order.
 
     Returns:
         The path of the most recent snapshot, or None when there are none.
     """
-    if not existing_filenames:
+    if not existing_source_files:
         return None
-    return directory / existing_filenames[-1]
+    return directory / existing_source_files[-1].relative_path

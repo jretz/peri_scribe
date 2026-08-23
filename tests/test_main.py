@@ -43,7 +43,7 @@ if TYPE_CHECKING:
     import click.testing
 
 
-SAMPLE_WATERMARK = "lastEdit=2"
+SAMPLE_LAST_EDIT_TIMESTAMP = 2
 
 # The base directory fetch resolves from ``pathlib.Path.cwd()``, which is mocked to
 # this value so snapshots never touch the real filesystem.
@@ -104,18 +104,18 @@ class DeltaFeatureLayerStub(FeatureLayerStubBase):
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class FeedStub:
-    """Minimal feed stand-in with a fixed current watermark."""
+    """Minimal feed stand-in with a fixed current last-edit timestamp."""
 
     name: str
     url: str
-    watermark: str | None
+    last_edit_timestamp: int | None
     modified_column: str = "ModifiedOnDateTime_dt"
     events: list[str] = dataclasses.field(default_factory=list)
 
     @property
-    def current_watermark(self) -> str | None:
-        self.events.append("watermark")
-        return self.watermark
+    def current_last_edit_timestamp(self) -> int | None:
+        self.events.append("timestamp")
+        return self.last_edit_timestamp
 
 
 class RecordingFeatureLayerStub(FeatureLayerStubBase):
@@ -170,7 +170,7 @@ def fetch_setup(
             FeedStub(
                 name=SAMPLE_FEED_NAME,
                 url=SAMPLE_FEED_URL,
-                watermark=SAMPLE_WATERMARK,
+                last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
             ),
         ],
     )
@@ -191,9 +191,9 @@ def snapshot_path(
     *,
     feed_name: str = SAMPLE_FEED_NAME,
     serial_number: int = 0,
-    watermark: str = SAMPLE_WATERMARK,
+    last_edit_timestamp: int = SAMPLE_LAST_EDIT_TIMESTAMP,
 ) -> pathlib.Path:
-    """Return the snapshot path fetch writes for a feed and watermark.
+    """Return the snapshot path fetch writes for a feed and last-edit timestamp.
 
     Returns:
         The snapshot path, assuming the 2026 test year, no prior snapshots, and a
@@ -203,8 +203,10 @@ def snapshot_path(
         BASE_DIRECTORY,
         2026,
         feed_name,
-        serial_number,
-        watermark,
+        peri_scribe.snapshots.SourceFile(
+            serial_number=serial_number,
+            last_edit_timestamp=last_edit_timestamp,
+        ),
     )
 
 
@@ -457,7 +459,7 @@ def test_cli_configures_logging_from_log_level(
     monkeypatch.setattr(peri_scribe.feeds, "FEEDS", [])
     result = runner.invoke(
         peri_scribe.main.cli,
-        ["--log-level", "DEBUG", "current-watermarks"],
+        ["--log-level", "DEBUG", "current-timestamps"],
     )
     assert result.exit_code == 0
     assert configured_levels == ["debug"]
@@ -524,7 +526,7 @@ def test_fetch_fails_fast_when_feed_returns_no_features(
     assert not geo_package_store.has(snapshot_path())
 
 
-def test_current_watermarks_logs_each_feed_watermark(
+def test_current_timestamps_logs_each_feed_last_edit_timestamp(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
 ) -> None:
@@ -537,17 +539,17 @@ def test_current_watermarks_logs_each_feed_watermark(
         FeedStub(
             name="One",
             url="https://example.test/one",
-            watermark="lastEdit=1",
+            last_edit_timestamp=1,
         ),
         FeedStub(
             name="Two",
             url="https://example.test/two",
-            watermark="lastEdit=2",
+            last_edit_timestamp=2,
         ),
     ]
     monkeypatch.setattr(peri_scribe.feeds, "FEEDS", feeds)
     with structlog.testing.capture_logs() as captured:
-        result = runner.invoke(peri_scribe.main.cli, ["current-watermarks"])
+        result = runner.invoke(peri_scribe.main.cli, ["current-timestamps"])
     assert result.exit_code == 0
     assert len(captured) == len(feeds)
     for index, (event, feed) in enumerate(
@@ -557,7 +559,7 @@ def test_current_watermarks_logs_each_feed_watermark(
         assert event["event"] == f"Feed {index}"
         assert event["name"] == feed.name
         assert event["url"] == feed.url
-        assert event["watermark"] == feed.watermark
+        assert event["last_edit_timestamp"] == feed.last_edit_timestamp
 
 
 @pytest.mark.usefixtures("fetch_setup")
@@ -615,23 +617,23 @@ def test_fetch_exhausts_retries_and_exits(
 
 
 @pytest.mark.usefixtures("fetch_setup")
-def test_fetch_writes_one_file_per_source_named_by_watermark(
+def test_fetch_writes_one_file_per_source_named_by_last_edit_timestamp(
     runner: click.testing.CliRunner,
     feature_set_with_geometry: arcgis.features.FeatureSet,
     geo_package_store: GeoPackageStore,
     fetch_stubs: FetchStubs,
 ) -> None:
-    first_watermark = "lastEdit=1"
-    second_watermark = "lastEdit=2"
+    first_last_edit_timestamp = 1
+    second_last_edit_timestamp = 2
     first = FeedStub(
         name="First_Source_0",
         url="https://example.test/first",
-        watermark=first_watermark,
+        last_edit_timestamp=first_last_edit_timestamp,
     )
     second = FeedStub(
         name="Second_Source_0",
         url="https://example.test/second",
-        watermark=second_watermark,
+        last_edit_timestamp=second_last_edit_timestamp,
     )
     fetch_stubs.feeds(first, second)
     fetch_stubs.feature_layers(
@@ -641,19 +643,19 @@ def test_fetch_writes_one_file_per_source_named_by_watermark(
     assert result.exit_code == 0
     first_path = snapshot_path(
         feed_name=first.name,
-        watermark=first_watermark,
+        last_edit_timestamp=first_last_edit_timestamp,
     )
     second_path = snapshot_path(
         feed_name=second.name,
-        watermark=second_watermark,
+        last_edit_timestamp=second_last_edit_timestamp,
     )
     assert geo_package_store.has(first_path)
     assert geo_package_store.has(second_path)
     assert first_path.parent == (
-        BASE_DIRECTORY / "data" / "2026" / "sources" / "First_Source_0"
+        BASE_DIRECTORY / "data" / "2026" / "sources" / "First_Source_0" / "000___"
     )
     assert second_path.parent == (
-        BASE_DIRECTORY / "data" / "2026" / "sources" / "Second_Source_0"
+        BASE_DIRECTORY / "data" / "2026" / "sources" / "Second_Source_0" / "000___"
     )
     assert list(
         geo_package_store.layer(first_path, "First_Source_0")["name"],
@@ -670,13 +672,13 @@ def test_fetch_writes_one_file_per_source_named_by_watermark(
 
 
 @pytest.mark.usefixtures("fetch_setup")
-def test_fetch_increments_serial_number_for_new_watermark(
+def test_fetch_increments_serial_number_for_new_last_edit_timestamp(
     runner: click.testing.CliRunner,
     geo_package_store: GeoPackageStore,
     fetch_stubs: FetchStubs,
 ) -> None:
-    first_watermark = "lastEdit=1"
-    second_watermark = "lastEdit=2"
+    first_last_edit_timestamp = 1
+    second_last_edit_timestamp = 2
     full = wgs84_feature_set([
         (1, "a", 1.0, 2.0),
         (2, "b", 3.0, 4.0),
@@ -689,7 +691,7 @@ def test_fetch_increments_serial_number_for_new_watermark(
         FeedStub(
             name=SAMPLE_FEED_NAME,
             url=SAMPLE_FEED_URL,
-            watermark=first_watermark,
+            last_edit_timestamp=first_last_edit_timestamp,
         ),
     )
     assert invoke_fetch(runner).exit_code == 0
@@ -697,17 +699,17 @@ def test_fetch_increments_serial_number_for_new_watermark(
         FeedStub(
             name=SAMPLE_FEED_NAME,
             url=SAMPLE_FEED_URL,
-            watermark=second_watermark,
+            last_edit_timestamp=second_last_edit_timestamp,
         ),
     )
     assert invoke_fetch(runner).exit_code == 0
     first_path = snapshot_path(
         serial_number=0,
-        watermark=first_watermark,
+        last_edit_timestamp=first_last_edit_timestamp,
     )
     second_path = snapshot_path(
         serial_number=1,
-        watermark=second_watermark,
+        last_edit_timestamp=second_last_edit_timestamp,
     )
     assert geo_package_store.has(first_path)
     assert geo_package_store.has(second_path)
@@ -730,8 +732,8 @@ def test_fetch_writes_no_new_file_when_nothing_changed(
     geo_package_store: GeoPackageStore,
     fetch_stubs: FetchStubs,
 ) -> None:
-    first_watermark = "lastEdit=1"
-    second_watermark = "lastEdit=2"
+    first_last_edit_timestamp = 1
+    second_last_edit_timestamp = 2
     full = wgs84_feature_set([
         (1, "a", 1.0, 2.0),
         (2, "b", 3.0, 4.0),
@@ -748,7 +750,7 @@ def test_fetch_writes_no_new_file_when_nothing_changed(
         FeedStub(
             name=SAMPLE_FEED_NAME,
             url=SAMPLE_FEED_URL,
-            watermark=first_watermark,
+            last_edit_timestamp=first_last_edit_timestamp,
         ),
     )
     assert invoke_fetch(runner).exit_code == 0
@@ -756,32 +758,32 @@ def test_fetch_writes_no_new_file_when_nothing_changed(
         FeedStub(
             name=SAMPLE_FEED_NAME,
             url=SAMPLE_FEED_URL,
-            watermark=second_watermark,
+            last_edit_timestamp=second_last_edit_timestamp,
         ),
     )
     assert invoke_fetch(runner).exit_code == 0
     assert geo_package_store.has(
         snapshot_path(
             serial_number=0,
-            watermark=first_watermark,
+            last_edit_timestamp=first_last_edit_timestamp,
         ),
     )
     assert not geo_package_store.has(
         snapshot_path(
             serial_number=1,
-            watermark=second_watermark,
+            last_edit_timestamp=second_last_edit_timestamp,
         ),
     )
 
 
 @pytest.mark.usefixtures("fetch_setup")
-def test_fetch_reuses_serial_number_for_unchanged_watermark(
+def test_fetch_reuses_serial_number_for_unchanged_last_edit_timestamp(
     runner: click.testing.CliRunner,
     feature_set_with_geometry: arcgis.features.FeatureSet,
     geo_package_store: GeoPackageStore,
     fetch_stubs: FetchStubs,
 ) -> None:
-    watermark = "lastEdit=1"
+    last_edit_timestamp = 1
     fetch_stubs.feature_layers(
         lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
     )
@@ -789,39 +791,39 @@ def test_fetch_reuses_serial_number_for_unchanged_watermark(
         FeedStub(
             name=SAMPLE_FEED_NAME,
             url=SAMPLE_FEED_URL,
-            watermark=watermark,
+            last_edit_timestamp=last_edit_timestamp,
         ),
     )
     assert invoke_fetch(runner).exit_code == 0
     assert invoke_fetch(runner).exit_code == 0
     assert geo_package_store.has(
-        snapshot_path(serial_number=0, watermark=watermark),
+        snapshot_path(serial_number=0, last_edit_timestamp=last_edit_timestamp),
     )
     assert not geo_package_store.has(
-        snapshot_path(serial_number=1, watermark=watermark),
+        snapshot_path(serial_number=1, last_edit_timestamp=last_edit_timestamp),
     )
 
 
 @pytest.mark.usefixtures("fetch_setup")
-def test_fetch_fails_fast_when_watermark_cannot_be_observed(
+def test_fetch_fails_fast_when_last_edit_timestamp_cannot_be_observed(
     runner: click.testing.CliRunner,
     geo_package_store: GeoPackageStore,
     fetch_stubs: FetchStubs,
 ) -> None:
     fetch_stubs.feeds(
-        FeedStub(name=SAMPLE_FEED_NAME, url=SAMPLE_FEED_URL, watermark=None),
+        FeedStub(name=SAMPLE_FEED_NAME, url=SAMPLE_FEED_URL, last_edit_timestamp=None),
     )
     result = invoke_fetch(runner)
     assert result.exit_code == 1
     assert (
-        f"Failed to fetch {SAMPLE_FEED_NAME}: no watermark could be observed"
+        f"Failed to fetch {SAMPLE_FEED_NAME}: no last-edit timestamp could be observed"
         in result.output
     )
     assert not geo_package_store.has(snapshot_path())
 
 
 @pytest.mark.usefixtures("fetch_setup")
-def test_fetch_observes_watermark_before_downloading(
+def test_fetch_observes_last_edit_timestamp_before_downloading(
     runner: click.testing.CliRunner,
     feature_set_with_geometry: arcgis.features.FeatureSet,
     fetch_stubs: FetchStubs,
@@ -830,7 +832,7 @@ def test_fetch_observes_watermark_before_downloading(
     feed = FeedStub(
         name=SAMPLE_FEED_NAME,
         url=SAMPLE_FEED_URL,
-        watermark=SAMPLE_WATERMARK,
+        last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
         events=events,
     )
     fetch_stubs.feeds(feed)
@@ -844,11 +846,11 @@ def test_fetch_observes_watermark_before_downloading(
     )
     result = invoke_fetch(runner)
     assert result.exit_code == 0
-    assert events == ["watermark", "download"]
+    assert events == ["timestamp", "download"]
 
 
 @pytest.mark.usefixtures("fetch_setup")
-def test_fetch_skips_download_when_watermark_already_present(
+def test_fetch_skips_download_when_last_edit_timestamp_already_present(
     runner: click.testing.CliRunner,
     feature_set_with_geometry: arcgis.features.FeatureSet,
     fetch_stubs: FetchStubs,
@@ -857,7 +859,7 @@ def test_fetch_skips_download_when_watermark_already_present(
     feed = FeedStub(
         name=SAMPLE_FEED_NAME,
         url=SAMPLE_FEED_URL,
-        watermark=SAMPLE_WATERMARK,
+        last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
         events=events,
     )
     fetch_stubs.feeds(feed)
@@ -871,20 +873,20 @@ def test_fetch_skips_download_when_watermark_already_present(
     )
     # The first fetch downloads and writes the snapshot.
     assert invoke_fetch(runner).exit_code == 0
-    assert events == ["watermark", "download"]
+    assert events == ["timestamp", "download"]
     events.clear()
-    # The second fetch sees the same watermark in the REST call and skips.
+    # The second fetch sees the same last-edit timestamp in the REST call and skips.
     with structlog.testing.capture_logs() as captured:
         result = invoke_fetch(runner)
     assert result.exit_code == 0
-    assert events == ["watermark"]
+    assert events == ["timestamp"]
     (skip_event,) = [
         event
         for event in captured
         if event["event"] == "Skipping fetch; data already present"
     ]
     assert skip_event["feed"] == SAMPLE_FEED_NAME
-    assert skip_event["watermark"] == SAMPLE_WATERMARK
+    assert skip_event["last_edit_timestamp"] == SAMPLE_LAST_EDIT_TIMESTAMP
     assert skip_event["path"] == snapshot_path()
 
 
@@ -920,12 +922,12 @@ def test_fetch_reindexes_after_a_feed_fails(
     failing = FeedStub(
         name="Failing_0",
         url="https://example.test/failing",
-        watermark=SAMPLE_WATERMARK,
+        last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
     )
     working = FeedStub(
         name="Working_0",
         url="https://example.test/working",
-        watermark=SAMPLE_WATERMARK,
+        last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
     )
     fetch_stubs.feeds(failing, working)
 

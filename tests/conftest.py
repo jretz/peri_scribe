@@ -545,17 +545,21 @@ class GeoPackageStore:
         for layer_data in layers:
             self.layers[path, layer_data.name] = layer_data.dataframe
 
-    def filenames(self, directory: pathlib.Path) -> list[pathlib.Path]:
-        """Return the GeoPackage filenames stored under *directory*.
+    def source_files(
+        self,
+        directory: pathlib.Path,
+    ) -> list[peri_scribe.snapshots.SourceFile]:
+        """Return the source files stored under *directory*, in serial order.
 
         Returns:
-            The stored GeoPackage filenames in sorted order.
+            The stored source files, sorted by serial number.
         """
-        return sorted(
-            pathlib.Path(path.name)
+        source_files = [
+            peri_scribe.snapshots.SourceFile.from_path(path)
             for path, _layer_name in self.layers
-            if path.parent == directory and path.suffix == ".gpkg"
-        )
+            if path.suffix == ".gpkg" and path.is_relative_to(directory)
+        ]
+        return sorted(source_files, key=lambda source_file: source_file.serial_number)
 
     def read_layer(
         self,
@@ -603,8 +607,8 @@ def geo_package_store(
     monkeypatch.setattr(peri_scribe.output, "write_geopackage", store.write)
     monkeypatch.setattr(
         peri_scribe.snapshots,
-        "existing_geopackage_filenames",
-        store.filenames,
+        "existing_source_files",
+        store.source_files,
     )
     monkeypatch.setattr(
         peri_scribe.geo_package,

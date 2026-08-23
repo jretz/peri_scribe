@@ -15,26 +15,135 @@ def stub_directory(
     monkeypatch: pytest.MonkeyPatch,
     files: list[pathlib.Path],
 ) -> None:
-    """Point Path.is_dir and iterdir at the given files.
+    """Point Path.is_dir and rglob at the given files.
 
     Args:
         monkeypatch: The monkeypatch fixture.
         files: The directory's contents.
     """
     monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: True)
-    monkeypatch.setattr(pathlib.Path, "iterdir", lambda _self: iter(files))
+    monkeypatch.setattr(pathlib.Path, "rglob", lambda _self, _pattern: iter(files))
 
 
-def test_existing_geopackage_filenames_returns_empty_list_without_directory(
+def source_file(
+    *,
+    serial_number: int,
+    last_edit_timestamp: int = 0,
+) -> peri_scribe.snapshots.SourceFile:
+    """Return a SourceFile with *serial_number* and *last_edit_timestamp*.
+
+    Args:
+        serial_number: The source file's serial number.
+        last_edit_timestamp: The source file's last-edit timestamp.
+
+    Returns:
+        The constructed source file.
+    """
+    return peri_scribe.snapshots.SourceFile(
+        serial_number=serial_number,
+        last_edit_timestamp=last_edit_timestamp,
+    )
+
+
+def test_source_file_relative_path_places_file_in_bucket_directory() -> None:
+    assert source_file(
+        serial_number=2037,
+        last_edit_timestamp=1787118540625,
+    ).relative_path == pathlib.Path("002___/002037,lastEdit=1787118540625.gpkg")
+
+
+def test_source_file_relative_path_buckets_by_thousands() -> None:
+    assert source_file(serial_number=999).relative_path == pathlib.Path(
+        "000___/000999,lastEdit=0.gpkg",
+    )
+    assert source_file(serial_number=1000).relative_path == pathlib.Path(
+        "001___/001000,lastEdit=0.gpkg",
+    )
+
+
+def test_source_file_from_path_parses_serial_and_timestamp() -> None:
+    assert peri_scribe.snapshots.SourceFile.from_path(
+        pathlib.Path("002___/002037,lastEdit=1787118540625.gpkg"),
+    ) == source_file(
+        serial_number=2037,
+        last_edit_timestamp=1787118540625,
+    )
+
+
+def test_source_file_from_path_rejects_unrecognized_timestamp() -> None:
+    with pytest.raises(ValueError, match="Unrecognized snapshot filename"):
+        peri_scribe.snapshots.SourceFile.from_path(
+            pathlib.Path("000001,soon.gpkg"),
+        )
+
+
+def test_source_file_from_path_rejects_missing_timestamp() -> None:
+    with pytest.raises(ValueError, match="Unrecognized snapshot filename"):
+        peri_scribe.snapshots.SourceFile.from_path(pathlib.Path("000001.gpkg"))
+
+
+def test_next_serial_number_starts_at_zero_without_existing_files() -> None:
+    assert peri_scribe.snapshots.next_serial_number([], 123) == 0
+
+
+def test_next_serial_number_increments_beyond_largest_serial() -> None:
+    expected_serial_number = 4
+    assert (
+        peri_scribe.snapshots.next_serial_number(
+            [source_file(serial_number=3, last_edit_timestamp=123)],
+            456,
+        )
+        == expected_serial_number
+    )
+
+
+def test_next_serial_number_reuses_serial_for_existing_timestamp() -> None:
+    expected_serial_number = 3
+    assert (
+        peri_scribe.snapshots.next_serial_number(
+            [source_file(serial_number=3, last_edit_timestamp=123)],
+            123,
+        )
+        == expected_serial_number
+    )
+
+
+def test_existing_source_files_returns_empty_without_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: False)
-    assert (
-        peri_scribe.snapshots.existing_geopackage_filenames(
-            pathlib.Path("/missing"),
-        )
-        == []
-    )
+    assert peri_scribe.snapshots.existing_source_files(pathlib.Path("/missing")) == []
+
+
+def test_existing_source_files_returns_source_files_sorted_by_serial(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = pathlib.Path("/sources/feed")
+    files = [
+        directory / "001___" / "001003,lastEdit=3.gpkg",
+        directory / "000___" / "000002,lastEdit=2.gpkg",
+        directory / "000___" / "000001,lastEdit=1.gpkg",
+    ]
+    stub_directory(monkeypatch, files)
+    assert peri_scribe.snapshots.existing_source_files(directory) == [
+        source_file(serial_number=1, last_edit_timestamp=1),
+        source_file(serial_number=2, last_edit_timestamp=2),
+        source_file(serial_number=1003, last_edit_timestamp=3),
+    ]
+
+
+def test_existing_source_files_ignores_malformed_filenames(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = pathlib.Path("/sources/feed")
+    files = [
+        directory / "000___" / "000001,lastEdit=1.gpkg",
+        directory / "old-style.gpkg",
+    ]
+    stub_directory(monkeypatch, files)
+    assert peri_scribe.snapshots.existing_source_files(directory) == [
+        source_file(serial_number=1, last_edit_timestamp=1),
+    ]
 
 
 def test_geo_package_files_returns_nested_files_in_sorted_order(
@@ -86,122 +195,64 @@ def test_geo_package_files_raises_system_exit_when_tree_cannot_be_read(
         peri_scribe.snapshots.geo_package_files(directory)
 
 
-def test_source_geopackage_path_places_watermark_file_under_source_directory() -> None:
+def test_source_geopackage_path_places_file_under_source_directory() -> None:
     path = peri_scribe.snapshots.source_geopackage_path(
         pathlib.Path("/base"),
         2026,
         "CA_Perimeters_NIFC_FIRIS_public_view_0",
-        17,
-        "lastEdit=abc123",
+        source_file(serial_number=17, last_edit_timestamp=123),
     )
     assert path == pathlib.Path(
         "/base/data/2026/sources/CA_Perimeters_NIFC_FIRIS_public_view_0/"
-        "000017,lastEdit=abc123.gpkg",
+        "000___/000017,lastEdit=123.gpkg",
     )
 
 
-def test_geopackage_filename_zero_pads_serial_number() -> None:
-    assert peri_scribe.snapshots.geopackage_filename(
-        17,
-        "lastEdit=abc123",
-    ) == pathlib.Path("000017,lastEdit=abc123.gpkg")
-
-
-def test_parse_geopackage_filename_returns_serial_and_watermark() -> None:
-    assert peri_scribe.snapshots.parse_geopackage_filename(
-        pathlib.Path("000017,lastEdit=abc,def.gpkg"),
-    ) == (17, "lastEdit=abc,def")
-
-
-def test_next_serial_number_starts_at_zero_without_existing_files() -> None:
-    expected_serial_number = 0
-    assert (
-        peri_scribe.snapshots.next_serial_number([], "lastEdit=abc123")
-        == expected_serial_number
-    )
-
-
-def test_next_serial_number_increments_beyond_largest_serial() -> None:
-    expected_serial_number = 4
-    assert (
-        peri_scribe.snapshots.next_serial_number(
-            [pathlib.Path("000003,lastEdit=abc123.gpkg")],
-            "lastEdit=def456",
-        )
-        == expected_serial_number
-    )
-
-
-def test_next_serial_number_reuses_serial_for_existing_watermark() -> None:
-    expected_serial_number = 3
-    assert (
-        peri_scribe.snapshots.next_serial_number(
-            [pathlib.Path("000003,lastEdit=abc123.gpkg")],
-            "lastEdit=abc123",
-        )
-        == expected_serial_number
-    )
-
-
-def test_next_serial_number_ignores_malformed_filenames() -> None:
-    expected_serial_number = 3
-    assert (
-        peri_scribe.snapshots.next_serial_number(
-            [
-                pathlib.Path("old-style.gpkg"),
-                pathlib.Path("000002,lastEdit=abc123.gpkg"),
-            ],
-            "lastEdit=def456",
-        )
-        == expected_serial_number
-    )
-
-
-def test_snapshot_path_for_watermark_returns_matching_path(
+def test_snapshot_path_for_last_edit_timestamp_returns_matching_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     directory = pathlib.Path("/sources/CA_Perimeters_NIFC_FIRIS_public_view_0")
     stub_directory(
         monkeypatch,
         [
-            directory / "000017,lastEdit=abc123.gpkg",
-            directory / "000018,lastEdit=def789.gpkg",
+            directory / "000___" / "000017,lastEdit=123.gpkg",
+            directory / "000___" / "000018,lastEdit=789.gpkg",
         ],
     )
     assert (
-        peri_scribe.snapshots.snapshot_path_for_watermark(
-            directory,
-            "lastEdit=abc123",
-        )
-        == directory / "000017,lastEdit=abc123.gpkg"
+        peri_scribe.snapshots.snapshot_path_for_last_edit_timestamp(directory, 123)
+        == directory / "000___" / "000017,lastEdit=123.gpkg"
     )
 
 
-def test_snapshot_path_for_watermark_returns_none_without_match(
+def test_snapshot_path_for_last_edit_timestamp_returns_none_without_match(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     directory = pathlib.Path("/sources/CA_Perimeters_NIFC_FIRIS_public_view_0")
-    stub_directory(monkeypatch, [directory / "000017,lastEdit=abc123.gpkg"])
+    stub_directory(
+        monkeypatch,
+        [directory / "000___" / "000017,lastEdit=123.gpkg"],
+    )
     assert (
-        peri_scribe.snapshots.snapshot_path_for_watermark(
-            directory,
-            "lastEdit=other",
-        )
+        peri_scribe.snapshots.snapshot_path_for_last_edit_timestamp(directory, 999)
         is None
     )
 
 
-def test_snapshot_path_for_watermark_ignores_malformed_filenames(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    directory = pathlib.Path("/sources/CA_Perimeters_NIFC_FIRIS_public_view_0")
-    stub_directory(monkeypatch, [directory / "old-style.gpkg"])
+def test_source_directory_path_places_source_under_sources() -> None:
+    assert peri_scribe.snapshots.source_directory_path(
+        pathlib.Path("/base"),
+        2026,
+        "Feed_0",
+    ) == pathlib.Path("/base/data/2026/sources/Feed_0")
+
+
+def test_source_name_from_snapshot_path_returns_feed_directory_name() -> None:
     assert (
-        peri_scribe.snapshots.snapshot_path_for_watermark(
-            directory,
-            "lastEdit=abc123",
+        peri_scribe.snapshots.source_name_from_snapshot_path(
+            pathlib.Path("sources/Feed_0/000___/000000,lastEdit=0.gpkg"),
         )
-        is None
+        == "Feed_0"
     )
 
 

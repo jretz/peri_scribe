@@ -29,6 +29,7 @@ import us.states
 
 import peri_scribe.administrative_boundaries
 import peri_scribe.models
+import peri_scribe.snapshots
 import peri_scribe.units
 
 
@@ -144,7 +145,7 @@ def snapshot_serial_number(path: pathlib.Path) -> int:
     Returns:
         The serial number from the filename.
     """
-    return int(path.stem.split(",", 1)[0])
+    return peri_scribe.snapshots.SourceFile.from_path(path).serial_number
 
 
 @functools.cache
@@ -611,7 +612,9 @@ def classify_fire(
         config = BorderClassificationConfig()
     observations = [
         FireObservation(
-            source=source_kind_for_feed_name(path.parent.name),
+            source=source_kind_for_feed_name(
+                peri_scribe.snapshots.source_name_from_snapshot_path(path),
+            ),
             geometry=record.geometry,
             observed_at=record.observed_at,
             serial_number=snapshot_serial_number(path),

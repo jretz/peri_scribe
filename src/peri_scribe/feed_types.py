@@ -1,4 +1,4 @@
-"""Feed classes and watermark observation for peri_scribe."""
+"""Feed classes and last-edit timestamp observation for peri_scribe."""
 
 from __future__ import annotations
 
@@ -11,7 +11,6 @@ import requests
 import structlog
 
 import peri_scribe.retry
-import peri_scribe.snapshots
 
 
 logger = structlog.get_logger()
@@ -21,7 +20,7 @@ PERI_SCRIBE_VERSION = "0.1"
 USER_AGENT = f"peri_scribe-watcher/{PERI_SCRIBE_VERSION}"
 
 
-def fetch_watermark_payload(url: str) -> object:
+def fetch_layer_metadata(url: str) -> object:
     """Fetch and parse the layer metadata for *url*.
 
     Args:
@@ -116,8 +115,8 @@ class Feed(typing.Protocol):
         ...
 
     @property
-    def current_watermark(self) -> str | None:
-        """The watermark currently observed for this feed's layer."""
+    def current_last_edit_timestamp(self) -> int | None:
+        """The last-edit timestamp currently observed for this feed's layer."""
         ...
 
 
@@ -161,32 +160,32 @@ class ArcGISFeed(pydantic.BaseModel):
         return f"{self.service_name}_{self.layer_id}"
 
     @property
-    def current_watermark(self) -> str | None:
-        """Observe and return a watermark for this feed's layer.
+    def current_last_edit_timestamp(self) -> int | None:
+        """Observe and return the last-edit timestamp for this feed's layer.
 
-        The watermark is the layer's ``editingInfo.lastEditDate`` value, prefixed
-        with ``lastEdit=``. The server only updates that timestamp when the data is
-        actually edited. Transient network failures and rate-limit responses are
-        retried before giving up.
+        The timestamp is the layer's ``editingInfo.lastEditDate`` value, in epoch
+        milliseconds. The server only updates that timestamp when the data is actually
+        edited. Transient network failures and rate-limit responses are retried before
+        giving up.
 
         Returns:
-            The observed watermark, or None when an observation fails.
+            The observed last-edit timestamp, or None when an observation fails.
         """
         try:
             payload = peri_scribe.retry.run_with_retry(
                 self.name,
-                lambda: fetch_watermark_payload(self.url),
+                lambda: fetch_layer_metadata(self.url),
             )
         except (requests.exceptions.RequestException, ValueError) as error:
             logger.warning(
-                "Watermark check failed",
+                "Last-edit timestamp check failed",
                 url=self.url,
                 error=str(error),
             )
             return None
         if not isinstance(payload, dict):
             logger.warning(
-                "Watermark check failed",
+                "Last-edit timestamp check failed",
                 url=self.url,
                 error="unexpected response shape",
             )
@@ -197,9 +196,9 @@ class ArcGISFeed(pydantic.BaseModel):
         )
         if last_edit is None:
             logger.warning(
-                "Watermark check failed",
+                "Last-edit timestamp check failed",
                 url=self.url,
                 error="no editingInfo.lastEditDate",
             )
             return None
-        return f"{peri_scribe.snapshots.WATERMARK_PREFIX}{last_edit}"
+        return int(last_edit)

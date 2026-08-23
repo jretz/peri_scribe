@@ -40,19 +40,19 @@ class FetchResult:
 def fetch_feed_dataframe(
     feed: peri_scribe.feed_types.Feed,
     layer: arcgis.features.FeatureLayer,
-    existing_filenames: list[pathlib.Path],
+    existing_source_files: list[peri_scribe.snapshots.SourceFile],
     source_directory: pathlib.Path,
 ) -> geopandas.GeoDataFrame | None:
     """Fetch a feed's new or changed features, or None when there are none.
 
-    When *existing_filenames* is empty the whole layer is fetched in full. Otherwise
+    When *existing_source_files* is empty the whole layer is fetched in full. Otherwise
     only features modified since the stored data, minus a small overlap, are fetched,
     and features already stored identically are dropped.
 
     Args:
         feed: The feed to fetch.
         layer: The layer to query.
-        existing_filenames: The feed's stored snapshot filenames, in serial order.
+        existing_source_files: The feed's stored source files, in serial order.
         source_directory: The directory holding the feed's snapshots.
 
     Returns:
@@ -61,7 +61,7 @@ def fetch_feed_dataframe(
     Raises:
         ValueError: If the feed has no modified column configured.
     """
-    if not existing_filenames:
+    if not existing_source_files:
         feature_set = peri_scribe.geo_data.query_with_retry(feed.name, layer)
         return peri_scribe.geo_data.dataframe_for_layer(feed, layer, feature_set)
     modified_column = feed.modified_column
@@ -102,7 +102,7 @@ def fetch_feed_dataframe(
 def fetch_feed(
     feed: peri_scribe.feed_types.Feed,
     gis: arcgis.gis.GIS,
-    existing_filenames: list[pathlib.Path],
+    existing_source_files: list[peri_scribe.snapshots.SourceFile],
     source_directory: pathlib.Path,
 ) -> geopandas.GeoDataFrame | None:
     """Fetch a feed's new or changed features, or None when there are none.
@@ -113,7 +113,7 @@ def fetch_feed(
     Args:
         feed: The feed to fetch.
         gis: The ArcGIS connection used to open the feed's layer.
-        existing_filenames: The feed's stored snapshot filenames, in serial order.
+        existing_source_files: The feed's stored source files, in serial order.
         source_directory: The directory holding the feed's snapshots.
 
     Returns:
@@ -127,7 +127,7 @@ def fetch_feed(
         return fetch_feed_dataframe(
             feed,
             layer,
-            existing_filenames,
+            existing_source_files,
             source_directory,
         )
     except Exception as error:
@@ -145,8 +145,8 @@ def fetch_all_feeds(
     A feed with no stored snapshots is fetched in full. A feed that already has
     snapshots is fetched incrementally: only new or changed features are downloaded and
     written to a new snapshot, and existing snapshots are never modified. When a
-    snapshot for the observed watermark already exists, the feed is skipped entirely
-    because the data is already present.
+    snapshot for the observed last-edit timestamp already exists, the feed is skipped
+    entirely because the data is already present.
 
     A feed that fails does not stop the other feeds from being fetched. When at least
     one feed writes a new snapshot, the fire source index is rebuilt so that it reflects
@@ -166,8 +166,8 @@ def fetch_all_feeds(
 
     Raises:
         SystemExit: If any feed is unreachable, returns no features, cannot observe a
-            watermark, or lacks a modified column for an incremental fetch. The message
-            lists every feed that failed.
+            last-edit timestamp, or lacks a modified column for an incremental fetch.
+            The message lists every feed that failed.
     """
     if base_dir is None:
         base_dir = pathlib.Path.cwd()
@@ -179,40 +179,41 @@ def fetch_all_feeds(
     wrote_snapshot = False
     for feed in peri_scribe.feeds.FEEDS:
         logger.info("Fetching", feed=feed.name, url=feed.url)
-        watermark = feed.current_watermark
-        if watermark is None:
+        last_edit_timestamp = feed.current_last_edit_timestamp
+        if last_edit_timestamp is None:
             errors.append(
-                f"Failed to fetch {feed.name}: no watermark could be observed",
+                f"Failed to fetch {feed.name}: "
+                "no last-edit timestamp could be observed",
             )
             continue
-        source_directory = (
-            base_dir
-            / peri_scribe.output.DATA_DIRECTORY
-            / str(year)
-            / peri_scribe.snapshots.SOURCES_DIRECTORY_NAME
-            / feed.name
+        source_directory = peri_scribe.snapshots.source_directory_path(
+            base_dir,
+            year,
+            feed.name,
         )
-        existing_path = peri_scribe.snapshots.snapshot_path_for_watermark(
-            source_directory,
-            watermark,
+        existing_path = (
+            peri_scribe.snapshots.snapshot_path_for_last_edit_timestamp(
+                source_directory,
+                last_edit_timestamp,
+            )
         )
         if existing_path is not None:
             logger.info(
                 "Skipping fetch; data already present",
                 feed=feed.name,
-                watermark=watermark,
+                last_edit_timestamp=last_edit_timestamp,
                 path=existing_path,
             )
             snapshot_paths.append(existing_path)
             continue
-        existing_filenames = peri_scribe.snapshots.existing_geopackage_filenames(
+        existing_source_files = peri_scribe.snapshots.existing_source_files(
             source_directory,
         )
         try:
             geodataframe = fetch_feed(
                 feed,
                 gis,
-                existing_filenames,
+                existing_source_files,
                 source_directory,
             )
         except peri_scribe.exceptions.FeedFetchError as error:
@@ -221,7 +222,7 @@ def fetch_all_feeds(
         if geodataframe is None:
             latest_path = peri_scribe.changes.latest_snapshot_path(
                 source_directory,
-                existing_filenames,
+                existing_source_files,
             )
             if latest_path is not None:
                 snapshot_paths.append(latest_path)
@@ -234,15 +235,17 @@ def fetch_all_feeds(
             crs=geodataframe.crs,
         )
         serial_number = peri_scribe.snapshots.next_serial_number(
-            existing_filenames,
-            watermark,
+            existing_source_files,
+            last_edit_timestamp,
         )
         output_path = peri_scribe.snapshots.source_geopackage_path(
             base_dir,
             year,
             feed.name,
-            serial_number,
-            watermark,
+            peri_scribe.snapshots.SourceFile(
+                serial_number=serial_number,
+                last_edit_timestamp=last_edit_timestamp,
+            ),
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
         logger.info("Writing layer", feed=feed.name, path=output_path)

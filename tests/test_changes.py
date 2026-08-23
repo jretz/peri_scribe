@@ -112,7 +112,7 @@ def test_existing_features_returns_none_without_files(
     feed = change_feed()
     monkeypatch.setattr(
         peri_scribe.snapshots,
-        "existing_geopackage_filenames",
+        "existing_source_files",
         lambda _directory: [],
     )
     assert peri_scribe.changes.existing_features(pathlib.Path("/sources"), feed) is None
@@ -124,8 +124,10 @@ def test_existing_features_returns_none_without_object_id_column(
     feed = change_feed()
     monkeypatch.setattr(
         peri_scribe.snapshots,
-        "existing_geopackage_filenames",
-        lambda _directory: ["000000.gpkg"],
+        "existing_source_files",
+        lambda _directory: [
+            peri_scribe.snapshots.SourceFile(serial_number=0, last_edit_timestamp=0),
+        ],
     )
     monkeypatch.setattr(
         peri_scribe.geo_package,
@@ -273,6 +275,9 @@ def test_latest_snapshot_path_returns_none_without_files() -> None:
 def test_latest_snapshot_path_returns_last_file() -> None:
     result = peri_scribe.changes.latest_snapshot_path(
         pathlib.Path("/d"),
-        [pathlib.Path("000000.gpkg"), pathlib.Path("000001.gpkg")],
+        [
+            peri_scribe.snapshots.SourceFile(serial_number=0, last_edit_timestamp=0),
+            peri_scribe.snapshots.SourceFile(serial_number=1, last_edit_timestamp=0),
+        ],
     )
-    assert result == pathlib.Path("/d/000001.gpkg")
+    assert result == pathlib.Path("/d/000___/000001,lastEdit=0.gpkg")

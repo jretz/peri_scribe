@@ -60,15 +60,15 @@ def fetch() -> None:
 
 
 @cli.command()
-def current_watermarks() -> None:
-    """Log the current watermark for each configured feed."""
+def current_timestamps() -> None:
+    """Log the current last-edit timestamp for each configured feed."""
     for index, feed in enumerate(peri_scribe.feeds.FEEDS, start=1):
         logger.info(
             "Feed %d",
             index,
             name=feed.name,
             url=feed.url,
-            watermark=feed.current_watermark,
+            last_edit_timestamp=feed.current_last_edit_timestamp,
         )
 
 

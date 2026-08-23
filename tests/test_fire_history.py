@@ -84,7 +84,7 @@ def observation(
         source_kind: The observation's source kind.
         geometry: The observation's geometry.
         observation_time: The mapping time.
-        snapshot_time: The snapshot watermark time.
+        snapshot_time: The snapshot's last-edit time.
         serial_number: The snapshot serial number.
         object_id: The source row's OBJECTID.
         source_file: The source file path.
@@ -178,33 +178,33 @@ def utc(
     )
 
 
-def test_watermark_time_from_returns_snapshot_time() -> None:
+def test_last_edit_time_from_returns_snapshot_time() -> None:
     path = pathlib.Path("000000,lastEdit=1786955463975.gpkg")
     expected = datetime.datetime.fromtimestamp(1786955463975 / 1000.0, tz=datetime.UTC)
-    assert peri_scribe.perimeter_versions.watermark_time_from(path) == expected
+    assert peri_scribe.perimeter_versions.last_edit_time_from(path) == expected
 
 
-def test_watermark_time_from_returns_none_for_malformed_name() -> None:
+def test_last_edit_time_from_returns_none_for_malformed_name() -> None:
     assert (
-        peri_scribe.perimeter_versions.watermark_time_from(
+        peri_scribe.perimeter_versions.last_edit_time_from(
             pathlib.Path("000000,no-time.gpkg"),
         )
         is None
     )
 
 
-def test_watermark_time_from_returns_none_for_non_numeric_watermark() -> None:
+def test_last_edit_time_from_returns_none_for_non_numeric_last_edit_timestamp() -> None:
     assert (
-        peri_scribe.perimeter_versions.watermark_time_from(
+        peri_scribe.perimeter_versions.last_edit_time_from(
             pathlib.Path("000000,lastEdit=soon.gpkg"),
         )
         is None
     )
 
 
-def test_watermark_time_from_returns_none_without_comma() -> None:
+def test_last_edit_time_from_returns_none_without_comma() -> None:
     assert (
-        peri_scribe.perimeter_versions.watermark_time_from(
+        peri_scribe.perimeter_versions.last_edit_time_from(
             pathlib.Path("snapshot.gpkg"),
         )
         is None
@@ -921,12 +921,15 @@ def test_read_full_rows_reads_every_file(monkeypatch: pytest.MonkeyPatch) -> Non
 def test_history_rows_for_fire_builds_perimeter_and_point_rows() -> None:
     sources_directory = pathlib.Path("data/2026/sources")
     perimeter_path = (
-        sources_directory / FIRIS_FEED_NAME / "000000,lastEdit=1786929991427.gpkg"
+        sources_directory
+        / FIRIS_FEED_NAME
+        / "000___"
+        / "000000,lastEdit=1786929991427.gpkg"
     )
     point_path = (
         sources_directory
         / WFIGS_LOCATION_FEED_NAME
-        / "000000,lastEdit=1786955463975.gpkg"
+        / "000___" / "000000,lastEdit=1786955463975.gpkg"
     )
     perimeter_row_record = peri_scribe.geo_package.FireRowRecord(
         record=tests.factories.fire_record(
@@ -968,7 +971,10 @@ def test_history_rows_for_fire_builds_perimeter_and_point_rows() -> None:
 def test_history_rows_for_fire_drops_implausibly_small_perimeter() -> None:
     sources_directory = pathlib.Path("data/2026/sources")
     perimeter_path = (
-        sources_directory / FIRIS_FEED_NAME / "000000,lastEdit=1786929991427.gpkg"
+        sources_directory
+        / FIRIS_FEED_NAME
+        / "000___"
+        / "000000,lastEdit=1786929991427.gpkg"
     )
     tiny = polygon((0, 0), (0.0001, 0), (0.0001, 0.0001), (0, 0))
     perimeter_row_record = peri_scribe.geo_package.FireRowRecord(

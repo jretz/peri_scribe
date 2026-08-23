@@ -12,6 +12,7 @@ import pytest
 import peri_scribe.changes
 import peri_scribe.fetching
 import peri_scribe.geo_data
+import peri_scribe.snapshots
 from tests.factories import change_feed
 
 
@@ -21,7 +22,7 @@ def test_fetch_feed_dataframe_raises_without_modified_column() -> None:
         peri_scribe.fetching.fetch_feed_dataframe(
             feed,
             object(),  # ty: ignore
-            [pathlib.Path("000000.gpkg")],
+            [peri_scribe.snapshots.SourceFile(serial_number=0, last_edit_timestamp=0)],
             pathlib.Path("/sources"),
         )
 
@@ -43,7 +44,7 @@ def test_fetch_feed_dataframe_returns_none_without_changed_ids(
     result = peri_scribe.fetching.fetch_feed_dataframe(
         feed,
         object(),  # ty: ignore
-        [pathlib.Path("000000.gpkg")],
+        [peri_scribe.snapshots.SourceFile(serial_number=0, last_edit_timestamp=0)],
         pathlib.Path("/sources"),
     )
     assert result is None
@@ -81,7 +82,7 @@ def test_fetch_feed_dataframe_returns_none_when_dedupe_removes_all(
     result = peri_scribe.fetching.fetch_feed_dataframe(
         feed,
         object(),  # ty: ignore
-        [pathlib.Path("000000.gpkg")],
+        [peri_scribe.snapshots.SourceFile(serial_number=0, last_edit_timestamp=0)],
         pathlib.Path("/sources"),
     )
     assert result is None

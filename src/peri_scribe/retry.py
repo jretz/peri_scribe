@@ -88,9 +88,9 @@ def rate_limit_retry_seconds(error: BaseException) -> int | None:
 
     Rate-limit responses arrive in two forms. ArcGIS query errors are ``ValueError``
     instances whose first argument is the error payload dict (with ``error.code`` 429
-    and a "Retry after N sec" detail). The requests-based watermark check raises
-    ``requests.exceptions.HTTPError`` carrying a 429 response. A string fallback handles
-    any other error that carries a 429 code.
+    and a "Retry after N sec" detail). The requests-based last-edit timestamp check
+    raises ``requests.exceptions.HTTPError`` carrying a 429 response. A string
+    fallback handles any other error that carries a 429 code.
 
     Args:
         error: The exception raised by the failed attempt.

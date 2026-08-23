@@ -32,7 +32,7 @@ def _record_groups(
         geometry=shapely.geometry.Point(-120.0, 39.0),
     )
     path = pathlib.Path(
-        "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/000000.gpkg",
+        "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/000___/000000,lastEdit=0.gpkg",
     )
     return peri_scribe.fire_sources.FireRecordGroups(
         records=(record,),

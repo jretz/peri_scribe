@@ -98,30 +98,23 @@ class PerimeterSizeFilterConfig:
 DEFAULT_SIZE_FILTER_CONFIG = PerimeterSizeFilterConfig()
 
 
-def watermark_time_from(path: pathlib.Path) -> datetime.datetime | None:
-    """Return the snapshot watermark time encoded in *path*, or None.
+def last_edit_time_from(path: pathlib.Path) -> datetime.datetime | None:
+    """Return the snapshot's last-edit time encoded in *path*, or None.
 
     Args:
         path: A GeoPackage snapshot path.
 
     Returns:
-        The watermark time as a UTC datetime, or None when it cannot be read.
+        The last-edit time as a UTC datetime, or None when it cannot be read.
     """
     try:
-        _serial_number, watermark = peri_scribe.snapshots.parse_geopackage_filename(
-            path,
+        last_edit_timestamp = (
+            peri_scribe.snapshots.SourceFile.from_path(path).last_edit_timestamp
         )
     except ValueError:
         return None
-    prefix = peri_scribe.snapshots.WATERMARK_PREFIX
-    if not watermark.startswith(prefix):
-        return None
-    try:
-        epoch_milliseconds = int(watermark[len(prefix) :])
-    except ValueError:
-        return None
     return datetime.datetime.fromtimestamp(
-        epoch_milliseconds / peri_scribe.units.MILLISECONDS_PER_SECOND,
+        last_edit_timestamp / peri_scribe.units.MILLISECONDS_PER_SECOND,
         tz=datetime.UTC,
     )
 
@@ -149,9 +142,9 @@ def source_observation_from_row(
         ),
         geometry=row.record.geometry,
         observation_time=row.record.observed_at,
-        snapshot_time=watermark_time_from(path),
+        snapshot_time=last_edit_time_from(path),
         serial_number=(
-            peri_scribe.california_border_classification.snapshot_serial_number(path)
+            peri_scribe.snapshots.SourceFile.from_path(path).serial_number
         ),
         object_id=row.object_id,
         source_file=str(path.relative_to(sources_directory)),
@@ -166,10 +159,10 @@ def effective_time(
 
     The mapping time is the feed's observation column when present. A perimeter whose
     observation column is empty falls back to the row's current-date column
-    (``poly_DateCurrent``) before the snapshot watermark, so a WFIGS perimeter without a
-    polygon date still carries the date its source reports it is current for. Point
-    observations have no current-date column and fall straight through to the snapshot
-    time.
+    (``poly_DateCurrent``) before the snapshot's last-edit timestamp, so a WFIGS
+    perimeter without a polygon date still carries the date its source reports it is
+    current for. Point observations have no current-date column and fall straight
+    through to the snapshot time.
 
     Args:
         observation: The observation to time.
