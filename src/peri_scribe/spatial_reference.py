@@ -237,17 +237,67 @@ def area_of_use_text(crs: pyproj.CRS) -> str:
     return f"longitude {area.west}..{area.east}, latitude {area.south}..{area.north}"
 
 
+def classify_candidates_for_bounds(
+    candidates: set[int],
+    bounds: tuple[float, float, float, float],
+) -> tuple[list[int], dict[int, str], list[str]]:
+    """Classify candidates by how their coordinate range fits the bounds.
+
+    A candidate whose expected coordinate range does not fit the bounds is excluded,
+    with a description of why. A geographic candidate whose expected range fits but
+    whose area of use does not contain the coordinates is kept, but reported as
+    outside its area of use.
+
+    Returns:
+        A tuple of the wkids that fit the bounds and contain the coordinates in their
+        area of use, the wkids that fit the bounds but not the coordinates in their
+        area of use (mapped to their area of use text), and the descriptions of the
+        excluded candidates.
+    """
+    matches: list[int] = []
+    outside_area: dict[int, str] = {}
+    excluded: list[str] = []
+    for wkid in sorted(candidates):
+        domain = spatial_reference_domain(wkid)
+        if domain is None:
+            excluded.append(f"{wkid} (no expected coordinate range known)")
+        elif not coordinates_match_domain(domain.bands, bounds):
+            (
+                x_minimum_band,
+                x_maximum_band,
+                y_minimum_band,
+                y_maximum_band,
+            ) = domain.bands
+            x_minimum, x_maximum, y_minimum, y_maximum = bounds
+            excluded.append(
+                f"{wkid} ({domain.description}, expected coordinate "
+                f"magnitudes x {x_minimum_band}..{x_maximum_band}, "
+                f"y {y_minimum_band}..{y_maximum_band}, "
+                f"got x {x_minimum}..{x_maximum}, "
+                f"y {y_minimum}..{y_maximum})",
+            )
+        elif domain.crs.is_geographic and not coordinates_in_area(domain.crs, bounds):
+            outside_area[wkid] = area_of_use_text(domain.crs)
+        else:
+            matches.append(wkid)
+    return matches, outside_area, excluded
+
+
 def select_spatial_reference_wkid(
     candidates: set[int],
     bounds: tuple[float, float, float, float] | None,
 ) -> peri_scribe.models.SpatialReferenceSelection:
     """Choose a wkid from the candidates for coordinates with these bounds.
 
-    Keeps only the candidates whose plausible coordinate domain — derived from pyproj's
-    CRS database — fits the returned features' coordinate bounds. The single surviving
-    candidate wins; when others were excluded the selection carries a warning that lists
-    them and the reason. When no wkid can be chosen, the selection carries a failure
-    message that explains why.
+    Candidates whose plausible coordinate domain — derived from pyproj's CRS database —
+    does not fit the returned features' coordinate bounds are excluded, as are
+    geographic candidates whose area of use does not contain the coordinates. When
+    exactly one candidate remains, it wins and the selection carries a warning listing
+    the excluded candidates and the reason. When no candidate remains but exactly one
+    was excluded only by the area-of-use check, that candidate is chosen with a
+    warning, because its coordinate range is plausible and no better candidate is
+    reported. When no wkid can be chosen, the selection carries a failure message that
+    explains why.
 
     Returns:
         The selection describing the chosen wkid, or explaining why none could be
@@ -274,61 +324,51 @@ def select_spatial_reference_wkid(
             ),
         )
     x_minimum, x_maximum, y_minimum, y_maximum = bounds
-    matches: list[int] = []
-    excluded: list[str] = []
-    for wkid in sorted(candidates):
-        domain = spatial_reference_domain(wkid)
-        if domain is None:
-            excluded.append(f"{wkid} (no expected coordinate range known)")
-        elif not coordinates_match_domain(domain.bands, bounds):
-            (
-                x_minimum_band,
-                x_maximum_band,
-                y_minimum_band,
-                y_maximum_band,
-            ) = domain.bands
-            excluded.append(
-                f"{wkid} ({domain.description}, expected coordinate "
-                f"magnitudes x {x_minimum_band}..{x_maximum_band}, "
-                f"y {y_minimum_band}..{y_maximum_band}, "
-                f"got x {x_minimum}..{x_maximum}, "
-                f"y {y_minimum}..{y_maximum})",
-            )
-        elif domain.crs.is_geographic and not coordinates_in_area(domain.crs, bounds):
-            excluded.append(
-                f"{wkid} (coordinates outside its area of use "
-                f"{area_of_use_text(domain.crs)})",
-            )
-        else:
-            matches.append(wkid)
+    matches, outside_area, excluded = classify_candidates_for_bounds(
+        candidates,
+        bounds,
+    )
+    outside_area_descriptions = [
+        f"{wkid} (coordinates outside its area of use {area_text})"
+        for wkid, area_text in outside_area.items()
+    ]
     if len(matches) == 1:
         warning = None
-        if excluded:
+        if excluded or outside_area:
             warning = (
                 f"  warning: picked spatial reference EPSG:{matches[0]}; "
-                f"excluded {', '.join(excluded)}"
+                f"excluded {', '.join([*excluded, *outside_area_descriptions])}"
             )
         return peri_scribe.models.SpatialReferenceSelection(
             wkid=matches[0],
             warning=warning,
         )
     if not matches:
-        return peri_scribe.models.SpatialReferenceSelection(
-            wkid=None,
-            failure_message=(
-                "no reported spatial reference wkid matches the returned "
-                f"coordinates (x {x_minimum}..{x_maximum}, "
-                f"y {y_minimum}..{y_maximum}); "
-                f"excluded {', '.join(excluded)}"
-            ),
+        if len(outside_area) == 1:
+            wkid = next(iter(outside_area))
+            return peri_scribe.models.SpatialReferenceSelection(
+                wkid=wkid,
+                warning=(
+                    "  warning: picked spatial reference "
+                    f"EPSG:{wkid}; the returned coordinates fall outside its "
+                    f"area of use ({outside_area[wkid]})"
+                ),
+            )
+        failure_message = (
+            "no reported spatial reference wkid matches the returned "
+            f"coordinates (x {x_minimum}..{x_maximum}, "
+            f"y {y_minimum}..{y_maximum}); "
+            f"excluded {', '.join([*excluded, *outside_area_descriptions])}"
         )
-    return peri_scribe.models.SpatialReferenceSelection(
-        wkid=None,
-        failure_message=(
+    else:
+        failure_message = (
             f"ambiguous spatial reference: wkids {sorted(matches)} all match "
             f"the returned coordinates (x {x_minimum}..{x_maximum}, "
             f"y {y_minimum}..{y_maximum})"
-        ),
+        )
+    return peri_scribe.models.SpatialReferenceSelection(
+        wkid=None,
+        failure_message=failure_message,
     )
 
 

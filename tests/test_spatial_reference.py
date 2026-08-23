@@ -9,6 +9,7 @@ import peri_scribe.models
 import peri_scribe.spatial_reference
 from tests.conftest import (
     CALIFORNIA_ALBERS_WKID,
+    NAD83_2011_WKID,
     NAD83_WKID,
     NAVD88_HEIGHT_WKID,
     UNKNOWN_WKID,
@@ -22,6 +23,9 @@ from tests.conftest import (
 
 
 CALIFORNIA_BOUNDS = (-121.0, -120.0, 33.0, 34.0)
+
+# Spans the continental US and Guam, outside the NAD83 area of use.
+OUTSIDE_NAD83_AREA_BOUNDS = (-123.0, 144.8, 13.5, 48.4)
 
 
 def test_spatial_reference_wkids_none_is_empty() -> None:
@@ -592,3 +596,43 @@ def test_select_spatial_reference_wkid_ambiguous_with_bounds() -> None:
     assert selection.wkid is None
     assert selection.failure_message is not None
     assert "ambiguous spatial reference" in selection.failure_message
+
+
+def test_select_spatial_reference_wkid_single_out_of_area_candidate_is_chosen() -> None:
+    selection = peri_scribe.spatial_reference.select_spatial_reference_wkid(
+        {NAD83_WKID},
+        OUTSIDE_NAD83_AREA_BOUNDS,
+    )
+    assert selection.wkid == NAD83_WKID
+    assert selection.failure_message == ""
+    assert selection.warning is not None
+    assert "picked spatial reference EPSG:4269" in selection.warning
+    assert "coordinates fall outside its area of use" in selection.warning
+
+
+def test_select_spatial_reference_wkid_multiple_out_of_area_candidates_fail() -> None:
+    selection = peri_scribe.spatial_reference.select_spatial_reference_wkid(
+        {NAD83_WKID, NAD83_2011_WKID},
+        OUTSIDE_NAD83_AREA_BOUNDS,
+    )
+    assert selection.wkid is None
+    assert selection.failure_message is not None
+    assert "no reported spatial reference wkid matches" in selection.failure_message
+    assert "coordinates outside its area of use" in selection.failure_message
+
+
+def test_choose_spatial_reference_id_single_out_of_area_candidate_logs_warning() -> (
+    None
+):
+    layer = LayerStub(properties={"spatialReference": {"wkid": NAD83_WKID}})
+    feature_set = FeatureSetStub(spatial_reference=None)
+    with structlog.testing.capture_logs() as captured:
+        chosen = peri_scribe.spatial_reference.choose_spatial_reference_id(
+            layer,
+            feature_set,
+            OUTSIDE_NAD83_AREA_BOUNDS,
+        )
+    assert chosen == NAD83_WKID
+    assert len(captured) == 1
+    assert captured[0]["log_level"] == "warning"
+    assert "area of use" in captured[0]["event"]
