@@ -321,7 +321,7 @@ def arc_gis_feed(
     complex_identifier_column: str | None = None,
     complex_name_column: str | None = None,
     is_complex_child_column: str | None = None,
-    modified_column: str | None = None,
+    change_columns: tuple[str, ...] = (),
 ) -> peri_scribe.feed_types.ArcGISFeed:
     """Build an ArcGIS feed with the given name and status columns.
 
@@ -337,7 +337,7 @@ def arc_gis_feed(
         complex_identifier_column: The column holding each complex's identifier.
         complex_name_column: The column holding each complex's name.
         is_complex_child_column: The column marking complex child rows.
-        modified_column: The column holding each feature's modified time.
+        change_columns: The timestamp columns that change when a feature is edited.
 
     Returns:
         The ArcGIS feed.
@@ -354,7 +354,7 @@ def arc_gis_feed(
         complex_identifier_column=complex_identifier_column,
         complex_name_column=complex_name_column,
         is_complex_child_column=is_complex_child_column,
-        modified_column=modified_column,
+        change_columns=change_columns,
     )
 
 

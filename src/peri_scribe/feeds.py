@@ -17,7 +17,7 @@ CA_PERIMETERS_FEED = peri_scribe.feed_types.ArcGISFeed(
     fire_identifier_columns=("incident_number",),
     mission_column="mission",
     observation_time_column="poly_DateCurrent",
-    modified_column="EditDate",
+    change_columns=("EditDate",),
 )
 
 # The WFIGS perimeter layer, which keeps only the most recent perimeter for each
@@ -36,7 +36,14 @@ WFIGS_PERIMETERS_FEED = peri_scribe.feed_types.ArcGISFeed(
     point_of_origin_state_column="attr_POOState",
     point_of_origin_fips_column="attr_POOFips",
     observation_time_column="poly_PolygonDateTime",
-    modified_column="attr_ModifiedOnDateTime_dt",
+    # The polygon table updates (geometry, poly_DateCurrent, poly_CreateDate) without
+    # moving attr_ModifiedOnDateTime_dt, so all three columns must count as a change
+    # signal or the incremental fetch misses perimeter updates.
+    change_columns=(
+        "attr_ModifiedOnDateTime_dt",
+        "poly_DateCurrent",
+        "poly_CreateDate",
+    ),
 )
 
 # The WFIGS incident location layer, which carries a point for each incident.
@@ -53,7 +60,7 @@ WFIGS_INCIDENT_LOCATIONS_FEED = peri_scribe.feed_types.ArcGISFeed(
     is_complex_child_column="IsCpxChild",
     point_of_origin_state_column="POOState",
     point_of_origin_fips_column="POOFips",
-    modified_column="ModifiedOnDateTime_dt",
+    change_columns=("ModifiedOnDateTime_dt",),
 )
 
 

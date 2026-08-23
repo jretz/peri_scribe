@@ -138,7 +138,7 @@ class FeedStub:
     url: str
     last_edit_timestamp: int | None
     status_column: str = "status"
-    modified_column: str = "ModifiedOnDateTime_dt"
+    change_columns: tuple[str, ...] = ("ModifiedOnDateTime_dt",)
     events: list[str] = dataclasses.field(default_factory=list)
 
     @property

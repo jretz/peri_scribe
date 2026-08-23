@@ -23,9 +23,9 @@ import peri_scribe.snapshots
 from tests.factories import change_feed
 
 
-def test_fetch_feed_dataframe_raises_without_modified_column() -> None:
-    feed = change_feed(modified_column=None)
-    with pytest.raises(ValueError, match="no modified column"):
+def test_fetch_feed_dataframe_raises_without_change_columns() -> None:
+    feed = change_feed(change_columns=())
+    with pytest.raises(ValueError, match="no change columns"):
         peri_scribe.fetching.fetch_feed_dataframe(
             feed,
             object(),  # ty: ignore
@@ -326,7 +326,7 @@ def test_fetch_feed_dataframe_fetches_full_when_directory_empty(
 def test_fetch_feed_dataframe_full_fetches_whole_layer_and_dedupes(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    feed = change_feed(modified_column=None)
+    feed = change_feed(change_columns=())
     query_keywords: list[dict[str, object]] = []
     feature_set = object()
     monkeypatch.setattr(

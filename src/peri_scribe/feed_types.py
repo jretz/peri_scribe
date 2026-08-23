@@ -110,8 +110,8 @@ class Feed(typing.Protocol):
         ...
 
     @property
-    def modified_column(self) -> str | None:
-        """The column holding each feature's modified timestamp, or None."""
+    def change_columns(self) -> tuple[str, ...]:
+        """The timestamp columns that change when a feature is edited."""
         ...
 
     @property
@@ -137,7 +137,7 @@ class ArcGISFeed(pydantic.BaseModel):
     complex_identifier_column: str | None = None
     complex_name_column: str | None = None
     is_complex_child_column: str | None = None
-    modified_column: str | None = None
+    change_columns: tuple[str, ...] = ()
 
     @property
     def path_segments(self) -> list[str]:

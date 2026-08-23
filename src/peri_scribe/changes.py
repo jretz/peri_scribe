@@ -246,22 +246,29 @@ def latest_modified_datetime(
     existing: geopandas.GeoDataFrame | None,
     feed: peri_scribe.feed_types.Feed,
 ) -> datetime.datetime | None:
-    """Return the latest modified timestamp across the stored features.
+    """Return the latest change timestamp across the stored features.
+
+    Every change column the feed declares is considered, since a source may update one
+    timestamp (for example a polygon date) without moving another (for example the
+    attribute modified time).
 
     Args:
         existing: The latest stored feature per OBJECTID, or None.
-        feed: The feed providing the modified timestamp column.
+        feed: The feed providing the change timestamp columns.
 
     Returns:
-        The latest modified UTC datetime, or None when none can be found.
+        The latest change UTC datetime, or None when none can be found.
     """
     if existing is None or existing.empty:
         return None
-    modified_column = feed.modified_column
-    if modified_column is None or modified_column not in existing.columns:
-        return None
-    values = [modified_datetime_from(value) for value in existing[modified_column]]
-    latest = [value for value in values if value is not None]
+    latest: list[datetime.datetime] = []
+    for column in feed.change_columns:
+        if column not in existing.columns:
+            continue
+        for value in existing[column]:
+            parsed = modified_datetime_from(value)
+            if parsed is not None:
+                latest.append(parsed)
     if not latest:
         return None
     return max(latest)
@@ -273,13 +280,13 @@ def incremental_cutoff(
 ) -> datetime.datetime:
     """Return the cutoff for an incremental fetch.
 
-    The cutoff is the latest stored modified timestamp minus `OVERLAP`. When no stored
+    The cutoff is the latest stored change timestamp minus `OVERLAP`. When no stored
     timestamp can be found, the Unix epoch is used so the query returns every feature
     for deduplication to filter.
 
     Args:
         existing: The latest stored feature per OBJECTID, or None.
-        feed: The feed providing the modified timestamp column.
+        feed: The feed providing the change timestamp columns.
 
     Returns:
         The aware UTC cutoff timestamp.
@@ -291,26 +298,29 @@ def incremental_cutoff(
 
 
 def where_clause_for(
-    modified_column: str,
+    change_columns: tuple[str, ...],
     cutoff: datetime.datetime,
 ) -> str:
     """Return a where clause selecting features changed since *cutoff*.
 
-    The clause selects features whose modified timestamp is at or after *cutoff*,
-    plus features with a missing modified timestamp. The latter are included because
-    a source may add or update features without populating the modified column, and a
+    The clause selects features whose change timestamp is at or after *cutoff*,
+    plus features with a missing change timestamp. The latter are included because
+    a source may add or update features without populating the change columns, and a
     plain ``>=`` comparison would silently skip them. The caller deduplicates identical
     rows already stored, so re-fetching the null-timestamp features is safe.
 
     Args:
-        modified_column: The feed's modified timestamp column.
+        change_columns: The feed's change timestamp columns.
         cutoff: The aware UTC cutoff timestamp.
 
     Returns:
         The SQL where clause for an ArcGIS query.
     """
     iso = cutoff.astimezone(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%S")
-    return f"{modified_column} >= timestamp '{iso}Z' OR {modified_column} IS NULL"
+    return " OR ".join(
+        f"{column} >= timestamp '{iso}Z' OR {column} IS NULL"
+        for column in change_columns
+    )
 
 
 def normalized_attribute_value(value: object) -> object:

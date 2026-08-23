@@ -67,7 +67,7 @@ def fetch_feed_dataframe(
         The GeoDataFrame of features to write, or None when nothing changed.
 
     Raises:
-        ValueError: If the feed has no modified column configured and *full* is
+        ValueError: If the feed has no change columns configured and *full* is
             false.
     """
     if not existing_source_files:
@@ -89,13 +89,13 @@ def fetch_feed_dataframe(
             logger.info("No new or changed features", feed=feed.name)
             return None
         return geodataframe
-    modified_column = feed.modified_column
-    if modified_column is None:
-        message = f"Feed {feed.name} has no modified column configured"
+    change_columns = feed.change_columns
+    if not change_columns:
+        message = f"Feed {feed.name} has no change columns configured"
         raise ValueError(message)
     existing = peri_scribe.changes.existing_features(source_directory, feed)
     cutoff = peri_scribe.changes.incremental_cutoff(existing, feed)
-    where = peri_scribe.changes.where_clause_for(modified_column, cutoff)
+    where = peri_scribe.changes.where_clause_for(change_columns, cutoff)
     changed_ids = peri_scribe.geo_data.query_object_ids_with_retry(
         feed.name,
         layer,
@@ -250,7 +250,7 @@ def fetch_all_feeds(
 
     Raises:
         SystemExit: If any feed is unreachable, returns no features, cannot observe a
-            last-edit timestamp, or lacks a modified column for an incremental fetch.
+            last-edit timestamp, or lacks change columns for an incremental fetch.
             The message lists every feed that failed.
     """
     if base_dir is None:

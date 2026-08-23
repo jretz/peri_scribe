@@ -74,12 +74,12 @@ def fire_record(
 
 
 def change_feed(
-    modified_column: str | None = "ModifiedOnDateTime_dt",
+    change_columns: tuple[str, ...] = ("ModifiedOnDateTime_dt",),
 ) -> peri_scribe.feed_types.Feed:
-    """Return a feed with a known modified column.
+    """Return a feed with known change columns.
 
     Args:
-        modified_column: The modified timestamp column, or None.
+        change_columns: The timestamp columns that change when a feature is edited.
 
     Returns:
         The feed.
@@ -88,7 +88,7 @@ def change_feed(
         url="https://example.test/ArcGIS/rest/services/Fires/FeatureServer/0",
         fire_name_column="name",
         status_column="status",
-        modified_column=modified_column,
+        change_columns=change_columns,
     )
 
 

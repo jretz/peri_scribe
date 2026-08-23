@@ -148,8 +148,8 @@ def test_latest_modified_datetime_returns_none_for_empty() -> None:
     assert peri_scribe.changes.latest_modified_datetime(empty, feed) is None
 
 
-def test_latest_modified_datetime_returns_none_without_modified_column() -> None:
-    feed = change_feed()
+def test_latest_modified_datetime_returns_none_without_change_columns() -> None:
+    feed = change_feed(change_columns=())
     existing = change_dataframe([SAMPLE_FEATURE_ROW])
     assert peri_scribe.changes.latest_modified_datetime(existing, feed) is None
 
@@ -162,6 +162,20 @@ def test_latest_modified_datetime_returns_maximum() -> None:
     ])
     result = peri_scribe.changes.latest_modified_datetime(existing, feed)
     assert result == datetime.datetime(2026, 2, 1, 0, 0, 0, tzinfo=UTC)
+
+
+def test_latest_modified_datetime_returns_maximum_across_change_columns() -> None:
+    feed = change_feed(change_columns=("ModifiedOnDateTime_dt", "poly_DateCurrent"))
+    existing = modified_dataframe([
+        (1, "2026-01-01T00:00:00Z", (0.0, 0.0)),
+        (2, "2026-02-01T00:00:00Z", (1.0, 1.0)),
+    ])
+    existing["poly_DateCurrent"] = [
+        "2026-03-01T00:00:00Z",
+        "2026-01-15T00:00:00Z",
+    ]
+    result = peri_scribe.changes.latest_modified_datetime(existing, feed)
+    assert result == datetime.datetime(2026, 3, 1, 0, 0, 0, tzinfo=UTC)
 
 
 def test_latest_modified_datetime_returns_none_when_no_values_parse() -> None:
@@ -365,16 +379,35 @@ def test_incremental_cutoff_subtracts_overlap() -> None:
 
 def test_where_clause_for_formats_cutoff() -> None:
     cutoff = datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
-    result = peri_scribe.changes.where_clause_for("ModifiedOnDateTime_dt", cutoff)
+    result = peri_scribe.changes.where_clause_for(
+        ("ModifiedOnDateTime_dt",),
+        cutoff,
+    )
     assert result == (
         "ModifiedOnDateTime_dt >= timestamp '2026-01-01T00:00:00Z' "
         "OR ModifiedOnDateTime_dt IS NULL"
     )
 
 
+def test_where_clause_for_combines_multiple_change_columns() -> None:
+    cutoff = datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
+    result = peri_scribe.changes.where_clause_for(
+        ("ModifiedOnDateTime_dt", "poly_DateCurrent", "poly_CreateDate"),
+        cutoff,
+    )
+    assert result == (
+        "ModifiedOnDateTime_dt >= timestamp '2026-01-01T00:00:00Z' "
+        "OR ModifiedOnDateTime_dt IS NULL "
+        "OR poly_DateCurrent >= timestamp '2026-01-01T00:00:00Z' "
+        "OR poly_DateCurrent IS NULL "
+        "OR poly_CreateDate >= timestamp '2026-01-01T00:00:00Z' "
+        "OR poly_CreateDate IS NULL"
+    )
+
+
 def test_where_clause_for_includes_null_modified_timestamps() -> None:
     cutoff = datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
-    result = peri_scribe.changes.where_clause_for("EditDate", cutoff)
+    result = peri_scribe.changes.where_clause_for(("EditDate",), cutoff)
     assert "EditDate IS NULL" in result
 
 
