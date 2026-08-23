@@ -4,6 +4,7 @@ import io
 import json
 import logging
 import pathlib
+import shutil
 import typing
 
 import geopandas
@@ -113,6 +114,28 @@ def test_write_geopackage_replaces_existing_file(
     assert "Replaced existing" in [event["event"] for event in captured]
     assert unlinked == [path]
     assert calls == [(path, "GPKG", "replacement_layer", "w")]
+
+
+def test_remove_directory_tree_removes_existing_directory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    removed: list[pathlib.Path] = []
+    monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: True)
+    monkeypatch.setattr(shutil, "rmtree", removed.append)
+    path = pathlib.Path("/data/2026/sources-complete")
+    peri_scribe.output.remove_directory_tree(path)
+    assert removed == [path]
+
+
+def test_remove_directory_tree_leaves_missing_path_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    removed: list[pathlib.Path] = []
+    monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: False)
+    monkeypatch.setattr(shutil, "rmtree", removed.append)
+    path = pathlib.Path("/data/2026/sources-complete")
+    peri_scribe.output.remove_directory_tree(path)
+    assert removed == []
 
 
 def test_configure_logging_filters_below_configured_level() -> None:

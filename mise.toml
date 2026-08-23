@@ -58,6 +58,12 @@ depends = ["venv"]
 raw_args = true
 run = "uv run --locked peri_scribe index-fire-sources"
 
+[tasks.validate-sources]
+description = "Check that the stored sources cover a complete snapshot of every feed"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked peri_scribe validate-sources"
+
 [tasks.format]
 description = "Format with ruff"
 depends = ["venv"]

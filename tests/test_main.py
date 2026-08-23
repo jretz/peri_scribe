@@ -26,6 +26,7 @@ import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.retry
 import peri_scribe.snapshots
+import peri_scribe.source_validation
 from tests.conftest import (
     CLICK_USAGE_ERROR_EXIT_CODE,
     RATE_LIMIT_ERROR_PAYLOAD,
@@ -74,6 +75,33 @@ class MultiQueryLayerStub(FeatureLayerStubBase):
         return outcome
 
 
+class SequenceFeatureLayerStub(FeatureLayerStubBase):
+    """FeatureLayer stand-in serving successive feature sets per query."""
+
+    def __init__(
+        self,
+        url: str,
+        gis: object,
+        feature_sets: list[arcgis.features.FeatureSet],
+        events: list[str] | None = None,
+    ) -> None:
+        super().__init__(url, gis)
+        self.feature_sets = list(feature_sets)
+        self.call_count = 0
+        self.events = [] if events is None else events
+
+    def query(
+        self,
+        **_parameters: object,
+    ) -> arcgis.features.FeatureSet:
+        self.events.append("download")
+        feature_set = self.feature_sets[
+            min(self.call_count, len(self.feature_sets) - 1)
+        ]
+        self.call_count += 1
+        return feature_set
+
+
 class DeltaFeatureLayerStub(FeatureLayerStubBase):
     """FeatureLayer stand-in serving a full set, then an incremental delta."""
 
@@ -109,6 +137,7 @@ class FeedStub:
     name: str
     url: str
     last_edit_timestamp: int | None
+    status_column: str = "status"
     modified_column: str = "ModifiedOnDateTime_dt"
     events: list[str] = dataclasses.field(default_factory=list)
 
@@ -142,6 +171,7 @@ class FullPipelineStubs:
     """Fetch outcome and recorded step calls for full-pipeline tests."""
 
     fetch_result: peri_scribe.fetching.FetchResult
+    fetch_calls: list[tuple[pathlib.Path, int, bool]]
     ensure_boundary_calls: list[pathlib.Path | None]
     history_calls: list[pathlib.Path]
     kmz_calls: list[pathlib.Path]
@@ -222,13 +252,18 @@ def list_fires_setup(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def invoke_fetch(
     runner: click.testing.CliRunner,
+    *arguments: str,
 ) -> click.testing.Result:
     """Invoke the fetch command in the test runner.
+
+    Args:
+        runner: The test runner.
+        arguments: Extra command-line arguments after ``fetch``.
 
     Returns:
         The command result.
     """
-    return runner.invoke(peri_scribe.main.cli, ["fetch"])
+    return runner.invoke(peri_scribe.main.cli, ["fetch", *arguments])
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -299,14 +334,25 @@ def full_pipeline_stubs(
                 snapshot_paths=(),
                 changed=changed,
             ),
+            fetch_calls=[],
             ensure_boundary_calls=[],
             history_calls=[],
             kmz_calls=[],
         )
+
+        def fetch_all_feeds(
+            base_directory: pathlib.Path,
+            *,
+            year: int,
+            full: bool = False,
+        ) -> peri_scribe.fetching.FetchResult:
+            stubs.fetch_calls.append((base_directory, year, full))
+            return stubs.fetch_result
+
         monkeypatch.setattr(
             peri_scribe.fetching,
             "fetch_all_feeds",
-            lambda: stubs.fetch_result,
+            fetch_all_feeds,
         )
         monkeypatch.setattr(
             peri_scribe.administrative_boundaries,
@@ -891,6 +937,99 @@ def test_fetch_skips_download_when_last_edit_timestamp_already_present(
 
 
 @pytest.mark.usefixtures("fetch_setup")
+def test_fetch_full_downloads_when_last_edit_timestamp_already_present(
+    runner: click.testing.CliRunner,
+    geo_package_store: GeoPackageStore,
+    fetch_stubs: FetchStubs,
+) -> None:
+    first = wgs84_feature_set([
+        (1, "a", 1.0, 2.0),
+        (2, "b", 3.0, 4.0),
+    ])
+    second = wgs84_feature_set([
+        (1, "a-changed", 1.0, 2.0),
+        (2, "b", 3.0, 4.0),
+    ])
+    events: list[str] = []
+    feed = FeedStub(
+        name=SAMPLE_FEED_NAME,
+        url=SAMPLE_FEED_URL,
+        last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
+        events=events,
+    )
+    fetch_stubs.feeds(feed)
+    layer_stub = SequenceFeatureLayerStub(
+        url=SAMPLE_FEED_URL,
+        gis=object(),
+        feature_sets=[first, second],
+        events=events,
+    )
+    fetch_stubs.feature_layers(lambda _url, _gis: layer_stub)
+    # The first fetch downloads and writes the snapshot.
+    assert invoke_fetch(runner).exit_code == 0
+    assert events == ["timestamp", "download"]
+    events.clear()
+    # A full fetch downloads even though the last-edit timestamp is unchanged, and
+    # writes a fresh snapshot holding only the changed feature.
+    result = invoke_fetch(runner, "--full")
+    assert result.exit_code == 0
+    assert events == ["timestamp", "download"]
+    first_path = snapshot_path(
+        serial_number=0,
+        last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
+    )
+    second_path = snapshot_path(
+        serial_number=1,
+        last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
+    )
+    assert geo_package_store.has(first_path)
+    assert geo_package_store.has(second_path)
+    assert list(
+        geo_package_store.layer(second_path, SAMPLE_FEED_NAME)["name"],
+    ) == ["a-changed"]
+
+
+@pytest.mark.usefixtures("fetch_setup")
+def test_fetch_full_writes_no_new_file_when_nothing_changed(
+    runner: click.testing.CliRunner,
+    geo_package_store: GeoPackageStore,
+    fetch_stubs: FetchStubs,
+) -> None:
+    full = wgs84_feature_set([
+        (1, "a", 1.0, 2.0),
+        (2, "b", 3.0, 4.0),
+    ])
+    layer_stub = SequenceFeatureLayerStub(
+        url=SAMPLE_FEED_URL,
+        gis=object(),
+        feature_sets=[full, full],
+    )
+    fetch_stubs.feature_layers(lambda _url, _gis: layer_stub)
+    fetch_stubs.feeds(
+        FeedStub(
+            name=SAMPLE_FEED_NAME,
+            url=SAMPLE_FEED_URL,
+            last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
+        ),
+    )
+    assert invoke_fetch(runner).exit_code == 0
+    result = invoke_fetch(runner, "--full")
+    assert result.exit_code == 0
+    assert geo_package_store.has(
+        snapshot_path(
+            serial_number=0,
+            last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
+        ),
+    )
+    assert not geo_package_store.has(
+        snapshot_path(
+            serial_number=1,
+            last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
+        ),
+    )
+
+
+@pytest.mark.usefixtures("fetch_setup")
 def test_fetch_reindexes_fire_sources_after_successful_fetch(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
@@ -1295,6 +1434,7 @@ def test_full_pipeline_defaults_to_current_year_directory(
     result = runner.invoke(peri_scribe.main.cli, ["full-pipeline"])
     assert result.exit_code == 0
     year_directory = BASE_DIRECTORY / "data" / "2026"
+    assert stubs.fetch_calls == [(BASE_DIRECTORY, 2026, False)]
     assert stubs.ensure_boundary_calls == [None]
     assert stubs.history_calls == [year_directory]
     assert stubs.kmz_calls == [year_directory]
@@ -1331,12 +1471,35 @@ def test_full_pipeline_force_runs_remaining_steps_when_fetch_unchanged(
 
 
 @pytest.mark.usefixtures("current_year")
+def test_full_pipeline_full_fetches_every_feed_in_full(
+    runner: click.testing.CliRunner,
+    full_pipeline_stubs: typing.Callable[..., FullPipelineStubs],
+) -> None:
+    stubs = full_pipeline_stubs(changed=True)
+    result = runner.invoke(
+        peri_scribe.main.cli,
+        ["full-pipeline", "--full"],
+    )
+    assert result.exit_code == 0
+    year_directory = BASE_DIRECTORY / "data" / "2026"
+    assert stubs.fetch_calls == [(BASE_DIRECTORY, 2026, True)]
+    assert stubs.ensure_boundary_calls == [None]
+    assert stubs.history_calls == [year_directory]
+    assert stubs.kmz_calls == [year_directory]
+
+
+@pytest.mark.usefixtures("current_year")
 def test_full_pipeline_stops_when_fetch_fails(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
     full_pipeline_stubs: typing.Callable[..., FullPipelineStubs],
 ) -> None:
-    def fail() -> typing.Never:
+    def fail(
+        _base_directory: pathlib.Path,
+        *,
+        year: int,
+        full: bool = False,
+    ) -> typing.Never:
         message = "boom"
         raise SystemExit(message)
 
@@ -1405,3 +1568,244 @@ def test_cli_help_lists_full_pipeline(
     result = runner.invoke(peri_scribe.main.cli, ["--help"])
     assert result.exit_code == 0
     assert "full-pipeline" in result.output
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ValidateSourcesStubs:
+    """Recorded step calls for validate-sources tests."""
+
+    fetch_complete_calls: list[tuple[pathlib.Path, int]]
+    fetch_incremental_calls: list[tuple[pathlib.Path, int]]
+    validate_calls: list[pathlib.Path]
+    removal_calls: list[pathlib.Path]
+
+
+@pytest.fixture
+def validate_sources_stubs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> typing.Callable[
+    [tuple[peri_scribe.source_validation.FeedValidationResult, ...]],
+    ValidateSourcesStubs,
+]:
+    """Install step stubs for the validate-sources command.
+
+    Returns:
+        A callable taking the validation results to serve and returning the recorded
+        step calls.
+    """
+
+    def install(
+        results: tuple[peri_scribe.source_validation.FeedValidationResult, ...],
+    ) -> ValidateSourcesStubs:
+        stubs = ValidateSourcesStubs(
+            fetch_complete_calls=[],
+            fetch_incremental_calls=[],
+            validate_calls=[],
+            removal_calls=[],
+        )
+
+        def fetch_all_feeds_complete(
+            base_directory: pathlib.Path,
+            *,
+            year: int,
+        ) -> tuple[pathlib.Path, ...]:
+            stubs.fetch_complete_calls.append((base_directory, year))
+            return ()
+
+        def fetch_all_feeds(
+            base_directory: pathlib.Path,
+            *,
+            year: int,
+        ) -> peri_scribe.fetching.FetchResult:
+            stubs.fetch_incremental_calls.append((base_directory, year))
+            return peri_scribe.fetching.FetchResult(
+                snapshot_paths=(),
+                changed=False,
+            )
+
+        def validate_complete_sources(
+            year_directory: pathlib.Path,
+            feeds: object,
+        ) -> tuple[peri_scribe.source_validation.FeedValidationResult, ...]:
+            stubs.validate_calls.append(year_directory)
+            return results
+
+        monkeypatch.setattr(
+            peri_scribe.fetching,
+            "fetch_all_feeds_complete",
+            fetch_all_feeds_complete,
+        )
+        monkeypatch.setattr(
+            peri_scribe.fetching,
+            "fetch_all_feeds",
+            fetch_all_feeds,
+        )
+        monkeypatch.setattr(
+            peri_scribe.source_validation,
+            "validate_complete_sources",
+            validate_complete_sources,
+        )
+        monkeypatch.setattr(
+            peri_scribe.output,
+            "remove_directory_tree",
+            stubs.removal_calls.append,
+        )
+        return stubs
+
+    return install
+
+
+@pytest.fixture
+def validate_sources_setup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Silence log configuration so validate-sources logs can be captured."""
+    monkeypatch.setattr(
+        peri_scribe.output,
+        "configure_logging",
+        lambda log_level: log_level,
+    )
+
+
+@pytest.mark.usefixtures("current_year", "validate_sources_setup")
+def test_validate_sources_removes_complete_directory_when_clean(
+    runner: click.testing.CliRunner,
+    validate_sources_stubs: typing.Callable[..., ValidateSourcesStubs],
+) -> None:
+    stubs = validate_sources_stubs(())
+    result = runner.invoke(peri_scribe.main.cli, ["validate-sources"])
+    assert result.exit_code == 0
+    year_directory = BASE_DIRECTORY / "data" / "2026"
+    complete_directory = peri_scribe.snapshots.sources_complete_directory_path(
+        year_directory,
+    )
+    assert stubs.fetch_complete_calls == [(BASE_DIRECTORY, 2026)]
+    assert stubs.fetch_incremental_calls == [(BASE_DIRECTORY, 2026)]
+    assert stubs.validate_calls == [year_directory]
+    assert stubs.removal_calls == [complete_directory, complete_directory]
+
+
+@pytest.mark.usefixtures("current_year", "validate_sources_setup")
+def test_validate_sources_logs_summary_and_keeps_directory_with_problems(
+    runner: click.testing.CliRunner,
+    validate_sources_stubs: typing.Callable[..., ValidateSourcesStubs],
+) -> None:
+    problems = (
+        peri_scribe.source_validation.FeedValidationResult(
+            feed_name="Feed_0",
+            complete_feature_count=3,
+            missing_object_ids=frozenset({2}),
+            mismatched_object_ids=frozenset({3}),
+            columns_missing_from_stored=frozenset({"size"}),
+        ),
+    )
+    stubs = validate_sources_stubs(problems)
+    with structlog.testing.capture_logs() as captured:
+        result = runner.invoke(peri_scribe.main.cli, ["validate-sources"])
+    assert result.exit_code == 0
+    year_directory = BASE_DIRECTORY / "data" / "2026"
+    complete_directory = peri_scribe.snapshots.sources_complete_directory_path(
+        year_directory,
+    )
+    assert stubs.removal_calls == [complete_directory]
+    problem_events = [
+        event for event in captured if event["event"] == "Validation problems"
+    ]
+    assert len(problem_events) == 1
+    assert problem_events[0]["log_level"] == "error"
+    assert problem_events[0]["feed"] == "Feed_0"
+    assert problem_events[0]["complete_features"] == problems[0].complete_feature_count
+    assert problem_events[0]["missing_features"] == 1
+    assert problem_events[0]["mismatched_features"] == 1
+    assert problem_events[0]["columns_missing_from_stored"] == ["size"]
+    assert any(
+        event["event"] == "Validation found problems in 1 of 1 feeds"
+        and event["log_level"] == "error"
+        for event in captured
+    )
+
+
+@pytest.mark.usefixtures("current_year", "validate_sources_setup")
+def test_validate_sources_stops_when_complete_fetch_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+    validate_sources_stubs: typing.Callable[..., ValidateSourcesStubs],
+) -> None:
+    stubs = validate_sources_stubs(())
+
+    def fail(_base_directory: pathlib.Path, *, year: int) -> typing.Never:
+        message = "boom"
+        raise SystemExit(message)
+
+    monkeypatch.setattr(
+        peri_scribe.fetching,
+        "fetch_all_feeds_complete",
+        fail,
+    )
+    result = runner.invoke(peri_scribe.main.cli, ["validate-sources"])
+    assert result.exit_code == 1
+    assert "boom" in result.output
+    year_directory = BASE_DIRECTORY / "data" / "2026"
+    complete_directory = peri_scribe.snapshots.sources_complete_directory_path(
+        year_directory,
+    )
+    assert stubs.fetch_incremental_calls == []
+    assert stubs.validate_calls == []
+    assert stubs.removal_calls == [complete_directory]
+
+
+@pytest.mark.usefixtures("current_year", "validate_sources_setup")
+def test_validate_sources_stops_when_incremental_fetch_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+    validate_sources_stubs: typing.Callable[..., ValidateSourcesStubs],
+) -> None:
+    stubs = validate_sources_stubs(())
+
+    def fail(_base_directory: pathlib.Path, *, year: int) -> typing.Never:
+        message = "boom"
+        raise SystemExit(message)
+
+    monkeypatch.setattr(
+        peri_scribe.fetching,
+        "fetch_all_feeds",
+        fail,
+    )
+    result = runner.invoke(peri_scribe.main.cli, ["validate-sources"])
+    assert result.exit_code == 1
+    assert "boom" in result.output
+    year_directory = BASE_DIRECTORY / "data" / "2026"
+    complete_directory = peri_scribe.snapshots.sources_complete_directory_path(
+        year_directory,
+    )
+    assert stubs.fetch_complete_calls == [(BASE_DIRECTORY, 2026)]
+    assert stubs.validate_calls == []
+    assert stubs.removal_calls == [complete_directory]
+
+
+def test_validate_sources_help_names_current_year_default(
+    runner: click.testing.CliRunner,
+) -> None:
+    result = runner.invoke(peri_scribe.main.cli, ["validate-sources", "--help"])
+    assert result.exit_code == 0
+    assert (
+        f"{peri_scribe.output.DATA_DIRECTORY}/{datetime.date.today().year}"
+    ) in result.output
+    assert "data/<current year>" not in result.output
+
+
+def test_validate_sources_rejects_missing_directory(
+    runner: click.testing.CliRunner,
+) -> None:
+    result = runner.invoke(
+        peri_scribe.main.cli,
+        ["validate-sources", "no-such-directory"],
+    )
+    assert result.exit_code == CLICK_USAGE_ERROR_EXIT_CODE
+    assert "does not exist" in result.output
+
+
+def test_cli_help_lists_validate_sources(
+    runner: click.testing.CliRunner,
+) -> None:
+    result = runner.invoke(peri_scribe.main.cli, ["--help"])
+    assert result.exit_code == 0
+    assert "validate-sources" in result.output

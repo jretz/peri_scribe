@@ -100,6 +100,31 @@ def numeric_value(value: object) -> float | None:
     return None
 
 
+def geometries_describe_same_shape(
+    left: shapely.Geometry | None,
+    right: shapely.Geometry | None,
+) -> bool:
+    """Return whether two geometries describe the same shape.
+
+    Shapes are compared topologically rather than byte-for-byte, so a source
+    re-serializing an unchanged geometry (different vertex order, ring orientation,
+    or ring type) still counts as the same shape. None and empty geometries each
+    count as equal to themselves.
+
+    Args:
+        left: One geometry, or None.
+        right: The other geometry, or None.
+
+    Returns:
+        True when the geometries are the same shape, or when both are None or empty.
+    """
+    if left is None or right is None:
+        return left is None and right is None
+    if left.is_empty or right.is_empty:
+        return left.is_empty and right.is_empty
+    return left.equals(right)
+
+
 def normalize_identifier(value: object) -> str | None:
     """Normalize a raw identifier value, or return None when it is missing.
 

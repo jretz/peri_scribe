@@ -269,6 +269,37 @@ def test_sources_directory_path_places_sources_under_year() -> None:
     ) == pathlib.Path("/data/2026/sources")
 
 
+def test_sources_complete_directory_path_places_complete_under_year() -> None:
+    assert peri_scribe.snapshots.sources_complete_directory_path(
+        pathlib.Path("/data/2026"),
+    ) == pathlib.Path("/data/2026/sources-complete")
+
+
+def test_sources_complete_geopackage_path_places_file_in_complete_directory() -> None:
+    assert peri_scribe.snapshots.sources_complete_geopackage_path(
+        pathlib.Path("/data/2026"),
+        "CA_Perimeters_NIFC_FIRIS_public_view_0",
+    ) == pathlib.Path(
+        "/data/2026/sources-complete/CA_Perimeters_NIFC_FIRIS_public_view_0.gpkg",
+    )
+
+
+def test_year_for_year_directory_returns_directory_name_as_year() -> None:
+    expected_year = 2026
+    assert (
+        peri_scribe.snapshots.year_for_year_directory(
+            pathlib.Path(f"/base/data/{expected_year}"),
+        )
+        == expected_year
+    )
+
+
+def test_base_directory_for_year_directory_returns_parent_of_data_directory() -> None:
+    assert peri_scribe.snapshots.base_directory_for_year_directory(
+        pathlib.Path("/base/data/2026"),
+    ) == pathlib.Path("/base")
+
+
 def test_fire_index_path_places_index_in_sources_directory() -> None:
     assert peri_scribe.snapshots.fire_index_path(
         pathlib.Path("/data/2026"),

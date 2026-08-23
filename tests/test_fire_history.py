@@ -232,6 +232,35 @@ def test_effective_time_falls_back_to_current_date_before_snapshot_time() -> Non
     assert peri_scribe.perimeter_versions.effective_time(observed) == current_date
 
 
+def test_effective_time_prefers_current_date_over_modified_time() -> None:
+    current_date = utc(2026, 8, 16, 0, 10)
+    modified_time = utc(2026, 8, 17, 23, 18)
+    observed = observation(
+        attributes={"poly_DateCurrent": current_date, "EditDate": modified_time},
+    )
+    assert peri_scribe.perimeter_versions.effective_time(observed) == current_date
+
+
+def test_effective_time_falls_back_to_firis_modified_time() -> None:
+    modified_time = utc(2026, 8, 17, 23, 18)
+    snapshot_time = utc(2026, 8, 23, 3, 17)
+    observed = observation(
+        snapshot_time=snapshot_time,
+        attributes={"EditDate": modified_time},
+    )
+    assert peri_scribe.perimeter_versions.effective_time(observed) == modified_time
+
+
+def test_effective_time_falls_back_to_wfigs_modified_time() -> None:
+    modified_time = utc(2026, 8, 17, 23, 18)
+    snapshot_time = utc(2026, 8, 23, 3, 17)
+    observed = observation(
+        snapshot_time=snapshot_time,
+        attributes={"attr_ModifiedOnDateTime_dt": modified_time},
+    )
+    assert peri_scribe.perimeter_versions.effective_time(observed) == modified_time
+
+
 def test_effective_time_falls_back_to_snapshot_time() -> None:
     snapshot_time = utc(2026, 8, 17, 1, 42)
     observed = observation(snapshot_time=snapshot_time)
@@ -929,7 +958,8 @@ def test_history_rows_for_fire_builds_perimeter_and_point_rows() -> None:
     point_path = (
         sources_directory
         / WFIGS_LOCATION_FEED_NAME
-        / "000___" / "000000,lastEdit=1786955463975.gpkg"
+        / "000___"
+        / "000000,lastEdit=1786955463975.gpkg"
     )
     perimeter_row_record = peri_scribe.geo_package.FireRowRecord(
         record=tests.factories.fire_record(

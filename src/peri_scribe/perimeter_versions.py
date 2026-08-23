@@ -108,9 +108,9 @@ def last_edit_time_from(path: pathlib.Path) -> datetime.datetime | None:
         The last-edit time as a UTC datetime, or None when it cannot be read.
     """
     try:
-        last_edit_timestamp = (
-            peri_scribe.snapshots.SourceFile.from_path(path).last_edit_timestamp
-        )
+        last_edit_timestamp = peri_scribe.snapshots.SourceFile.from_path(
+            path
+        ).last_edit_timestamp
     except ValueError:
         return None
     return datetime.datetime.fromtimestamp(
@@ -143,9 +143,7 @@ def source_observation_from_row(
         geometry=row.record.geometry,
         observation_time=row.record.observed_at,
         snapshot_time=last_edit_time_from(path),
-        serial_number=(
-            peri_scribe.snapshots.SourceFile.from_path(path).serial_number
-        ),
+        serial_number=(peri_scribe.snapshots.SourceFile.from_path(path).serial_number),
         object_id=row.object_id,
         source_file=str(path.relative_to(sources_directory)),
         attributes=row.attributes,
@@ -155,20 +153,22 @@ def source_observation_from_row(
 def effective_time(
     observation: SourceObservation,
 ) -> datetime.datetime | None:
-    """Return the observation's mapping time, falling back to its current date.
+    """Return the observation's mapping time, falling back to its own edit time.
 
     The mapping time is the feed's observation column when present. A perimeter whose
     observation column is empty falls back to the row's current-date column
-    (``poly_DateCurrent``) before the snapshot's last-edit timestamp, so a WFIGS
-    perimeter without a polygon date still carries the date its source reports it is
-    current for. Point observations have no current-date column and fall straight
-    through to the snapshot time.
+    (``poly_DateCurrent``) and then to the row's modified-time column, so a perimeter
+    without a polygon date still carries the date its source reports it is current
+    for. The snapshot's last-edit timestamp is the last resort: it describes when the
+    layer last changed, not when the row was mapped, and dating a dateless perimeter
+    by it can make a stale re-published row look like the newest mapping.
 
     Args:
         observation: The observation to time.
 
     Returns:
-        The mapping time, the current date, or the snapshot time, in that order.
+        The mapping time, the current date, the row's modified time, or the snapshot
+        time, in that order.
     """
     if observation.observation_time is not None:
         return observation.observation_time
@@ -178,6 +178,13 @@ def effective_time(
     )
     if current_date is not None:
         return current_date
+    modified_time = peri_scribe.history_attributes.datetime_attribute(
+        observation.attributes,
+        "EditDate",
+        "attr_ModifiedOnDateTime_dt",
+    )
+    if modified_time is not None:
+        return modified_time
     return observation.snapshot_time
 
 
@@ -210,11 +217,7 @@ def geometries_are_equal(
     Returns:
         True when the geometries are equal, or when both are None or empty.
     """
-    if left is None or right is None:
-        return left is None and right is None
-    if left.is_empty or right.is_empty:
-        return left.is_empty and right.is_empty
-    return left.wkb == right.wkb
+    return peri_scribe.geo_package.geometries_describe_same_shape(left, right)
 
 
 def collapse_identical_consecutive_perimeters(

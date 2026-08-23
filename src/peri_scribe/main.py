@@ -17,6 +17,7 @@ import peri_scribe.kml
 import peri_scribe.kml_template
 import peri_scribe.output
 import peri_scribe.snapshots
+import peri_scribe.source_validation
 
 
 logger = structlog.get_logger()
@@ -54,9 +55,17 @@ def cli(log_level: str) -> None:
 
 
 @cli.command()
-def fetch() -> None:
+@click.option(
+    "--full",
+    is_flag=True,
+    help=(
+        "Fetch every feed in full, storing only features that are new or changed "
+        "since the stored snapshots."
+    ),
+)
+def fetch(*, full: bool) -> None:
     """Fetch each configured feed into a GeoPackage."""
-    peri_scribe.fetching.fetch_all_feeds()
+    peri_scribe.fetching.fetch_all_feeds(full=full)
 
 
 @cli.command()
@@ -222,7 +231,9 @@ def create_kml(year_directory: pathlib.Path | None = None) -> None:
         "When the fetch changed something, the administrative boundaries are "
         "ensured and the full and differential geography history and KML for "
         "YEAR_DIRECTORY are built. --force runs the later steps even when the "
-        "fetch changed nothing; an error in any step stops the pipeline. "
+        "fetch changed nothing; --full fetches every feed in full (storing only "
+        "new or changed features), catching source edits the incremental fetch "
+        "would miss; an error in any step stops the pipeline. "
         f"{year_directory_default_help()}"
     ),
 )
@@ -240,15 +251,25 @@ def create_kml(year_directory: pathlib.Path | None = None) -> None:
     is_flag=True,
     help="Run the later steps even when the fetch changed nothing.",
 )
+@click.option(
+    "--full",
+    is_flag=True,
+    help="Fetch every feed in full instead of only changed features.",
+)
 def full_pipeline(
     year_directory: pathlib.Path | None = None,
     *,
     force: bool = False,
+    full: bool = False,
 ) -> None:
     """Check for new source data and use it to generate new maps."""
     if year_directory is None:
         year_directory = default_year_directory()
-    result = peri_scribe.fetching.fetch_all_feeds()
+    result = peri_scribe.fetching.fetch_all_feeds(
+        peri_scribe.snapshots.base_directory_for_year_directory(year_directory),
+        year=peri_scribe.snapshots.year_for_year_directory(year_directory),
+        full=full,
+    )
     if not result.changed and not force:
         logger.info("Nothing changed; skipping remaining pipeline steps")
         return
@@ -257,3 +278,63 @@ def full_pipeline(
         year_directory,
     )
     peri_scribe.kml.create_kmz(year_directory)
+
+
+@cli.command(
+    help=(
+        "Validate that YEAR_DIRECTORY/sources covers a complete snapshot of every "
+        "feed.\n\n"
+        "Fetches every feed in full into YEAR_DIRECTORY/sources-complete, then runs "
+        "the incremental fetch so the stored sources reflect the same state, and "
+        "compares the two. Problems are logged in a summary and the command still "
+        "exits successfully, leaving sources-complete in place for inspection; when "
+        "no problems are found the directory is removed. "
+        f"{year_directory_default_help()}"
+    ),
+)
+@click.argument(
+    "year_directory",
+    type=click.Path(
+        path_type=pathlib.Path,
+        exists=True,
+        file_okay=False,
+    ),
+    required=False,
+)
+def validate_sources(year_directory: pathlib.Path | None = None) -> None:
+    """Check that the stored sources cover a complete snapshot of every feed."""
+    if year_directory is None:
+        year_directory = default_year_directory()
+    base_directory = peri_scribe.snapshots.base_directory_for_year_directory(
+        year_directory,
+    )
+    year = peri_scribe.snapshots.year_for_year_directory(year_directory)
+    complete_directory = peri_scribe.snapshots.sources_complete_directory_path(
+        year_directory,
+    )
+    peri_scribe.output.remove_directory_tree(complete_directory)
+    peri_scribe.fetching.fetch_all_feeds_complete(base_directory, year=year)
+    peri_scribe.fetching.fetch_all_feeds(base_directory, year=year)
+    results = peri_scribe.source_validation.validate_complete_sources(
+        year_directory,
+        peri_scribe.feeds.FEEDS,
+    )
+    problem_results = [result for result in results if result.has_problems]
+    if not problem_results:
+        peri_scribe.output.remove_directory_tree(complete_directory)
+        logger.info("Validated sources; no problems found")
+        return
+    for result in problem_results:
+        logger.error(
+            "Validation problems",
+            feed=result.feed_name,
+            complete_features=result.complete_feature_count,
+            missing_features=len(result.missing_object_ids),
+            mismatched_features=len(result.mismatched_object_ids),
+            columns_missing_from_stored=sorted(result.columns_missing_from_stored),
+        )
+    logger.error(
+        "Validation found problems in %d of %d feeds",
+        len(problem_results),
+        len(results),
+    )

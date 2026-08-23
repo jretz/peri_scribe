@@ -594,6 +594,59 @@ def test_numeric_value_returns_none_for_other_types() -> None:
     assert peri_scribe.geo_package.numeric_value({"a": 1}) is None
 
 
+def test_geometries_describe_same_shape_accepts_re_serialized_geometry() -> None:
+    ring = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]
+    reversed_ring = [(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0)]
+    assert peri_scribe.geo_package.geometries_describe_same_shape(
+        shapely.geometry.Polygon(ring),
+        shapely.geometry.Polygon(reversed_ring),
+    )
+
+
+def test_geometries_describe_same_shape_accepts_single_part_multi_polygon() -> None:
+    polygon = shapely.geometry.Polygon(
+        [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
+    )
+    assert peri_scribe.geo_package.geometries_describe_same_shape(
+        polygon,
+        shapely.geometry.MultiPolygon([polygon]),
+    )
+
+
+def test_geometries_describe_same_shape_rejects_different_shapes() -> None:
+    first = shapely.geometry.Polygon(
+        [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
+    )
+    different = shapely.geometry.Polygon(
+        [(0.0, 0.0), (2.0, 0.0), (2.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
+    )
+    assert not peri_scribe.geo_package.geometries_describe_same_shape(
+        first,
+        different,
+    )
+
+
+def test_geometries_describe_same_shape_treats_missing_geometries() -> None:
+    assert peri_scribe.geo_package.geometries_describe_same_shape(None, None)
+    assert not peri_scribe.geo_package.geometries_describe_same_shape(
+        None,
+        shapely.geometry.Point(0, 0),
+    )
+    assert not peri_scribe.geo_package.geometries_describe_same_shape(
+        shapely.geometry.Point(0, 0),
+        None,
+    )
+
+
+def test_geometries_describe_same_shape_treats_empty_geometries() -> None:
+    empty = shapely.geometry.Polygon()
+    assert peri_scribe.geo_package.geometries_describe_same_shape(empty, empty)
+    assert not peri_scribe.geo_package.geometries_describe_same_shape(
+        empty,
+        shapely.geometry.Point(0, 0),
+    )
+
+
 def test_read_layer_dataframe_reads_feed_layer(
     monkeypatch: pytest.MonkeyPatch,
     feed: peri_scribe.feed_types.Feed,

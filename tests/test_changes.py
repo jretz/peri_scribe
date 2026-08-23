@@ -8,16 +8,14 @@ import typing
 
 import geopandas
 import pyproj
+import pytest
 import shapely.geometry
 
 import peri_scribe.changes
 import peri_scribe.geo_package
+import peri_scribe.models
 import peri_scribe.snapshots
 from tests.factories import change_dataframe, change_feed
-
-
-if typing.TYPE_CHECKING:
-    import pytest
 
 
 UTC = datetime.UTC
@@ -175,6 +173,179 @@ def test_latest_modified_datetime_returns_none_when_no_values_parse() -> None:
     assert peri_scribe.changes.latest_modified_datetime(existing, feed) is None
 
 
+def test_stored_object_ids_returns_empty_without_existing() -> None:
+    assert peri_scribe.changes.stored_object_ids(None) == set()
+
+
+def test_stored_object_ids_returns_empty_without_object_id_column() -> None:
+    existing = typing.cast(
+        "geopandas.GeoDataFrame",
+        change_dataframe([SAMPLE_FEATURE_ROW]).drop(columns=["OBJECTID"]),
+    )
+    assert peri_scribe.changes.stored_object_ids(existing) == set()
+
+
+def test_stored_object_ids_returns_object_ids() -> None:
+    existing = change_dataframe([SAMPLE_FEATURE_ROW, (2, "b", (1.0, 1.0))])
+    assert peri_scribe.changes.stored_object_ids(existing) == {1, 2}
+
+
+def status_dataframe(
+    rows: list[tuple[int, object, tuple[float, float]]],
+) -> geopandas.GeoDataFrame:
+    """Return a GeoDataFrame with OBJECTID and status columns.
+
+    Args:
+        rows: The OBJECTID, raw status value, and coordinates of each feature.
+
+    Returns:
+        The GeoDataFrame.
+    """
+    return geopandas.GeoDataFrame(
+        {
+            "OBJECTID": [row[0] for row in rows],
+            "status": [row[1] for row in rows],
+        },
+        geometry=[shapely.geometry.Point(row[2]) for row in rows],
+        crs=pyproj.CRS.from_epsg(4326),
+    )
+
+
+def test_sql_literal_quotes_text() -> None:
+    assert peri_scribe.changes.sql_literal("Inactive") == "'Inactive'"
+
+
+def test_sql_literal_formats_booleans() -> None:
+    assert peri_scribe.changes.sql_literal(value=True) == "true"
+    assert peri_scribe.changes.sql_literal(value=False) == "false"
+
+
+def test_sql_literal_formats_numbers() -> None:
+    assert peri_scribe.changes.sql_literal(0) == "0"
+    assert peri_scribe.changes.sql_literal(1.0) == "1"
+
+
+def test_sql_literal_raises_for_unsupported_type() -> None:
+    with pytest.raises(ValueError, match="Unsupported SQL literal"):
+        peri_scribe.changes.sql_literal(object())
+
+
+def test_stored_status_object_ids_returns_empty_without_existing() -> None:
+    feed = change_feed()
+    assert (
+        peri_scribe.changes.stored_status_object_ids(
+            None,
+            feed,
+            peri_scribe.models.FireStatus.ACTIVE,
+        )
+        == []
+    )
+
+
+def test_stored_status_object_ids_returns_empty_without_status_column() -> None:
+    feed = change_feed()
+    existing = change_dataframe([SAMPLE_FEATURE_ROW])
+    assert (
+        peri_scribe.changes.stored_status_object_ids(
+            existing,
+            feed,
+            peri_scribe.models.FireStatus.ACTIVE,
+        )
+        == []
+    )
+
+
+def test_stored_status_object_ids_returns_empty_without_object_id_column() -> None:
+    feed = change_feed()
+    existing = status_dataframe([(1, "Active", (0.0, 0.0))]).drop(
+        columns=["OBJECTID"],
+    )
+    assert (
+        peri_scribe.changes.stored_status_object_ids(
+            typing.cast("geopandas.GeoDataFrame", existing),
+            feed,
+            peri_scribe.models.FireStatus.ACTIVE,
+        )
+        == []
+    )
+
+
+def test_stored_status_object_ids_selects_status_and_ignores_unknown() -> None:
+    feed = change_feed()
+    existing = status_dataframe([
+        (1, "Active", (0.0, 0.0)),
+        (2, "Inactive", (1.0, 1.0)),
+        (3, "Active", (2.0, 2.0)),
+        (4, "unknown-status", (3.0, 3.0)),
+    ])
+    assert peri_scribe.changes.stored_status_object_ids(
+        existing,
+        feed,
+        peri_scribe.models.FireStatus.ACTIVE,
+    ) == [1, 3]
+    assert peri_scribe.changes.stored_status_object_ids(
+        existing,
+        feed,
+        peri_scribe.models.FireStatus.INACTIVE,
+    ) == [2]
+
+
+def test_stored_status_literals_returns_empty_without_existing() -> None:
+    feed = change_feed()
+    assert (
+        peri_scribe.changes.stored_status_literals(
+            None,
+            feed,
+            peri_scribe.models.FireStatus.INACTIVE,
+        )
+        == ()
+    )
+
+
+def test_stored_status_literals_returns_empty_without_status_column() -> None:
+    feed = change_feed()
+    existing = change_dataframe([SAMPLE_FEATURE_ROW])
+    assert (
+        peri_scribe.changes.stored_status_literals(
+            existing,
+            feed,
+            peri_scribe.models.FireStatus.INACTIVE,
+        )
+        == ()
+    )
+
+
+def test_stored_status_literals_distinct_in_first_seen_order() -> None:
+    feed = change_feed()
+    existing = status_dataframe([
+        (1, "Inactive", (0.0, 0.0)),
+        (2, "Active", (1.0, 1.0)),
+        (3, "Inactive", (2.0, 2.0)),
+        (4, "0", (3.0, 3.0)),
+        (5, 0, (4.0, 4.0)),
+        (6, False, (5.0, 5.0)),
+        (7, "unknown-status", (6.0, 6.0)),
+    ])
+    assert peri_scribe.changes.stored_status_literals(
+        existing,
+        feed,
+        peri_scribe.models.FireStatus.INACTIVE,
+    ) == ("'Inactive'", "'0'", "0", "false")
+
+
+def test_stored_status_literals_selects_active_values() -> None:
+    feed = change_feed()
+    existing = status_dataframe([
+        (1, "Active", (0.0, 0.0)),
+        (2, 1, (1.0, 1.0)),
+    ])
+    assert peri_scribe.changes.stored_status_literals(
+        existing,
+        feed,
+        peri_scribe.models.FireStatus.ACTIVE,
+    ) == ("'Active'", "1")
+
+
 def test_incremental_cutoff_returns_epoch_without_existing() -> None:
     feed = change_feed()
     assert peri_scribe.changes.incremental_cutoff(
@@ -195,7 +366,16 @@ def test_incremental_cutoff_subtracts_overlap() -> None:
 def test_where_clause_for_formats_cutoff() -> None:
     cutoff = datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
     result = peri_scribe.changes.where_clause_for("ModifiedOnDateTime_dt", cutoff)
-    assert result == "ModifiedOnDateTime_dt >= timestamp '2026-01-01T00:00:00Z'"
+    assert result == (
+        "ModifiedOnDateTime_dt >= timestamp '2026-01-01T00:00:00Z' "
+        "OR ModifiedOnDateTime_dt IS NULL"
+    )
+
+
+def test_where_clause_for_includes_null_modified_timestamps() -> None:
+    cutoff = datetime.datetime(2026, 1, 1, 0, 0, 0, tzinfo=UTC)
+    result = peri_scribe.changes.where_clause_for("EditDate", cutoff)
+    assert "EditDate IS NULL" in result
 
 
 def test_normalized_attribute_value_returns_none_for_none() -> None:
@@ -228,17 +408,56 @@ def test_attribute_columns_excludes_geometry() -> None:
     ]
 
 
-def test_feature_signatures_keys_by_object_id() -> None:
-    dataframe = change_dataframe(
-        [SAMPLE_FEATURE_ROW, (2, "b", (1.0, 1.0))],
-    )
-    signatures = peri_scribe.changes.feature_signatures(
-        dataframe,
+def test_features_are_identical_returns_true_for_matching_rows() -> None:
+    geometry = shapely.geometry.Point(0, 0)
+    values = {"OBJECTID": 1, "name": "a"}
+    existing = {"OBJECTID": 1, "name": "a"}
+    assert peri_scribe.changes.features_are_identical(
+        values,
+        geometry,
+        existing,
+        geometry,
         ["OBJECTID", "name"],
     )
-    assert set(signatures) == {1, 2}
-    assert signatures[1][0] == (1, "a")
-    assert signatures[1][1] == shapely.geometry.Point(0.0, 0.0).wkb
+
+
+def test_features_are_identical_returns_false_for_different_attributes() -> None:
+    geometry = shapely.geometry.Point(0, 0)
+    values = {"OBJECTID": 1, "name": "a"}
+    existing = {"OBJECTID": 1, "name": "changed"}
+    assert not peri_scribe.changes.features_are_identical(
+        values,
+        geometry,
+        existing,
+        geometry,
+        ["OBJECTID", "name"],
+    )
+
+
+def test_features_are_identical_returns_false_for_different_geometry() -> None:
+    values = {"OBJECTID": 1, "name": "a"}
+    existing = {"OBJECTID": 1, "name": "a"}
+    assert not peri_scribe.changes.features_are_identical(
+        values,
+        shapely.geometry.Point(0, 0),
+        existing,
+        shapely.geometry.Point(1, 1),
+        ["OBJECTID", "name"],
+    )
+
+
+def test_features_are_identical_accepts_re_serialized_geometry() -> None:
+    ring = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]
+    reversed_ring = [(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0)]
+    values = {"OBJECTID": 1, "name": "a"}
+    existing = {"OBJECTID": 1, "name": "a"}
+    assert peri_scribe.changes.features_are_identical(
+        values,
+        shapely.geometry.Polygon(ring),
+        existing,
+        shapely.geometry.Polygon(reversed_ring),
+        ["OBJECTID", "name"],
+    )
 
 
 def test_drop_features_already_present_returns_new_when_no_existing() -> None:
@@ -266,6 +485,54 @@ def test_drop_features_already_present_keeps_changed_feature() -> None:
     existing = change_dataframe([SAMPLE_FEATURE_ROW])
     result = peri_scribe.changes.drop_features_already_present(new, existing)
     assert list(result["name"]) == ["changed"]
+
+
+def polygon_feature_dataframe(
+    rows: list[tuple[int, str, list[tuple[float, float]]]],
+) -> geopandas.GeoDataFrame:
+    """Return a GeoDataFrame of polygon features for the given rows.
+
+    Args:
+        rows: The OBJECTID, name, and exterior ring of each feature.
+
+    Returns:
+        The GeoDataFrame.
+    """
+    return geopandas.GeoDataFrame(
+        {
+            "OBJECTID": [row[0] for row in rows],
+            "name": [row[1] for row in rows],
+        },
+        geometry=[shapely.geometry.Polygon(row[2]) for row in rows],
+        crs=pyproj.CRS.from_epsg(4326),
+    )
+
+
+def test_drop_features_already_present_drops_re_serialized_feature() -> None:
+    ring = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]
+    reversed_ring = [(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0)]
+    new = polygon_feature_dataframe([(1, "a", reversed_ring)])
+    existing = polygon_feature_dataframe([(1, "a", ring)])
+    result = peri_scribe.changes.drop_features_already_present(new, existing)
+    assert result.empty
+
+
+def test_drop_features_already_present_keeps_different_shape() -> None:
+    ring = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]
+    different = [(0.0, 0.0), (2.0, 0.0), (2.0, 1.0), (0.0, 1.0), (0.0, 0.0)]
+    new = polygon_feature_dataframe([(1, "a", different)])
+    existing = polygon_feature_dataframe([(1, "a", ring)])
+    result = peri_scribe.changes.drop_features_already_present(new, existing)
+    assert list(result["OBJECTID"]) == [1]
+
+
+def test_drop_features_already_present_handles_renamed_geometry_column() -> None:
+    ring = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]
+    new = polygon_feature_dataframe([(1, "a", ring)]).rename_geometry("geom")
+    assert new is not None
+    existing = polygon_feature_dataframe([(1, "a", ring)])
+    result = peri_scribe.changes.drop_features_already_present(new, existing)
+    assert result.empty
 
 
 def test_latest_snapshot_path_returns_none_without_files() -> None:

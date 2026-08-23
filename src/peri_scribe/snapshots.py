@@ -10,6 +10,7 @@ import peri_scribe.output
 
 
 SOURCES_DIRECTORY_NAME = "sources"
+SOURCES_COMPLETE_DIRECTORY_NAME = "sources-complete"
 FIRE_INDEX_FILENAME = "fires.json"
 
 # The prefix that turns a source layer's ``editingInfo.lastEditDate`` value into the
@@ -73,6 +74,8 @@ class SourceFile:
 def next_serial_number(
     existing: typing.Iterable[SourceFile],
     last_edit_timestamp: int,
+    *,
+    reuse_same_timestamp: bool = True,
 ) -> int:
     """Return the serial number to use for a snapshot named *last_edit_timestamp*.
 
@@ -80,21 +83,29 @@ def next_serial_number(
     and otherwise is one greater than the largest serial number among *existing*, so the
     first snapshot for a source is numbered 0.
 
+    A full fetch writes a new snapshot even when the observed timestamp is unchanged,
+    so its caller passes *reuse_same_timestamp* as false to keep the new snapshot from
+    overwriting the existing snapshot for the same timestamp.
+
     Args:
         existing: The source's existing source files.
         last_edit_timestamp: The last-edit timestamp to name the new snapshot with.
+        reuse_same_timestamp: Whether to reuse the serial number of an existing
+            snapshot for the same timestamp.
 
     Returns:
         The serial number for the new snapshot.
     """
-    serial_numbers = [source_file.serial_number for source_file in existing]
-    matching_serial_numbers = [
-        source_file.serial_number
-        for source_file in existing
-        if source_file.last_edit_timestamp == last_edit_timestamp
-    ]
-    if matching_serial_numbers:
-        return max(matching_serial_numbers)
+    source_files = list(existing)
+    if reuse_same_timestamp:
+        matching_serial_numbers = [
+            source_file.serial_number
+            for source_file in source_files
+            if source_file.last_edit_timestamp == last_edit_timestamp
+        ]
+        if matching_serial_numbers:
+            return max(matching_serial_numbers)
+    serial_numbers = [source_file.serial_number for source_file in source_files]
     return max(serial_numbers, default=-1) + 1
 
 
@@ -239,6 +250,35 @@ def year_directory_path(base_dir: pathlib.Path, year: int) -> pathlib.Path:
     return base_dir / peri_scribe.output.DATA_DIRECTORY / str(year)
 
 
+def year_for_year_directory(year_directory: pathlib.Path) -> int:
+    """Return the year number that *year_directory* holds data for.
+
+    Args:
+        year_directory: The year directory, named for the year it holds data for.
+
+    Returns:
+        The year number.
+    """
+    return int(year_directory.name)
+
+
+def base_directory_for_year_directory(
+    year_directory: pathlib.Path,
+) -> pathlib.Path:
+    """Return the base directory that *year_directory* sits under.
+
+    A year directory is stored as ``base_directory/data/{year}``, so the base
+    directory is two levels above it.
+
+    Args:
+        year_directory: The year directory.
+
+    Returns:
+        The base directory.
+    """
+    return year_directory.parent.parent
+
+
 def sources_directory_path(year_directory: pathlib.Path) -> pathlib.Path:
     """Return the sources directory inside *year_directory*.
 
@@ -249,6 +289,41 @@ def sources_directory_path(year_directory: pathlib.Path) -> pathlib.Path:
         The path to the year's sources directory.
     """
     return year_directory / SOURCES_DIRECTORY_NAME
+
+
+def sources_complete_directory_path(
+    year_directory: pathlib.Path,
+) -> pathlib.Path:
+    """Return the sources-complete directory inside *year_directory*.
+
+    The directory holds one full snapshot per source, fetched fresh for validation
+    against the incremental snapshots in the sources directory.
+
+    Args:
+        year_directory: The year directory that holds the ``sources-complete``
+            directory.
+
+    Returns:
+        The path to the year's sources-complete directory.
+    """
+    return year_directory / SOURCES_COMPLETE_DIRECTORY_NAME
+
+
+def sources_complete_geopackage_path(
+    year_directory: pathlib.Path,
+    source_name: str,
+) -> pathlib.Path:
+    """Return the path where *source_name*'s complete snapshot is stored.
+
+    Args:
+        year_directory: The year directory that holds the ``sources-complete``
+            directory.
+        source_name: The name of the source the snapshot came from.
+
+    Returns:
+        The path to the source's complete GeoPackage file.
+    """
+    return sources_complete_directory_path(year_directory) / f"{source_name}.gpkg"
 
 
 def fire_index_path(year_directory: pathlib.Path) -> pathlib.Path:

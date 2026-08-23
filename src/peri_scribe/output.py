@@ -2,6 +2,7 @@
 
 import json
 import pathlib
+import shutil
 from typing import TYPE_CHECKING
 
 import structlog
@@ -38,6 +39,16 @@ def write_geopackage(
             features=len(layer_data.dataframe),
         )
         mode = "a"
+
+
+def remove_directory_tree(path: pathlib.Path) -> None:
+    """Remove *path* and everything under it, when it is a directory.
+
+    Args:
+        path: The directory tree to remove.
+    """
+    if path.is_dir():
+        shutil.rmtree(path)
 
 
 def write_fire_index(

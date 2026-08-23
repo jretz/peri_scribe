@@ -117,6 +117,131 @@ def existing_features(
     ]
 
 
+def stored_object_ids(
+    existing: geopandas.GeoDataFrame | None,
+) -> set[int]:
+    """Return the OBJECTIDs already stored, or an empty set when unknown.
+
+    The set is the layer's stored identities: an OBJECTID present in the layer but
+    not in this set belongs to a feature the store has never captured, so the caller
+    can fetch it even when the source never populated its modified timestamp.
+
+    Args:
+        existing: The latest stored feature per OBJECTID, or None.
+
+    Returns:
+        The stored OBJECTIDs, or an empty set when *existing* has no OBJECTID column.
+    """
+    if existing is None or peri_scribe.models.OBJECT_ID_COLUMN_NAME not in existing:
+        return set()
+    return {
+        int(object_id)
+        for object_id in existing[peri_scribe.models.OBJECT_ID_COLUMN_NAME]
+    }
+
+
+def sql_literal(value: object) -> str:
+    """Return *value* formatted as a SQL literal for an ArcGIS where clause.
+
+    Text values are single-quoted and numbers and booleans are returned unquoted.
+
+    Args:
+        value: A raw attribute value.
+
+    Returns:
+        The SQL literal.
+
+    Raises:
+        ValueError: If *value* is not text, a number, or a boolean.
+    """
+    if isinstance(value, str):
+        return f"'{value}'"
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(int(value))
+    message = f"Unsupported SQL literal type: {type(value).__name__}"
+    raise ValueError(message)
+
+
+def stored_status_object_ids(
+    existing: geopandas.GeoDataFrame | None,
+    feed: peri_scribe.feed_types.Feed,
+    status: peri_scribe.models.FireStatus,
+) -> list[int]:
+    """Return the stored OBJECTIDs whose latest stored status is *status*.
+
+    Each row's raw status value is classified the same way the fire index does, so
+    callers can build queries that watch for status changes. Rows whose status value
+    is missing or unrecognized are ignored.
+
+    Args:
+        existing: The latest stored feature per OBJECTID, or None.
+        feed: The feed providing the status column.
+        status: The status to select.
+
+    Returns:
+        The matching OBJECTIDs, sorted.
+    """
+    if (
+        existing is None
+        or feed.status_column not in existing
+        or peri_scribe.models.OBJECT_ID_COLUMN_NAME not in existing
+    ):
+        return []
+    object_ids: list[int] = []
+    for object_id, value in zip(
+        existing[peri_scribe.models.OBJECT_ID_COLUMN_NAME],
+        existing[feed.status_column],
+        strict=True,
+    ):
+        try:
+            parsed = peri_scribe.geo_package.fire_status_from(value)
+        except ValueError:
+            continue
+        if parsed is status:
+            object_ids.append(int(object_id))
+    return sorted(object_ids)
+
+
+def stored_status_literals(
+    existing: geopandas.GeoDataFrame | None,
+    feed: peri_scribe.feed_types.Feed,
+    status: peri_scribe.models.FireStatus,
+) -> tuple[str, ...]:
+    """Return SQL literals for the feed's stored raw values of *status*.
+
+    The literals are the distinct raw status values already stored that classify as
+    *status*, formatted for a SQL ``IN`` clause. An empty tuple means the store has
+    never recorded the status, so callers should skip status-flip queries built from
+    these literals.
+
+    Args:
+        existing: The latest stored feature per OBJECTID, or None.
+        feed: The feed providing the status column.
+        status: The status whose raw values are returned.
+
+    Returns:
+        The distinct SQL literals, in the order first encountered.
+    """
+    if existing is None or feed.status_column not in existing:
+        return ()
+    literals: list[str] = []
+    seen: set[str] = set()
+    for value in existing[feed.status_column]:
+        try:
+            parsed = peri_scribe.geo_package.fire_status_from(value)
+        except ValueError:
+            continue
+        if parsed is not status:
+            continue
+        literal = sql_literal(value)
+        if literal not in seen:
+            seen.add(literal)
+            literals.append(literal)
+    return tuple(literals)
+
+
 def latest_modified_datetime(
     existing: geopandas.GeoDataFrame | None,
     feed: peri_scribe.feed_types.Feed,
@@ -169,7 +294,13 @@ def where_clause_for(
     modified_column: str,
     cutoff: datetime.datetime,
 ) -> str:
-    """Return a where clause selecting features modified at or after *cutoff*.
+    """Return a where clause selecting features changed since *cutoff*.
+
+    The clause selects features whose modified timestamp is at or after *cutoff*,
+    plus features with a missing modified timestamp. The latter are included because
+    a source may add or update features without populating the modified column, and a
+    plain ``>=`` comparison would silently skip them. The caller deduplicates identical
+    rows already stored, so re-fetching the null-timestamp features is safe.
 
     Args:
         modified_column: The feed's modified timestamp column.
@@ -179,7 +310,7 @@ def where_clause_for(
         The SQL where clause for an ArcGIS query.
     """
     iso = cutoff.astimezone(datetime.UTC).strftime("%Y-%m-%dT%H:%M:%S")
-    return f"{modified_column} >= timestamp '{iso}Z'"
+    return f"{modified_column} >= timestamp '{iso}Z' OR {modified_column} IS NULL"
 
 
 def normalized_attribute_value(value: object) -> object:
@@ -228,59 +359,40 @@ def attribute_columns(
     ]
 
 
-def feature_signature(
-    values: dict[str, object],
-    columns: list[str],
+def features_are_identical(
+    values: typing.Mapping[str, object],
     geometry: object,
-) -> tuple[tuple[object, ...], bytes | None]:
-    """Return the content signature of a single feature row.
-
-    The signature combines the row's normalized attribute values with the well-known
-    binary of its geometry, so two features are identical only when both their
-    attributes and their geometry match.
-
-    Args:
-        values: The row's attribute values, keyed by column name.
-        columns: The attribute columns to include in the signature.
-        geometry: The row's geometry, or None when the feature has none.
-
-    Returns:
-        The feature's content signature.
-    """
-    attributes = tuple(normalized_attribute_value(values[column]) for column in columns)
-    shapely_geometry = typing.cast("shapely.Geometry | None", geometry)
-    geometry_key = shapely_geometry.wkb if shapely_geometry is not None else None
-    return (attributes, geometry_key)
-
-
-def feature_signatures(
-    dataframe: geopandas.GeoDataFrame,
+    existing_values: typing.Mapping[str, object],
+    existing_geometry: object,
     columns: list[str],
-) -> dict[int, tuple[tuple[object, ...], bytes | None]]:
-    """Return each feature's content signature, keyed by OBJECTID.
+) -> bool:
+    """Return whether two feature rows describe the same feature.
 
-    The signature combines the feature's normalized attribute values with the well-known
-    binary of its geometry, so two features are identical only when both their
-    attributes and their geometry match.
+    Attributes must match after normalization, and the geometries must describe the
+    same shape. Comparing shapes rather than raw coordinates lets a source re-publish
+    an unchanged feature (different vertex order, ring orientation, or ring type)
+    without making it look new or changed. The geometries are passed separately
+    because the two frames may name their geometry columns differently.
 
     Args:
-        dataframe: The features to sign.
-        columns: The attribute columns to include in each signature.
+        values: The freshly fetched row's values, keyed by column name.
+        geometry: The freshly fetched row's geometry, or None.
+        existing_values: The stored row's values, keyed by column name.
+        existing_geometry: The stored row's geometry, or None.
+        columns: The attribute columns that must match.
 
     Returns:
-        The signatures, keyed by OBJECTID.
+        True when the rows' attributes and shapes match.
     """
-    geometry_name = dataframe.geometry.name
-    signatures: dict[int, tuple[tuple[object, ...], bytes | None]] = {}
-    for row in dataframe.itertuples(index=False, name=None):
-        values = dict(zip(dataframe.columns, row, strict=True))
-        object_id = int(values[peri_scribe.models.OBJECT_ID_COLUMN_NAME])
-        signatures[object_id] = feature_signature(
-            values,
-            columns,
-            values[geometry_name],
-        )
-    return signatures
+    for column in columns:
+        if normalized_attribute_value(values[column]) != normalized_attribute_value(
+            existing_values[column],
+        ):
+            return False
+    return peri_scribe.geo_package.geometries_describe_same_shape(
+        typing.cast("shapely.Geometry | None", geometry),
+        typing.cast("shapely.Geometry | None", existing_geometry),
+    )
 
 
 def drop_features_already_present(
@@ -289,9 +401,10 @@ def drop_features_already_present(
 ) -> geopandas.GeoDataFrame:
     """Drop fetched features whose content is already stored identically.
 
-    A feature is kept when its OBJECTID is new, or when its stored content differs from
-    the freshly fetched content. Features with a matching OBJECTID and identical
-    attributes and geometry are dropped.
+    A feature is kept when its OBJECTID is new, or when its stored content differs
+    from the freshly fetched content. Features with a matching OBJECTID and identical
+    attributes and geometry are dropped, where geometry counts as identical when the
+    stored and fetched shapes describe the same area.
 
     Args:
         new_dataframe: The newly fetched features.
@@ -303,15 +416,29 @@ def drop_features_already_present(
     if existing_dataframe is None or existing_dataframe.empty:
         return new_dataframe
     columns = attribute_columns(new_dataframe, existing_dataframe)
-    existing_signatures = feature_signatures(existing_dataframe, columns)
-    geometry_name = new_dataframe.geometry.name
+    new_geometry_column = str(new_dataframe.geometry.name)
+    existing_geometry_column = str(existing_dataframe.geometry.name)
+    existing_by_object_id: dict[int, tuple[dict[str, object], object]] = {}
+    for row in existing_dataframe.itertuples(index=False, name=None):
+        values = dict(zip(existing_dataframe.columns, row, strict=True))
+        existing_by_object_id[int(values[peri_scribe.models.OBJECT_ID_COLUMN_NAME])] = (
+            values,
+            values[existing_geometry_column],
+        )
     keep: list[bool] = []
     for row in new_dataframe.itertuples(index=False, name=None):
         values = dict(zip(new_dataframe.columns, row, strict=True))
         object_id = int(values[peri_scribe.models.OBJECT_ID_COLUMN_NAME])
+        existing = existing_by_object_id.get(object_id)
         keep.append(
-            existing_signatures.get(object_id)
-            != feature_signature(values, columns, values[geometry_name]),
+            existing is None
+            or not features_are_identical(
+                values,
+                values[new_geometry_column],
+                existing[0],
+                existing[1],
+                columns,
+            ),
         )
     return new_dataframe[keep].reset_index(drop=True)
 
