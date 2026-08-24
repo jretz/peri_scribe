@@ -388,27 +388,6 @@ def build_dataframe(
     )
 
 
-def read_full_rows(
-    sources_directory: pathlib.Path,
-) -> tuple[
-    list[peri_scribe.geo_package.FireRowRecord],
-    list[pathlib.Path],
-]:
-    """Read every fire row under *sources_directory* with its source path.
-
-    Rows come from the same single pass used by `fire_sources.fire_record_groups`, so
-    they align with the grouped records by index.
-
-    Args:
-        sources_directory: The directory tree holding the source GeoPackages.
-
-    Returns:
-        The full rows and their source paths, aligned by index.
-    """
-    read = peri_scribe.fire_sources.read_fire_sources(sources_directory)
-    return list(read.rows), list(read.paths)
-
-
 def history_rows_for_fire(
     fire: peri_scribe.models.Fire,
     group: tuple[int, ...],

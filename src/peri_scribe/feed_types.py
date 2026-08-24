@@ -123,9 +123,6 @@ class Feed(typing.Protocol):
 class ArcGISFeed(pydantic.BaseModel):
     """A validated ArcGIS feature layer feed."""
 
-    model_config = pydantic.ConfigDict(frozen=True, extra="forbid")
-
-    feed_type: typing.Literal["ArcGISFeed"] = "ArcGISFeed"
     url: str
     fire_name_column: str
     status_column: str

@@ -16,7 +16,6 @@ import peri_scribe.history_attributes
 import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.perimeter_versions
-import peri_scribe.snapshots
 import tests.factories
 
 
@@ -931,50 +930,6 @@ def test_build_dataframe_builds_geodataframe() -> None:
     assert isinstance(dataframe, geopandas.GeoDataFrame)
     assert dataframe.crs.to_epsg() == OUTPUT_WKID
     assert list(dataframe.geometry) == [geometry]
-
-
-def test_read_full_rows_reads_every_file(monkeypatch: pytest.MonkeyPatch) -> None:
-    first_path = pathlib.Path("a.gpkg")
-    second_path = pathlib.Path("b.gpkg")
-    first_rows = [
-        peri_scribe.geo_package.FireRowRecord(
-            record=tests.factories.fire_record("A", ACTIVE),
-            object_id=1,
-            source_name=FIRIS_FEED_NAME,
-            attributes={},
-        ),
-    ]
-    second_rows = [
-        peri_scribe.geo_package.FireRowRecord(
-            record=tests.factories.fire_record("B", ACTIVE),
-            object_id=2,
-            source_name=FIRIS_FEED_NAME,
-            attributes={},
-        ),
-    ]
-    contents_by_path = {
-        first_path: peri_scribe.geo_package.GeopackageContents(
-            rows=tuple(first_rows),
-            memberships=(),
-        ),
-        second_path: peri_scribe.geo_package.GeopackageContents(
-            rows=tuple(second_rows),
-            memberships=(),
-        ),
-    }
-    monkeypatch.setattr(
-        peri_scribe.snapshots,
-        "geo_package_files",
-        lambda _directory: [first_path, second_path],
-    )
-    monkeypatch.setattr(
-        peri_scribe.geo_package,
-        "read_geopackage",
-        lambda path: contents_by_path[path],
-    )
-    rows, paths = peri_scribe.fire_history.read_full_rows(pathlib.Path("sources"))
-    assert rows == first_rows + second_rows
-    assert paths == [first_path, second_path]
 
 
 def test_history_rows_for_fire_builds_perimeter_and_point_rows() -> None:

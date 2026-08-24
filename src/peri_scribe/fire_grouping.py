@@ -36,33 +36,6 @@ MINIMUM_TIMED_RECORDS = 2
 MINIMUM_SPATIAL_GEOMETRIES = 2
 
 
-def geometries_are_compatible(
-    left: shapely.Geometry | None,
-    right: shapely.Geometry | None,
-    *,
-    tolerance_degrees: float = FIRE_PROXIMITY_TOLERANCE_DEGREES,
-) -> bool:
-    """Return whether two fire geometries plausibly describe the same fire.
-
-    Geometries describe the same fire when they overlap or the gap between them is
-    within *tolerance_degrees*, so a point location and a perimeter of the same fire
-    match while two same-named fires in different regions do not.
-
-    Args:
-        left: One geometry, or None.
-        right: The other geometry, or None.
-        tolerance_degrees: The maximum gap, in degrees, treated as the same fire.
-
-    Returns:
-        True when the geometries overlap or are within the tolerance.
-    """
-    if left is None or right is None or left.is_empty or right.is_empty:
-        return False
-    if left.intersects(right):
-        return True
-    return left.distance(right) <= tolerance_degrees
-
-
 def nearby_pairs(
     geometries: list[shapely.Geometry],
     *,
@@ -184,27 +157,6 @@ def warn_for_inconsistent_fires(
                     identifier=fire.identifier,
                     days=spread.days,
                 )
-
-
-def group_fire_records(
-    records: list[peri_scribe.models.FireRecord],
-) -> list[list[peri_scribe.models.FireRecord]]:
-    """Group fire records that identify the same fire into a single list.
-
-    Records sharing any identifier are the same fire. Records sharing only a name are
-    the same fire when they are spatially compatible, so distinct fires that happen to
-    share a name (e.g. "Canyon" in California vs. Alaska) stay separate.
-
-    Args:
-        records: The fire records to group.
-
-    Returns:
-        The groups of records, in the order first encountered.
-    """
-    return [
-        [records[index] for index in group]
-        for group in group_fire_record_indices(records)
-    ]
 
 
 def group_fire_record_indices(

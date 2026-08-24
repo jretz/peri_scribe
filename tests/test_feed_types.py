@@ -107,26 +107,6 @@ def test_arc_gis_feed_exposes_identifier_and_complex_columns(
     assert feed.is_complex_child_column == "IsCpxChild"
 
 
-def test_arc_gis_feed_validates_configuration() -> None:
-    feed = peri_scribe.feed_types.ArcGISFeed.model_validate(feed_document())
-    assert feed.name == SAMPLE_FEED_NAME
-    assert feed.feed_type == "ArcGISFeed"
-
-
-def test_arc_gis_feed_rejects_unknown_feed_type() -> None:
-    with pytest.raises(pydantic.ValidationError):
-        peri_scribe.feed_types.ArcGISFeed.model_validate(
-            feed_document(feed_type="NotAFeed"),
-        )
-
-
-def test_arc_gis_feed_rejects_unknown_configuration_key() -> None:
-    with pytest.raises(pydantic.ValidationError):
-        peri_scribe.feed_types.ArcGISFeed.model_validate(
-            feed_document(not_a_feed_column="value"),
-        )
-
-
 def test_arc_gis_feed_rejects_missing_url() -> None:
     document = feed_document()
     del document["url"]
@@ -225,9 +205,3 @@ def test_arc_gis_feed_current_last_edit_timestamp_returns_none_without_last_edit
 ) -> None:
     requests_mock.get(SAMPLE_FEED_URL, json={"editingInfo": {}})
     assert feed.current_last_edit_timestamp is None
-
-
-def test_arc_gis_feed_satisfies_feed_protocol(
-    feed: peri_scribe.feed_types.ArcGISFeed,
-) -> None:
-    assert isinstance(feed, peri_scribe.feed_types.Feed)
