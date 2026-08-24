@@ -815,7 +815,7 @@ def polygon_geometry(
     draw_order: int,
     *,
     description: str | None,
-) -> None:
+) -> simplekml.Polygon:
     """Add the polygon placemark for *polygon* to *container*.
 
     Args:
@@ -825,6 +825,9 @@ def polygon_geometry(
         polygon: The shapely polygon to convert.
         draw_order: The order in which the polygon draws.
         description: The balloon description, or None for none.
+
+    Returns:
+        The polygon placemark.
     """
     placemark = container.newpolygon(
         name=name,
@@ -838,6 +841,7 @@ def polygon_geometry(
             ring_coordinates(interior) for interior in polygon.interiors
         ]
     peri_scribe.kml_template.set_draw_order(placemark, draw_order)
+    return placemark
 
 
 def multi_polygon_geometry(
@@ -848,7 +852,7 @@ def multi_polygon_geometry(
     draw_order: int,
     *,
     description: str | None,
-) -> None:
+) -> simplekml.MultiGeometry:
     """Add the multi-geometry placemark for *multi_polygon* to *container*.
 
     Args:
@@ -858,6 +862,9 @@ def multi_polygon_geometry(
         multi_polygon: The shapely multi-polygon to convert.
         draw_order: The order in which the multi-geometry draws.
         description: The balloon description, or None for none.
+
+    Returns:
+        The multi-geometry placemark.
     """
     geometry = container.newmultigeometry(name=name)
     geometry.placemark.styleurl = style_url
@@ -872,6 +879,7 @@ def multi_polygon_geometry(
             ],
         )
     peri_scribe.kml_template.set_draw_order(geometry, draw_order)
+    return geometry
 
 
 def perimeter_geometry(
@@ -882,7 +890,7 @@ def perimeter_geometry(
     draw_order: int,
     *,
     description: str | None,
-) -> None:
+) -> simplekml.Polygon | simplekml.MultiGeometry:
     """Add the placemark for *geometry* to *container*.
 
     Args:
@@ -892,9 +900,12 @@ def perimeter_geometry(
         geometry: A shapely polygon or multi-polygon.
         draw_order: The order in which the geometry draws.
         description: The balloon description, or None for none.
+
+    Returns:
+        The polygon or multi-geometry placemark.
     """
     if geometry.geom_type == "Polygon":
-        polygon_geometry(
+        return polygon_geometry(
             container,
             name,
             style_url,
@@ -902,15 +913,14 @@ def perimeter_geometry(
             draw_order,
             description=description,
         )
-    else:
-        multi_polygon_geometry(
-            container,
-            name,
-            style_url,
-            typing.cast("shapely.MultiPolygon", geometry),
-            draw_order,
-            description=description,
-        )
+    return multi_polygon_geometry(
+        container,
+        name,
+        style_url,
+        typing.cast("shapely.MultiPolygon", geometry),
+        draw_order,
+        description=description,
+    )
 
 
 def perimeter_placemark(
@@ -921,7 +931,8 @@ def perimeter_placemark(
     draw_order: int,
     *,
     description: str | None,
-) -> None:
+    observation_time: datetime.datetime | None = None,
+) -> simplekml.Polygon | simplekml.MultiGeometry:
     """Add the perimeter placemark for *geometry* to *container*.
 
     Args:
@@ -931,8 +942,13 @@ def perimeter_placemark(
         geometry: The perimeter geometry.
         draw_order: The order in which the perimeter draws.
         description: The balloon description, or None for none.
+        observation_time: The time to stamp on the placemark, or None to leave
+            it unstamped.
+
+    Returns:
+        The perimeter placemark.
     """
-    perimeter_geometry(
+    placemark = perimeter_geometry(
         container,
         name,
         style_url,
@@ -940,6 +956,48 @@ def perimeter_placemark(
         draw_order,
         description=description,
     )
+    set_timestamp(placemark, observation_time)
+    return placemark
+
+
+def timestamp_when(observation_time: datetime.datetime | None) -> str | None:
+    """Return the KML ``<when>`` value for *observation_time*, or None.
+
+    The value is written in UTC as ``YYYY-MM-DDTHH:MM:SSZ``, the format the
+    Google Earth time slider reads.
+
+    Args:
+        observation_time: The observation time as an aware UTC datetime, or None.
+
+    Returns:
+        The ``<when>`` value, or None without an observation time.
+    """
+    if observation_time is None:
+        return None
+    utc_time = observation_time.astimezone(datetime.UTC)
+    return utc_time.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def set_timestamp(
+    placemark: simplekml.Point | simplekml.Polygon | simplekml.MultiGeometry,
+    observation_time: datetime.datetime | None,
+) -> None:
+    """Set *placemark*'s TimeStamp to *observation_time*, when it has one.
+
+    The timestamp tells the Google Earth time slider when the feature appeared:
+    as the slider passes the time, the feature shows and stays visible. A
+    placemark without an observation time keeps no TimeStamp and stays visible
+    for the whole range.
+
+    Args:
+        placemark: The placemark to stamp.
+        observation_time: The observation time, or None to leave the placemark
+            unstamped.
+    """
+    when = timestamp_when(observation_time)
+    if when is None:
+        return
+    placemark.timestamp.when = when
 
 
 def time_label(observation_time: datetime.datetime | None) -> str | None:
@@ -1001,11 +1059,15 @@ def fire_folder(
 ) -> None:
     """Add the folder symbolizing *fire* to *container*.
 
-    The folder holds the fire's point location and its latest, penultimate, and
-    antepenultimate perimeters, each shown when the fire's history has one. Draw
-    orders put the filled latest area on the bottom, stack the outline perimeters
-    from oldest to newest, and draw the point location last so its icon is never
-    covered.
+    The folder holds the fire's point location, the growth rings filling its
+    interior, and its latest, penultimate, and antepenultimate perimeters, each
+    shown when the fire's history has one. The interior is drawn from the fire's
+    difference rings rather than its complete latest perimeter, and each ring
+    carries the timestamp of its observation so the time slider shows the
+    interior growing; a fire whose rings carry no timestamps falls back to its
+    complete latest perimeter. Draw orders put the filled latest area on the
+    bottom, stack the outline perimeters from oldest to newest, and draw the
+    point location last so its icon is never covered.
 
     Args:
         container: The folder that holds the fire's folder.
@@ -1026,7 +1088,21 @@ def fire_folder(
             peri_scribe.kml_template.point_draw_order(outline_count),
             description=fire.description,
         )
-    if fire.perimeters:
+    interior_rings = tuple(
+        ring for ring in fire.progression_rings if ring.observation_time is not None
+    )
+    if interior_rings:
+        for ring in interior_rings:
+            perimeter_placemark(
+                folder,
+                interior_placemark_name(ring.observation_time),
+                style_urls[peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name],
+                ring.geometry,
+                peri_scribe.kml_template.LATEST_AREA_DRAW_ORDER,
+                description=fire.description,
+                observation_time=ring.observation_time,
+            )
+    elif fire.perimeters:
         latest_perimeter = fire.perimeters[-1]
         perimeter_placemark(
             folder,
@@ -1080,9 +1156,11 @@ def progression_folder(
 
     Each fire with growth rings gets a folder holding its point location and one
     growth band per day range it covers; fires with no rings are left out, because
-    there is nothing to map. Draw orders put the oldest band on the bottom, stack
-    the bands from oldest to newest, and draw the point location last so its icon
-    is never covered.
+    there is nothing to map. Each band carries the timestamp of the last ring it
+    contains, so the time slider shows the bands appearing as their growth
+    completes. Draw orders put the oldest band on the bottom, stack the bands
+    from oldest to newest, and draw the point location last so its icon is never
+    covered.
 
     Args:
         container: The folder that holds the progression maps folder.
@@ -1117,6 +1195,7 @@ def progression_folder(
                 band.geometry,
                 peri_scribe.kml_template.band_draw_order(band_count, index),
                 description=fire.description,
+                observation_time=band.observation_time,
             )
 
 

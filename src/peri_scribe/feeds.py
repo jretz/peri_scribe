@@ -14,7 +14,12 @@ CA_PERIMETERS_FEED = peri_scribe.feed_types.ArcGISFeed(
     ),
     fire_name_column="incident_name",
     status_column="displayStatus",
-    fire_identifier_columns=("incident_number",),
+    # incident_number is the primary identifier, but rows mapped before an
+    # incident number is assigned carry only their record GUID, which is a
+    # stable per-feature identifier in its own right. Reading the GUID keeps
+    # such rows from becoming unidentified fires that downstream consumers
+    # can only distinguish by name.
+    fire_identifier_columns=("incident_number", "GlobalID"),
     mission_column="mission",
     observation_time_column="poly_DateCurrent",
     change_columns=("EditDate",),

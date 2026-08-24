@@ -98,24 +98,21 @@ class ProgressionBandGeometry:
     name: str
     label: str
     geometry: shapely.Geometry
+    observation_time: datetime.datetime | None
 
 
-def ring_date(
-    observation_time: datetime.datetime | None,
-) -> datetime.date | None:
-    """Return the California-local date of *observation_time*, or None.
+def ring_date(observation_time: datetime.datetime) -> datetime.date:
+    """Return the California-local date of *observation_time*.
 
     The band ranges count calendar days, so each ring needs a date in the time zone
     the output labels use.
 
     Args:
-        observation_time: The ring's observation time, or None.
+        observation_time: The ring's observation time.
 
     Returns:
-        The ring's California date, or None without an observation time.
+        The ring's California date.
     """
-    if observation_time is None:
-        return None
     return observation_time.astimezone(CALIFORNIA_TIME_ZONE).date()
 
 
@@ -184,26 +181,30 @@ def progression_bands(
     Returns:
         One band geometry per covered range, newest first.
     """
-    dated: list[tuple[datetime.date, Ring]] = []
+    dated: list[tuple[datetime.date, datetime.datetime, Ring]] = []
     for ring in rings:
-        date = ring_date(ring.observation_time)
-        if date is not None:
-            dated.append((date, ring))
+        observation_time = ring.observation_time
+        if observation_time is None:
+            continue
+        dated.append((ring_date(observation_time), observation_time, ring))
     if not dated:
         return ()
-    latest_date = max(date for date, _ring in dated)
-    by_band: dict[ProgressionBand, list[tuple[datetime.date, Ring]]] = {}
-    for date, ring in dated:
+    latest_date = max(date for date, _time, _ring in dated)
+    by_band: dict[
+        ProgressionBand,
+        list[tuple[datetime.date, datetime.datetime, Ring]],
+    ] = {}
+    for date, observation_time, ring in dated:
         age = (latest_date - date).days
         band = band_for_age(age)
         if band is not None:
-            by_band.setdefault(band, []).append((date, ring))
+            by_band.setdefault(band, []).append((date, observation_time, ring))
     geometries: list[ProgressionBandGeometry] = []
     for band in PROGRESSION_BANDS:
         bucket = by_band.get(band)
         if bucket is None:
             continue
-        geometry = shapely.union_all([ring.geometry for _date, ring in bucket])
+        geometry = shapely.union_all([ring.geometry for _date, _time, ring in bucket])
         if geometry.is_empty:
             continue
         geometries.append(
@@ -212,9 +213,13 @@ def progression_bands(
                 label=band_label(
                     band,
                     latest_date,
-                    [date for date, _ring in bucket],
+                    [date for date, _time, _ring in bucket],
                 ),
                 geometry=geometry,
+                # The band's timestamp is the moment its last ring was observed,
+                # so the time slider shows the band appearing exactly when the
+                # band's growth was complete.
+                observation_time=max(time for _date, time, _ring in bucket),
             ),
         )
     return tuple(geometries)
