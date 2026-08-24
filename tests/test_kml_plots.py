@@ -348,6 +348,18 @@ def test_merge_series_points_combines_in_chronological_order() -> None:
     assert [point.value for point in merged] == [10.0, 20.0, 30.0]
 
 
+def test_scaled_points_divides_each_value() -> None:
+    scaled = peri_scribe.kml_plots.scaled_points(
+        (series_point(1, 10.0), series_point(2, 20.0)),
+        1000.0,
+    )
+    assert [point.observation_time for point in scaled] == [
+        observation_time(1),
+        observation_time(2),
+    ]
+    assert [point.value for point in scaled] == pytest.approx([0.01, 0.02])
+
+
 def test_fire_plots_builds_three_plots_with_labels() -> None:
     plots = peri_scribe.kml_plots.fire_plots(
         frozenset({"id-bug"}),
@@ -380,12 +392,17 @@ def test_fire_plots_builds_three_plots_with_labels() -> None:
         "cost",
     ]
     assert [plot.series[0].label for plot in plots] == [
-        "Area (acres)",
-        "Exterior perimeter (miles)",
-        "Cost to date ($)",
+        "Area",
+        "Exterior perimeter",
+        "Cost to date",
     ]
-    assert plots[1].series[1].label == "Contained perimeter (miles)"
-    assert plots[2].series[1].label == "Estimated final cost ($)"
+    assert [plot.y_axis_label for plot in plots] == [
+        "Thousands of acres",
+        "Miles",
+        "Millions of $",
+    ]
+    assert plots[1].series[1].label == "Contained perimeter"
+    assert plots[2].series[1].label == "Estimated final cost"
 
 
 def test_fire_plots_merges_area_and_cost_from_both_feeds() -> None:
@@ -411,11 +428,13 @@ def test_fire_plots_merges_area_and_cost_from_both_feeds() -> None:
         ),
     )
     area = plots[0].series[0]
-    assert [point.value for point in area.points] == [10.0, 20.0]
+    assert [point.value for point in area.points] == pytest.approx([0.01, 0.02])
     cost = plots[2].series[0]
-    assert [point.value for point in cost.points] == [1000.0, 1500.0]
+    assert [point.value for point in cost.points] == pytest.approx([0.001, 0.0015])
     final_cost = plots[2].series[1]
-    assert [point.value for point in final_cost.points] == [2000.0, 2500.0]
+    assert [point.value for point in final_cost.points] == pytest.approx(
+        [0.002, 0.0025],
+    )
 
 
 def test_has_multiple_observation_times_requires_two_distinct_times() -> None:
@@ -435,33 +454,33 @@ def test_retained_series_drops_lines_with_too_few_times() -> None:
     retained = peri_scribe.kml_plots.retained_series(
         (
             peri_scribe.kml_plots.PlotSeries(
-                label="Area (acres)",
+                label="Area",
                 points=(series_point(1, 10.0), series_point(2, 20.0)),
             ),
             peri_scribe.kml_plots.PlotSeries(
-                label="Cost to date ($)",
+                label="Cost to date",
                 points=(series_point(1, 1000.0),),
             ),
         ),
     )
-    assert [series.label for series in retained] == ["Area (acres)"]
+    assert [series.label for series in retained] == ["Area"]
 
 
 def test_plot_frame_melts_series() -> None:
     frame = peri_scribe.kml_plots.plot_frame(
         (
             peri_scribe.kml_plots.PlotSeries(
-                label="Area (acres)",
+                label="Area",
                 points=(series_point(1, 10.0),),
             ),
             peri_scribe.kml_plots.PlotSeries(
-                label="Cost to date ($)",
+                label="Cost to date",
                 points=(series_point(1, 1000.0),),
             ),
         ),
     )
     assert list(frame.columns) == ["label", "observation_time", "value"]
-    assert frame["label"].tolist() == ["Area (acres)", "Cost to date ($)"]
+    assert frame["label"].tolist() == ["Area", "Cost to date"]
     assert frame["value"].tolist() == [10.0, 1000.0]
 
 
@@ -474,17 +493,58 @@ def test_format_tick_uses_one_decimal_for_medium_values() -> None:
 
 
 def test_format_tick_uses_two_decimals_for_small_values() -> None:
-    assert peri_scribe.kml_plots.format_tick(0.5, 0) == "0.50"
+    assert peri_scribe.kml_plots.format_tick(0.5, 0) == "0.5"
+
+
+def test_format_tick_drops_trailing_zero() -> None:
+    assert peri_scribe.kml_plots.format_tick(33.0, 0) == "33"
+    assert peri_scribe.kml_plots.format_tick(0.0, 0) == "0"
+
+
+def test_x_axis_ticks_returns_empty_without_points() -> None:
+    assert peri_scribe.kml_plots.x_axis_ticks(()) == ()
+
+
+def test_x_axis_ticks_uses_each_midnight_when_days_fit() -> None:
+    series = (
+        peri_scribe.kml_plots.PlotSeries(
+            label="Area",
+            points=(series_point(1, 10.0), series_point(3, 20.0)),
+        ),
+    )
+    assert peri_scribe.kml_plots.x_axis_ticks(series) == (
+        observation_time(1),
+        observation_time(2),
+        observation_time(3),
+    )
+
+
+def test_x_axis_ticks_thins_when_days_do_not_fit() -> None:
+    series = (
+        peri_scribe.kml_plots.PlotSeries(
+            label="Area",
+            points=(series_point(1, 10.0), series_point(20, 20.0)),
+        ),
+    )
+    assert peri_scribe.kml_plots.x_axis_ticks(series) == (
+        observation_time(1),
+        observation_time(5),
+        observation_time(9),
+        observation_time(13),
+        observation_time(17),
+        observation_time(20),
+    )
 
 
 def test_render_plot_returns_png_for_one_series() -> None:
     content = peri_scribe.kml_plots.render_plot(
         (
             peri_scribe.kml_plots.PlotSeries(
-                label="Area (acres)",
+                label="Area",
                 points=(series_point(1, 10.0), series_point(2, 20.0)),
             ),
         ),
+        y_axis_label="Thousands of acres",
     )
     assert content.startswith(PNG_SIGNATURE)
 
@@ -493,14 +553,15 @@ def test_render_plot_returns_png_for_multiple_series() -> None:
     content = peri_scribe.kml_plots.render_plot(
         (
             peri_scribe.kml_plots.PlotSeries(
-                label="Exterior perimeter (miles)",
+                label="Cost to date",
                 points=(series_point(1, 10.0), series_point(2, 20.0)),
             ),
             peri_scribe.kml_plots.PlotSeries(
-                label="Contained perimeter (miles)",
+                label="Estimated final cost",
                 points=(series_point(1, 5.0), series_point(2, 15.0)),
             ),
         ),
+        y_axis_label="Millions of $",
     )
     assert content.startswith(PNG_SIGNATURE)
 
@@ -530,19 +591,21 @@ def test_plot_images_renders_retained_plots_and_skips_empty() -> None:
                 filename_suffix="area",
                 series=(
                     peri_scribe.kml_plots.PlotSeries(
-                        label="Area (acres)",
+                        label="Area",
                         points=(series_point(1, 10.0), series_point(2, 20.0)),
                     ),
                 ),
+                y_axis_label="Thousands of acres",
             ),
             peri_scribe.kml_plots.FirePlot(
                 filename_suffix="cost",
                 series=(
                     peri_scribe.kml_plots.PlotSeries(
-                        label="Cost to date ($)",
+                        label="Cost to date",
                         points=(series_point(1, 1000.0),),
                     ),
                 ),
+                y_axis_label="Millions of $",
             ),
         ),
         "id-bug",

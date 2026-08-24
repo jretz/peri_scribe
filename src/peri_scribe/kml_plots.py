@@ -19,6 +19,7 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import io
+import math
 import re
 import typing
 
@@ -46,6 +47,15 @@ MINIMUM_OBSERVATION_TIMES = 2
 TICK_WHOLE_NUMBER_THRESHOLD = 1000.0
 TICK_ONE_DECIMAL_THRESHOLD = 10.0
 
+# X-axis tick labels sit only at midnight and are thinned so at most this many fit
+# along the figure without crowding.
+MAX_X_AXIS_TICKS = 6
+
+# Area and cost are scaled to these units before plotting so their values stay in a
+# readable range.
+ACRES_PER_THOUSAND = 1_000.0
+DOLLARS_PER_MILLION = 1_000_000.0
+
 # Containment percentages are reported in whole percent (0-100), so the contained
 # perimeter is that fraction of the exterior perimeter length.
 CONTAINMENT_PERCENT = 100.0
@@ -70,13 +80,18 @@ AREA_PLOT_SUFFIX = "area"
 PERIMETER_PLOT_SUFFIX = "perimeter"
 COST_PLOT_SUFFIX = "cost"
 
-# The legend label for each line; the label also carries the unit, since every line
-# in a plot shares one unit.
-AREA_SERIES_LABEL = "Area (acres)"
-EXTERIOR_PERIMETER_SERIES_LABEL = "Exterior perimeter (miles)"
-CONTAINED_PERIMETER_SERIES_LABEL = "Contained perimeter (miles)"
-COST_TO_DATE_SERIES_LABEL = "Cost to date ($)"
-ESTIMATED_FINAL_COST_SERIES_LABEL = "Estimated final cost ($)"
+# The legend label for each line. Units are not part of the label; each plot's unit
+# is shown once at its y-axis instead.
+AREA_SERIES_LABEL = "Area"
+EXTERIOR_PERIMETER_SERIES_LABEL = "Exterior perimeter"
+CONTAINED_PERIMETER_SERIES_LABEL = "Contained perimeter"
+COST_TO_DATE_SERIES_LABEL = "Cost to date"
+ESTIMATED_FINAL_COST_SERIES_LABEL = "Estimated final cost"
+
+# The unit shown at each plot's y-axis.
+AREA_AXIS_LABEL = "Thousands of acres"
+PERIMETER_AXIS_LABEL = "Miles"
+COST_AXIS_LABEL = "Millions of $"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -97,10 +112,11 @@ class PlotSeries:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class FirePlot:
-    """One plot for a fire: its lines and the filename suffix for its image."""
+    """One plot for a fire: its lines, axis label, and the filename suffix."""
 
     filename_suffix: str
     series: tuple[PlotSeries, ...]
+    y_axis_label: str
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -248,6 +264,28 @@ def merge_series_points(
     return tuple(sorted(points, key=lambda point: point.observation_time))
 
 
+def scaled_points(
+    points: tuple[SeriesPoint, ...],
+    divisor: float,
+) -> tuple[SeriesPoint, ...]:
+    """Return *points* with each value divided by *divisor*.
+
+    Args:
+        points: The measurements to scale.
+        divisor: The value each measurement is divided by.
+
+    Returns:
+        The scaled points, in the same order.
+    """
+    return tuple(
+        SeriesPoint(
+            observation_time=point.observation_time,
+            value=point.value / divisor,
+        )
+        for point in points
+    )
+
+
 def fire_plots(
     fire_identifiers: frozenset[str],
     entry_name: str,
@@ -274,25 +312,34 @@ def fire_plots(
     perimeter_rows = matching_rows(perimeters, fire_identifiers, entry_name)
     point_rows = matching_rows(points, fire_identifiers, entry_name)
 
-    area_points = merge_series_points(
-        series_points(perimeter_rows, "observation_time", "area_acres"),
-        series_points(point_rows, "observation_time", "incident_size"),
-    )
-    cost_to_date_points = merge_series_points(
-        series_points(
-            perimeter_rows,
-            "observation_time",
-            "estimated_cost_to_date",
+    area_points = scaled_points(
+        merge_series_points(
+            series_points(perimeter_rows, "observation_time", "area_acres"),
+            series_points(point_rows, "observation_time", "incident_size"),
         ),
-        series_points(point_rows, "observation_time", "estimated_cost_to_date"),
+        ACRES_PER_THOUSAND,
     )
-    estimated_final_cost_points = merge_series_points(
-        series_points(
-            perimeter_rows,
-            "observation_time",
-            "estimated_final_cost",
+    cost_to_date_points = scaled_points(
+        merge_series_points(
+            series_points(
+                perimeter_rows,
+                "observation_time",
+                "estimated_cost_to_date",
+            ),
+            series_points(point_rows, "observation_time", "estimated_cost_to_date"),
         ),
-        series_points(point_rows, "observation_time", "estimated_final_cost"),
+        DOLLARS_PER_MILLION,
+    )
+    estimated_final_cost_points = scaled_points(
+        merge_series_points(
+            series_points(
+                perimeter_rows,
+                "observation_time",
+                "estimated_final_cost",
+            ),
+            series_points(point_rows, "observation_time", "estimated_final_cost"),
+        ),
+        DOLLARS_PER_MILLION,
     )
 
     return (
@@ -304,6 +351,7 @@ def fire_plots(
                     points=area_points,
                 ),
             ),
+            y_axis_label=AREA_AXIS_LABEL,
         ),
         FirePlot(
             filename_suffix=PERIMETER_PLOT_SUFFIX,
@@ -317,6 +365,7 @@ def fire_plots(
                     points=contained_perimeter_points(perimeter_rows),
                 ),
             ),
+            y_axis_label=PERIMETER_AXIS_LABEL,
         ),
         FirePlot(
             filename_suffix=COST_PLOT_SUFFIX,
@@ -330,6 +379,7 @@ def fire_plots(
                     points=estimated_final_cost_points,
                 ),
             ),
+            y_axis_label=COST_AXIS_LABEL,
         ),
     )
 
@@ -390,7 +440,8 @@ def format_tick(value: float, _position: int) -> str:
     """Format one y-axis tick with size-appropriate precision.
 
     Large values carry thousands separators and no decimals; smaller values keep one
-    or two decimals so small measurements do not read as zero.
+    or two decimals so small measurements do not read as zero. Trailing zeros after
+    the decimal point are dropped.
 
     Args:
         value: The tick value.
@@ -401,18 +452,68 @@ def format_tick(value: float, _position: int) -> str:
     """
     magnitude = abs(value)
     if magnitude >= TICK_WHOLE_NUMBER_THRESHOLD:
-        return f"{value:,.0f}"
-    if magnitude >= TICK_ONE_DECIMAL_THRESHOLD:
-        return f"{value:,.1f}"
-    return f"{value:,.2f}"
+        text = f"{value:,.0f}"
+    elif magnitude >= TICK_ONE_DECIMAL_THRESHOLD:
+        text = f"{value:,.1f}"
+    else:
+        text = f"{value:,.2f}"
+    if "." in text:
+        text = text.rstrip("0").rstrip(".")
+    return text
 
 
-def render_plot(series_list: tuple[PlotSeries, ...]) -> bytes:
+def x_axis_ticks(
+    series_list: tuple[PlotSeries, ...],
+) -> tuple[datetime.datetime, ...]:
+    """Return the midnight times at which to place x-axis ticks.
+
+    Ticks sit on the midnights spanned by the observations and are thinned when more
+    days span the figure than fit without crowding.
+
+    Args:
+        series_list: The lines drawn in the plot.
+
+    Returns:
+        The midnight tick times, oldest first.
+    """
+    times = [
+        point.observation_time for series in series_list for point in series.points
+    ]
+    if not times:
+        return ()
+    first_day = min(times).date()
+    last_day = max(times).date()
+    days_spanned = (last_day - first_day).days + 1
+    interval = max(1, math.ceil(days_spanned / MAX_X_AXIS_TICKS))
+    ticks: list[datetime.datetime] = []
+    day = first_day
+    while day <= last_day:
+        ticks.append(
+            datetime.datetime.combine(day, datetime.time.min, tzinfo=datetime.UTC),
+        )
+        day += datetime.timedelta(days=interval)
+    if ticks[-1].date() != last_day:
+        ticks.append(
+            datetime.datetime.combine(
+                last_day,
+                datetime.time.min,
+                tzinfo=datetime.UTC,
+            ),
+        )
+    return tuple(ticks)
+
+
+def render_plot(
+    series_list: tuple[PlotSeries, ...],
+    *,
+    y_axis_label: str = "",
+) -> bytes:
     """Render *series_list* as one line plot and return its PNG bytes.
 
     Args:
         series_list: The lines to draw, each already known to span enough
             observation times.
+        y_axis_label: The unit shown at the plot's y-axis.
 
     Returns:
         The plot as PNG bytes.
@@ -423,22 +524,37 @@ def render_plot(series_list: tuple[PlotSeries, ...]) -> bytes:
     )
     matplotlib.backends.backend_agg.FigureCanvasAgg(figure)
     axes = figure.add_subplot(1, 1, 1)
-    frame = plot_frame(series_list)
+    labels = [series.label for series in series_list]
     with mpl.rc_context(sns.axes_style("whitegrid")):
-        sns.lineplot(
-            data=frame,
-            x=OBSERVATION_TIME_COLUMN,
-            y=VALUE_COLUMN,
-            hue=LABEL_COLUMN,
-            ax=axes,
-        )
-    legend = axes.get_legend()
-    if legend is not None:
-        legend.set_title("")
+        if series_list:
+            sns.lineplot(
+                data=plot_frame(series_list),
+                x=OBSERVATION_TIME_COLUMN,
+                y=VALUE_COLUMN,
+                hue=LABEL_COLUMN,
+                hue_order=labels,
+                legend=False,
+                ax=axes,
+            )
+    handles = list(axes.get_lines())
+    if handles:
+        axes.legend(handles, labels, title="")
     axes.set_xlabel(X_AXIS_LABEL)
-    axes.set_ylabel("")
-    axes.xaxis.set_major_locator(matplotlib.dates.AutoDateLocator())
+    axes.set_ylabel(y_axis_label)
+    tick_times = x_axis_ticks(series_list)
+    axes.xaxis.set_major_locator(
+        matplotlib.ticker.FixedLocator(
+            [matplotlib.dates.date2num(time) for time in tick_times],
+        ),
+    )
     axes.xaxis.set_major_formatter(matplotlib.dates.DateFormatter(DATE_FORMAT))
+    if tick_times:
+        axes.set_xlim(
+            matplotlib.dates.date2num(tick_times[0]),
+            matplotlib.dates.date2num(
+                tick_times[-1] + datetime.timedelta(days=1),
+            ),
+        )
     axes.yaxis.set_major_formatter(
         matplotlib.ticker.FuncFormatter(format_tick),
     )
@@ -505,7 +621,10 @@ def plot_images(
         images.append(
             PlotImage(
                 filename=plot_filename(filename_prefix, plot.filename_suffix),
-                content=render_plot(series),
+                content=render_plot(
+                    series,
+                    y_axis_label=plot.y_axis_label,
+                ),
             ),
         )
     return tuple(images)
