@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import json
 import pathlib
 import typing
 import zipfile
@@ -19,14 +20,18 @@ import peri_scribe.fire_differential
 import peri_scribe.fire_history
 import peri_scribe.fire_index
 import peri_scribe.geo_package
+import peri_scribe.kml_descriptions
+import peri_scribe.kml_plots
 import peri_scribe.kml_template
 import peri_scribe.kml_template_reader
 import peri_scribe.models
 import peri_scribe.perimeter_progression
+import peri_scribe.units
 
 
 if typing.TYPE_CHECKING:
     import geopandas
+    import pandas as pd
     import shapely
 
 
@@ -56,13 +61,15 @@ class Perimeter:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class FireGeometry:
-    """One fire's point, perimeters, and growth rings, ready to symbolize."""
+    """One fire's point, perimeters, growth rings, and plots, ready to symbolize."""
 
     name: str
     status: peri_scribe.models.FireStatus
     point: shapely.Point | None
     perimeters: tuple[Perimeter, ...]
     progression_rings: tuple[peri_scribe.perimeter_progression.Ring, ...] = ()
+    description: str | None = None
+    images: tuple[peri_scribe.kml_plots.PlotImage, ...] = ()
 
 
 def year_from(year_directory: pathlib.Path) -> int:
@@ -116,6 +123,34 @@ def identifiers(
     """
     candidates = [entry.identifier, *entry.aliases]
     return frozenset(identifier for identifier in candidates if identifier is not None)
+
+
+def unique_filename_prefix(
+    identifier: str | None,
+    name: str,
+    used_prefixes: frozenset[str],
+) -> str:
+    """Return a filename prefix for a fire that avoids *used_prefixes*.
+
+    The fire's canonical identifier is preferred, with its name as a fallback; when
+    that base prefix is already taken, a numeric suffix is appended until the result
+    is unused, so every fire's plot images land in distinct files.
+
+    Args:
+        identifier: The fire's canonical identifier, or None.
+        name: The fire's name.
+        used_prefixes: Every prefix already assigned in the output.
+
+    Returns:
+        A prefix not present in *used_prefixes*.
+    """
+    prefix = peri_scribe.kml_plots.filename_prefix(identifier, name)
+    candidate = prefix
+    counter = 2
+    while candidate in used_prefixes:
+        candidate = f"{prefix}-{counter}"
+        counter += 1
+    return candidate
 
 
 def perimeter_groups(
@@ -275,17 +310,391 @@ def fire_perimeters(
     return tuple(perimeters)
 
 
+def latest_matching_row(
+    frame: geopandas.GeoDataFrame,
+    fire_identifiers: frozenset[str],
+    entry_name: str,
+) -> pd.Series | None:
+    """Return the chronologically latest row of *frame* for one fire, or None.
+
+    A fire with identifiers is matched by those identifiers; a fire without any is
+    matched by name. The layer's rows are already in chronological order, so the
+    last matching row is the latest.
+
+    Args:
+        frame: The history layer to search.
+        fire_identifiers: The fire's identifiers.
+        entry_name: The fire's name, used when it has no identifiers.
+
+    Returns:
+        The latest matching row, or None when the fire has none.
+    """
+    if fire_identifiers:
+        matched = frame[frame["fire_identifier"].isin(sorted(fire_identifiers))]
+    else:
+        matched = frame[frame["fire_name"] == entry_name]
+    if matched.empty:
+        return None
+    return matched.iloc[-1]
+
+
+def column_value(row: pd.Series | None, column: str) -> object:
+    """Return *row*'s value in *column*, or None when it is missing.
+
+    Args:
+        row: A history row, or None.
+        column: The column to read.
+
+    Returns:
+        The column's value, or None when the row or value is missing.
+    """
+    if row is None or column not in row.index:
+        return None
+    value = row[column]
+    if peri_scribe.geo_package.is_missing(value):
+        return None
+    return value
+
+
+def text_value(row: pd.Series | None, column: str) -> str | None:
+    """Return *row*'s text value in *column*, or None when it is blank.
+
+    Args:
+        row: A history row, or None.
+        column: The column to read.
+
+    Returns:
+        The column's text, or None when it is missing or whitespace only.
+    """
+    value = column_value(row, column)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def float_value(row: pd.Series | None, column: str) -> float | None:
+    """Return *row*'s numeric value in *column*, or None when it is missing.
+
+    Args:
+        row: A history row, or None.
+        column: The column to read.
+
+    Returns:
+        The column's numeric value, or None when it cannot be read as a number.
+    """
+    value = column_value(row, column)
+    if value is None:
+        return None
+    return peri_scribe.geo_package.numeric_value(value)
+
+
+def as_datetime(value: object) -> datetime.datetime | None:
+    """Return *value* as an aware datetime, or None when it is not one.
+
+    Args:
+        value: Any timestamp value.
+
+    Returns:
+        The value as an aware UTC datetime, or None when it cannot be parsed.
+    """
+    return peri_scribe.geo_package.observation_time_from(value)
+
+
+def datetime_value(row: pd.Series | None, column: str) -> datetime.datetime | None:
+    """Return *row*'s datetime value in *column*, or None when it is missing.
+
+    Args:
+        row: A history row, or None.
+        column: The column to read.
+
+    Returns:
+        The column's value as an aware datetime, or None.
+    """
+    return as_datetime(column_value(row, column))
+
+
+def source_attribute_value(row: pd.Series | None, key: str) -> object:
+    """Return *key* from *row*'s preserved source attributes, or None.
+
+    The history layers keep each row's original source attributes as a JSON string,
+    which is where fields that have no derived column (such as the protecting unit)
+    still live.
+
+    Args:
+        row: A history row, or None.
+        key: The source attribute to read.
+
+    Returns:
+        The attribute's value, or None when it is absent.
+    """
+    raw = column_value(row, "source_attributes")
+    if raw is None:
+        return None
+    if isinstance(raw, str):
+        try:
+            attributes = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+    else:
+        attributes = raw
+    if not isinstance(attributes, dict):
+        return None
+    return attributes.get(key)
+
+
+def source_text_value(row: pd.Series | None, key: str) -> str | None:
+    """Return *key* from *row*'s source attributes as text, or None when blank.
+
+    Args:
+        row: A history row, or None.
+        key: The source attribute to read.
+
+    Returns:
+        The attribute's text, or None when it is missing or whitespace only.
+    """
+    value = source_attribute_value(row, key)
+    if value is None:
+        return None
+    text = str(value).strip()
+    return text or None
+
+
+def first_source_text(
+    perimeter_row: pd.Series | None,
+    point_row: pd.Series | None,
+    point_key: str | None,
+    perimeter_key: str | None,
+) -> str | None:
+    """Return the first present attribute value among *point_key* and *perimeter_key*.
+
+    The point feed's value wins when both feeds carry the same attribute; the
+    perimeter feed's ``attr_``-prefixed value is the fallback.
+
+    Args:
+        perimeter_row: A perimeter history row, or None.
+        point_row: A point history row, or None.
+        point_key: The attribute key in the point row's source attributes, or
+            None.
+        perimeter_key: The attribute key in the perimeter row's source
+            attributes, or None.
+
+    Returns:
+        The first present value, or None when both are missing.
+    """
+    if point_key is not None:
+        value = source_text_value(point_row, point_key)
+        if value is not None:
+            return value
+    if perimeter_key is not None:
+        return source_text_value(perimeter_row, perimeter_key)
+    return None
+
+
+def numbered_source_text(
+    perimeter_row: pd.Series | None,
+    point_row: pd.Series | None,
+    slot_keys: dict[int, tuple[str, str]],
+) -> str | None:
+    """Return the distinct present attribute values, ordered by slot number.
+
+    Each numbered slot pairs the point feed's attribute with the perimeter feed's
+    ``attr_``-prefixed counterpart. Values are kept in slot order, and a value
+    that already appeared in an earlier slot is not repeated.
+
+    Args:
+        perimeter_row: A perimeter history row, or None.
+        point_row: A point history row, or None.
+        slot_keys: The point and perimeter attribute keys for each slot number.
+
+    Returns:
+        The distinct values joined with ``; ``, or None when all slots are
+        missing.
+    """
+    values: list[str] = []
+    for number in sorted(slot_keys):
+        point_key, perimeter_key = slot_keys[number]
+        for row, key in ((point_row, point_key), (perimeter_row, perimeter_key)):
+            value = source_text_value(row, key)
+            if value is not None and value not in values:
+                values.append(value)
+    return "; ".join(values) if values else None
+
+
+# Fire behavior reports one free-text label per slot, from the general description
+# through the numbered specific slots. The point feed stores the plain key name
+# and the perimeter feed prefixes the same attribute with ``attr_``.
+FIRE_BEHAVIOR_ATTRIBUTE_KEYS: dict[int, tuple[str, str]] = {
+    0: ("FireBehaviorGeneral", "attr_FireBehaviorGeneral"),
+    1: ("FireBehaviorGeneral1", "attr_FireBehaviorGeneral1"),
+    2: ("FireBehaviorGeneral2", "attr_FireBehaviorGeneral2"),
+    3: ("FireBehaviorGeneral3", "attr_FireBehaviorGeneral3"),
+}
+
+
+# The incident complexity entry combines the reported complexity level, the fire
+# management complexity, and the organizational assessment, in that order.
+INCIDENT_COMPLEXITY_ATTRIBUTE_KEYS: dict[int, tuple[str, str]] = {
+    1: ("IncidentComplexityLevel", "attr_IncidentComplexityLevel"),
+    2: ("FireMgmtComplexity", "attr_FireMgmtComplexity"),
+    3: ("OrganizationalAssessment", "attr_OrganizationalAssessment"),
+}
+
+
+# The fuel model entry combines the primary, secondary, predominant fuel model,
+# and predominant fuel group values, in that order.
+FUEL_MODEL_ATTRIBUTE_KEYS: dict[int, tuple[str, str]] = {
+    1: ("PrimaryFuelModel", "attr_PrimaryFuelModel"),
+    2: ("SecondaryFuelModel", "attr_SecondaryFuelModel"),
+    3: ("PredominantFuelModel", "attr_PredominantFuelModel"),
+    4: ("PredominantFuelGroup", "attr_PredominantFuelGroup"),
+}
+
+
+def source_label(source: object) -> str | None:
+    """Return the human-readable name of a perimeter source kind.
+
+    Args:
+        source: The ``source`` column value of a perimeter row.
+
+    Returns:
+        The source's display name, or None when *source* is missing or unknown.
+    """
+    if peri_scribe.geo_package.is_missing(source):
+        return None
+    return {
+        "firis_perimeter": "FIRIS / NIFC",
+        "wfigs_perimeter": "WFIGS",
+    }.get(str(source))
+
+
+def fire_description(
+    entry: peri_scribe.models.FireIndexEntry,
+    perimeters: geopandas.GeoDataFrame,
+    points: geopandas.GeoDataFrame,
+) -> peri_scribe.kml_descriptions.FireDescription:
+    """Return *entry*'s latest state for its balloon description.
+
+    The latest perimeter supplies the fire's area, containment, cost, and timing;
+    where a perimeter has no value for a fact the latest point location is used
+    instead. The protecting unit, initial response time, incident type,
+    complexity, fuels, fire behavior, and landowner category come only from the
+    sources' original attributes, which the history preserves verbatim.
+
+    Args:
+        entry: One fire index entry.
+        perimeters: The perimeter history layer.
+        points: The point history layer.
+
+    Returns:
+        The fire's latest state.
+    """
+    fire_identifiers = identifiers(entry)
+    perimeter_row = latest_matching_row(perimeters, fire_identifiers, entry.name)
+    point_row = latest_matching_row(points, fire_identifiers, entry.name)
+
+    exterior_perimeter_in_miles = None
+    if perimeter_row is not None:
+        exterior_perimeter_in_miles = peri_scribe.units.exterior_perimeter_in_miles(
+            perimeter_row.geometry,
+        )
+
+    area_in_acres = float_value(perimeter_row, "area_acres")
+    if area_in_acres is None:
+        area_in_acres = float_value(point_row, "incident_size")
+
+    percent_contained = float_value(perimeter_row, "percent_contained")
+    if percent_contained is None:
+        percent_contained = float_value(point_row, "percent_contained")
+
+    estimated_cost_to_date = float_value(perimeter_row, "estimated_cost_to_date")
+    if estimated_cost_to_date is None:
+        estimated_cost_to_date = float_value(point_row, "estimated_cost_to_date")
+
+    estimated_final_cost = float_value(perimeter_row, "estimated_final_cost")
+    if estimated_final_cost is None:
+        estimated_final_cost = float_value(point_row, "estimated_final_cost")
+
+    discovery_time = datetime_value(perimeter_row, "discovery_time")
+    if discovery_time is None:
+        discovery_time = datetime_value(point_row, "discovery_time")
+
+    observation_time = datetime_value(perimeter_row, "observation_time")
+    if observation_time is None:
+        observation_time = datetime_value(point_row, "observation_time")
+
+    initial_response_time = as_datetime(
+        source_attribute_value(perimeter_row, "attr_InitialResponseDateTime"),
+    )
+    if initial_response_time is None:
+        initial_response_time = as_datetime(
+            source_attribute_value(point_row, "InitialResponseDateTime"),
+        )
+
+    protecting_unit = source_text_value(point_row, "POOJurisdictionalUnit")
+    if protecting_unit is None:
+        protecting_unit = source_text_value(point_row, "POOProtectingUnit")
+    if protecting_unit is None:
+        protecting_unit = source_text_value(point_row, "POOJurisdictionalAgency")
+
+    return peri_scribe.kml_descriptions.FireDescription(
+        name=entry.name,
+        status=peri_scribe.models.FireStatus(entry.status),
+        identifier=entry.identifier,
+        source=source_label(column_value(perimeter_row, "source")),
+        mission=text_value(perimeter_row, "mission"),
+        area_in_acres=area_in_acres,
+        exterior_perimeter_in_miles=exterior_perimeter_in_miles,
+        percent_contained=percent_contained,
+        estimated_cost_to_date_in_dollars=estimated_cost_to_date,
+        estimated_final_cost_in_dollars=estimated_final_cost,
+        protecting_unit=protecting_unit,
+        discovery_time=discovery_time,
+        observation_time=observation_time,
+        initial_response_time=initial_response_time,
+        incident_type=first_source_text(
+            perimeter_row,
+            point_row,
+            "IncidentTypeCategory",
+            None,
+        ),
+        incident_complexity=numbered_source_text(
+            perimeter_row,
+            point_row,
+            INCIDENT_COMPLEXITY_ATTRIBUTE_KEYS,
+        ),
+        fuel_model=numbered_source_text(
+            perimeter_row,
+            point_row,
+            FUEL_MODEL_ATTRIBUTE_KEYS,
+        ),
+        fire_behavior=numbered_source_text(
+            perimeter_row,
+            point_row,
+            FIRE_BEHAVIOR_ATTRIBUTE_KEYS,
+        ),
+        landowner_category=first_source_text(
+            perimeter_row,
+            point_row,
+            None,
+            "attr_POOLandownerCategory",
+        ),
+    )
+
+
 def fire_geometries(
     index: peri_scribe.models.FireIndex,
     perimeters: geopandas.GeoDataFrame,
     points: geopandas.GeoDataFrame,
     differential_perimeters: geopandas.GeoDataFrame,
 ) -> list[FireGeometry]:
-    """Return each indexed fire's geometry, sorted by case-folded name.
+    """Return each indexed fire's geometry and plots, sorted by case-folded name.
 
     Each fire's point is its last known location, or a representative point of its
     latest perimeter when no location is known. The full perimeters feed the latest
-    perimeters folder, and the differential growth rings feed the progression maps.
+    perimeters folder, the differential growth rings feed the progression maps, and
+    the point and perimeter histories feed the line plots embedded in each fire's
+    balloon.
 
     Args:
         index: The fire index that names each fire and its status.
@@ -300,6 +709,7 @@ def fire_geometries(
     ring_by_identifier, ring_by_name = perimeter_groups(differential_perimeters)
     point_by_identifier, point_by_name = point_locations(points)
     fires: list[FireGeometry] = []
+    used_prefixes: set[str] = set()
     for entry in index.fires:
         fire_identifiers = identifiers(entry)
         perimeter_observations = fire_perimeters(
@@ -313,6 +723,21 @@ def fire_geometries(
             entry.name,
             ring_by_identifier,
             ring_by_name,
+        )
+        prefix = unique_filename_prefix(
+            entry.identifier,
+            entry.name,
+            frozenset(used_prefixes),
+        )
+        used_prefixes.add(prefix)
+        images = peri_scribe.kml_plots.plot_images(
+            peri_scribe.kml_plots.fire_plots(
+                fire_identifiers,
+                entry.name,
+                perimeters,
+                points,
+            ),
+            prefix,
         )
         fires.append(
             FireGeometry(
@@ -333,6 +758,11 @@ def fire_geometries(
                     )
                     for ring in ring_observations
                 ),
+                description=peri_scribe.kml_descriptions.description_html(
+                    fire_description(entry, perimeters, points),
+                    tuple(image.filename for image in images),
+                ),
+                images=images,
             ),
         )
     return sorted(fires, key=lambda fire: fire.name.casefold())
@@ -356,6 +786,8 @@ def point_placemark(
     style_url: str,
     point: shapely.Point,
     draw_order: int,
+    *,
+    description: str | None,
 ) -> None:
     """Add the point placemark for *point* named *name* to *container*.
 
@@ -366,9 +798,12 @@ def point_placemark(
         point: The point geometry.
         draw_order: The order in which the point draws; it draws last, above the
             perimeters.
+        description: The balloon description, or None for none.
     """
     placemark = container.newpoint(name=name, coords=[(point.x, point.y)])
     placemark.placemark.styleurl = style_url
+    if description is not None:
+        placemark.placemark.description = description
     peri_scribe.kml_template.set_draw_order(placemark, draw_order)
 
 
@@ -378,6 +813,8 @@ def polygon_geometry(
     style_url: str,
     polygon: shapely.Polygon,
     draw_order: int,
+    *,
+    description: str | None,
 ) -> None:
     """Add the polygon placemark for *polygon* to *container*.
 
@@ -387,12 +824,15 @@ def polygon_geometry(
         style_url: The style URL to apply.
         polygon: The shapely polygon to convert.
         draw_order: The order in which the polygon draws.
+        description: The balloon description, or None for none.
     """
     placemark = container.newpolygon(
         name=name,
         outerboundaryis=ring_coordinates(polygon.exterior),
     )
     placemark.placemark.styleurl = style_url
+    if description is not None:
+        placemark.placemark.description = description
     if polygon.interiors:
         placemark.innerboundaryis = [
             ring_coordinates(interior) for interior in polygon.interiors
@@ -406,6 +846,8 @@ def multi_polygon_geometry(
     style_url: str,
     multi_polygon: shapely.MultiPolygon,
     draw_order: int,
+    *,
+    description: str | None,
 ) -> None:
     """Add the multi-geometry placemark for *multi_polygon* to *container*.
 
@@ -415,9 +857,12 @@ def multi_polygon_geometry(
         style_url: The style URL to apply.
         multi_polygon: The shapely multi-polygon to convert.
         draw_order: The order in which the multi-geometry draws.
+        description: The balloon description, or None for none.
     """
     geometry = container.newmultigeometry(name=name)
     geometry.placemark.styleurl = style_url
+    if description is not None:
+        geometry.placemark.description = description
     for polygon in multi_polygon.geoms:
         polygon = typing.cast("shapely.Polygon", polygon)
         geometry.newpolygon(
@@ -435,6 +880,8 @@ def perimeter_geometry(
     style_url: str,
     geometry: shapely.Geometry,
     draw_order: int,
+    *,
+    description: str | None,
 ) -> None:
     """Add the placemark for *geometry* to *container*.
 
@@ -444,6 +891,7 @@ def perimeter_geometry(
         style_url: The style URL to apply.
         geometry: A shapely polygon or multi-polygon.
         draw_order: The order in which the geometry draws.
+        description: The balloon description, or None for none.
     """
     if geometry.geom_type == "Polygon":
         polygon_geometry(
@@ -452,6 +900,7 @@ def perimeter_geometry(
             style_url,
             typing.cast("shapely.Polygon", geometry),
             draw_order,
+            description=description,
         )
     else:
         multi_polygon_geometry(
@@ -460,6 +909,7 @@ def perimeter_geometry(
             style_url,
             typing.cast("shapely.MultiPolygon", geometry),
             draw_order,
+            description=description,
         )
 
 
@@ -469,6 +919,8 @@ def perimeter_placemark(
     style_url: str,
     geometry: shapely.Geometry,
     draw_order: int,
+    *,
+    description: str | None,
 ) -> None:
     """Add the perimeter placemark for *geometry* to *container*.
 
@@ -478,8 +930,16 @@ def perimeter_placemark(
         style_url: The style URL to apply.
         geometry: The perimeter geometry.
         draw_order: The order in which the perimeter draws.
+        description: The balloon description, or None for none.
     """
-    perimeter_geometry(container, name, style_url, geometry, draw_order)
+    perimeter_geometry(
+        container,
+        name,
+        style_url,
+        geometry,
+        draw_order,
+        description=description,
+    )
 
 
 def time_label(observation_time: datetime.datetime | None) -> str | None:
@@ -564,6 +1024,7 @@ def fire_folder(
             style_urls[peri_scribe.kml_template.POINT_LOCATION_NAME],
             fire.point,
             peri_scribe.kml_template.point_draw_order(outline_count),
+            description=fire.description,
         )
     if fire.perimeters:
         latest_perimeter = fire.perimeters[-1]
@@ -573,6 +1034,7 @@ def fire_folder(
             style_urls[peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name],
             latest_perimeter.geometry,
             peri_scribe.kml_template.LATEST_AREA_DRAW_ORDER,
+            description=fire.description,
         )
     for index, template in enumerate(
         peri_scribe.kml_template.OUTLINED_PERIMETER_TEMPLATES,
@@ -586,6 +1048,7 @@ def fire_folder(
             style_urls[template.name],
             perimeter.geometry,
             peri_scribe.kml_template.outline_draw_order(outline_count, index),
+            description=fire.description,
         )
 
 
@@ -644,6 +1107,7 @@ def progression_folder(
                 style_urls[peri_scribe.kml_template.POINT_LOCATION_NAME],
                 fire.point,
                 band_count,
+                description=fire.description,
             )
         for index, band in enumerate(bands):
             perimeter_placemark(
@@ -652,6 +1116,7 @@ def progression_folder(
                 style_urls[band.name],
                 band.geometry,
                 peri_scribe.kml_template.band_draw_order(band_count, index),
+                description=fire.description,
             )
 
 
@@ -726,12 +1191,17 @@ def fire_kml(
     return kml.kml()
 
 
-def write_kmz(path: pathlib.Path, kml_text: str) -> None:
-    """Write *kml_text* as a compressed KMZ file at *path*.
+def write_kmz(
+    path: pathlib.Path,
+    kml_text: str,
+    images: typing.Mapping[str, bytes] | None = None,
+) -> None:
+    """Write *kml_text* and *images* as a compressed KMZ file at *path*.
 
     Args:
         path: The KMZ file to write.
         kml_text: The KML document to compress.
+        images: Each plot image's filename and PNG bytes, or None for none.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(
@@ -741,6 +1211,9 @@ def write_kmz(path: pathlib.Path, kml_text: str) -> None:
         compresslevel=KMZ_COMPRESSION_LEVEL,
     ) as archive:
         archive.writestr(KMZ_DOCUMENT_FILENAME, kml_text)
+        if images:
+            for filename, content in images.items():
+                archive.writestr(filename, content)
 
 
 def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
@@ -748,7 +1221,8 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
 
     The full history GeoPackage is read for geometry, the differential history
     supplies each fire's growth rings, the fire index supplies each fire's name and
-    status, and the KML template file supplies the symbolization. The output is
+    status, and the KML template file supplies the symbolization. Each fire's plot
+    images are written into the archive beside the KML document. The output is
     written under the year's ``maps`` directory.
 
     Args:
@@ -777,17 +1251,15 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
     template = peri_scribe.kml_template_reader.read_template(
         peri_scribe.kml_template.template_path(),
     )
-    output_path = kmz_path(year_directory)
-    write_kmz(
-        output_path,
-        fire_kml(
-            fire_geometries(
-                index,
-                perimeters,
-                points,
-                differential_perimeters,
-            ),
-            template,
-        ),
+    geometries = fire_geometries(
+        index,
+        perimeters,
+        points,
+        differential_perimeters,
     )
+    images = {
+        image.filename: image.content for fire in geometries for image in fire.images
+    }
+    output_path = kmz_path(year_directory)
+    write_kmz(output_path, fire_kml(geometries, template), images)
     return output_path

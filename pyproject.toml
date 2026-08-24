@@ -11,9 +11,10 @@ dependencies = [
     "pyproj",
     "pytest-cov",
     "pytest",
-    "requests",
     "requests-mock",
+    "requests",
     "ruff",
+    "seaborn",
     "setuptools",  # For https://github.com/Esri/arcgis-python-api/issues/2428
     "simplekml",
     "structlog",

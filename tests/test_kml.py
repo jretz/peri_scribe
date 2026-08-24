@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import json
 import pathlib
 import typing
 
@@ -13,6 +14,7 @@ import zipfile
 import zlib
 
 import geopandas
+import pandas as pd
 import pytest
 import shapely.geometry
 import simplekml
@@ -398,6 +400,36 @@ def test_identifiers_omits_none_identifier() -> None:
     assert peri_scribe.kml.identifiers(entry) == frozenset()
 
 
+def test_unique_filename_prefix_uses_identifier() -> None:
+    assert (
+        peri_scribe.kml.unique_filename_prefix(
+            "id-bug",
+            "Bug",
+            frozenset(),
+        )
+        == "id-bug"
+    )
+
+
+def test_unique_filename_prefix_avoids_collisions() -> None:
+    assert (
+        peri_scribe.kml.unique_filename_prefix(
+            None,
+            "Bug",
+            frozenset({"bug"}),
+        )
+        == "bug-2"
+    )
+    assert (
+        peri_scribe.kml.unique_filename_prefix(
+            None,
+            "Bug",
+            frozenset({"bug", "bug-2"}),
+        )
+        == "bug-3"
+    )
+
+
 def test_perimeter_groups_keys_by_identifier_and_preserves_order() -> None:
     first = square(1.0)
     second = square(2.0)
@@ -617,6 +649,43 @@ def test_fire_geometries_sorts_by_case_folded_name() -> None:
     assert [fire.name for fire in fires] == ["aB", "Ac", "AD", "ae"]
 
 
+def test_fire_geometries_attaches_plot_images() -> None:
+    index = fire_index([fire_index_entry("Bug", "active", identifier="id-bug")])
+    perimeters = geometry_frame(
+        [
+            ("id-bug", "Bug", square(1.0)),
+            ("id-bug", "Bug", square(2.0)),
+        ],
+        observation_times=[
+            datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC),
+            datetime.datetime(2026, 8, 6, 20, 0, tzinfo=datetime.UTC),
+        ],
+    )
+    fires = peri_scribe.kml.fire_geometries(
+        index,
+        perimeters,
+        geometry_frame([]),
+        geometry_frame([]),
+    )
+    (fire,) = fires
+    assert [image.filename for image in fire.images] == ["id-bug-perimeter.png"]
+    assert fire.images[0].content
+    assert fire.description is not None
+    assert '<img src="id-bug-perimeter.png" />' in fire.description
+
+
+def test_fire_geometries_skips_images_without_enough_dates() -> None:
+    index = fire_index([fire_index_entry("Bug", "active", identifier="id-bug")])
+    fires = peri_scribe.kml.fire_geometries(
+        index,
+        geometry_frame([("id-bug", "Bug", square(1.0))]),
+        geometry_frame([]),
+        geometry_frame([]),
+    )
+    (fire,) = fires
+    assert fire.images == ()
+
+
 def test_ring_coordinates_converts_coordinates() -> None:
     ring = shapely.geometry.LinearRing(
         [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 0.0)],
@@ -641,6 +710,7 @@ def test_polygon_geometry_includes_holes() -> None:
         "#perimeter-fill",
         polygon,
         0,
+        description=None,
     )
     placemark = placemark_named(document_from(kml.kml()), "Bug")
     assert exterior_coordinates(placemark) == [
@@ -693,6 +763,7 @@ def test_multi_polygon_geometry_holds_each_polygon() -> None:
         "#perimeter-fill",
         multi_polygon,
         expected_draw_order,
+        description=None,
     )
     placemark = placemark_named(document_from(kml.kml()), "Bug")
     geometry = placemark.find(kml_tag("MultiGeometry"))
@@ -716,6 +787,7 @@ def test_perimeter_geometry_converts_polygon() -> None:
         "#perimeter-fill",
         square(1.0),
         0,
+        description=None,
     )
     placemark = placemark_named(document_from(kml.kml()), "Bug")
     assert placemark.find(kml_tag("Polygon")) is not None
@@ -732,6 +804,7 @@ def test_perimeter_geometry_converts_multi_polygon() -> None:
         "#perimeter-fill",
         multi_polygon,
         expected_draw_order,
+        description=None,
     )
     placemark = placemark_named(document_from(kml.kml()), "Bug")
     geometry = placemark.find(kml_tag("MultiGeometry"))
@@ -755,6 +828,7 @@ def test_point_placemark_names_and_styles_point() -> None:
         "#point-icon",
         point,
         expected_draw_order,
+        description=None,
     )
     placemark = placemark_named(document_from(kml.kml()), "Bug")
     assert placemark_style_url(placemark) == "#point-icon"
@@ -770,6 +844,7 @@ def test_perimeter_placemark_names_and_styles_polygon() -> None:
         "#perimeter-fill",
         square(1.0),
         0,
+        description=None,
     )
     placemark = placemark_named(document_from(kml.kml()), "Interior")
     assert placemark_style_url(placemark) == "#perimeter-fill"
@@ -1329,7 +1404,7 @@ class FakeArchive:
     def __init__(self, *arguments: object, **keywords: object) -> None:
         self.arguments = arguments
         self.keywords = keywords
-        self.writes: list[tuple[str, str]] = []
+        self.writes: list[tuple[str, str | bytes]] = []
 
     def __enter__(self) -> typing.Self:
         return self
@@ -1342,8 +1417,8 @@ class FakeArchive:
     ) -> None:
         return None
 
-    def writestr(self, name: str, text: str) -> None:
-        self.writes.append((name, text))
+    def writestr(self, name: str, data: str | bytes) -> None:
+        self.writes.append((name, data))
 
 
 def test_write_kmz_writes_compressed_document(
@@ -1377,6 +1452,41 @@ def test_write_kmz_writes_compressed_document(
     assert archive.keywords["compression"] == zipfile.ZIP_DEFLATED
     assert archive.keywords["compresslevel"] == zlib.Z_BEST_COMPRESSION
     assert archive.writes == [("doc.kml", "<kml/>")]
+
+
+def test_write_kmz_writes_images(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = pathlib.Path("/maps/PeriScribe Fires 2026.kmz")
+    archives: list[FakeArchive] = []
+
+    def fake_zipfile(
+        *arguments: object,
+        **keywords: object,
+    ) -> FakeArchive:
+        archive = FakeArchive(*arguments, **keywords)
+        archives.append(archive)
+        return archive
+
+    monkeypatch.setattr(
+        pathlib.Path,
+        "mkdir",
+        lambda _self, **_keywords: None,
+    )
+    monkeypatch.setattr(zipfile, "ZipFile", fake_zipfile)
+
+    image_content = b"\x89PNG\r\n\x1a\n"
+    peri_scribe.kml.write_kmz(
+        path,
+        "<kml/>",
+        {"id-bug-area.png": image_content},
+    )
+
+    (archive,) = archives
+    assert archive.writes == [
+        ("doc.kml", "<kml/>"),
+        ("id-bug-area.png", image_content),
+    ]
 
 
 def test_create_kmz_reads_history_and_writes_kmz(
@@ -1416,17 +1526,545 @@ def test_create_kmz_reads_history_and_writes_kmz(
         "read_template",
         lambda _path: template,
     )
-    writes: list[tuple[pathlib.Path, str]] = []
+    writes: list[tuple[pathlib.Path, str, dict[str, bytes]]] = []
     monkeypatch.setattr(
         peri_scribe.kml,
         "write_kmz",
-        lambda path, kml_text: writes.append((path, kml_text)),
+        lambda path, kml_text, images: writes.append((path, kml_text, images)),
     )
 
     result = peri_scribe.kml.create_kmz(year_directory)
 
     assert result == peri_scribe.kml.kmz_path(year_directory)
     assert len(writes) == 1
-    path, kml_text = writes[0]
+    path, kml_text, images = writes[0]
     assert path == result
     assert "Active Fires" in kml_text
+    assert images == {}
+
+
+def description_perimeter_frame() -> geopandas.GeoDataFrame:
+    """Return a perimeter history frame with attribute columns populated.
+
+    Returns:
+        The frame.
+    """
+    return geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-bug", "id-bug"],
+            "fire_name": ["Bug", "Bug"],
+            "source": ["firis_perimeter", "firis_perimeter"],
+            "mission": ["CA-BUG-1", "CA-BUG-2"],
+            "area_acres": [10.0, 20.0],
+            "percent_contained": [10.0, 20.0],
+            "estimated_cost_to_date": [1000.0, 2000.0],
+            "estimated_final_cost": [1500.0, 2500.0],
+            "discovery_time": [
+                datetime.datetime(2026, 6, 29, 12, 4, 46, tzinfo=datetime.UTC),
+                datetime.datetime(2026, 6, 29, 12, 4, 46, tzinfo=datetime.UTC),
+            ],
+            "observation_time": [
+                datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC),
+                datetime.datetime(2026, 8, 6, 20, 0, tzinfo=datetime.UTC),
+            ],
+            "source_attributes": [
+                json.dumps(
+                    {
+                        "attr_InitialResponseDateTime": "2026-07-27T19:24:00",
+                        "attr_IncidentComplexityLevel": "Type 4 Incident",
+                        "attr_PrimaryFuelModel": "Timber (Litter and Understory)",
+                        "attr_PredominantFuelModel": "GS1",
+                        "attr_PredominantFuelGroup": "Grass",
+                        "attr_FireBehaviorGeneral": "Active",
+                        "attr_FireBehaviorGeneral2": "Running",
+                        "attr_POOLandownerCategory": "Federal",
+                    },
+                ),
+                json.dumps(
+                    {
+                        "attr_InitialResponseDateTime": "2026-07-27T19:24:00",
+                        "attr_IncidentComplexityLevel": "Type 4 Incident",
+                        "attr_PrimaryFuelModel": "Timber (Litter and Understory)",
+                        "attr_PredominantFuelModel": "GS1",
+                        "attr_PredominantFuelGroup": "Grass",
+                        "attr_FireBehaviorGeneral": "Active",
+                        "attr_FireBehaviorGeneral2": "Running",
+                        "attr_POOLandownerCategory": "Federal",
+                    },
+                ),
+            ],
+        },
+        geometry=[square(1.0), square(2.0)],
+        crs="EPSG:4326",
+    )
+
+
+def description_point_frame() -> geopandas.GeoDataFrame:
+    """Return a point history frame with attribute columns populated.
+
+    Returns:
+        The frame.
+    """
+    return geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-bug"],
+            "fire_name": ["Bug"],
+            "incident_size": [30.0],
+            "percent_contained": [30.0],
+            "estimated_cost_to_date": [3000.0],
+            "estimated_final_cost": [3500.0],
+            "discovery_time": [
+                datetime.datetime(2026, 6, 29, 12, 4, 46, tzinfo=datetime.UTC),
+            ],
+            "observation_time": [
+                datetime.datetime(2026, 8, 6, 20, 0, tzinfo=datetime.UTC),
+            ],
+            "source_attributes": [
+                json.dumps(
+                    {
+                        "POOJurisdictionalUnit": "CANOD",
+                        "InitialResponseDateTime": "2026-07-27T19:24:00",
+                        "IncidentTypeCategory": "WF",
+                        "IncidentComplexityLevel": "Type 4 Incident",
+                        "FireMgmtComplexity": "Type 5 Incident",
+                        "OrganizationalAssessment": "Type 3 IC",
+                        "SecondaryFuelModel": "Brush (2 feet)",
+                        "PredominantFuelModel": "GS1",
+                        "PredominantFuelGroup": "Grass",
+                        "FireBehaviorGeneral": "Active",
+                        "FireBehaviorGeneral1": "Creeping",
+                        "FireBehaviorGeneral2": "Smoldering",
+                        "FireBehaviorGeneral3": "Smoldering",
+                    },
+                ),
+            ],
+        },
+        geometry=[shapely.geometry.Point(1.0, 1.0)],
+        crs="EPSG:4326",
+    )
+
+
+def test_latest_matching_row_matches_by_identifier() -> None:
+    later = datetime.datetime(2026, 8, 6, 20, 0, tzinfo=datetime.UTC)
+    frame = geometry_frame(
+        [
+            ("id-a", "Bug", square(1.0)),
+            ("id-a", "Bug", square(2.0)),
+        ],
+        observation_times=[
+            datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC),
+            later,
+        ],
+    )
+    row = peri_scribe.kml.latest_matching_row(frame, frozenset({"id-a"}), "Bug")
+    assert row is not None
+    assert row["observation_time"] == later
+
+
+def test_latest_matching_row_matches_by_name_without_identifier() -> None:
+    frame = geometry_frame([
+        (None, "Bug", square(1.0)),
+        (None, "Bug", square(2.0)),
+    ])
+    row = peri_scribe.kml.latest_matching_row(frame, frozenset(), "Bug")
+    assert row is not None
+    assert row["fire_name"] == "Bug"
+
+
+def test_latest_matching_row_returns_none_without_match() -> None:
+    frame = geometry_frame([("id-a", "Bug", square(1.0))])
+    assert (
+        peri_scribe.kml.latest_matching_row(
+            frame,
+            frozenset({"id-b"}),
+            "Bug",
+        )
+        is None
+    )
+
+
+def test_column_value_returns_none_for_missing_row_or_column() -> None:
+    frame = geometry_frame([("id-a", "Bug", square(1.0))])
+    row = frame.iloc[0]
+    assert peri_scribe.kml.column_value(row, "fire_name") == "Bug"
+    assert peri_scribe.kml.column_value(row, "not_a_column") is None
+    assert peri_scribe.kml.column_value(None, "fire_name") is None
+
+
+def test_text_value_returns_none_for_blank() -> None:
+    frame = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "mission": ["  "],
+        },
+        geometry=[square(1.0)],
+        crs="EPSG:4326",
+    )
+    row = frame.iloc[0]
+    assert peri_scribe.kml.text_value(row, "mission") is None
+    assert peri_scribe.kml.text_value(row, "fire_name") == "Bug"
+    assert peri_scribe.kml.text_value(None, "fire_name") is None
+
+
+def test_float_value_reads_numbers_and_rejects_non_numeric() -> None:
+    frame = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "area_acres": [12.5],
+            "mission": ["x"],
+        },
+        geometry=[square(1.0)],
+        crs="EPSG:4326",
+    )
+    row = frame.iloc[0]
+    assert peri_scribe.kml.float_value(row, "area_acres") == pytest.approx(12.5)
+    assert peri_scribe.kml.float_value(row, "mission") is None
+    assert peri_scribe.kml.float_value(None, "area_acres") is None
+
+
+def test_as_datetime_parses_strings_and_timestamps() -> None:
+    expected = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.as_datetime(None) is None
+    assert peri_scribe.kml.as_datetime("2026-08-05T20:30:00Z") == expected
+    assert peri_scribe.kml.as_datetime(pd.Timestamp("2026-08-05T20:30:00Z")) == expected
+    assert peri_scribe.kml.as_datetime("not a date") is None
+
+
+def test_datetime_value_reads_a_column() -> None:
+    expected = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
+    frame = geometry_frame(
+        [("id-a", "Bug", square(1.0))],
+        observation_times=[expected],
+    )
+    assert peri_scribe.kml.datetime_value(frame.iloc[0], "observation_time") == expected
+    assert peri_scribe.kml.datetime_value(None, "observation_time") is None
+
+
+def test_source_attribute_value_reads_json() -> None:
+    frame = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({"POOJurisdictionalUnit": "CANOD"})],
+        },
+        geometry=[square(1.0)],
+        crs="EPSG:4326",
+    )
+    assert (
+        peri_scribe.kml.source_attribute_value(
+            frame.iloc[0],
+            "POOJurisdictionalUnit",
+        )
+        == "CANOD"
+    )
+    assert peri_scribe.kml.source_attribute_value(frame.iloc[0], "Missing") is None
+    assert peri_scribe.kml.source_attribute_value(None, "POOJurisdictionalUnit") is None
+
+
+def test_source_attribute_value_rejects_invalid_json() -> None:
+    frame = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": ["not json"],
+        },
+        geometry=[square(1.0)],
+        crs="EPSG:4326",
+    )
+    assert peri_scribe.kml.source_attribute_value(frame.iloc[0], "X") is None
+
+
+def test_source_attribute_value_accepts_decoded_dict() -> None:
+    frame = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [{"POOJurisdictionalUnit": "CANOD"}],
+        },
+        geometry=[square(1.0)],
+        crs="EPSG:4326",
+    )
+    assert (
+        peri_scribe.kml.source_attribute_value(
+            frame.iloc[0],
+            "POOJurisdictionalUnit",
+        )
+        == "CANOD"
+    )
+
+
+def test_source_attribute_value_rejects_non_dict_json() -> None:
+    frame = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps(["a", "b"])],
+        },
+        geometry=[square(1.0)],
+        crs="EPSG:4326",
+    )
+    assert peri_scribe.kml.source_attribute_value(frame.iloc[0], "X") is None
+
+
+def test_source_text_value_returns_none_for_blank() -> None:
+    frame = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({"Unit": "  "})],
+        },
+        geometry=[square(1.0)],
+        crs="EPSG:4326",
+    )
+    assert peri_scribe.kml.source_text_value(frame.iloc[0], "Unit") is None
+    assert peri_scribe.kml.source_text_value(frame.iloc[0], "Missing") is None
+
+
+def test_numbered_source_text_orders_by_slot_number_and_dedupes() -> None:
+    perimeter = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [
+                json.dumps(
+                    {
+                        "attr_FireBehaviorGeneral": "Active",
+                        "attr_FireBehaviorGeneral2": "Running",
+                    },
+                ),
+            ],
+        },
+        geometry=[square(1.0)],
+        crs="EPSG:4326",
+    )
+    point = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [
+                json.dumps(
+                    {
+                        "FireBehaviorGeneral2": "Running",
+                        "FireBehaviorGeneral3": "Smoldering",
+                    },
+                ),
+            ],
+        },
+        geometry=[shapely.geometry.Point(1.0, 1.0)],
+        crs="EPSG:4326",
+    )
+    assert (
+        peri_scribe.kml.numbered_source_text(
+            perimeter.iloc[0],
+            point.iloc[0],
+            peri_scribe.kml.FIRE_BEHAVIOR_ATTRIBUTE_KEYS,
+        )
+        == "Active; Running; Smoldering"
+    )
+    empty = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({})],
+        },
+        geometry=[shapely.geometry.Point(1.0, 1.0)],
+        crs="EPSG:4326",
+    )
+    assert (
+        peri_scribe.kml.numbered_source_text(
+            None,
+            empty.iloc[0],
+            peri_scribe.kml.FIRE_BEHAVIOR_ATTRIBUTE_KEYS,
+        )
+        is None
+    )
+
+
+def test_source_label_names_known_sources() -> None:
+    assert peri_scribe.kml.source_label("firis_perimeter") == "FIRIS / NIFC"
+    assert peri_scribe.kml.source_label("wfigs_perimeter") == "WFIGS"
+    assert peri_scribe.kml.source_label("unknown") is None
+    assert peri_scribe.kml.source_label(None) is None
+
+
+def test_fire_description_prefers_latest_perimeter_values() -> None:
+    entry = fire_index_entry("Bug", "active", identifier="id-bug")
+    description = peri_scribe.kml.fire_description(
+        entry,
+        description_perimeter_frame(),
+        description_point_frame(),
+    )
+    assert description.area_in_acres == pytest.approx(20.0)
+    assert description.percent_contained == pytest.approx(20.0)
+    assert description.estimated_cost_to_date_in_dollars == pytest.approx(2000.0)
+    assert description.estimated_final_cost_in_dollars == pytest.approx(2500.0)
+    assert description.mission == "CA-BUG-2"
+    assert description.source == "FIRIS / NIFC"
+    assert description.identifier == "id-bug"
+    assert description.observation_time == datetime.datetime(
+        2026,
+        8,
+        6,
+        20,
+        0,
+        tzinfo=datetime.UTC,
+    )
+    assert description.initial_response_time == datetime.datetime(
+        2026,
+        7,
+        27,
+        19,
+        24,
+        tzinfo=datetime.UTC,
+    )
+    assert description.protecting_unit == "CANOD"
+    assert description.exterior_perimeter_in_miles == pytest.approx(551.47, rel=0.01)
+    assert description.incident_type == "WF"
+    assert (
+        description.incident_complexity == "Type 4 Incident; Type 5 Incident; Type 3 IC"
+    )
+    assert (
+        description.fuel_model
+        == "Timber (Litter and Understory); Brush (2 feet); GS1; Grass"
+    )
+    assert description.fire_behavior == "Active; Creeping; Smoldering; Running"
+    assert description.landowner_category == "Federal"
+
+
+def test_fire_description_falls_back_to_point_when_perimeter_missing() -> None:
+    entry = fire_index_entry("Bug", "active", identifier="id-bug")
+    empty_perimeters = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-bug"],
+            "fire_name": ["Bug"],
+            "source": [None],
+            "mission": [None],
+            "area_acres": [None],
+            "percent_contained": [None],
+            "estimated_cost_to_date": [None],
+            "estimated_final_cost": [None],
+            "discovery_time": [None],
+            "observation_time": [None],
+            "source_attributes": [json.dumps({})],
+        },
+        geometry=[square(1.0)],
+        crs="EPSG:4326",
+    )
+    description = peri_scribe.kml.fire_description(
+        entry,
+        empty_perimeters,
+        description_point_frame(),
+    )
+    assert description.area_in_acres == pytest.approx(30.0)
+    assert description.percent_contained == pytest.approx(30.0)
+    assert description.estimated_cost_to_date_in_dollars == pytest.approx(3000.0)
+    assert description.estimated_final_cost_in_dollars == pytest.approx(3500.0)
+    assert description.observation_time == datetime.datetime(
+        2026,
+        8,
+        6,
+        20,
+        0,
+        tzinfo=datetime.UTC,
+    )
+    assert description.initial_response_time == datetime.datetime(
+        2026,
+        7,
+        27,
+        19,
+        24,
+        tzinfo=datetime.UTC,
+    )
+    assert description.exterior_perimeter_in_miles == pytest.approx(275.75, rel=0.01)
+    assert description.incident_type == "WF"
+    assert (
+        description.incident_complexity == "Type 4 Incident; Type 5 Incident; Type 3 IC"
+    )
+    assert description.fuel_model == "Brush (2 feet); GS1; Grass"
+    assert description.fire_behavior == "Active; Creeping; Smoldering"
+    assert description.landowner_category is None
+
+
+def test_fire_description_falls_back_to_protecting_agency() -> None:
+    entry = fire_index_entry("Bug", "active", identifier="id-bug")
+    point_frame = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-bug"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({"POOJurisdictionalAgency": "BLM"})],
+        },
+        geometry=[shapely.geometry.Point(1.0, 1.0)],
+        crs="EPSG:4326",
+    )
+    description = peri_scribe.kml.fire_description(
+        entry,
+        geometry_frame([]),
+        point_frame,
+    )
+    assert description.protecting_unit == "BLM"
+    assert description.exterior_perimeter_in_miles is None
+
+
+def test_polygon_geometry_sets_description() -> None:
+    kml = simplekml.Kml()
+    peri_scribe.kml.polygon_geometry(
+        kml.document,
+        "Bug",
+        "#perimeter-fill",
+        square(1.0),
+        0,
+        description="description text",
+    )
+    placemark = placemark_named(document_from(kml.kml()), "Bug")
+    assert placemark.findtext(kml_tag("description")) == "description text"
+
+
+def test_multi_polygon_geometry_sets_description() -> None:
+    kml = simplekml.Kml()
+    multi_polygon = shapely.geometry.MultiPolygon([square(1.0), square(2.0)])
+    peri_scribe.kml.multi_polygon_geometry(
+        kml.document,
+        "Bug",
+        "#perimeter-fill",
+        multi_polygon,
+        0,
+        description="description text",
+    )
+    placemark = placemark_named(document_from(kml.kml()), "Bug")
+    assert placemark.findtext(kml_tag("description")) == "description text"
+
+
+def test_point_placemark_sets_description() -> None:
+    kml = simplekml.Kml()
+    peri_scribe.kml.point_placemark(
+        kml.document,
+        "Bug",
+        "#point-icon",
+        shapely.geometry.Point(1.0, 1.0),
+        0,
+        description="description text",
+    )
+    placemark = placemark_named(document_from(kml.kml()), "Bug")
+    assert placemark.findtext(kml_tag("description")) == "description text"
+
+
+def test_fire_folder_applies_description_to_every_placemark(
+    style_urls: dict[str, str],
+) -> None:
+    fire = peri_scribe.kml.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=shapely.geometry.Point(1.0, 1.0),
+        perimeters=(perimeter_with_time(square(1.0)),),
+        description="<![CDATA[<b>Bug</b>]]>",
+    )
+    kml = simplekml.Kml()
+    peri_scribe.kml.fire_folder(kml.document, fire, style_urls)
+    folder = folder_named(document_from(kml.kml()), "Bug")
+    assert placemark_names(folder) == ["Bug", "Interior", "Unknown Mapping"]
+    for name in placemark_names(folder):
+        assert placemark_named(folder, name).findtext(kml_tag("description")) == (
+            "<b>Bug</b>"
+        )
