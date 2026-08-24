@@ -164,9 +164,8 @@ def group_fire_record_indices(
 ) -> list[list[int]]:
     """Group the indices of fire records that identify the same fire.
 
-    The grouping rules are the same as `group_fire_records`, but each group holds the
-    indices of its records instead of the records themselves, so callers can look up
-    associated data such as each record's source file.
+    Each group holds the indices of its records instead of the records themselves, so
+    callers can look up associated data such as each record's source file.
 
     Args:
         records: The fire records to group.

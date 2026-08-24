@@ -194,7 +194,8 @@ def serial_plot_image_bundles(
                         filename_prefix,
                         plot.filename_suffix,
                     ),
-                    content=peri_scribe.kml_plots.render_plot(
+                    content=peri_scribe.kml_plots.draw_plot(
+                        peri_scribe.kml_plots.create_plot_renderer(),
                         series,
                         y_axis_label=plot.y_axis_label,
                     ),

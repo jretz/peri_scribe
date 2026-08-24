@@ -68,7 +68,7 @@ def wgs84_dataframe(
     return geopandas.GeoDataFrame(columns, geometry=geometry)
 
 
-def test_fire_records_yields_records_from_every_layer(
+def test_read_geopackage_reads_records_from_every_layer(
     configured_feeds: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
@@ -97,7 +97,8 @@ def test_fire_records_yields_records_from_every_layer(
             ),
         },
     )
-    records = list(peri_scribe.geo_package.fire_records(pathlib.Path("fires.gpkg")))
+    contents = peri_scribe.geo_package.read_geopackage(pathlib.Path("fires.gpkg"))
+    records = [row.record for row in contents.rows]
     assert [record.name for record in records] == [
         "Park Fire",
         "ALTA",
@@ -111,25 +112,7 @@ def test_fire_records_yields_records_from_every_layer(
     ]
 
 
-def test_fire_records_is_a_generator(
-    configured_feeds: list[peri_scribe.feed_types.Feed],
-    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
-) -> None:
-    stub_single_layer(
-        stub_geo_package,
-        "Fires_One_0",
-        "Polygon",
-        wgs84_dataframe({
-            "incident_name": ["Park Fire", "ALTA"],
-            "displayStatus": ["Active", "Inactive"],
-        }),
-    )
-    records = peri_scribe.geo_package.fire_records(pathlib.Path("fires.gpkg"))
-    assert next(records).name == "Park Fire"
-    assert next(records).name == "ALTA"
-
-
-def test_fire_records_omits_rows_without_status(
+def test_read_geopackage_omits_rows_without_status(
     configured_feeds: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
@@ -142,15 +125,13 @@ def test_fire_records_omits_rows_without_status(
             "displayStatus": ["Active", None],
         }),
     )
-    assert [
-        record.name
-        for record in peri_scribe.geo_package.fire_records(pathlib.Path("fires.gpkg"))
-    ] == [
+    contents = peri_scribe.geo_package.read_geopackage(pathlib.Path("fires.gpkg"))
+    assert [row.record.name for row in contents.rows] == [
         "Park Fire",
     ]
 
 
-def test_fire_records_names_blank_rows_from_mission(
+def test_read_geopackage_names_blank_rows_from_mission(
     configured_feeds_with_mission: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
@@ -166,11 +147,11 @@ def test_fire_records_names_blank_rows_from_mission(
             "poly_DateCurrent": [None, None],
         }),
     )
-    records = list(peri_scribe.geo_package.fire_records(pathlib.Path("fires.gpkg")))
-    assert [record.name for record in records] == ["WOODS", "Woodside"]
+    contents = peri_scribe.geo_package.read_geopackage(pathlib.Path("fires.gpkg"))
+    assert [row.record.name for row in contents.rows] == ["WOODS", "Woodside"]
 
 
-def test_fire_records_omits_rows_with_no_name_at_all(
+def test_read_geopackage_omits_rows_with_no_name_at_all(
     configured_feeds: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
@@ -186,10 +167,11 @@ def test_fire_records_omits_rows_with_no_name_at_all(
             geometry=[shapely.geometry.Point(0, 0)],
         ),
     )
-    assert list(peri_scribe.geo_package.fire_records(pathlib.Path("fires.gpkg"))) == []
+    contents = peri_scribe.geo_package.read_geopackage(pathlib.Path("fires.gpkg"))
+    assert contents.rows == ()
 
 
-def test_fire_records_raises_for_layer_without_configured_feed(
+def test_read_geopackage_raises_for_layer_without_configured_feed(
     configured_feeds: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
@@ -212,7 +194,7 @@ def test_fire_records_raises_for_layer_without_configured_feed(
         peri_scribe.exceptions.UnknownLayerError,
         match=re.escape("layer Mystery_Layer_0 in fires.gpkg"),
     ):
-        list(peri_scribe.geo_package.fire_records(pathlib.Path("fires.gpkg")))
+        peri_scribe.geo_package.read_geopackage(pathlib.Path("fires.gpkg"))
 
 
 def test_fire_status_from_classifies_active_and_inactive() -> None:
@@ -235,7 +217,7 @@ def test_fire_status_from_raises_for_unknown_value() -> None:
         peri_scribe.geo_package.fire_status_from("Approved")
 
 
-def test_fire_records_reads_normalized_identifiers(
+def test_read_geopackage_reads_normalized_identifiers(
     configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
@@ -252,14 +234,14 @@ def test_fire_records_reads_normalized_identifiers(
             ],
         }),
     )
-    records = list(peri_scribe.geo_package.fire_records(pathlib.Path("fires.gpkg")))
-    assert [record.identifiers for record in records] == [
+    contents = peri_scribe.geo_package.read_geopackage(pathlib.Path("fires.gpkg"))
+    assert [row.record.identifiers for row in contents.rows] == [
         frozenset({"e3094e35-8b33-4a82-be4b-d2e83652c29f"}),
         frozenset(),
     ]
 
 
-def test_fire_records_reads_geometry_and_observation_time(
+def test_read_geopackage_reads_geometry_and_observation_time(
     configured_feeds_with_mission: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
@@ -278,7 +260,8 @@ def test_fire_records_reads_geometry_and_observation_time(
             geometry=[shapely.geometry.Point(0, 0)],
         ),
     )
-    record = next(peri_scribe.geo_package.fire_records(pathlib.Path("fires.gpkg")))
+    contents = peri_scribe.geo_package.read_geopackage(pathlib.Path("fires.gpkg"))
+    record = contents.rows[0].record
     assert record.geometry == shapely.geometry.Point(0, 0)
     assert record.observed_at == datetime.datetime(
         2026,
@@ -291,7 +274,7 @@ def test_fire_records_reads_geometry_and_observation_time(
     )
 
 
-def test_fire_records_reads_mission_and_point_of_origin(
+def test_read_geopackage_reads_mission_and_point_of_origin(
     configured_feeds_with_point_of_origin: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
@@ -311,7 +294,8 @@ def test_fire_records_reads_mission_and_point_of_origin(
             geometry=[shapely.geometry.Point(0, 0)],
         ),
     )
-    record = next(peri_scribe.geo_package.fire_records(pathlib.Path("fires.gpkg")))
+    contents = peri_scribe.geo_package.read_geopackage(pathlib.Path("fires.gpkg"))
+    record = contents.rows[0].record
     assert record.mission == "2026-NVCCD-030683"
     assert record.point_of_origin_state == "US-CA"
     assert record.point_of_origin_fips == "06035"
@@ -420,7 +404,7 @@ def test_observation_time_from_returns_none_for_blank_or_invalid() -> None:
     assert peri_scribe.geo_package.observation_time_from(12345) is None
 
 
-def test_complex_memberships_yields_complex_children(
+def test_read_geopackage_reads_complex_memberships(
     configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
@@ -440,18 +424,17 @@ def test_complex_memberships_yields_complex_children(
             "IsCpxChild": [1, 0],
         }),
     )
-    assert list(
-        peri_scribe.geo_package.complex_memberships(pathlib.Path("fires.gpkg")),
-    ) == [
+    contents = peri_scribe.geo_package.read_geopackage(pathlib.Path("fires.gpkg"))
+    assert contents.memberships == (
         peri_scribe.models.ComplexMembership(
             fire_identifier="1b0219ee-5298-4fef-9927-c2666d9d53fc",
             complex_identifier="b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3",
             complex_name="ROWE CREEK COMPLEX",
         ),
-    ]
+    )
 
 
-def test_complex_memberships_skips_layers_without_complex_columns(
+def test_read_geopackage_reads_no_memberships_without_complex_columns(
     configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
@@ -468,15 +451,11 @@ def test_complex_memberships_skips_layers_without_complex_columns(
             geometry=[shapely.geometry.Point(0, 0)],
         ),
     )
-    assert (
-        list(
-            peri_scribe.geo_package.complex_memberships(pathlib.Path("fires.gpkg")),
-        )
-        == []
-    )
+    contents = peri_scribe.geo_package.read_geopackage(pathlib.Path("fires.gpkg"))
+    assert contents.memberships == ()
 
 
-def test_complex_memberships_skips_rows_not_marked_as_complex_children(
+def test_read_geopackage_skips_rows_not_marked_as_complex_children(
     configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
@@ -496,15 +475,11 @@ def test_complex_memberships_skips_rows_not_marked_as_complex_children(
             geometry=[shapely.geometry.Point(0, 0)],
         ),
     )
-    assert (
-        list(
-            peri_scribe.geo_package.complex_memberships(pathlib.Path("fires.gpkg")),
-        )
-        == []
-    )
+    contents = peri_scribe.geo_package.read_geopackage(pathlib.Path("fires.gpkg"))
+    assert contents.memberships == ()
 
 
-def test_complex_memberships_omits_rows_with_blank_values(
+def test_read_geopackage_omits_memberships_with_blank_values(
     configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
@@ -521,36 +496,8 @@ def test_complex_memberships_omits_rows_with_blank_values(
             "IsCpxChild": [1, 1],
         }),
     )
-    assert (
-        list(
-            peri_scribe.geo_package.complex_memberships(pathlib.Path("fires.gpkg")),
-        )
-        == []
-    )
-
-
-def test_complex_memberships_raises_for_layer_without_configured_feed(
-    configured_feeds_with_identifiers: list[peri_scribe.feed_types.Feed],
-    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
-) -> None:
-    stub_geo_package(
-        pd.DataFrame({"name": ["Mystery_Layer_0"], "geometry_type": ["Point"]}),
-        {
-            "Mystery_Layer_0": pd.DataFrame({
-                "IncidentName": ["Creek Fire"],
-                "ActiveFireCandidate": [1],
-                "IrwinID": ["some-id"],
-                "CpxID": ["some-complex"],
-                "CpxName": ["SOME COMPLEX"],
-                "IsCpxChild": [1],
-            }),
-        },
-    )
-    with pytest.raises(
-        peri_scribe.exceptions.UnknownLayerError,
-        match=re.escape("layer Mystery_Layer_0 in fires.gpkg"),
-    ):
-        list(peri_scribe.geo_package.complex_memberships(pathlib.Path("fires.gpkg")))
+    contents = peri_scribe.geo_package.read_geopackage(pathlib.Path("fires.gpkg"))
+    assert contents.memberships == ()
 
 
 def test_read_layer_reads_named_layer(
@@ -663,7 +610,7 @@ def test_read_layer_dataframe_reads_feed_layer(
     assert calls == [(path, SAMPLE_FEED_NAME)]
 
 
-def test_fire_row_records_yields_full_rows(
+def test_read_geopackage_reads_full_rows(
     configured_feeds: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
@@ -683,7 +630,7 @@ def test_fire_row_records_yields_full_rows(
             ),
         },
     )
-    rows = list(peri_scribe.geo_package.fire_row_records(pathlib.Path("fires.gpkg")))
+    rows = peri_scribe.geo_package.read_geopackage(pathlib.Path("fires.gpkg")).rows
     assert len(rows) == 1
     assert rows[0].object_id == object_id
     assert rows[0].source_name == "Fires_One_0"
@@ -692,7 +639,7 @@ def test_fire_row_records_yields_full_rows(
     assert "geometry" not in rows[0].attributes
 
 
-def test_fire_row_records_omits_missing_object_id(
+def test_read_geopackage_reads_missing_object_id(
     configured_feeds: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
@@ -708,7 +655,7 @@ def test_fire_row_records_omits_missing_object_id(
             ),
         },
     )
-    rows = list(peri_scribe.geo_package.fire_row_records(pathlib.Path("fires.gpkg")))
+    rows = peri_scribe.geo_package.read_geopackage(pathlib.Path("fires.gpkg")).rows
     assert rows[0].object_id is None
 
 
@@ -729,27 +676,7 @@ def test_row_attributes_excludes_geometry_column() -> None:
     assert peri_scribe.geo_package.row_attributes(row, "geometry") == {"OBJECTID": 1}
 
 
-def test_fire_row_records_raises_for_unknown_layer(
-    configured_feeds: list[peri_scribe.feed_types.Feed],
-    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
-) -> None:
-    stub_geo_package(
-        pd.DataFrame({"name": ["Unknown_0"], "geometry_type": ["Point"]}),
-        {
-            "Unknown_0": geopandas.GeoDataFrame(
-                {
-                    "incident_name": ["Park Fire"],
-                    "displayStatus": ["Active"],
-                },
-                geometry=[shapely.geometry.Point(0, 0)],
-            ),
-        },
-    )
-    with pytest.raises(peri_scribe.exceptions.UnknownLayerError):
-        list(peri_scribe.geo_package.fire_row_records(pathlib.Path("fires.gpkg")))
-
-
-def test_fire_row_records_skips_rows_without_status(
+def test_read_geopackage_skips_rows_without_status(
     configured_feeds: list[peri_scribe.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
@@ -768,7 +695,7 @@ def test_fire_row_records_skips_rows_without_status(
             ),
         },
     )
-    rows = list(peri_scribe.geo_package.fire_row_records(pathlib.Path("fires.gpkg")))
+    rows = peri_scribe.geo_package.read_geopackage(pathlib.Path("fires.gpkg")).rows
     assert [row.record.name for row in rows] == ["Park Fire"]
 
 

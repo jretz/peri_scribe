@@ -381,27 +381,6 @@ def layers_by_feed(
         yield feed, geopandas.read_file(path, layer=feed.name)
 
 
-def fire_records(
-    path: pathlib.Path,
-) -> typing.Generator[peri_scribe.models.FireRecord]:
-    """Yield the fire records in every layer of the GeoPackage at *path*.
-
-    The GeoPackage is only read, never written. Every layer must correspond to a
-    configured feed, which says which columns hold each fire's name, status,
-    identifiers, mission, and observation time. Rows without a status are omitted; rows
-    whose name is blank are named from the mission code when one is available, and rows
-    with no name at all are omitted.
-
-    Args:
-        path: The GeoPackage file to read.
-
-    Yields:
-        The fire records found in the file, one per row, in the order encountered.
-    """
-    for row in read_geopackage(path).rows:
-        yield row.record
-
-
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class FireRowRecord:
     """One fire source row with its identifying record and full attributes.
@@ -565,42 +544,6 @@ def read_geopackage(path: pathlib.Path) -> GeopackageContents:
                 if membership is not None:
                     memberships.append(membership)
     return GeopackageContents(rows=tuple(rows), memberships=tuple(memberships))
-
-
-def fire_row_records(
-    path: pathlib.Path,
-) -> typing.Generator[FireRowRecord]:
-    """Yield each fire row of the GeoPackage at *path* with its full attributes.
-
-    Rows are the full attributes for each fire record, in the same order as
-    `fire_records`, so the two can be paired by index.
-
-    Args:
-        path: The GeoPackage file to read.
-
-    Yields:
-        Each fire row, one per row, in the order encountered.
-    """
-    yield from read_geopackage(path).rows
-
-
-def complex_memberships(
-    path: pathlib.Path,
-) -> typing.Generator[peri_scribe.models.ComplexMembership]:
-    """Yield the complex memberships in every layer of the GeoPackage at *path*.
-
-    The GeoPackage is only read, never written. Only layers whose feed declares complex
-    columns are considered. Rows that are not marked as complex children, or that lack a
-    fire identifier, complex identifier, or complex name, are omitted.
-
-    Args:
-        path: The GeoPackage file to read.
-
-    Yields:
-        The complex memberships found in the file, one per row, in the order
-        encountered.
-    """
-    yield from read_geopackage(path).memberships
 
 
 def read_layer(

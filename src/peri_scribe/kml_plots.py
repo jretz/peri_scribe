@@ -632,28 +632,6 @@ def draw_plot(
     return buffer.getvalue()
 
 
-def render_plot(
-    series_list: tuple[PlotSeries, ...],
-    *,
-    y_axis_label: str = "",
-) -> bytes:
-    """Render *series_list* as one line plot and return its PNG bytes.
-
-    Args:
-        series_list: The lines to draw, each already known to span enough
-            observation times.
-        y_axis_label: The unit shown at the plot's y-axis.
-
-    Returns:
-        The plot as PNG bytes.
-    """
-    return draw_plot(
-        create_plot_renderer(),
-        series_list,
-        y_axis_label=y_axis_label,
-    )
-
-
 # The rendering setup each pool worker reuses for every plot it draws. The pool
 # initializer appends one renderer per worker; the workers share it across the
 # pool's plots by clearing the figure between them. The parent process never

@@ -537,8 +537,9 @@ def test_x_axis_ticks_thins_when_days_do_not_fit() -> None:
     )
 
 
-def test_render_plot_returns_png_for_one_series() -> None:
-    content = peri_scribe.kml_plots.render_plot(
+def test_draw_plot_returns_png_for_one_series() -> None:
+    content = peri_scribe.kml_plots.draw_plot(
+        peri_scribe.kml_plots.create_plot_renderer(),
         (
             peri_scribe.kml_plots.PlotSeries(
                 label="Area",
@@ -550,8 +551,9 @@ def test_render_plot_returns_png_for_one_series() -> None:
     assert content.startswith(PNG_SIGNATURE)
 
 
-def test_render_plot_returns_png_for_multiple_series() -> None:
-    content = peri_scribe.kml_plots.render_plot(
+def test_draw_plot_returns_png_for_multiple_series() -> None:
+    content = peri_scribe.kml_plots.draw_plot(
+        peri_scribe.kml_plots.create_plot_renderer(),
         (
             peri_scribe.kml_plots.PlotSeries(
                 label="Cost to date",
