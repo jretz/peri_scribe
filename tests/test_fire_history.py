@@ -222,23 +222,38 @@ def test_effective_time_prefers_observation_time() -> None:
     assert peri_scribe.perimeter_versions.effective_time(observed) == mapping_time
 
 
-def test_effective_time_falls_back_to_current_date_before_snapshot_time() -> None:
-    current_date = utc(2026, 8, 16, 0, 10)
+def test_effective_time_prefers_as_of_date_over_capture_date() -> None:
+    # The WFIGS perimeter feed reads poly_DateCurrent (the as-of date) as its
+    # observation column; the capture date (poly_PolygonDateTime) describes the
+    # record's original mapping and must not shadow the per-version as-of date.
+    as_of = utc(2026, 8, 16, 22, 26)
+    observed = observation(
+        observation_time=as_of,
+        attributes={"poly_PolygonDateTime": utc(2026, 8, 10, 0, 0)},
+    )
+    assert peri_scribe.perimeter_versions.effective_time(observed) == as_of
+
+
+def test_effective_time_falls_back_to_snapshot_when_current_date_is_stale() -> None:
+    # A poly_DateCurrent value left behind in the attributes is no longer consulted
+    # once the observation column has read it; a dateless row falls to the snapshot.
     snapshot_time = utc(2026, 8, 17, 1, 42)
     observed = observation(
         snapshot_time=snapshot_time,
-        attributes={"poly_DateCurrent": current_date},
+        attributes={"poly_DateCurrent": utc(2026, 8, 16, 0, 10)},
     )
-    assert peri_scribe.perimeter_versions.effective_time(observed) == current_date
+    assert peri_scribe.perimeter_versions.effective_time(observed) == snapshot_time
 
 
-def test_effective_time_prefers_current_date_over_modified_time() -> None:
-    current_date = utc(2026, 8, 16, 0, 10)
+def test_effective_time_prefers_modified_time_over_stale_current_date() -> None:
     modified_time = utc(2026, 8, 17, 23, 18)
     observed = observation(
-        attributes={"poly_DateCurrent": current_date, "EditDate": modified_time},
+        attributes={
+            "poly_DateCurrent": utc(2026, 8, 16, 0, 10),
+            "EditDate": modified_time,
+        },
     )
-    assert peri_scribe.perimeter_versions.effective_time(observed) == current_date
+    assert peri_scribe.perimeter_versions.effective_time(observed) == modified_time
 
 
 def test_effective_time_falls_back_to_firis_modified_time() -> None:
@@ -863,32 +878,47 @@ def test_perimeter_row_builds_fields_and_geometry() -> None:
     assert row["source"] == "firis_perimeter"
 
 
-def test_perimeter_row_falls_back_to_current_date() -> None:
+def test_perimeter_row_falls_back_to_modified_time() -> None:
     geometry = polygon((0, 0), (1, 0), (1, 1), (0, 0))
-    current_date = utc(2026, 8, 16, 0, 10)
+    modified_time = utc(2026, 8, 17, 23, 18)
     version = observation(
         geometry=geometry,
         snapshot_time=utc(2026, 8, 17, 1, 42),
-        attributes={"poly_DateCurrent": current_date},
+        attributes={"EditDate": modified_time},
     )
     row = peri_scribe.fire_history.perimeter_row(fire(), None, version)
-    assert row["observation_time"] == current_date
+    assert row["observation_time"] == modified_time
 
 
 def test_point_row_builds_fields_and_geometry() -> None:
     geometry = point(0, 0)
     incident_size = 100
+    modified_time = utc(2026, 8, 17, 1, 0)
     version = observation(
         source_kind=WFIGS_LOCATION,
         geometry=geometry,
-        snapshot_time=utc(2026, 8, 17, 1, 0),
+        observation_time=modified_time,
+        snapshot_time=utc(2026, 8, 17, 6, 0),
         attributes={"IncidentSize": incident_size},
     )
     row = peri_scribe.fire_history.point_row(fire(), None, version)
     assert row["geometry"] == geometry
     assert row["incident_size"] == pytest.approx(incident_size)
-    assert row["observation_time"] == version.snapshot_time
+    assert row["observation_time"] == modified_time
     assert row["source"] == "wfigs_location"
+
+
+def test_point_row_falls_back_to_snapshot_time() -> None:
+    geometry = point(0, 0)
+    snapshot_time = utc(2026, 8, 17, 6, 0)
+    version = observation(
+        source_kind=WFIGS_LOCATION,
+        geometry=geometry,
+        snapshot_time=snapshot_time,
+        attributes={"IncidentSize": 100},
+    )
+    row = peri_scribe.fire_history.point_row(fire(), None, version)
+    assert row["observation_time"] == snapshot_time
 
 
 def test_build_dataframe_builds_geodataframe() -> None:

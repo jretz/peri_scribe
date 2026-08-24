@@ -35,7 +35,12 @@ WFIGS_PERIMETERS_FEED = peri_scribe.feed_types.ArcGISFeed(
     is_complex_child_column="attr_IsCpxChild",
     point_of_origin_state_column="attr_POOState",
     point_of_origin_fips_column="attr_POOFips",
-    observation_time_column="poly_PolygonDateTime",
+    # The polygon record is edited in place as a fire grows, so its capture date
+    # (poly_PolygonDateTime) stays at the original mapping and misdates every later
+    # version. poly_DateCurrent is the perimeter's as-of date (the date the version
+    # is current for; the date the source polygon record was last edited in WFIGS),
+    # which advances with each version and is the accurate per-version date.
+    observation_time_column="poly_DateCurrent",
     # The polygon table updates (geometry, poly_DateCurrent, poly_CreateDate) without
     # moving attr_ModifiedOnDateTime_dt, so all three columns must count as a change
     # signal or the incremental fetch misses perimeter updates.
@@ -60,6 +65,10 @@ WFIGS_INCIDENT_LOCATIONS_FEED = peri_scribe.feed_types.ArcGISFeed(
     is_complex_child_column="IsCpxChild",
     point_of_origin_state_column="POOState",
     point_of_origin_fips_column="POOFips",
+    # NIFC determines a fire's information last update by the incident record's
+    # modified time, so the point observation is dated by ModifiedOnDateTime_dt
+    # rather than by when peri_scribe fetched the layer.
+    observation_time_column="ModifiedOnDateTime_dt",
     change_columns=("ModifiedOnDateTime_dt",),
 )
 

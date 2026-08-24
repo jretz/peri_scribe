@@ -153,31 +153,26 @@ def source_observation_from_row(
 def effective_time(
     observation: SourceObservation,
 ) -> datetime.datetime | None:
-    """Return the observation's mapping time, falling back to its own edit time.
+    """Return the observation's as-of time, falling back to its own edit time.
 
-    The mapping time is the feed's observation column when present. A perimeter whose
-    observation column is empty falls back to the row's current-date column
-    (``poly_DateCurrent``) and then to the row's modified-time column, so a perimeter
-    without a polygon date still carries the date its source reports it is current
-    for. The snapshot's last-edit timestamp is the last resort: it describes when the
-    layer last changed, not when the row was mapped, and dating a dateless perimeter
-    by it can make a stale re-published row look like the newest mapping.
+    The as-of time is the feed's observation column: for both perimeter feeds that is
+    ``poly_DateCurrent``, the date the perimeter version is current for, so each
+    version of an in-place-edited perimeter carries the date its shape became
+    current. A row whose observation column is empty falls back to its modified-time
+    column (``EditDate`` for FIRIS, ``attr_ModifiedOnDateTime_dt`` for WFIGS) and
+    then to the snapshot's last-edit timestamp as the last resort: that timestamp
+    describes when the layer changed, not when the row was current, and dating a
+    dateless perimeter by it can make a stale re-published row look like the newest
+    mapping.
 
     Args:
         observation: The observation to time.
 
     Returns:
-        The mapping time, the current date, the row's modified time, or the snapshot
-        time, in that order.
+        The as-of time, the row's modified time, or the snapshot time, in that order.
     """
     if observation.observation_time is not None:
         return observation.observation_time
-    current_date = peri_scribe.history_attributes.datetime_attribute(
-        observation.attributes,
-        "poly_DateCurrent",
-    )
-    if current_date is not None:
-        return current_date
     modified_time = peri_scribe.history_attributes.datetime_attribute(
         observation.attributes,
         "EditDate",

@@ -304,7 +304,14 @@ def point_row(
             ),
             "source_file": observation.source_file,
             "source_serial": observation.serial_number,
-            "observation_time": observation.snapshot_time,
+            # The incident record's modified time (the feed's observation column)
+            # is the as-of date for the point's reported state; the snapshot time
+            # is the fallback when the record carries no modified time.
+            "observation_time": (
+                observation.observation_time
+                if observation.observation_time is not None
+                else observation.snapshot_time
+            ),
             "created_time": peri_scribe.history_attributes.datetime_attribute(
                 attributes,
                 "CreatedOnDateTime_dt",
