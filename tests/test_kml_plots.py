@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import os
 
 import geopandas
 import pytest
@@ -584,31 +585,182 @@ def test_filename_prefix_falls_back_to_fire_for_empty_name() -> None:
     assert peri_scribe.kml_plots.filename_prefix(None, "!!!") == "fire"
 
 
-def test_plot_images_renders_retained_plots_and_skips_empty() -> None:
-    images = peri_scribe.kml_plots.plot_images(
-        (
-            peri_scribe.kml_plots.FirePlot(
-                filename_suffix="area",
-                series=(
-                    peri_scribe.kml_plots.PlotSeries(
-                        label="Area",
-                        points=(series_point(1, 10.0), series_point(2, 20.0)),
-                    ),
+def test_draw_plot_reuses_renderer_between_plots() -> None:
+    renderer = peri_scribe.kml_plots.create_plot_renderer()
+    series = (
+        peri_scribe.kml_plots.PlotSeries(
+            label="Area",
+            points=(series_point(1, 10.0), series_point(2, 20.0)),
+        ),
+    )
+    first = peri_scribe.kml_plots.draw_plot(
+        renderer,
+        series,
+        y_axis_label="Thousands of acres",
+    )
+    second = peri_scribe.kml_plots.draw_plot(
+        renderer,
+        series,
+        y_axis_label="Thousands of acres",
+    )
+    assert first == second
+    assert first.startswith(PNG_SIGNATURE)
+
+
+def test_initialize_worker_creates_shared_renderer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(peri_scribe.kml_plots, "worker_renderers", [])
+    monkeypatch.setattr(
+        peri_scribe.kml_plots.os,
+        "nice",
+        lambda increment: increment,
+    )
+    peri_scribe.kml_plots.initialize_worker()
+    image = peri_scribe.kml_plots.render_plot_request(
+        peri_scribe.kml_plots.PlotRequest(
+            fire_index=0,
+            filename_prefix="id-bug",
+            filename_suffix="area",
+            y_axis_label="Thousands of acres",
+            series=(
+                peri_scribe.kml_plots.PlotSeries(
+                    label="Area",
+                    points=(series_point(1, 10.0), series_point(2, 20.0)),
                 ),
-                y_axis_label="Thousands of acres",
-            ),
-            peri_scribe.kml_plots.FirePlot(
-                filename_suffix="cost",
-                series=(
-                    peri_scribe.kml_plots.PlotSeries(
-                        label="Cost to date",
-                        points=(series_point(1, 1000.0),),
-                    ),
-                ),
-                y_axis_label="Millions of $",
             ),
         ),
-        "id-bug",
     )
-    assert [image.filename for image in images] == ["id-bug-area.png"]
-    assert images[0].content.startswith(PNG_SIGNATURE)
+    assert image.filename == "id-bug-area.png"
+    assert image.content.startswith(PNG_SIGNATURE)
+
+
+def test_initialize_worker_nices_the_worker_process(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    niceness_calls: list[int] = []
+    monkeypatch.setattr(
+        peri_scribe.kml_plots.os,
+        "nice",
+        lambda increment: niceness_calls.append(increment) or increment,
+    )
+    peri_scribe.kml_plots.initialize_worker()
+    assert niceness_calls == [
+        peri_scribe.kml_plots.WORKER_NICENESS_INCREMENT,
+    ]
+
+
+def test_initialize_worker_continues_when_niceness_is_denied(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def deny_niceness(_increment: int) -> int:
+        message = "Operation not permitted"
+        raise PermissionError(message)
+
+    monkeypatch.setattr(peri_scribe.kml_plots, "worker_renderers", [])
+    monkeypatch.setattr(peri_scribe.kml_plots.os, "nice", deny_niceness)
+    peri_scribe.kml_plots.initialize_worker()
+    assert len(peri_scribe.kml_plots.worker_renderers) == 1
+    assert isinstance(
+        peri_scribe.kml_plots.worker_renderers[0],
+        peri_scribe.kml_plots.PlotRenderer,
+    )
+
+
+def test_render_plot_request_raises_without_initialized_renderer(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(peri_scribe.kml_plots, "worker_renderers", [])
+    with pytest.raises(RuntimeError):
+        peri_scribe.kml_plots.render_plot_request(
+            peri_scribe.kml_plots.PlotRequest(
+                fire_index=0,
+                filename_prefix="id-bug",
+                filename_suffix="area",
+                y_axis_label="Thousands of acres",
+                series=(),
+            ),
+        )
+
+
+def test_worker_count_for_caps_at_cores_and_tasks(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cpu_count = 12
+    monkeypatch.setattr(os, "cpu_count", lambda: cpu_count)
+    assert peri_scribe.kml_plots.worker_count_for(100) == cpu_count
+    task_count = 2
+    assert peri_scribe.kml_plots.worker_count_for(task_count) == task_count
+    monkeypatch.setattr(os, "cpu_count", lambda: 1)
+    assert peri_scribe.kml_plots.worker_count_for(5) == 1
+
+
+def test_plot_image_bundles_renders_each_fire_in_parallel() -> None:
+    area_plot = peri_scribe.kml_plots.FirePlot(
+        filename_suffix="area",
+        series=(
+            peri_scribe.kml_plots.PlotSeries(
+                label="Area",
+                points=(series_point(1, 10.0), series_point(2, 20.0)),
+            ),
+        ),
+        y_axis_label="Thousands of acres",
+    )
+    perimeter_plot = peri_scribe.kml_plots.FirePlot(
+        filename_suffix="perimeter",
+        series=(
+            peri_scribe.kml_plots.PlotSeries(
+                label="Exterior perimeter",
+                points=(series_point(1, 5.0), series_point(2, 8.0)),
+            ),
+            peri_scribe.kml_plots.PlotSeries(
+                label="Contained perimeter",
+                points=(series_point(1, 2.0), series_point(2, 3.0)),
+            ),
+        ),
+        y_axis_label="Miles",
+    )
+    single_observation_plot = peri_scribe.kml_plots.FirePlot(
+        filename_suffix="cost",
+        series=(
+            peri_scribe.kml_plots.PlotSeries(
+                label="Cost to date",
+                points=(series_point(1, 1000.0),),
+            ),
+        ),
+        y_axis_label="Millions of $",
+    )
+    bundles = peri_scribe.kml_plots.plot_image_bundles(
+        (
+            ("id-bug", (area_plot, perimeter_plot, single_observation_plot)),
+            ("id-alta", (area_plot,)),
+        ),
+    )
+    assert [image.filename for image in bundles[0]] == [
+        "id-bug-area.png",
+        "id-bug-perimeter.png",
+    ]
+    assert [image.filename for image in bundles[1]] == ["id-alta-area.png"]
+    for bundle in bundles:
+        for image in bundle:
+            assert image.content.startswith(PNG_SIGNATURE)
+
+
+def test_plot_image_bundles_returns_empty_bundles_without_requests() -> None:
+    single_observation_plot = peri_scribe.kml_plots.FirePlot(
+        filename_suffix="area",
+        series=(
+            peri_scribe.kml_plots.PlotSeries(
+                label="Area",
+                points=(series_point(1, 10.0),),
+            ),
+        ),
+        y_axis_label="Thousands of acres",
+    )
+    assert peri_scribe.kml_plots.plot_image_bundles(
+        (("id-bug", (single_observation_plot,)),),
+    ) == ((),)
+
+
+def test_plot_image_bundles_returns_empty_for_no_fires() -> None:
+    assert peri_scribe.kml_plots.plot_image_bundles(()) == ()

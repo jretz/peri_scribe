@@ -694,7 +694,8 @@ def fire_geometries(
     latest perimeter when no location is known. The full perimeters feed the latest
     perimeters folder, the differential growth rings feed the progression maps, and
     the point and perimeter histories feed the line plots embedded in each fire's
-    balloon.
+    balloon. All of the fires' plots are rendered together, in parallel, in one
+    shared process pool.
 
     Args:
         index: The fire index that names each fire and its status.
@@ -708,7 +709,15 @@ def fire_geometries(
     perimeter_by_identifier, perimeter_by_name = perimeter_groups(perimeters)
     ring_by_identifier, ring_by_name = perimeter_groups(differential_perimeters)
     point_by_identifier, point_by_name = point_locations(points)
-    fires: list[FireGeometry] = []
+    plot_bundles: list[tuple[str, tuple[peri_scribe.kml_plots.FirePlot, ...]]] = []
+    pending: list[
+        tuple[
+            peri_scribe.models.FireIndexEntry,
+            frozenset[str],
+            tuple[Perimeter, ...],
+            tuple[peri_scribe.perimeter_progression.Ring, ...],
+        ]
+    ] = []
     used_prefixes: set[str] = set()
     for entry in index.fires:
         fire_identifiers = identifiers(entry)
@@ -730,15 +739,41 @@ def fire_geometries(
             frozenset(used_prefixes),
         )
         used_prefixes.add(prefix)
-        images = peri_scribe.kml_plots.plot_images(
-            peri_scribe.kml_plots.fire_plots(
+        pending.append(
+            (
+                entry,
                 fire_identifiers,
-                entry.name,
-                perimeters,
-                points,
+                perimeter_observations,
+                tuple(
+                    peri_scribe.perimeter_progression.Ring(
+                        geometry=ring.geometry,
+                        observation_time=ring.observation_time,
+                    )
+                    for ring in ring_observations
+                ),
             ),
-            prefix,
         )
+        plot_bundles.append(
+            (
+                prefix,
+                peri_scribe.kml_plots.fire_plots(
+                    fire_identifiers,
+                    entry.name,
+                    perimeters,
+                    points,
+                ),
+            ),
+        )
+    image_bundles = peri_scribe.kml_plots.plot_image_bundles(
+        tuple(plot_bundles),
+    )
+    fires: list[FireGeometry] = []
+    for (
+        entry,
+        fire_identifiers,
+        perimeter_observations,
+        progression_rings,
+    ), images in zip(pending, image_bundles, strict=True):
         fires.append(
             FireGeometry(
                 name=entry.name,
@@ -751,13 +786,7 @@ def fire_geometries(
                     perimeter_observations,
                 ),
                 perimeters=perimeter_observations,
-                progression_rings=tuple(
-                    peri_scribe.perimeter_progression.Ring(
-                        geometry=ring.geometry,
-                        observation_time=ring.observation_time,
-                    )
-                    for ring in ring_observations
-                ),
+                progression_rings=progression_rings,
                 description=peri_scribe.kml_descriptions.description_html(
                     fire_description(entry, perimeters, points),
                     tuple(image.filename for image in images),

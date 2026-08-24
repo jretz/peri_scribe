@@ -12,14 +12,22 @@ the mapped area, perimeter lengths, and cost, while the point history supplies t
 incident-reported area and cost. A line is only drawn when its measurement exists
 on at least two distinct observation times, because a single point cannot show
 growth; a plot whose lines are all dropped is skipped entirely.
+
+Rendering is parallelized across fires with one process pool: every worker
+creates its figure, canvas, and output buffer once and clears the figure between
+plots, so the expensive setup is shared across all of that worker's plots rather
+than rebuilt per plot.
 """
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import datetime
 import io
 import math
+import multiprocessing
+import os
 import re
 import typing
 
@@ -93,6 +101,11 @@ AREA_AXIS_LABEL = "Thousands of acres"
 PERIMETER_AXIS_LABEL = "Miles"
 COST_AXIS_LABEL = "Millions of $"
 
+# Pool workers lower their scheduling priority by this niceness increment, as the
+# ``nice`` command does, so the batch rendering yields the machine to other work
+# while it runs.
+WORKER_NICENESS_INCREMENT = 10
+
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class SeriesPoint:
@@ -125,6 +138,35 @@ class PlotImage:
 
     filename: str
     content: bytes
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class PlotRenderer:
+    """The rendering setup one worker reuses for every plot it draws.
+
+    The figure's dimensions and dpi, the canvas, and the output buffer are the
+    same for every plot a worker renders, so a pool worker creates them once
+    and clears the figure between plots rather than rebuilding them each time.
+    """
+
+    figure: matplotlib.figure.Figure
+    buffer: io.BytesIO
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class PlotRequest:
+    """One plot ready to render: which fire it belongs to and its lines.
+
+    A plot is only requested after its lines survived the minimum-observation
+    filter, so every request produces exactly one image. The y-axis label is
+    per-plot data; the shared setup a worker reuses holds no per-type state.
+    """
+
+    fire_index: int
+    filename_prefix: str
+    filename_suffix: str
+    y_axis_label: str
+    series: tuple[PlotSeries, ...]
 
 
 def matching_rows(
@@ -503,14 +545,41 @@ def x_axis_ticks(
     return tuple(ticks)
 
 
-def render_plot(
+def create_plot_renderer() -> PlotRenderer:
+    """Return the rendering setup one worker reuses for every plot it draws.
+
+    The figure's size and dpi, the canvas, and the output buffer are the same
+    for every plot a worker renders, so a pool worker creates them once here
+    and clears the figure between plots instead of rebuilding them each time.
+
+    Returns:
+        The shared rendering setup.
+    """
+    figure = matplotlib.figure.Figure(
+        figsize=(FIGURE_WIDTH_IN_INCHES, FIGURE_HEIGHT_IN_INCHES),
+        dpi=IMAGE_DPI,
+    )
+    matplotlib.backends.backend_agg.FigureCanvasAgg(figure)
+    return PlotRenderer(
+        figure=figure,
+        buffer=io.BytesIO(),
+    )
+
+
+def draw_plot(
+    renderer: PlotRenderer,
     series_list: tuple[PlotSeries, ...],
     *,
     y_axis_label: str = "",
 ) -> bytes:
-    """Render *series_list* as one line plot and return its PNG bytes.
+    """Draw *series_list* on *renderer*'s figure and return its PNG bytes.
+
+    The figure is cleared first, so the same figure and canvas serve every plot
+    the renderer draws; the per-plot work is drawing and encoding, never
+    rebuilding the figure. The renderer's buffer is reused the same way.
 
     Args:
+        renderer: The shared figure, canvas, and output buffer.
         series_list: The lines to draw, each already known to span enough
             observation times.
         y_axis_label: The unit shown at the plot's y-axis.
@@ -518,11 +587,8 @@ def render_plot(
     Returns:
         The plot as PNG bytes.
     """
-    figure = matplotlib.figure.Figure(
-        figsize=(FIGURE_WIDTH_IN_INCHES, FIGURE_HEIGHT_IN_INCHES),
-        dpi=IMAGE_DPI,
-    )
-    matplotlib.backends.backend_agg.FigureCanvasAgg(figure)
+    figure = renderer.figure
+    figure.clear()
     axes = figure.add_subplot(1, 1, 1)
     labels = [series.label for series in series_list]
     with mpl.rc_context(sns.axes_style("whitegrid")):
@@ -559,9 +625,148 @@ def render_plot(
         matplotlib.ticker.FuncFormatter(format_tick),
     )
     figure.tight_layout()
-    buffer = io.BytesIO()
+    buffer = renderer.buffer
+    buffer.seek(0)
+    buffer.truncate()
     figure.savefig(buffer, format=IMAGE_FORMAT)
     return buffer.getvalue()
+
+
+def render_plot(
+    series_list: tuple[PlotSeries, ...],
+    *,
+    y_axis_label: str = "",
+) -> bytes:
+    """Render *series_list* as one line plot and return its PNG bytes.
+
+    Args:
+        series_list: The lines to draw, each already known to span enough
+            observation times.
+        y_axis_label: The unit shown at the plot's y-axis.
+
+    Returns:
+        The plot as PNG bytes.
+    """
+    return draw_plot(
+        create_plot_renderer(),
+        series_list,
+        y_axis_label=y_axis_label,
+    )
+
+
+# The rendering setup each pool worker reuses for every plot it draws. The pool
+# initializer appends one renderer per worker; the workers share it across the
+# pool's plots by clearing the figure between them. The parent process never
+# renders, so its list stays empty.
+worker_renderers: list[PlotRenderer] = []
+
+
+def initialize_worker() -> None:
+    """Create the renderer a plot pool worker reuses for every plot it draws.
+
+    This runs once per worker process when the pool starts. The renderer holds
+    the figure, canvas, and buffer the worker clears between plots; the y-axis
+    label is per-plot data and travels with each request instead.
+    """
+    # Set niceness when possible to keep the machine responsive while the pool works.
+    # Some platforms (e.g., Windows) do not have os.nice at all (AttributeError) and
+    # sometimes sandboxes (e.g., used with coding agents) prevent changing niceness
+    # (OSError), so ignore those errors as they don't change functionality.
+    with contextlib.suppress(AttributeError, OSError):
+        os.nice(WORKER_NICENESS_INCREMENT)
+    worker_renderers.append(create_plot_renderer())
+
+
+def render_plot_request(request: PlotRequest) -> PlotImage:
+    """Render *request* on this worker's shared renderer.
+
+    A pool worker calls this once per plot; the worker's renderer was created
+    by the pool initializer.
+
+    Args:
+        request: The plot to render.
+
+    Returns:
+        The rendered image.
+
+    Raises:
+        RuntimeError: When the worker's renderer has not been created.
+    """
+    renderer = worker_renderers[0] if worker_renderers else None
+    if renderer is None:
+        message = "a plot pool worker must create its renderer before rendering"
+        raise RuntimeError(message)
+    return PlotImage(
+        filename=plot_filename(
+            request.filename_prefix,
+            request.filename_suffix,
+        ),
+        content=draw_plot(
+            renderer,
+            request.series,
+            y_axis_label=request.y_axis_label,
+        ),
+    )
+
+
+def worker_count_for(task_count: int) -> int:
+    """Return the number of workers the plot pool should use.
+
+    A pool never needs more workers than it has plots to render, and never more
+    than the machine has cores.
+
+    Args:
+        task_count: The number of plots the pool will render.
+
+    Returns:
+        The number of workers, at least one.
+    """
+    return max(1, min(task_count, os.cpu_count() or 1))
+
+
+def plot_image_bundles(
+    fire_bundles: tuple[tuple[str, tuple[FirePlot, ...]], ...],
+) -> tuple[tuple[PlotImage, ...], ...]:
+    """Render every fire's plots in parallel with one shared pool.
+
+    Every worker in the pool creates its figure, canvas, and output buffer once
+    and clears the figure between plots, so the per-plot work is only drawing
+    and encoding. A fire's plot is skipped when none of its lines span enough
+    observation times.
+
+    Args:
+        fire_bundles: Each fire's filename prefix and its plots, in fire order.
+
+    Returns:
+        Each fire's rendered images, in the input fire order and in each fire's
+        plot order.
+    """
+    requests: list[PlotRequest] = []
+    for fire_index, (filename_prefix, plots) in enumerate(fire_bundles):
+        for plot in plots:
+            series = retained_series(plot.series)
+            if not series:
+                continue
+            requests.append(
+                PlotRequest(
+                    fire_index=fire_index,
+                    filename_prefix=filename_prefix,
+                    filename_suffix=plot.filename_suffix,
+                    y_axis_label=plot.y_axis_label,
+                    series=series,
+                ),
+            )
+    images_by_fire: list[list[PlotImage]] = [[] for _fire in fire_bundles]
+    if not requests:
+        return tuple(tuple(images) for images in images_by_fire)
+    with multiprocessing.Pool(
+        worker_count_for(len(requests)),
+        initializer=initialize_worker,
+    ) as pool:
+        results = pool.map(render_plot_request, requests)
+    for request, image in zip(requests, results, strict=True):
+        images_by_fire[request.fire_index].append(image)
+    return tuple(tuple(images) for images in images_by_fire)
 
 
 def plot_filename(filename_prefix: str, filename_suffix: str) -> str:
@@ -594,37 +799,3 @@ def filename_prefix(identifier: str | None, name: str) -> str:
     value = identifier if identifier is not None else name
     slug = re.sub(r"[^a-z0-9]+", "-", value.casefold()).strip("-")
     return slug or "fire"
-
-
-def plot_images(
-    plots: typing.Iterable[FirePlot],
-    filename_prefix: str,
-) -> tuple[PlotImage, ...]:
-    """Render each of *plots* that still has a line to draw.
-
-    A line is dropped when it does not span enough observation times; a plot whose
-    lines are all dropped produces no image. Each rendered image's filename combines
-    *filename_prefix* with the plot's suffix.
-
-    Args:
-        plots: The fire's plots, in display order.
-        filename_prefix: The fire's unique filename prefix.
-
-    Returns:
-        The rendered images, in the order of the plots that survived.
-    """
-    images: list[PlotImage] = []
-    for plot in plots:
-        series = retained_series(plot.series)
-        if not series:
-            continue
-        images.append(
-            PlotImage(
-                filename=plot_filename(filename_prefix, plot.filename_suffix),
-                content=render_plot(
-                    series,
-                    y_axis_label=plot.y_axis_label,
-                ),
-            ),
-        )
-    return tuple(images)

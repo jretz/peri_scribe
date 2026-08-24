@@ -23,6 +23,7 @@ import peri_scribe.fire_history
 import peri_scribe.fire_index
 import peri_scribe.geo_package
 import peri_scribe.kml
+import peri_scribe.kml_plots
 import peri_scribe.kml_template
 import peri_scribe.kml_template_reader
 import peri_scribe.models
@@ -160,6 +161,58 @@ def fire_index(
     return peri_scribe.models.FireIndex(
         version="2026-08-18",
         fires=entries,
+    )
+
+
+def serial_plot_image_bundles(
+    fire_bundles: tuple[
+        tuple[str, tuple[peri_scribe.kml_plots.FirePlot, ...]],
+        ...,
+    ],
+) -> tuple[tuple[peri_scribe.kml_plots.PlotImage, ...], ...]:
+    """Render each fire's surviving plots in-process, without a process pool.
+
+    A stand-in for ``kml_plots.plot_image_bundles`` for tests that exercise the
+    geometry and KML wiring around rendering rather than the pool itself.
+
+    Args:
+        fire_bundles: Each fire's filename prefix and its plots, in fire order.
+
+    Returns:
+        Each fire's rendered images, in the input order.
+    """
+    bundles = []
+    for filename_prefix, plots in fire_bundles:
+        images = []
+        for plot in plots:
+            series = peri_scribe.kml_plots.retained_series(plot.series)
+            if not series:
+                continue
+            images.append(
+                peri_scribe.kml_plots.PlotImage(
+                    filename=peri_scribe.kml_plots.plot_filename(
+                        filename_prefix,
+                        plot.filename_suffix,
+                    ),
+                    content=peri_scribe.kml_plots.render_plot(
+                        series,
+                        y_axis_label=plot.y_axis_label,
+                    ),
+                ),
+            )
+        bundles.append(tuple(images))
+    return tuple(bundles)
+
+
+@pytest.fixture
+def in_process_plot_image_bundles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Render plots in-process instead of in a pool for one test."""
+    monkeypatch.setattr(
+        peri_scribe.kml_plots,
+        "plot_image_bundles",
+        serial_plot_image_bundles,
     )
 
 
@@ -664,7 +717,9 @@ def test_fire_geometries_sorts_by_case_folded_name() -> None:
     assert [fire.name for fire in fires] == ["aB", "Ac", "AD", "ae"]
 
 
-def test_fire_geometries_attaches_plot_images() -> None:
+def test_fire_geometries_attaches_plot_images(
+    in_process_plot_image_bundles: None,
+) -> None:
     index = fire_index([fire_index_entry("Bug", "active", identifier="id-bug")])
     perimeters = geometry_frame(
         [
@@ -1465,7 +1520,9 @@ def test_read_template_reads_file(monkeypatch: pytest.MonkeyPatch) -> None:
     )
 
 
-def test_fire_kml_builds_active_and_inactive_folders() -> None:
+def test_fire_kml_builds_active_and_inactive_folders(
+    in_process_plot_image_bundles: None,
+) -> None:
     index = fire_index([
         fire_index_entry("Bug", "active", identifier="id-bug"),
         fire_index_entry("ALTA", "inactive", identifier="id-alta"),
