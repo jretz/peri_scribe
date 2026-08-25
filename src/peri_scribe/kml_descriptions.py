@@ -18,7 +18,6 @@ import datetime
 import html
 import math
 
-import peri_scribe.models
 import peri_scribe.perimeter_progression
 
 
@@ -43,6 +42,10 @@ PERIMETER_SIGNIFICANT_DIGIT_THRESHOLD = 100.0
 # Rows alternate between white and this light background so the eye can follow each
 # label across the balloon.
 ALT_ROW_BACKGROUND_COLOR = "#EEF3F8"
+
+# The balloon's body text is slightly larger than Google Earth's default, so the
+# description reads easily at a glance.
+BODY_FONT_SIZE_IN_PIXELS = 14
 
 
 def format_number(value: float | None, decimal_places: int = 0) -> str | None:
@@ -225,8 +228,6 @@ def format_pacific_time(value: datetime.datetime | None) -> str | None:
 class FireDescription:
     """The latest state of a fire, ready to format into a balloon."""
 
-    name: str
-    status: peri_scribe.models.FireStatus
     identifier: str | None = None
     source: str | None = None
     mission: str | None = None
@@ -244,20 +245,6 @@ class FireDescription:
     fuel_model: str | None = None
     fire_behavior: str | None = None
     landowner_category: str | None = None
-
-
-def status_label(status: peri_scribe.models.FireStatus) -> str:
-    """Return the display label for *status*.
-
-    Args:
-        status: The fire status.
-
-    Returns:
-        ``Active`` or ``Inactive``.
-    """
-    if status is peri_scribe.models.FireStatus.ACTIVE:
-        return "Active"
-    return "Inactive"
 
 
 def escape_text(value: str) -> str:
@@ -289,7 +276,6 @@ def description_rows(
     """
     rows: list[tuple[str, str]] = []
     candidates: list[tuple[str, str | None]] = [
-        ("Status", status_label(description.status)),
         ("Area", format_in_acres(description.area_in_acres)),
         (
             "Exterior perimeter",
@@ -347,9 +333,9 @@ def description_html(
     Returns:
         The balloon's KML description text.
     """
+    body_style = f' style="font-size:{BODY_FONT_SIZE_IN_PIXELS}px;"'
     parts = [
-        f"<h3>{escape_text(description.name)}</h3>",
-        '<table cellspacing="0" cellpadding="4">',
+        f'<table cellspacing="0" cellpadding="4"{body_style}>',
     ]
     for index, (label, value) in enumerate(description_rows(description)):
         background = (

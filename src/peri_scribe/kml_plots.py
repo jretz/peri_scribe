@@ -76,7 +76,6 @@ IMAGE_DPI = 100
 IMAGE_FORMAT = "png"
 
 DATE_FORMAT = "%m/%d"
-X_AXIS_LABEL = "Date"
 
 # Column names in the tidy frame handed to seaborn.
 LABEL_COLUMN = "label"
@@ -616,8 +615,10 @@ def draw_plot(
     handles = list(axes.get_lines())
     if handles:
         axes.legend(handles, labels, title="")
-    axes.set_xlabel(X_AXIS_LABEL)
     axes.set_ylabel(y_axis_label)
+    # seaborn labels the x-axis with the observation-time column's name, but the
+    # dates themselves are the only x-axis text wanted.
+    axes.set_xlabel("")
     tick_times = x_axis_ticks(series_list)
     axes.xaxis.set_major_locator(
         matplotlib.ticker.FixedLocator(

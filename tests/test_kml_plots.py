@@ -632,6 +632,22 @@ def test_draw_plot_starts_y_axis_at_zero() -> None:
     assert axes.get_ylim()[0] == pytest.approx(0.0)
 
 
+def test_draw_plot_leaves_x_axis_unlabeled() -> None:
+    renderer = peri_scribe.kml_plots.create_plot_renderer()
+    peri_scribe.kml_plots.draw_plot(
+        renderer,
+        (
+            peri_scribe.kml_plots.PlotSeries(
+                label="Area",
+                points=(series_point(1, 10.0), series_point(2, 20.0)),
+            ),
+        ),
+        y_axis_label="Thousands of acres",
+    )
+    axes = renderer.figure.axes[0]
+    assert axes.get_xlabel() == ""
+
+
 def test_draw_plot_spans_x_axis_to_the_last_observation_day() -> None:
     renderer = peri_scribe.kml_plots.create_plot_renderer()
     peri_scribe.kml_plots.draw_plot(

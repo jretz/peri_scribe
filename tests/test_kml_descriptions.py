@@ -8,7 +8,6 @@ import math
 import pytest
 
 import peri_scribe.kml_descriptions
-import peri_scribe.models
 
 
 def full_description() -> peri_scribe.kml_descriptions.FireDescription:
@@ -18,8 +17,6 @@ def full_description() -> peri_scribe.kml_descriptions.FireDescription:
         The description.
     """
     return peri_scribe.kml_descriptions.FireDescription(
-        name="Bug",
-        status=peri_scribe.models.FireStatus.ACTIVE,
         identifier="2026-cabug-000001",
         source="FIRIS / NIFC",
         mission="CA-BUG-000001",
@@ -189,28 +186,12 @@ def test_format_pacific_time_marks_pacific_standard_time() -> None:
     )
 
 
-def test_status_label_names_active_and_inactive() -> None:
-    assert (
-        peri_scribe.kml_descriptions.status_label(
-            peri_scribe.models.FireStatus.ACTIVE,
-        )
-        == "Active"
-    )
-    assert (
-        peri_scribe.kml_descriptions.status_label(
-            peri_scribe.models.FireStatus.INACTIVE,
-        )
-        == "Inactive"
-    )
-
-
 def test_escape_text_escapes_html_characters() -> None:
     assert peri_scribe.kml_descriptions.escape_text("A & B < C") == "A &amp; B &lt; C"
 
 
 def test_description_rows_includes_every_present_value() -> None:
     assert peri_scribe.kml_descriptions.description_rows(full_description()) == [
-        ("Status", "Active"),
         ("Area", "102,003 acres"),
         ("Exterior perimeter", "33.1 miles"),
         ("Containment", "77% (25.5 of 33.1 miles)"),
@@ -232,12 +213,8 @@ def test_description_rows_includes_every_present_value() -> None:
 
 
 def test_description_rows_marks_missing_values_with_hyphens() -> None:
-    description = peri_scribe.kml_descriptions.FireDescription(
-        name="Bug",
-        status=peri_scribe.models.FireStatus.ACTIVE,
-    )
+    description = peri_scribe.kml_descriptions.FireDescription()
     assert peri_scribe.kml_descriptions.description_rows(description) == [
-        ("Status", "Active"),
         ("Area", "--"),
         ("Exterior perimeter", "--"),
         ("Containment", "--"),
@@ -262,20 +239,29 @@ def test_description_html_wraps_table_in_cdata() -> None:
     html = peri_scribe.kml_descriptions.description_html(full_description())
     assert html.startswith("<![CDATA[")
     assert html.endswith("]]>")
-    assert "<h3>Bug</h3>" in html
-    assert "<b>Status</b>" in html
+    assert "<h3" not in html
+    assert "<b>Status</b>" not in html
     assert "102,003 acres" in html
     assert "08/01 22:30 PDT" in html
+
+
+def test_description_html_sizes_the_text() -> None:
+    html = peri_scribe.kml_descriptions.description_html(full_description())
+    body_size = peri_scribe.kml_descriptions.BODY_FONT_SIZE_IN_PIXELS
+    assert (
+        f'<table cellspacing="0" cellpadding="4" '
+        f'style="font-size:{body_size}px;">' in html
+    )
 
 
 def test_description_html_alternates_row_backgrounds() -> None:
     html = peri_scribe.kml_descriptions.description_html(full_description())
     color = peri_scribe.kml_descriptions.ALT_ROW_BACKGROUND_COLOR
     background = f'<tr style="background-color:{color};"'
-    assert f"{background}><td><b>Status</b></td>" in html
-    assert "<tr><td><b>Area</b></td>" in html
-    assert f"{background}><td><b>Exterior perimeter</b></td>" in html
-    assert "<tr><td><b>Containment</b></td>" in html
+    assert f"{background}><td><b>Area</b></td>" in html
+    assert "<tr><td><b>Exterior perimeter</b></td>" in html
+    assert f"{background}><td><b>Containment</b></td>" in html
+    assert "<tr><td><b>Cost to date</b></td>" in html
 
 
 def test_description_html_includes_images_after_table() -> None:

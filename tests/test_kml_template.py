@@ -426,6 +426,12 @@ def test_point_draw_order_draws_above_every_outline() -> None:
     assert peri_scribe.kml_template.point_draw_order(0) == 1
 
 
+def test_template_kml_names_the_document(document: ET.Element) -> None:
+    assert document.findtext(kml_tag("name")) == (
+        peri_scribe.kml_template.TEMPLATE_TITLE
+    )
+
+
 def test_template_kml_defines_point_style(document: ET.Element) -> None:
     point_style = style_with_id(document, "point-icon")
     icon_style = icon_style_of(point_style)

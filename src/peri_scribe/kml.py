@@ -664,8 +664,6 @@ def fire_description(
         protecting_unit = source_text_value(point_row, "POOJurisdictionalAgency")
 
     return peri_scribe.kml_descriptions.FireDescription(
-        name=entry.name,
-        status=peri_scribe.models.FireStatus(entry.status),
         identifier=entry.identifier,
         source=source_label(column_value(perimeter_row, "source")),
         mission=text_value(perimeter_row, "mission"),
@@ -1629,17 +1627,17 @@ def progression_folder(
 ) -> None:
     """Add the folder holding each fire's progression map to *container*.
 
-    Each fire with growth rings gets a folder holding its point location and one
-    subfolder per day range it covers; each subfolder holds the fire's growth
-    rings from that range, styled by the range's color and marked with a colored
-    icon. A "Progression" tour leads the fire folder when it has rings, replaying
-    them oldest first exactly as the latest-perimeters folder does, but its
-    animated updates target the rings inside the day-range subfolders rather than
-    rings in the same folder. Fires with no rings are left out, because there is
-    nothing to map. Draw orders put the oldest ring on the bottom, stack the rings
-    from oldest to newest, and draw the point location last so its icon is never
-    covered. The folder loads unchecked, along with everything beneath it, so the
-    progression maps stay hidden until they are enabled.
+    Each fire gets a folder holding its point location and, when it has growth rings,
+    one subfolder per day range it covers; each subfolder holds the fire's growth rings
+    from that range, styled by the range's color and marked with a colored icon. A fire
+    with no growth rings holds just its point location, so every fire appears in this
+    folder exactly as it does in the latest-perimeters folder. A "Progression" tour
+    leads the fire folder when it has rings, replaying them oldest first exactly as the
+    latest-perimeters folder does, but its animated updates target the rings inside the
+    day-range subfolders rather than rings in the same folder. Draw orders put the
+    oldest ring on the bottom, stack the rings from oldest to newest, and draw the point
+    location last so its icon is never covered. The folder loads unchecked, along with
+    everything beneath it, so the progression maps stay hidden until they are enabled.
 
     Args:
         container: The folder that holds the progression maps folder.
@@ -1653,8 +1651,6 @@ def progression_folder(
         bands = peri_scribe.perimeter_progression.progression_band_rings(
             fire.progression_rings,
         )
-        if not bands:
-            continue
         fire_folder = folder.newfolder(name=fire.name)
         ring_times = tuple(
             ring.observation_time
@@ -1734,6 +1730,18 @@ def set_invisible(container: simplekml.Container) -> None:
             feature.visibility = 0
 
 
+def set_radio_folder(folder: simplekml.Folder) -> None:
+    """Make *folder*'s children display as radio buttons in the Places panel.
+
+    A radio folder shows one child checked at a time, so its children are alternatives
+    the reader picks between rather than independent layers.
+
+    Args:
+        folder: The folder to mark.
+    """
+    folder.liststyle.listitemtype = simplekml.ListItemType.radiofolder
+
+
 def status_folder(
     container: simplekml.Container,
     fires: list[FireGeometry],
@@ -1752,6 +1760,7 @@ def status_folder(
     it, so inactive fires stay hidden until the folder is enabled.
     """
     folder = container.newfolder(name=status_folder_name(status))
+    set_radio_folder(folder)
     status_fires = [fire for fire in fires if fire.status is status]
     latest_perimeters_folder(folder, status_fires, style_urls)
     progression_folder(folder, status_fires, style_urls)
@@ -1762,33 +1771,41 @@ def status_folder(
 def fire_kml(
     fires: list[FireGeometry],
     template: peri_scribe.kml_template_reader.Template,
+    name: str,
 ) -> str:
     """Return the KML document string for *fires*.
 
-    The document holds the template's styles and one top-level folder each for active
-    and inactive fires.
+    The document is named *name* and holds the template's styles and a top-level
+    folder, also named *name*, that holds one folder each for active and
+    inactive fires.
 
     Args:
         fires: The fires to symbolize.
         template: The template supplying styles and style URLs.
+        name: The document's name, conventionally the output filename without
+            its extension.
 
     Returns:
         The KML document.
     """
-    kml = simplekml.Kml()
+    kml = simplekml.Kml(name=name)
     document = kml.document
 
     for style in template.styles:
         document.styles.append(style)
 
+    # The top-level folder holds the status folders as radio options, so they display as
+    # radio buttons in Google Earth's Places panel.
+    top_level = document.newfolder(name=name)
+    set_radio_folder(top_level)
     status_folder(
-        document,
+        top_level,
         fires,
         peri_scribe.models.FireStatus.ACTIVE,
         template.style_urls,
     )
     status_folder(
-        document,
+        top_level,
         fires,
         peri_scribe.models.FireStatus.INACTIVE,
         template.style_urls,
@@ -1869,5 +1886,9 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
     images[interior_icon_filename()] = interior_icon(template)
     images[perimeters_icon_filename()] = perimeters_icon(template)
     output_path = kmz_path(year_directory)
-    write_kmz(output_path, fire_kml(geometries, template), images)
+    write_kmz(
+        output_path,
+        fire_kml(geometries, template, output_path.stem),
+        images,
+    )
     return output_path

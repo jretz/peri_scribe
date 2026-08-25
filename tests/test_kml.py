@@ -478,6 +478,33 @@ def folder_item_icon_href(folder: ET.Element) -> str:
     return href
 
 
+def folder_list_item_type(folder: ET.Element) -> str | None:
+    """Return *folder*'s list-view item type, or None when it has none.
+
+    Args:
+        folder: The folder to inspect.
+
+    Returns:
+        The list item type, like ``check`` or ``radioFolder``, or None when the folder
+        sets no list item type.
+    """
+    return folder.findtext(
+        f"{kml_tag('Style')}/{kml_tag('ListStyle')}/{kml_tag('listItemType')}",
+    )
+
+
+def top_level_folder(document: ET.Element) -> ET.Element:
+    """Return the top-level folder holding the status folders in *document*.
+
+    Args:
+        document: The parsed KML document.
+
+    Returns:
+        The folder named after the document.
+    """
+    return folder_named(document, "PeriScribe Fires 2026")
+
+
 def png_color(content: bytes) -> tuple[int, int, int]:
     """Return the RGB color of every pixel in the solid-color PNG *content*.
 
@@ -1576,6 +1603,7 @@ def test_latest_perimeters_folder_names_and_holds_fires(
         peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
     )
     assert folder_names(folder) == ["Bug"]
+    assert folder_list_item_type(folder) is None
 
 
 def test_fire_geometries_includes_progression_rings() -> None:
@@ -1610,7 +1638,7 @@ def test_fire_geometries_includes_progression_rings() -> None:
     )
 
 
-def test_progression_folder_excludes_fires_without_rings(
+def test_progression_folder_holds_fires_without_rings(
     style_urls: dict[str, str],
 ) -> None:
     fire = peri_scribe.kml.FireGeometry(
@@ -1626,7 +1654,10 @@ def test_progression_folder_excludes_fires_without_rings(
         document,
         peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
     )
-    assert folder_names(folder) == []
+    assert folder_names(folder) == ["Bug"]
+    bug_folder = folder_named(folder, "Bug")
+    assert placemark_names(bug_folder) == ["Bug"]
+    assert folder_names(bug_folder) == []
 
 
 def test_progression_folder_holds_point_and_ring_folders(
@@ -1855,6 +1886,27 @@ def test_progression_folder_hides_its_tree(style_urls: dict[str, str]) -> None:
     assert_tree_invisible(folder)
 
 
+def test_fire_kml_names_the_document() -> None:
+    index = fire_index([
+        fire_index_entry("Bug", "active", identifier="id-bug"),
+    ])
+    perimeters = geometry_frame([("id-bug", "Bug", square(1.0))])
+    points = geometry_frame([
+        ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
+    ])
+    template = peri_scribe.kml_template_reader.template_from(
+        peri_scribe.kml_template.template_kml(),
+    )
+    fires = peri_scribe.kml.fire_geometries(index, perimeters, points, perimeters)
+    document = document_from(
+        peri_scribe.kml.fire_kml(fires, template, name="PeriScribe Fires 2026"),
+    )
+
+    assert document.findtext(kml_tag("name")) == "PeriScribe Fires 2026"
+    top_level = top_level_folder(document)
+    assert folder_list_item_type(top_level) == "radioFolder"
+
+
 def test_fire_kml_includes_progression_maps_folder() -> None:
     index = fire_index([
         fire_index_entry("Bug", "active", identifier="id-bug"),
@@ -1881,19 +1933,23 @@ def test_fire_kml_includes_progression_maps_folder() -> None:
         points,
         perimeters,
     )
-    document = document_from(peri_scribe.kml.fire_kml(fires, template))
+    document = document_from(
+        peri_scribe.kml.fire_kml(fires, template, name="PeriScribe Fires 2026"),
+    )
 
-    active = folder_named(document, "Active Fires")
+    active = folder_named(top_level_folder(document), "Active Fires")
     active_progression = folder_named(
         active,
         peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
     )
+    assert folder_list_item_type(active_progression) is None
     assert folder_names(active_progression) == ["Bug"]
     bug_folder = folder_named(active_progression, "Bug")
+    assert folder_list_item_type(bug_folder) is None
     assert placemark_names(bug_folder) == ["Bug"]
     assert folder_names(bug_folder) == ["08/15"]
 
-    inactive = folder_named(document, "Inactive Fires")
+    inactive = folder_named(top_level_folder(document), "Inactive Fires")
     inactive_progression = folder_named(
         inactive,
         peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
@@ -1949,6 +2005,67 @@ def test_status_folder_filters_by_status(style_urls: dict[str, str]) -> None:
         peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
     )
     assert folder_names(perimeters_folder) == ["Active Fire"]
+
+
+def test_status_folder_puts_same_fires_in_both_folders(
+    style_urls: dict[str, str],
+) -> None:
+    first_time = datetime.datetime(2026, 8, 13, 20, 0, tzinfo=datetime.UTC)
+    second_time = datetime.datetime(2026, 8, 14, 20, 0, tzinfo=datetime.UTC)
+    with_rings = peri_scribe.kml.FireGeometry(
+        name="Rings",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=shapely.geometry.Point(1.0, 1.0),
+        perimeters=(),
+        progression_rings=(
+            peri_scribe.perimeter_progression.Ring(
+                geometry=square(1.0),
+                observation_time=first_time,
+            ),
+            peri_scribe.perimeter_progression.Ring(
+                geometry=square(2.0),
+                observation_time=second_time,
+            ),
+        ),
+    )
+    point_only = peri_scribe.kml.FireGeometry(
+        name="Point",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=shapely.geometry.Point(2.0, 2.0),
+        perimeters=(),
+    )
+    empty = peri_scribe.kml.FireGeometry(
+        name="Empty",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=None,
+        perimeters=(),
+    )
+    kml = simplekml.Kml()
+    peri_scribe.kml.status_folder(
+        kml.document,
+        [with_rings, point_only, empty],
+        peri_scribe.models.FireStatus.ACTIVE,
+        style_urls,
+    )
+    document = document_from(kml.kml())
+    folder = folder_named(document, "Active Fires")
+    latest = folder_named(
+        folder,
+        peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
+    progression = folder_named(
+        folder,
+        peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
+    assert (
+        folder_names(latest)
+        == folder_names(progression)
+        == [
+            "Rings",
+            "Point",
+            "Empty",
+        ]
+    )
 
 
 def test_placemark_style_urls_descends_into_folders() -> None:
@@ -2058,14 +2175,19 @@ def test_fire_kml_builds_active_and_inactive_folders(
     template = peri_scribe.kml_template_reader.template_from(
         peri_scribe.kml_template.template_kml(),
     )
-    document = document_from(peri_scribe.kml.fire_kml(fires, template))
+    document = document_from(
+        peri_scribe.kml.fire_kml(fires, template, name="PeriScribe Fires 2026"),
+    )
 
-    assert folder_names(document) == ["Active Fires", "Inactive Fires"]
-    active = folder_named(document, "Active Fires")
+    top_level = top_level_folder(document)
+    assert folder_names(top_level) == ["Active Fires", "Inactive Fires"]
+    active = folder_named(top_level, "Active Fires")
+    assert folder_list_item_type(active) == "radioFolder"
     active_perimeters = folder_named(
         active,
         peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
     )
+    assert folder_list_item_type(active_perimeters) is None
     bug_folder = folder_named(active_perimeters, "Bug")
     assert placemark_names(bug_folder) == ["Bug"]
     assert placemark_names(folder_named(bug_folder, "Perimeters")) == [
@@ -2076,11 +2198,13 @@ def test_fire_kml_builds_active_and_inactive_folders(
     assert placemark_names(folder_named(bug_folder, "Interior")) == [
         "08/05 13:30 Interior",
     ]
-    inactive = folder_named(document, "Inactive Fires")
+    inactive = folder_named(top_level, "Inactive Fires")
+    assert folder_list_item_type(inactive) == "radioFolder"
     inactive_perimeters = folder_named(
         inactive,
         peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
     )
+    assert folder_list_item_type(inactive_perimeters) is None
     alta_folder = folder_named(inactive_perimeters, "ALTA")
     assert placemark_names(alta_folder) == ["ALTA"]
     assert draw_order(placemark_named(alta_folder, "ALTA")) == 1
@@ -2119,12 +2243,15 @@ def test_fire_kml_hides_inactive_fires_tree(
         points,
         perimeters,
     )
-    document = document_from(peri_scribe.kml.fire_kml(fires, template))
+    document = document_from(
+        peri_scribe.kml.fire_kml(fires, template, name="PeriScribe Fires 2026"),
+    )
 
-    inactive = folder_named(document, "Inactive Fires")
+    top_level = top_level_folder(document)
+    inactive = folder_named(top_level, "Inactive Fires")
     assert_tree_invisible(inactive)
 
-    active = folder_named(document, "Active Fires")
+    active = folder_named(top_level, "Active Fires")
     active_perimeters = folder_named(
         active,
         peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
@@ -2166,9 +2293,11 @@ def test_fire_kml_hides_active_progression_maps(
         points,
         perimeters,
     )
-    document = document_from(peri_scribe.kml.fire_kml(fires, template))
+    document = document_from(
+        peri_scribe.kml.fire_kml(fires, template, name="PeriScribe Fires 2026"),
+    )
 
-    active = folder_named(document, "Active Fires")
+    active = folder_named(top_level_folder(document), "Active Fires")
     progression = folder_named(
         active,
         peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
@@ -2189,8 +2318,10 @@ def test_fire_kml_shows_derived_point_for_inactive_fire_without_location() -> No
     template = peri_scribe.kml_template_reader.template_from(
         peri_scribe.kml_template.template_kml(),
     )
-    document = document_from(peri_scribe.kml.fire_kml(fires, template))
-    inactive = folder_named(document, "Inactive Fires")
+    document = document_from(
+        peri_scribe.kml.fire_kml(fires, template, name="PeriScribe Fires 2026"),
+    )
+    inactive = folder_named(top_level_folder(document), "Inactive Fires")
     perimeters_folder = folder_named(
         inactive,
         peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
@@ -2420,6 +2551,7 @@ def test_create_kmz_reads_history_and_writes_kmz(
     path, kml_text, images = writes[0]
     assert path == result
     assert "Active Fires" in kml_text
+    assert "PeriScribe Fires 2026" in kml_text
     assert set(images) == {
         peri_scribe.kml.interior_icon_filename(),
         peri_scribe.kml.perimeters_icon_filename(),

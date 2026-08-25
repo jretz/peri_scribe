@@ -25,6 +25,10 @@ logger = structlog.get_logger()
 TEMPLATE_DIRECTORY = peri_scribe.output.DATA_DIRECTORY / "templates"
 TEMPLATE_FILENAME = "PeriScribe Template.kml"
 
+# The document's title, shown in Google Earth's Places panel. It matches the template
+# filename without its extension.
+TEMPLATE_TITLE = pathlib.Path(TEMPLATE_FILENAME).stem
+
 
 class Style(simplekml.Style):
     """A style whose id the template assigns.
@@ -534,7 +538,7 @@ def template_kml() -> str:
     # simplekml numbers every element's id from a process-wide counter; resetting it
     # keeps the template byte-for-byte reproducible across calls.
     simplekml.Kml.resetidcounter()
-    kml = simplekml.Kml()
+    kml = simplekml.Kml(name=TEMPLATE_TITLE)
     document = kml.document
 
     document.styles.append(point_style())
