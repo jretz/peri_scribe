@@ -192,22 +192,6 @@ def test_progression_bands_groups_rings_into_bands() -> None:
     latest, two_days = bands
     assert latest.geometry.equals(square(3.0))
     assert two_days.geometry.equals(square(2.0))
-    assert latest.observation_time == datetime.datetime(
-        2026,
-        8,
-        15,
-        20,
-        0,
-        tzinfo=datetime.UTC,
-    )
-    assert two_days.observation_time == datetime.datetime(
-        2026,
-        8,
-        14,
-        20,
-        0,
-        tzinfo=datetime.UTC,
-    )
 
 
 def test_progression_bands_skips_bands_without_rings() -> None:

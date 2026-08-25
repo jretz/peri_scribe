@@ -350,21 +350,6 @@ def assert_tree_invisible(container: ET.Element) -> None:
         assert visibility(feature) == 0, feature.findtext(kml_tag("name"))
 
 
-def timestamp_when(placemark: ET.Element) -> str | None:
-    """Return the ``<when>`` value of *placemark*'s TimeStamp, or None.
-
-    Args:
-        placemark: The placemark to inspect.
-
-    Returns:
-        The ``<when>`` text, or None when the placemark has no TimeStamp.
-    """
-    timestamp = placemark.find(kml_tag("TimeStamp"))
-    if timestamp is None:
-        return None
-    return timestamp.findtext(kml_tag("when"))
-
-
 def point_coordinates(placemark: ET.Element) -> tuple[float, float]:
     """Return the (longitude, latitude) of *placemark*'s point geometry.
 
@@ -1026,55 +1011,6 @@ def test_perimeter_placemark_names_and_styles_polygon() -> None:
     assert placemark_style_url(placemark) == "#perimeter-fill"
     assert placemark.find(kml_tag("Polygon")) is not None
     assert draw_order(placemark) == 0
-    assert timestamp_when(placemark) is None
-
-
-def test_timestamp_when_formats_utc() -> None:
-    observation_time = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
-    assert peri_scribe.kml.timestamp_when(observation_time) == ("2026-08-05T20:30:00Z")
-
-
-def test_timestamp_when_returns_none_without_observation_time() -> None:
-    assert peri_scribe.kml.timestamp_when(None) is None
-
-
-def test_set_timestamp_stamps_the_placemark() -> None:
-    observation_time = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
-    kml = simplekml.Kml()
-    placemark = peri_scribe.kml.polygon_geometry(
-        kml.document,
-        "Interior",
-        "#perimeter-fill",
-        square(1.0),
-        0,
-        description=None,
-    )
-    peri_scribe.kml.set_timestamp(placemark, observation_time)
-    assert (
-        timestamp_when(
-            placemark_named(document_from(kml.kml()), "Interior"),
-        )
-        == "2026-08-05T20:30:00Z"
-    )
-
-
-def test_set_timestamp_leaves_placemark_unstamped_without_time() -> None:
-    kml = simplekml.Kml()
-    placemark = peri_scribe.kml.polygon_geometry(
-        kml.document,
-        "Interior",
-        "#perimeter-fill",
-        square(1.0),
-        0,
-        description=None,
-    )
-    peri_scribe.kml.set_timestamp(placemark, None)
-    assert (
-        timestamp_when(
-            placemark_named(document_from(kml.kml()), "Interior"),
-        )
-        is None
-    )
 
 
 def test_time_label_returns_none_without_observation_time() -> None:
@@ -1303,8 +1239,6 @@ def test_fire_folder_draws_interior_from_difference_rings(
     second_interior = placemark_named(folder, "08/07 13:00 Interior")
     assert placemark_style_url(first_interior) == "#perimeter-fill"
     assert placemark_style_url(second_interior) == "#perimeter-fill"
-    assert timestamp_when(first_interior) == "2026-08-05T20:00:00Z"
-    assert timestamp_when(second_interior) == "2026-08-07T20:00:00Z"
     assert {
         name: draw_order(placemark_named(folder, name))
         for name in ("08/05 13:00 Interior", "08/07 13:00 Interior")
@@ -1325,8 +1259,6 @@ def test_fire_folder_draws_interior_from_difference_rings(
         (1.0, 1.0),
         (-1.0, 1.0),
     }
-    # The outlines stay unstamped.
-    assert timestamp_when(placemark_named(folder, "08/07 13:00 Perimeter")) is None
 
 
 def test_fire_folder_falls_back_to_complete_perimeter_without_dated_rings(
@@ -1348,7 +1280,6 @@ def test_fire_folder_falls_back_to_complete_perimeter_without_dated_rings(
     peri_scribe.kml.fire_folder(kml.document, fire, style_urls)
     folder = folder_named(document_from(kml.kml()), "Bug")
     assert placemark_names(folder) == ["Bug", "Interior", "Unknown Mapping"]
-    assert timestamp_when(placemark_named(folder, "Interior")) is None
 
 
 def test_fire_folder_without_point_or_perimeters_is_empty(
@@ -1592,12 +1523,6 @@ def test_progression_folder_holds_point_and_bands(
         "08/15": 1,
         "Bug": 2,
     }
-    assert timestamp_when(placemark_named(bug_folder, "08/15")) == (
-        "2026-08-15T20:00:00Z"
-    )
-    assert timestamp_when(placemark_named(bug_folder, "08/13 - 08/14")) == (
-        "2026-08-14T20:00:00Z"
-    )
     assert set(exterior_coordinates(placemark_named(bug_folder, "08/15"))) == {
         (-1.5, -1.5),
         (1.5, -1.5),

@@ -967,7 +967,6 @@ def perimeter_placemark(
     draw_order: int,
     *,
     description: str | None,
-    observation_time: datetime.datetime | None = None,
 ) -> simplekml.Polygon | simplekml.MultiGeometry:
     """Add the perimeter placemark for *geometry* to *container*.
 
@@ -978,13 +977,11 @@ def perimeter_placemark(
         geometry: The perimeter geometry.
         draw_order: The order in which the perimeter draws.
         description: The balloon description, or None for none.
-        observation_time: The time to stamp on the placemark, or None to leave
-            it unstamped.
 
     Returns:
         The perimeter placemark.
     """
-    placemark = perimeter_geometry(
+    return perimeter_geometry(
         container,
         name,
         style_url,
@@ -992,48 +989,6 @@ def perimeter_placemark(
         draw_order,
         description=description,
     )
-    set_timestamp(placemark, observation_time)
-    return placemark
-
-
-def timestamp_when(observation_time: datetime.datetime | None) -> str | None:
-    """Return the KML ``<when>`` value for *observation_time*, or None.
-
-    The value is written in UTC as ``YYYY-MM-DDTHH:MM:SSZ``, the format the
-    Google Earth time slider reads.
-
-    Args:
-        observation_time: The observation time as an aware UTC datetime, or None.
-
-    Returns:
-        The ``<when>`` value, or None without an observation time.
-    """
-    if observation_time is None:
-        return None
-    utc_time = observation_time.astimezone(datetime.UTC)
-    return utc_time.strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
-def set_timestamp(
-    placemark: simplekml.Point | simplekml.Polygon | simplekml.MultiGeometry,
-    observation_time: datetime.datetime | None,
-) -> None:
-    """Set *placemark*'s TimeStamp to *observation_time*, when it has one.
-
-    The timestamp tells the Google Earth time slider when the feature appeared:
-    as the slider passes the time, the feature shows and stays visible. A
-    placemark without an observation time keeps no TimeStamp and stays visible
-    for the whole range.
-
-    Args:
-        placemark: The placemark to stamp.
-        observation_time: The observation time, or None to leave the placemark
-            unstamped.
-    """
-    when = timestamp_when(observation_time)
-    if when is None:
-        return
-    placemark.timestamp.when = when
 
 
 def time_label(observation_time: datetime.datetime | None) -> str | None:
@@ -1215,10 +1170,10 @@ def fire_folder(
     The folder holds the fire's point location, the growth rings filling its
     interior, and its latest, penultimate, and antepenultimate perimeters, each
     shown when the fire's history has one. The interior is drawn from the fire's
-    difference rings rather than its complete latest perimeter, and each ring
-    carries the timestamp of its observation so the time slider shows the
-    interior growing; a fire whose rings carry no timestamps falls back to its
-    complete latest perimeter. A "Progression" tour leads the folder when it has
+    difference rings rather than its complete latest perimeter, so the rings
+    show the interior growing; a fire whose rings carry no observation times
+    falls back to its complete latest perimeter. A "Progression" tour leads the
+    folder when it has
     interior polygons, replaying the rings oldest first. Draw orders put the
     filled latest area on the bottom, stack the outline perimeters from oldest
     to newest, and draw the point location last so its icon is never covered.
@@ -1262,7 +1217,6 @@ def fire_folder(
                 ring.geometry,
                 peri_scribe.kml_template.LATEST_AREA_DRAW_ORDER,
                 description=fire.description,
-                observation_time=ring.observation_time,
             )
             assign_placemark_id(placemark, interior_ring_id(folder, index))
     elif fire.perimeters:
@@ -1320,12 +1274,10 @@ def progression_folder(
 
     Each fire with growth rings gets a folder holding its point location and one
     growth band per day range it covers; fires with no rings are left out, because
-    there is nothing to map. Each band carries the timestamp of the last ring it
-    contains, so the time slider shows the bands appearing as their growth
-    completes. Draw orders put the oldest band on the bottom, stack the bands
-    from oldest to newest, and draw the point location last so its icon is never
-    covered. The folder loads unchecked, along with everything beneath it, so
-    the progression maps stay hidden until they are enabled.
+    there is nothing to map. Draw orders put the oldest band on the bottom, stack
+    the bands from oldest to newest, and draw the point location last so its icon
+    is never covered. The folder loads unchecked, along with everything beneath
+    it, so the progression maps stay hidden until they are enabled.
 
     Args:
         container: The folder that holds the progression maps folder.
@@ -1360,7 +1312,6 @@ def progression_folder(
                 band.geometry,
                 peri_scribe.kml_template.band_draw_order(band_count, index),
                 description=fire.description,
-                observation_time=band.observation_time,
             )
     set_invisible(folder)
 
