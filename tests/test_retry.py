@@ -11,11 +11,11 @@ import peri_scribe.retry
 from tests.conftest import (
     LOOSE_429_ERROR_PAYLOAD,
     RATE_LIMIT_ERROR_PAYLOAD,
-    RATE_LIMIT_RETRY_AFTER_SECONDS,
+    RATE_LIMIT_RETRY_AFTER_IN_SECONDS,
 )
 
 
-RETRY_AFTER_HEADER_SECONDS = 7
+RETRY_AFTER_HEADER_IN_SECONDS = 7
 
 # JSON wire-format strings of the payloads, used to exercise the string fallback
 # classification.
@@ -44,85 +44,86 @@ def http_error(
     return requests.exceptions.HTTPError("boom", response=response)
 
 
-def test_rate_limit_retry_seconds_uses_server_hint() -> None:
+def test_rate_limit_retry_in_seconds_uses_server_hint() -> None:
     error = ValueError(RATE_LIMIT_ERROR_PAYLOAD)
     assert (
-        peri_scribe.retry.rate_limit_retry_seconds(error)
-        == RATE_LIMIT_RETRY_AFTER_SECONDS
+        peri_scribe.retry.rate_limit_retry_in_seconds(error)
+        == RATE_LIMIT_RETRY_AFTER_IN_SECONDS
     )
 
 
-def test_rate_limit_retry_seconds_uses_fallback_for_loose_429() -> None:
+def test_rate_limit_retry_in_seconds_uses_fallback_for_loose_429() -> None:
     error = ValueError(LOOSE_429_ERROR_PAYLOAD)
     assert (
-        peri_scribe.retry.rate_limit_retry_seconds(error)
-        == peri_scribe.retry.FALLBACK_RETRY_SECONDS
+        peri_scribe.retry.rate_limit_retry_in_seconds(error)
+        == peri_scribe.retry.FALLBACK_RETRY_IN_SECONDS
     )
 
 
-def test_rate_limit_retry_seconds_uses_server_hint_from_string() -> None:
+def test_rate_limit_retry_in_seconds_uses_server_hint_from_string() -> None:
     error = ValueError(RATE_LIMIT_ERROR_STRING)
     assert (
-        peri_scribe.retry.rate_limit_retry_seconds(error)
-        == RATE_LIMIT_RETRY_AFTER_SECONDS
+        peri_scribe.retry.rate_limit_retry_in_seconds(error)
+        == RATE_LIMIT_RETRY_AFTER_IN_SECONDS
     )
 
 
-def test_rate_limit_retry_seconds_uses_fallback_for_loose_429_string() -> None:
+def test_rate_limit_retry_in_seconds_uses_fallback_for_loose_429_string() -> None:
     error = ValueError(LOOSE_429_ERROR_STRING)
     assert (
-        peri_scribe.retry.rate_limit_retry_seconds(error)
-        == peri_scribe.retry.FALLBACK_RETRY_SECONDS
+        peri_scribe.retry.rate_limit_retry_in_seconds(error)
+        == peri_scribe.retry.FALLBACK_RETRY_IN_SECONDS
     )
 
 
-def test_rate_limit_retry_seconds_uses_retry_after_header() -> None:
+def test_rate_limit_retry_in_seconds_uses_retry_after_header() -> None:
     error = http_error(
         http.HTTPStatus.TOO_MANY_REQUESTS,
-        retry_after=str(RETRY_AFTER_HEADER_SECONDS),
+        retry_after=str(RETRY_AFTER_HEADER_IN_SECONDS),
     )
     assert (
-        peri_scribe.retry.rate_limit_retry_seconds(error) == RETRY_AFTER_HEADER_SECONDS
+        peri_scribe.retry.rate_limit_retry_in_seconds(error)
+        == RETRY_AFTER_HEADER_IN_SECONDS
     )
 
 
-def test_rate_limit_retry_seconds_uses_fallback_without_retry_after_header() -> None:
+def test_rate_limit_retry_in_seconds_uses_fallback_without_retry_after_header() -> None:
     error = http_error(http.HTTPStatus.TOO_MANY_REQUESTS)
     assert (
-        peri_scribe.retry.rate_limit_retry_seconds(error)
-        == peri_scribe.retry.FALLBACK_RETRY_SECONDS
+        peri_scribe.retry.rate_limit_retry_in_seconds(error)
+        == peri_scribe.retry.FALLBACK_RETRY_IN_SECONDS
     )
 
 
-def test_rate_limit_retry_seconds_uses_fallback_for_non_numeric_header() -> None:
+def test_rate_limit_retry_in_seconds_uses_fallback_for_non_numeric_header() -> None:
     error = http_error(http.HTTPStatus.TOO_MANY_REQUESTS, retry_after="later")
     assert (
-        peri_scribe.retry.rate_limit_retry_seconds(error)
-        == peri_scribe.retry.FALLBACK_RETRY_SECONDS
+        peri_scribe.retry.rate_limit_retry_in_seconds(error)
+        == peri_scribe.retry.FALLBACK_RETRY_IN_SECONDS
     )
 
 
-def test_rate_limit_retry_seconds_returns_none_for_other_http_errors() -> None:
+def test_rate_limit_retry_in_seconds_returns_none_for_other_http_errors() -> None:
     error = http_error(http.HTTPStatus.INTERNAL_SERVER_ERROR)
-    assert peri_scribe.retry.rate_limit_retry_seconds(error) is None
+    assert peri_scribe.retry.rate_limit_retry_in_seconds(error) is None
 
 
-def test_rate_limit_retry_seconds_returns_none_for_other_errors() -> None:
+def test_rate_limit_retry_in_seconds_returns_none_for_other_errors() -> None:
     error = RuntimeError("boom")
-    assert peri_scribe.retry.rate_limit_retry_seconds(error) is None
+    assert peri_scribe.retry.rate_limit_retry_in_seconds(error) is None
 
 
-def test_rate_limit_retry_seconds_returns_none_for_non_dict_payload_error() -> None:
+def test_rate_limit_retry_in_seconds_returns_none_for_non_dict_payload_error() -> None:
     error = ValueError({"error": "boom"})
-    assert peri_scribe.retry.rate_limit_retry_seconds(error) is None
+    assert peri_scribe.retry.rate_limit_retry_in_seconds(error) is None
 
 
-def test_rate_limit_retry_seconds_returns_none_for_non_rate_limit_code() -> None:
+def test_rate_limit_retry_in_seconds_returns_none_for_non_rate_limit_code() -> None:
     error = ValueError({"error": {"code": http.HTTPStatus.INTERNAL_SERVER_ERROR}})
-    assert peri_scribe.retry.rate_limit_retry_seconds(error) is None
+    assert peri_scribe.retry.rate_limit_retry_in_seconds(error) is None
 
 
-def test_rate_limit_retry_seconds_uses_fallback_for_non_list_details() -> None:
+def test_rate_limit_retry_in_seconds_uses_fallback_for_non_list_details() -> None:
     error = ValueError(
         {
             "error": {
@@ -132,8 +133,8 @@ def test_rate_limit_retry_seconds_uses_fallback_for_non_list_details() -> None:
         },
     )
     assert (
-        peri_scribe.retry.rate_limit_retry_seconds(error)
-        == peri_scribe.retry.FALLBACK_RETRY_SECONDS
+        peri_scribe.retry.rate_limit_retry_in_seconds(error)
+        == peri_scribe.retry.FALLBACK_RETRY_IN_SECONDS
     )
 
 
@@ -215,40 +216,40 @@ def test_retry_reason_describes_transient() -> None:
     )
 
 
-def test_retry_wait_seconds_uses_server_hint() -> None:
+def test_retry_wait_in_seconds_uses_server_hint() -> None:
     retry_state = failed_retry_state(ValueError(RATE_LIMIT_ERROR_PAYLOAD))
     assert (
-        peri_scribe.retry.retry_wait_seconds(retry_state)
-        == RATE_LIMIT_RETRY_AFTER_SECONDS
+        peri_scribe.retry.retry_wait_in_seconds(retry_state)
+        == RATE_LIMIT_RETRY_AFTER_IN_SECONDS
     )
 
 
-def test_retry_wait_seconds_uses_fallback_for_loose_429() -> None:
+def test_retry_wait_in_seconds_uses_fallback_for_loose_429() -> None:
     retry_state = failed_retry_state(ValueError(LOOSE_429_ERROR_PAYLOAD))
     assert (
-        peri_scribe.retry.retry_wait_seconds(retry_state)
-        == peri_scribe.retry.FALLBACK_RETRY_SECONDS
+        peri_scribe.retry.retry_wait_in_seconds(retry_state)
+        == peri_scribe.retry.FALLBACK_RETRY_IN_SECONDS
     )
 
 
-def test_retry_wait_seconds_uses_exponential_backoff() -> None:
+def test_retry_wait_in_seconds_uses_exponential_backoff() -> None:
     retry_state = failed_retry_state(
         requests.exceptions.ConnectionError("Connection broken"),
     )
     retry_state.attempt_number = 3
-    assert peri_scribe.retry.retry_wait_seconds(retry_state) == pytest.approx(
-        peri_scribe.retry.BACKOFF_BASE_SECONDS * 4,
+    assert peri_scribe.retry.retry_wait_in_seconds(retry_state) == pytest.approx(
+        peri_scribe.retry.BACKOFF_BASE_IN_SECONDS * 4,
     )
 
 
-def test_retry_wait_seconds_caps_backoff_at_maximum() -> None:
+def test_retry_wait_in_seconds_caps_backoff_at_maximum() -> None:
     retry_state = failed_retry_state(
         requests.exceptions.ConnectionError("Connection broken"),
     )
     retry_state.attempt_number = 20
     assert (
-        peri_scribe.retry.retry_wait_seconds(retry_state)
-        == peri_scribe.retry.BACKOFF_MAXIMUM_SECONDS
+        peri_scribe.retry.retry_wait_in_seconds(retry_state)
+        == peri_scribe.retry.BACKOFF_MAXIMUM_IN_SECONDS
     )
 
 

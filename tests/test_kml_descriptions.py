@@ -63,44 +63,44 @@ def test_format_number_drops_trailing_zeros() -> None:
     assert peri_scribe.kml_descriptions.format_number(6.0, 1) == "6"
 
 
-def test_format_acres_returns_none_for_none() -> None:
-    assert peri_scribe.kml_descriptions.format_acres(None) is None
+def test_format_in_acres_returns_none_for_none() -> None:
+    assert peri_scribe.kml_descriptions.format_in_acres(None) is None
 
 
-def test_format_acres_uses_whole_acres_for_large_fires() -> None:
-    assert peri_scribe.kml_descriptions.format_acres(102003.46) == "102,003 acres"
+def test_format_in_acres_uses_whole_acres_for_large_fires() -> None:
+    assert peri_scribe.kml_descriptions.format_in_acres(102003.46) == "102,003 acres"
 
 
-def test_format_acres_uses_one_decimal_for_small_fires() -> None:
-    assert peri_scribe.kml_descriptions.format_acres(6.5) == "6.5 acres"
+def test_format_in_acres_uses_one_decimal_for_small_fires() -> None:
+    assert peri_scribe.kml_descriptions.format_in_acres(6.5) == "6.5 acres"
 
 
-def test_format_acres_uses_two_decimals_for_fractional_acres() -> None:
-    assert peri_scribe.kml_descriptions.format_acres(0.017) == "0.02 acres"
+def test_format_in_acres_uses_two_decimals_for_fractional_acres() -> None:
+    assert peri_scribe.kml_descriptions.format_in_acres(0.017) == "0.02 acres"
 
 
-def test_format_percent_returns_none_for_none() -> None:
-    assert peri_scribe.kml_descriptions.format_percent(None) is None
+def test_format_in_percent_returns_none_for_none() -> None:
+    assert peri_scribe.kml_descriptions.format_in_percent(None) is None
 
 
-def test_format_percent_uses_whole_percent() -> None:
-    assert peri_scribe.kml_descriptions.format_percent(77.0) == "77%"
+def test_format_in_percent_uses_whole_percent() -> None:
+    assert peri_scribe.kml_descriptions.format_in_percent(77.0) == "77%"
 
 
-def test_format_percent_uses_one_decimal_for_fractional_percent() -> None:
-    assert peri_scribe.kml_descriptions.format_percent(0.5) == "0.5%"
+def test_format_in_percent_uses_one_decimal_for_fractional_percent() -> None:
+    assert peri_scribe.kml_descriptions.format_in_percent(0.5) == "0.5%"
 
 
-def test_format_miles_returns_none_for_none() -> None:
-    assert peri_scribe.kml_descriptions.format_miles(None) is None
+def test_format_in_miles_returns_none_for_none() -> None:
+    assert peri_scribe.kml_descriptions.format_in_miles(None) is None
 
 
-def test_format_miles_adds_unit_and_one_decimal() -> None:
-    assert peri_scribe.kml_descriptions.format_miles(33.1) == "33.1 miles"
+def test_format_in_miles_adds_unit_and_one_decimal() -> None:
+    assert peri_scribe.kml_descriptions.format_in_miles(33.1) == "33.1 miles"
 
 
-def test_format_miles_drops_trailing_zero() -> None:
-    assert peri_scribe.kml_descriptions.format_miles(33.0) == "33 miles"
+def test_format_in_miles_drops_trailing_zero() -> None:
+    assert peri_scribe.kml_descriptions.format_in_miles(33.0) == "33 miles"
 
 
 def test_format_perimeter_length_returns_none_for_none() -> None:
@@ -131,14 +131,14 @@ def test_format_perimeter_length_caps_significant_digits() -> None:
     assert peri_scribe.kml_descriptions.format_perimeter_length(5678.123) == "5,680"
 
 
-def test_format_miles_caps_large_lengths_to_three_significant_digits() -> None:
-    assert peri_scribe.kml_descriptions.format_miles(123.6) == "124 miles"
-    assert peri_scribe.kml_descriptions.format_miles(5678.123) == "5,680 miles"
+def test_format_in_miles_caps_large_lengths_to_three_significant_digits() -> None:
+    assert peri_scribe.kml_descriptions.format_in_miles(123.6) == "124 miles"
+    assert peri_scribe.kml_descriptions.format_in_miles(5678.123) == "5,680 miles"
 
 
-def test_format_miles_keeps_small_lengths_at_one_decimal() -> None:
-    assert peri_scribe.kml_descriptions.format_miles(0.1499) == "0.1 miles"
-    assert peri_scribe.kml_descriptions.format_miles(math.pi) == "3.1 miles"
+def test_format_in_miles_keeps_small_lengths_at_one_decimal() -> None:
+    assert peri_scribe.kml_descriptions.format_in_miles(0.1499) == "0.1 miles"
+    assert peri_scribe.kml_descriptions.format_in_miles(math.pi) == "3.1 miles"
 
 
 def test_format_containment_returns_none_without_percent() -> None:

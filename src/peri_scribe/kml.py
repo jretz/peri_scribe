@@ -51,11 +51,11 @@ PROGRESSION_TOUR_NAME = "Progression"
 
 # A tour advances through fire time at one second of playback per day, and holds
 # the final frame for two seconds. Fires spanning more than
-# MAX_TOUR_PLAYBACK_SECONDS days play faster so the whole progression takes
+# MAX_TOUR_PLAYBACK_IN_SECONDS days play faster so the whole progression takes
 # about that long instead of one second per day.
 TOUR_PLAYBACK_SECONDS_PER_DAY = 1.0
-MAX_TOUR_PLAYBACK_SECONDS = 8.0
-FINAL_TOUR_WAIT_SECONDS = 2.0
+MAX_TOUR_PLAYBACK_IN_SECONDS = 8.0
+FINAL_TOUR_WAIT_IN_SECONDS = 2.0
 
 # DEFLATE is the compression Google Earth expects inside a KMZ, and level 9 is the
 # highest compression level it offers.
@@ -1073,10 +1073,10 @@ def tour_seconds_per_day(
 ) -> float:
     """Return the tour's playback rate, in seconds per day of fire time.
 
-    Fires spanning at most MAX_TOUR_PLAYBACK_SECONDS days play at
+    Fires spanning at most MAX_TOUR_PLAYBACK_IN_SECONDS days play at
     TOUR_PLAYBACK_SECONDS_PER_DAY so every day stays visible; longer fires play
     proportionally faster so the whole progression takes about
-    MAX_TOUR_PLAYBACK_SECONDS.
+    MAX_TOUR_PLAYBACK_IN_SECONDS.
 
     Args:
         ring_times: Each interior ring's observation time, oldest first.
@@ -1087,10 +1087,10 @@ def tour_seconds_per_day(
     observed_times = [time for time in ring_times if time is not None]
     if not observed_times:
         return TOUR_PLAYBACK_SECONDS_PER_DAY
-    total_days = (observed_times[-1] - observed_times[0]).total_seconds() / 86_400
-    if total_days <= MAX_TOUR_PLAYBACK_SECONDS:
+    total_in_days = (observed_times[-1] - observed_times[0]).total_seconds() / 86_400
+    if total_in_days <= MAX_TOUR_PLAYBACK_IN_SECONDS:
         return TOUR_PLAYBACK_SECONDS_PER_DAY
-    return MAX_TOUR_PLAYBACK_SECONDS / total_days
+    return MAX_TOUR_PLAYBACK_IN_SECONDS / total_in_days
 
 
 def tour_wait_in_seconds(
@@ -1114,8 +1114,8 @@ def tour_wait_in_seconds(
     """
     if earlier is None or later is None:
         return 0.0
-    days = (later - earlier).total_seconds() / 86_400
-    return seconds_per_day * days
+    in_days = (later - earlier).total_seconds() / 86_400
+    return seconds_per_day * in_days
 
 
 def visibility_change(
@@ -1155,9 +1155,9 @@ def progression_tour(
     The tour shows the innermost ring alone, then waits for the fire time
     between observations at the tour's playback rate before revealing each
     next ring, and holds the final frame for two seconds. The playback rate is
-    one second per day for fires spanning at most MAX_TOUR_PLAYBACK_SECONDS
+    one second per day for fires spanning at most MAX_TOUR_PLAYBACK_IN_SECONDS
     days, and faster for longer fires so the whole progression takes about
-    MAX_TOUR_PLAYBACK_SECONDS. It is added before the folder's placemarks so
+    MAX_TOUR_PLAYBACK_IN_SECONDS. It is added before the folder's placemarks so
     it leads them.
 
     Args:
@@ -1180,7 +1180,7 @@ def progression_tour(
                 seconds_per_day,
             )
         else:
-            wait_in_seconds = FINAL_TOUR_WAIT_SECONDS
+            wait_in_seconds = FINAL_TOUR_WAIT_IN_SECONDS
         playlist.newgxwait(gxduration=wait_in_seconds)
 
 

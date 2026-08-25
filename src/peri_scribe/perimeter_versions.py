@@ -549,17 +549,19 @@ def perimeter_is_implausibly_small(
         True when the geometry has area but is smaller than one of the configured
         fractions of the row's reported sizes.
     """
-    geometry_acres = geometry_area_in_acres(observation.geometry)
-    if geometry_acres is None:
+    geometry_in_acres = geometry_area_in_acres(observation.geometry)
+    if geometry_in_acres is None:
         return False
-    computed_acres = computed_area_in_acres(observation.attributes)
-    incident_acres = incident_size_in_acres(observation.attributes)
+    computed_in_acres = computed_area_in_acres(observation.attributes)
+    incident_in_acres = incident_size_in_acres(observation.attributes)
     return (
-        computed_acres is not None
-        and geometry_acres < config.minimum_computed_area_fraction * computed_acres
+        computed_in_acres is not None
+        and geometry_in_acres
+        < config.minimum_computed_area_fraction * computed_in_acres
     ) or (
-        incident_acres is not None
-        and geometry_acres < config.minimum_incident_area_fraction * incident_acres
+        incident_in_acres is not None
+        and geometry_in_acres
+        < config.minimum_incident_area_fraction * incident_in_acres
     )
 
 

@@ -66,7 +66,7 @@ DOLLARS_PER_MILLION = 1_000_000.0
 
 # Containment percentages are reported in whole percent (0-100), so the contained
 # perimeter is that fraction of the exterior perimeter length.
-CONTAINMENT_PERCENT = 100.0
+CONTAINMENT_IN_PERCENT = 100.0
 
 # The rendered image dimensions, in inches and dots per inch.
 FIGURE_WIDTH_IN_INCHES = 4.8
@@ -280,12 +280,12 @@ def contained_perimeter_points(
     ):
         time = peri_scribe.geo_package.observation_time_from(observation_time)
         length = peri_scribe.units.exterior_perimeter_in_miles(geometry)
-        percent = peri_scribe.geo_package.numeric_value(percent_contained)
-        if time is not None and length is not None and percent is not None:
+        in_percent = peri_scribe.geo_package.numeric_value(percent_contained)
+        if time is not None and length is not None and in_percent is not None:
             points.append(
                 SeriesPoint(
                     observation_time=time,
-                    value=length * percent / CONTAINMENT_PERCENT,
+                    value=length * in_percent / CONTAINMENT_IN_PERCENT,
                 ),
             )
     return tuple(points)
@@ -525,8 +525,8 @@ def x_axis_ticks(
         return ()
     first_day = min(times).date()
     last_day = max(times).date()
-    days_spanned = (last_day - first_day).days + 1
-    interval = max(1, math.ceil(days_spanned / MAX_X_AXIS_TICKS))
+    in_days_spanned = (last_day - first_day).days + 1
+    interval = max(1, math.ceil(in_days_spanned / MAX_X_AXIS_TICKS))
     ticks: list[datetime.datetime] = []
     day = first_day
     while day <= last_day:

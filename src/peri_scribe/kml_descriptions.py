@@ -28,7 +28,7 @@ WHOLE_ACRE_THRESHOLD = 100.0
 
 # A fire at or above this containment percentage is fully contained and needs no
 # contained-length annotation.
-FULL_CONTAINMENT_PERCENT = 100.0
+FULL_CONTAINMENT_IN_PERCENT = 100.0
 
 # Perimeter lengths keep at most this many digits after the decimal point and at
 # most this many significant digits, so a large fire's perimeter keeps its scale
@@ -63,7 +63,7 @@ def format_number(value: float | None, decimal_places: int = 0) -> str | None:
     return f"{value:,.{decimal_places}f}".rstrip("0").rstrip(".")
 
 
-def format_acres(value: float | None) -> str | None:
+def format_in_acres(value: float | None) -> str | None:
     """Format an area in acres with a unit and size-appropriate precision.
 
     Args:
@@ -83,7 +83,7 @@ def format_acres(value: float | None) -> str | None:
     return f"{number} acres"
 
 
-def format_percent(value: float | None) -> str | None:
+def format_in_percent(value: float | None) -> str | None:
     """Format a containment percentage with a percent sign.
 
     Args:
@@ -138,7 +138,7 @@ def format_perimeter_length(value: float | None) -> str | None:
     return format_number(rounded, MAX_PERIMETER_DECIMAL_PLACES)
 
 
-def format_miles(value: float | None) -> str | None:
+def format_in_miles(value: float | None) -> str | None:
     """Format a length in miles with a unit.
 
     Args:
@@ -175,10 +175,10 @@ def format_containment(
     """
     if percent_contained is None:
         return None
-    percent_text = format_percent(percent_contained)
+    percent_text = format_in_percent(percent_contained)
     if exterior_perimeter_in_miles is None:
         return percent_text
-    if percent_contained >= FULL_CONTAINMENT_PERCENT:
+    if percent_contained >= FULL_CONTAINMENT_IN_PERCENT:
         return percent_text
     contained_in_miles = percent_contained / 100.0 * exterior_perimeter_in_miles
     return (
@@ -290,10 +290,10 @@ def description_rows(
     rows: list[tuple[str, str]] = []
     candidates: list[tuple[str, str | None]] = [
         ("Status", status_label(description.status)),
-        ("Area", format_acres(description.area_in_acres)),
+        ("Area", format_in_acres(description.area_in_acres)),
         (
             "Exterior perimeter",
-            format_miles(description.exterior_perimeter_in_miles),
+            format_in_miles(description.exterior_perimeter_in_miles),
         ),
         (
             "Containment",

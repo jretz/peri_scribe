@@ -615,7 +615,7 @@ def test_read_geopackage_reads_full_rows(
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
     object_id = 7
-    area_acres = 12
+    area_in_acres = 12
     stub_geo_package(
         pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Point"]}),
         {
@@ -624,7 +624,7 @@ def test_read_geopackage_reads_full_rows(
                     "incident_name": ["Park Fire"],
                     "displayStatus": ["Active"],
                     "OBJECTID": [object_id],
-                    "area_acres": [area_acres],
+                    "area_acres": [area_in_acres],
                 },
                 geometry=[shapely.geometry.Point(0, 0)],
             ),
@@ -635,7 +635,7 @@ def test_read_geopackage_reads_full_rows(
     assert rows[0].object_id == object_id
     assert rows[0].source_name == "Fires_One_0"
     assert rows[0].record.name == "Park Fire"
-    assert rows[0].attributes["area_acres"] == area_acres
+    assert rows[0].attributes["area_acres"] == area_in_acres
     assert "geometry" not in rows[0].attributes
 
 

@@ -201,12 +201,12 @@ def template_path() -> pathlib.Path:
     return TEMPLATE_DIRECTORY / TEMPLATE_FILENAME
 
 
-def kml_color(red_green_blue: str, opacity_percent: int) -> str:
+def kml_color(red_green_blue: str, opacity_in_percent: int) -> str:
     """Return the KML ``aabbggrr`` color for *red_green_blue* at an opacity.
 
     Args:
         red_green_blue: The color as ``#RRGGBB``.
-        opacity_percent: The opacity from 0 (transparent) to 100 (opaque).
+        opacity_in_percent: The opacity from 0 (transparent) to 100 (opaque).
 
     Returns:
         The KML color string.
@@ -214,7 +214,7 @@ def kml_color(red_green_blue: str, opacity_percent: int) -> str:
     red = red_green_blue[1:3]
     green = red_green_blue[3:5]
     blue = red_green_blue[5:7]
-    alpha = opacity_percent * 255 // 100
+    alpha = opacity_in_percent * 255 // 100
     return f"{alpha:02x}{blue}{green}{red}".lower()
 
 

@@ -39,7 +39,7 @@ WEB_MERCATOR_MAXIMUM_MAGNITUDE_IN_METERS = 20048966.104014598
 CLICK_USAGE_ERROR_EXIT_CODE = 2
 
 # Error messages matching the ArcGIS REST API 429 rate-limit response format.
-RATE_LIMIT_RETRY_AFTER_SECONDS = 60
+RATE_LIMIT_RETRY_AFTER_IN_SECONDS = 60
 RATE_LIMIT_ERROR_PAYLOAD = {
     "error": {
         "code": http.HTTPStatus.TOO_MANY_REQUESTS,
@@ -48,7 +48,7 @@ RATE_LIMIT_ERROR_PAYLOAD = {
             (
                 "API calls quota exceeded (120975 request units)! maximum allowed "
                 "request units (115200) per Minute. "
-                f"Retry after {RATE_LIMIT_RETRY_AFTER_SECONDS} sec."
+                f"Retry after {RATE_LIMIT_RETRY_AFTER_IN_SECONDS} sec."
             ),
         ],
     },

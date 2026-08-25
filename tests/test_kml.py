@@ -1154,9 +1154,9 @@ def test_tour_seconds_per_day_for_long_fire() -> None:
     second = datetime.datetime(2026, 8, 26, 0, 0, tzinfo=datetime.UTC)
     rate = peri_scribe.kml.tour_seconds_per_day([first, second])
     assert rate == pytest.approx(0.32)
-    total_days = (second - first).total_seconds() / 86_400
-    assert total_days * rate == pytest.approx(
-        peri_scribe.kml.MAX_TOUR_PLAYBACK_SECONDS,
+    total_in_days = (second - first).total_seconds() / 86_400
+    assert total_in_days * rate == pytest.approx(
+        peri_scribe.kml.MAX_TOUR_PLAYBACK_IN_SECONDS,
     )
 
 

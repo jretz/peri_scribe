@@ -17,12 +17,12 @@ logger = structlog.get_logger()
 
 # Two fire geometries are treated as the same fire when they overlap or the gap between
 # them is within this tolerance. It is expressed in degrees, which is roughly 5.5 km.
-FIRE_PROXIMITY_TOLERANCE_DEGREES = 0.05
+FIRE_PROXIMITY_TOLERANCE_IN_DEGREES = 0.05
 
 # A fire whose records are farther apart than this is reported as possibly two fires
 # that were merged. It is far looser than the proximity tolerance so that a point
 # location moving between snapshots does not raise a warning.
-FIRE_OUTLIER_TOLERANCE_DEGREES = 1.0
+FIRE_OUTLIER_TOLERANCE_IN_DEGREES = 1.0
 
 # A fire whose records span longer than this across observation times is reported as
 # possibly two fires that were merged.
@@ -39,9 +39,9 @@ MINIMUM_SPATIAL_GEOMETRIES = 2
 def nearby_pairs(
     geometries: list[shapely.Geometry],
     *,
-    tolerance_degrees: float,
+    tolerance_in_degrees: float,
 ) -> typing.Iterator[tuple[int, int]]:
-    """Yield the index pairs of *geometries* within *tolerance_degrees*.
+    """Yield the index pairs of *geometries* within *tolerance_in_degrees*.
 
     A spatial index limits the comparisons to geometries that are actually close, so
     the number of pairs grows with the number of nearby geometries rather than with
@@ -51,7 +51,7 @@ def nearby_pairs(
 
     Args:
         geometries: The geometries to compare.
-        tolerance_degrees: The maximum distance, in degrees, that counts as nearby.
+        tolerance_in_degrees: The maximum distance, in degrees, that counts as nearby.
 
     Yields:
         Pairs of indices whose geometries are within the tolerance.
@@ -60,7 +60,7 @@ def nearby_pairs(
     pairs = tree.query(
         geometries,
         predicate="dwithin",
-        distance=tolerance_degrees,
+        distance=tolerance_in_degrees,
     )
     for left, right in zip(pairs[0], pairs[1], strict=True):
         yield int(left), int(right)
@@ -100,7 +100,7 @@ def records_span_distant_locations(
     if len(members) >= MINIMUM_SPATIAL_GEOMETRIES:
         for left, right in nearby_pairs(
             [geometry for _index, geometry in members],
-            tolerance_degrees=FIRE_OUTLIER_TOLERANCE_DEGREES,
+            tolerance_in_degrees=FIRE_OUTLIER_TOLERANCE_IN_DEGREES,
         ):
             if left != right:
                 has_other_match[left] = True
@@ -242,7 +242,7 @@ def merge_records_by_name(
             continue
         for left, right in nearby_pairs(
             [geometry for _index, geometry in members],
-            tolerance_degrees=FIRE_PROXIMITY_TOLERANCE_DEGREES,
+            tolerance_in_degrees=FIRE_PROXIMITY_TOLERANCE_IN_DEGREES,
         ):
             if left != right:
                 union(members[left][0], members[right][0])

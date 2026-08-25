@@ -161,7 +161,7 @@ def test_arc_gis_feed_current_last_edit_timestamp_retries_on_transient_error(
         ],
     )
     assert feed.current_last_edit_timestamp == SAMPLE_LAST_EDIT_DATE
-    assert sleep_calls == [peri_scribe.retry.BACKOFF_BASE_SECONDS]
+    assert sleep_calls == [peri_scribe.retry.BACKOFF_BASE_IN_SECONDS]
 
 
 def test_arc_gis_feed_current_last_edit_timestamp_returns_none_on_get_error(
