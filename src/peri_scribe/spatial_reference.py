@@ -397,6 +397,6 @@ def choose_spatial_reference_id(
     selection = select_spatial_reference_wkid(candidates, bounds)
     if selection.wkid is not None:
         if selection.warning is not None:
-            logger.warning(selection.warning)
+            logger.info(selection.warning)
         return selection.wkid
     raise peri_scribe.exceptions.NoSpatialReferenceError(selection.failure_message)

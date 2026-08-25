@@ -231,7 +231,7 @@ def run_with_retry[Result](
 
     def log_before_sleep(retry_state: tenacity.RetryCallState) -> None:
         error = last_error(retry_state)
-        logger.warning(
+        logger.info(
             retry_reason(error),
             feed=feed_name,
             attempt=retry_state.attempt_number,

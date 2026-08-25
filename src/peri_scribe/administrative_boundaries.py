@@ -407,9 +407,9 @@ def ensure_administrative_boundaries(
         base_dir = pathlib.Path.cwd()
     output_path = output_geopackage_path(base_dir)
     if is_usable(output_path):
-        logger.info("Administrative boundaries already present", path=output_path)
+        logger.debug("Administrative boundaries already present", path=output_path)
         return output_path
-    logger.info("Building administrative boundaries", path=output_path)
+    logger.debug("Building administrative boundaries", path=output_path)
     try:
         gis = arcgis.gis.GIS()
         california = california_geometry(
@@ -432,7 +432,7 @@ def ensure_administrative_boundaries(
             ),
         ],
     )
-    logger.info(
+    logger.debug(
         "Wrote administrative boundaries",
         path=output_path,
         features=len(border),

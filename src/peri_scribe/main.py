@@ -271,7 +271,7 @@ def full_pipeline(
         full=full,
     )
     if not result.changed and not force:
-        logger.info("Nothing changed; skipping remaining pipeline steps")
+        logger.debug("Nothing changed; skipping remaining pipeline steps")
         return
     peri_scribe.administrative_boundaries.ensure_administrative_boundaries()
     peri_scribe.fire_differential.write_history_of_differential_geography(

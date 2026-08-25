@@ -11,6 +11,7 @@ import pyproj
 import pyproj.exceptions
 import pytest
 import shapely.geometry
+import structlog
 
 import peri_scribe.feed_types
 import peri_scribe.feeds
@@ -76,6 +77,25 @@ SAMPLE_LAYER_ID = 3
 SAMPLE_FEED_NAME = "Fire_Layers_3"
 SAMPLE_FIRE_NAME_COLUMN = "name"
 SAMPLE_STATUS_COLUMN = "status"
+
+
+@pytest.fixture
+def log_output() -> structlog.testing.LogCapture:
+    """Captures all log entries during a test.
+
+    Returns:
+        An object that can be used to inspect captured log entries.
+    """
+    return structlog.testing.LogCapture()
+
+
+@pytest.fixture(autouse=True)
+def configure_structlog(log_output: structlog.testing.LogCapture) -> None:
+    """Configures structlog to use the LogCapture processor for all tests."""
+    structlog.configure(
+        processors=[log_output],
+        wrapper_class=structlog.make_filtering_bound_logger("DEBUG"),
+    )
 
 
 def sample_feed() -> peri_scribe.feed_types.ArcGISFeed:

@@ -138,7 +138,7 @@ def warn_for_inconsistent_fires(
     """
     for fire, group in zip(fires, groups, strict=True):
         if records_span_distant_locations(records, group):
-            logger.warning(
+            logger.info(
                 "Fire records span distant locations",
                 fire=fire.name,
                 identifier=fire.identifier,
@@ -151,7 +151,7 @@ def warn_for_inconsistent_fires(
         if len(observed_times) >= MINIMUM_TIMED_RECORDS:
             spread = max(observed_times) - min(observed_times)
             if spread > FIRE_OBSERVATION_SPREAD_TOLERANCE:
-                logger.warning(
+                logger.debug(
                     "Fire records span distant times",
                     fire=fire.name,
                     identifier=fire.identifier,

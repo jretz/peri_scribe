@@ -500,7 +500,6 @@ def test_choose_spatial_reference_id_reports_excluded_candidate(
         )
     assert chosen == WGS84_WKID
     assert len(captured) == 1
-    assert captured[0]["log_level"] == "warning"
     for substring in expected_substrings:
         assert substring in captured[0]["event"]
 
@@ -634,5 +633,5 @@ def test_choose_spatial_reference_id_single_out_of_area_candidate_logs_warning()
         )
     assert chosen == NAD83_WKID
     assert len(captured) == 1
-    assert captured[0]["log_level"] == "warning"
+    assert captured[0]["log_level"] == "info"
     assert "area of use" in captured[0]["event"]

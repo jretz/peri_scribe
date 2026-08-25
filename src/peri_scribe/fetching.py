@@ -86,7 +86,7 @@ def fetch_feed_dataframe(
             existing,
         )
         if geodataframe.empty:
-            logger.info("No new or changed features", feed=feed.name)
+            logger.debug("No new or changed features", feed=feed.name)
             return None
         return geodataframe
     change_columns = feed.change_columns
@@ -115,7 +115,7 @@ def fetch_feed_dataframe(
     )
     missing_ids = sorted(layer_ids - stored_ids)
     if missing_ids:
-        logger.info(
+        logger.debug(
             "Found features present but not stored",
             feed=feed.name,
             count=len(missing_ids),
@@ -144,14 +144,14 @@ def fetch_feed_dataframe(
             ),
         )
     if flipped_ids:
-        logger.info(
+        logger.debug(
             "Found stored-active features now inactive",
             feed=feed.name,
             count=len(flipped_ids),
         )
     object_ids = sorted(set(changed_ids) | set(missing_ids) | set(flipped_ids))
     if not object_ids:
-        logger.info("No new or changed features", feed=feed.name)
+        logger.debug("No new or changed features", feed=feed.name)
         return None
     feature_set = peri_scribe.geo_data.query_with_retry(
         feed.name,
@@ -168,7 +168,7 @@ def fetch_feed_dataframe(
         existing,
     )
     if geodataframe.empty:
-        logger.info("No new or changed features", feed=feed.name)
+        logger.debug("No new or changed features", feed=feed.name)
         return None
     return geodataframe
 
@@ -262,7 +262,7 @@ def fetch_all_feeds(
     errors: list[str] = []
     wrote_snapshot = False
     for feed in peri_scribe.feeds.FEEDS:
-        logger.info("Fetching", feed=feed.name, url=feed.url)
+        logger.debug("Fetching", feed=feed.name, url=feed.url)
         last_edit_timestamp = feed.current_last_edit_timestamp
         if last_edit_timestamp is None:
             errors.append(
@@ -281,7 +281,7 @@ def fetch_all_feeds(
                 last_edit_timestamp,
             )
             if existing_path is not None:
-                logger.info(
+                logger.debug(
                     "Skipping fetch; data already present",
                     feed=feed.name,
                     last_edit_timestamp=last_edit_timestamp,
@@ -311,8 +311,8 @@ def fetch_all_feeds(
             if latest_path is not None:
                 snapshot_paths.append(latest_path)
             continue
-        logger.info("Received features", count=len(geodataframe))
-        logger.info(
+        logger.debug("Received features", count=len(geodataframe))
+        logger.debug(
             "Prepared feed",
             feed=feed.name,
             rows=len(geodataframe),
@@ -333,7 +333,7 @@ def fetch_all_feeds(
             ),
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        logger.info("Writing layer", feed=feed.name, path=output_path)
+        logger.debug("Writing layer", feed=feed.name, path=output_path)
         peri_scribe.output.write_geopackage(
             output_path,
             [
@@ -351,7 +351,7 @@ def fetch_all_feeds(
         )
     if errors:
         raise SystemExit("\n".join(errors))
-    logger.info("Done")
+    logger.debug("Done")
     return FetchResult(
         snapshot_paths=tuple(snapshot_paths),
         changed=wrote_snapshot,
@@ -392,7 +392,7 @@ def fetch_all_feeds_complete(
     snapshot_paths: list[pathlib.Path] = []
     errors: list[str] = []
     for feed in peri_scribe.feeds.FEEDS:
-        logger.info("Fetching complete snapshot", feed=feed.name, url=feed.url)
+        logger.debug("Fetching complete snapshot", feed=feed.name, url=feed.url)
         try:
             geodataframe = fetch_feed(
                 feed,
@@ -413,7 +413,7 @@ def fetch_all_feeds_complete(
             feed.name,
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        logger.info("Writing layer", feed=feed.name, path=output_path)
+        logger.debug("Writing layer", feed=feed.name, path=output_path)
         peri_scribe.output.write_geopackage(
             output_path,
             [
@@ -426,5 +426,5 @@ def fetch_all_feeds_complete(
         snapshot_paths.append(output_path)
     if errors:
         raise SystemExit("\n".join(errors))
-    logger.info("Done")
+    logger.debug("Done")
     return tuple(snapshot_paths)

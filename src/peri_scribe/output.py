@@ -24,7 +24,7 @@ def write_geopackage(
 ) -> None:
     if path.exists():
         path.unlink()
-        logger.info("Replaced existing", path=path.name)
+        logger.debug("Replaced existing", path=path.name)
     mode = "w"
     for layer_data in layers:
         layer_data.dataframe.to_file(
@@ -33,7 +33,7 @@ def write_geopackage(
             layer=layer_data.name,
             mode=mode,
         )
-        logger.info(
+        logger.debug(
             "Wrote layer",
             layer=layer_data.name,
             features=len(layer_data.dataframe),
@@ -63,7 +63,7 @@ def write_fire_index(
     """
     with path.open("w", encoding="utf-8") as file:
         json.dump(document.model_dump(mode="json"), file, indent=4)
-    logger.info("Wrote fire index", path=path.name, fires=len(document.fires))
+    logger.debug("Wrote fire index", path=path.name, fires=len(document.fires))
 
 
 def configure_logging(log_level: str) -> None:
