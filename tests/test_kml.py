@@ -1705,6 +1705,68 @@ def test_progression_folder_holds_point_and_ring_folders(
     }
 
 
+def test_progression_folder_leads_with_progression_tour(
+    style_urls: dict[str, str],
+) -> None:
+    first_time = datetime.datetime(2026, 8, 13, 20, 0, tzinfo=datetime.UTC)
+    second_time = datetime.datetime(2026, 8, 14, 20, 0, tzinfo=datetime.UTC)
+    third_time = datetime.datetime(2026, 8, 15, 20, 0, tzinfo=datetime.UTC)
+    fire = peri_scribe.kml.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=shapely.geometry.Point(1.0, 1.0),
+        perimeters=(),
+        progression_rings=(
+            peri_scribe.perimeter_progression.Ring(
+                geometry=square(1.0),
+                observation_time=first_time,
+            ),
+            peri_scribe.perimeter_progression.Ring(
+                geometry=square(2.0),
+                observation_time=second_time,
+            ),
+            peri_scribe.perimeter_progression.Ring(
+                geometry=square(3.0),
+                observation_time=third_time,
+            ),
+        ),
+    )
+    kml = simplekml.Kml()
+    peri_scribe.kml.progression_folder(kml.document, [fire], style_urls)
+    folder = folder_named(
+        document_from(kml.kml()),
+        peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
+    bug_folder = folder_named(folder, "Bug")
+    features = [
+        child
+        for child in bug_folder
+        if child.tag in {kml_tag("Folder"), kml_tag("Placemark"), gx_tag("Tour")}
+    ]
+    assert features[0].tag == gx_tag("Tour")
+    tour = tour_named(bug_folder, "Progression")
+    updates = tour_primitives(tour, gx_tag("AnimatedUpdate"))
+    waits = tour_primitives(tour, gx_tag("Wait"))
+    two_days_folder = folder_named(bug_folder, "08/13 - 08/14")
+    latest_folder = folder_named(bug_folder, "08/15")
+    # The rings live in different day-range subfolders, but the tour reveals them
+    # in the same chronological order the latest-perimeters tour does.
+    interior = [
+        placemark_named(two_days_folder, "08/13 13:00 Interior"),
+        placemark_named(two_days_folder, "08/14 13:00 Interior"),
+        placemark_named(latest_folder, "08/15 13:00 Interior"),
+    ]
+    assert len(updates) == len(interior)
+    assert len(waits) == len(interior)
+    interior_ids = [placemark.get("id") for placemark in interior]
+    assert [update_visibility_by_target(update) for update in updates] == [
+        {interior_ids[0]: 1, interior_ids[1]: 0, interior_ids[2]: 0},
+        {interior_ids[0]: 1, interior_ids[1]: 1, interior_ids[2]: 0},
+        {interior_ids[0]: 1, interior_ids[1]: 1, interior_ids[2]: 1},
+    ]
+    assert [wait_duration(wait) for wait in waits] == [1.0, 1.0, 2.0]
+
+
 def test_progression_folder_hides_its_tree(style_urls: dict[str, str]) -> None:
     point = shapely.geometry.Point(1.0, 1.0)
     fire = peri_scribe.kml.FireGeometry(

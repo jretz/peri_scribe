@@ -1433,11 +1433,14 @@ def progression_folder(
     Each fire with growth rings gets a folder holding its point location and one
     subfolder per day range it covers; each subfolder holds the fire's growth
     rings from that range, styled by the range's color and marked with a colored
-    icon. Fires with no rings are left out, because there is nothing to map.
-    Draw orders put the oldest ring on the bottom, stack the rings from oldest to
-    newest, and draw the point location last so its icon is never covered. The
-    folder loads unchecked, along with everything beneath it, so the progression
-    maps stay hidden until they are enabled.
+    icon. A "Progression" tour leads the fire folder when it has rings, replaying
+    them oldest first exactly as the latest-perimeters folder does, but its
+    animated updates target the rings inside the day-range subfolders rather than
+    rings in the same folder. Fires with no rings are left out, because there is
+    nothing to map. Draw orders put the oldest ring on the bottom, stack the rings
+    from oldest to newest, and draw the point location last so its icon is never
+    covered. The folder loads unchecked, along with everything beneath it, so the
+    progression maps stay hidden until they are enabled.
 
     Args:
         container: The folder that holds the progression maps folder.
@@ -1454,6 +1457,13 @@ def progression_folder(
         if not bands:
             continue
         fire_folder = folder.newfolder(name=fire.name)
+        ring_times = tuple(
+            ring.observation_time
+            for ring in fire.progression_rings
+            if ring.observation_time is not None
+        )
+        if ring_times:
+            progression_tour(fire_folder, ring_times)
         ring_count = sum(len(band.rings) for band in bands)
         if fire.point is not None:
             point_placemark(
@@ -1473,13 +1483,20 @@ def progression_folder(
                 len(candidate.rings) for candidate in bands[position + 1 :]
             )
             for ring_index, ring in enumerate(band.rings):
-                perimeter_placemark(
+                placemark = perimeter_placemark(
                     subfolder,
                     interior_placemark_name(ring.observation_time),
                     style_urls[band.name],
                     ring.geometry,
                     older_ring_count + ring_index,
                     description=fire.description,
+                )
+                assign_placemark_id(
+                    placemark,
+                    interior_ring_id(
+                        fire_folder,
+                        older_ring_count + ring_index,
+                    ),
                 )
     set_invisible(folder)
 
