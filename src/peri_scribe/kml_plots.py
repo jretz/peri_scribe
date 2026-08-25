@@ -504,13 +504,33 @@ def format_tick(value: float, _position: int) -> str:
     return text
 
 
+def observation_day_span(
+    series_list: tuple[PlotSeries, ...],
+) -> tuple[datetime.date, datetime.date]:
+    """Return the earliest and latest observation days across *series_list*.
+
+    Args:
+        series_list: The lines drawn in the plot.
+
+    Returns:
+        The first and last observation days.
+    """
+    times = [
+        point.observation_time for series in series_list for point in series.points
+    ]
+    return min(times).date(), max(times).date()
+
+
 def x_axis_ticks(
     series_list: tuple[PlotSeries, ...],
 ) -> tuple[datetime.datetime, ...]:
     """Return the midnight times at which to place x-axis ticks.
 
-    Ticks sit on the midnights spanned by the observations and are thinned when more
-    days span the figure than fit without crowding.
+    Ticks sit on a uniform grid of midnights across the observations: each tick is one
+    interval after the last, where the interval thins the grid to at most
+    ``MAX_X_AXIS_TICKS`` ticks. No tick is forced onto the first or last observation
+    day; the axis itself extends to cover them, so the line is never cut off and the
+    reader can read any endpoint off the nearest tick.
 
     Args:
         series_list: The lines drawn in the plot.
@@ -523,8 +543,7 @@ def x_axis_ticks(
     ]
     if not times:
         return ()
-    first_day = min(times).date()
-    last_day = max(times).date()
+    first_day, last_day = observation_day_span(series_list)
     in_days_spanned = (last_day - first_day).days + 1
     interval = max(1, math.ceil(in_days_spanned / MAX_X_AXIS_TICKS))
     ticks: list[datetime.datetime] = []
@@ -534,14 +553,6 @@ def x_axis_ticks(
             datetime.datetime.combine(day, datetime.time.min, tzinfo=datetime.UTC),
         )
         day += datetime.timedelta(days=interval)
-    if ticks[-1].date() != last_day:
-        ticks.append(
-            datetime.datetime.combine(
-                last_day,
-                datetime.time.min,
-                tzinfo=datetime.UTC,
-            ),
-        )
     return tuple(ticks)
 
 
@@ -615,15 +626,33 @@ def draw_plot(
     )
     axes.xaxis.set_major_formatter(matplotlib.dates.DateFormatter(DATE_FORMAT))
     if tick_times:
+        # The axis spans the whole observation range, not just the ticks, so the line
+        # reaches the first and last observation even when neither is on a tick.
+        first_day, last_day = observation_day_span(series_list)
         axes.set_xlim(
-            matplotlib.dates.date2num(tick_times[0]),
             matplotlib.dates.date2num(
-                tick_times[-1] + datetime.timedelta(days=1),
+                datetime.datetime.combine(
+                    first_day,
+                    datetime.time.min,
+                    tzinfo=datetime.UTC,
+                ),
+            ),
+            matplotlib.dates.date2num(
+                datetime.datetime.combine(
+                    last_day,
+                    datetime.time.min,
+                    tzinfo=datetime.UTC,
+                )
+                + datetime.timedelta(days=1),
             ),
         )
     axes.yaxis.set_major_formatter(
         matplotlib.ticker.FuncFormatter(format_tick),
     )
+    # Every plot shares a zero baseline: the x-axis line at the bottom of the
+    # axes sits on the y=0 mark, so the axes cross at zero no matter how far
+    # the measurements are from zero.
+    axes.set_ylim(bottom=0)
     figure.tight_layout()
     buffer = renderer.buffer
     buffer.seek(0)

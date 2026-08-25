@@ -6,6 +6,7 @@ import datetime
 import os
 
 import geopandas
+import matplotlib.dates
 import pytest
 import shapely.geometry
 
@@ -506,6 +507,19 @@ def test_x_axis_ticks_returns_empty_without_points() -> None:
     assert peri_scribe.kml_plots.x_axis_ticks(()) == ()
 
 
+def test_observation_day_span_returns_first_and_last_days() -> None:
+    series = (
+        peri_scribe.kml_plots.PlotSeries(
+            label="Area",
+            points=(series_point(1, 10.0), series_point(3, 20.0)),
+        ),
+    )
+    assert peri_scribe.kml_plots.observation_day_span(series) == (
+        datetime.date(2026, 8, 1),
+        datetime.date(2026, 8, 3),
+    )
+
+
 def test_x_axis_ticks_uses_each_midnight_when_days_fit() -> None:
     series = (
         peri_scribe.kml_plots.PlotSeries(
@@ -533,7 +547,22 @@ def test_x_axis_ticks_thins_when_days_do_not_fit() -> None:
         observation_time(9),
         observation_time(13),
         observation_time(17),
-        observation_time(20),
+    )
+
+
+def test_x_axis_ticks_does_not_force_the_last_day() -> None:
+    series = (
+        peri_scribe.kml_plots.PlotSeries(
+            label="Cost to date",
+            points=(series_point(1, 10.0), series_point(10, 20.0)),
+        ),
+    )
+    assert peri_scribe.kml_plots.x_axis_ticks(series) == (
+        observation_time(1),
+        observation_time(3),
+        observation_time(5),
+        observation_time(7),
+        observation_time(9),
     )
 
 
@@ -585,6 +614,43 @@ def test_filename_prefix_slugifies_name() -> None:
 
 def test_filename_prefix_falls_back_to_fire_for_empty_name() -> None:
     assert peri_scribe.kml_plots.filename_prefix(None, "!!!") == "fire"
+
+
+def test_draw_plot_starts_y_axis_at_zero() -> None:
+    renderer = peri_scribe.kml_plots.create_plot_renderer()
+    peri_scribe.kml_plots.draw_plot(
+        renderer,
+        (
+            peri_scribe.kml_plots.PlotSeries(
+                label="Cost to date",
+                points=(series_point(1, 14.58), series_point(2, 125.0)),
+            ),
+        ),
+        y_axis_label="Millions of $",
+    )
+    axes = renderer.figure.axes[0]
+    assert axes.get_ylim()[0] == pytest.approx(0.0)
+
+
+def test_draw_plot_spans_x_axis_to_the_last_observation_day() -> None:
+    renderer = peri_scribe.kml_plots.create_plot_renderer()
+    peri_scribe.kml_plots.draw_plot(
+        renderer,
+        (
+            peri_scribe.kml_plots.PlotSeries(
+                label="Cost to date",
+                points=(series_point(1, 10.0), series_point(10, 20.0)),
+            ),
+        ),
+        y_axis_label="Millions of $",
+    )
+    axes = renderer.figure.axes[0]
+    assert axes.get_xlim() == pytest.approx(
+        (
+            matplotlib.dates.date2num(observation_time(1)),
+            matplotlib.dates.date2num(observation_time(11)),
+        ),
+    )
 
 
 def test_draw_plot_reuses_renderer_between_plots() -> None:

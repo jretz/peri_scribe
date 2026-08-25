@@ -335,13 +335,17 @@ def visibility(feature: ET.Element) -> int | None:
 
 
 def assert_tree_invisible(container: ET.Element) -> None:
-    """Assert *container* and every folder or placemark beneath it is unchecked.
+    """Assert *container* and every feature beneath it is unchecked.
 
     Args:
         container: The folder whose whole tree must be invisible.
     """
     for feature in container.iter():
-        if feature.tag not in {kml_tag("Folder"), kml_tag("Placemark")}:
+        if feature.tag not in {
+            kml_tag("Folder"),
+            kml_tag("Placemark"),
+            gx_tag("Tour"),
+        }:
             continue
         # Tour update instructions reuse Placemark and Folder tags but carry a
         # targetId rather than being real features, so they are not part of the
@@ -505,6 +509,43 @@ def png_color(content: bytes) -> tuple[int, int, int]:
         for pixel_start in range(row_start + 1, row_start + row_size, 3):
             assert tuple(raw[pixel_start : pixel_start + 3]) == color
     return color
+
+
+def png_pixel_rows(content: bytes) -> list[list[tuple[int, int, int, int]]]:
+    """Return each row's RGBA pixels of the PNG *content*.
+
+    Args:
+        content: The PNG bytes.
+
+    Returns:
+        One list of (red, green, blue, alpha) tuples per row, top row first.
+    """
+    assert content[:8] == b"\x89PNG\r\n\x1a\n"
+    width, height, bit_depth, color_type, _compression, _filter, _interlace = (
+        struct.unpack(">IIBBBBB", content[16:29])
+    )
+    assert (bit_depth, color_type) == (8, 6)
+    offset = 8
+    idat = b""
+    while offset < len(content):
+        length = struct.unpack(">I", content[offset : offset + 4])[0]
+        chunk_type = content[offset + 4 : offset + 8]
+        if chunk_type == b"IDAT":
+            idat += content[offset + 8 : offset + 8 + length]
+        offset += 12 + length
+    raw = zlib.decompress(idat)
+    row_size = 1 + width * 4
+    assert len(raw) == row_size * height
+    rows: list[list[tuple[int, int, int, int]]] = []
+    for row_start in range(0, len(raw), row_size):
+        assert raw[row_start] == 0
+        rows.append(
+            [
+                struct.unpack(">BBBB", raw[pixel_start : pixel_start + 4])
+                for pixel_start in range(row_start + 1, row_start + row_size, 4)
+            ],
+        )
+    return rows
 
 
 def tour_named(folder: ET.Element, name: str) -> ET.Element:
@@ -1141,9 +1182,9 @@ def test_tour_seconds_per_day_for_short_fire() -> None:
     )
 
 
-def test_tour_seconds_per_day_for_eight_day_fire() -> None:
+def test_tour_seconds_per_day_for_five_day_fire() -> None:
     first = datetime.datetime(2026, 8, 1, 0, 0, tzinfo=datetime.UTC)
-    second = datetime.datetime(2026, 8, 9, 0, 0, tzinfo=datetime.UTC)
+    second = datetime.datetime(2026, 8, 6, 0, 0, tzinfo=datetime.UTC)
     assert peri_scribe.kml.tour_seconds_per_day([first, second]) == pytest.approx(
         peri_scribe.kml.TOUR_PLAYBACK_SECONDS_PER_DAY,
     )
@@ -1153,7 +1194,7 @@ def test_tour_seconds_per_day_for_long_fire() -> None:
     first = datetime.datetime(2026, 8, 1, 0, 0, tzinfo=datetime.UTC)
     second = datetime.datetime(2026, 8, 26, 0, 0, tzinfo=datetime.UTC)
     rate = peri_scribe.kml.tour_seconds_per_day([first, second])
-    assert rate == pytest.approx(0.32)
+    assert rate == pytest.approx(0.2)
     total_in_days = (second - first).total_seconds() / 86_400
     assert total_in_days * rate == pytest.approx(
         peri_scribe.kml.MAX_TOUR_PLAYBACK_IN_SECONDS,
@@ -1204,7 +1245,7 @@ def test_progression_tour_reveals_rings_and_waits() -> None:
         {ring_ids[0]: 1, ring_ids[1]: 1, ring_ids[2]: 0},
         {ring_ids[0]: 1, ring_ids[1]: 1, ring_ids[2]: 1},
     ]
-    assert [wait_duration(wait) for wait in waits] == [3.0, 1.0, 2.0]
+    assert [wait_duration(wait) for wait in waits] == [3.0, 1.0, 1.0]
 
 
 def test_progression_tour_scales_waits_for_long_fire() -> None:
@@ -1218,9 +1259,7 @@ def test_progression_tour_scales_waits_for_long_fire() -> None:
     bug_folder = folder_named(document_from(kml.kml()), "Bug")
     tour = tour_named(bug_folder, "Progression")
     waits = tour_primitives(tour, gx_tag("Wait"))
-    assert [wait_duration(wait) for wait in waits] == pytest.approx(
-        [1.6, 6.4, 2.0],
-    )
+    assert [wait_duration(wait) for wait in waits] == pytest.approx([1, 4, 1])
 
 
 def test_assign_placemark_id_sets_placemark_id() -> None:
@@ -1265,28 +1304,32 @@ def test_fire_folder_includes_point_and_progression(
     kml = simplekml.Kml()
     peri_scribe.kml.fire_folder(kml.document, fire, style_urls)
     folder = folder_named(document_from(kml.kml()), "Bug")
-    assert placemark_names(folder) == [
-        "Bug",
-        "08/05 13:30 Interior",
+    assert placemark_names(folder) == ["Bug"]
+    perimeters_folder = folder_named(folder, "Perimeters")
+    assert placemark_names(perimeters_folder) == [
         "08/05 13:30 Perimeter",
         "08/04 09:15 Perimeter",
         "08/03 16:00 Perimeter",
     ]
+    assert folder_item_icon_href(perimeters_folder) == "perimeters.png"
+    interior_folder = folder_named(folder, "Interior")
+    assert placemark_names(interior_folder) == ["08/05 13:30 Interior"]
+    assert folder_item_icon_href(interior_folder) == "interior.png"
     assert placemark_style_url(placemark_named(folder, "Bug")) == "#point-icon"
     assert (
         placemark_style_url(
-            placemark_named(folder, "08/05 13:30 Interior"),
+            placemark_named(interior_folder, "08/05 13:30 Interior"),
         )
         == "#perimeter-fill"
     )
     assert {
-        name: draw_order(placemark_named(folder, name))
-        for name in (
-            "08/05 13:30 Interior",
-            "08/05 13:30 Perimeter",
-            "08/04 09:15 Perimeter",
-            "08/03 16:00 Perimeter",
-            "Bug",
+        name: draw_order(placemark_named(container, name))
+        for container, name in (
+            (interior_folder, "08/05 13:30 Interior"),
+            (perimeters_folder, "08/05 13:30 Perimeter"),
+            (perimeters_folder, "08/04 09:15 Perimeter"),
+            (perimeters_folder, "08/03 16:00 Perimeter"),
+            (folder, "Bug"),
         )
     } == {
         "08/05 13:30 Interior": 0,
@@ -1309,10 +1352,17 @@ def test_fire_folder_shows_only_available_perimeters(
     kml = simplekml.Kml()
     peri_scribe.kml.fire_folder(kml.document, fire, style_urls)
     folder = folder_named(document_from(kml.kml()), "Bug")
-    assert placemark_names(folder) == ["Bug", "Interior", "Unknown Mapping"]
+    assert placemark_names(folder) == ["Bug", "Unknown Mapping"]
+    assert folder_names(folder) == ["Interior"]
+    interior_folder = folder_named(folder, "Interior")
+    assert placemark_names(interior_folder) == ["Interior"]
     assert {
-        name: draw_order(placemark_named(folder, name))
-        for name in ("Interior", "Unknown Mapping", "Bug")
+        name: draw_order(placemark_named(container, name))
+        for container, name in (
+            (interior_folder, "Interior"),
+            (folder, "Unknown Mapping"),
+            (folder, "Bug"),
+        )
     } == {
         "Interior": 0,
         "Unknown Mapping": 1,
@@ -1347,19 +1397,23 @@ def test_fire_folder_draws_interior_from_difference_rings(
     kml = simplekml.Kml()
     peri_scribe.kml.fire_folder(kml.document, fire, style_urls)
     folder = folder_named(document_from(kml.kml()), "Bug")
-    assert placemark_names(folder) == [
-        "Bug",
-        "08/05 13:00 Interior",
-        "08/07 13:00 Interior",
+    assert placemark_names(folder) == ["Bug"]
+    perimeters_folder = folder_named(folder, "Perimeters")
+    assert placemark_names(perimeters_folder) == [
         "08/07 13:00 Perimeter",
         "08/05 13:00 Perimeter",
     ]
-    first_interior = placemark_named(folder, "08/05 13:00 Interior")
-    second_interior = placemark_named(folder, "08/07 13:00 Interior")
+    interior_folder = folder_named(folder, "Interior")
+    assert placemark_names(interior_folder) == [
+        "08/05 13:00 Interior",
+        "08/07 13:00 Interior",
+    ]
+    first_interior = placemark_named(interior_folder, "08/05 13:00 Interior")
+    second_interior = placemark_named(interior_folder, "08/07 13:00 Interior")
     assert placemark_style_url(first_interior) == "#perimeter-fill"
     assert placemark_style_url(second_interior) == "#perimeter-fill"
     assert {
-        name: draw_order(placemark_named(folder, name))
+        name: draw_order(placemark_named(interior_folder, name))
         for name in ("08/05 13:00 Interior", "08/07 13:00 Interior")
     } == {
         "08/05 13:00 Interior": 0,
@@ -1398,7 +1452,8 @@ def test_fire_folder_falls_back_to_complete_perimeter_without_dated_rings(
     kml = simplekml.Kml()
     peri_scribe.kml.fire_folder(kml.document, fire, style_urls)
     folder = folder_named(document_from(kml.kml()), "Bug")
-    assert placemark_names(folder) == ["Bug", "Interior", "Unknown Mapping"]
+    assert placemark_names(folder) == ["Bug", "Unknown Mapping"]
+    assert placemark_names(folder_named(folder, "Interior")) == ["Interior"]
 
 
 def test_fire_folder_without_point_or_perimeters_is_empty(
@@ -1414,6 +1469,7 @@ def test_fire_folder_without_point_or_perimeters_is_empty(
     peri_scribe.kml.fire_folder(kml.document, fire, style_urls)
     folder = folder_named(document_from(kml.kml()), "Bug")
     assert placemark_names(folder) == []
+    assert folder_names(folder) == []
 
 
 def test_fire_folder_leads_with_progression_tour(
@@ -1449,9 +1505,10 @@ def test_fire_folder_leads_with_progression_tour(
     tour = tour_named(bug_folder, "Progression")
     updates = tour_primitives(tour, gx_tag("AnimatedUpdate"))
     waits = tour_primitives(tour, gx_tag("Wait"))
+    interior_folder = folder_named(bug_folder, "Interior")
     interior = [
-        placemark_named(bug_folder, "08/05 13:00 Interior"),
-        placemark_named(bug_folder, "08/07 13:00 Interior"),
+        placemark_named(interior_folder, "08/05 13:00 Interior"),
+        placemark_named(interior_folder, "08/07 13:00 Interior"),
     ]
     assert len(updates) == len(interior)
     assert len(waits) == len(interior)
@@ -1460,7 +1517,7 @@ def test_fire_folder_leads_with_progression_tour(
         {interior_ids[0]: 1, interior_ids[1]: 0},
         {interior_ids[0]: 1, interior_ids[1]: 1},
     ]
-    assert [wait_duration(wait) for wait in waits] == [2.0, 2.0]
+    assert [wait_duration(wait) for wait in waits] == [2.0, 1.0]
 
 
 def test_fire_folder_adds_tour_for_fallback_polygon(
@@ -1480,8 +1537,8 @@ def test_fire_folder_adds_tour_for_fallback_polygon(
     waits = tour_primitives(tour, gx_tag("Wait"))
     assert len(updates) == 1
     assert len(waits) == 1
-    assert [wait_duration(wait) for wait in waits] == [2.0]
-    interior = placemark_named(bug_folder, "Interior")
+    assert [wait_duration(wait) for wait in waits] == [1.0]
+    interior = placemark_named(folder_named(bug_folder, "Interior"), "Interior")
     assert update_visibility_by_target(updates[0]) == {interior.get("id"): 1}
 
 
@@ -1764,7 +1821,7 @@ def test_progression_folder_leads_with_progression_tour(
         {interior_ids[0]: 1, interior_ids[1]: 1, interior_ids[2]: 0},
         {interior_ids[0]: 1, interior_ids[1]: 1, interior_ids[2]: 1},
     ]
-    assert [wait_duration(wait) for wait in waits] == [1.0, 1.0, 2.0]
+    assert [wait_duration(wait) for wait in waits] == [1.0, 1.0, 1.0]
 
 
 def test_progression_folder_hides_its_tree(style_urls: dict[str, str]) -> None:
@@ -2010,12 +2067,14 @@ def test_fire_kml_builds_active_and_inactive_folders(
         peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
     )
     bug_folder = folder_named(active_perimeters, "Bug")
-    assert placemark_names(bug_folder) == [
-        "Bug",
-        "08/05 13:30 Interior",
+    assert placemark_names(bug_folder) == ["Bug"]
+    assert placemark_names(folder_named(bug_folder, "Perimeters")) == [
         "08/05 13:30 Perimeter",
         "08/04 09:15 Perimeter",
         "08/03 16:00 Perimeter",
+    ]
+    assert placemark_names(folder_named(bug_folder, "Interior")) == [
+        "08/05 13:30 Interior",
     ]
     inactive = folder_named(document, "Inactive Fires")
     inactive_perimeters = folder_named(
@@ -2076,6 +2135,7 @@ def test_fire_kml_hides_inactive_fires_tree(
     assert visibility(bug_folder) is None
     for placemark in bug_folder.findall(kml_tag("Placemark")):
         assert visibility(placemark) is None
+    assert visibility(tour_named(bug_folder, "Progression")) is None
 
 
 def test_fire_kml_hides_active_progression_maps(
@@ -2136,11 +2196,8 @@ def test_fire_kml_shows_derived_point_for_inactive_fire_without_location() -> No
         peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
     )
     alta_folder = folder_named(perimeters_folder, "ALTA")
-    assert placemark_names(alta_folder) == [
-        "ALTA",
-        "Interior",
-        "Unknown Mapping",
-    ]
+    assert placemark_names(alta_folder) == ["ALTA", "Unknown Mapping"]
+    assert placemark_names(folder_named(alta_folder, "Interior")) == ["Interior"]
     assert placemark_style_url(placemark_named(alta_folder, "ALTA")) == "#point-icon"
 
 
@@ -2240,6 +2297,48 @@ def test_progression_icon_filename_names_the_band() -> None:
     assert peri_scribe.kml.progression_icon_filename(7) == "progression-band-8.png"
 
 
+def test_interior_icon_filename_names_the_folder() -> None:
+    assert peri_scribe.kml.interior_icon_filename() == "interior.png"
+
+
+def test_perimeters_icon_filename_names_the_folder() -> None:
+    assert peri_scribe.kml.perimeters_icon_filename() == "perimeters.png"
+
+
+def test_perimeters_icon_draws_two_full_width_lines() -> None:
+    template = peri_scribe.kml_template_reader.template_from(
+        peri_scribe.kml_template.template_kml(),
+    )
+    rows = png_pixel_rows(peri_scribe.kml.perimeters_icon(template))
+    side = peri_scribe.kml.PROGRESSION_ICON_SIDE_LENGTH_IN_PIXELS
+    assert len(rows) == side
+    top_line_row = side // 3
+    bottom_line_row = side - 1 - side // 3
+    background = (0x32, 0x4B, 0x32, 255)
+    for row_index, row in enumerate(rows):
+        if row_index == top_line_row:
+            assert row == [(255, 0, 0, 255)] * side
+        elif row_index == bottom_line_row:
+            assert row == [(255, 255, 0, 255)] * side
+        else:
+            assert row == [background] * side
+
+
+def test_perimeters_icon_colors_come_from_template() -> None:
+    template = peri_scribe.kml_template_reader.template_from(
+        peri_scribe.kml_template.template_kml(),
+    )
+    styles = {style.id: style for style in template.styles}
+    latest_style_id = template.style_urls["Latest Perimeter"].lstrip("#")
+    penultimate_style_id = template.style_urls["Penultimate Perimeter"].lstrip("#")
+    styles[latest_style_id].linestyle.color = "ff00ff00"
+    styles[penultimate_style_id].linestyle.color = "ffff0000"
+    rows = png_pixel_rows(peri_scribe.kml.perimeters_icon(template))
+    side = peri_scribe.kml.PROGRESSION_ICON_SIDE_LENGTH_IN_PIXELS
+    assert rows[side // 3] == [(0, 255, 0, 255)] * side
+    assert rows[side - 1 - side // 3] == [(0, 0, 255, 255)] * side
+
+
 def test_kml_color_rgb_decodes_aabbggrr() -> None:
     assert peri_scribe.kml.kml_color_rgb("7f002aff") == (255, 42, 0)
     assert peri_scribe.kml.kml_color_rgb("7fbdb7b0") == (176, 183, 189)
@@ -2248,6 +2347,13 @@ def test_kml_color_rgb_decodes_aabbggrr() -> None:
 def test_solid_color_png_fills_a_square() -> None:
     content = peri_scribe.kml.solid_color_png(1, 2, 3, 4)
     assert png_color(content) == (1, 2, 3)
+
+
+def test_interior_icon_matches_template_color() -> None:
+    template = peri_scribe.kml_template_reader.template_from(
+        peri_scribe.kml_template.template_kml(),
+    )
+    assert png_color(peri_scribe.kml.interior_icon(template)) == (255, 0, 0)
 
 
 def test_progression_icons_match_template_colors() -> None:
@@ -2315,8 +2421,12 @@ def test_create_kmz_reads_history_and_writes_kmz(
     assert path == result
     assert "Active Fires" in kml_text
     assert set(images) == {
-        peri_scribe.kml.progression_icon_filename(index)
-        for index in range(len(peri_scribe.perimeter_progression.PROGRESSION_BANDS))
+        peri_scribe.kml.interior_icon_filename(),
+        peri_scribe.kml.perimeters_icon_filename(),
+        *(
+            peri_scribe.kml.progression_icon_filename(index)
+            for index in range(len(peri_scribe.perimeter_progression.PROGRESSION_BANDS))
+        ),
     }
     assert all(content.startswith(b"\x89PNG\r\n\x1a\n") for content in images.values())
 
@@ -2841,8 +2951,11 @@ def test_fire_folder_applies_description_to_every_placemark(
     kml = simplekml.Kml()
     peri_scribe.kml.fire_folder(kml.document, fire, style_urls)
     folder = folder_named(document_from(kml.kml()), "Bug")
-    assert placemark_names(folder) == ["Bug", "Interior", "Unknown Mapping"]
-    for name in placemark_names(folder):
-        assert placemark_named(folder, name).findtext(kml_tag("description")) == (
-            "<b>Bug</b>"
-        )
+    assert placemark_names(folder) == ["Bug", "Unknown Mapping"]
+    interior_folder = folder_named(folder, "Interior")
+    assert placemark_names(interior_folder) == ["Interior"]
+    for container in (folder, interior_folder):
+        for name in placemark_names(container):
+            assert placemark_named(container, name).findtext(
+                kml_tag("description"),
+            ) == ("<b>Bug</b>")

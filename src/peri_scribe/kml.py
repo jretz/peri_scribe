@@ -42,6 +42,14 @@ MAPS_DIRECTORY_NAME = "maps"
 ACTIVE_FIRES_FOLDER_NAME = "Active Fires"
 INACTIVE_FIRES_FOLDER_NAME = "Inactive Fires"
 
+# The folder inside each fire's latest-perimeters folder that holds the polygons
+# filling the fire's interior.
+INTERIOR_FOLDER_NAME = "Interior"
+
+# The folder inside each fire's latest-perimeters folder that holds its outline
+# perimeters, present only when the fire has more than one.
+PERIMETERS_FOLDER_NAME = "Perimeters"
+
 KMZ_DOCUMENT_FILENAME = "doc.kml"
 
 MAPPING_NAME = "Perimeter"
@@ -54,8 +62,8 @@ PROGRESSION_TOUR_NAME = "Progression"
 # MAX_TOUR_PLAYBACK_IN_SECONDS days play faster so the whole progression takes
 # about that long instead of one second per day.
 TOUR_PLAYBACK_SECONDS_PER_DAY = 1.0
-MAX_TOUR_PLAYBACK_IN_SECONDS = 8.0
-FINAL_TOUR_WAIT_IN_SECONDS = 2.0
+MAX_TOUR_PLAYBACK_IN_SECONDS = 5.0
+FINAL_TOUR_WAIT_IN_SECONDS = 1.0
 
 # DEFLATE is the compression Google Earth expects inside a KMZ, and level 9 is the
 # highest compression level it offers.
@@ -64,6 +72,9 @@ KMZ_COMPRESSION_LEVEL = 9
 
 # Each progression-map subfolder's icon is a square of this many pixels on a side.
 PROGRESSION_ICON_SIDE_LENGTH_IN_PIXELS = 16
+
+# The "Perimeters" folder icon's background color.
+PERIMETERS_ICON_BACKGROUND_COLOR = (0x32, 0x4B, 0x32)
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -1208,16 +1219,17 @@ def fire_folder(
 ) -> None:
     """Add the folder symbolizing *fire* to *container*.
 
-    The folder holds the fire's point location, the growth rings filling its
-    interior, and its latest, penultimate, and antepenultimate perimeters, each
-    shown when the fire's history has one. The interior is drawn from the fire's
-    difference rings rather than its complete latest perimeter, so the rings
-    show the interior growing; a fire whose rings carry no observation times
-    falls back to its complete latest perimeter. A "Progression" tour leads the
-    folder when it has
-    interior polygons, replaying the rings oldest first. Draw orders put the
-    filled latest area on the bottom, stack the outline perimeters from oldest
-    to newest, and draw the point location last so its icon is never covered.
+    The folder holds the fire's point location, an ``Interior`` folder holding the
+    growth rings filling its interior, and its latest, penultimate, and antepenultimate
+    perimeters, each shown when the fire's history has one. A fire with more than one
+    perimeter holds its outline perimeters in a ``Perimeters`` folder; a fire with a
+    single perimeter shows it directly. The interior is drawn from the fire's difference
+    rings rather than its complete latest perimeter, so the rings show the interior
+    growing; a fire whose rings carry no observation times falls back to its complete
+    latest perimeter. A "Progression" tour leads the folder when it has interior
+    polygons, replaying the rings oldest first. Draw orders put the filled latest area
+    on the bottom, stack the outline perimeters from oldest to newest, and draw the
+    point location last so its icon is never covered.
 
     Args:
         container: The folder that holds the fire's folder.
@@ -1249,28 +1261,35 @@ def fire_folder(
             peri_scribe.kml_template.point_draw_order(outline_count),
             description=fire.description,
         )
-    if interior_rings:
-        for index, ring in enumerate(interior_rings):
+    if interior_rings or fire.perimeters:
+        interior_folder = folder.newfolder(name=INTERIOR_FOLDER_NAME)
+        interior_folder.liststyle.itemicon.href = interior_icon_filename()
+        if interior_rings:
+            for index, ring in enumerate(interior_rings):
+                placemark = perimeter_placemark(
+                    interior_folder,
+                    interior_placemark_name(ring.observation_time),
+                    style_urls[peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name],
+                    ring.geometry,
+                    peri_scribe.kml_template.LATEST_AREA_DRAW_ORDER,
+                    description=fire.description,
+                )
+                assign_placemark_id(placemark, interior_ring_id(folder, index))
+        else:
+            latest_perimeter = fire.perimeters[-1]
             placemark = perimeter_placemark(
-                folder,
-                interior_placemark_name(ring.observation_time),
+                interior_folder,
+                interior_placemark_name(latest_perimeter.observation_time),
                 style_urls[peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name],
-                ring.geometry,
+                latest_perimeter.geometry,
                 peri_scribe.kml_template.LATEST_AREA_DRAW_ORDER,
                 description=fire.description,
             )
-            assign_placemark_id(placemark, interior_ring_id(folder, index))
-    elif fire.perimeters:
-        latest_perimeter = fire.perimeters[-1]
-        placemark = perimeter_placemark(
-            folder,
-            interior_placemark_name(latest_perimeter.observation_time),
-            style_urls[peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name],
-            latest_perimeter.geometry,
-            peri_scribe.kml_template.LATEST_AREA_DRAW_ORDER,
-            description=fire.description,
-        )
-        assign_placemark_id(placemark, interior_ring_id(folder, 0))
+            assign_placemark_id(placemark, interior_ring_id(folder, 0))
+    perimeters_folder = folder
+    if outline_count > 1:
+        perimeters_folder = folder.newfolder(name=PERIMETERS_FOLDER_NAME)
+        perimeters_folder.liststyle.itemicon.href = perimeters_icon_filename()
     for index, template in enumerate(
         peri_scribe.kml_template.OUTLINED_PERIMETER_TEMPLATES,
     ):
@@ -1278,7 +1297,7 @@ def fire_folder(
             break
         perimeter = fire.perimeters[-(index + 1)]
         perimeter_placemark(
-            folder,
+            perimeters_folder,
             mapping_placemark_name(perimeter.observation_time),
             style_urls[template.name],
             perimeter.geometry,
@@ -1318,6 +1337,24 @@ def progression_icon_filename(band_index: int) -> str:
     return f"progression-band-{band_index + 1}.png"
 
 
+def interior_icon_filename() -> str:
+    """Return the filename of the interior folder's icon.
+
+    Returns:
+        The icon filename.
+    """
+    return "interior.png"
+
+
+def perimeters_icon_filename() -> str:
+    """Return the filename of the "Perimeters" folder's icon.
+
+    Returns:
+        The icon filename.
+    """
+    return "perimeters.png"
+
+
 def kml_color_rgb(kml_color: str) -> tuple[int, int, int]:
     """Return the RGB triple of the KML ``aabbggrr`` *kml_color*.
 
@@ -1331,6 +1368,61 @@ def kml_color_rgb(kml_color: str) -> tuple[int, int, int]:
     green = int(kml_color[4:6], 16)
     blue = int(kml_color[2:4], 16)
     return (red, green, blue)
+
+
+def template_style(
+    template: peri_scribe.kml_template_reader.Template,
+    placemark_name: str,
+) -> peri_scribe.kml_template.Style:
+    """Return the template style *placemark_name* references.
+
+    Args:
+        template: The parsed KML template.
+        placemark_name: The template placemark whose style to read.
+
+    Returns:
+        The style the placemark references.
+    """
+    styles = {style.id: style for style in template.styles}
+    return styles[template.style_urls[placemark_name].lstrip("#")]
+
+
+def template_fill_color_rgb(
+    template: peri_scribe.kml_template_reader.Template,
+    placemark_name: str,
+) -> tuple[int, int, int]:
+    """Return the polygon fill color for *placemark_name* as an RGB triple.
+
+    The color is read from the template style the placemark references, so an icon
+    filled with it matches the polygons the placemark symbolizes.
+
+    Args:
+        template: The parsed KML template.
+        placemark_name: The template placemark whose fill style to read.
+
+    Returns:
+        The (red, green, blue) components.
+    """
+    return kml_color_rgb(template_style(template, placemark_name).polystyle.color)
+
+
+def template_line_color_rgb(
+    template: peri_scribe.kml_template_reader.Template,
+    placemark_name: str,
+) -> tuple[int, int, int]:
+    """Return the line color for *placemark_name* as an RGB triple.
+
+    The color is read from the template style the placemark references, so an icon
+    using it matches the lines the placemark symbolizes.
+
+    Args:
+        template: The parsed KML template.
+        placemark_name: The template placemark whose line style to read.
+
+    Returns:
+        The (red, green, blue) components.
+    """
+    return kml_color_rgb(template_style(template, placemark_name).linestyle.color)
 
 
 def progression_icon_colors(
@@ -1347,12 +1439,57 @@ def progression_icon_colors(
     Returns:
         One RGB triple per shared progression band, newest band first.
     """
-    styles = {style.id: style for style in template.styles}
-    colors = []
-    for band in peri_scribe.perimeter_progression.PROGRESSION_BANDS:
-        style = styles[template.style_urls[band.name].lstrip("#")]
-        colors.append(kml_color_rgb(style.polystyle.color))
-    return tuple(colors)
+    return tuple(
+        template_fill_color_rgb(template, band.name)
+        for band in peri_scribe.perimeter_progression.PROGRESSION_BANDS
+    )
+
+
+def interior_icon_color(
+    template: peri_scribe.kml_template_reader.Template,
+) -> tuple[int, int, int]:
+    """Return the interior polygons' fill color as an RGB triple.
+
+    The interior folder's icon is filled with the same color the interior
+    polygons are styled with, read from the template's fill style.
+
+    Args:
+        template: The parsed KML template.
+
+    Returns:
+        The (red, green, blue) components.
+    """
+    return template_fill_color_rgb(
+        template,
+        peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name,
+    )
+
+
+def perimeters_icon_colors(
+    template: peri_scribe.kml_template_reader.Template,
+) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
+    """Return the "Perimeters" folder icon's line colors as RGB triples.
+
+    The icon's top line is colored like the latest perimeter outline and its bottom
+    line like the penultimate perimeter outline, read from the template's line
+    styles, so the icon matches the outlines it symbolizes.
+
+    Args:
+        template: The parsed KML template.
+
+    Returns:
+        The (top line, bottom line) (red, green, blue) components.
+    """
+    return (
+        template_line_color_rgb(
+            template,
+            peri_scribe.kml_template.OUTLINED_PERIMETER_TEMPLATES[0].name,
+        ),
+        template_line_color_rgb(
+            template,
+            peri_scribe.kml_template.OUTLINED_PERIMETER_TEMPLATES[1].name,
+        ),
+    )
 
 
 def _png_chunk(chunk_type: bytes, data: bytes) -> bytes:
@@ -1421,6 +1558,68 @@ def progression_icons(
         )
         for index, color in enumerate(colors)
     }
+
+
+def interior_icon(
+    template: peri_scribe.kml_template_reader.Template,
+) -> bytes:
+    """Return the interior folder icon for *template*.
+
+    The icon is a square filled with the color the interior polygons are styled with,
+    generated in memory on every create-kml run.
+
+    Args:
+        template: The parsed KML template.
+
+    Returns:
+        The icon's PNG bytes.
+    """
+    return solid_color_png(
+        *interior_icon_color(template),
+        PROGRESSION_ICON_SIDE_LENGTH_IN_PIXELS,
+    )
+
+
+def perimeters_icon(
+    template: peri_scribe.kml_template_reader.Template,
+) -> bytes:
+    """Return the "Perimeters" folder icon for *template* as a PNG.
+
+    The icon is a square with a #324B32 background and two horizontal, one-pixel-thick
+    lines spanning its full width: a line a third of the way down from the top colored
+    like the latest perimeter outline and a line a third of the way up from the bottom
+    colored like the penultimate perimeter outline. The colors are read from the
+    template's line styles, so the folder reads as holding the fire's perimeter
+    outlines. The icon is generated in memory on every create-kml run.
+
+    Args:
+        template: The parsed KML template.
+
+    Returns:
+        The icon's PNG bytes.
+    """
+    top_line_color, bottom_line_color = perimeters_icon_colors(template)
+    side_in_pixels = PROGRESSION_ICON_SIDE_LENGTH_IN_PIXELS
+    top_line_row = side_in_pixels // 3
+    bottom_line_row = side_in_pixels - 1 - top_line_row
+    background_pixel = bytes((*PERIMETERS_ICON_BACKGROUND_COLOR, 255))
+    rows: list[bytes] = []
+    for row_index in range(side_in_pixels):
+        if row_index == top_line_row:
+            row = b"\x00" + bytes((*top_line_color, 255)) * side_in_pixels
+        elif row_index == bottom_line_row:
+            row = b"\x00" + bytes((*bottom_line_color, 255)) * side_in_pixels
+        else:
+            row = b"\x00" + background_pixel * side_in_pixels
+        rows.append(row)
+    signature = b"\x89PNG\r\n\x1a\n"
+    header = struct.pack(">IIBBBBB", side_in_pixels, side_in_pixels, 8, 6, 0, 0, 0)
+    return (
+        signature
+        + _png_chunk(b"IHDR", header)
+        + _png_chunk(b"IDAT", zlib.compress(b"".join(rows), zlib.Z_BEST_COMPRESSION))
+        + _png_chunk(b"IEND", b"")
+    )
 
 
 def progression_folder(
@@ -1518,16 +1717,21 @@ def status_folder_name(status: peri_scribe.models.FireStatus) -> str:
 def set_invisible(container: simplekml.Container) -> None:
     """Set *container* and every feature beneath it to unchecked.
 
-    Each feature's own ``visibility`` is set to zero, not only the container's,
-    so the whole tree below the container stays unchecked when the container is
-    re-enabled in Google Earth.
+    Each feature's own ``visibility`` is set to zero, not only the container's, so the
+    whole tree below the container stays unchecked when the container is re-enabled in
+    Google Earth. Tours are marked too: simplekml gives a tour no ``visibility``
+    property, so the element is written directly, and the tour stays unchecked like
+    every other feature under the hidden folder.
 
     Args:
         container: The folder to hide.
     """
     container.visibility = 0
     for feature in container.allfeatures:
-        feature.visibility = 0
+        if isinstance(feature, simplekml.GxTour):
+            feature._kml["visibility"] = 0  # ruff: ignore[private-member-access]
+        else:
+            feature.visibility = 0
 
 
 def status_folder(
@@ -1620,10 +1824,10 @@ def write_kmz(
 def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
     """Build and write the KMZ output for *year_directory*.
 
-    The full history GeoPackage is read for geometry, the differential history
-    supplies each fire's growth rings, the fire index supplies each fire's name and
-    status, and the KML template file supplies the symbolization. Each fire's plot
-    images are written into the archive beside the KML document. The output is
+    The full history GeoPackage is read for geometry, the differential history supplies
+    each fire's growth rings, the fire index supplies each fire's name and status, and
+    the KML template file supplies the symbolization. Each fire's plot images and the
+    folder icons are written into the archive beside the KML document. The output is
     written under the year's ``maps`` directory.
 
     Args:
@@ -1662,6 +1866,8 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
         image.filename: image.content for fire in geometries for image in fire.images
     }
     images.update(progression_icons(template))
+    images[interior_icon_filename()] = interior_icon(template)
+    images[perimeters_icon_filename()] = perimeters_icon(template)
     output_path = kmz_path(year_directory)
     write_kmz(output_path, fire_kml(geometries, template), images)
     return output_path
