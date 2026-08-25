@@ -340,8 +340,14 @@ def assert_tree_invisible(container: ET.Element) -> None:
         container: The folder whose whole tree must be invisible.
     """
     for feature in container.iter():
-        if feature.tag in {kml_tag("Folder"), kml_tag("Placemark")}:
-            assert visibility(feature) == 0, feature.findtext(kml_tag("name"))
+        if feature.tag not in {kml_tag("Folder"), kml_tag("Placemark")}:
+            continue
+        # Tour update instructions reuse Placemark and Folder tags but carry a
+        # targetId rather than being real features, so they are not part of the
+        # tree whose visibility is asserted here.
+        if feature.get("targetId") is not None:
+            continue
+        assert visibility(feature) == 0, feature.findtext(kml_tag("name"))
 
 
 def timestamp_when(placemark: ET.Element) -> str | None:
@@ -462,6 +468,77 @@ def placemark_names(folder: ET.Element) -> list[str]:
         if name is not None:
             names.append(name)
     return names
+
+
+def tour_named(folder: ET.Element, name: str) -> ET.Element:
+    """Return the tour named *name* inside *folder*.
+
+    Args:
+        folder: The folder to search.
+        name: The tour name.
+
+    Returns:
+        The tour element.
+    """
+    for child in folder:
+        if child.tag == gx_tag("Tour") and child.findtext(kml_tag("name")) == name:
+            return child
+    pytest.fail(f"Tour {name!r} not found")
+
+
+def tour_primitives(tour: ET.Element, tag: str) -> list[ET.Element]:
+    """Return the playlist primitives with *tag* inside *tour*, in order.
+
+    Args:
+        tour: The tour element.
+        tag: The primitive tag to collect.
+
+    Returns:
+        The matching playlist primitives.
+    """
+    playlist = tour.find(gx_tag("Playlist"))
+    if playlist is None:
+        pytest.fail("Tour has no playlist")
+    return [child for child in playlist if child.tag == tag]
+
+
+def update_visibility_by_target(update: ET.Element) -> dict[str, int]:
+    """Return each targetId and its visibility in *update*'s change.
+
+    Args:
+        update: The animated update element.
+
+    Returns:
+        The visibility for each targetId.
+    """
+    change = update.find(f"{kml_tag('Update')}/{kml_tag('Change')}")
+    if change is None:
+        pytest.fail("Animated update has no change")
+    visibility_by_target: dict[str, int] = {}
+    for placemark in change.findall(kml_tag("Placemark")):
+        target_id = placemark.get("targetId")
+        if target_id is None:
+            pytest.fail("Change placemark has no targetId")
+        visibility = placemark.findtext(kml_tag("visibility"))
+        if visibility is None:
+            pytest.fail("Change placemark has no visibility")
+        visibility_by_target[target_id] = int(visibility)
+    return visibility_by_target
+
+
+def wait_duration(wait: ET.Element) -> float:
+    """Return the duration, in seconds, of *wait*.
+
+    Args:
+        wait: The wait element.
+
+    Returns:
+        The wait duration.
+    """
+    duration = wait.findtext(gx_tag("duration"))
+    if duration is None:
+        pytest.fail("Wait has no duration")
+    return float(duration)
 
 
 def test_year_from_reads_directory_name() -> None:
@@ -1031,6 +1108,81 @@ def test_mapping_placemark_name_with_observation_time() -> None:
     )
 
 
+def test_interior_ring_id_names_folder_and_index() -> None:
+    kml = simplekml.Kml()
+    folder = kml.document.newfolder(name="Bug")
+    assert peri_scribe.kml.interior_ring_id(folder, 3) == (
+        f"progression-ring-{folder.id}-3"
+    )
+
+
+def test_tour_wait_in_seconds_scales_days_to_seconds() -> None:
+    earlier = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
+    later = datetime.datetime(2026, 8, 8, 20, 0, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.tour_wait_in_seconds(earlier, later) == pytest.approx(3.0)
+
+
+def test_tour_wait_in_seconds_with_missing_observation_time() -> None:
+    observation_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.tour_wait_in_seconds(
+        None,
+        observation_time,
+    ) == pytest.approx(0.0)
+    assert peri_scribe.kml.tour_wait_in_seconds(
+        observation_time,
+        None,
+    ) == pytest.approx(0.0)
+
+
+def test_visibility_change_reveals_rings_through_index() -> None:
+    assert peri_scribe.kml.visibility_change(["a", "b", "c"], 1) == (
+        '<Placemark targetId="a"><visibility>1</visibility></Placemark>'
+        '<Placemark targetId="b"><visibility>1</visibility></Placemark>'
+        '<Placemark targetId="c"><visibility>0</visibility></Placemark>'
+    )
+
+
+def test_progression_tour_reveals_rings_and_waits() -> None:
+    first = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
+    second = datetime.datetime(2026, 8, 8, 20, 0, tzinfo=datetime.UTC)
+    third = datetime.datetime(2026, 8, 9, 20, 0, tzinfo=datetime.UTC)
+    ring_times = [first, second, third]
+    kml = simplekml.Kml()
+    folder = kml.document.newfolder(name="Bug")
+    peri_scribe.kml.progression_tour(folder, ring_times)
+    bug_folder = folder_named(document_from(kml.kml()), "Bug")
+    tour = tour_named(bug_folder, "Progression")
+    updates = tour_primitives(tour, gx_tag("AnimatedUpdate"))
+    waits = tour_primitives(tour, gx_tag("Wait"))
+    assert len(updates) == len(ring_times)
+    assert len(waits) == len(ring_times)
+    ring_ids = [
+        peri_scribe.kml.interior_ring_id(folder, index)
+        for index in range(len(ring_times))
+    ]
+    assert [update_visibility_by_target(update) for update in updates] == [
+        {ring_ids[0]: 1, ring_ids[1]: 0, ring_ids[2]: 0},
+        {ring_ids[0]: 1, ring_ids[1]: 1, ring_ids[2]: 0},
+        {ring_ids[0]: 1, ring_ids[1]: 1, ring_ids[2]: 1},
+    ]
+    assert [wait_duration(wait) for wait in waits] == [3.0, 1.0, 2.0]
+
+
+def test_assign_placemark_id_sets_placemark_id() -> None:
+    kml = simplekml.Kml()
+    folder = kml.document.newfolder(name="Bug")
+    placemark = folder.newpolygon(
+        name="Interior",
+        outerboundaryis=[(0, 0), (1, 0), (1, 1), (0, 0)],
+    )
+    peri_scribe.kml.assign_placemark_id(placemark, "custom-id")
+    interior = placemark_named(
+        folder_named(document_from(kml.kml()), "Bug"),
+        "Interior",
+    )
+    assert interior.get("id") == "custom-id"
+
+
 @pytest.fixture
 def style_urls() -> dict[str, str]:
     return peri_scribe.kml_template_reader.template_from(
@@ -1212,6 +1364,90 @@ def test_fire_folder_without_point_or_perimeters_is_empty(
     peri_scribe.kml.fire_folder(kml.document, fire, style_urls)
     folder = folder_named(document_from(kml.kml()), "Bug")
     assert placemark_names(folder) == []
+
+
+def test_fire_folder_leads_with_progression_tour(
+    style_urls: dict[str, str],
+) -> None:
+    first_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
+    second_time = datetime.datetime(2026, 8, 7, 20, 0, tzinfo=datetime.UTC)
+    fire = peri_scribe.kml.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=shapely.geometry.Point(1.0, 1.0),
+        perimeters=(),
+        progression_rings=(
+            peri_scribe.perimeter_progression.Ring(
+                geometry=square(1.0),
+                observation_time=first_time,
+            ),
+            peri_scribe.perimeter_progression.Ring(
+                geometry=square(2.0),
+                observation_time=second_time,
+            ),
+        ),
+    )
+    kml = simplekml.Kml()
+    peri_scribe.kml.fire_folder(kml.document, fire, style_urls)
+    bug_folder = folder_named(document_from(kml.kml()), "Bug")
+    features = [
+        child
+        for child in bug_folder
+        if child.tag in {kml_tag("Folder"), kml_tag("Placemark"), gx_tag("Tour")}
+    ]
+    assert features[0].tag == gx_tag("Tour")
+    tour = tour_named(bug_folder, "Progression")
+    updates = tour_primitives(tour, gx_tag("AnimatedUpdate"))
+    waits = tour_primitives(tour, gx_tag("Wait"))
+    interior = [
+        placemark_named(bug_folder, "08/05 13:00 Interior"),
+        placemark_named(bug_folder, "08/07 13:00 Interior"),
+    ]
+    assert len(updates) == len(interior)
+    assert len(waits) == len(interior)
+    interior_ids = [placemark.get("id") for placemark in interior]
+    assert [update_visibility_by_target(update) for update in updates] == [
+        {interior_ids[0]: 1, interior_ids[1]: 0},
+        {interior_ids[0]: 1, interior_ids[1]: 1},
+    ]
+    assert [wait_duration(wait) for wait in waits] == [2.0, 2.0]
+
+
+def test_fire_folder_adds_tour_for_fallback_polygon(
+    style_urls: dict[str, str],
+) -> None:
+    fire = peri_scribe.kml.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=shapely.geometry.Point(1.0, 1.0),
+        perimeters=(perimeter_with_time(square(1.0)),),
+    )
+    kml = simplekml.Kml()
+    peri_scribe.kml.fire_folder(kml.document, fire, style_urls)
+    bug_folder = folder_named(document_from(kml.kml()), "Bug")
+    tour = tour_named(bug_folder, "Progression")
+    updates = tour_primitives(tour, gx_tag("AnimatedUpdate"))
+    waits = tour_primitives(tour, gx_tag("Wait"))
+    assert len(updates) == 1
+    assert len(waits) == 1
+    assert [wait_duration(wait) for wait in waits] == [2.0]
+    interior = placemark_named(bug_folder, "Interior")
+    assert update_visibility_by_target(updates[0]) == {interior.get("id"): 1}
+
+
+def test_fire_folder_without_polygons_has_no_tour(
+    style_urls: dict[str, str],
+) -> None:
+    fire = peri_scribe.kml.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=shapely.geometry.Point(1.0, 1.0),
+        perimeters=(),
+    )
+    kml = simplekml.Kml()
+    peri_scribe.kml.fire_folder(kml.document, fire, style_urls)
+    bug_folder = folder_named(document_from(kml.kml()), "Bug")
+    assert [child for child in bug_folder if child.tag == gx_tag("Tour")] == []
 
 
 def test_latest_perimeters_folder_names_and_holds_fires(

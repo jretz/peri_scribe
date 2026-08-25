@@ -45,6 +45,13 @@ KMZ_DOCUMENT_FILENAME = "doc.kml"
 MAPPING_NAME = "Perimeter"
 UNKNOWN_MAPPING_NAME = "Unknown Mapping"
 
+PROGRESSION_TOUR_NAME = "Progression"
+
+# A tour advances through fire time at one second of playback per day, and holds
+# the final frame for two seconds.
+TOUR_PLAYBACK_SECONDS_PER_DAY = 1.0
+FINAL_TOUR_WAIT_SECONDS = 2.0
+
 # DEFLATE is the compression Google Earth expects inside a KMZ, and level 9 is the
 # highest compression level it offers.
 KMZ_COMPRESSION = zipfile.ZIP_DEFLATED
@@ -1081,6 +1088,123 @@ def mapping_placemark_name(observation_time: datetime.datetime | None) -> str:
     return f"{label} {MAPPING_NAME}"
 
 
+def interior_ring_id(folder: simplekml.Folder, index: int) -> str:
+    """Return the placemark id for *folder*'s interior ring at *index*.
+
+    The tour's animated updates target these ids, so each one must be unique
+    across the document; the folder's own unique id keeps one fire's ring ids
+    apart from every other fire's.
+
+    Args:
+        folder: The fire folder that holds the ring.
+        index: The ring's position, oldest first.
+
+    Returns:
+        The ring's placemark id.
+    """
+    return f"progression-ring-{folder.id}-{index}"
+
+
+def tour_wait_in_seconds(
+    earlier: datetime.datetime | None,
+    later: datetime.datetime | None,
+) -> float:
+    """Return the tour wait, in seconds, between two ring observations.
+
+    The tour advances through fire time at one second of playback per day, so
+    the wait is the number of days that separate the two observations. A missing
+    observation time yields no wait, because there is no time to advance through.
+
+    Args:
+        earlier: The earlier ring's observation time, or None.
+        later: The later ring's observation time, or None.
+
+    Returns:
+        The wait in seconds.
+    """
+    if earlier is None or later is None:
+        return 0.0
+    days = (later - earlier).total_seconds() / 86_400
+    return TOUR_PLAYBACK_SECONDS_PER_DAY * days
+
+
+def visibility_change(
+    ring_ids: typing.Sequence[str],
+    shown_through: int,
+) -> str:
+    """Return the update text that reveals rings through *shown_through*.
+
+    Each ring through *shown_through* is shown and every later ring is hidden,
+    so each step names the whole interior state rather than only the one ring it
+    reveals.
+
+    Args:
+        ring_ids: Every interior ring's placemark id, oldest first.
+        shown_through: The index of the newest ring to show.
+
+    Returns:
+        The ``<Placemark targetId=...>`` visibility text for every ring.
+    """
+    updates: list[str] = []
+    for index, ring_id in enumerate(ring_ids):
+        visibility = "1" if index <= shown_through else "0"
+        updates.append(
+            f'<Placemark targetId="{ring_id}">'
+            f"<visibility>{visibility}</visibility>"
+            "</Placemark>",
+        )
+    return "".join(updates)
+
+
+def progression_tour(
+    folder: simplekml.Folder,
+    ring_times: typing.Sequence[datetime.datetime | None],
+) -> None:
+    """Add the "Progression" tour to *folder*.
+
+    The tour shows the innermost ring alone, then waits one second per day of
+    fire time before revealing each next ring, and holds the final frame for
+    two seconds. It is added before the folder's placemarks so it leads them.
+
+    Args:
+        folder: The fire folder that holds the tour.
+        ring_times: Each interior ring's observation time, oldest first.
+    """
+    ring_ids = [interior_ring_id(folder, index) for index in range(len(ring_times))]
+    tour = folder.newgxtour(name=PROGRESSION_TOUR_NAME)
+    playlist = tour.newgxplaylist()
+    for index, ring_time in enumerate(ring_times):
+        playlist.newgxanimatedupdate().update.change = visibility_change(
+            ring_ids,
+            index,
+        )
+        if index + 1 < len(ring_times):
+            wait_in_seconds = tour_wait_in_seconds(
+                ring_time,
+                ring_times[index + 1],
+            )
+        else:
+            wait_in_seconds = FINAL_TOUR_WAIT_SECONDS
+        playlist.newgxwait(gxduration=wait_in_seconds)
+
+
+def assign_placemark_id(
+    placemark: simplekml.Polygon | simplekml.MultiGeometry,
+    placemark_id: str,
+) -> None:
+    """Assign *placemark* the stable id *placemark_id*.
+
+    The tour's animated updates reference the interior rings by their placemark
+    ids, and simplekml offers no public way to choose one, so the id is set
+    directly.
+
+    Args:
+        placemark: The polygon or multi-geometry placemark to identify.
+        placemark_id: The id to assign.
+    """
+    placemark.placemark._id = placemark_id  # ruff: ignore[private-member-access]
+
+
 def fire_folder(
     container: simplekml.Container,
     fire: FireGeometry,
@@ -1094,9 +1218,10 @@ def fire_folder(
     difference rings rather than its complete latest perimeter, and each ring
     carries the timestamp of its observation so the time slider shows the
     interior growing; a fire whose rings carry no timestamps falls back to its
-    complete latest perimeter. Draw orders put the filled latest area on the
-    bottom, stack the outline perimeters from oldest to newest, and draw the
-    point location last so its icon is never covered.
+    complete latest perimeter. A "Progression" tour leads the folder when it has
+    interior polygons, replaying the rings oldest first. Draw orders put the
+    filled latest area on the bottom, stack the outline perimeters from oldest
+    to newest, and draw the point location last so its icon is never covered.
 
     Args:
         container: The folder that holds the fire's folder.
@@ -1108,6 +1233,17 @@ def fire_folder(
         len(fire.perimeters),
         len(peri_scribe.kml_template.OUTLINED_PERIMETER_TEMPLATES),
     )
+    interior_rings = tuple(
+        ring for ring in fire.progression_rings if ring.observation_time is not None
+    )
+    if interior_rings:
+        ring_times = tuple(ring.observation_time for ring in interior_rings)
+    elif fire.perimeters:
+        ring_times = (fire.perimeters[-1].observation_time,)
+    else:
+        ring_times = ()
+    if ring_times:
+        progression_tour(folder, ring_times)
     if fire.point is not None:
         point_placemark(
             folder,
@@ -1117,12 +1253,9 @@ def fire_folder(
             peri_scribe.kml_template.point_draw_order(outline_count),
             description=fire.description,
         )
-    interior_rings = tuple(
-        ring for ring in fire.progression_rings if ring.observation_time is not None
-    )
     if interior_rings:
-        for ring in interior_rings:
-            perimeter_placemark(
+        for index, ring in enumerate(interior_rings):
+            placemark = perimeter_placemark(
                 folder,
                 interior_placemark_name(ring.observation_time),
                 style_urls[peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name],
@@ -1131,9 +1264,10 @@ def fire_folder(
                 description=fire.description,
                 observation_time=ring.observation_time,
             )
+            assign_placemark_id(placemark, interior_ring_id(folder, index))
     elif fire.perimeters:
         latest_perimeter = fire.perimeters[-1]
-        perimeter_placemark(
+        placemark = perimeter_placemark(
             folder,
             interior_placemark_name(latest_perimeter.observation_time),
             style_urls[peri_scribe.kml_template.FILLED_PERIMETER_TEMPLATE.name],
@@ -1141,6 +1275,7 @@ def fire_folder(
             peri_scribe.kml_template.LATEST_AREA_DRAW_ORDER,
             description=fire.description,
         )
+        assign_placemark_id(placemark, interior_ring_id(folder, 0))
     for index, template in enumerate(
         peri_scribe.kml_template.OUTLINED_PERIMETER_TEMPLATES,
     ):
