@@ -316,6 +316,34 @@ def draw_order(placemark: ET.Element) -> int:
     pytest.fail("Placemark has no geometry")
 
 
+def visibility(feature: ET.Element) -> int | None:
+    """Return the ``<visibility>`` of *feature*, or None when absent.
+
+    A feature without a ``<visibility>`` element is visible by default.
+
+    Args:
+        feature: The folder or placemark to inspect.
+
+    Returns:
+        The visibility value, or None when the feature has none.
+    """
+    text = feature.findtext(kml_tag("visibility"))
+    if text is None:
+        return None
+    return int(text)
+
+
+def assert_tree_invisible(container: ET.Element) -> None:
+    """Assert *container* and every folder or placemark beneath it is unchecked.
+
+    Args:
+        container: The folder whose whole tree must be invisible.
+    """
+    for feature in container.iter():
+        if feature.tag in {kml_tag("Folder"), kml_tag("Placemark")}:
+            assert visibility(feature) == 0, feature.findtext(kml_tag("name"))
+
+
 def timestamp_when(placemark: ET.Element) -> str | None:
     """Return the ``<when>`` value of *placemark*'s TimeStamp, or None.
 
@@ -1352,6 +1380,37 @@ def test_progression_folder_holds_point_and_bands(
     }
 
 
+def test_progression_folder_hides_its_tree(style_urls: dict[str, str]) -> None:
+    point = shapely.geometry.Point(1.0, 1.0)
+    fire = peri_scribe.kml.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=point,
+        perimeters=(),
+        progression_rings=(
+            peri_scribe.perimeter_progression.Ring(
+                geometry=square(1.0),
+                observation_time=datetime.datetime(
+                    2026,
+                    8,
+                    15,
+                    20,
+                    0,
+                    tzinfo=datetime.UTC,
+                ),
+            ),
+        ),
+    )
+    kml = simplekml.Kml()
+    peri_scribe.kml.progression_folder(kml.document, [fire], style_urls)
+    document = document_from(kml.kml())
+    folder = folder_named(
+        document,
+        peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
+    assert_tree_invisible(folder)
+
+
 def test_fire_kml_includes_progression_maps_folder() -> None:
     index = fire_index([
         fire_index_entry("Bug", "active", identifier="id-bug"),
@@ -1582,6 +1641,90 @@ def test_fire_kml_builds_active_and_inactive_folders(
     assert "point-icon" in style_ids
     assert "perimeter-fill" in style_ids
     assert "perimeter-outline-1" in style_ids
+
+
+def test_fire_kml_hides_inactive_fires_tree(
+    in_process_plot_image_bundles: None,
+) -> None:
+    index = fire_index([
+        fire_index_entry("Bug", "active", identifier="id-bug"),
+        fire_index_entry("ALTA", "inactive", identifier="id-alta"),
+    ])
+    observation_time = datetime.datetime(2026, 8, 15, 20, 0, tzinfo=datetime.UTC)
+    perimeters = geometry_frame(
+        [
+            ("id-bug", "Bug", square(1.0)),
+            ("id-alta", "ALTA", square(2.0)),
+        ],
+        observation_times=[observation_time, observation_time],
+    )
+    points = geometry_frame([
+        ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
+        ("id-alta", "ALTA", shapely.geometry.Point(2.0, 2.0)),
+    ])
+    template = peri_scribe.kml_template_reader.template_from(
+        peri_scribe.kml_template.template_kml(),
+    )
+    fires = peri_scribe.kml.fire_geometries(
+        index,
+        perimeters,
+        points,
+        perimeters,
+    )
+    document = document_from(peri_scribe.kml.fire_kml(fires, template))
+
+    inactive = folder_named(document, "Inactive Fires")
+    assert_tree_invisible(inactive)
+
+    active = folder_named(document, "Active Fires")
+    active_perimeters = folder_named(
+        active,
+        peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
+    bug_folder = folder_named(active_perimeters, "Bug")
+    assert visibility(active) is None
+    assert visibility(active_perimeters) is None
+    assert visibility(bug_folder) is None
+    for placemark in bug_folder.findall(kml_tag("Placemark")):
+        assert visibility(placemark) is None
+
+
+def test_fire_kml_hides_active_progression_maps(
+    in_process_plot_image_bundles: None,
+) -> None:
+    index = fire_index([
+        fire_index_entry("Bug", "active", identifier="id-bug"),
+        fire_index_entry("ALTA", "inactive", identifier="id-alta"),
+    ])
+    observation_time = datetime.datetime(2026, 8, 15, 20, 0, tzinfo=datetime.UTC)
+    perimeters = geometry_frame(
+        [
+            ("id-bug", "Bug", square(1.0)),
+            ("id-alta", "ALTA", square(2.0)),
+        ],
+        observation_times=[observation_time, observation_time],
+    )
+    points = geometry_frame([
+        ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
+        ("id-alta", "ALTA", shapely.geometry.Point(2.0, 2.0)),
+    ])
+    template = peri_scribe.kml_template_reader.template_from(
+        peri_scribe.kml_template.template_kml(),
+    )
+    fires = peri_scribe.kml.fire_geometries(
+        index,
+        perimeters,
+        points,
+        perimeters,
+    )
+    document = document_from(peri_scribe.kml.fire_kml(fires, template))
+
+    active = folder_named(document, "Active Fires")
+    progression = folder_named(
+        active,
+        peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
+    assert_tree_invisible(progression)
 
 
 def test_fire_kml_shows_derived_point_for_inactive_fire_without_location() -> None:

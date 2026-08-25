@@ -1189,7 +1189,8 @@ def progression_folder(
     contains, so the time slider shows the bands appearing as their growth
     completes. Draw orders put the oldest band on the bottom, stack the bands
     from oldest to newest, and draw the point location last so its icon is never
-    covered.
+    covered. The folder loads unchecked, along with everything beneath it, so
+    the progression maps stay hidden until they are enabled.
 
     Args:
         container: The folder that holds the progression maps folder.
@@ -1226,6 +1227,7 @@ def progression_folder(
                 description=fire.description,
                 observation_time=band.observation_time,
             )
+    set_invisible(folder)
 
 
 def status_folder_name(status: peri_scribe.models.FireStatus) -> str:
@@ -1242,6 +1244,21 @@ def status_folder_name(status: peri_scribe.models.FireStatus) -> str:
     return INACTIVE_FIRES_FOLDER_NAME
 
 
+def set_invisible(container: simplekml.Container) -> None:
+    """Set *container* and every feature beneath it to unchecked.
+
+    Each feature's own ``visibility`` is set to zero, not only the container's,
+    so the whole tree below the container stays unchecked when the container is
+    re-enabled in Google Earth.
+
+    Args:
+        container: The folder to hide.
+    """
+    container.visibility = 0
+    for feature in container.allfeatures:
+        feature.visibility = 0
+
+
 def status_folder(
     container: simplekml.Container,
     fires: list[FireGeometry],
@@ -1255,11 +1272,16 @@ def status_folder(
         fires: Every fire.
         status: The status whose fires belong in the folder.
         style_urls: The style URL for each template placemark name.
+
+    The inactive fires folder loads unchecked, along with everything beneath
+    it, so inactive fires stay hidden until the folder is enabled.
     """
     folder = container.newfolder(name=status_folder_name(status))
     status_fires = [fire for fire in fires if fire.status is status]
     latest_perimeters_folder(folder, status_fires, style_urls)
     progression_folder(folder, status_fires, style_urls)
+    if status is peri_scribe.models.FireStatus.INACTIVE:
+        set_invisible(folder)
 
 
 def fire_kml(
