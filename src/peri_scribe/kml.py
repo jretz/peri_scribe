@@ -48,8 +48,11 @@ UNKNOWN_MAPPING_NAME = "Unknown Mapping"
 PROGRESSION_TOUR_NAME = "Progression"
 
 # A tour advances through fire time at one second of playback per day, and holds
-# the final frame for two seconds.
+# the final frame for two seconds. Fires spanning more than
+# MAX_TOUR_PLAYBACK_SECONDS days play faster so the whole progression takes
+# about that long instead of one second per day.
 TOUR_PLAYBACK_SECONDS_PER_DAY = 1.0
+MAX_TOUR_PLAYBACK_SECONDS = 8.0
 FINAL_TOUR_WAIT_SECONDS = 2.0
 
 # DEFLATE is the compression Google Earth expects inside a KMZ, and level 9 is the
@@ -1060,19 +1063,46 @@ def interior_ring_id(folder: simplekml.Folder, index: int) -> str:
     return f"progression-ring-{folder.id}-{index}"
 
 
+def tour_seconds_per_day(
+    ring_times: typing.Sequence[datetime.datetime | None],
+) -> float:
+    """Return the tour's playback rate, in seconds per day of fire time.
+
+    Fires spanning at most MAX_TOUR_PLAYBACK_SECONDS days play at
+    TOUR_PLAYBACK_SECONDS_PER_DAY so every day stays visible; longer fires play
+    proportionally faster so the whole progression takes about
+    MAX_TOUR_PLAYBACK_SECONDS.
+
+    Args:
+        ring_times: Each interior ring's observation time, oldest first.
+
+    Returns:
+        The playback rate in seconds per day.
+    """
+    observed_times = [time for time in ring_times if time is not None]
+    if not observed_times:
+        return TOUR_PLAYBACK_SECONDS_PER_DAY
+    total_days = (observed_times[-1] - observed_times[0]).total_seconds() / 86_400
+    if total_days <= MAX_TOUR_PLAYBACK_SECONDS:
+        return TOUR_PLAYBACK_SECONDS_PER_DAY
+    return MAX_TOUR_PLAYBACK_SECONDS / total_days
+
+
 def tour_wait_in_seconds(
     earlier: datetime.datetime | None,
     later: datetime.datetime | None,
+    seconds_per_day: float,
 ) -> float:
     """Return the tour wait, in seconds, between two ring observations.
 
-    The tour advances through fire time at one second of playback per day, so
-    the wait is the number of days that separate the two observations. A missing
-    observation time yields no wait, because there is no time to advance through.
+    The wait is the number of days that separate the two observations times the
+    tour's playback rate. A missing observation time yields no wait, because
+    there is no time to advance through.
 
     Args:
         earlier: The earlier ring's observation time, or None.
         later: The later ring's observation time, or None.
+        seconds_per_day: The tour's playback rate in seconds per day.
 
     Returns:
         The wait in seconds.
@@ -1080,7 +1110,7 @@ def tour_wait_in_seconds(
     if earlier is None or later is None:
         return 0.0
     days = (later - earlier).total_seconds() / 86_400
-    return TOUR_PLAYBACK_SECONDS_PER_DAY * days
+    return seconds_per_day * days
 
 
 def visibility_change(
@@ -1117,15 +1147,20 @@ def progression_tour(
 ) -> None:
     """Add the "Progression" tour to *folder*.
 
-    The tour shows the innermost ring alone, then waits one second per day of
-    fire time before revealing each next ring, and holds the final frame for
-    two seconds. It is added before the folder's placemarks so it leads them.
+    The tour shows the innermost ring alone, then waits for the fire time
+    between observations at the tour's playback rate before revealing each
+    next ring, and holds the final frame for two seconds. The playback rate is
+    one second per day for fires spanning at most MAX_TOUR_PLAYBACK_SECONDS
+    days, and faster for longer fires so the whole progression takes about
+    MAX_TOUR_PLAYBACK_SECONDS. It is added before the folder's placemarks so
+    it leads them.
 
     Args:
         folder: The fire folder that holds the tour.
         ring_times: Each interior ring's observation time, oldest first.
     """
     ring_ids = [interior_ring_id(folder, index) for index in range(len(ring_times))]
+    seconds_per_day = tour_seconds_per_day(ring_times)
     tour = folder.newgxtour(name=PROGRESSION_TOUR_NAME)
     playlist = tour.newgxplaylist()
     for index, ring_time in enumerate(ring_times):
@@ -1137,6 +1172,7 @@ def progression_tour(
             wait_in_seconds = tour_wait_in_seconds(
                 ring_time,
                 ring_times[index + 1],
+                seconds_per_day,
             )
         else:
             wait_in_seconds = FINAL_TOUR_WAIT_SECONDS

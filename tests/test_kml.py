@@ -1052,10 +1052,19 @@ def test_interior_ring_id_names_folder_and_index() -> None:
     )
 
 
-def test_tour_wait_in_seconds_scales_days_to_seconds() -> None:
+def test_tour_wait_in_seconds_scales_days_by_playback_rate() -> None:
     earlier = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
     later = datetime.datetime(2026, 8, 8, 20, 0, tzinfo=datetime.UTC)
-    assert peri_scribe.kml.tour_wait_in_seconds(earlier, later) == pytest.approx(3.0)
+    assert peri_scribe.kml.tour_wait_in_seconds(
+        earlier,
+        later,
+        peri_scribe.kml.TOUR_PLAYBACK_SECONDS_PER_DAY,
+    ) == pytest.approx(3.0)
+    assert peri_scribe.kml.tour_wait_in_seconds(
+        earlier,
+        later,
+        0.5,
+    ) == pytest.approx(1.5)
 
 
 def test_tour_wait_in_seconds_with_missing_observation_time() -> None:
@@ -1063,11 +1072,53 @@ def test_tour_wait_in_seconds_with_missing_observation_time() -> None:
     assert peri_scribe.kml.tour_wait_in_seconds(
         None,
         observation_time,
+        peri_scribe.kml.TOUR_PLAYBACK_SECONDS_PER_DAY,
     ) == pytest.approx(0.0)
     assert peri_scribe.kml.tour_wait_in_seconds(
         observation_time,
         None,
+        peri_scribe.kml.TOUR_PLAYBACK_SECONDS_PER_DAY,
     ) == pytest.approx(0.0)
+
+
+def test_tour_seconds_per_day_for_short_fire() -> None:
+    first = datetime.datetime(2026, 8, 1, 0, 0, tzinfo=datetime.UTC)
+    second = datetime.datetime(2026, 8, 6, 0, 0, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.tour_seconds_per_day([first, second]) == pytest.approx(
+        peri_scribe.kml.TOUR_PLAYBACK_SECONDS_PER_DAY,
+    )
+
+
+def test_tour_seconds_per_day_for_eight_day_fire() -> None:
+    first = datetime.datetime(2026, 8, 1, 0, 0, tzinfo=datetime.UTC)
+    second = datetime.datetime(2026, 8, 9, 0, 0, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.tour_seconds_per_day([first, second]) == pytest.approx(
+        peri_scribe.kml.TOUR_PLAYBACK_SECONDS_PER_DAY,
+    )
+
+
+def test_tour_seconds_per_day_for_long_fire() -> None:
+    first = datetime.datetime(2026, 8, 1, 0, 0, tzinfo=datetime.UTC)
+    second = datetime.datetime(2026, 8, 26, 0, 0, tzinfo=datetime.UTC)
+    rate = peri_scribe.kml.tour_seconds_per_day([first, second])
+    assert rate == pytest.approx(0.32)
+    total_days = (second - first).total_seconds() / 86_400
+    assert total_days * rate == pytest.approx(
+        peri_scribe.kml.MAX_TOUR_PLAYBACK_SECONDS,
+    )
+
+
+def test_tour_seconds_per_day_without_two_observations() -> None:
+    observation_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.tour_seconds_per_day(
+        [observation_time],
+    ) == pytest.approx(peri_scribe.kml.TOUR_PLAYBACK_SECONDS_PER_DAY)
+    assert peri_scribe.kml.tour_seconds_per_day([None]) == pytest.approx(
+        peri_scribe.kml.TOUR_PLAYBACK_SECONDS_PER_DAY,
+    )
+    assert peri_scribe.kml.tour_seconds_per_day([]) == pytest.approx(
+        peri_scribe.kml.TOUR_PLAYBACK_SECONDS_PER_DAY,
+    )
 
 
 def test_visibility_change_reveals_rings_through_index() -> None:
@@ -1102,6 +1153,22 @@ def test_progression_tour_reveals_rings_and_waits() -> None:
         {ring_ids[0]: 1, ring_ids[1]: 1, ring_ids[2]: 1},
     ]
     assert [wait_duration(wait) for wait in waits] == [3.0, 1.0, 2.0]
+
+
+def test_progression_tour_scales_waits_for_long_fire() -> None:
+    first = datetime.datetime(2026, 8, 1, 0, 0, tzinfo=datetime.UTC)
+    second = datetime.datetime(2026, 8, 6, 0, 0, tzinfo=datetime.UTC)
+    third = datetime.datetime(2026, 8, 26, 0, 0, tzinfo=datetime.UTC)
+    ring_times = [first, second, third]
+    kml = simplekml.Kml()
+    folder = kml.document.newfolder(name="Bug")
+    peri_scribe.kml.progression_tour(folder, ring_times)
+    bug_folder = folder_named(document_from(kml.kml()), "Bug")
+    tour = tour_named(bug_folder, "Progression")
+    waits = tour_primitives(tour, gx_tag("Wait"))
+    assert [wait_duration(wait) for wait in waits] == pytest.approx(
+        [1.6, 6.4, 2.0],
+    )
 
 
 def test_assign_placemark_id_sets_placemark_id() -> None:
