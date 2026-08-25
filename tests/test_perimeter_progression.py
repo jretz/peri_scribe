@@ -242,3 +242,63 @@ def test_progression_bands_skips_undated_rings() -> None:
 
 def test_progression_bands_returns_nothing_without_rings() -> None:
     assert peri_scribe.perimeter_progression.progression_bands(()) == ()
+
+
+def test_progression_band_rings_groups_rings_by_day_range() -> None:
+    bands = peri_scribe.perimeter_progression.progression_band_rings(
+        (
+            ring(
+                square(1.0),
+                datetime.datetime(2026, 8, 13, 20, 0, tzinfo=datetime.UTC),
+            ),
+            ring(
+                square(2.0),
+                datetime.datetime(2026, 8, 14, 20, 0, tzinfo=datetime.UTC),
+            ),
+            ring(
+                square(3.0),
+                datetime.datetime(2026, 8, 15, 20, 0, tzinfo=datetime.UTC),
+            ),
+        ),
+    )
+    assert [(entry.name, entry.label, entry.band_index) for entry in bands] == [
+        ("Latest Day", "08/15", 0),
+        ("2 Days Before That", "08/13 - 08/14", 1),
+    ]
+    latest, two_days = bands
+    assert [entry.geometry for entry in latest.rings] == [square(3.0)]
+    assert [entry.geometry for entry in two_days.rings] == [
+        square(1.0),
+        square(2.0),
+    ]
+
+
+def test_progression_band_rings_skips_bands_with_empty_union() -> None:
+    bands = peri_scribe.perimeter_progression.progression_band_rings(
+        (
+            ring(
+                shapely.geometry.Polygon(),
+                datetime.datetime(2026, 8, 13, 20, 0, tzinfo=datetime.UTC),
+            ),
+            ring(
+                square(1.0),
+                datetime.datetime(2026, 8, 15, 20, 0, tzinfo=datetime.UTC),
+            ),
+        ),
+    )
+    assert [(entry.name, entry.label) for entry in bands] == [
+        ("Latest Day", "08/15"),
+    ]
+
+
+def test_progression_band_rings_skips_undated_rings() -> None:
+    assert (
+        peri_scribe.perimeter_progression.progression_band_rings(
+            (ring(square(1.0)),),
+        )
+        == ()
+    )
+
+
+def test_progression_band_rings_returns_nothing_without_rings() -> None:
+    assert peri_scribe.perimeter_progression.progression_band_rings(()) == ()

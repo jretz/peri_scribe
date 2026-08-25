@@ -11,8 +11,10 @@ import dataclasses
 import datetime
 import json
 import pathlib
+import struct
 import typing
 import zipfile
+import zlib
 
 import simplekml
 
@@ -59,6 +61,9 @@ FINAL_TOUR_WAIT_SECONDS = 2.0
 # highest compression level it offers.
 KMZ_COMPRESSION = zipfile.ZIP_DEFLATED
 KMZ_COMPRESSION_LEVEL = 9
+
+# Each progression-map subfolder's icon is a square of this many pixels on a side.
+PROGRESSION_ICON_SIDE_LENGTH_IN_PIXELS = 16
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -1301,6 +1306,123 @@ def latest_perimeters_folder(
         fire_folder(folder, fire, style_urls)
 
 
+def progression_icon_filename(band_index: int) -> str:
+    """Return the filename of the icon for the band at *band_index*.
+
+    Args:
+        band_index: The band's position in the shared band set, newest first.
+
+    Returns:
+        The icon filename.
+    """
+    return f"progression-band-{band_index + 1}.png"
+
+
+def kml_color_rgb(kml_color: str) -> tuple[int, int, int]:
+    """Return the RGB triple of the KML ``aabbggrr`` *kml_color*.
+
+    Args:
+        kml_color: The color as ``aabbggrr``.
+
+    Returns:
+        The (red, green, blue) components.
+    """
+    red = int(kml_color[6:8], 16)
+    green = int(kml_color[4:6], 16)
+    blue = int(kml_color[2:4], 16)
+    return (red, green, blue)
+
+
+def progression_icon_colors(
+    template: peri_scribe.kml_template_reader.Template,
+) -> tuple[tuple[int, int, int], ...]:
+    """Return each progression band's polygon fill color as an RGB triple.
+
+    A band's icon is filled with the same color the band's polygons are styled
+    with, read from the template's fill styles.
+
+    Args:
+        template: The parsed KML template.
+
+    Returns:
+        One RGB triple per shared progression band, newest band first.
+    """
+    styles = {style.id: style for style in template.styles}
+    colors = []
+    for band in peri_scribe.perimeter_progression.PROGRESSION_BANDS:
+        style = styles[template.style_urls[band.name].lstrip("#")]
+        colors.append(kml_color_rgb(style.polystyle.color))
+    return tuple(colors)
+
+
+def _png_chunk(chunk_type: bytes, data: bytes) -> bytes:
+    """Return one PNG chunk with its length, type, data, and CRC.
+
+    Args:
+        chunk_type: The chunk's four-byte type.
+        data: The chunk's payload.
+
+    Returns:
+        The serialized chunk.
+    """
+    crc = zlib.crc32(chunk_type + data) & 0xFFFFFFFF
+    return struct.pack(">I", len(data)) + chunk_type + data + struct.pack(">I", crc)
+
+
+def solid_color_png(
+    red: int,
+    green: int,
+    blue: int,
+    side_in_pixels: int,
+) -> bytes:
+    """Return a PNG for a square *side_in_pixels* on a side in the given color.
+
+    Args:
+        red: The red component, 0 through 255.
+        green: The green component, 0 through 255.
+        blue: The blue component, 0 through 255.
+        side_in_pixels: The square's side length in pixels.
+
+    Returns:
+        The PNG bytes.
+    """
+    signature = b"\x89PNG\r\n\x1a\n"
+    header = struct.pack(">IIBBBBB", side_in_pixels, side_in_pixels, 8, 2, 0, 0, 0)
+    row = b"\x00" + bytes((red, green, blue)) * side_in_pixels
+    raw = row * side_in_pixels
+    return (
+        signature
+        + _png_chunk(b"IHDR", header)
+        + _png_chunk(b"IDAT", zlib.compress(raw, zlib.Z_BEST_COMPRESSION))
+        + _png_chunk(b"IEND", b"")
+    )
+
+
+def progression_icons(
+    template: peri_scribe.kml_template_reader.Template,
+) -> dict[str, bytes]:
+    """Return the progression band icons for *template*, keyed by filename.
+
+    Each icon is a square filled with the color its band's polygons are styled
+    with, generated in memory on every create-kml run.
+
+    Args:
+        template: The parsed KML template.
+
+    Returns:
+        The icon filename for each shared progression band, mapped to its PNG
+        bytes.
+    """
+    colors = progression_icon_colors(template)
+    return {
+        progression_icon_filename(index): solid_color_png(
+            *color,
+            PROGRESSION_ICON_SIDE_LENGTH_IN_PIXELS,
+        )
+        for index, color in enumerate(colors)
+    }
+
+
 def progression_folder(
     container: simplekml.Container,
     fires: list[FireGeometry],
@@ -1309,11 +1431,13 @@ def progression_folder(
     """Add the folder holding each fire's progression map to *container*.
 
     Each fire with growth rings gets a folder holding its point location and one
-    growth band per day range it covers; fires with no rings are left out, because
-    there is nothing to map. Draw orders put the oldest band on the bottom, stack
-    the bands from oldest to newest, and draw the point location last so its icon
-    is never covered. The folder loads unchecked, along with everything beneath
-    it, so the progression maps stay hidden until they are enabled.
+    subfolder per day range it covers; each subfolder holds the fire's growth
+    rings from that range, styled by the range's color and marked with a colored
+    icon. Fires with no rings are left out, because there is nothing to map.
+    Draw orders put the oldest ring on the bottom, stack the rings from oldest to
+    newest, and draw the point location last so its icon is never covered. The
+    folder loads unchecked, along with everything beneath it, so the progression
+    maps stay hidden until they are enabled.
 
     Args:
         container: The folder that holds the progression maps folder.
@@ -1324,31 +1448,39 @@ def progression_folder(
         name=peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
     )
     for fire in fires:
-        bands = peri_scribe.perimeter_progression.progression_bands(
+        bands = peri_scribe.perimeter_progression.progression_band_rings(
             fire.progression_rings,
         )
         if not bands:
             continue
         fire_folder = folder.newfolder(name=fire.name)
-        band_count = len(bands)
+        ring_count = sum(len(band.rings) for band in bands)
         if fire.point is not None:
             point_placemark(
                 fire_folder,
                 fire.name,
                 style_urls[peri_scribe.kml_template.POINT_LOCATION_NAME],
                 fire.point,
-                band_count,
+                ring_count,
                 description=fire.description,
             )
-        for index, band in enumerate(bands):
-            perimeter_placemark(
-                fire_folder,
-                band.label,
-                style_urls[band.name],
-                band.geometry,
-                peri_scribe.kml_template.band_draw_order(band_count, index),
-                description=fire.description,
+        for position, band in enumerate(bands):
+            subfolder = fire_folder.newfolder(name=band.label)
+            subfolder.liststyle.itemicon.href = progression_icon_filename(
+                band.band_index,
             )
+            older_ring_count = sum(
+                len(candidate.rings) for candidate in bands[position + 1 :]
+            )
+            for ring_index, ring in enumerate(band.rings):
+                perimeter_placemark(
+                    subfolder,
+                    interior_placemark_name(ring.observation_time),
+                    style_urls[band.name],
+                    ring.geometry,
+                    older_ring_count + ring_index,
+                    description=fire.description,
+                )
     set_invisible(folder)
 
 
@@ -1512,6 +1644,7 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
     images = {
         image.filename: image.content for fire in geometries for image in fire.images
     }
+    images.update(progression_icons(template))
     output_path = kmz_path(year_directory)
     write_kmz(output_path, fire_kml(geometries, template), images)
     return output_path
