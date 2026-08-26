@@ -84,7 +84,7 @@ def projected_maximum_magnitude_in_crs_units(crs: pyproj.CRS) -> float:
 
     Returns:
         The largest coordinate magnitude the CRS plausibly produces, or the
-        `PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK_IN_METERS` constant when the CRS has no
+        ``PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK_IN_METERS`` constant when the CRS has no
         area of use.
     """
     area = crs.area_of_use

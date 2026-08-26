@@ -19,7 +19,7 @@ import peri_scribe.models
 
 
 if typing.TYPE_CHECKING:
-    from tests.conftest import GeoPackageStore
+    from tests.factories import GeoPackageStore
 
 
 CALIFORNIA = shapely.geometry.Polygon([(0, 0), (0, 10), (10, 10), (10, 0)])

@@ -166,8 +166,8 @@ class MissionName:
     """The fire-name parts of a mapping mission code.
 
     A mission code such as ``CA-LNU-RUMSEY-UPDATED-N40Y`` names the fire both as the
-    source recorded it (`name`) and with mapping-revision markers removed (`base_name`),
-    so an updated re-mapping can still be matched to the original fire.
+    source recorded it (``name``) and with mapping-revision markers removed
+    (``base_name``), so an updated re-mapping can still be matched to the original fire.
     """
 
     name: str | None = None
@@ -198,10 +198,10 @@ class FireRecord:
 class Fire:
     """A fire, identified by name, a canonical identifier, and every alias.
 
-    `identifier` is the canonical identifier: the preferred unique fire identifier
-    (``YYYY-UNIT-######``) when one is known, else a GUID. `aliases` holds every
+    ``identifier`` is the canonical identifier: the preferred unique fire identifier
+    (``YYYY-UNIT-######``) when one is known, else a GUID. ``aliases`` holds every
     normalized identifier the fire is known by, including the canonical one. When the
-    fire is part of a complex, `complex` points at the FireComplex that owns it.
+    fire is part of a complex, ``complex`` points at the FireComplex that owns it.
     """
 
     name: str
@@ -220,7 +220,7 @@ class FireComplex:
     """A complex of fires, linked to each of its member fires.
 
     A complex is an incident with child fires. Constructing a FireComplex sets each
-    member fire's `complex` back-reference, so the link between a fire and its complex
+    member fire's ``complex`` back-reference, so the link between a fire and its complex
     is circular.
     """
 
@@ -304,8 +304,8 @@ class SpatialReferenceDomain:
 class SpatialReferenceSelection:
     """Result of selecting a spatial reference wkid from candidates.
 
-    When a wkid is chosen, `warning` holds the text to log about excluded candidates, if
-    any. When no wkid can be chosen, `failure_message` explains why.
+    When a wkid is chosen, ``warning`` holds the text to log about excluded candidates,
+    if any. When no wkid can be chosen, ``failure_message`` explains why.
     """
 
     wkid: int | None

@@ -23,9 +23,8 @@ from tests.conftest import (
     RATE_LIMIT_ERROR_PAYLOAD,
     RATE_LIMIT_RETRY_AFTER_IN_SECONDS,
     SAMPLE_FEED_NAME,
-    WGS84_WKID,
-    LayerStub,
 )
+from tests.factories import WGS84_WKID, LayerStub
 
 
 def test_extract_geometries_without_shape_column() -> None:

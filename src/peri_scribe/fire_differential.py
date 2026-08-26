@@ -397,8 +397,8 @@ def write_history_of_differential_geography(
     """Build and write the differential point and perimeter history GeoPackage.
 
     The full history is built first so the differential always matches the current
-    source data. The output holds a `perimeter_history` layer of per-perimeter growth
-    and a `point_history` layer copied from the full history.
+    source data. The output holds a ``perimeter_history`` layer of per-perimeter growth
+    and a ``point_history`` layer copied from the full history.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.

@@ -160,7 +160,7 @@ def non_complex_fire_sources(
         record_groups: The grouped fire records.
 
     Returns:
-        One `(FireSources, record indices)` pair per non-complex fire, in group order.
+        One ``(FireSources, record indices)`` pair per non-complex fire, in group order.
     """
     sources: list[tuple[peri_scribe.models.FireSources, tuple[int, ...]]] = []
     for fire, group in zip(

@@ -15,11 +15,8 @@ from tests.conftest import (
     UNKNOWN_WKID,
     WEB_MERCATOR_MAXIMUM_MAGNITUDE_IN_METERS,
     WEB_MERCATOR_WKID,
-    WGS84_WKID,
-    FeatureSetStub,
-    LayerStub,
-    failing_from_crs,
 )
+from tests.factories import WGS84_WKID, FeatureSetStub, LayerStub, failing_from_crs
 
 
 CALIFORNIA_BOUNDS = (-121.0, -120.0, 33.0, 34.0)

@@ -143,7 +143,7 @@ def shared_border(
     """Return the portion of California's boundary shared with *neighbor_geometry*.
 
     The boundary is intersected with the neighbor polygon, and with the neighbor grown
-    by `INTERSECTION_TOLERANCE_DEGREES`; the more complete result is kept so borders
+    by ``INTERSECTION_TOLERANCE_DEGREES``; the more complete result is kept so borders
     that line up only approximately between the two source copies are still captured.
 
     Args:
@@ -303,7 +303,7 @@ def border_dataframe(
 
     Each row names the neighbor and gives the geodesic length of its shared border with
     California in kilometers. The geometry column is named
-    `peri_scribe.models.GEOMETRY_COLUMN_NAME` so the layer matches the rest of the
+    ``peri_scribe.models.GEOMETRY_COLUMN_NAME`` so the layer matches the rest of the
     project's GeoPackage layers.
 
     Args:

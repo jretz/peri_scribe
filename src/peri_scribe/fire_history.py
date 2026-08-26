@@ -519,8 +519,8 @@ def write_history_of_full_geography(
 ) -> pathlib.Path:
     """Build and write the full point and perimeter history GeoPackage.
 
-    The output holds two layers: `perimeter_history` and `point_history`, both in the
-    output spatial reference.
+    The output holds two layers: ``perimeter_history`` and ``point_history``, both in
+    the output spatial reference.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.

@@ -1,33 +1,51 @@
 from __future__ import annotations
 
+import datetime
 import http
 import pathlib
 import typing
 
-import arcgis.features
 import click.testing
 import geopandas
 import pyproj
-import pyproj.exceptions
 import pytest
 import shapely.geometry
 import structlog
+import time_machine
 
+import peri_scribe.administrative_boundaries
 import peri_scribe.feed_types
 import peri_scribe.feeds
+import peri_scribe.fetching
+import peri_scribe.fire_differential
+import peri_scribe.fire_index
 import peri_scribe.geo_package
+import peri_scribe.kml
+import peri_scribe.kml_plot_rendering
+import peri_scribe.main
 import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.snapshots
+import peri_scribe.source_validation
+import tests.factories
+import tests.kml_helpers
+from tests.factories import WGS84_WKID, GeoPackageStore, wgs84_feature_set
+from tests.main_stubs import (
+    BASE_DIRECTORY,
+    SAMPLE_LAST_EDIT_TIMESTAMP,
+    FeedStub,
+    FetchStubs,
+    FullPipelineStubs,
+    LayerFactory,
+    ValidateSourcesStubs,
+)
 
 
 if typing.TYPE_CHECKING:
+    import arcgis.features
     import pandas as pd
 
-    import tests.factories
 
-
-WGS84_WKID = 4326
 WEB_MERCATOR_WKID = 3857
 CALIFORNIA_ALBERS_WKID = 3310
 NAD83_WKID = 4269
@@ -109,119 +127,6 @@ def sample_feed() -> peri_scribe.feed_types.ArcGISFeed:
         fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
         status_column=SAMPLE_STATUS_COLUMN,
     )
-
-
-class LayerStub(arcgis.features.FeatureLayer):
-    """Minimal stand-in for an ArcGIS FeatureLayer exposing properties."""
-
-    def __init__(self, properties: dict[str, object]) -> None:
-        self.layer_properties = properties
-
-    @property
-    def properties(self) -> dict[str, object]:
-        return self.layer_properties
-
-
-class FeatureSetStub(arcgis.features.FeatureSet):
-    """Minimal stand-in for an ArcGIS FeatureSet exposing spatial_reference."""
-
-    def __init__(self, spatial_reference: object) -> None:
-        self.stored_spatial_reference = spatial_reference
-
-    @property
-    def spatial_reference(self) -> object:
-        return self.stored_spatial_reference
-
-
-class FeatureLayerStubBase:
-    """Base stand-in for an ArcGIS FeatureLayer exposing WGS84 properties."""
-
-    def __init__(self, url: str, gis: object) -> None:
-        self.url = url
-        self.gis = gis
-        self.layer_properties: dict[str, object] = {
-            "spatialReference": {"wkid": WGS84_WKID},
-        }
-
-    @property
-    def properties(self) -> dict[str, object]:
-        return self.layer_properties
-
-
-class FeatureLayerStub(FeatureLayerStubBase):
-    """Minimal stand-in for an ArcGIS FeatureLayer with a fixed query result."""
-
-    def __init__(
-        self,
-        url: str,
-        gis: object,
-        feature_set: arcgis.features.FeatureSet,
-        query_error: Exception | None = None,
-    ) -> None:
-        super().__init__(url, gis)
-        self.feature_set = feature_set
-        self.query_error = query_error
-
-    def query(
-        self,
-        **parameters: object,
-    ) -> arcgis.features.FeatureSet | dict[str, object]:
-        if self.query_error is not None:
-            raise self.query_error
-        if parameters.get("return_ids_only"):
-            return {"objectIdFieldName": "OBJECTID", "objectIds": [1, 2]}
-        return self.feature_set
-
-
-class FailingTransformer:
-    """Transformer stand-in whose corner transforms always fail."""
-
-    def transform(  # ruff: ignore[no-self-use]
-        self,
-        longitude: float,
-        latitude: float,
-    ) -> tuple[float, float]:
-        message = f"transform failed at ({longitude}, {latitude})"
-        raise pyproj.exceptions.ProjError(message)
-
-
-def failing_from_crs(
-    crs_from: str,
-    crs_to: pyproj.CRS,
-    *,
-    always_xy: bool = True,
-) -> FailingTransformer:
-    return FailingTransformer()
-
-
-def wgs84_feature_set(
-    points: list[tuple[int | None, str, float, float]],
-) -> arcgis.features.FeatureSet:
-    """Build a WGS84 FeatureSet from (OBJECTID, name, x, y) point rows.
-
-    Args:
-        points: The OBJECTID (None to omit it), name, longitude, and latitude of
-            each feature.
-
-    Returns:
-        The FeatureSet.
-    """
-    features = []
-    for object_id, name, x, y in points:
-        attributes: dict[str, object] = {"name": name}
-        if object_id is not None:
-            attributes["OBJECTID"] = object_id
-        features.append(
-            arcgis.features.Feature(
-                geometry={
-                    "x": x,
-                    "y": y,
-                    "spatialReference": {"wkid": WGS84_WKID},
-                },
-                attributes=attributes,
-            ),
-        )
-    return arcgis.features.FeatureSet(features)
 
 
 def sample_geo_dataframe() -> geopandas.GeoDataFrame:
@@ -542,78 +447,6 @@ def layer_data_factory() -> typing.Callable[[str], peri_scribe.models.LayerData]
     return make_layer_data
 
 
-class GeoPackageStore:
-    """In-memory stand-in for the GeoPackage files the fetch command writes.
-
-    Written layers are keyed by (path, layer name) so tests can assert what was
-    written and serve it back to incremental fetches without touching the
-    filesystem.
-    """
-
-    def __init__(self) -> None:
-        self.layers: dict[
-            tuple[pathlib.Path, str],
-            geopandas.GeoDataFrame,
-        ] = {}
-
-    def write(
-        self,
-        path: pathlib.Path,
-        layers: list[peri_scribe.models.LayerData],
-    ) -> None:
-        """Record *layers* as the contents of the GeoPackage at *path*."""
-        for layer_data in layers:
-            self.layers[path, layer_data.name] = layer_data.dataframe
-
-    def source_files(
-        self,
-        directory: pathlib.Path,
-    ) -> list[peri_scribe.snapshots.SourceFile]:
-        """Return the source files stored under *directory*, in serial order.
-
-        Returns:
-            The stored source files, sorted by serial number.
-        """
-        source_files = [
-            peri_scribe.snapshots.SourceFile.from_path(path)
-            for path, _layer_name in self.layers
-            if path.suffix == ".gpkg" and path.is_relative_to(directory)
-        ]
-        return sorted(source_files, key=lambda source_file: source_file.serial_number)
-
-    def read_layer(
-        self,
-        path: pathlib.Path,
-        feed: peri_scribe.feed_types.Feed,
-    ) -> geopandas.GeoDataFrame:
-        """Return the layer for *feed* stored in the GeoPackage at *path*.
-
-        Returns:
-            The feed's layer dataframe.
-        """
-        return self.layers[path, feed.name]
-
-    def layer(
-        self,
-        path: pathlib.Path,
-        layer_name: str,
-    ) -> geopandas.GeoDataFrame:
-        """Return the layer named *layer_name* stored at *path*.
-
-        Returns:
-            The layer dataframe.
-        """
-        return self.layers[path, layer_name]
-
-    def has(self, path: pathlib.Path) -> bool:
-        """Return whether any layer has been stored at *path*.
-
-        Returns:
-            True when a layer has been stored at *path*.
-        """
-        return any(stored_path == path for stored_path, _layer_name in self.layers)
-
-
 @pytest.fixture
 def geo_package_store(
     monkeypatch: pytest.MonkeyPatch,
@@ -641,3 +474,291 @@ def geo_package_store(
         lambda *_arguments, **_keywords: None,
     )
     return store
+
+
+@pytest.fixture
+def in_process_plot_image_bundles(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Render plots in-process instead of in a pool for one test."""
+    monkeypatch.setattr(
+        peri_scribe.kml_plot_rendering,
+        "plot_image_bundles",
+        tests.kml_helpers.serial_plot_image_bundles,
+    )
+
+
+@pytest.fixture
+def fetch_setup(
+    monkeypatch: pytest.MonkeyPatch,
+    geo_package_store: GeoPackageStore,
+) -> typing.Iterator[None]:
+    """Point the fetch command's boundaries at in-memory stubs and fix the date."""
+    monkeypatch.setattr(
+        pathlib.Path,
+        "cwd",
+        staticmethod(lambda: BASE_DIRECTORY),
+    )
+    monkeypatch.setattr(
+        peri_scribe.output,
+        "configure_logging",
+        lambda log_level: log_level,
+    )
+    monkeypatch.setattr(
+        peri_scribe.feeds,
+        "FEEDS",
+        [
+            FeedStub(
+                name=SAMPLE_FEED_NAME,
+                url=SAMPLE_FEED_URL,
+                last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
+            ),
+        ],
+    )
+    monkeypatch.setattr(peri_scribe.fetching.arcgis.gis, "GIS", object)
+    monkeypatch.setattr(
+        peri_scribe.fire_index,
+        "index_fire_sources",
+        lambda _year_directory: None,
+    )
+    with time_machine.travel(
+        datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        tick=False,
+    ):
+        yield
+
+
+def snapshot_path(
+    *,
+    feed_name: str = SAMPLE_FEED_NAME,
+    serial_number: int = 0,
+    last_edit_timestamp: int = SAMPLE_LAST_EDIT_TIMESTAMP,
+) -> pathlib.Path:
+    """Return the snapshot path fetch writes for a feed and last-edit timestamp.
+
+    Returns:
+        The snapshot path, assuming the 2026 test year, no prior snapshots, and a first
+        serial number of 0.
+    """
+    return peri_scribe.snapshots.source_geopackage_path(
+        BASE_DIRECTORY,
+        2026,
+        feed_name,
+        peri_scribe.snapshots.SourceFile(
+            serial_number=serial_number,
+            last_edit_timestamp=last_edit_timestamp,
+        ),
+    )
+
+
+@pytest.fixture
+def list_fires_setup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Silence log configuration so list-fires logs can be captured."""
+    monkeypatch.setattr(
+        peri_scribe.output,
+        "configure_logging",
+        lambda log_level: log_level,
+    )
+
+
+def invoke_fetch(
+    runner: click.testing.CliRunner,
+    *arguments: str,
+) -> click.testing.Result:
+    """Invoke the fetch command in the test runner.
+
+    Args:
+        runner: The test runner.
+        arguments: Extra command-line arguments after ``fetch``.
+
+    Returns:
+        The command result.
+    """
+    return runner.invoke(peri_scribe.main.cli, ["fetch", *arguments])
+
+
+@pytest.fixture
+def fetch_stubs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> FetchStubs:
+    """Install feed and FeatureLayer stubs for the fetch command.
+
+    Returns:
+        The installers for feeds and FeatureLayer factories.
+    """
+
+    def stub_feeds(*feeds: FeedStub) -> None:
+        monkeypatch.setattr(peri_scribe.feeds, "FEEDS", list(feeds))
+
+    def stub_feature_layers(factory: LayerFactory) -> None:
+        monkeypatch.setattr(
+            peri_scribe.fetching.arcgis.features,
+            "FeatureLayer",
+            factory,
+        )
+
+    return FetchStubs(
+        feeds=stub_feeds,
+        feature_layers=stub_feature_layers,
+    )
+
+
+@pytest.fixture
+def current_year(
+    monkeypatch: pytest.MonkeyPatch,
+) -> typing.Iterator[None]:
+    """Fix the working directory and freeze the current year at 2026."""
+    monkeypatch.setattr(
+        pathlib.Path,
+        "cwd",
+        staticmethod(lambda: BASE_DIRECTORY),
+    )
+    with time_machine.travel(
+        datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
+        tick=False,
+    ):
+        yield
+
+
+@pytest.fixture
+def full_pipeline_stubs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> typing.Callable[..., FullPipelineStubs]:
+    """Install step stubs for the full-pipeline command.
+
+    Returns:
+        A callable taking whether the fetch changed something and returning the
+        installed fetch outcome and the lists recording each step's calls.
+    """
+
+    def install(*, changed: bool) -> FullPipelineStubs:
+        stubs = FullPipelineStubs(
+            fetch_result=peri_scribe.fetching.FetchResult(
+                snapshot_paths=(),
+                changed=changed,
+            ),
+            fetch_calls=[],
+            ensure_boundary_calls=[],
+            history_calls=[],
+            kmz_calls=[],
+        )
+
+        def fetch_all_feeds(
+            base_directory: pathlib.Path,
+            *,
+            year: int,
+            full: bool = False,
+        ) -> peri_scribe.fetching.FetchResult:
+            stubs.fetch_calls.append((base_directory, year, full))
+            return stubs.fetch_result
+
+        monkeypatch.setattr(
+            peri_scribe.fetching,
+            "fetch_all_feeds",
+            fetch_all_feeds,
+        )
+        monkeypatch.setattr(
+            peri_scribe.administrative_boundaries,
+            "ensure_administrative_boundaries",
+            lambda base_directory=None: stubs.ensure_boundary_calls.append(
+                base_directory,
+            ),
+        )
+        monkeypatch.setattr(
+            peri_scribe.fire_differential,
+            "write_history_of_differential_geography",
+            stubs.history_calls.append,
+        )
+        monkeypatch.setattr(
+            peri_scribe.kml,
+            "create_kmz",
+            stubs.kmz_calls.append,
+        )
+        return stubs
+
+    return install
+
+
+@pytest.fixture
+def validate_sources_stubs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> typing.Callable[
+    [tuple[peri_scribe.source_validation.FeedValidationResult, ...]],
+    ValidateSourcesStubs,
+]:
+    """Install step stubs for the validate-sources command.
+
+    Returns:
+        A callable taking the validation results to serve and returning the recorded
+        step calls.
+    """
+
+    def install(
+        results: tuple[peri_scribe.source_validation.FeedValidationResult, ...],
+    ) -> ValidateSourcesStubs:
+        stubs = ValidateSourcesStubs(
+            fetch_complete_calls=[],
+            fetch_incremental_calls=[],
+            validate_calls=[],
+            removal_calls=[],
+        )
+
+        def fetch_all_feeds_complete(
+            base_directory: pathlib.Path,
+            *,
+            year: int,
+        ) -> tuple[pathlib.Path, ...]:
+            stubs.fetch_complete_calls.append((base_directory, year))
+            return ()
+
+        def fetch_all_feeds(
+            base_directory: pathlib.Path,
+            *,
+            year: int,
+        ) -> peri_scribe.fetching.FetchResult:
+            stubs.fetch_incremental_calls.append((base_directory, year))
+            return peri_scribe.fetching.FetchResult(
+                snapshot_paths=(),
+                changed=False,
+            )
+
+        def validate_complete_sources(
+            year_directory: pathlib.Path,
+            feeds: object,
+        ) -> tuple[peri_scribe.source_validation.FeedValidationResult, ...]:
+            stubs.validate_calls.append(year_directory)
+            return results
+
+        monkeypatch.setattr(
+            peri_scribe.fetching,
+            "fetch_all_feeds_complete",
+            fetch_all_feeds_complete,
+        )
+        monkeypatch.setattr(
+            peri_scribe.fetching,
+            "fetch_all_feeds",
+            fetch_all_feeds,
+        )
+        monkeypatch.setattr(
+            peri_scribe.source_validation,
+            "validate_complete_sources",
+            validate_complete_sources,
+        )
+        monkeypatch.setattr(
+            peri_scribe.output,
+            "remove_directory_tree",
+            stubs.removal_calls.append,
+        )
+        return stubs
+
+    return install
+
+
+@pytest.fixture
+def validate_sources_setup(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Silence log configuration so validate-sources logs can be captured."""
+    monkeypatch.setattr(
+        peri_scribe.output,
+        "configure_logging",
+        lambda log_level: log_level,
+    )

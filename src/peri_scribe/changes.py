@@ -280,7 +280,7 @@ def incremental_cutoff(
 ) -> datetime.datetime:
     """Return the cutoff for an incremental fetch.
 
-    The cutoff is the latest stored change timestamp minus `OVERLAP`. When no stored
+    The cutoff is the latest stored change timestamp minus ``OVERLAP``. When no stored
     timestamp can be found, the Unix epoch is used so the query returns every feature
     for deduplication to filter.
 

@@ -1,0 +1,583 @@
+"""Tests for peri_scribe.kml_fire_data."""
+
+from __future__ import annotations
+
+import datetime
+import json
+
+import geopandas
+import pytest
+import shapely.geometry
+
+import peri_scribe.kml_fire_data
+import peri_scribe.models
+import peri_scribe.perimeter_progression
+import tests.kml_helpers
+
+
+def test_identifiers_includes_identifier_and_aliases() -> None:
+    entry = tests.kml_helpers.fire_index_entry(
+        "Sorrento",
+        "active",
+        identifier="2026-casnd-150541",
+        aliases=["2026-casnd-26150541", "guid"],
+    )
+    assert peri_scribe.kml_fire_data.identifiers(entry) == {
+        "2026-casnd-150541",
+        "2026-casnd-26150541",
+        "guid",
+    }
+
+
+def test_identifiers_omits_none_identifier() -> None:
+    entry = tests.kml_helpers.fire_index_entry("Bug", "active", identifier=None)
+    assert peri_scribe.kml_fire_data.identifiers(entry) == frozenset()
+
+
+def test_unique_filename_prefix_uses_identifier() -> None:
+    assert (
+        peri_scribe.kml_fire_data.unique_filename_prefix(
+            "id-bug",
+            "Bug",
+            frozenset(),
+        )
+        == "id-bug"
+    )
+
+
+def test_unique_filename_prefix_avoids_collisions() -> None:
+    assert (
+        peri_scribe.kml_fire_data.unique_filename_prefix(
+            None,
+            "Bug",
+            frozenset({"bug"}),
+        )
+        == "bug-2"
+    )
+    assert (
+        peri_scribe.kml_fire_data.unique_filename_prefix(
+            None,
+            "Bug",
+            frozenset({"bug", "bug-2"}),
+        )
+        == "bug-3"
+    )
+
+
+def test_perimeter_groups_keys_by_identifier_and_preserves_order() -> None:
+    first = tests.kml_helpers.square(1.0)
+    second = tests.kml_helpers.square(2.0)
+    nameless = tests.kml_helpers.square(3.0)
+    first_time = datetime.datetime(2026, 8, 5, tzinfo=datetime.UTC)
+    second_time = datetime.datetime(2026, 8, 6, tzinfo=datetime.UTC)
+    perimeters = tests.kml_helpers.geometry_frame(
+        [
+            ("id-a", "Bug", first),
+            ("id-a", "Bug", second),
+            (None, "Nameless", nameless),
+        ],
+        observation_times=[first_time, second_time, None],
+    )
+    by_identifier, by_name = peri_scribe.kml_fire_data.perimeter_groups(perimeters)
+    assert by_identifier == {
+        "id-a": [
+            tests.kml_helpers.perimeter_with_time(first, first_time),
+            tests.kml_helpers.perimeter_with_time(second, second_time),
+        ],
+    }
+    assert by_name == {
+        "Nameless": [tests.kml_helpers.perimeter_with_time(nameless, None)],
+    }
+
+
+def test_point_locations_keep_last_point_per_fire() -> None:
+    earlier = shapely.geometry.Point(1.0, 1.0)
+    later = shapely.geometry.Point(2.0, 2.0)
+    points = tests.kml_helpers.geometry_frame([
+        ("id-a", "Bug", earlier),
+        ("id-a", "Bug", later),
+        (None, "Nameless", shapely.geometry.Point(3.0, 3.0)),
+    ])
+    by_identifier, by_name = peri_scribe.kml_fire_data.point_locations(points)
+    assert by_identifier == {"id-a": later}
+    assert list(by_name) == ["Nameless"]
+
+
+def test_fire_point_matches_identifier() -> None:
+    point = shapely.geometry.Point(1.0, 1.0)
+    result = peri_scribe.kml_fire_data.fire_point(
+        frozenset({"id-a"}),
+        "Bug",
+        {"id-a": point},
+        {},
+    )
+    assert result is point
+
+
+def test_fire_point_falls_back_to_name() -> None:
+    point = shapely.geometry.Point(1.0, 1.0)
+    result = peri_scribe.kml_fire_data.fire_point(
+        frozenset(),
+        "Bug",
+        {},
+        {"Bug": point},
+    )
+    assert result is point
+
+
+def test_fire_point_returns_none_when_name_missing() -> None:
+    assert peri_scribe.kml_fire_data.fire_point(frozenset(), "Bug", {}, {}) is None
+
+
+def test_fire_point_returns_none_when_identifier_missing() -> None:
+    assert (
+        peri_scribe.kml_fire_data.fire_point(
+            frozenset({"id-a"}),
+            "Bug",
+            {},
+            {},
+        )
+        is None
+    )
+
+
+def test_fire_perimeters_matches_identifier() -> None:
+    perimeters = (
+        tests.kml_helpers.perimeter_with_time(tests.kml_helpers.square(1.0)),
+        tests.kml_helpers.perimeter_with_time(tests.kml_helpers.square(2.0)),
+    )
+    result = peri_scribe.kml_fire_data.fire_perimeters(
+        frozenset({"id-a"}),
+        "Bug",
+        {"id-a": list(perimeters)},
+        {},
+    )
+    assert result == perimeters
+
+
+def test_fire_perimeters_falls_back_to_name() -> None:
+    perimeters = (tests.kml_helpers.perimeter_with_time(tests.kml_helpers.square(1.0)),)
+    result = peri_scribe.kml_fire_data.fire_perimeters(
+        frozenset(),
+        "Bug",
+        {},
+        {"Bug": list(perimeters)},
+    )
+    assert result == perimeters
+
+
+def test_fire_perimeters_returns_empty_when_unknown() -> None:
+    assert (
+        peri_scribe.kml_fire_data.fire_perimeters(
+            frozenset({"id-a"}),
+            "Bug",
+            {},
+            {},
+        )
+        == ()
+    )
+
+
+def test_fire_geometries_matches_aliases_and_sorts_by_name() -> None:
+    index = tests.kml_helpers.fire_index([
+        tests.kml_helpers.fire_index_entry(
+            "Sorrento",
+            "active",
+            identifier="2026-casnd-150541",
+            aliases=["2026-casnd-26150541"],
+        ),
+        tests.kml_helpers.fire_index_entry("Bug", "inactive", identifier="id-bug"),
+    ])
+    sorrento_perimeter = tests.kml_helpers.square(3.0)
+    perimeters = tests.kml_helpers.geometry_frame([
+        ("2026-casnd-26150541", "Sorrento", sorrento_perimeter),
+        ("id-bug", "Bug", tests.kml_helpers.square(1.0)),
+    ])
+    bug_point = shapely.geometry.Point(1.0, 1.0)
+    points = tests.kml_helpers.geometry_frame([("id-bug", "Bug", bug_point)])
+    fires = peri_scribe.kml_fire_data.fire_geometries(
+        index,
+        perimeters,
+        points,
+        tests.kml_helpers.geometry_frame([]),
+    )
+    assert [fire.name for fire in fires] == ["Bug", "Sorrento"]
+    bug, sorrento = fires
+    assert bug.status is peri_scribe.models.FireStatus.INACTIVE
+    assert bug.point is bug_point
+    assert bug.perimeters == (
+        tests.kml_helpers.perimeter_with_time(tests.kml_helpers.square(1.0)),
+    )
+    assert sorrento.status is peri_scribe.models.FireStatus.ACTIVE
+    assert sorrento.point == sorrento_perimeter.representative_point()
+    assert sorrento.perimeters == (
+        tests.kml_helpers.perimeter_with_time(sorrento_perimeter),
+    )
+
+
+def test_fire_point_location_uses_known_point() -> None:
+    point = shapely.geometry.Point(1.0, 1.0)
+    result = peri_scribe.kml_fire_data.fire_point_location(
+        frozenset({"id-a"}),
+        "Bug",
+        {"id-a": point},
+        {},
+        (tests.kml_helpers.perimeter_with_time(tests.kml_helpers.square(2.0)),),
+    )
+    assert result is point
+
+
+def test_fire_point_location_derives_point_from_latest_perimeter() -> None:
+    earlier = tests.kml_helpers.square(1.0)
+    latest = tests.kml_helpers.square(2.0)
+    result = peri_scribe.kml_fire_data.fire_point_location(
+        frozenset({"id-a"}),
+        "Bug",
+        {},
+        {},
+        (
+            tests.kml_helpers.perimeter_with_time(earlier),
+            tests.kml_helpers.perimeter_with_time(latest),
+        ),
+    )
+    assert result == latest.representative_point()
+
+
+def test_fire_point_location_returns_none_without_geometry() -> None:
+    assert (
+        peri_scribe.kml_fire_data.fire_point_location(
+            frozenset({"id-a"}),
+            "Bug",
+            {},
+            {},
+            (),
+        )
+        is None
+    )
+
+
+def test_fire_geometries_derives_point_for_inactive_fire_without_location() -> None:
+    index = tests.kml_helpers.fire_index([
+        tests.kml_helpers.fire_index_entry("ALTA", "inactive", identifier="id-alta"),
+    ])
+    perimeter = tests.kml_helpers.square(2.0)
+    fires = peri_scribe.kml_fire_data.fire_geometries(
+        index,
+        tests.kml_helpers.geometry_frame([("id-alta", "ALTA", perimeter)]),
+        tests.kml_helpers.geometry_frame([]),
+        tests.kml_helpers.geometry_frame([]),
+    )
+    (fire,) = fires
+    assert fire.status is peri_scribe.models.FireStatus.INACTIVE
+    assert fire.point == perimeter.representative_point()
+    assert fire.perimeters == (tests.kml_helpers.perimeter_with_time(perimeter),)
+
+
+def test_fire_geometries_sorts_by_case_folded_name() -> None:
+    index = tests.kml_helpers.fire_index([
+        tests.kml_helpers.fire_index_entry(name, "active", identifier=f"id-{name}")
+        for name in ("aB", "Ac", "AD", "ae")
+    ])
+    fires = peri_scribe.kml_fire_data.fire_geometries(
+        index,
+        tests.kml_helpers.geometry_frame([]),
+        tests.kml_helpers.geometry_frame([]),
+        tests.kml_helpers.geometry_frame([]),
+    )
+    assert [fire.name for fire in fires] == ["aB", "Ac", "AD", "ae"]
+
+
+def test_fire_geometries_attaches_plot_images(
+    in_process_plot_image_bundles: None,
+) -> None:
+    index = tests.kml_helpers.fire_index([
+        tests.kml_helpers.fire_index_entry("Bug", "active", identifier="id-bug"),
+    ])
+    perimeters = tests.kml_helpers.geometry_frame(
+        [
+            ("id-bug", "Bug", tests.kml_helpers.square(1.0)),
+            ("id-bug", "Bug", tests.kml_helpers.square(2.0)),
+        ],
+        observation_times=[
+            datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC),
+            datetime.datetime(2026, 8, 6, 20, 0, tzinfo=datetime.UTC),
+        ],
+    )
+    fires = peri_scribe.kml_fire_data.fire_geometries(
+        index,
+        perimeters,
+        tests.kml_helpers.geometry_frame([]),
+        tests.kml_helpers.geometry_frame([]),
+    )
+    (fire,) = fires
+    assert [image.filename for image in fire.images] == ["id-bug-perimeter.png"]
+    assert fire.images[0].content
+    assert fire.description is not None
+    assert '<img src="id-bug-perimeter.png" />' in fire.description
+
+
+def test_fire_geometries_skips_images_without_enough_dates() -> None:
+    index = tests.kml_helpers.fire_index([
+        tests.kml_helpers.fire_index_entry("Bug", "active", identifier="id-bug"),
+    ])
+    fires = peri_scribe.kml_fire_data.fire_geometries(
+        index,
+        tests.kml_helpers.geometry_frame([
+            ("id-bug", "Bug", tests.kml_helpers.square(1.0)),
+        ]),
+        tests.kml_helpers.geometry_frame([]),
+        tests.kml_helpers.geometry_frame([]),
+    )
+    (fire,) = fires
+    assert fire.images == ()
+
+
+def test_fire_geometries_includes_progression_rings() -> None:
+    index = tests.kml_helpers.fire_index([
+        tests.kml_helpers.fire_index_entry("Bug", "active", identifier="id-bug"),
+    ])
+    first_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
+    second_time = datetime.datetime(2026, 8, 7, 20, 0, tzinfo=datetime.UTC)
+    rings = tests.kml_helpers.geometry_frame(
+        [
+            ("id-bug", "Bug", tests.kml_helpers.square(1.0)),
+            ("id-bug", "Bug", tests.kml_helpers.square(2.0)),
+        ],
+        observation_times=[first_time, second_time],
+    )
+    fires = peri_scribe.kml_fire_data.fire_geometries(
+        index,
+        tests.kml_helpers.geometry_frame([]),
+        tests.kml_helpers.geometry_frame([]),
+        rings,
+    )
+    (fire,) = fires
+    assert fire.progression_rings == (
+        peri_scribe.perimeter_progression.Ring(
+            geometry=tests.kml_helpers.square(1.0),
+            observation_time=first_time,
+        ),
+        peri_scribe.perimeter_progression.Ring(
+            geometry=tests.kml_helpers.square(2.0),
+            observation_time=second_time,
+        ),
+    )
+
+
+def description_perimeter_frame() -> geopandas.GeoDataFrame:
+    """Return a perimeter history frame with attribute columns populated.
+
+    Returns:
+        The frame.
+    """
+    return geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-bug", "id-bug"],
+            "fire_name": ["Bug", "Bug"],
+            "source": ["firis_perimeter", "firis_perimeter"],
+            "mission": ["CA-BUG-1", "CA-BUG-2"],
+            "area_acres": [10.0, 20.0],
+            "percent_contained": [10.0, 20.0],
+            "estimated_cost_to_date": [1000.0, 2000.0],
+            "estimated_final_cost": [1500.0, 2500.0],
+            "discovery_time": [
+                datetime.datetime(2026, 6, 29, 12, 4, 46, tzinfo=datetime.UTC),
+                datetime.datetime(2026, 6, 29, 12, 4, 46, tzinfo=datetime.UTC),
+            ],
+            "observation_time": [
+                datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC),
+                datetime.datetime(2026, 8, 6, 20, 0, tzinfo=datetime.UTC),
+            ],
+            "source_attributes": [
+                json.dumps(
+                    {
+                        "attr_InitialResponseDateTime": "2026-07-27T19:24:00",
+                        "attr_IncidentComplexityLevel": "Type 4 Incident",
+                        "attr_PrimaryFuelModel": "Timber (Litter and Understory)",
+                        "attr_PredominantFuelModel": "GS1",
+                        "attr_PredominantFuelGroup": "Grass",
+                        "attr_FireBehaviorGeneral": "Active",
+                        "attr_FireBehaviorGeneral2": "Running",
+                        "attr_POOLandownerCategory": "Federal",
+                    },
+                ),
+                json.dumps(
+                    {
+                        "attr_InitialResponseDateTime": "2026-07-27T19:24:00",
+                        "attr_IncidentComplexityLevel": "Type 4 Incident",
+                        "attr_PrimaryFuelModel": "Timber (Litter and Understory)",
+                        "attr_PredominantFuelModel": "GS1",
+                        "attr_PredominantFuelGroup": "Grass",
+                        "attr_FireBehaviorGeneral": "Active",
+                        "attr_FireBehaviorGeneral2": "Running",
+                        "attr_POOLandownerCategory": "Federal",
+                    },
+                ),
+            ],
+        },
+        geometry=[tests.kml_helpers.square(1.0), tests.kml_helpers.square(2.0)],
+        crs="EPSG:4326",
+    )
+
+
+def description_point_frame() -> geopandas.GeoDataFrame:
+    """Return a point history frame with attribute columns populated.
+
+    Returns:
+        The frame.
+    """
+    return geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-bug"],
+            "fire_name": ["Bug"],
+            "incident_size": [30.0],
+            "percent_contained": [30.0],
+            "estimated_cost_to_date": [3000.0],
+            "estimated_final_cost": [3500.0],
+            "discovery_time": [
+                datetime.datetime(2026, 6, 29, 12, 4, 46, tzinfo=datetime.UTC),
+            ],
+            "observation_time": [
+                datetime.datetime(2026, 8, 6, 20, 0, tzinfo=datetime.UTC),
+            ],
+            "source_attributes": [
+                json.dumps(
+                    {
+                        "POOJurisdictionalUnit": "CANOD",
+                        "InitialResponseDateTime": "2026-07-27T19:24:00",
+                        "IncidentTypeCategory": "WF",
+                        "IncidentComplexityLevel": "Type 4 Incident",
+                        "FireMgmtComplexity": "Type 5 Incident",
+                        "OrganizationalAssessment": "Type 3 IC",
+                        "SecondaryFuelModel": "Brush (2 feet)",
+                        "PredominantFuelModel": "GS1",
+                        "PredominantFuelGroup": "Grass",
+                        "FireBehaviorGeneral": "Active",
+                        "FireBehaviorGeneral1": "Creeping",
+                        "FireBehaviorGeneral2": "Smoldering",
+                        "FireBehaviorGeneral3": "Smoldering",
+                    },
+                ),
+            ],
+        },
+        geometry=[shapely.geometry.Point(1.0, 1.0)],
+        crs="EPSG:4326",
+    )
+
+
+def test_fire_description_prefers_latest_perimeter_values() -> None:
+    entry = tests.kml_helpers.fire_index_entry("Bug", "active", identifier="id-bug")
+    description = peri_scribe.kml_fire_data.fire_description(
+        entry,
+        description_perimeter_frame(),
+        description_point_frame(),
+    )
+    assert description.area_in_acres == pytest.approx(20.0)
+    assert description.percent_contained == pytest.approx(20.0)
+    assert description.estimated_cost_to_date_in_dollars == pytest.approx(2000.0)
+    assert description.estimated_final_cost_in_dollars == pytest.approx(2500.0)
+    assert description.mission == "CA-BUG-2"
+    assert description.source == "FIRIS / NIFC"
+    assert description.identifier == "id-bug"
+    assert description.observation_time == datetime.datetime(
+        2026,
+        8,
+        6,
+        20,
+        0,
+        tzinfo=datetime.UTC,
+    )
+    assert description.initial_response_time == datetime.datetime(
+        2026,
+        7,
+        27,
+        19,
+        24,
+        tzinfo=datetime.UTC,
+    )
+    assert description.protecting_unit == "CANOD"
+    assert description.exterior_perimeter_in_miles == pytest.approx(551.47, rel=0.01)
+    assert description.incident_type == "WF"
+    assert (
+        description.incident_complexity == "Type 4 Incident; Type 5 Incident; Type 3 IC"
+    )
+    assert (
+        description.fuel_model
+        == "Timber (Litter and Understory); Brush (2 feet); GS1; Grass"
+    )
+    assert description.fire_behavior == "Active; Creeping; Smoldering; Running"
+    assert description.landowner_category == "Federal"
+
+
+def test_fire_description_falls_back_to_point_when_perimeter_missing() -> None:
+    entry = tests.kml_helpers.fire_index_entry("Bug", "active", identifier="id-bug")
+    empty_perimeters = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-bug"],
+            "fire_name": ["Bug"],
+            "source": [None],
+            "mission": [None],
+            "area_acres": [None],
+            "percent_contained": [None],
+            "estimated_cost_to_date": [None],
+            "estimated_final_cost": [None],
+            "discovery_time": [None],
+            "observation_time": [None],
+            "source_attributes": [json.dumps({})],
+        },
+        geometry=[tests.kml_helpers.square(1.0)],
+        crs="EPSG:4326",
+    )
+    description = peri_scribe.kml_fire_data.fire_description(
+        entry,
+        empty_perimeters,
+        description_point_frame(),
+    )
+    assert description.area_in_acres == pytest.approx(30.0)
+    assert description.percent_contained == pytest.approx(30.0)
+    assert description.estimated_cost_to_date_in_dollars == pytest.approx(3000.0)
+    assert description.estimated_final_cost_in_dollars == pytest.approx(3500.0)
+    assert description.observation_time == datetime.datetime(
+        2026,
+        8,
+        6,
+        20,
+        0,
+        tzinfo=datetime.UTC,
+    )
+    assert description.initial_response_time == datetime.datetime(
+        2026,
+        7,
+        27,
+        19,
+        24,
+        tzinfo=datetime.UTC,
+    )
+    assert description.exterior_perimeter_in_miles == pytest.approx(275.75, rel=0.01)
+    assert description.incident_type == "WF"
+    assert (
+        description.incident_complexity == "Type 4 Incident; Type 5 Incident; Type 3 IC"
+    )
+    assert description.fuel_model == "Brush (2 feet); GS1; Grass"
+    assert description.fire_behavior == "Active; Creeping; Smoldering"
+    assert description.landowner_category is None
+
+
+def test_fire_description_falls_back_to_protecting_agency() -> None:
+    entry = tests.kml_helpers.fire_index_entry("Bug", "active", identifier="id-bug")
+    point_frame = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-bug"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({"POOJurisdictionalAgency": "BLM"})],
+        },
+        geometry=[shapely.geometry.Point(1.0, 1.0)],
+        crs="EPSG:4326",
+    )
+    description = peri_scribe.kml_fire_data.fire_description(
+        entry,
+        tests.kml_helpers.geometry_frame([]),
+        point_frame,
+    )
+    assert description.protecting_unit == "BLM"
+    assert description.exterior_perimeter_in_miles is None

@@ -37,8 +37,9 @@ class Ring:
 class ProgressionBand:
     """One progression-map band: a name and the day range it covers.
 
-    `minimum_age_in_days` is the newest age (days before the latest date) in the
-    band and `maximum_age_in_days` the oldest; a None maximum means the band has no
+    ``minimum_age_in_days`` is the newest age (days before the latest date) in the
+    band and ``maximum_age_in_days`` the oldest; a None maximum means the band
+    has no upper bound and covers every ring older than the minimum. The band names
     oldest age ("128+ Days Before That").
     """
 
