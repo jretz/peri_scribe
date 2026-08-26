@@ -38,17 +38,18 @@ def fire_folder(
 ) -> None:
     """Add the folder symbolizing *fire* to *container*.
 
-    The folder holds the fire's point location, an ``Interior`` folder holding the
-    growth rings filling its interior, and its latest, penultimate, and antepenultimate
-    perimeters, each shown when the fire's history has one. A fire with more than one
+    The folder leads with the fire's point location, then a "Progression" tour when the
+    fire has interior polygons, then its latest, penultimate, and antepenultimate
+    perimeters, each shown when the fire's history has one, and finally an ``Interior``
+    folder holding the growth rings filling its interior. A fire with more than one
     perimeter holds its outline perimeters in a ``Perimeters`` folder; a fire with a
     single perimeter shows it directly. The interior is drawn from the fire's difference
     rings rather than its complete latest perimeter, so the rings show the interior
     growing; a fire whose rings carry no observation times falls back to its complete
-    latest perimeter. A "Progression" tour leads the folder when it has interior
-    polygons, replaying the rings oldest first. Draw orders put the filled latest area
-    on the bottom, stack the outline perimeters from oldest to newest, and draw the
-    point location last so its icon is never covered.
+    latest perimeter. The interior lists its rings newest first while the tour replays
+    them oldest first. Draw orders put the filled latest area on the bottom, stack the
+    outline perimeters from oldest to newest, and draw the point location last so its
+    icon is never covered.
 
     Args:
         container: The folder that holds the fire's folder.
@@ -69,8 +70,6 @@ def fire_folder(
         ring_times = (fire.perimeters[-1].observation_time,)
     else:
         ring_times = ()
-    if ring_times:
-        peri_scribe.kml_tour.progression_tour(folder, ring_times)
     if fire.point is not None:
         peri_scribe.kml_geometry.point_placemark(
             folder,
@@ -80,13 +79,36 @@ def fire_folder(
             peri_scribe.kml_template.point_draw_order(outline_count),
             description=fire.description,
         )
+    if ring_times:
+        peri_scribe.kml_tour.progression_tour(folder, ring_times)
+    perimeters_folder = folder
+    if outline_count > 1:
+        perimeters_folder = folder.newfolder(name=PERIMETERS_FOLDER_NAME)
+        perimeters_folder.liststyle.itemicon.href = (
+            peri_scribe.kml_icons.perimeters_icon_filename()
+        )
+    for index, template in enumerate(
+        peri_scribe.kml_template.OUTLINED_PERIMETER_TEMPLATES,
+    ):
+        if len(fire.perimeters) <= index:
+            break
+        perimeter = fire.perimeters[-(index + 1)]
+        peri_scribe.kml_geometry.perimeter_placemark(
+            perimeters_folder,
+            peri_scribe.kml_tour.mapping_placemark_name(perimeter.observation_time),
+            style_urls[template.name],
+            perimeter.geometry,
+            peri_scribe.kml_template.outline_draw_order(outline_count, index),
+            description=fire.description,
+        )
     if interior_rings or fire.perimeters:
         interior_folder = folder.newfolder(name=INTERIOR_FOLDER_NAME)
         interior_folder.liststyle.itemicon.href = (
             peri_scribe.kml_icons.interior_icon_filename()
         )
         if interior_rings:
-            for index, ring in enumerate(interior_rings):
+            for index in range(len(interior_rings) - 1, -1, -1):
+                ring = interior_rings[index]
                 placemark = peri_scribe.kml_geometry.perimeter_placemark(
                     interior_folder,
                     peri_scribe.kml_tour.interior_placemark_name(ring.observation_time),
@@ -115,26 +137,6 @@ def fire_folder(
                 placemark,
                 peri_scribe.kml_tour.interior_ring_id(folder, 0),
             )
-    perimeters_folder = folder
-    if outline_count > 1:
-        perimeters_folder = folder.newfolder(name=PERIMETERS_FOLDER_NAME)
-        perimeters_folder.liststyle.itemicon.href = (
-            peri_scribe.kml_icons.perimeters_icon_filename()
-        )
-    for index, template in enumerate(
-        peri_scribe.kml_template.OUTLINED_PERIMETER_TEMPLATES,
-    ):
-        if len(fire.perimeters) <= index:
-            break
-        perimeter = fire.perimeters[-(index + 1)]
-        peri_scribe.kml_geometry.perimeter_placemark(
-            perimeters_folder,
-            peri_scribe.kml_tour.mapping_placemark_name(perimeter.observation_time),
-            style_urls[template.name],
-            perimeter.geometry,
-            peri_scribe.kml_template.outline_draw_order(outline_count, index),
-            description=fire.description,
-        )
 
 
 def latest_perimeters_folder(
@@ -167,13 +169,14 @@ def progression_folder(
     one subfolder per day range it covers; each subfolder holds the fire's growth rings
     from that range, styled by the range's color and marked with a colored icon. A fire
     with no growth rings holds just its point location, so every fire appears in this
-    folder exactly as it does in the latest-perimeters folder. A "Progression" tour
-    leads the fire folder when it has rings, replaying them oldest first exactly as the
-    latest-perimeters folder does, but its animated updates target the rings inside the
-    day-range subfolders rather than rings in the same folder. Draw orders put the
-    oldest ring on the bottom, stack the rings from oldest to newest, and draw the point
-    location last so its icon is never covered. The folder loads unchecked, along with
-    everything beneath it, so the progression maps stay hidden until they are enabled.
+    folder exactly as it does in the latest-perimeters folder. The fire folder leads
+    with its point location, then a "Progression" tour when it has rings, replaying them
+    oldest first exactly as the latest-perimeters folder does, but its animated updates
+    target the rings inside the day-range subfolders rather than rings in the same
+    folder. Draw orders put the oldest ring on the bottom, stack the rings from oldest
+    to newest, and draw the point location last so its icon is never covered. The folder
+    loads unchecked, along with everything beneath it, so the progression maps stay
+    hidden until they are enabled.
 
     Args:
         container: The folder that holds the progression maps folder.
@@ -193,8 +196,6 @@ def progression_folder(
             for ring in fire.progression_rings
             if ring.observation_time is not None
         )
-        if ring_times:
-            peri_scribe.kml_tour.progression_tour(fire_folder, ring_times)
         ring_count = sum(len(band.rings) for band in bands)
         if fire.point is not None:
             peri_scribe.kml_geometry.point_placemark(
@@ -205,6 +206,8 @@ def progression_folder(
                 ring_count,
                 description=fire.description,
             )
+        if ring_times:
+            peri_scribe.kml_tour.progression_tour(fire_folder, ring_times)
         for position, band in enumerate(bands):
             subfolder = fire_folder.newfolder(name=band.label)
             subfolder.liststyle.itemicon.href = (

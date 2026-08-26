@@ -57,6 +57,7 @@ def test_fire_folder_includes_point_and_progression(
         "Bug",
     )
     assert tests.kml_helpers.placemark_names(folder) == ["Bug"]
+    assert tests.kml_helpers.folder_names(folder) == ["Perimeters", "Interior"]
     perimeters_folder = tests.kml_helpers.folder_named(folder, "Perimeters")
     assert tests.kml_helpers.placemark_names(perimeters_folder) == [
         "08/05 13:30 Perimeter",
@@ -184,8 +185,8 @@ def test_fire_folder_draws_interior_from_difference_rings(
     ]
     interior_folder = tests.kml_helpers.folder_named(folder, "Interior")
     assert tests.kml_helpers.placemark_names(interior_folder) == [
-        "08/05 13:00 Interior",
         "08/07 13:00 Interior",
+        "08/05 13:00 Interior",
     ]
     first_interior = tests.kml_helpers.placemark_named(
         interior_folder,
@@ -269,7 +270,7 @@ def test_fire_folder_without_point_or_perimeters_is_empty(
     assert tests.kml_helpers.folder_names(folder) == []
 
 
-def test_fire_folder_leads_with_progression_tour(
+def test_fire_folder_lists_point_tour_and_interior_in_order(
     style_urls: dict[str, str],
 ) -> None:
     first_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
@@ -306,7 +307,17 @@ def test_fire_folder_leads_with_progression_tour(
             tests.kml_helpers.gx_tag("Tour"),
         }
     ]
-    assert features[0].tag == tests.kml_helpers.gx_tag("Tour")
+    assert [
+        (
+            feature.tag,
+            feature.findtext(tests.kml_helpers.kml_tag("name")),
+        )
+        for feature in features
+    ] == [
+        (tests.kml_helpers.kml_tag("Placemark"), "Bug"),
+        (tests.kml_helpers.gx_tag("Tour"), "Progression"),
+        (tests.kml_helpers.kml_tag("Folder"), "Interior"),
+    ]
     tour = tests.kml_helpers.tour_named(bug_folder, "Progression")
     updates = tests.kml_helpers.tour_primitives(
         tour,
@@ -570,7 +581,7 @@ def test_progression_folder_holds_point_and_ring_folders(
     }
 
 
-def test_progression_folder_leads_with_progression_tour(
+def test_progression_folder_lists_point_tour_and_ring_folders_in_order(
     style_urls: dict[str, str],
 ) -> None:
     first_time = datetime.datetime(2026, 8, 13, 20, 0, tzinfo=datetime.UTC)
@@ -613,7 +624,18 @@ def test_progression_folder_leads_with_progression_tour(
             tests.kml_helpers.gx_tag("Tour"),
         }
     ]
-    assert features[0].tag == tests.kml_helpers.gx_tag("Tour")
+    assert [
+        (
+            feature.tag,
+            feature.findtext(tests.kml_helpers.kml_tag("name")),
+        )
+        for feature in features
+    ] == [
+        (tests.kml_helpers.kml_tag("Placemark"), "Bug"),
+        (tests.kml_helpers.gx_tag("Tour"), "Progression"),
+        (tests.kml_helpers.kml_tag("Folder"), "08/15"),
+        (tests.kml_helpers.kml_tag("Folder"), "08/13 - 08/14"),
+    ]
     tour = tests.kml_helpers.tour_named(bug_folder, "Progression")
     updates = tests.kml_helpers.tour_primitives(
         tour,

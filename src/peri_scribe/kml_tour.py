@@ -188,8 +188,9 @@ def progression_tour(
     observations at the tour's playback rate before revealing each next ring, and holds
     the final frame for two seconds. The playback rate is one second per day for fires
     spanning at most MAX_TOUR_PLAYBACK_IN_SECONDS days, and faster for longer fires so
-    the whole progression takes about MAX_TOUR_PLAYBACK_IN_SECONDS. It is added before
-    the folder's placemarks so it leads them.
+    the whole progression takes about MAX_TOUR_PLAYBACK_IN_SECONDS. Callers place it
+    where they want it in the folder; it targets the rings by their placemark ids, so
+    the rings' listing order does not affect it.
 
     Args:
         folder: The fire folder that holds the tour.
