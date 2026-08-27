@@ -34,7 +34,7 @@ def test_full_pipeline_runs_all_steps_when_fetch_changed(
     )
     assert result.exit_code == 0
     year_directory = pathlib.Path("data/2026")
-    assert stubs.ensure_boundary_calls == [None]
+    assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == [year_directory]
     assert stubs.kmz_calls == [year_directory]
 
@@ -49,7 +49,7 @@ def test_full_pipeline_defaults_to_current_year_directory(
     assert result.exit_code == 0
     year_directory = BASE_DIRECTORY / "data" / "2026"
     assert stubs.fetch_calls == [(BASE_DIRECTORY, 2026, False)]
-    assert stubs.ensure_boundary_calls == [None]
+    assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == [year_directory]
     assert stubs.kmz_calls == [year_directory]
 
@@ -79,7 +79,7 @@ def test_full_pipeline_force_runs_remaining_steps_when_fetch_unchanged(
     )
     assert result.exit_code == 0
     year_directory = BASE_DIRECTORY / "data" / "2026"
-    assert stubs.ensure_boundary_calls == [None]
+    assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == [year_directory]
     assert stubs.kmz_calls == [year_directory]
 
@@ -97,7 +97,7 @@ def test_full_pipeline_full_fetches_every_feed_in_full(
     assert result.exit_code == 0
     year_directory = BASE_DIRECTORY / "data" / "2026"
     assert stubs.fetch_calls == [(BASE_DIRECTORY, 2026, True)]
-    assert stubs.ensure_boundary_calls == [None]
+    assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == [year_directory]
     assert stubs.kmz_calls == [year_directory]
 
@@ -149,7 +149,7 @@ def test_full_pipeline_stops_when_a_step_fails(
     result = runner.invoke(peri_scribe.main.cli, ["full-pipeline"])
     assert result.exit_code == 1
     assert isinstance(result.exception, ValueError)
-    assert stubs.ensure_boundary_calls == [None]
+    assert stubs.ensure_boundary_calls == [BASE_DIRECTORY / "data" / "2026"]
     assert stubs.history_calls == []
     assert stubs.kmz_calls == []
 

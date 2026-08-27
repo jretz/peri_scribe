@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import collections
+import datetime
 import itertools
 import operator
 import pathlib
@@ -20,6 +21,7 @@ import peri_scribe.exceptions
 import peri_scribe.geo_data
 import peri_scribe.models
 import peri_scribe.output
+import peri_scribe.snapshots
 import peri_scribe.units
 
 
@@ -45,7 +47,7 @@ NEIGHBOR_STATES = [us.states.AZ, us.states.NV, us.states.OR]
 CALIFORNIA_WHERE_CLAUSE = "STATE_ABBR='CA'"
 NEIGHBOR_WHERE_CLAUSE = "STATE_ABBR IN ('AZ','NV','OR')"
 
-OUTPUT_DIRECTORY_NAME = "administrative_boundaries"
+OUTPUT_DIRECTORY_NAME = peri_scribe.snapshots.ADMINISTRATIVE_BOUNDARIES_DIRECTORY_NAME
 BOUNDARY_OUTPUT_FILENAME = "CA_border_with_AZ_NV_and_OR.gpkg"
 OUTPUT_LAYER_NAME = "CA_border_with_AZ_NV_and_OR"
 
@@ -81,18 +83,17 @@ CALIFORNIA_BOX_WESTERN_LONGITUDE = -126.0
 BORDER_PATH_ENDPOINT_COUNT = 2
 
 
-def output_geopackage_path(base_dir: pathlib.Path) -> pathlib.Path:
-    """Return the path of the administrative boundary GeoPackage under *base_dir*.
+def output_geopackage_path(year_directory: pathlib.Path) -> pathlib.Path:
+    """Return the path of the administrative boundary GeoPackage.
 
     Args:
-        base_dir: The base directory that holds the ``data`` directory.
+        year_directory: The year directory that holds the ``sources`` directory.
 
     Returns:
         The path to the California border GeoPackage.
     """
     return (
-        base_dir
-        / peri_scribe.output.DATA_DIRECTORY
+        peri_scribe.snapshots.sources_directory_path(year_directory)
         / OUTPUT_DIRECTORY_NAME
         / BOUNDARY_OUTPUT_FILENAME
     )
@@ -383,7 +384,7 @@ def is_usable(path: pathlib.Path) -> bool:
 
 
 def ensure_administrative_boundaries(
-    base_dir: pathlib.Path | None = None,
+    year_directory: pathlib.Path | None = None,
 ) -> pathlib.Path:
     """Ensure the California border GeoPackage exists and is usable.
 
@@ -391,11 +392,12 @@ def ensure_administrative_boundaries(
     Otherwise the border is rebuilt: California's polygon is fetched from the California
     service, the neighboring states' polygons are fetched from the same-source
     generalized states layer, the shared border portions are computed, and the result is
-    written to ``data/administrative_boundaries/``.
+    written to ``sources/administrative_boundaries/`` under *year_directory*.
 
     Args:
-        base_dir: Directory under which the ``data`` directory tree is created.
-            Defaults to the current working directory.
+        year_directory: The year directory that holds the ``sources`` directory.
+            Defaults to the current year's data directory under the current working
+            directory.
 
     Returns:
         The path to the California border GeoPackage.
@@ -403,9 +405,12 @@ def ensure_administrative_boundaries(
     Raises:
         AdministrativeBoundariesError: If the boundary cannot be fetched or computed.
     """
-    if base_dir is None:
-        base_dir = pathlib.Path.cwd()
-    output_path = output_geopackage_path(base_dir)
+    if year_directory is None:
+        year_directory = peri_scribe.snapshots.year_directory_path(
+            pathlib.Path.cwd(),
+            datetime.date.today().year,
+        )
+    output_path = output_geopackage_path(year_directory)
     if is_usable(output_path):
         logger.debug("Administrative boundaries already present", path=output_path)
         return output_path
@@ -441,7 +446,7 @@ def ensure_administrative_boundaries(
 
 
 def load_border_geometry(
-    base_dir: pathlib.Path,
+    year_directory: pathlib.Path,
 ) -> shapely.Geometry:
     """Return the California border lines from the stored GeoPackage.
 
@@ -449,12 +454,12 @@ def load_border_geometry(
     LineString when they collapse into one part), in WGS84.
 
     Args:
-        base_dir: The base directory that holds the ``data`` directory.
+        year_directory: The year directory that holds the ``sources`` directory.
 
     Returns:
         The California border lines in WGS84.
     """
-    path = output_geopackage_path(base_dir)
+    path = output_geopackage_path(year_directory)
     dataframe = geopandas.read_file(path, layer=OUTPUT_LAYER_NAME)
     parts = [
         part

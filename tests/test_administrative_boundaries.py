@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import pathlib
 import typing
 
@@ -12,6 +13,7 @@ import pyproj
 import pytest
 import shapely.geometry
 import structlog
+import time_machine
 
 import peri_scribe.administrative_boundaries
 import peri_scribe.exceptions
@@ -179,7 +181,7 @@ def stub_border_file(
     monkeypatch.setattr(
         peri_scribe.administrative_boundaries,
         "output_geopackage_path",
-        lambda _base_dir: pathlib.Path("/data/border.gpkg"),
+        lambda _year_directory: pathlib.Path("/data/border.gpkg"),
     )
     monkeypatch.setattr(
         peri_scribe.administrative_boundaries.geopandas,
@@ -194,7 +196,7 @@ def test_output_geopackage_path() -> None:
     )
     assert path == (
         BASE_DIRECTORY
-        / "data"
+        / "sources"
         / "administrative_boundaries"
         / "CA_border_with_AZ_NV_and_OR.gpkg"
     )
@@ -636,7 +638,6 @@ def test_ensure_administrative_boundaries_builds_when_file_unusable(
         "is_usable",
         lambda _path: False,
     )
-    monkeypatch.setattr(pathlib.Path, "cwd", staticmethod(lambda: BASE_DIRECTORY))
     monkeypatch.setattr(
         peri_scribe.administrative_boundaries.arcgis.gis,
         "GIS",
@@ -664,7 +665,9 @@ def test_ensure_administrative_boundaries_builds_when_file_unusable(
     output_path = peri_scribe.administrative_boundaries.output_geopackage_path(
         BASE_DIRECTORY,
     )
-    result = peri_scribe.administrative_boundaries.ensure_administrative_boundaries()
+    result = peri_scribe.administrative_boundaries.ensure_administrative_boundaries(
+        BASE_DIRECTORY,
+    )
     assert result == output_path
     assert geo_package_store.has(output_path)
     written = geo_package_store.layer(output_path, OUTPUT_LAYER_NAME)
@@ -687,7 +690,6 @@ def test_ensure_administrative_boundaries_raises_when_fetch_fails(
         "is_usable",
         lambda _path: False,
     )
-    monkeypatch.setattr(pathlib.Path, "cwd", staticmethod(lambda: BASE_DIRECTORY))
     monkeypatch.setattr(
         peri_scribe.administrative_boundaries.arcgis.gis,
         "GIS",
@@ -702,7 +704,31 @@ def test_ensure_administrative_boundaries_raises_when_fetch_fails(
         peri_scribe.exceptions.AdministrativeBoundariesError,
         match="Failed to build administrative boundaries: boom",
     ):
-        peri_scribe.administrative_boundaries.ensure_administrative_boundaries()
+        peri_scribe.administrative_boundaries.ensure_administrative_boundaries(
+            BASE_DIRECTORY,
+        )
+
+
+def test_ensure_administrative_boundaries_defaults_to_current_year_directory(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.administrative_boundaries,
+        "is_usable",
+        lambda _path: True,
+    )
+    monkeypatch.setattr(
+        pathlib.Path,
+        "cwd",
+        staticmethod(lambda: BASE_DIRECTORY),
+    )
+    with time_machine.travel(datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)):
+        result = (
+            peri_scribe.administrative_boundaries.ensure_administrative_boundaries()
+        )
+    assert result == peri_scribe.administrative_boundaries.output_geopackage_path(
+        BASE_DIRECTORY / "data" / "2026",
+    )
 
 
 def test_load_border_geometry_returns_stored_lines(

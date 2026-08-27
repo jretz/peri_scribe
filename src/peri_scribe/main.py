@@ -9,6 +9,7 @@ import click
 import structlog
 
 import peri_scribe.administrative_boundaries
+import peri_scribe.external_sources
 import peri_scribe.feeds
 import peri_scribe.fetching
 import peri_scribe.fire_differential
@@ -150,10 +151,156 @@ def index_fire_sources(year_directory: pathlib.Path | None = None) -> None:
     peri_scribe.fire_index.index_fire_sources(year_directory)
 
 
-@cli.command()
-def ensure_admin_boundaries() -> None:
+@cli.command(
+    help=(
+        "Ensure the California administrative boundary is available.\n\n"
+        "Writes or reuses the boundary GeoPackage under "
+        "YEAR_DIRECTORY/sources/administrative_boundaries. "
+        f"{year_directory_default_help()}"
+    ),
+)
+@click.argument(
+    "year_directory",
+    type=click.Path(
+        path_type=pathlib.Path,
+        exists=True,
+        file_okay=False,
+    ),
+    required=False,
+)
+def ensure_admin_boundaries(year_directory: pathlib.Path | None = None) -> None:
     """Ensure needed administrative boundaries are available."""
-    peri_scribe.administrative_boundaries.ensure_administrative_boundaries()
+    if year_directory is None:
+        year_directory = default_year_directory()
+    peri_scribe.administrative_boundaries.ensure_administrative_boundaries(
+        year_directory,
+    )
+
+
+def fetch_external_source(
+    source: peri_scribe.external_sources.ExternalSource,
+    year_directory: pathlib.Path | None,
+) -> None:
+    """Fetch *source* into *year_directory*, resolving the default directory."""
+    if year_directory is None:
+        year_directory = default_year_directory()
+    paths = peri_scribe.external_sources.fetch_external_source(
+        source,
+        year_directory,
+    )
+    logger.info(
+        "Fetched external source",
+        source=source.name,
+        paths=paths,
+    )
+
+
+@cli.command(
+    help=(
+        "Fetch building centroids into YEAR_DIRECTORY.\n\n"
+        "Reads the per-state download links from the Microsoft USBuildingFootprints "
+        "repository page, downloads every US state's building-footprint archive, "
+        "converts each footprint to its centroid point, and combines all of the "
+        "points into a single GeoPackage at "
+        "YEAR_DIRECTORY/sources/buildings/buildings.gpkg. An existing combined "
+        "GeoPackage is left in place, and then neither the repository page nor any "
+        "archive is downloaded. "
+        f"{year_directory_default_help()}"
+    ),
+)
+@click.argument(
+    "year_directory",
+    type=click.Path(
+        path_type=pathlib.Path,
+        exists=True,
+        file_okay=False,
+    ),
+    required=False,
+)
+def fetch_buildings(year_directory: pathlib.Path | None = None) -> None:
+    """Fetch building footprints for the year directory."""
+    fetch_external_source(
+        peri_scribe.external_sources.BUILDINGS_SOURCE,
+        year_directory,
+    )
+
+
+@cli.command(
+    help=(
+        "Fetch California evacuation zones into YEAR_DIRECTORY.\n\n"
+        "Queries the Cal OES evacuation aggregation layer and stores a snapshot "
+        "under YEAR_DIRECTORY/sources/evacuations whenever the layer's data "
+        "changes, keeping the season's history. "
+        f"{year_directory_default_help()}"
+    ),
+)
+@click.argument(
+    "year_directory",
+    type=click.Path(
+        path_type=pathlib.Path,
+        exists=True,
+        file_okay=False,
+    ),
+    required=False,
+)
+def fetch_evacuations(year_directory: pathlib.Path | None = None) -> None:
+    """Fetch evacuation zones for the year directory."""
+    fetch_external_source(
+        peri_scribe.external_sources.EVACUATIONS_SOURCE,
+        year_directory,
+    )
+
+
+@cli.command(
+    help=(
+        "Fetch NWS Red Flag Warnings into YEAR_DIRECTORY.\n\n"
+        "Queries the NWS watches-and-warnings layer for Red Flag Warnings and Fire "
+        "Weather Watches and stores a snapshot under "
+        "YEAR_DIRECTORY/sources/red_flag_warnings whenever the layer's data "
+        "changes, keeping the season's history. "
+        f"{year_directory_default_help()}"
+    ),
+)
+@click.argument(
+    "year_directory",
+    type=click.Path(
+        path_type=pathlib.Path,
+        exists=True,
+        file_okay=False,
+    ),
+    required=False,
+)
+def fetch_red_flag_warnings(year_directory: pathlib.Path | None = None) -> None:
+    """Fetch Red Flag Warnings for the year directory."""
+    fetch_external_source(
+        peri_scribe.external_sources.RED_FLAG_WARNINGS_SOURCE,
+        year_directory,
+    )
+
+
+@cli.command(
+    help=(
+        "Fetch the wildland-urban interface (WUI) data into YEAR_DIRECTORY.\n\n"
+        "Downloads the conterminous-US WUI file geodatabase archive, extracts "
+        "it, and converts it to a GeoPackage under YEAR_DIRECTORY/sources/wui. "
+        f"{year_directory_default_help()}"
+    ),
+)
+@click.argument(
+    "year_directory",
+    type=click.Path(
+        path_type=pathlib.Path,
+        exists=True,
+        file_okay=False,
+    ),
+    required=False,
+)
+def fetch_wui(year_directory: pathlib.Path | None = None) -> None:
+    """Fetch wildland-urban interface data for the year directory."""
+    fetch_external_source(
+        peri_scribe.external_sources.WUI_SOURCE,
+        year_directory,
+    )
 
 
 @cli.command(
@@ -273,7 +420,9 @@ def full_pipeline(
     if not result.changed and not force:
         logger.debug("Nothing changed; skipping remaining pipeline steps")
         return
-    peri_scribe.administrative_boundaries.ensure_administrative_boundaries()
+    peri_scribe.administrative_boundaries.ensure_administrative_boundaries(
+        year_directory,
+    )
     peri_scribe.fire_differential.write_history_of_differential_geography(
         year_directory,
     )

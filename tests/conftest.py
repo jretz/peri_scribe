@@ -660,8 +660,8 @@ def full_pipeline_stubs(
         monkeypatch.setattr(
             peri_scribe.administrative_boundaries,
             "ensure_administrative_boundaries",
-            lambda base_directory=None: stubs.ensure_boundary_calls.append(
-                base_directory,
+            lambda year_directory=None: stubs.ensure_boundary_calls.append(
+                year_directory,
             ),
         )
         monkeypatch.setattr(

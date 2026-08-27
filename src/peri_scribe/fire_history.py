@@ -533,7 +533,7 @@ def write_history_of_full_geography(
     record_groups = peri_scribe.fire_sources.group_fire_sources(read)
     classifications = peri_scribe.classification.classify_fire_sources(
         record_groups,
-        year_directory.parent.parent,
+        year_directory,
     )
     perimeter_rows, point_rows = history_layer_rows(
         record_groups,

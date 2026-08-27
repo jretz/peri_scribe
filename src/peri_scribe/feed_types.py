@@ -40,6 +40,53 @@ def fetch_layer_metadata(url: str) -> object:
     return response.json()
 
 
+def observe_layer_last_edit_timestamp(url: str, name: str) -> int | None:
+    """Observe and return the layer's ``editingInfo.lastEditDate`` value.
+
+    The timestamp is in epoch milliseconds. The server only updates it when the data is
+    actually edited. Transient network failures and rate-limit responses are retried
+    before giving up.
+
+    Args:
+        url: The layer's REST endpoint URL.
+        name: Human-readable layer identifier for log messages.
+
+    Returns:
+        The observed last-edit timestamp, or None when an observation fails.
+    """
+    try:
+        payload = peri_scribe.retry.run_with_retry(
+            name,
+            lambda: fetch_layer_metadata(url),
+        )
+    except (requests.exceptions.RequestException, ValueError) as error:
+        logger.warning(
+            "Last-edit timestamp check failed",
+            url=url,
+            error=str(error),
+        )
+        return None
+    if not isinstance(payload, dict):
+        logger.warning(
+            "Last-edit timestamp check failed",
+            url=url,
+            error="unexpected response shape",
+        )
+        return None
+    editing_info = payload.get("editingInfo")
+    last_edit = (
+        editing_info.get("lastEditDate") if isinstance(editing_info, dict) else None
+    )
+    if last_edit is None:
+        logger.warning(
+            "Last-edit timestamp check failed",
+            url=url,
+            error="no editingInfo.lastEditDate",
+        )
+        return None
+    return int(last_edit)
+
+
 @typing.runtime_checkable
 class Feed(typing.Protocol):
     """Minimal interface for a feed that provides layer data.
@@ -160,42 +207,7 @@ class ArcGISFeed(pydantic.BaseModel):
     def current_last_edit_timestamp(self) -> int | None:
         """Observe and return the last-edit timestamp for this feed's layer.
 
-        The timestamp is the layer's ``editingInfo.lastEditDate`` value, in epoch
-        milliseconds. The server only updates that timestamp when the data is actually
-        edited. Transient network failures and rate-limit responses are retried before
-        giving up.
-
         Returns:
             The observed last-edit timestamp, or None when an observation fails.
         """
-        try:
-            payload = peri_scribe.retry.run_with_retry(
-                self.name,
-                lambda: fetch_layer_metadata(self.url),
-            )
-        except (requests.exceptions.RequestException, ValueError) as error:
-            logger.warning(
-                "Last-edit timestamp check failed",
-                url=self.url,
-                error=str(error),
-            )
-            return None
-        if not isinstance(payload, dict):
-            logger.warning(
-                "Last-edit timestamp check failed",
-                url=self.url,
-                error="unexpected response shape",
-            )
-            return None
-        editing_info = payload.get("editingInfo")
-        last_edit = (
-            editing_info.get("lastEditDate") if isinstance(editing_info, dict) else None
-        )
-        if last_edit is None:
-            logger.warning(
-                "Last-edit timestamp check failed",
-                url=self.url,
-                error="no editingInfo.lastEditDate",
-            )
-            return None
-        return int(last_edit)
+        return observe_layer_last_edit_timestamp(self.url, self.name)

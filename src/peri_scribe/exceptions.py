@@ -15,6 +15,10 @@ class AdministrativeBoundariesError(ValueError):
     """Raised when administrative boundary data cannot be produced."""
 
 
+class ExternalDataError(ValueError):
+    """Raised when an external (non-fire) dataset cannot be retrieved."""
+
+
 class NoSpatialReferenceError(ValueError):
     """Raised when a layer's spatial reference cannot be determined."""
 

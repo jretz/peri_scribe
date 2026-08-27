@@ -142,7 +142,7 @@ def index_fire_sources(year_directory: pathlib.Path) -> None:
     record_groups = peri_scribe.fire_sources.fire_record_groups(sources_directory)
     classifications = peri_scribe.classification.classify_fire_sources(
         record_groups,
-        year_directory.parent.parent,
+        year_directory,
     )
     index = fire_index_document(
         fire_index_entries(

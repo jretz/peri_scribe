@@ -41,7 +41,7 @@ def classify_fire_group(
 
 def classify_fire_sources(
     record_groups: peri_scribe.fire_sources.FireRecordGroups,
-    base_dir: pathlib.Path,
+    year_directory: pathlib.Path,
 ) -> dict[int, peri_scribe.models.FireClassification]:
     """Classify each non-complex fire relative to the California boundary.
 
@@ -51,7 +51,7 @@ def classify_fire_sources(
 
     Args:
         record_groups: The grouped fire records.
-        base_dir: The base directory that holds the administrative boundary data.
+        year_directory: The year directory that holds the administrative boundary data.
 
     Returns:
         Each non-complex fire's classification, keyed by the fire object's identity.
@@ -61,7 +61,7 @@ def classify_fire_sources(
         return {}
     try:
         boundaries = peri_scribe.california_border_classification.load_boundaries(
-            base_dir,
+            year_directory,
         )
     except (OSError, RuntimeError, ValueError) as error:
         logger.warning("Skipping border classification", error=str(error))

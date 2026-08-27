@@ -207,16 +207,16 @@ def reproject_to_california_albers(
     )
 
 
-def load_boundaries(base_dir: pathlib.Path) -> Boundaries:
+def load_boundaries(year_directory: pathlib.Path) -> Boundaries:
     """Load the California box and the interstate border, in California Albers.
 
     Args:
-        base_dir: The base directory that holds the ``data`` directory.
+        year_directory: The year directory that holds the ``sources`` directory.
 
     Returns:
         The California box and the interstate border in California Albers.
     """
-    border = peri_scribe.administrative_boundaries.load_border_geometry(base_dir)
+    border = peri_scribe.administrative_boundaries.load_border_geometry(year_directory)
     box = peri_scribe.administrative_boundaries.california_box_polygon(border)
     return Boundaries(
         box=reproject_to_california_albers(box, 4326),

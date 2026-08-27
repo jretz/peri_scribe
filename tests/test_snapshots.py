@@ -177,6 +177,20 @@ def test_geo_package_files_returns_empty_list_without_directory(
     assert peri_scribe.snapshots.geo_package_files(pathlib.Path("/missing")) == []
 
 
+def test_geo_package_files_skips_auxiliary_directories(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = pathlib.Path("/data/sources")
+    keep = directory / "Feed_0" / "000000,lastEdit=a.gpkg"
+    boundary = directory / "administrative_boundaries" / "CA_border.gpkg"
+    evacuations = directory / "evacuations" / "evacuations.gpkg"
+    stub_directory(
+        monkeypatch,
+        [keep, boundary, evacuations],
+    )
+    assert peri_scribe.snapshots.geo_package_files(directory) == [keep]
+
+
 def test_geo_package_files_raises_system_exit_when_tree_cannot_be_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

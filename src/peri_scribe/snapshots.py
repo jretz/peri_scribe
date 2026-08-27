@@ -13,6 +13,23 @@ SOURCES_DIRECTORY_NAME = "sources"
 SOURCES_COMPLETE_DIRECTORY_NAME = "sources-complete"
 FIRE_INDEX_FILENAME = "fires.json"
 
+# The directory under ``sources`` that holds the computed administrative boundary
+# GeoPackage, which is not a fire-source snapshot.
+ADMINISTRATIVE_BOUNDARIES_DIRECTORY_NAME = "administrative_boundaries"
+
+# Directories under ``sources`` that hold auxiliary data rather than fire-source
+# snapshots. Fire-source reading skips these, so non-fire GeoPackages (the computed
+# California border and retrieved external datasets) are never mistaken for fire data.
+AUXILIARY_DIRECTORY_NAMES = frozenset(
+    {
+        ADMINISTRATIVE_BOUNDARIES_DIRECTORY_NAME,
+        "buildings",
+        "evacuations",
+        "red_flag_warnings",
+        "wui",
+    },
+)
+
 # The prefix that turns a source layer's ``editingInfo.lastEditDate`` value into the
 # timestamp stored in a snapshot filename.
 LAST_EDIT_TIMESTAMP_PREFIX = "lastEdit="
@@ -134,11 +151,13 @@ def existing_source_files(directory: pathlib.Path) -> list[SourceFile]:
 
 
 def geo_package_files(directory: pathlib.Path) -> list[pathlib.Path]:
-    """Return the GeoPackage files under *directory*, in sorted order.
+    """Return the fire-source GeoPackage files under *directory*, in sorted order.
 
     The directory tree is searched recursively, so snapshots stored under
-    ``sources/{feed}/{serial}.gpkg`` are all found. Sorting makes the order
-    deterministic: feed directories by name, then snapshots by serial number.
+    ``sources/{feed}/{serial}.gpkg`` are all found. Auxiliary directories (the
+    administrative boundaries and retrieved external datasets) are skipped, since their
+    GeoPackages are not fire-source snapshots. Sorting makes the order deterministic:
+    feed directories by name, then snapshots by serial number.
 
     Args:
         directory: The directory tree to search.
@@ -153,10 +172,15 @@ def geo_package_files(directory: pathlib.Path) -> list[pathlib.Path]:
     if not directory.is_dir():
         return []
     try:
-        return sorted(directory.rglob("*.gpkg"))
+        paths = sorted(directory.rglob("*.gpkg"))
     except OSError as error:
         message = f"Failed to read {directory}: {error}"
         raise SystemExit(message) from error
+    return [
+        path
+        for path in paths
+        if path.relative_to(directory).parts[0] not in AUXILIARY_DIRECTORY_NAMES
+    ]
 
 
 def snapshot_path_for_last_edit_timestamp(
