@@ -22,10 +22,13 @@ geodatabase) or as one archive per state (the building footprints). A combined s
 (the building footprints) concatenates the per-state results into a single GeoPackage
 and keeps no other files; the building-footprint source reduces each footprint polygon
 to a centroid point and keeps no attributes, since only the buildings' locations are
-wanted. The original archives are not kept once converted. The building footprints'
-per-state archive links are not constructed from a URL pattern; they are read from the
-"Download links" table on the dataset's repository page whenever the archives are
-downloaded, so a change in the link scheme is picked up automatically.
+wanted. Downloads are converted in bounded chunks — a GeoJSON archive is parsed one
+feature at a time with ``ijson`` and any other vector data is read in chunks — so a
+source of any size is converted without loading the whole file into memory. The original
+archives are not kept once converted. The building footprints' per-state archive links
+are not constructed from a URL pattern; they are read from the "Download links" table on
+the dataset's repository page whenever the archives are downloaded, so a change in the
+link scheme is picked up automatically.
 
 The fire-source reader skips these directories, so their GeoPackages are never mistaken
 for fire snapshots.
@@ -41,6 +44,7 @@ import math
 import pathlib
 import tempfile
 import time
+import typing
 import urllib.parse
 import zipfile
 from collections.abc import Callable
@@ -49,6 +53,7 @@ from html.parser import HTMLParser
 import arcgis.features
 import arcgis.gis
 import geopandas
+import ijson
 import pandas as pd
 import pyproj
 import requests
@@ -59,6 +64,7 @@ import us
 import peri_scribe.exceptions
 import peri_scribe.feed_types
 import peri_scribe.geo_data
+import peri_scribe.geo_package
 import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.snapshots
@@ -68,6 +74,11 @@ logger = structlog.get_logger()
 
 REQUEST_TIMEOUT_SECONDS = 60
 DOWNLOAD_CHUNK_SIZE = 1024 * 1024
+CONVERSION_CHUNK_SIZE = 100_000
+
+WGS84_SPATIAL_REFERENCE = pyproj.CRS.from_epsg(
+    peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+)
 
 
 class ExternalSourceKind(enum.Enum):
@@ -624,56 +635,59 @@ def combine_downloaded_source(
         )
         return output
     state_urls = source.state_urls() if source.state_urls is not None else None
-    dataframes: list[geopandas.GeoDataFrame] = []
+    layer_name = source.layer_name or source.name
+    wrote_any = False
+    feature_count = 0
     with tempfile.TemporaryDirectory(dir=directory) as temporary_directory:
         temporary_path = pathlib.Path(temporary_directory)
         for state in source.states:
             state_output = temporary_path / f"{state}.gpkg"
             url = state_download_url(source, state, state_urls)
             download_and_convert(source, temporary_path, url, state_output)
-            dataframes.append(
-                geopandas.read_file(
-                    state_output,
-                    layer=source.layer_name or source.name,
-                ),
-            )
-    combined = combine_dataframes(dataframes)
-    peri_scribe.output.write_geopackage(
-        output,
-        [
-            peri_scribe.models.LayerData(
-                name=source.layer_name or source.name,
-                dataframe=combined,
-            ),
-        ],
-    )
+            for chunk in peri_scribe.geo_package.read_layer_chunks(
+                state_output,
+                layer_name,
+                CONVERSION_CHUNK_SIZE,
+            ):
+                dataframe = chunk.to_crs(WGS84_SPATIAL_REFERENCE)
+                append_geopackage_chunk(
+                    output,
+                    layer_name,
+                    dataframe,
+                    replace=not wrote_any,
+                )
+                wrote_any = True
+                feature_count += len(dataframe)
     logger.debug(
         "Combined external source",
         path=output,
-        features=len(combined),
+        features=feature_count,
     )
     return output
 
 
-def combine_dataframes(
-    dataframes: list[geopandas.GeoDataFrame],
-) -> geopandas.GeoDataFrame:
-    """Concatenate *dataframes* into a single WGS84 GeoDataFrame.
-
-    Each dataframe is reprojected to WGS84 before concatenation, so the combined
-    GeoPackage holds every feature in one CRS regardless of the sources' original CRSs.
+def append_geopackage_chunk(
+    output: pathlib.Path,
+    layer_name: str,
+    dataframe: geopandas.GeoDataFrame,
+    *,
+    replace: bool,
+) -> None:
+    """Append *dataframe* to the GeoPackage at *output*.
 
     Args:
-        dataframes: The per-state centroid dataframes.
-
-    Returns:
-        The combined GeoDataFrame in WGS84.
+        output: The GeoPackage path to write.
+        layer_name: The layer to append to.
+        dataframe: The chunk's features to write.
+        replace: Whether to replace any existing file at *output*.
     """
-    wgs84 = pyproj.CRS.from_epsg(peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID)
-    aligned = [dataframe.to_crs(wgs84) for dataframe in dataframes]
-    return geopandas.GeoDataFrame(
-        pd.concat(aligned, ignore_index=True),
-        crs=wgs84,
+    if replace:
+        output.unlink(missing_ok=True)
+    dataframe.to_file(
+        output,
+        driver="GPKG",
+        layer=layer_name,
+        mode="w" if replace else "a",
     )
 
 
@@ -893,6 +907,96 @@ def find_geodata_path(
     return matches[0]
 
 
+def geodata_chunks(
+    geodata_path: pathlib.Path,
+    chunk_size: int,
+) -> typing.Iterator[geopandas.GeoDataFrame]:
+    """Yield the vector data at *geodata_path* as bounded GeoDataFrames.
+
+    A GeoJSON file is parsed with ``ijson`` so only one feature is in memory at a time;
+    any other vector data (a shapefile or file geodatabase) is read in bounded chunks.
+    Every yielded frame holds at most *chunk_size* features.
+
+    Args:
+        geodata_path: The vector data file or directory to read.
+        chunk_size: The maximum number of features per chunk.
+
+    Yields:
+        Each chunk of the file's features, in row order.
+    """
+    if geodata_path.suffix.lower() in {".geojson", ".json"}:
+        yield from geojson_feature_chunks(geodata_path, chunk_size)
+    else:
+        yield from peri_scribe.geo_package.read_layer_chunks(
+            geodata_path,
+            None,
+            chunk_size,
+        )
+
+
+def geojson_feature_chunks(
+    geodata_path: pathlib.Path,
+    chunk_size: int,
+) -> typing.Iterator[geopandas.GeoDataFrame]:
+    """Yield the features of the GeoJSON at *geodata_path* as bounded GeoDataFrames.
+
+    The file is parsed with ``ijson`` so only one feature is in memory at a time; each
+    yielded frame holds at most *chunk_size* features. A feature without a geometry
+    keeps None as its geometry. GeoJSON has no coordinate reference system of its own,
+    so every frame is WGS84, matching how GeoPandas would read the file.
+
+    Args:
+        geodata_path: The GeoJSON FeatureCollection to read.
+        chunk_size: The maximum number of features per chunk.
+
+    Yields:
+        Each chunk of the file's features, in row order.
+    """
+    with geodata_path.open("rb") as file:
+        geometries: list[shapely.Geometry | None] = []
+        attributes: list[dict[str, object]] = []
+        for feature in ijson.items(file, "features.item"):
+            geometry = feature.get("geometry")
+            geometries.append(
+                None if geometry is None else shapely.geometry.shape(geometry),
+            )
+            properties = feature.get("properties")
+            attributes.append(
+                properties if isinstance(properties, dict) else {},
+            )
+            if len(geometries) >= chunk_size:
+                yield geojson_chunk_dataframe(geometries, attributes)
+                geometries = []
+                attributes = []
+        if geometries:
+            yield geojson_chunk_dataframe(geometries, attributes)
+
+
+def geojson_chunk_dataframe(
+    geometries: list[shapely.Geometry | None],
+    attributes: list[dict[str, object]],
+) -> geopandas.GeoDataFrame:
+    """Return a WGS84 GeoDataFrame for one chunk of GeoJSON features.
+
+    The frame's columns are the sorted union of the features' property keys, so the
+    schema is identical for every chunk of a file whose features share their keys.
+
+    Args:
+        geometries: One shapely geometry per feature, None where a feature has none.
+        attributes: One properties dict per feature.
+
+    Returns:
+        The chunk's features as a WGS84 GeoDataFrame.
+    """
+    columns = sorted({column for row in attributes for column in row})
+    rows = [{column: row.get(column) for column in columns} for row in attributes]
+    return geopandas.GeoDataFrame(
+        rows,
+        geometry=geometries,
+        crs=peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+    )
+
+
 def convert_to_geopackage(
     geodata_path: pathlib.Path,
     output: pathlib.Path,
@@ -903,9 +1007,10 @@ def convert_to_geopackage(
 ) -> None:
     """Convert *geodata_path* into a GeoPackage at *output*.
 
-    When *centroids* is true each feature's geometry is replaced by its centroid point.
-    When *keep_attributes* is false every attribute column is dropped, leaving only the
-    geometry.
+    The source is read and written in bounded chunks, so a source of any size is
+    converted without loading the whole file into memory. When *centroids* is true each
+    feature's geometry is replaced by its centroid point. When *keep_attributes* is
+    false every attribute column is dropped, leaving only the geometry.
 
     Args:
         geodata_path: The vector data file to convert.
@@ -917,29 +1022,64 @@ def convert_to_geopackage(
     Raises:
         ExternalDataError: If the vector data cannot be read.
     """
+    wrote_any = False
+    feature_count = 0
     try:
-        dataframe = geopandas.read_file(geodata_path)
+        for chunk in geodata_chunks(geodata_path, CONVERSION_CHUNK_SIZE):
+            dataframe = converted_chunk(
+                chunk,
+                centroids=centroids,
+                keep_attributes=keep_attributes,
+            )
+            append_geopackage_chunk(
+                output,
+                layer_name,
+                dataframe,
+                replace=not wrote_any,
+            )
+            wrote_any = True
+            feature_count += len(dataframe)
     except Exception as error:
         message = f"Failed to read {geodata_path}: {error}"
         raise peri_scribe.exceptions.ExternalDataError(message) from error
-    if centroids:
-        dataframe = centroid_dataframe(dataframe)
-    if not keep_attributes:
-        dataframe = dataframe[[dataframe.geometry.name]]
-    peri_scribe.output.write_geopackage(
-        output,
-        [
-            peri_scribe.models.LayerData(
-                name=layer_name,
-                dataframe=dataframe,
+    if not wrote_any:
+        append_geopackage_chunk(
+            output,
+            layer_name,
+            geopandas.GeoDataFrame(
+                geometry=[],
+                crs=peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
             ),
-        ],
-    )
+            replace=True,
+        )
     logger.debug(
         "Converted external source to GeoPackage",
         path=output,
-        features=len(dataframe),
+        features=feature_count,
     )
+
+
+def converted_chunk(
+    chunk: geopandas.GeoDataFrame,
+    *,
+    centroids: bool,
+    keep_attributes: bool,
+) -> geopandas.GeoDataFrame:
+    """Return *chunk* with the source's conversion options applied.
+
+    Args:
+        chunk: One chunk of the source's features.
+        centroids: Replace each feature's geometry with its centroid.
+        keep_attributes: Keep the source's attribute columns.
+
+    Returns:
+        The chunk's features, reduced to centroids and to geometry alone when
+        attributes are not kept.
+    """
+    dataframe = centroid_dataframe(chunk) if centroids else chunk
+    if not keep_attributes:
+        dataframe = dataframe[[dataframe.geometry.name]]
+    return dataframe
 
 
 def centroid_dataframe(dataframe: geopandas.GeoDataFrame) -> geopandas.GeoDataFrame:

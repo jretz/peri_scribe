@@ -284,54 +284,75 @@ def test_fire_importance_points_takes_highest_level() -> None:
     ) == pytest.approx(3)
 
 
-def test_intersects_any_returns_false_for_missing() -> None:
+def test_fire_geometry_from_prefers_perimeter_geometry() -> None:
+    geometry = square(1.0)
     assert (
-        peri_scribe.fire_scores.intersects_any(
+        peri_scribe.fire_scores.fire_geometry_from(
+            geometry,
+            point_frame([], []),
+        )
+        is geometry
+    )
+
+
+def test_fire_geometry_from_unions_points_without_perimeters() -> None:
+    points = point_frame([], [point(0, 0), point(1, 1)])
+    geometry = peri_scribe.fire_scores.fire_geometry_from(None, points)
+    assert geometry is not None
+    assert geometry.geom_type == "MultiPoint"
+
+
+def test_fire_geometry_from_returns_none_without_geometry() -> None:
+    assert (
+        peri_scribe.fire_scores.fire_geometry_from(
             None,
-            geopandas.GeoSeries([square(1.0)], crs="EPSG:4326"),
+            point_frame([], []),
         )
-        is False
+        is None
     )
 
 
-def test_intersects_any_detects_overlap() -> None:
-    assert (
-        peri_scribe.fire_scores.intersects_any(
-            square(1.0),
-            geopandas.GeoSeries([square(2.0)], crs="EPSG:4326"),
-        )
-        is True
+def test_buffered_fire_geometries_buffers_each_geometry() -> None:
+    buffered = peri_scribe.fire_scores.buffered_fire_geometries(
+        [point(0, 0), None],
+    )
+    assert buffered[0] is not None
+    assert buffered[0].geom_type == "Polygon"
+    assert buffered[0].contains(point(0, 0))
+    assert buffered[1] is None
+
+
+def test_building_counts_within_counts_points_across_chunks(
+    tmp_path: pathlib.Path,
+) -> None:
+    buffered = peri_scribe.fire_scores.buffered_fire_geometries(
+        [square(1.0), square(0.1)],
+    )
+    buildings = geopandas.GeoDataFrame(
+        {"name": ["a"] * 6},
+        geometry=[point(0, 0)] * 3 + [point(50, 50), point(60, 60), point(70, 70)],
+        crs="EPSG:4326",
+    )
+    path = tmp_path / "buildings.gpkg"
+    buildings.to_file(path, layer="buildings")
+
+    counts = peri_scribe.fire_scores.building_counts_within(
+        buffered,
+        path,
+        "buildings",
+        chunk_size=2,
     )
 
+    assert counts == [3, 3]
 
-def test_intersects_any_returns_false_without_overlap() -> None:
-    assert (
-        peri_scribe.fire_scores.intersects_any(
-            square(0.1),
-            geopandas.GeoSeries(
-                [shapely.geometry.box(2.0, 2.0, 3.0, 3.0)],
-                crs="EPSG:4326",
-            ),
-        )
-        is False
+
+def test_building_counts_within_returns_zero_without_geometry() -> None:
+    counts = peri_scribe.fire_scores.building_counts_within(
+        [None, shapely.geometry.Polygon()],
+        pathlib.Path("/unused.gpkg"),
+        "buildings",
     )
-
-
-def test_count_within_counts_points() -> None:
-    assert peri_scribe.fire_scores.count_within(
-        square(1.0),
-        geopandas.GeoSeries([point(0, 0), point(0.1, 0.1)], crs="EPSG:4326"),
-    ) == pytest.approx(2)
-
-
-def test_count_within_returns_zero_for_missing() -> None:
-    assert (
-        peri_scribe.fire_scores.count_within(
-            None,
-            geopandas.GeoSeries([point(0, 0)], crs="EPSG:4326"),
-        )
-        == 0
-    )
+    assert counts == [0, 0]
 
 
 def test_reproject_geometry_returns_geometry_unchanged_for_same_crs() -> None:
@@ -359,68 +380,59 @@ def test_buffered_wgs84_geometry_contains_original_point() -> None:
     assert buffered.contains(point(0, 0))
 
 
-def test_overlap_points_returns_zero_for_missing_geometry() -> None:
-    assert (
-        peri_scribe.fire_scores.overlap_points(
-            None,
-            empty_frame(),
-            3,
-        )
-        == 0
-    )
-
-
-def test_overlap_points_awards_points_on_overlap() -> None:
-    candidates = geopandas.GeoDataFrame(
-        {"name": ["zone"]},
-        geometry=[square(2.0)],
+def test_overlapping_fire_indices_detects_overlap(
+    tmp_path: pathlib.Path,
+) -> None:
+    zones = geopandas.GeoDataFrame(
+        {"name": ["zone", "far"]},
+        geometry=[
+            square(2.0),
+            shapely.geometry.box(100.0, 100.0, 101.0, 101.0),
+        ],
         crs="EPSG:4326",
     )
-    assert peri_scribe.fire_scores.overlap_points(
-        square(1.0),
-        candidates,
-        3,
-    ) == pytest.approx(3)
+    path = tmp_path / "zones.gpkg"
+    zones.to_file(path, layer="zones")
+
+    indices = peri_scribe.fire_scores.overlapping_fire_indices(
+        [square(1.0), shapely.geometry.box(50.0, 50.0, 51.0, 51.0)],
+        path,
+        "zones",
+        chunk_size=1,
+    )
+
+    assert indices == {0}
 
 
-def test_overlap_points_reprojects_geometry_to_candidate_crs() -> None:
-    candidates = geopandas.GeoDataFrame(
+def test_overlapping_fire_indices_reprojects_to_layer_crs(
+    tmp_path: pathlib.Path,
+) -> None:
+    zones = geopandas.GeoDataFrame(
         {"name": ["zone"]},
         geometry=[point(0, 0)],
         crs="EPSG:3857",
     )
-    assert peri_scribe.fire_scores.overlap_points(
-        point(0, 0),
-        candidates,
-        3,
-    ) == pytest.approx(3)
+    path = tmp_path / "zones.gpkg"
+    zones.to_file(path, layer="zones")
 
-
-def test_overlap_points_returns_zero_without_overlap() -> None:
-    candidates = geopandas.GeoDataFrame(
-        {"name": ["zone"]},
-        geometry=[shapely.geometry.box(2.0, 2.0, 3.0, 3.0)],
-        crs="EPSG:4326",
+    indices = peri_scribe.fire_scores.overlapping_fire_indices(
+        [point(0, 0)],
+        path,
+        "zones",
     )
-    assert peri_scribe.fire_scores.overlap_points(square(0.1), candidates, 3) == 0
+
+    assert indices == {0}
 
 
-def test_building_points_returns_zero_for_missing_geometry() -> None:
+def test_overlapping_fire_indices_returns_empty_without_geometry() -> None:
     assert (
-        peri_scribe.fire_scores.building_points(
-            None,
-            geopandas.GeoSeries([point(0, 0)], crs="EPSG:4326"),
+        peri_scribe.fire_scores.overlapping_fire_indices(
+            [None],
+            pathlib.Path("/unused.gpkg"),
+            "zones",
         )
-        == 0
+        == set()
     )
-
-
-def test_building_points_counts_buildings_within_buffer() -> None:
-    buildings = geopandas.GeoSeries(
-        [point(0, 0), point(0, 0), point(0, 0), point(0, 0), point(0, 0)],
-        crs="EPSG:4326",
-    )
-    assert peri_scribe.fire_scores.building_points(square(0.01), buildings) == 1
 
 
 def test_identity_key_prefers_identifier() -> None:
@@ -528,7 +540,7 @@ def test_fire_score_total_sums_all_signals() -> None:
     assert score.total == pytest.approx(22)
 
 
-def test_score_for_fire_combines_all_signals() -> None:
+def test_fire_score_for_combines_all_signals() -> None:
     perimeters = perimeter_frame(
         [
             {
@@ -553,35 +565,14 @@ def test_score_for_fire_combines_all_signals() -> None:
         ],
         [point(0, 0)],
     )
-    buildings = geopandas.GeoDataFrame(
-        {"name": ["a"] * 5},
-        geometry=[point(0, 0)] * 5,
-        crs="EPSG:4326",
-    )
-    evacuations = geopandas.GeoDataFrame(
-        {"name": ["zone"]},
-        geometry=[square(1.0)],
-        crs="EPSG:4326",
-    )
-    red_flags = geopandas.GeoDataFrame(
-        {"name": ["zone"]},
-        geometry=[square(1.0)],
-        crs="EPSG:4326",
-    )
-    wui = geopandas.GeoDataFrame(
-        {"name": ["zone"]},
-        geometry=[square(1.0)],
-        crs="EPSG:4326",
-    )
-    score = peri_scribe.fire_scores.score_for_fire(
-        perimeters,
-        points,
-        peri_scribe.fire_scores.ExternalContext(
-            buildings=buildings,
-            evacuations=evacuations,
-            red_flag_warnings=red_flags,
-            wui=wui,
-        ),
+    record = peri_scribe.fire_scores.fire_records(perimeters, points)[0]
+    score = peri_scribe.fire_scores.fire_score_for(
+        record,
+        peri_scribe.fire_scores.perimeter_metrics(record.perimeters),
+        building_count=5,
+        evacuation_overlap=True,
+        red_flag_warning_overlap=True,
+        wui_overlap=True,
     )
     assert score.size_points == pytest.approx(5)
     assert score.growth_points == pytest.approx(4)
@@ -594,56 +585,29 @@ def test_score_for_fire_combines_all_signals() -> None:
     assert score.total == pytest.approx(22)
 
 
-def test_score_for_fire_uses_point_geometry_without_perimeters() -> None:
+def test_fire_score_for_awards_no_overlap_points_without_overlaps() -> None:
     points = point_frame(
-        [
-            {
-                "fire_name": "Point Only",
-                "fire_identifier": None,
-                "source_attributes": json.dumps({}),
-            },
-        ],
+        [{"fire_name": "Point Only", "fire_identifier": None}],
         [point(0, 0)],
     )
-    buildings = geopandas.GeoDataFrame(
-        {"name": ["a"] * 5},
-        geometry=[point(0, 0)] * 5,
-        crs="EPSG:4326",
-    )
-    score = peri_scribe.fire_scores.score_for_fire(
+    record = peri_scribe.fire_scores.fire_records(
         perimeter_frame([], []),
         points,
-        peri_scribe.fire_scores.ExternalContext(
-            buildings=buildings,
-            evacuations=empty_frame(),
-            red_flag_warnings=empty_frame(),
-            wui=empty_frame(),
-        ),
+    )[0]
+    score = peri_scribe.fire_scores.fire_score_for(
+        record,
+        peri_scribe.fire_scores.perimeter_metrics(record.perimeters),
+        building_count=0,
+        evacuation_overlap=False,
+        red_flag_warning_overlap=False,
+        wui_overlap=False,
     )
     assert score.name == "Point Only"
     assert score.identifier is None
-    assert score.building_points == 1
-
-
-def test_current_fire_scores_returns_one_score_per_fire() -> None:
-    perimeters = perimeter_frame(
-        [
-            {"fire_name": "Bug", "fire_identifier": "2026-a"},
-            {"fire_name": "Other", "fire_identifier": "2026-b"},
-        ],
-        [square(1.0), square(2.0)],
-    )
-    scores = peri_scribe.fire_scores.current_fire_scores(
-        perimeters,
-        point_frame([], []),
-        peri_scribe.fire_scores.ExternalContext(
-            buildings=empty_frame(),
-            evacuations=empty_frame(),
-            red_flag_warnings=empty_frame(),
-            wui=empty_frame(),
-        ),
-    )
-    assert [score.name for score in scores] == ["Bug", "Other"]
+    assert score.building_points == 0
+    assert score.evacuation_points == 0
+    assert score.red_flag_warning_points == 0
+    assert score.wui_points == 0
 
 
 def test_fire_scores_path_names_output() -> None:
@@ -822,6 +786,81 @@ def test_latest_snapshot_path_returns_newest_snapshot(
     )
 
 
+def test_download_source_layer_returns_none_without_layer_name() -> None:
+    source = peri_scribe.external_sources.ExternalSource(
+        name="none",
+        kind=peri_scribe.external_sources.ExternalSourceKind.DOWNLOAD,
+        url="https://example.test/file.zip",
+    )
+    assert (
+        peri_scribe.fire_scores.download_source_layer(
+            pathlib.Path("data/2026"),
+            source,
+        )
+        is None
+    )
+
+
+def test_download_source_layer_names_source_geopackage(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.external_sources,
+        "output_path",
+        lambda _year_directory, _source: pathlib.Path("/sources/buildings.gpkg"),
+    )
+    assert peri_scribe.fire_scores.download_source_layer(
+        pathlib.Path("data/2026"),
+        peri_scribe.external_sources.BUILDINGS_SOURCE,
+    ) == (pathlib.Path("/sources/buildings.gpkg"), "buildings")
+
+
+def test_latest_snapshot_layer_returns_none_without_layer_name() -> None:
+    source = peri_scribe.external_sources.ExternalSource(
+        name="none",
+        kind=peri_scribe.external_sources.ExternalSourceKind.ARCGIS,
+        url="https://example.test/FeatureServer/0",
+    )
+    assert (
+        peri_scribe.fire_scores.latest_snapshot_layer(
+            pathlib.Path("data/2026"),
+            source,
+        )
+        is None
+    )
+
+
+def test_latest_snapshot_layer_returns_none_without_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.fire_scores,
+        "latest_snapshot_path",
+        lambda _directory: None,
+    )
+    assert (
+        peri_scribe.fire_scores.latest_snapshot_layer(
+            pathlib.Path("data/2026"),
+            peri_scribe.external_sources.EVACUATIONS_SOURCE,
+        )
+        is None
+    )
+
+
+def test_latest_snapshot_layer_names_newest_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.fire_scores,
+        "latest_snapshot_path",
+        lambda _directory: pathlib.Path("/sources/evacuations/0.gpkg"),
+    )
+    assert peri_scribe.fire_scores.latest_snapshot_layer(
+        pathlib.Path("data/2026"),
+        peri_scribe.external_sources.EVACUATIONS_SOURCE,
+    ) == (pathlib.Path("/sources/evacuations/0.gpkg"), "evacuations")
+
+
 def test_read_download_source_returns_empty_without_layer_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -958,13 +997,13 @@ def test_score_fires_writes_best_scores(
     )
     monkeypatch.setattr(
         peri_scribe.fire_scores,
-        "read_download_source",
-        lambda _year_directory, _source: empty_frame(),
+        "download_source_layer",
+        lambda _year_directory, _source: None,
     )
     monkeypatch.setattr(
         peri_scribe.fire_scores,
-        "read_latest_snapshot",
-        lambda _year_directory, _source: empty_frame(),
+        "latest_snapshot_layer",
+        lambda _year_directory, _source: None,
     )
     monkeypatch.setattr(
         peri_scribe.fire_scores,
@@ -991,6 +1030,121 @@ def test_score_fires_writes_best_scores(
     assert document.fires[0].name == "Bug"
     assert document.fires[0].score == pytest.approx(9)
     assert document.fires[0].components.size == pytest.approx(5)
+
+
+def test_score_fires_streams_external_signals(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    perimeters = perimeter_frame(
+        [
+            {
+                "fire_name": "Bug",
+                "fire_identifier": "2026-a",
+                "area_acres": 120_000.0,
+                "area_acres_differential": 0.0,
+                "observation_time": datetime.datetime(2026, 8, 1),
+            },
+        ],
+        [square(0.01)],
+    )
+    points = point_frame(
+        [
+            {
+                "fire_name": "Bug",
+                "fire_identifier": "2026-a",
+                "source_attributes": json.dumps(
+                    {"IncidentComplexityLevel": "Type 2 Incident"},
+                ),
+            },
+        ],
+        [point(0, 0)],
+    )
+
+    def read_layer_if_present(
+        _path: pathlib.Path,
+        layer_name: str,
+    ) -> geopandas.GeoDataFrame:
+        if layer_name == peri_scribe.fire_history.PERIMETER_LAYER_NAME:
+            return perimeters
+        if layer_name == peri_scribe.fire_history.POINT_LAYER_NAME:
+            return points
+        return empty_frame()
+
+    buildings = geopandas.GeoDataFrame(
+        {"name": ["a"] * 5},
+        geometry=[point(0, 0)] * 5,
+        crs="EPSG:4326",
+    )
+    buildings_path = tmp_path / "sources" / "buildings" / "buildings.gpkg"
+    buildings_path.parent.mkdir(parents=True)
+    buildings.to_file(buildings_path, layer="buildings")
+    for name in ("evacuations", "red_flag_warnings"):
+        snapshot = tmp_path / "sources" / name / "snapshot.gpkg"
+        snapshot.parent.mkdir(parents=True)
+        geopandas.GeoDataFrame(
+            {"name": ["zone"]},
+            geometry=[square(1.0)],
+            crs="EPSG:4326",
+        ).to_file(snapshot, layer=name)
+    wui_path = tmp_path / "sources" / "wui" / "wui.gpkg"
+    wui_path.parent.mkdir(parents=True)
+    geopandas.GeoDataFrame(
+        {"name": ["zone"]},
+        geometry=[square(1.0)],
+        crs="EPSG:4326",
+    ).to_file(wui_path, layer="wui")
+
+    def output_path(
+        _year_directory: pathlib.Path,
+        source: peri_scribe.external_sources.ExternalSource,
+        **_keywords: object,
+    ) -> pathlib.Path:
+        return tmp_path / "sources" / source.name / f"{source.name}.gpkg"
+
+    monkeypatch.setattr(
+        peri_scribe.external_sources,
+        "output_path",
+        output_path,
+    )
+    monkeypatch.setattr(
+        peri_scribe.fire_scores,
+        "latest_snapshot_path",
+        lambda directory: directory / "snapshot.gpkg",
+    )
+    monkeypatch.setattr(
+        peri_scribe.fire_scores,
+        "read_layer_if_present",
+        read_layer_if_present,
+    )
+    monkeypatch.setattr(
+        peri_scribe.fire_scores,
+        "previous_scores",
+        lambda _year_directory: {},
+    )
+    monkeypatch.setattr(
+        pathlib.Path,
+        "mkdir",
+        lambda *_arguments, **_keywords: None,
+    )
+    writes: list[tuple[pathlib.Path, peri_scribe.models.FireScores]] = []
+    monkeypatch.setattr(
+        peri_scribe.output,
+        "write_fire_scores",
+        lambda path, document: writes.append((path, document)),
+    )
+
+    result = peri_scribe.fire_scores.score_fires(tmp_path)
+
+    assert result == tmp_path / "derived" / "fire_scores.json"
+    entry = writes[0][1].fires[0]
+    assert entry.name == "Bug"
+    assert entry.score == pytest.approx(18)
+    assert entry.components.buildings == pytest.approx(1)
+    assert entry.components.evacuation == pytest.approx(3)
+    assert entry.components.red_flag_warning == pytest.approx(2)
+    assert entry.components.wui == pytest.approx(2)
+    assert entry.components.importance == pytest.approx(2)
 
 
 def test_score_fires_sorts_entries_by_score_descending(
@@ -1031,13 +1185,13 @@ def test_score_fires_sorts_entries_by_score_descending(
     )
     monkeypatch.setattr(
         peri_scribe.fire_scores,
-        "read_download_source",
-        lambda _year_directory, _source: empty_frame(),
+        "download_source_layer",
+        lambda _year_directory, _source: None,
     )
     monkeypatch.setattr(
         peri_scribe.fire_scores,
-        "read_latest_snapshot",
-        lambda _year_directory, _source: empty_frame(),
+        "latest_snapshot_layer",
+        lambda _year_directory, _source: None,
     )
     monkeypatch.setattr(
         peri_scribe.fire_scores,

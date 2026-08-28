@@ -580,3 +580,38 @@ def read_layer_dataframe(
         The layer's features as a GeoDataFrame.
     """
     return read_layer(path, feed.name)
+
+
+def read_layer_chunks(
+    path: pathlib.Path,
+    layer_name: str | None,
+    chunk_size: int,
+) -> typing.Iterator[geopandas.GeoDataFrame]:
+    """Yield *layer_name* from *path* in chunks of at most *chunk_size* rows.
+
+    Each chunk is a bounded read of at most *chunk_size* features, so a layer of any
+    size can be processed without loading the whole layer into memory. The final chunk
+    may be smaller; a layer with no features yields nothing. When *layer_name* is None
+    the file's default layer is read, which is how a single-layer file such as a
+    shapefile or file geodatabase is read. The file is only read, never written.
+
+    Args:
+        path: The vector data file to read.
+        layer_name: The layer to read, or None for the file's default layer.
+        chunk_size: The maximum number of features per chunk.
+
+    Yields:
+        Each chunk of the layer's features, in row order.
+    """
+    offset = 0
+    while True:
+        dataframe = geopandas.read_file(
+            path,
+            layer=layer_name,
+            max_features=chunk_size,
+            skip_features=offset,
+        )
+        if dataframe.empty:
+            return
+        yield dataframe
+        offset += len(dataframe)

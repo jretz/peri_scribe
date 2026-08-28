@@ -1,16 +1,18 @@
 """Scoring fires to surface the ones people are most interested in.
 
 Each fire's score is a sum of points awarded across independent signals: its reported
-size, its largest single growth step, its size when first mapped, the buildings within
-a mile of it, whether it overlaps an evacuation zone, a red-flag warning, or the
+size, its largest single growth step, its size when first mapped, the buildings within a
+mile of it, whether it overlaps an evacuation zone, a red-flag warning, or the
 wildland-urban interface, and its official incident complexity level. A fire keeps the
-highest score it has ever reached, so a fire that was once interesting stays
-interesting for the rest of the season.
+highest score it has ever reached, so a fire that was once interesting stays interesting
+for the rest of the season.
 
 The score is derived from the differential history GeoPackage (for size, growth,
 first-mapping size, and geometry) and the point history (for the official complexity
 level), then joined spatially against the retrieved external datasets: building
-centroids, evacuation zones, red-flag warnings, and the wildland-urban interface.
+centroids, evacuation zones, red-flag warnings, and the wildland-urban interface. The
+external datasets are read in bounded chunks and joined with a spatial index over the
+fires' geometries, so scoring never loads a dataset into memory whole.
 
 The results are written to ``{year}/derived/fire_scores.json``.
 """
@@ -23,7 +25,9 @@ import pathlib
 import typing
 
 import geopandas
+import numpy as np
 import pandas as pd
+import pyogrio
 import pyproj
 import shapely
 
@@ -42,6 +46,9 @@ FIRE_SCORES_VERSION = "2026-08-27"
 
 # The buffer around a fire's footprint used to count threatened buildings.
 BUILDING_BUFFER_IN_METERS = 1609.34
+
+# The maximum number of features read from an external layer at once when scoring.
+SCORING_CHUNK_SIZE = 100_000
 
 WEB_MERCATOR_SPATIAL_REFERENCE_ID = 3857
 
@@ -258,42 +265,6 @@ def fire_importance_points(points: geopandas.GeoDataFrame) -> int:
     return max((importance_points(level) for level in levels), default=0)
 
 
-def intersects_any(
-    geometry: shapely.Geometry | None,
-    candidates: geopandas.GeoSeries,
-) -> bool:
-    """Return whether *geometry* intersects any candidate geometry.
-
-    Args:
-        geometry: The geometry to test, or None.
-        candidates: The candidate geometries, in the same spatial reference.
-
-    Returns:
-        True when *geometry* intersects at least one candidate.
-    """
-    if geometry is None or geometry.is_empty:
-        return False
-    return bool(candidates.intersects(geometry).any())
-
-
-def count_within(
-    geometry: shapely.Geometry | None,
-    points: geopandas.GeoSeries,
-) -> int:
-    """Return how many of *points* lie within *geometry*.
-
-    Args:
-        geometry: The geometry to test, or None.
-        points: The point geometries, in the same spatial reference.
-
-    Returns:
-        The number of points within *geometry*.
-    """
-    if geometry is None or geometry.is_empty:
-        return 0
-    return int(points.within(geometry).sum())
-
-
 def reproject_geometry(
     geometry: shapely.Geometry,
     source_crs: pyproj.CRS,
@@ -340,56 +311,157 @@ def buffered_wgs84_geometry(
     )
 
 
-def overlap_points(
-    geometry: shapely.Geometry | None,
-    candidates: geopandas.GeoDataFrame,
-    points: int,
-) -> int:
-    """Return *points* when *geometry* overlaps any candidate, else 0.
+def fire_geometry_from(
+    perimeter_geometry: shapely.Geometry | None,
+    points: geopandas.GeoDataFrame,
+) -> shapely.Geometry | None:
+    """Return the union of a fire's history geometries, or None.
 
-    The candidate geometries may use any spatial reference; *geometry* is in WGS84 and
-    is transformed to match the candidates when needed.
+    The perimeter geometry is used when present; otherwise the points' geometries are
+    unioned, so a fire known only by its point still has a shape to score.
 
     Args:
-        geometry: The fire's geometry, in WGS84, or None.
-        candidates: The threat or hazard polygons.
-        points: The points to award when the fire overlaps the candidates.
+        perimeter_geometry: The union of the fire's perimeter rows, or None.
+        points: The fire's point-history rows.
 
     Returns:
-        The awarded points.
+        The fire's geometry, or None when there is none.
     """
-    if geometry is None or geometry.is_empty:
-        return 0
-    target = geometry
-    if candidates.crs is not None and not candidates.crs.equals(
-        WGS84_SPATIAL_REFERENCE,
+    if perimeter_geometry is not None:
+        return perimeter_geometry
+    return union_geometry(points.geometry)
+
+
+def buffered_fire_geometries(
+    geometries: list[shapely.Geometry | None],
+) -> list[shapely.Geometry | None]:
+    """Return each fire geometry buffered by the building-count distance, or None.
+
+    Args:
+        geometries: The fire geometries, in WGS84.
+
+    Returns:
+        One buffered WGS84 geometry per fire, None where the fire has no geometry.
+    """
+    return [
+        buffered_wgs84_geometry(geometry, BUILDING_BUFFER_IN_METERS)
+        if geometry is not None
+        else None
+        for geometry in geometries
+    ]
+
+
+def building_counts_within(
+    buffered_geometries: list[shapely.Geometry | None],
+    path: pathlib.Path,
+    layer_name: str,
+    chunk_size: int = SCORING_CHUNK_SIZE,
+) -> list[int]:
+    """Return how many building points lie within each buffered geometry.
+
+    The buildings layer is read in bounded chunks so the whole layer is never in memory.
+    A spatial index over the buffered geometries keeps the point-in-polygon tests to the
+    buildings near a fire, and each fire's count is accumulated across the chunks. The
+    buildings layer is in WGS84, matching the buffered geometries.
+
+    Args:
+        buffered_geometries: One buffered geometry per fire, in WGS84, or None.
+        path: The buildings GeoPackage.
+        layer_name: The buildings layer.
+        chunk_size: The maximum number of building points read at once.
+
+    Returns:
+        One building count per fire, aligned with *buffered_geometries*.
+    """
+    valid = [
+        (index, geometry)
+        for index, geometry in enumerate(buffered_geometries)
+        if geometry is not None and not geometry.is_empty
+    ]
+    counts = [0] * len(buffered_geometries)
+    if not valid:
+        return counts
+    tree_geometries = np.asarray([geometry for _index, geometry in valid])
+    tree = shapely.STRtree(tree_geometries)
+    for chunk in peri_scribe.geo_package.read_layer_chunks(
+        path,
+        layer_name,
+        chunk_size,
     ):
-        target = reproject_geometry(geometry, WGS84_SPATIAL_REFERENCE, candidates.crs)
-    if intersects_any(target, candidates.geometry):
-        return points
-    return 0
+        points = np.asarray(chunk.geometry)
+        input_indices, tree_indices = tree.query(points)
+        if len(input_indices) == 0:
+            continue
+        within = shapely.within(points[input_indices], tree_geometries[tree_indices])
+        for position, count in enumerate(
+            np.bincount(tree_indices[within], minlength=len(valid)),
+        ):
+            if count:
+                counts[valid[position][0]] += int(count)
+    return counts
 
 
-def building_points(
-    geometry: shapely.Geometry | None,
-    buildings: geopandas.GeoSeries,
-) -> int:
-    """Return the building-count points for a fire geometry.
+def overlapping_fire_indices(
+    geometries: list[shapely.Geometry | None],
+    path: pathlib.Path,
+    layer_name: str,
+    chunk_size: int = SCORING_CHUNK_SIZE,
+) -> set[int]:
+    """Return the indices of *geometries* that overlap a feature of *layer_name*.
+
+    The layer is read in bounded chunks so the whole layer is never in memory. The fire
+    geometries are transformed to the layer's spatial reference, and a spatial index
+    over them keeps the intersection tests to the candidates whose envelopes overlap.
+    The layer's spatial reference is read from the file; a layer without one is treated
+    as WGS84.
 
     Args:
-        geometry: The fire's geometry, in WGS84, or None.
-        buildings: The building centroid points, in WGS84.
+        geometries: The fire geometries, in WGS84, or None.
+        path: The layer's GeoPackage.
+        layer_name: The layer to read.
+        chunk_size: The maximum number of features read at once.
 
     Returns:
-        The points for the number of buildings within a mile of the fire.
+        The indices of the geometries that overlap at least one layer feature.
     """
-    if geometry is None or geometry.is_empty:
-        return 0
-    buffered = buffered_wgs84_geometry(geometry, BUILDING_BUFFER_IN_METERS)
-    return tiered_points(
-        count_within(buffered, buildings),
-        BUILDING_COUNT_TIERS,
+    valid = [
+        (index, geometry)
+        for index, geometry in enumerate(geometries)
+        if geometry is not None and not geometry.is_empty
+    ]
+    if not valid:
+        return set()
+    raw_crs = pyogrio.read_info(path, layer=layer_name)["crs"]
+    layer_crs = (
+        WGS84_SPATIAL_REFERENCE
+        if raw_crs is None
+        else pyproj.CRS.from_user_input(raw_crs)
     )
+    tree_geometries = np.asarray(
+        [
+            reproject_geometry(geometry, WGS84_SPATIAL_REFERENCE, layer_crs)
+            for _index, geometry in valid
+        ],
+    )
+    tree = shapely.STRtree(tree_geometries)
+    overlapping: set[int] = set()
+    for chunk in peri_scribe.geo_package.read_layer_chunks(
+        path,
+        layer_name,
+        chunk_size,
+    ):
+        candidates = np.asarray(chunk.geometry)
+        input_indices, tree_indices = tree.query(candidates)
+        if len(input_indices) == 0:
+            continue
+        intersects = shapely.intersects(
+            candidates[input_indices],
+            tree_geometries[tree_indices],
+        )
+        overlapping.update(
+            valid[position][0] for position in np.unique(tree_indices[intersects])
+        )
+    return overlapping
 
 
 def identity_key(name: str, identifier: str | None) -> str:
@@ -558,80 +630,45 @@ class FireScore:
         )
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class ExternalContext:
-    """The retrieved external datasets used for spatial scoring signals."""
-
-    buildings: geopandas.GeoDataFrame
-    evacuations: geopandas.GeoDataFrame
-    red_flag_warnings: geopandas.GeoDataFrame
-    wui: geopandas.GeoDataFrame
-
-
-def score_for_fire(
-    perimeters: geopandas.GeoDataFrame,
-    points: geopandas.GeoDataFrame,
-    external: ExternalContext,
+def fire_score_for(
+    record: FireRecords,
+    metrics: PerimeterMetrics,
+    *,
+    building_count: int,
+    evacuation_overlap: bool,
+    red_flag_warning_overlap: bool,
+    wui_overlap: bool,
 ) -> FireScore:
-    """Return the current score for one fire.
+    """Return the score for one fire from its history and external signals.
 
     Args:
-        perimeters: The fire's perimeter rows.
-        points: The fire's point rows.
-        external: The retrieved external datasets.
+        record: The fire's identity and history rows.
+        metrics: The fire's size and growth measurements.
+        building_count: The number of buildings within a mile of the fire.
+        evacuation_overlap: Whether the fire overlaps an evacuation zone.
+        red_flag_warning_overlap: Whether the fire overlaps a red-flag warning.
+        wui_overlap: Whether the fire overlaps the wildland-urban interface.
 
     Returns:
         The fire's score.
     """
-    name, identifier = fire_name_and_identifier(perimeters, points)
-    metrics = perimeter_metrics(perimeters)
-    geometry = metrics.geometry
-    if geometry is None and not points.empty:
-        geometry = union_geometry(points.geometry)
     return FireScore(
-        name=name,
-        identifier=identifier,
+        name=record.name,
+        identifier=record.identifier,
         size_points=tiered_points(metrics.area_acres, SIZE_TIERS),
         growth_points=tiered_points(metrics.growth_acres, GROWTH_TIERS),
         first_mapping_points=tiered_points(
             metrics.first_mapping_acres,
             FIRST_MAPPING_TIERS,
         ),
-        building_points=building_points(geometry, external.buildings.geometry),
-        evacuation_points=overlap_points(
-            geometry,
-            external.evacuations,
-            EVACUATION_POINTS,
-        ),
-        red_flag_warning_points=overlap_points(
-            geometry,
-            external.red_flag_warnings,
-            RED_FLAG_WARNING_POINTS,
-        ),
-        wui_points=overlap_points(geometry, external.wui, WUI_POINTS),
-        importance_points=fire_importance_points(points),
+        building_points=tiered_points(building_count, BUILDING_COUNT_TIERS),
+        evacuation_points=EVACUATION_POINTS if evacuation_overlap else 0,
+        red_flag_warning_points=RED_FLAG_WARNING_POINTS
+        if red_flag_warning_overlap
+        else 0,
+        wui_points=WUI_POINTS if wui_overlap else 0,
+        importance_points=fire_importance_points(record.points),
     )
-
-
-def current_fire_scores(
-    perimeters: geopandas.GeoDataFrame,
-    points: geopandas.GeoDataFrame,
-    external: ExternalContext,
-) -> list[FireScore]:
-    """Return the current score for every fire in the history layers.
-
-    Args:
-        perimeters: The perimeter history layer.
-        points: The point history layer.
-        external: The retrieved external datasets.
-
-    Returns:
-        One score per fire.
-    """
-    return [
-        score_for_fire(records.perimeters, records.points, external)
-        for records in fire_records(perimeters, points)
-    ]
 
 
 def fire_scores_path(year_directory: pathlib.Path) -> pathlib.Path:
@@ -772,6 +809,54 @@ def latest_snapshot_path(directory: pathlib.Path) -> pathlib.Path | None:
     return directory / source_files[-1].relative_path
 
 
+def download_source_layer(
+    year_directory: pathlib.Path,
+    source: peri_scribe.external_sources.ExternalSource,
+) -> tuple[pathlib.Path, str] | None:
+    """Return the path and layer name of a downloaded external source, or None.
+
+    Args:
+        year_directory: The year directory that holds the ``sources`` directory.
+        source: The download-kind external source.
+
+    Returns:
+        The source's GeoPackage path and layer name, or None when the source has no
+        layer.
+    """
+    if source.layer_name is None:
+        return None
+    return (
+        peri_scribe.external_sources.output_path(year_directory, source),
+        source.layer_name,
+    )
+
+
+def latest_snapshot_layer(
+    year_directory: pathlib.Path,
+    source: peri_scribe.external_sources.ExternalSource,
+) -> tuple[pathlib.Path, str] | None:
+    """Return the path and layer name of a live source's newest snapshot, or None.
+
+    Args:
+        year_directory: The year directory that holds the ``sources`` directory.
+        source: The live external source.
+
+    Returns:
+        The newest snapshot's path and layer name, or None when the source has no
+        layer or no snapshot.
+    """
+    if source.layer_name is None:
+        return None
+    directory = peri_scribe.external_sources.source_directory_path(
+        year_directory,
+        source,
+    )
+    path = latest_snapshot_path(directory)
+    if path is None:
+        return None
+    return path, source.layer_name
+
+
 def read_download_source(
     year_directory: pathlib.Path,
     source: peri_scribe.external_sources.ExternalSource,
@@ -785,12 +870,11 @@ def read_download_source(
     Returns:
         The source's features, or an empty GeoDataFrame when it is not available.
     """
-    if source.layer_name is None:
+    layer = download_source_layer(year_directory, source)
+    if layer is None:
         return geopandas.GeoDataFrame()
-    return read_layer_if_present(
-        peri_scribe.external_sources.output_path(year_directory, source),
-        source.layer_name,
-    )
+    path, layer_name = layer
+    return read_layer_if_present(path, layer_name)
 
 
 def read_latest_snapshot(
@@ -806,24 +890,98 @@ def read_latest_snapshot(
     Returns:
         The newest snapshot's features, or an empty GeoDataFrame when there are none.
     """
-    if source.layer_name is None:
+    layer = latest_snapshot_layer(year_directory, source)
+    if layer is None:
         return geopandas.GeoDataFrame()
-    directory = peri_scribe.external_sources.source_directory_path(
+    path, layer_name = layer
+    return peri_scribe.geo_package.read_layer(path, layer_name)
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ExternalSignals:
+    """The external spatial signals for every fire, aligned with the records."""
+
+    building_counts: tuple[int, ...]
+    evacuation_indices: frozenset[int]
+    red_flag_warning_indices: frozenset[int]
+    wui_indices: frozenset[int]
+
+
+def external_signals(
+    year_directory: pathlib.Path,
+    records: list[FireRecords],
+    geometries: list[shapely.Geometry | None],
+    buffered: list[shapely.Geometry | None],
+) -> ExternalSignals:
+    """Stream the external datasets and return each fire's spatial signals.
+
+    Each dataset is read in bounded chunks only when its GeoPackage is present, so a
+    missing dataset contributes nothing and a present one is never loaded into memory
+    whole. The returned counts and indices are aligned with *records*.
+
+    Args:
+        year_directory: The year directory that holds the ``sources`` directory.
+        records: The fire records being scored.
+        geometries: One geometry per record, in WGS84, or None.
+        buffered: One building-distance buffered geometry per record, or None.
+
+    Returns:
+        The external signals for the records.
+    """
+    buildings = download_source_layer(
         year_directory,
-        source,
+        peri_scribe.external_sources.BUILDINGS_SOURCE,
     )
-    path = latest_snapshot_path(directory)
-    if path is None:
-        return geopandas.GeoDataFrame()
-    return peri_scribe.geo_package.read_layer(path, source.layer_name)
+    if buildings is not None and buildings[0].is_file():
+        building_counts = building_counts_within(buffered, buildings[0], buildings[1])
+    else:
+        building_counts = [0] * len(records)
+    evacuations = latest_snapshot_layer(
+        year_directory,
+        peri_scribe.external_sources.EVACUATIONS_SOURCE,
+    )
+    evacuation_indices = (
+        overlapping_fire_indices(geometries, evacuations[0], evacuations[1])
+        if evacuations is not None and evacuations[0].is_file()
+        else set()
+    )
+    red_flag_warnings = latest_snapshot_layer(
+        year_directory,
+        peri_scribe.external_sources.RED_FLAG_WARNINGS_SOURCE,
+    )
+    red_flag_indices = (
+        overlapping_fire_indices(
+            geometries,
+            red_flag_warnings[0],
+            red_flag_warnings[1],
+        )
+        if red_flag_warnings is not None and red_flag_warnings[0].is_file()
+        else set()
+    )
+    wui = download_source_layer(
+        year_directory,
+        peri_scribe.external_sources.WUI_SOURCE,
+    )
+    wui_indices = (
+        overlapping_fire_indices(geometries, wui[0], wui[1])
+        if wui is not None and wui[0].is_file()
+        else set()
+    )
+    return ExternalSignals(
+        building_counts=tuple(building_counts),
+        evacuation_indices=frozenset(evacuation_indices),
+        red_flag_warning_indices=frozenset(red_flag_indices),
+        wui_indices=frozenset(wui_indices),
+    )
 
 
 def score_fires(year_directory: pathlib.Path) -> pathlib.Path:
     """Score every fire and write the results to the derived directory.
 
     The current score is computed from the differential history and the retrieved
-    external datasets, then each fire keeps the highest score it has ever reached
-    across runs. The results are written to
+    external datasets, then each fire keeps the highest score it has ever reached across
+    runs. The external datasets are streamed in bounded chunks, so the buildings and the
+    hazard layers are never loaded into memory whole. The results are written to
     ``{year_directory}/derived/fire_scores.json``.
 
     Args:
@@ -843,29 +1001,27 @@ def score_fires(year_directory: pathlib.Path) -> pathlib.Path:
         differential_path,
         peri_scribe.fire_history.POINT_LAYER_NAME,
     )
-    buildings = read_download_source(
-        year_directory,
-        peri_scribe.external_sources.BUILDINGS_SOURCE,
-    )
-    evacuations = read_latest_snapshot(
-        year_directory,
-        peri_scribe.external_sources.EVACUATIONS_SOURCE,
-    )
-    red_flag_warnings = read_latest_snapshot(
-        year_directory,
-        peri_scribe.external_sources.RED_FLAG_WARNINGS_SOURCE,
-    )
-    wui = read_download_source(
-        year_directory,
-        peri_scribe.external_sources.WUI_SOURCE,
-    )
-    external = ExternalContext(
-        buildings=buildings,
-        evacuations=evacuations,
-        red_flag_warnings=red_flag_warnings,
-        wui=wui,
-    )
-    current = current_fire_scores(perimeters, points, external)
+    records = fire_records(perimeters, points)
+    metrics = [perimeter_metrics(record.perimeters) for record in records]
+    geometries = [
+        fire_geometry_from(record_metrics.geometry, record.points)
+        for record, record_metrics in zip(records, metrics, strict=True)
+    ]
+    buffered = buffered_fire_geometries(geometries)
+    signals = external_signals(year_directory, records, geometries, buffered)
+    current = [
+        fire_score_for(
+            record,
+            record_metrics,
+            building_count=signals.building_counts[index],
+            evacuation_overlap=index in signals.evacuation_indices,
+            red_flag_warning_overlap=index in signals.red_flag_warning_indices,
+            wui_overlap=index in signals.wui_indices,
+        )
+        for index, (record, record_metrics) in enumerate(
+            zip(records, metrics, strict=True),
+        )
+    ]
     previous = previous_scores(year_directory)
     entries = [
         score_entry(

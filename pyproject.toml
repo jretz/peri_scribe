@@ -6,6 +6,7 @@ dependencies = [
     "arcgis",
     "click",
     "geopandas",
+    "ijson",
     "pydantic",
     "pygments",  # For pytest code highlighting
     "pyproj",

@@ -6,6 +6,7 @@ import dataclasses
 import datetime
 import hashlib
 import io
+import json
 import pathlib
 import tempfile
 import types
@@ -932,11 +933,20 @@ def install_wui_read_stub(
     """
     real_read_file = peri_scribe.external_sources.geopandas.read_file
 
-    def fake_read_file(path: object, **_kwargs: object) -> object:
+    def fake_read_file(
+        path: object,
+        *,
+        max_features: int | None = None,
+        skip_features: int = 0,
+        **_kwargs: object,
+    ) -> object:
         geodata_path = pathlib.Path(str(path))
         if geodata_path.name.endswith(".gdb"):
             read_paths.append(geodata_path)
-            return wui_dataframe()
+            dataframe = wui_dataframe()
+            if max_features is not None:
+                dataframe = dataframe.iloc[skip_features : skip_features + max_features]
+            return dataframe
         return real_read_file(geodata_path, **_kwargs)
 
     monkeypatch.setattr(
@@ -963,7 +973,7 @@ def test_fetch_wui_converts_file_geodatabase_archive_to_geopackage(
     result = peri_scribe.external_sources.fetch_external_source(source, tmp_path)
     output = peri_scribe.external_sources.output_path(tmp_path, source)
     assert result == (output,)
-    assert len(read_paths) == 1
+    assert read_paths
     assert read_paths[0].name == "US_WUI_block_1990_2020_change_v4.gdb"
     directory = peri_scribe.external_sources.source_directory_path(tmp_path, source)
     assert not (directory / "US_WUI_block_1990_2020_change_v4_gdb.zip").exists()
@@ -1096,6 +1106,190 @@ def testdownload_source_skips_when_single_archive_output_present(
     second = peri_scribe.external_sources.fetch_external_source(source, tmp_path)
     assert second == first
     assert len(calls) == 1
+
+
+def test_geojson_feature_chunks_streams_features_in_chunks(
+    tmp_path: pathlib.Path,
+) -> None:
+    dataframe = geopandas.GeoDataFrame(
+        {"OBJECTID": [1, 2, 3, 4, 5]},
+        geometry=[shapely.geometry.Point(index, 0) for index in range(5)],
+        crs="EPSG:4326",
+    )
+    path = tmp_path / "features.geojson"
+    dataframe.to_file(path, driver="GeoJSON")
+
+    chunks = list(
+        peri_scribe.external_sources.geojson_feature_chunks(
+            path,
+            chunk_size=2,
+        ),
+    )
+
+    assert [len(chunk) for chunk in chunks] == [2, 2, 1]
+    assert [chunk.iloc[0]["OBJECTID"] for chunk in chunks] == [1, 3, 5]
+    assert all(
+        chunk.crs.to_epsg() == peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID
+        for chunk in chunks
+    )
+
+
+def test_geojson_feature_chunks_keeps_missing_geometry(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "features.geojson"
+    path.write_text(
+        json.dumps(
+            {
+                "type": "FeatureCollection",
+                "features": [
+                    {
+                        "type": "Feature",
+                        "properties": {"OBJECTID": 1},
+                        "geometry": None,
+                    },
+                ],
+            },
+        ),
+    )
+
+    chunks = list(
+        peri_scribe.external_sources.geojson_feature_chunks(
+            path,
+            chunk_size=2,
+        ),
+    )
+
+    assert len(chunks) == 1
+    assert chunks[0].geometry.iloc[0] is None
+
+
+def test_geojson_chunk_dataframe_unions_property_columns() -> None:
+    frame = peri_scribe.external_sources.geojson_chunk_dataframe(
+        [
+            shapely.geometry.Point(0.0, 0.0),
+            shapely.geometry.Point(1.0, 1.0),
+        ],
+        [{"a": 1}, {"b": 2}],
+    )
+
+    assert list(frame.columns) == ["a", "b", "geometry"]
+    assert frame.iloc[0]["a"] == pytest.approx(1)
+    assert bool(pd.isna(frame.iloc[1]["a"]))
+
+
+def test_geodata_chunks_reads_non_geojson_in_chunks(
+    tmp_path: pathlib.Path,
+) -> None:
+    dataframe = geopandas.GeoDataFrame(
+        {"a": [1, 2, 3]},
+        geometry=[shapely.geometry.Point(index, 0) for index in range(3)],
+        crs="EPSG:4326",
+    )
+    path = tmp_path / "features.gpkg"
+    dataframe.to_file(path, layer="features")
+
+    chunks = list(
+        peri_scribe.external_sources.geodata_chunks(
+            path,
+            chunk_size=2,
+        ),
+    )
+
+    assert [len(chunk) for chunk in chunks] == [2, 1]
+    assert [chunk.iloc[0]["a"] for chunk in chunks] == [1, 3]
+
+
+def test_convert_to_geopackage_streams_centroids_in_chunks(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.external_sources,
+        "CONVERSION_CHUNK_SIZE",
+        2,
+    )
+    dataframe = geopandas.GeoDataFrame(
+        {"OBJECTID": [1, 2, 3, 4, 5]},
+        geometry=[
+            shapely.geometry.box(index, index, index + 1, index + 1)
+            for index in range(5)
+        ],
+        crs="EPSG:4326",
+    )
+    geodata_path = tmp_path / "California.geojson"
+    dataframe.to_file(geodata_path, driver="GeoJSON")
+    output = tmp_path / "buildings.gpkg"
+
+    peri_scribe.external_sources.convert_to_geopackage(
+        geodata_path,
+        output,
+        "buildings",
+        centroids=True,
+        keep_attributes=False,
+    )
+
+    converted = geopandas.read_file(output, layer="buildings")
+    assert list(converted.columns) == ["geometry"]
+    assert list(converted.geometry.geom_type) == ["Point"] * 5
+    assert sorted(converted.geometry.x) == pytest.approx(
+        [0.5, 1.5, 2.5, 3.5, 4.5],
+    )
+
+
+def test_convert_to_geopackage_keeps_attributes_across_chunks(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.external_sources,
+        "CONVERSION_CHUNK_SIZE",
+        2,
+    )
+    dataframe = geopandas.GeoDataFrame(
+        {"OBJECTID": [1, 2, 3]},
+        geometry=[
+            shapely.geometry.box(index, index, index + 1, index + 1)
+            for index in range(3)
+        ],
+        crs="EPSG:4326",
+    )
+    geodata_path = tmp_path / "California.geojson"
+    dataframe.to_file(geodata_path, driver="GeoJSON")
+    output = tmp_path / "out.gpkg"
+
+    peri_scribe.external_sources.convert_to_geopackage(
+        geodata_path,
+        output,
+        "out",
+        centroids=False,
+        keep_attributes=True,
+    )
+
+    converted = geopandas.read_file(output, layer="out")
+    assert list(converted["OBJECTID"]) == [1, 2, 3]
+    assert list(converted.geometry.geom_type) == ["Polygon"] * 3
+
+
+def test_convert_to_geopackage_writes_empty_layer_for_empty_source(
+    tmp_path: pathlib.Path,
+) -> None:
+    geodata_path = tmp_path / "empty.geojson"
+    geodata_path.write_text(
+        json.dumps({"type": "FeatureCollection", "features": []}),
+    )
+    output = tmp_path / "buildings.gpkg"
+
+    peri_scribe.external_sources.convert_to_geopackage(
+        geodata_path,
+        output,
+        "buildings",
+        centroids=True,
+        keep_attributes=False,
+    )
+
+    assert output.is_file()
+    assert geopandas.read_file(output, layer="buildings").empty
 
 
 def test_dataframe_digest_ignores_row_order() -> None:
