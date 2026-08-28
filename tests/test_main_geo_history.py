@@ -6,6 +6,7 @@ import pathlib
 import typing
 
 import peri_scribe.fire_differential
+import peri_scribe.fire_scores
 import peri_scribe.main
 from tests.main_stubs import BASE_DIRECTORY
 
@@ -32,6 +33,11 @@ def test_derive_geo_history_builds_history_for_directory(
         "write_history_of_differential_geography",
         write_history_of_differential_geography,
     )
+    monkeypatch.setattr(
+        peri_scribe.fire_scores,
+        "score_fires",
+        lambda _year_directory: pathlib.Path("/fire_scores.json"),
+    )
     result = runner.invoke(
         peri_scribe.main.cli,
         ["derive-geo-history", "data/2026"],
@@ -57,6 +63,11 @@ def test_derive_geo_history_defaults_to_current_year_directory(
         peri_scribe.fire_differential,
         "write_history_of_differential_geography",
         write_history_of_differential_geography,
+    )
+    monkeypatch.setattr(
+        peri_scribe.fire_scores,
+        "score_fires",
+        lambda _year_directory: pathlib.Path("/fire_scores.json"),
     )
     result = runner.invoke(peri_scribe.main.cli, ["derive-geo-history"])
     assert result.exit_code == 0

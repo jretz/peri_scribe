@@ -14,6 +14,7 @@ import peri_scribe.feeds
 import peri_scribe.fetching
 import peri_scribe.fire_differential
 import peri_scribe.fire_index
+import peri_scribe.fire_scores
 import peri_scribe.kml
 import peri_scribe.kml_template
 import peri_scribe.output
@@ -306,11 +307,13 @@ def fetch_wui(year_directory: pathlib.Path | None = None) -> None:
 @cli.command(
     help=(
         "Derive the full and differential point and perimeter history for "
-        "YEAR_DIRECTORY.\n\n"
+        "YEAR_DIRECTORY, then score each fire.\n\n"
         "Builds and writes both "
         "YEAR_DIRECTORY/derived/history_of_full_geography.gpkg and "
         "YEAR_DIRECTORY/derived/history_of_differential_geography.gpkg with a "
-        "perimeter_history layer of per-perimeter growth and a point_history layer. "
+        "perimeter_history layer of per-perimeter growth and a point_history layer, "
+        "then writes each fire's score to "
+        "YEAR_DIRECTORY/derived/fire_scores.json. "
         f" {year_directory_default_help()}"
     ),
 )
@@ -330,6 +333,8 @@ def derive_geo_history(year_directory: pathlib.Path | None = None) -> None:
         year_directory,
     )
     logger.info("Wrote differential history", path=output_path)
+    scores_path = peri_scribe.fire_scores.score_fires(year_directory)
+    logger.info("Wrote fire scores", path=scores_path)
 
 
 @cli.command()

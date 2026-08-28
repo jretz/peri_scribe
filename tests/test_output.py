@@ -193,3 +193,52 @@ def test_write_fire_index_writes_pretty_printed_json(
     assert captured[0]["event"] == "Wrote fire index"
     assert captured[0]["path"] == "fires.json"
     assert captured[0]["fires"] == 1
+
+
+def test_write_fire_scores_writes_pretty_printed_json(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = pathlib.Path("/fire_scores.json")
+    document = peri_scribe.models.FireScores.model_validate({
+        "version": "2026-08-27",
+        "fires": [
+            {
+                "name": "Park Fire",
+                "identifier": "2026-x",
+                "score": 12,
+                "components": {
+                    "size": 5,
+                    "growth": 4,
+                    "first_mapping": 0,
+                    "buildings": 0,
+                    "evacuation": 3,
+                    "red_flag_warning": 0,
+                    "wui": 0,
+                    "importance": 0,
+                },
+            },
+        ],
+    })
+    files: list[RecordingFile] = []
+
+    def fake_open(
+        _self: pathlib.Path,
+        mode: str,
+        encoding: str,
+    ) -> RecordingFile:
+        assert mode == "w"
+        assert encoding == "utf-8"
+        file = RecordingFile()
+        files.append(file)
+        return file
+
+    monkeypatch.setattr(pathlib.Path, "open", fake_open)
+    with structlog.testing.capture_logs() as captured:
+        peri_scribe.output.write_fire_scores(path, document)
+    written = files[0].getvalue()
+    assert json.loads(written) == document.model_dump()
+    assert list(json.loads(written)) == ["version", "fires"]
+    assert "\n    " in written
+    assert captured[0]["event"] == "Wrote fire scores"
+    assert captured[0]["path"] == "fire_scores.json"
+    assert captured[0]["fires"] == 1

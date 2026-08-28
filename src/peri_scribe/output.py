@@ -66,6 +66,21 @@ def write_fire_index(
     logger.debug("Wrote fire index", path=path.name, fires=len(document.fires))
 
 
+def write_fire_scores(
+    path: pathlib.Path,
+    document: peri_scribe.models.FireScores,
+) -> None:
+    """Write *document* to *path* as pretty-printed JSON.
+
+    Args:
+        path: The JSON file to write.
+        document: The validated fire scores to serialize.
+    """
+    with path.open("w", encoding="utf-8") as file:
+        json.dump(document.model_dump(mode="json"), file, indent=4)
+    logger.debug("Wrote fire scores", path=path.name, fires=len(document.fires))
+
+
 def configure_logging(log_level: str) -> None:
     """Configure structlog with the minimum log level."""
     structlog.configure(

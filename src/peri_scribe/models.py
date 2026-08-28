@@ -291,6 +291,35 @@ class FireIndex(pydantic.BaseModel):
     fires: list[FireIndexEntry]
 
 
+class FireScoreComponents(pydantic.BaseModel):
+    """The per-signal point contributions to a fire's score."""
+
+    size: int
+    growth: int
+    first_mapping: int
+    buildings: int
+    evacuation: int
+    red_flag_warning: int
+    wui: int
+    importance: int
+
+
+class FireScoreEntry(pydantic.BaseModel):
+    """One fire's score, its best-ever score, and the current components."""
+
+    name: str
+    identifier: str | None = None
+    score: int
+    components: FireScoreComponents
+
+
+class FireScores(pydantic.BaseModel):
+    """Every fire's score for the season, ordered most-to-least interesting."""
+
+    version: str
+    fires: list[FireScoreEntry]
+
+
 @dataclasses.dataclass(frozen=True)
 class SpatialReferenceDomain:
     """Plausible coordinate magnitude bands for a spatial reference."""
