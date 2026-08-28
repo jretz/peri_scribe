@@ -122,6 +122,32 @@ def datetime_value(row: pd.Series | None, column: str) -> datetime.datetime | No
     return as_datetime(column_value(row, column))
 
 
+def source_attributes_dictionary(value: object) -> dict[str, object] | None:
+    """Return *value* parsed as a row's preserved source attributes, or None.
+
+    The history layers keep each row's original source attributes as a JSON string; an
+    already-decoded dictionary is accepted the same way.
+
+    Args:
+        value: A history row's ``source_attributes`` value.
+
+    Returns:
+        The attributes dictionary, or None when *value* is missing or not one.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        try:
+            attributes = json.loads(value)
+        except json.JSONDecodeError:
+            return None
+    else:
+        attributes = value
+    if not isinstance(attributes, dict):
+        return None
+    return attributes
+
+
 def source_attribute_value(row: pd.Series | None, key: str) -> object:
     """Return *key* from *row*'s preserved source attributes, or None.
 
@@ -136,17 +162,8 @@ def source_attribute_value(row: pd.Series | None, key: str) -> object:
     Returns:
         The attribute's value, or None when it is absent.
     """
-    raw = column_value(row, "source_attributes")
-    if raw is None:
-        return None
-    if isinstance(raw, str):
-        try:
-            attributes = json.loads(raw)
-        except json.JSONDecodeError:
-            return None
-    else:
-        attributes = raw
-    if not isinstance(attributes, dict):
+    attributes = source_attributes_dictionary(column_value(row, "source_attributes"))
+    if attributes is None:
         return None
     return attributes.get(key)
 
@@ -196,6 +213,49 @@ def first_source_text(
             return value
     if perimeter_key is not None:
         return source_text_value(perimeter_row, perimeter_key)
+    return None
+
+
+def source_attribute_number(row: pd.Series | None, key: str) -> float | None:
+    """Return *key* from *row*'s preserved source attributes as a number, or None.
+
+    Args:
+        row: A history row, or None.
+        key: The source attribute to read.
+
+    Returns:
+        The attribute's numeric value, or None when it is absent or not numeric.
+    """
+    return peri_scribe.geo_package.numeric_value(source_attribute_value(row, key))
+
+
+def first_source_number(
+    perimeter_row: pd.Series | None,
+    point_row: pd.Series | None,
+    point_key: str | None,
+    perimeter_key: str | None,
+) -> float | None:
+    """Return the first present numeric attribute value among the two keys.
+
+    The point feed's value wins when both feeds carry the same attribute; the perimeter
+    feed's ``attr_``-prefixed value is the fallback.
+
+    Args:
+        perimeter_row: A perimeter history row, or None.
+        point_row: A point history row, or None.
+        point_key: The attribute key in the point row's source attributes, or None.
+        perimeter_key: The attribute key in the perimeter row's source attributes, or
+            None.
+
+    Returns:
+        The first present numeric value, or None when both are missing.
+    """
+    if point_key is not None:
+        number = source_attribute_number(point_row, point_key)
+        if number is not None:
+            return number
+    if perimeter_key is not None:
+        return source_attribute_number(perimeter_row, perimeter_key)
     return None
 
 

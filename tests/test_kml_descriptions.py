@@ -25,6 +25,7 @@ def full_description() -> peri_scribe.kml_descriptions.FireDescription:
         percent_contained=77.0,
         estimated_cost_to_date_in_dollars=104600000.0,
         estimated_final_cost_in_dollars=120000000.0,
+        total_personnel=1234.0,
         protecting_unit="CALMU",
         discovery_time=datetime.datetime(2026, 6, 29, 12, 4, 46, tzinfo=datetime.UTC),
         observation_time=datetime.datetime(2026, 8, 2, 5, 30, tzinfo=datetime.UTC),
@@ -168,6 +169,14 @@ def test_format_cost_adds_dollar_sign_and_separators() -> None:
     )
 
 
+def test_format_personnel_count_returns_none_for_none() -> None:
+    assert peri_scribe.kml_descriptions.format_personnel_count(None) is None
+
+
+def test_format_personnel_count_uses_whole_numbers_with_separators() -> None:
+    assert peri_scribe.kml_descriptions.format_personnel_count(1234.0) == "1,234"
+
+
 def test_format_pacific_time_returns_none_for_none() -> None:
     assert peri_scribe.kml_descriptions.format_pacific_time(None) is None
 
@@ -197,6 +206,7 @@ def test_description_rows_includes_every_present_value() -> None:
         ("Containment", "77% (25.5 of 33.1 miles)"),
         ("Cost to date", "$104,600,000"),
         ("Estimated final cost", "$120,000,000"),
+        ("Personnel", "1,234"),
         ("Source", "FIRIS / NIFC"),
         ("Identifier", "2026-cabug-000001"),
         ("Mission", "CA-BUG-000001"),
@@ -220,6 +230,7 @@ def test_description_rows_marks_missing_values_with_hyphens() -> None:
         ("Containment", "--"),
         ("Cost to date", "--"),
         ("Estimated final cost", "--"),
+        ("Personnel", "--"),
         ("Source", "--"),
         ("Identifier", "--"),
         ("Mission", "--"),

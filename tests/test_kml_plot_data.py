@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 import peri_scribe.kml_plot_data
@@ -287,7 +289,70 @@ def test_scaled_points_divides_each_value() -> None:
     assert [point.value for point in scaled] == pytest.approx([0.01, 0.02])
 
 
-def test_fire_plots_builds_three_plots_with_labels() -> None:
+def test_source_attribute_points_reads_values_and_times() -> None:
+    frame = tests.kml_plot_helpers.geo_frame(
+        {
+            "observation_time": [
+                tests.kml_plot_helpers.observation_time(1),
+                tests.kml_plot_helpers.observation_time(2),
+            ],
+            "source_attributes": [
+                json.dumps({"TotalIncidentPersonnel": 100}),
+                json.dumps({"TotalIncidentPersonnel": 200}),
+            ],
+        },
+        [tests.kml_plot_helpers.square(1.0), tests.kml_plot_helpers.square(2.0)],
+    )
+    assert peri_scribe.kml_plot_data.source_attribute_points(
+        frame,
+        "TotalIncidentPersonnel",
+    ) == (
+        tests.kml_plot_helpers.series_point(1, 100.0),
+        tests.kml_plot_helpers.series_point(2, 200.0),
+    )
+
+
+def test_source_attribute_points_skips_missing_values() -> None:
+    frame = tests.kml_plot_helpers.geo_frame(
+        {
+            "observation_time": [
+                tests.kml_plot_helpers.observation_time(1),
+                None,
+                tests.kml_plot_helpers.observation_time(3),
+            ],
+            "source_attributes": [
+                json.dumps({"TotalIncidentPersonnel": 100}),
+                json.dumps({"TotalIncidentPersonnel": 200}),
+                json.dumps({}),
+            ],
+        },
+        [
+            tests.kml_plot_helpers.square(1.0),
+            tests.kml_plot_helpers.square(2.0),
+            tests.kml_plot_helpers.square(3.0),
+        ],
+    )
+    assert peri_scribe.kml_plot_data.source_attribute_points(
+        frame,
+        "TotalIncidentPersonnel",
+    ) == (tests.kml_plot_helpers.series_point(1, 100.0),)
+
+
+def test_source_attribute_points_returns_empty_for_missing_columns() -> None:
+    frame = tests.kml_plot_helpers.geo_frame(
+        {"observation_time": [tests.kml_plot_helpers.observation_time(1)]},
+        [tests.kml_plot_helpers.square(1.0)],
+    )
+    assert (
+        peri_scribe.kml_plot_data.source_attribute_points(
+            frame,
+            "TotalIncidentPersonnel",
+        )
+        == ()
+    )
+
+
+def test_fire_plots_builds_four_plots_with_labels() -> None:
     plots = peri_scribe.kml_plot_data.fire_plots(
         frozenset({"id-bug"}),
         "Bug",
@@ -317,16 +382,19 @@ def test_fire_plots_builds_three_plots_with_labels() -> None:
         "area",
         "perimeter",
         "cost",
+        "personnel",
     ]
     assert [plot.series[0].label for plot in plots] == [
         "Area",
         "Exterior perimeter",
         "Cost to date",
+        "Personnel",
     ]
     assert [plot.y_axis_label for plot in plots] == [
         "Thousands of acres",
         "Miles",
         "Millions of $",
+        "Personnel",
     ]
     assert plots[1].series[1].label == "Contained perimeter"
     assert plots[2].series[1].label == "Estimated final cost"
@@ -361,6 +429,45 @@ def test_fire_plots_merges_area_and_cost_from_both_feeds() -> None:
     final_cost = plots[2].series[1]
     assert [point.value for point in final_cost.points] == pytest.approx(
         [0.002, 0.0025],
+    )
+
+
+def test_fire_plots_merges_personnel_from_both_feeds() -> None:
+    perimeter = tests.kml_plot_helpers.geo_frame(
+        {
+            "fire_identifier": ["id-bug", "id-bug"],
+            "fire_name": ["Bug", "Bug"],
+            "observation_time": [
+                tests.kml_plot_helpers.observation_time(1),
+                tests.kml_plot_helpers.observation_time(3),
+            ],
+            "source_attributes": [
+                json.dumps({"attr_TotalIncidentPersonnel": 100}),
+                json.dumps({"attr_TotalIncidentPersonnel": 300}),
+            ],
+        },
+        [tests.kml_plot_helpers.square(1.0), tests.kml_plot_helpers.square(2.0)],
+    )
+    point = tests.kml_plot_helpers.geo_frame(
+        {
+            "fire_identifier": ["id-bug"],
+            "fire_name": ["Bug"],
+            "observation_time": [tests.kml_plot_helpers.observation_time(2)],
+            "source_attributes": [
+                json.dumps({"TotalIncidentPersonnel": 200}),
+            ],
+        },
+        [tests.kml_plot_helpers.square(3.0)],
+    )
+    plots = peri_scribe.kml_plot_data.fire_plots(
+        frozenset({"id-bug"}),
+        "Bug",
+        perimeter,
+        point,
+    )
+    personnel = plots[3].series[0]
+    assert [point.value for point in personnel.points] == pytest.approx(
+        [100.0, 200.0, 300.0],
     )
 
 

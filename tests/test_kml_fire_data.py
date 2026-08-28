@@ -399,6 +399,7 @@ def description_perimeter_frame() -> geopandas.GeoDataFrame:
                         "attr_FireBehaviorGeneral": "Active",
                         "attr_FireBehaviorGeneral2": "Running",
                         "attr_POOLandownerCategory": "Federal",
+                        "attr_TotalIncidentPersonnel": 300,
                     },
                 ),
                 json.dumps(
@@ -411,6 +412,7 @@ def description_perimeter_frame() -> geopandas.GeoDataFrame:
                         "attr_FireBehaviorGeneral": "Active",
                         "attr_FireBehaviorGeneral2": "Running",
                         "attr_POOLandownerCategory": "Federal",
+                        "attr_TotalIncidentPersonnel": 400,
                     },
                 ),
             ],
@@ -456,6 +458,7 @@ def description_point_frame() -> geopandas.GeoDataFrame:
                         "FireBehaviorGeneral1": "Creeping",
                         "FireBehaviorGeneral2": "Smoldering",
                         "FireBehaviorGeneral3": "Smoldering",
+                        "TotalIncidentPersonnel": 500,
                     },
                 ),
             ],
@@ -476,6 +479,9 @@ def test_fire_description_prefers_latest_perimeter_values() -> None:
     assert description.percent_contained == pytest.approx(20.0)
     assert description.estimated_cost_to_date_in_dollars == pytest.approx(2000.0)
     assert description.estimated_final_cost_in_dollars == pytest.approx(2500.0)
+    # Personnel comes from the sources' attributes, where the point feed's value wins
+    # when both feeds carry it.
+    assert description.total_personnel == pytest.approx(500.0)
     assert description.mission == "CA-BUG-2"
     assert description.source == "FIRIS / NIFC"
     assert description.identifier == "id-bug"
@@ -537,6 +543,7 @@ def test_fire_description_falls_back_to_point_when_perimeter_missing() -> None:
     assert description.percent_contained == pytest.approx(30.0)
     assert description.estimated_cost_to_date_in_dollars == pytest.approx(3000.0)
     assert description.estimated_final_cost_in_dollars == pytest.approx(3500.0)
+    assert description.total_personnel == pytest.approx(500.0)
     assert description.observation_time == datetime.datetime(
         2026,
         8,
@@ -581,3 +588,33 @@ def test_fire_description_falls_back_to_protecting_agency() -> None:
     )
     assert description.protecting_unit == "BLM"
     assert description.exterior_perimeter_in_miles is None
+
+
+def test_fire_description_falls_back_to_perimeter_personnel() -> None:
+    entry = tests.kml_helpers.fire_index_entry("Bug", "active", identifier="id-bug")
+    perimeter_frame = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-bug"],
+            "fire_name": ["Bug"],
+            "source_attributes": [
+                json.dumps({"attr_TotalIncidentPersonnel": 400}),
+            ],
+        },
+        geometry=[tests.kml_helpers.square(1.0)],
+        crs="EPSG:4326",
+    )
+    point_frame = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-bug"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({})],
+        },
+        geometry=[shapely.geometry.Point(1.0, 1.0)],
+        crs="EPSG:4326",
+    )
+    description = peri_scribe.kml_fire_data.fire_description(
+        entry,
+        perimeter_frame,
+        point_frame,
+    )
+    assert description.total_personnel == pytest.approx(400.0)

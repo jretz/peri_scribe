@@ -282,3 +282,124 @@ def test_source_label_names_known_sources() -> None:
     assert peri_scribe.kml_row_values.source_label("wfigs_perimeter") == "WFIGS"
     assert peri_scribe.kml_row_values.source_label("unknown") is None
     assert peri_scribe.kml_row_values.source_label(None) is None
+
+
+def test_source_attributes_dictionary_parses_json_strings() -> None:
+    assert peri_scribe.kml_row_values.source_attributes_dictionary(
+        json.dumps({"TotalIncidentPersonnel": 400}),
+    ) == {"TotalIncidentPersonnel": 400}
+
+
+def test_source_attributes_dictionary_accepts_decoded_dict() -> None:
+    assert peri_scribe.kml_row_values.source_attributes_dictionary(
+        {"TotalIncidentPersonnel": 400},
+    ) == {"TotalIncidentPersonnel": 400}
+
+
+def test_source_attributes_dictionary_rejects_missing_or_invalid_values() -> None:
+    assert peri_scribe.kml_row_values.source_attributes_dictionary(None) is None
+    assert peri_scribe.kml_row_values.source_attributes_dictionary("not json") is None
+    assert (
+        peri_scribe.kml_row_values.source_attributes_dictionary(json.dumps([1, 2]))
+        is None
+    )
+
+
+def test_source_attribute_number_reads_numeric_attributes() -> None:
+    frame = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [
+                json.dumps({"TotalIncidentPersonnel": 400, "Unit": "CANOD"}),
+            ],
+        },
+        geometry=[tests.kml_helpers.square(1.0)],
+        crs="EPSG:4326",
+    )
+    row = frame.iloc[0]
+    assert peri_scribe.kml_row_values.source_attribute_number(
+        row,
+        "TotalIncidentPersonnel",
+    ) == pytest.approx(400.0)
+    assert peri_scribe.kml_row_values.source_attribute_number(row, "Unit") is None
+    assert peri_scribe.kml_row_values.source_attribute_number(row, "Missing") is None
+    assert peri_scribe.kml_row_values.source_attribute_number(None, "Unit") is None
+
+
+def test_first_source_number_prefers_point_feed() -> None:
+    perimeter = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({"attr_TotalIncidentPersonnel": 400})],
+        },
+        geometry=[tests.kml_helpers.square(1.0)],
+        crs="EPSG:4326",
+    )
+    point = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({"TotalIncidentPersonnel": 500})],
+        },
+        geometry=[shapely.geometry.Point(1.0, 1.0)],
+        crs="EPSG:4326",
+    )
+    assert peri_scribe.kml_row_values.first_source_number(
+        perimeter.iloc[0],
+        point.iloc[0],
+        "TotalIncidentPersonnel",
+        "attr_TotalIncidentPersonnel",
+    ) == pytest.approx(500.0)
+
+
+def test_first_source_number_falls_back_to_perimeter_feed() -> None:
+    perimeter = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({"attr_TotalIncidentPersonnel": 400})],
+        },
+        geometry=[tests.kml_helpers.square(1.0)],
+        crs="EPSG:4326",
+    )
+    point = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({})],
+        },
+        geometry=[shapely.geometry.Point(1.0, 1.0)],
+        crs="EPSG:4326",
+    )
+    assert peri_scribe.kml_row_values.first_source_number(
+        perimeter.iloc[0],
+        point.iloc[0],
+        "TotalIncidentPersonnel",
+        "attr_TotalIncidentPersonnel",
+    ) == pytest.approx(400.0)
+
+
+def test_first_source_number_returns_none_without_keys() -> None:
+    assert (
+        peri_scribe.kml_row_values.first_source_number(
+            None,
+            None,
+            None,
+            None,
+        )
+        is None
+    )
+
+
+def test_first_source_number_returns_none_for_missing_rows() -> None:
+    assert (
+        peri_scribe.kml_row_values.first_source_number(
+            None,
+            None,
+            "TotalIncidentPersonnel",
+            "attr_TotalIncidentPersonnel",
+        )
+        is None
+    )

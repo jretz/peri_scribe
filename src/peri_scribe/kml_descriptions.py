@@ -1,10 +1,9 @@
 """Building the human-readable description shown in each fire placemark's KML balloon.
 
-A fire's geography is drawn as several placemarks: its point location, its latest
-filled perimeter, a few outline perimeters, and its growth rings. Every one of those
-placemarks shows the same balloon describing the fire's latest state, so the person
-reading the map sees the fire's current size, cost, and timing regardless of which
-shape they click.
+A fire's geography is drawn as several placemarks: its point location, its latest filled
+perimeter, a few outline perimeters, and its growth rings. Every one of those placemarks
+shows the same balloon describing the fire's latest state, so the person reading the map
+sees the fire's current size, cost, and timing regardless of which shape they click.
 
 The description is formatted for people rather than for a database: numbers carry
 thousands separators and units, and timestamps are shown in America/Los_Angeles time
@@ -21,22 +20,22 @@ import math
 import peri_scribe.perimeter_progression
 
 
-# Areas at or above this many acres are shown as whole acres; smaller areas keep
-# one or two decimal places so small fires do not read as zero.
+# Areas at or above this many acres are shown as whole acres; smaller areas keep one or
+# two decimal places so small fires do not read as zero.
 WHOLE_ACRE_THRESHOLD = 100.0
 
 # A fire at or above this containment percentage is fully contained and needs no
 # contained-length annotation.
 FULL_CONTAINMENT_IN_PERCENT = 100.0
 
-# Perimeter lengths keep at most this many digits after the decimal point and at
-# most this many significant digits, so a large fire's perimeter keeps its scale
-# without implying more precision than the mapping supports.
+# Perimeter lengths keep at most this many digits after the decimal point and at most
+# this many significant digits, so a large fire's perimeter keeps its scale without
+# implying more precision than the mapping supports.
 MAX_PERIMETER_DECIMAL_PLACES = 1
 MAX_PERIMETER_SIGNIFICANT_DIGITS = 3
 
-# At one decimal place, lengths at or above this carry more than three
-# significant digits and are re-rounded to three.
+# At one decimal place, lengths at or above this carry more than three significant
+# digits and are re-rounded to three.
 PERIMETER_SIGNIFICANT_DIGIT_THRESHOLD = 100.0
 
 # Rows alternate between white and this light background so the eye can follow each
@@ -120,9 +119,9 @@ def round_to_significant_digits(value: float, digits: int) -> float:
 def format_perimeter_length(value: float | None) -> str | None:
     """Format a perimeter length in miles, with a capped precision.
 
-    The length is rounded to at most one decimal place and to at most three
-    significant digits: ``0.1499`` becomes ``0.1``, ``3.1415`` becomes ``3.1``,
-    ``123.6`` becomes ``124``, and ``5678.123`` becomes ``5,680``.
+    The length is rounded to at most one decimal place and to at most three significant
+    digits: ``0.1499`` becomes ``0.1``, ``3.1415`` becomes ``3.1``, ``123.6`` becomes
+    ``124``, and ``5678.123`` becomes ``5,680``.
 
     Args:
         value: The length in miles, or None.
@@ -161,12 +160,11 @@ def format_containment(
 ) -> str | None:
     """Format a containment percentage, annotated with its contained length.
 
-    When the exterior perimeter length is known the percentage is followed by the
-    length it represents: ``68% (22.5 of 33.1 miles)``, where the last number is
-    the exterior perimeter length and the first number in parentheses is that
-    percentage of it. A fire that is fully contained (100%) shows only the
-    percentage, as does a fire without a perimeter length; without a percentage
-    there is nothing to show.
+    When the exterior perimeter length is known the percentage is followed by the length
+    it represents: ``68% (22.5 of 33.1 miles)``, where the last number is the exterior
+    perimeter length and the first number in parentheses is that percentage of it. A
+    fire that is fully contained (100%) shows only the percentage, as does a fire
+    without a perimeter length; without a percentage there is nothing to show.
 
     Args:
         percent_contained: The containment percentage, or None.
@@ -205,11 +203,25 @@ def format_cost_in_dollars(value: float | None) -> str | None:
     return f"${format_number(value, 0)}"
 
 
+def format_personnel_count(value: float | None) -> str | None:
+    """Format a personnel count as a whole number with thousands separators.
+
+    Args:
+        value: The number of personnel, or None.
+
+    Returns:
+        The formatted count, like ``1,234``, or None.
+    """
+    if value is None:
+        return None
+    return format_number(value, 0)
+
+
 def format_pacific_time(value: datetime.datetime | None) -> str | None:
     """Format *value* in America/Los_Angeles time with its PDT or PST marker.
 
-    Every fire in a year's output is observed in the same year, so the year is
-    left off the timestamp.
+    Every fire in a year's output is observed in the same year, so the year is left off
+    the timestamp.
 
     Args:
         value: An aware datetime, or None.
@@ -236,6 +248,7 @@ class FireDescription:
     percent_contained: float | None = None
     estimated_cost_to_date_in_dollars: float | None = None
     estimated_final_cost_in_dollars: float | None = None
+    total_personnel: float | None = None
     protecting_unit: str | None = None
     discovery_time: datetime.datetime | None = None
     observation_time: datetime.datetime | None = None
@@ -264,9 +277,9 @@ def description_rows(
 ) -> list[tuple[str, str]]:
     """Return the label/value rows shown in *description*'s balloon.
 
-    Every row is always present; a row whose value is missing keeps its label and
-    shows two hyphens, so the reader can see at a glance which facts the fire
-    lacks rather than guessing from omitted rows.
+    Every row is always present; a row whose value is missing keeps its label and shows
+    two hyphens, so the reader can see at a glance which facts the fire lacks rather
+    than guessing from omitted rows.
 
     Args:
         description: The fire's latest state.
@@ -296,6 +309,7 @@ def description_rows(
             "Estimated final cost",
             format_cost_in_dollars(description.estimated_final_cost_in_dollars),
         ),
+        ("Personnel", format_personnel_count(description.total_personnel)),
         ("Source", description.source),
         ("Identifier", description.identifier),
         ("Mission", description.mission),
@@ -321,9 +335,9 @@ def description_html(
     """Return *description* as the HTML KML balloon text.
 
     The text is wrapped in a CDATA section so the HTML tags it contains survive as
-    markup rather than being read as KML text. Each of *image_filenames* is shown
-    below the table as an image whose source is a file stored beside the KML in the
-    KMZ archive.
+    markup rather than being read as KML text. Each of *image_filenames* is shown below
+    the table as an image whose source is a file stored beside the KML in the KMZ
+    archive.
 
     Args:
         description: The fire's latest state.

@@ -287,8 +287,8 @@ def fire_description(
     The latest perimeter supplies the fire's area, containment, cost, and timing; where
     a perimeter has no value for a fact the latest point location is used instead. The
     protecting unit, initial response time, incident type, complexity, fuels, fire
-    behavior, and landowner category come only from the sources' original attributes,
-    which the history preserves verbatim.
+    behavior, landowner category, and personnel count come only from the sources'
+    original attributes, which the history preserves verbatim.
 
     Args:
         entry: One fire index entry.
@@ -353,6 +353,13 @@ def fire_description(
             "estimated_final_cost",
         )
 
+    total_personnel = peri_scribe.kml_row_values.first_source_number(
+        perimeter_row,
+        point_row,
+        peri_scribe.kml_plot_data.POINT_PERSONNEL_ATTRIBUTE_KEY,
+        peri_scribe.kml_plot_data.PERIMETER_PERSONNEL_ATTRIBUTE_KEY,
+    )
+
     discovery_time = peri_scribe.kml_row_values.datetime_value(
         perimeter_row,
         "discovery_time",
@@ -413,6 +420,7 @@ def fire_description(
         percent_contained=percent_contained,
         estimated_cost_to_date_in_dollars=estimated_cost_to_date,
         estimated_final_cost_in_dollars=estimated_final_cost,
+        total_personnel=total_personnel,
         protecting_unit=protecting_unit,
         discovery_time=discovery_time,
         observation_time=observation_time,

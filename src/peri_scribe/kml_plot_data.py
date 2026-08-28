@@ -14,6 +14,7 @@ import typing
 import pandas as pd
 
 import peri_scribe.geo_package
+import peri_scribe.kml_row_values
 import peri_scribe.units
 
 
@@ -43,6 +44,7 @@ VALUE_COLUMN = "value"
 AREA_PLOT_SUFFIX = "area"
 PERIMETER_PLOT_SUFFIX = "perimeter"
 COST_PLOT_SUFFIX = "cost"
+PERSONNEL_PLOT_SUFFIX = "personnel"
 
 # The legend label for each line. Units are not part of the label; each plot's unit is
 # shown once at its y-axis instead.
@@ -51,11 +53,18 @@ EXTERIOR_PERIMETER_SERIES_LABEL = "Exterior perimeter"
 CONTAINED_PERIMETER_SERIES_LABEL = "Contained perimeter"
 COST_TO_DATE_SERIES_LABEL = "Cost to date"
 ESTIMATED_FINAL_COST_SERIES_LABEL = "Estimated final cost"
+PERSONNEL_SERIES_LABEL = "Personnel"
 
 # The unit shown at each plot's y-axis.
 AREA_AXIS_LABEL = "Thousands of acres"
 PERIMETER_AXIS_LABEL = "Miles"
 COST_AXIS_LABEL = "Millions of $"
+PERSONNEL_AXIS_LABEL = "Personnel"
+
+# The personnel count is preserved under each feed's own source-attribute key: the point
+# feed keeps the plain name and the perimeter feed prefixes it with ``attr_``.
+POINT_PERSONNEL_ATTRIBUTE_KEY = "TotalIncidentPersonnel"
+PERIMETER_PERSONNEL_ATTRIBUTE_KEY = "attr_TotalIncidentPersonnel"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -241,19 +250,60 @@ def scaled_points(
     )
 
 
+def source_attribute_points(
+    frame: geopandas.GeoDataFrame,
+    key: str,
+) -> tuple[SeriesPoint, ...]:
+    """Return each row's *key* from its preserved source attributes over time.
+
+    The history layers keep each row's original source attributes as JSON, which is
+    where the personnel count lives under the feed's own key. Rows with a missing
+    observation time or attribute value are left out, since neither can be plotted. When
+    either column is absent the layer carries no measurement to plot.
+
+    Args:
+        frame: The history layer to read.
+        key: The attribute key to read from each row's preserved attributes.
+
+    Returns:
+        The plotted points, in the layer's row order.
+    """
+    if (
+        "observation_time" not in frame.columns
+        or "source_attributes" not in frame.columns
+    ):
+        return ()
+    points: list[SeriesPoint] = []
+    for observation_time, attributes_value in zip(
+        frame["observation_time"],
+        frame["source_attributes"],
+        strict=True,
+    ):
+        time = peri_scribe.geo_package.observation_time_from(observation_time)
+        attributes = peri_scribe.kml_row_values.source_attributes_dictionary(
+            attributes_value,
+        )
+        value = attributes.get(key) if attributes is not None else None
+        number = peri_scribe.geo_package.numeric_value(value)
+        if time is not None and number is not None:
+            points.append(SeriesPoint(observation_time=time, value=number))
+    return tuple(points)
+
+
 def fire_plots(
     fire_identifiers: frozenset[str],
     entry_name: str,
     perimeters: geopandas.GeoDataFrame,
     points: geopandas.GeoDataFrame,
 ) -> tuple[FirePlot, ...]:
-    """Return the three plots describing one fire's history.
+    """Return the four plots describing one fire's history.
 
     The area plot has one line, the perimeter plot has exterior and contained perimeter
     lines, and the cost plot has cost-to-date and estimated-final-cost lines. Area and
     cost are read from both the perimeter and point histories, while the two perimeter
     lengths come only from the perimeter history, whose geometry is the only source of a
-    length.
+    length. The personnel plot's single line is read from both histories' preserved
+    source attributes, since the personnel count has no derived column.
 
     Args:
         fire_identifiers: The fire's identifiers.
@@ -262,7 +312,7 @@ def fire_plots(
         points: The point history layer.
 
     Returns:
-        The fire's plots, in area, perimeter, then cost order.
+        The fire's plots, in area, perimeter, cost, then personnel order.
     """
     perimeter_rows = matching_rows(perimeters, fire_identifiers, entry_name)
     point_rows = matching_rows(points, fire_identifiers, entry_name)
@@ -295,6 +345,13 @@ def fire_plots(
             series_points(point_rows, "observation_time", "estimated_final_cost"),
         ),
         DOLLARS_PER_MILLION,
+    )
+    personnel_points = merge_series_points(
+        source_attribute_points(
+            perimeter_rows,
+            PERIMETER_PERSONNEL_ATTRIBUTE_KEY,
+        ),
+        source_attribute_points(point_rows, POINT_PERSONNEL_ATTRIBUTE_KEY),
     )
 
     return (
@@ -335,6 +392,16 @@ def fire_plots(
                 ),
             ),
             y_axis_label=COST_AXIS_LABEL,
+        ),
+        FirePlot(
+            filename_suffix=PERSONNEL_PLOT_SUFFIX,
+            series=(
+                PlotSeries(
+                    label=PERSONNEL_SERIES_LABEL,
+                    points=personnel_points,
+                ),
+            ),
+            y_axis_label=PERSONNEL_AXIS_LABEL,
         ),
     )
 
