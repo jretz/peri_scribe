@@ -11,6 +11,7 @@ import dataclasses
 import datetime
 import pathlib
 import re
+import sqlite3
 import typing
 
 import geopandas
@@ -595,10 +596,31 @@ def read_layer_chunks(
     the file's default layer is read, which is how a single-layer file such as a
     shapefile or file geodatabase is read. The file is only read, never written.
 
+    GeoPackage layers are paginated by their ``fid`` primary key rather than with
+    ``skip_features``, because skip-based pagination rescans the layer from the start
+    for every chunk and becomes quadratic over the whole read. Other file kinds fall
+    back to skip-based pagination.
+
     Args:
         path: The vector data file to read.
         layer_name: The layer to read, or None for the file's default layer.
         chunk_size: The maximum number of features per chunk.
+
+    Yields:
+        Each chunk of the layer's features, in row order.
+    """
+    if path.suffix.lower() == ".gpkg" and layer_name is not None:
+        yield from _read_gpkg_layer_chunks(path, layer_name, chunk_size)
+        return
+    yield from _read_skip_layer_chunks(path, layer_name, chunk_size)
+
+
+def _read_skip_layer_chunks(
+    path: pathlib.Path,
+    layer_name: str | None,
+    chunk_size: int,
+) -> typing.Iterator[geopandas.GeoDataFrame]:
+    """Yield chunks using ``skip_features``, which rescans from the start each time.
 
     Yields:
         Each chunk of the layer's features, in row order.
@@ -615,3 +637,54 @@ def read_layer_chunks(
             return
         yield dataframe
         offset += len(dataframe)
+
+
+def _read_gpkg_layer_chunks(
+    path: pathlib.Path,
+    layer_name: str,
+    chunk_size: int,
+) -> typing.Iterator[geopandas.GeoDataFrame]:
+    """Yield chunks of a GeoPackage layer paginated by its ``fid`` primary key.
+
+    Each chunk is ``where="fid > lower AND fid <= upper"`` for fid boundaries spaced
+    ``chunk_size`` apart, so every chunk is an indexed range read of constant cost
+    rather than a rescan. Boundaries are taken at ``fid % chunk_size == 0``; for the
+    dense fids this project writes, that yields chunks of exactly ``chunk_size`` rows in
+    fid order, matching the skip-based contract.
+
+    Yields:
+        Each chunk of the layer's features, in fid order.
+    """
+    connection = sqlite3.connect(path)
+    try:
+        minimum_fid = connection.execute(
+            f'SELECT MIN(fid) FROM "{layer_name}"',
+        ).fetchone()[0]
+        boundaries = [
+            row[0]
+            for row in connection.execute(
+                f'SELECT fid FROM "{layer_name}" '
+                f"WHERE fid % {chunk_size} = 0 ORDER BY fid",
+            )
+        ]
+    finally:
+        connection.close()
+    if minimum_fid is None:
+        return
+    lower = minimum_fid - 1
+    for upper in boundaries:
+        dataframe = geopandas.read_file(
+            path,
+            layer=layer_name,
+            where=f"fid > {lower} AND fid <= {upper}",
+        )
+        if not dataframe.empty:
+            yield dataframe
+        lower = upper
+    dataframe = geopandas.read_file(
+        path,
+        layer=layer_name,
+        where=f"fid > {lower}",
+    )
+    if not dataframe.empty:
+        yield dataframe

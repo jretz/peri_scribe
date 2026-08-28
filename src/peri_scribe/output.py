@@ -5,6 +5,9 @@ import pathlib
 import shutil
 from typing import TYPE_CHECKING
 
+import matplotlib.backends.backend_agg
+import matplotlib.figure
+import seaborn as sns
 import structlog
 
 
@@ -79,6 +82,33 @@ def write_fire_scores(
     with path.open("w", encoding="utf-8") as file:
         json.dump(document.model_dump(mode="json"), file, indent=4)
     logger.debug("Wrote fire scores", path=path.name, fires=len(document.fires))
+
+
+def write_fire_scores_histogram(
+    path: pathlib.Path,
+    document: peri_scribe.models.FireScores,
+) -> None:
+    """Write *document*'s scores to *path* as a discrete score histogram.
+
+    Each score the fires have reached gets one bar whose height is the number of fires
+    with that score.
+
+    Args:
+        path: The PNG file to write.
+        document: The validated fire scores to plot.
+    """
+    figure = matplotlib.figure.Figure()
+    matplotlib.backends.backend_agg.FigureCanvasAgg(figure)
+    axes = figure.subplots()
+    sns.histplot(
+        [entry.score for entry in document.fires],
+        discrete=True,
+        ax=axes,
+    )
+    axes.set_xlabel("Score")
+    axes.set_ylabel("Fires")
+    figure.savefig(path)
+    logger.debug("Wrote fire scores histogram", path=path.name)
 
 
 def configure_logging(log_level: str) -> None:

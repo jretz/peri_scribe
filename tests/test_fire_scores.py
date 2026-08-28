@@ -157,45 +157,6 @@ def test_complexity_level_returns_none_for_missing() -> None:
     assert peri_scribe.fire_scores.complexity_level(None) is None
 
 
-def test_maximum_value_returns_largest_numeric_value() -> None:
-    assert peri_scribe.fire_scores.maximum_value(
-        [None, 3, "x", 5.0],
-    ) == pytest.approx(5.0)
-
-
-def test_maximum_value_returns_none_when_all_missing() -> None:
-    assert peri_scribe.fire_scores.maximum_value(["x", None]) is None
-
-
-def test_maximum_value_returns_none_for_empty() -> None:
-    assert peri_scribe.fire_scores.maximum_value([]) is None
-
-
-def test_first_mapping_acres_uses_earliest_observation() -> None:
-    frame = perimeter_frame(
-        [
-            {
-                "area_acres": 50.0,
-                "observation_time": datetime.datetime(2026, 8, 2),
-            },
-            {
-                "area_acres": 500.0,
-                "observation_time": datetime.datetime(2026, 8, 1),
-            },
-        ],
-        [square(1.0), square(2.0)],
-    )
-    assert peri_scribe.fire_scores.first_mapping_acres(frame) == pytest.approx(500.0)
-
-
-def test_first_mapping_acres_falls_back_to_first_row_without_times() -> None:
-    frame = perimeter_frame(
-        [{"area_acres": 50.0}, {"area_acres": 500.0}],
-        [square(1.0), square(2.0)],
-    )
-    assert peri_scribe.fire_scores.first_mapping_acres(frame) == pytest.approx(50.0)
-
-
 def test_union_geometry_returns_single_geometry_unchanged() -> None:
     geometry = square(1.0)
     result = peri_scribe.fire_scores.union_geometry(
@@ -226,39 +187,6 @@ def test_union_geometry_returns_none_for_all_empty() -> None:
     assert result is None
 
 
-def test_perimeter_metrics_returns_none_for_empty() -> None:
-    metrics = peri_scribe.fire_scores.perimeter_metrics(
-        perimeter_frame([], []),
-    )
-    assert metrics.area_acres is None
-    assert metrics.growth_acres is None
-    assert metrics.first_mapping_acres is None
-    assert metrics.geometry is None
-
-
-def test_perimeter_metrics_measures_size_growth_and_first_mapping() -> None:
-    frame = perimeter_frame(
-        [
-            {
-                "area_acres": 50.0,
-                "area_acres_differential": 50.0,
-                "observation_time": datetime.datetime(2026, 8, 1),
-            },
-            {
-                "area_acres": 200.0,
-                "area_acres_differential": 150.0,
-                "observation_time": datetime.datetime(2026, 8, 2),
-            },
-        ],
-        [square(1.0), square(2.0)],
-    )
-    metrics = peri_scribe.fire_scores.perimeter_metrics(frame)
-    assert metrics.area_acres == pytest.approx(200.0)
-    assert metrics.growth_acres == pytest.approx(150.0)
-    assert metrics.first_mapping_acres == pytest.approx(50.0)
-    assert metrics.geometry is not None
-
-
 def test_fire_importance_points_returns_zero_for_empty() -> None:
     assert peri_scribe.fire_scores.fire_importance_points(empty_frame()) == 0
 
@@ -282,34 +210,6 @@ def test_fire_importance_points_takes_highest_level() -> None:
     assert peri_scribe.fire_scores.fire_importance_points(
         frame,
     ) == pytest.approx(3)
-
-
-def test_fire_geometry_from_prefers_perimeter_geometry() -> None:
-    geometry = square(1.0)
-    assert (
-        peri_scribe.fire_scores.fire_geometry_from(
-            geometry,
-            point_frame([], []),
-        )
-        is geometry
-    )
-
-
-def test_fire_geometry_from_unions_points_without_perimeters() -> None:
-    points = point_frame([], [point(0, 0), point(1, 1)])
-    geometry = peri_scribe.fire_scores.fire_geometry_from(None, points)
-    assert geometry is not None
-    assert geometry.geom_type == "MultiPoint"
-
-
-def test_fire_geometry_from_returns_none_without_geometry() -> None:
-    assert (
-        peri_scribe.fire_scores.fire_geometry_from(
-            None,
-            point_frame([], []),
-        )
-        is None
-    )
 
 
 def test_buffered_fire_geometries_buffers_each_geometry() -> None:
@@ -353,31 +253,6 @@ def test_building_counts_within_returns_zero_without_geometry() -> None:
         "buildings",
     )
     assert counts == [0, 0]
-
-
-def test_reproject_geometry_returns_geometry_unchanged_for_same_crs() -> None:
-    geometry = point(1.0, 2.0)
-    result = peri_scribe.fire_scores.reproject_geometry(
-        geometry,
-        peri_scribe.fire_scores.WGS84_SPATIAL_REFERENCE,
-        peri_scribe.fire_scores.WGS84_SPATIAL_REFERENCE,
-    )
-    assert result.equals(geometry)
-
-
-def test_reproject_geometry_transforms_between_crs() -> None:
-    result = peri_scribe.fire_scores.reproject_geometry(
-        point(1.0, 0.0),
-        peri_scribe.fire_scores.WGS84_SPATIAL_REFERENCE,
-        peri_scribe.fire_scores.WEB_MERCATOR_SPATIAL_REFERENCE,
-    )
-    assert result.x == pytest.approx(111319.49079327357)
-
-
-def test_buffered_wgs84_geometry_contains_original_point() -> None:
-    buffered = peri_scribe.fire_scores.buffered_wgs84_geometry(point(0, 0), 1609.34)
-    assert buffered.geom_type == "Polygon"
-    assert buffered.contains(point(0, 0))
 
 
 def test_overlapping_fire_indices_detects_overlap(
@@ -443,22 +318,6 @@ def test_identity_key_falls_back_to_name() -> None:
     assert peri_scribe.fire_scores.identity_key("Bug", None) == "name:Bug"
 
 
-def test_row_identity_reads_name_and_identifier() -> None:
-    frame = perimeter_frame(
-        [{"fire_name": "Bug", "fire_identifier": "2026-x"}],
-        [square(1.0)],
-    )
-    assert peri_scribe.fire_scores.row_identity(frame.iloc[0]) == ("Bug", "2026-x")
-
-
-def test_row_identity_treats_missing_identifier_as_none() -> None:
-    frame = perimeter_frame(
-        [{"fire_name": "Bug", "fire_identifier": float("nan")}],
-        [square(1.0)],
-    )
-    assert peri_scribe.fire_scores.row_identity(frame.iloc[0]) == ("Bug", None)
-
-
 def test_group_keys_aligns_with_rows() -> None:
     frame = perimeter_frame(
         [
@@ -473,55 +332,6 @@ def test_group_keys_aligns_with_rows() -> None:
         "2026-a",
         "name:Other",
     ]
-
-
-def test_fire_name_and_identifier_uses_perimeters_when_present() -> None:
-    perimeters = perimeter_frame(
-        [{"fire_name": "Bug", "fire_identifier": "2026-a"}],
-        [square(1.0)],
-    )
-    points = point_frame(
-        [{"fire_name": "Other", "fire_identifier": "2026-b"}],
-        [point(0, 0)],
-    )
-    assert peri_scribe.fire_scores.fire_name_and_identifier(perimeters, points) == (
-        "Bug",
-        "2026-a",
-    )
-
-
-def test_fire_name_and_identifier_uses_points_when_perimeters_empty() -> None:
-    points = point_frame(
-        [{"fire_name": "Other", "fire_identifier": "2026-b"}],
-        [point(0, 0)],
-    )
-    assert peri_scribe.fire_scores.fire_name_and_identifier(
-        perimeter_frame([], []),
-        points,
-    ) == ("Other", "2026-b")
-
-
-def test_fire_records_groups_perimeters_and_points() -> None:
-    perimeters = perimeter_frame(
-        [
-            {"fire_name": "Bug", "fire_identifier": "2026-a"},
-            {"fire_name": "Bug", "fire_identifier": "2026-a"},
-            {"fire_name": "Lone", "fire_identifier": "2026-c"},
-        ],
-        [square(1.0), square(2.0), square(3.0)],
-    )
-    points = point_frame(
-        [
-            {"fire_name": "Bug", "fire_identifier": "2026-a"},
-            {"fire_name": "Point Only", "fire_identifier": None},
-        ],
-        [point(0, 0), point(1, 1)],
-    )
-    records = peri_scribe.fire_scores.fire_records(perimeters, points)
-    assert [record.name for record in records] == ["Bug", "Lone", "Point Only"]
-    assert (len(records[0].perimeters), len(records[0].points)) == (2, 1)
-    assert records[1].points.empty
-    assert records[2].perimeters.empty
 
 
 def test_fire_score_total_sums_all_signals() -> None:
@@ -565,10 +375,20 @@ def test_fire_score_for_combines_all_signals() -> None:
         ],
         [point(0, 0)],
     )
-    record = peri_scribe.fire_scores.fire_records(perimeters, points)[0]
+    record = peri_scribe.fire_scores.FireRecords(
+        name="Bug",
+        identifier="2026-a",
+        perimeters=perimeters,
+        points=points,
+    )
     score = peri_scribe.fire_scores.fire_score_for(
         record,
-        peri_scribe.fire_scores.perimeter_metrics(record.perimeters),
+        peri_scribe.fire_scores.PerimeterMetrics(
+            area_acres=120_000.0,
+            growth_acres=60_000.0,
+            first_mapping_acres=120_000.0,
+            geometry=None,
+        ),
         building_count=5,
         evacuation_overlap=True,
         red_flag_warning_overlap=True,
@@ -590,13 +410,20 @@ def test_fire_score_for_awards_no_overlap_points_without_overlaps() -> None:
         [{"fire_name": "Point Only", "fire_identifier": None}],
         [point(0, 0)],
     )
-    record = peri_scribe.fire_scores.fire_records(
-        perimeter_frame([], []),
-        points,
-    )[0]
+    record = peri_scribe.fire_scores.FireRecords(
+        name="Point Only",
+        identifier=None,
+        perimeters=perimeter_frame([], []),
+        points=points,
+    )
     score = peri_scribe.fire_scores.fire_score_for(
         record,
-        peri_scribe.fire_scores.perimeter_metrics(record.perimeters),
+        peri_scribe.fire_scores.PerimeterMetrics(
+            area_acres=None,
+            growth_acres=None,
+            first_mapping_acres=None,
+            geometry=None,
+        ),
         building_count=0,
         evacuation_overlap=False,
         red_flag_warning_overlap=False,
@@ -614,6 +441,12 @@ def test_fire_scores_path_names_output() -> None:
     assert peri_scribe.fire_scores.fire_scores_path(
         pathlib.Path("data/2026"),
     ) == pathlib.Path("data/2026/derived/fire_scores.json")
+
+
+def test_fire_scores_histogram_path_names_output() -> None:
+    assert peri_scribe.fire_scores.fire_scores_histogram_path(
+        pathlib.Path("data/2026"),
+    ) == pathlib.Path("data/2026/derived/fire_scores_histogram.png")
 
 
 def test_best_score_uses_current_when_no_previous() -> None:
@@ -1021,6 +854,12 @@ def test_score_fires_writes_best_scores(
         "write_fire_scores",
         lambda path, document: writes.append((path, document)),
     )
+    histogram_writes: list[tuple[pathlib.Path, peri_scribe.models.FireScores]] = []
+    monkeypatch.setattr(
+        peri_scribe.output,
+        "write_fire_scores_histogram",
+        lambda path, document: histogram_writes.append((path, document)),
+    )
 
     result = peri_scribe.fire_scores.score_fires(pathlib.Path("data/2026"))
 
@@ -1030,6 +869,12 @@ def test_score_fires_writes_best_scores(
     assert document.fires[0].name == "Bug"
     assert document.fires[0].score == pytest.approx(9)
     assert document.fires[0].components.size == pytest.approx(5)
+    assert histogram_writes == [
+        (
+            pathlib.Path("data/2026/derived/fire_scores_histogram.png"),
+            document,
+        ),
+    ]
 
 
 def test_score_fires_streams_external_signals(
@@ -1133,6 +978,11 @@ def test_score_fires_streams_external_signals(
         "write_fire_scores",
         lambda path, document: writes.append((path, document)),
     )
+    monkeypatch.setattr(
+        peri_scribe.output,
+        "write_fire_scores_histogram",
+        lambda _path, _document: None,
+    )
 
     result = peri_scribe.fire_scores.score_fires(tmp_path)
 
@@ -1209,7 +1059,188 @@ def test_score_fires_sorts_entries_by_score_descending(
         "write_fire_scores",
         lambda path, document: writes.append((path, document)),
     )
+    monkeypatch.setattr(
+        peri_scribe.output,
+        "write_fire_scores_histogram",
+        lambda _path, _document: None,
+    )
 
     peri_scribe.fire_scores.score_fires(pathlib.Path("data/2026"))
 
     assert [entry.name for entry in writes[0][1].fires] == ["Big", "Small"]
+
+
+def test_overlapping_fire_indices_reads_z_geometries(
+    tmp_path: pathlib.Path,
+) -> None:
+    zones = geopandas.GeoDataFrame(
+        {"name": ["zone"]},
+        geometry=[
+            shapely.geometry.Polygon(
+                [(0, 0, 0), (2, 0, 0), (2, 2, 0), (0, 2, 0), (0, 0, 0)],
+            ),
+        ],
+        crs="EPSG:4326",
+    )
+    path = tmp_path / "zones.gpkg"
+    zones.to_file(path, layer="zones")
+
+    indices = peri_scribe.fire_scores.overlapping_fire_indices(
+        [square(1.0)],
+        path,
+        "zones",
+    )
+
+    assert indices == {0}
+
+
+def test_buffered_fire_geometries_returns_none_for_no_geometry() -> None:
+    assert peri_scribe.fire_scores.buffered_fire_geometries([]) == []
+    assert peri_scribe.fire_scores.buffered_fire_geometries([None, None]) == [
+        None,
+        None,
+    ]
+
+
+def test_building_counts_within_streams_without_rtree(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    buffered = peri_scribe.fire_scores.buffered_fire_geometries(
+        [square(1.0), square(0.1)],
+    )
+    buildings = geopandas.GeoDataFrame(
+        {"name": ["a"] * 5},
+        geometry=[point(0, 0)] * 3 + [point(50, 50), point(60, 60)],
+        crs="EPSG:4326",
+    )
+    path = tmp_path / "buildings.gpkg"
+    buildings.to_file(path, layer="buildings")
+    monkeypatch.setattr(
+        peri_scribe.fire_scores,
+        "_has_rtree",
+        lambda _path, _layer: False,
+    )
+
+    counts = peri_scribe.fire_scores.building_counts_within(
+        buffered,
+        path,
+        "buildings",
+        chunk_size=2,
+    )
+
+    assert counts == [3, 3]
+
+
+def test_overlapping_fire_indices_returns_empty_when_no_feature_overlaps(
+    tmp_path: pathlib.Path,
+) -> None:
+    zones = geopandas.GeoDataFrame(
+        {"name": ["far"]},
+        geometry=[shapely.geometry.box(100.0, 100.0, 101.0, 101.0)],
+        crs="EPSG:4326",
+    )
+    path = tmp_path / "zones.gpkg"
+    zones.to_file(path, layer="zones")
+
+    indices = peri_scribe.fire_scores.overlapping_fire_indices(
+        [square(1.0)],
+        path,
+        "zones",
+    )
+
+    assert indices == set()
+
+
+def test_overlapping_fire_indices_streams_without_rtree(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    zones = geopandas.GeoDataFrame(
+        {"name": ["zone", "far"]},
+        geometry=[
+            square(2.0),
+            shapely.geometry.box(100.0, 100.0, 101.0, 101.0),
+        ],
+        crs="EPSG:4326",
+    )
+    path = tmp_path / "zones.gpkg"
+    zones.to_file(path, layer="zones")
+    monkeypatch.setattr(
+        peri_scribe.fire_scores,
+        "_has_rtree",
+        lambda _path, _layer: False,
+    )
+
+    indices = peri_scribe.fire_scores.overlapping_fire_indices(
+        [square(1.0), shapely.geometry.box(50.0, 50.0, 51.0, 51.0)],
+        path,
+        "zones",
+        chunk_size=1,
+    )
+
+    assert indices == {0}
+
+
+def test_score_fires_scores_point_only_fire(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    points = point_frame(
+        [
+            {
+                "fire_name": "Smoke",
+                "fire_identifier": None,
+                "source_attributes": json.dumps({}),
+            },
+        ],
+        [point(0, 0)],
+    )
+
+    def read_layer_if_present(
+        _path: pathlib.Path,
+        layer_name: str,
+    ) -> geopandas.GeoDataFrame:
+        if layer_name == peri_scribe.fire_history.POINT_LAYER_NAME:
+            return points
+        return empty_frame()
+
+    monkeypatch.setattr(
+        peri_scribe.fire_scores,
+        "read_layer_if_present",
+        read_layer_if_present,
+    )
+    monkeypatch.setattr(
+        peri_scribe.fire_scores,
+        "download_source_layer",
+        lambda _year_directory, _source: None,
+    )
+    monkeypatch.setattr(
+        peri_scribe.fire_scores,
+        "latest_snapshot_layer",
+        lambda _year_directory, _source: None,
+    )
+    monkeypatch.setattr(
+        peri_scribe.fire_scores,
+        "previous_scores",
+        lambda _year_directory: {},
+    )
+    monkeypatch.setattr(
+        pathlib.Path,
+        "mkdir",
+        lambda *_arguments, **_keywords: None,
+    )
+    writes: list[tuple[pathlib.Path, peri_scribe.models.FireScores]] = []
+    monkeypatch.setattr(
+        peri_scribe.output,
+        "write_fire_scores",
+        lambda path, document: writes.append((path, document)),
+    )
+    monkeypatch.setattr(
+        peri_scribe.output,
+        "write_fire_scores_histogram",
+        lambda _path, _document: None,
+    )
+
+    peri_scribe.fire_scores.score_fires(pathlib.Path("data/2026"))
+
+    assert [entry.name for entry in writes[0][1].fires] == ["Smoke"]

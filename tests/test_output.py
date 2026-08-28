@@ -8,6 +8,8 @@ import shutil
 import typing
 
 import geopandas
+import matplotlib.figure
+import seaborn as sns
 import structlog
 
 import peri_scribe.models
@@ -242,3 +244,50 @@ def test_write_fire_scores_writes_pretty_printed_json(
     assert captured[0]["event"] == "Wrote fire scores"
     assert captured[0]["path"] == "fire_scores.json"
     assert captured[0]["fires"] == 1
+
+
+def test_write_fire_scores_histogram_plots_one_bar_per_score(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = pathlib.Path("/fire_scores_histogram.png")
+    document = peri_scribe.models.FireScores.model_validate({
+        "version": "2026-08-27",
+        "fires": [
+            {
+                "name": "Park Fire",
+                "identifier": "2026-x",
+                "score": 12,
+                "components": {
+                    "size": 5,
+                    "growth": 4,
+                    "first_mapping": 0,
+                    "buildings": 0,
+                    "evacuation": 3,
+                    "red_flag_warning": 0,
+                    "wui": 0,
+                    "importance": 0,
+                },
+            },
+        ],
+    })
+    histplot_calls: list[tuple[list[int], bool, object]] = []
+    monkeypatch.setattr(
+        sns,
+        "histplot",
+        lambda data, discrete, ax: histplot_calls.append((list(data), discrete, ax)),
+    )
+    saved: list[pathlib.Path] = []
+    monkeypatch.setattr(
+        matplotlib.figure.Figure,
+        "savefig",
+        lambda _self, figure_path: saved.append(figure_path),
+    )
+    with structlog.testing.capture_logs() as captured:
+        peri_scribe.output.write_fire_scores_histogram(path, document)
+    assert len(histplot_calls) == 1
+    data, discrete, _axes = histplot_calls[0]
+    assert data == [12]
+    assert discrete is True
+    assert saved == [path]
+    assert captured[0]["event"] == "Wrote fire scores histogram"
+    assert captured[0]["path"] == "fire_scores_histogram.png"

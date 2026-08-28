@@ -8,21 +8,25 @@ highest score it has ever reached, so a fire that was once interesting stays int
 for the rest of the season.
 
 The score is derived from the differential history GeoPackage (for size, growth,
-first-mapping size, and geometry) and the point history (for the official complexity
-level), then joined spatially against the retrieved external datasets: building
-centroids, evacuation zones, red-flag warnings, and the wildland-urban interface. The
-external datasets are read in bounded chunks and joined with a spatial index over the
-fires' geometries, so scoring never loads a dataset into memory whole.
+first-mapping size) and the cumulative full history (for geometry), plus the point
+history (for the official complexity level), then joined spatially against the retrieved
+external datasets: building centroids, evacuation zones, red-flag warnings, and the
+wildland-urban interface. Each external GeoPackage is queried through its R-Tree index,
+so only the features near a fire are ever read from it.
 
-The results are written to ``{year}/derived/fire_scores.json``.
+The results are written to ``{year}/derived/fire_scores.json``, along with a
+``{year}/derived/fire_scores_histogram.png`` histogram of the scores.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import json
+import os
 import pathlib
+import sqlite3
 import typing
+from concurrent.futures import ThreadPoolExecutor
 
 import geopandas
 import numpy as np
@@ -41,6 +45,7 @@ import peri_scribe.snapshots
 
 
 SCORE_OUTPUT_FILENAME = "fire_scores.json"
+HISTOGRAM_OUTPUT_FILENAME = "fire_scores_histogram.png"
 
 FIRE_SCORES_VERSION = "2026-08-27"
 
@@ -154,44 +159,6 @@ def complexity_level(source_attributes_json: object) -> str | None:
     return str(value) if value is not None else None
 
 
-def maximum_value(values: typing.Iterable[object]) -> float | None:
-    """Return the largest numeric value among *values*, or None when none.
-
-    Args:
-        values: The values to consider.
-
-    Returns:
-        The largest numeric value, or None when every value is missing or non-numeric.
-    """
-    numeric = [
-        value
-        for value in (peri_scribe.geo_package.numeric_value(item) for item in values)
-        if value is not None
-    ]
-    return max(numeric) if numeric else None
-
-
-def first_mapping_acres(perimeters: geopandas.GeoDataFrame) -> float | None:
-    """Return the fire's reported size at its first mapping.
-
-    The first mapping is the earliest perimeter observation; when no perimeter carries
-    an observation time, the first row is used as the earliest.
-
-    Args:
-        perimeters: The fire's differential perimeter rows, in chronological order.
-
-    Returns:
-        The reported area in acres of the earliest perimeter, or None when unknown.
-    """
-    with_times = perimeters.dropna(subset=["observation_time"])
-    if with_times.empty:
-        return peri_scribe.geo_package.numeric_value(
-            perimeters.iloc[0]["area_acres"],
-        )
-    earliest = with_times.sort_values("observation_time").iloc[0]
-    return peri_scribe.geo_package.numeric_value(earliest["area_acres"])
-
-
 def union_geometry(geometries: geopandas.GeoSeries) -> shapely.Geometry | None:
     """Return the union of *geometries*, or None when there is none.
 
@@ -223,31 +190,6 @@ class PerimeterMetrics:
     geometry: shapely.Geometry | None
 
 
-def perimeter_metrics(perimeters: geopandas.GeoDataFrame) -> PerimeterMetrics:
-    """Return the size and growth measurements for a fire's perimeters.
-
-    Args:
-        perimeters: The fire's differential perimeter rows.
-
-    Returns:
-        The fire's largest reported size, largest growth step, first-mapping size, and
-        the union of its perimeters.
-    """
-    if perimeters.empty:
-        return PerimeterMetrics(
-            area_acres=None,
-            growth_acres=None,
-            first_mapping_acres=None,
-            geometry=None,
-        )
-    return PerimeterMetrics(
-        area_acres=maximum_value(perimeters["area_acres"]),
-        growth_acres=maximum_value(perimeters["area_acres_differential"]),
-        first_mapping_acres=first_mapping_acres(perimeters),
-        geometry=union_geometry(perimeters.geometry),
-    )
-
-
 def fire_importance_points(points: geopandas.GeoDataFrame) -> int:
     """Return the highest official-importance points among a fire's observations.
 
@@ -265,77 +207,14 @@ def fire_importance_points(points: geopandas.GeoDataFrame) -> int:
     return max((importance_points(level) for level in levels), default=0)
 
 
-def reproject_geometry(
-    geometry: shapely.Geometry,
-    source_crs: pyproj.CRS,
-    target_crs: pyproj.CRS,
-) -> shapely.Geometry:
-    """Return *geometry* transformed from *source_crs* to *target_crs*.
-
-    Args:
-        geometry: The geometry to transform.
-        source_crs: The geometry's current spatial reference.
-        target_crs: The spatial reference to transform into.
-
-    Returns:
-        The geometry in *target_crs*.
-    """
-    if source_crs.equals(target_crs):
-        return geometry
-    return geopandas.GeoSeries([geometry], crs=source_crs).to_crs(target_crs).iloc[0]
-
-
-def buffered_wgs84_geometry(
-    geometry: shapely.Geometry,
-    distance_in_meters: float,
-) -> shapely.Geometry:
-    """Return *geometry* (WGS84) buffered by *distance_in_meters* in WGS84.
-
-    Args:
-        geometry: The geometry to buffer, in WGS84.
-        distance_in_meters: The buffer distance, in meters.
-
-    Returns:
-        The buffered geometry, in WGS84.
-    """
-    metric = reproject_geometry(
-        geometry,
-        WGS84_SPATIAL_REFERENCE,
-        WEB_MERCATOR_SPATIAL_REFERENCE,
-    )
-    buffered = metric.buffer(distance_in_meters)
-    return reproject_geometry(
-        buffered,
-        WEB_MERCATOR_SPATIAL_REFERENCE,
-        WGS84_SPATIAL_REFERENCE,
-    )
-
-
-def fire_geometry_from(
-    perimeter_geometry: shapely.Geometry | None,
-    points: geopandas.GeoDataFrame,
-) -> shapely.Geometry | None:
-    """Return the union of a fire's history geometries, or None.
-
-    The perimeter geometry is used when present; otherwise the points' geometries are
-    unioned, so a fire known only by its point still has a shape to score.
-
-    Args:
-        perimeter_geometry: The union of the fire's perimeter rows, or None.
-        points: The fire's point-history rows.
-
-    Returns:
-        The fire's geometry, or None when there is none.
-    """
-    if perimeter_geometry is not None:
-        return perimeter_geometry
-    return union_geometry(points.geometry)
-
-
 def buffered_fire_geometries(
     geometries: list[shapely.Geometry | None],
 ) -> list[shapely.Geometry | None]:
     """Return each fire geometry buffered by the building-count distance, or None.
+
+    The geometries are reprojected to web mercator in one vectorized pass, buffered in
+    parallel across a small thread pool (the GEOS buffer releases the GIL), and
+    reprojected back in one vectorized pass.
 
     Args:
         geometries: The fire geometries, in WGS84.
@@ -343,12 +222,208 @@ def buffered_fire_geometries(
     Returns:
         One buffered WGS84 geometry per fire, None where the fire has no geometry.
     """
-    return [
-        buffered_wgs84_geometry(geometry, BUILDING_BUFFER_IN_METERS)
+    result: list[shapely.Geometry | None] = [None] * len(geometries)
+    present = [
+        (index, geometry)
+        for index, geometry in enumerate(geometries)
         if geometry is not None
-        else None
-        for geometry in geometries
     ]
+    if not present:
+        return result
+    metric = geopandas.GeoSeries(
+        [geometry for _index, geometry in present],
+        crs=WGS84_SPATIAL_REFERENCE,
+    ).to_crs(WEB_MERCATOR_SPATIAL_REFERENCE)
+    with ThreadPoolExecutor(max_workers=_buffer_worker_count()) as executor:
+        buffered_metric = list(executor.map(_buffer_geometry, metric))
+    buffered = geopandas.GeoSeries(
+        buffered_metric,
+        crs=WEB_MERCATOR_SPATIAL_REFERENCE,
+    ).to_crs(WGS84_SPATIAL_REFERENCE)
+    for (index, _geometry), buffered_geometry in zip(present, buffered, strict=True):
+        result[index] = buffered_geometry
+    return result
+
+
+def _buffer_geometry(geometry: shapely.Geometry) -> shapely.Geometry:
+    """Return *geometry* buffered by the building-count distance.
+
+    Args:
+        geometry: The geometry to buffer.
+
+    Returns:
+        The buffered geometry.
+    """
+    return geometry.buffer(BUILDING_BUFFER_IN_METERS)
+
+
+def _buffer_worker_count() -> int:
+    """Return a sensible number of buffer threads for this machine.
+
+    Returns:
+        The number of worker threads, between 1 and 8.
+    """
+    return max(1, min(8, os.cpu_count() or 1))
+
+
+def _gpkg_geometry_header_size(flags: int) -> int:
+    """Return a GeoPackage geometry blob's header size for its flags byte.
+
+    A point's envelope is trivial, so points store no envelope and use the 8-byte
+    header. Other geometries store an XY envelope (40-byte header) or, when they carry a
+    Z, an XYZ envelope (56-byte header).
+
+    Args:
+        flags: The geometry blob's flags byte.
+
+    Returns:
+        The header size in bytes.
+    """
+    if flags & 0x04:
+        return 56
+    if flags & 0x02:
+        return 40
+    return 8
+
+
+def _gpkg_blob_geometry(blob: bytes) -> bytes:
+    """Return the WKB payload of a GeoPackage geometry blob.
+
+    Args:
+        blob: The raw GeoPackage geometry blob.
+
+    Returns:
+        The WKB geometry payload.
+    """
+    return blob[_gpkg_geometry_header_size(blob[3]) :]
+
+
+def _has_rtree(path: pathlib.Path, layer_name: str) -> bool:
+    """Return True when the GeoPackage has an R-Tree index for *layer_name*.
+
+    Args:
+        path: The GeoPackage file.
+        layer_name: The layer to check.
+
+    Returns:
+        True when the layer has an R-Tree index.
+    """
+    connection = sqlite3.connect(path)
+    try:
+        row = connection.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?",
+            (f"rtree_{layer_name}_geom",),
+        ).fetchone()
+        return row is not None
+    finally:
+        connection.close()
+
+
+def _candidate_fids(
+    path: pathlib.Path,
+    layer_name: str,
+    boxes: list[tuple[int, float, float, float, float]],
+) -> dict[int, list[int]]:
+    """Return, per box index, the feature ids whose R-Tree envelope overlaps the box.
+
+    Each box is ``(index, min_x, min_y, max_x, max_y)``.
+
+    Args:
+        path: The GeoPackage file.
+        layer_name: The layer to query.
+        boxes: The boxes to query, as ``(index, min_x, min_y, max_x, max_y)`` tuples.
+
+    Returns:
+        A mapping from box index to the feature ids whose envelopes overlap that box.
+    """
+    connection = sqlite3.connect(path)
+    try:
+        result: dict[int, list[int]] = {}
+        for index, min_x, min_y, max_x, max_y in boxes:
+            fids = [
+                row[0]
+                for row in connection.execute(
+                    f"SELECT id FROM rtree_{layer_name}_geom "
+                    "WHERE minx <= ? AND maxx >= ? AND miny <= ? AND maxy >= ?",
+                    (max_x, min_x, max_y, min_y),
+                )
+            ]
+            if fids:
+                result[index] = fids
+        return result
+    finally:
+        connection.close()
+
+
+def _fetch_layer_geometries(
+    path: pathlib.Path,
+    layer_name: str,
+    fids: typing.Iterable[int],
+) -> np.ndarray:
+    """Return the geometries of *fids* from *layer_name*, in fid order.
+
+    The features are read straight from the GeoPackage's SQLite storage via a temporary
+    table left-joined to the layer, so each candidate is an indexed ``fid`` lookup and
+    no attribute columns are parsed.
+
+    Args:
+        path: The GeoPackage file.
+        layer_name: The layer to read.
+        fids: The feature ids to fetch.
+
+    Returns:
+        The geometries as a numpy array of shapely geometries.
+    """
+    sorted_fids = sorted(fids)
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute("CREATE TEMP TABLE cand (fid INTEGER PRIMARY KEY)")
+        connection.executemany(
+            "INSERT OR IGNORE INTO cand VALUES (?)",
+            ((fid,) for fid in sorted_fids),
+        )
+        blobs = [
+            row[0]
+            for row in connection.execute(
+                f"SELECT b.geom FROM cand c LEFT JOIN {layer_name} b ON b.fid = c.fid",
+            )
+        ]
+    finally:
+        connection.close()
+    geometry_wkb = np.asarray(
+        [_gpkg_blob_geometry(blob) for blob in blobs],
+        dtype=object,
+    )
+    return np.asarray(shapely.from_wkb(geometry_wkb))
+
+
+def _count_points_within(
+    points: np.ndarray,
+    valid: list[tuple[int, shapely.Geometry]],
+    counts: list[int],
+) -> list[int]:
+    """Accumulate, into *counts*, how many *points* fall inside each valid geometry.
+
+    Args:
+        points: The candidate points.
+        valid: The ``(index, geometry)`` pairs to test against.
+        counts: The per-fire counts, mutated in place.
+
+    Returns:
+        The updated *counts* list.
+    """
+    tree_geometries = np.asarray([geometry for _index, geometry in valid])
+    tree = shapely.STRtree(tree_geometries)
+    input_indices, tree_indices = tree.query(points)
+    if len(input_indices) == 0:
+        return counts
+    within = shapely.within(points[input_indices], tree_geometries[tree_indices])
+    for position, count in enumerate(
+        np.bincount(tree_indices[within], minlength=len(valid)),
+    ):
+        if count:
+            counts[valid[position][0]] += int(count)
+    return counts
 
 
 def building_counts_within(
@@ -359,16 +434,18 @@ def building_counts_within(
 ) -> list[int]:
     """Return how many building points lie within each buffered geometry.
 
-    The buildings layer is read in bounded chunks so the whole layer is never in memory.
-    A spatial index over the buffered geometries keeps the point-in-polygon tests to the
-    buildings near a fire, and each fire's count is accumulated across the chunks. The
-    buildings layer is in WGS84, matching the buffered geometries.
+    The buildings GeoPackage's R-Tree index is used to fetch only the building points
+    whose envelopes overlap a buffered fire footprint, so the layer is never read whole;
+    the fetched points are then tested for containment through a spatial index over the
+    buffered geometries. The buildings layer is in WGS84, matching the buffered
+    geometries.
 
     Args:
         buffered_geometries: One buffered geometry per fire, in WGS84, or None.
         path: The buildings GeoPackage.
         layer_name: The buildings layer.
-        chunk_size: The maximum number of building points read at once.
+        chunk_size: The maximum number of features read at once when the layer has no
+            R-Tree index and the streaming fallback is used.
 
     Returns:
         One building count per fire, aligned with *buffered_geometries*.
@@ -381,23 +458,23 @@ def building_counts_within(
     counts = [0] * len(buffered_geometries)
     if not valid:
         return counts
-    tree_geometries = np.asarray([geometry for _index, geometry in valid])
-    tree = shapely.STRtree(tree_geometries)
+    if _has_rtree(path, layer_name):
+        boxes = [(index, *geometry.bounds) for index, geometry in valid]
+        fire_fids = _candidate_fids(path, layer_name, boxes)
+        if fire_fids:
+            fids = sorted({fid for fids in fire_fids.values() for fid in fids})
+            _count_points_within(
+                _fetch_layer_geometries(path, layer_name, fids),
+                valid,
+                counts,
+            )
+        return counts
     for chunk in peri_scribe.geo_package.read_layer_chunks(
         path,
         layer_name,
         chunk_size,
     ):
-        points = np.asarray(chunk.geometry)
-        input_indices, tree_indices = tree.query(points)
-        if len(input_indices) == 0:
-            continue
-        within = shapely.within(points[input_indices], tree_geometries[tree_indices])
-        for position, count in enumerate(
-            np.bincount(tree_indices[within], minlength=len(valid)),
-        ):
-            if count:
-                counts[valid[position][0]] += int(count)
+        _count_points_within(np.asarray(chunk.geometry), valid, counts)
     return counts
 
 
@@ -409,17 +486,17 @@ def overlapping_fire_indices(
 ) -> set[int]:
     """Return the indices of *geometries* that overlap a feature of *layer_name*.
 
-    The layer is read in bounded chunks so the whole layer is never in memory. The fire
-    geometries are transformed to the layer's spatial reference, and a spatial index
-    over them keeps the intersection tests to the candidates whose envelopes overlap.
-    The layer's spatial reference is read from the file; a layer without one is treated
-    as WGS84.
+    The layer's R-Tree index is used to fetch only the features whose envelopes overlap
+    a fire footprint, then those features are tested for intersection through a spatial
+    index over the fire geometries. The fire geometries are transformed to the layer's
+    spatial reference; a layer without one is treated as WGS84.
 
     Args:
         geometries: The fire geometries, in WGS84, or None.
         path: The layer's GeoPackage.
         layer_name: The layer to read.
-        chunk_size: The maximum number of features read at once.
+        chunk_size: The maximum number of features read at once when the layer has no
+            R-Tree index and the streaming fallback is used.
 
     Returns:
         The indices of the geometries that overlap at least one layer feature.
@@ -437,31 +514,71 @@ def overlapping_fire_indices(
         if raw_crs is None
         else pyproj.CRS.from_user_input(raw_crs)
     )
-    tree_geometries = np.asarray(
-        [
-            reproject_geometry(geometry, WGS84_SPATIAL_REFERENCE, layer_crs)
-            for _index, geometry in valid
-        ],
-    )
+    valid_geometries = [geometry for _index, geometry in valid]
+    if layer_crs.equals(WGS84_SPATIAL_REFERENCE):
+        reprojected = valid_geometries
+    else:
+        reprojected = list(
+            geopandas.GeoSeries(valid_geometries, crs=WGS84_SPATIAL_REFERENCE).to_crs(
+                layer_crs,
+            ),
+        )
+    reproj = [
+        (index, geometry)
+        for (index, _original), geometry in zip(valid, reprojected, strict=True)
+    ]
+    tree_geometries = np.asarray([geometry for _index, geometry in reproj])
     tree = shapely.STRtree(tree_geometries)
+    if _has_rtree(path, layer_name):
+        boxes = [(index, *geometry.bounds) for index, geometry in reproj]
+        fire_fids = _candidate_fids(path, layer_name, boxes)
+        if not fire_fids:
+            return set()
+        fids = sorted({fid for fids in fire_fids.values() for fid in fids})
+        candidates = _fetch_layer_geometries(path, layer_name, fids)
+        return _overlapping_indices(candidates, tree, tree_geometries, reproj)
     overlapping: set[int] = set()
     for chunk in peri_scribe.geo_package.read_layer_chunks(
         path,
         layer_name,
         chunk_size,
     ):
-        candidates = np.asarray(chunk.geometry)
-        input_indices, tree_indices = tree.query(candidates)
-        if len(input_indices) == 0:
-            continue
-        intersects = shapely.intersects(
-            candidates[input_indices],
-            tree_geometries[tree_indices],
-        )
         overlapping.update(
-            valid[position][0] for position in np.unique(tree_indices[intersects])
+            _overlapping_indices(
+                np.asarray(chunk.geometry),
+                tree,
+                tree_geometries,
+                reproj,
+            ),
         )
     return overlapping
+
+
+def _overlapping_indices(
+    candidates: np.ndarray,
+    tree: shapely.STRtree,
+    tree_geometries: np.ndarray,
+    reproj: list[tuple[int, shapely.Geometry]],
+) -> set[int]:
+    """Return the fire indices whose reprojected geometry intersects a candidate.
+
+    Args:
+        candidates: The layer features to test.
+        tree: A spatial index over the reprojected fire geometries.
+        tree_geometries: The reprojected fire geometries backing *tree*.
+        reproj: The ``(index, geometry)`` pairs aligned with *tree_geometries*.
+
+    Returns:
+        The fire indices that intersect at least one candidate.
+    """
+    input_indices, tree_indices = tree.query(candidates)
+    if len(input_indices) == 0:
+        return set()
+    intersects = shapely.intersects(
+        candidates[input_indices],
+        tree_geometries[tree_indices],
+    )
+    return {reproj[position][0] for position in np.unique(tree_indices[intersects])}
 
 
 def identity_key(name: str, identifier: str | None) -> str:
@@ -477,20 +594,6 @@ def identity_key(name: str, identifier: str | None) -> str:
         The fire's stable key.
     """
     return identifier if identifier is not None else f"name:{name}"
-
-
-def row_identity(row: pd.Series) -> tuple[str, str | None]:
-    """Return a history row's fire name and identifier.
-
-    Args:
-        row: One history row.
-
-    Returns:
-        The fire's name and canonical identifier, where the identifier is None when the
-        row has none.
-    """
-    name = str(row["fire_name"])
-    return name, normalized_identifier(row.get("fire_identifier"))
 
 
 def normalized_identifier(value: object) -> str | None:
@@ -534,25 +637,6 @@ def group_keys(dataframe: geopandas.GeoDataFrame) -> pd.Series:
     )
 
 
-def fire_name_and_identifier(
-    perimeters: geopandas.GeoDataFrame,
-    points: geopandas.GeoDataFrame,
-) -> tuple[str, str | None]:
-    """Return a fire's name and identifier from its history rows.
-
-    Args:
-        perimeters: The fire's perimeter rows.
-        points: The fire's point rows.
-
-    Returns:
-        The fire's name and identifier, from the perimeters when present and otherwise
-        from the points.
-    """
-    if not perimeters.empty:
-        return row_identity(perimeters.iloc[0])
-    return row_identity(points.iloc[0])
-
-
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class FireRecords:
     """A fire's identity and the history rows that describe it."""
@@ -561,43 +645,6 @@ class FireRecords:
     identifier: str | None
     perimeters: geopandas.GeoDataFrame
     points: geopandas.GeoDataFrame
-
-
-def fire_records(
-    perimeters: geopandas.GeoDataFrame,
-    points: geopandas.GeoDataFrame,
-) -> list[FireRecords]:
-    """Group the history layers into one record set per fire.
-
-    Args:
-        perimeters: The perimeter history layer.
-        points: The point history layer.
-
-    Returns:
-        One record set per fire, sorted by identity key.
-    """
-    perimeter_groups = typing.cast(
-        "dict[str, geopandas.GeoDataFrame]",
-        {str(key): group for key, group in perimeters.groupby(group_keys(perimeters))},
-    )
-    point_groups = typing.cast(
-        "dict[str, geopandas.GeoDataFrame]",
-        {str(key): group for key, group in points.groupby(group_keys(points))},
-    )
-    records: list[FireRecords] = []
-    for key in sorted(set(perimeter_groups) | set(point_groups)):
-        fire_perimeters = perimeter_groups.get(key, perimeters.iloc[0:0])
-        fire_points = point_groups.get(key, points.iloc[0:0])
-        name, identifier = fire_name_and_identifier(fire_perimeters, fire_points)
-        records.append(
-            FireRecords(
-                name=name,
-                identifier=identifier,
-                perimeters=fire_perimeters,
-                points=fire_points,
-            ),
-        )
-    return records
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -684,6 +731,22 @@ def fire_scores_path(year_directory: pathlib.Path) -> pathlib.Path:
         year_directory
         / peri_scribe.fire_history.DERIVED_DIRECTORY_NAME
         / SCORE_OUTPUT_FILENAME
+    )
+
+
+def fire_scores_histogram_path(year_directory: pathlib.Path) -> pathlib.Path:
+    """Return the path of the fire-scores histogram for *year_directory*.
+
+    Args:
+        year_directory: The year directory that holds the ``derived`` directory.
+
+    Returns:
+        The fire-scores histogram output path.
+    """
+    return (
+        year_directory
+        / peri_scribe.fire_history.DERIVED_DIRECTORY_NAME
+        / HISTOGRAM_OUTPUT_FILENAME
     )
 
 
@@ -909,24 +972,24 @@ class ExternalSignals:
 
 def external_signals(
     year_directory: pathlib.Path,
-    records: list[FireRecords],
+    fire_count: int,
     geometries: list[shapely.Geometry | None],
     buffered: list[shapely.Geometry | None],
 ) -> ExternalSignals:
-    """Stream the external datasets and return each fire's spatial signals.
+    """Compute each fire's external spatial signals.
 
-    Each dataset is read in bounded chunks only when its GeoPackage is present, so a
-    missing dataset contributes nothing and a present one is never loaded into memory
-    whole. The returned counts and indices are aligned with *records*.
+    Each dataset is read only when its GeoPackage is present, so a missing dataset
+    contributes nothing and a present one is queried through its R-Tree index rather
+    than read whole. The returned counts and indices are aligned with the fires.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
-        records: The fire records being scored.
-        geometries: One geometry per record, in WGS84, or None.
-        buffered: One building-distance buffered geometry per record, or None.
+        fire_count: The number of fires being scored.
+        geometries: One geometry per fire, in WGS84, or None.
+        buffered: One building-distance buffered geometry per fire, or None.
 
     Returns:
-        The external signals for the records.
+        The external signals for the fires.
     """
     buildings = download_source_layer(
         year_directory,
@@ -935,7 +998,7 @@ def external_signals(
     if buildings is not None and buildings[0].is_file():
         building_counts = building_counts_within(buffered, buildings[0], buildings[1])
     else:
-        building_counts = [0] * len(records)
+        building_counts = [0] * fire_count
     evacuations = latest_snapshot_layer(
         year_directory,
         peri_scribe.external_sources.EVACUATIONS_SOURCE,
@@ -975,20 +1038,90 @@ def external_signals(
     )
 
 
-def score_fires(year_directory: pathlib.Path) -> pathlib.Path:
-    """Score every fire and write the results to the derived directory.
-
-    The current score is computed from the differential history and the retrieved
-    external datasets, then each fire keeps the highest score it has ever reached across
-    runs. The external datasets are streamed in bounded chunks, so the buildings and the
-    hazard layers are never loaded into memory whole. The results are written to
-    ``{year_directory}/derived/fire_scores.json``.
+def _fire_identity(
+    perimeters: geopandas.GeoDataFrame,
+    points: geopandas.GeoDataFrame,
+    perimeter_keys: pd.Series,
+    point_keys: pd.Series,
+) -> tuple[pd.Series, pd.Series]:
+    """Return per-fire name and identifier Series, preferring perimeter rows.
 
     Args:
-        year_directory: The year directory that holds the ``sources`` directory.
+        perimeters: The differential perimeter layer.
+        points: The point history layer.
+        perimeter_keys: Each perimeter row's fire identity key.
+        point_keys: Each point row's fire identity key.
 
     Returns:
-        The path of the written fire-scores JSON.
+        The per-fire name and identifier, keyed by fire identity.
+    """
+    names = pd.Series(dtype=object)
+    identifiers = pd.Series(dtype=object)
+    if not perimeters.empty:
+        perimeter_first = (
+            perimeters
+            .assign(_key=perimeter_keys)
+            .drop_duplicates("_key")
+            .set_index("_key")
+        )
+        names = perimeter_first["fire_name"]
+        identifiers = perimeter_first["fire_identifier"]
+    if not points.empty:
+        point_first = (
+            points.assign(_key=point_keys).drop_duplicates("_key").set_index("_key")
+        )
+        names = names.combine_first(point_first["fire_name"])
+        identifiers = identifiers.combine_first(point_first["fire_identifier"])
+    return names, identifiers
+
+
+def _perimeter_metrics_for(
+    key: str,
+    metrics: pd.DataFrame,
+    first_mapping: pd.Series,
+) -> PerimeterMetrics:
+    """Return the perimeter metrics for a fire, or all-None when it has none.
+
+    Args:
+        key: The fire's identity key.
+        metrics: The per-fire maximum area and growth, keyed by fire identity.
+        first_mapping: The per-fire first-mapping area, keyed by fire identity.
+
+    Returns:
+        The fire's perimeter metrics.
+    """
+    if key not in metrics.index:
+        return PerimeterMetrics(
+            area_acres=None,
+            growth_acres=None,
+            first_mapping_acres=None,
+            geometry=None,
+        )
+    row = metrics.loc[key]
+    return PerimeterMetrics(
+        area_acres=None if pd.isna(row.max_area) else row.max_area,
+        growth_acres=None if pd.isna(row.max_growth) else row.max_growth,
+        first_mapping_acres=peri_scribe.geo_package.numeric_value(
+            first_mapping.get(key),
+        ),
+        geometry=None,
+    )
+
+
+def _read_history(
+    year_directory: pathlib.Path,
+) -> tuple[
+    geopandas.GeoDataFrame,
+    geopandas.GeoDataFrame,
+    geopandas.GeoDataFrame,
+]:
+    """Return the differential perimeters, points, and full perimeters.
+
+    Args:
+        year_directory: The year directory that holds the ``derived`` directory.
+
+    Returns:
+        The differential perimeter layer, point layer, and full perimeter layer.
     """
     differential_path = peri_scribe.fire_differential.differential_geopackage_path(
         year_directory,
@@ -1001,26 +1134,197 @@ def score_fires(year_directory: pathlib.Path) -> pathlib.Path:
         differential_path,
         peri_scribe.fire_history.POINT_LAYER_NAME,
     )
-    records = fire_records(perimeters, points)
-    metrics = [perimeter_metrics(record.perimeters) for record in records]
-    geometries = [
-        fire_geometry_from(record_metrics.geometry, record.points)
-        for record, record_metrics in zip(records, metrics, strict=True)
-    ]
+    full_path = peri_scribe.fire_history.history_geopackage_path(year_directory)
+    full_perimeters = read_layer_if_present(
+        full_path,
+        peri_scribe.fire_history.PERIMETER_LAYER_NAME,
+    )
+    return perimeters, points, full_perimeters
+
+
+def _fire_metrics(
+    perimeters: geopandas.GeoDataFrame,
+    perimeter_keys: pd.Series,
+) -> tuple[pd.DataFrame, pd.Series]:
+    """Return per-fire size, growth, and first-mapping metrics.
+
+    Args:
+        perimeters: The differential perimeter layer.
+        perimeter_keys: Each perimeter row's fire identity key.
+
+    Returns:
+        The per-fire maximum area and growth as a dataframe, and the first-mapping area
+        as a series, both keyed by fire identity.
+    """
+    if perimeters.empty:
+        return pd.DataFrame(), pd.Series(dtype=object)
+    keyed = perimeters.assign(_key=perimeter_keys)
+    metrics = keyed.groupby("_key", sort=False).agg(
+        max_area=("area_acres", "max"),
+        max_growth=("area_acres_differential", "max"),
+    )
+    first_mapping = (
+        keyed
+        .sort_values("observation_time")
+        .groupby("_key", sort=False)
+        .head(1)
+        .set_index("_key")["area_acres"]
+    )
+    return metrics, first_mapping
+
+
+def _fire_geometries(
+    keys: list[str],
+    full_perimeters: geopandas.GeoDataFrame,
+    points: geopandas.GeoDataFrame,
+    point_keys: pd.Series,
+) -> list[shapely.Geometry | None]:
+    """Return each fire's geometry from the cumulative history, else its points.
+
+    Args:
+        keys: The fires' identity keys, in score order.
+        full_perimeters: The cumulative full perimeter layer.
+        points: The point history layer.
+        point_keys: Each point row's fire identity key.
+
+    Returns:
+        One geometry per fire, or None where the fire has no geometry.
+    """
+    last_full = pd.Series(dtype=object)
+    if not full_perimeters.empty:
+        full_keys = group_keys(full_perimeters)
+        last_full = (
+            full_perimeters
+            .assign(_key=full_keys)
+            .sort_values("observation_time")
+            .groupby("_key", sort=False)
+            .geometry.last()
+        )
+    point_unions = {
+        str(key): union_geometry(group.geometry)
+        for key, group in points.groupby(point_keys)
+    }
+    geometries: list[shapely.Geometry | None] = []
+    for key in keys:
+        geometry = last_full.get(key)
+        if geometry is None:
+            geometry = point_unions.get(key)
+        geometries.append(geometry)
+    return geometries
+
+
+def _record_metrics(
+    keys: list[str],
+    metrics: pd.DataFrame,
+    first_mapping: pd.Series,
+) -> list[PerimeterMetrics]:
+    """Return one perimeter-metrics record per fire.
+
+    Args:
+        keys: The fires' identity keys, in score order.
+        metrics: The per-fire maximum area and growth, keyed by fire identity.
+        first_mapping: The per-fire first-mapping area, keyed by fire identity.
+
+    Returns:
+        One perimeter metrics record per fire, aligned with *keys*.
+    """
+    return [_perimeter_metrics_for(key, metrics, first_mapping) for key in keys]
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class _ScoringInput:
+    """The per-fire inputs, precomputed and aligned in score order."""
+
+    keys: list[str]
+    names: list[str]
+    identifiers: list[str | None]
+    metrics: list[PerimeterMetrics]
+    geometries: list[shapely.Geometry | None]
+    buffered: list[shapely.Geometry | None]
+    signals: ExternalSignals
+    points_by_key: dict[str, geopandas.GeoDataFrame]
+    empty_points: geopandas.GeoDataFrame
+    empty_perimeters: geopandas.GeoDataFrame
+
+
+def _scoring_input(year_directory: pathlib.Path) -> _ScoringInput:
+    """Compute the per-fire inputs and external signals used to score fires.
+
+    Args:
+        year_directory: The year directory that holds the ``derived`` directory.
+
+    Returns:
+        The aligned per-fire inputs.
+    """
+    perimeters, points, full_perimeters = _read_history(year_directory)
+    perimeter_keys = group_keys(perimeters)
+    point_keys = group_keys(points)
+    keys = sorted(set(perimeter_keys) | set(point_keys))
+    metrics, first_mapping = _fire_metrics(perimeters, perimeter_keys)
+    names, identifiers = _fire_identity(
+        perimeters,
+        points,
+        perimeter_keys,
+        point_keys,
+    )
+    geometries = _fire_geometries(keys, full_perimeters, points, point_keys)
+    record_metrics = _record_metrics(keys, metrics, first_mapping)
     buffered = buffered_fire_geometries(geometries)
-    signals = external_signals(year_directory, records, geometries, buffered)
+    signals = external_signals(year_directory, len(keys), geometries, buffered)
+    return _ScoringInput(
+        keys=keys,
+        names=[str(names[key]) for key in keys],
+        identifiers=[normalized_identifier(identifiers.get(key)) for key in keys],
+        metrics=record_metrics,
+        geometries=geometries,
+        buffered=buffered,
+        signals=signals,
+        points_by_key=typing.cast(
+            "dict[str, geopandas.GeoDataFrame]",
+            {str(key): group for key, group in points.groupby(point_keys)},
+        ),
+        empty_points=points.iloc[0:0],
+        empty_perimeters=perimeters.iloc[0:0],
+    )
+
+
+def score_fires(year_directory: pathlib.Path) -> pathlib.Path:
+    """Score every fire and write the results to the derived directory.
+
+    The current score is computed from the differential history and the retrieved
+    external datasets, then each fire keeps the highest score it has ever reached across
+    runs. The fire metrics are aggregated in a single groupby pass, the fire geometry
+    comes from the cumulative full history rather than re-unioned perimeters, and the
+    external datasets are queried through their R-Tree indexes, so neither the history
+    nor the external layers are ever processed one feature at a time. The results are
+    written to ``{year_directory}/derived/fire_scores.json``, along with a score
+    histogram to ``{year_directory}/derived/fire_scores_histogram.png``.
+
+    Args:
+        year_directory: The year directory that holds the ``sources`` directory.
+
+    Returns:
+        The path of the written fire-scores JSON.
+    """
+    scoring = _scoring_input(year_directory)
     current = [
         fire_score_for(
-            record,
-            record_metrics,
-            building_count=signals.building_counts[index],
-            evacuation_overlap=index in signals.evacuation_indices,
-            red_flag_warning_overlap=index in signals.red_flag_warning_indices,
-            wui_overlap=index in signals.wui_indices,
+            FireRecords(
+                name=scoring.names[index],
+                identifier=scoring.identifiers[index],
+                perimeters=scoring.empty_perimeters,
+                points=scoring.points_by_key.get(
+                    scoring.keys[index],
+                    scoring.empty_points,
+                ),
+            ),
+            scoring.metrics[index],
+            building_count=scoring.signals.building_counts[index],
+            evacuation_overlap=index in scoring.signals.evacuation_indices,
+            red_flag_warning_overlap=index in scoring.signals.red_flag_warning_indices,
+            wui_overlap=index in scoring.signals.wui_indices,
         )
-        for index, (record, record_metrics) in enumerate(
-            zip(records, metrics, strict=True),
-        )
+        for index in range(len(scoring.keys))
     ]
     previous = previous_scores(year_directory)
     entries = [
@@ -1035,4 +1339,6 @@ def score_fires(year_directory: pathlib.Path) -> pathlib.Path:
     output_path = fire_scores_path(year_directory)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     peri_scribe.output.write_fire_scores(output_path, document)
+    histogram_path = fire_scores_histogram_path(year_directory)
+    peri_scribe.output.write_fire_scores_histogram(histogram_path, document)
     return output_path
