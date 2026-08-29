@@ -173,6 +173,7 @@ def per_state_template_source() -> peri_scribe.external_sources.ExternalSource:
         states=("California",),
         state_urls=None,
         url="https://example.com/legacy/{state}.geojson.zip",
+        stream=False,
     )
 
 
@@ -645,6 +646,55 @@ def testfetch_arcgis_source_uses_current_time_when_timestamp_unobservable(
     assert result.name == "000000,lastEdit=1700000000123.gpkg"
 
 
+def test_stream_combined_source_requires_centroids_without_attributes(
+    tmp_path: pathlib.Path,
+) -> None:
+    source = dataclasses.replace(
+        peri_scribe.external_sources.BUILDINGS_SOURCE,
+        states=("California",),
+        keep_attributes=True,
+    )
+    with pytest.raises(ValueError, match="must reduce to centroid points"):
+        peri_scribe.external_sources.fetch_external_source(source, tmp_path)
+
+
+def test_stream_download_and_convert_raises_when_download_fails(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = dataclasses.replace(
+        peri_scribe.external_sources.BUILDINGS_SOURCE,
+        states=("California",),
+    )
+    links = {
+        state: (
+            "https://minedbuildings.z5.web.core.windows.net/legacy/"
+            f"usbuildings-v2/{state.replace(' ', '')}.geojson.zip"
+        )
+        for state in peri_scribe.external_sources.BUILDINGS_STATES
+    }
+    page = buildings_page_html(links)
+
+    def get(url: str, **_kwargs: object) -> FakeResponse:
+        if url == peri_scribe.external_sources.BUILDINGS_SOURCE.url:
+            return FakeResponse(page.encode("utf-8"))
+        message = "boom"
+        raise peri_scribe.external_sources.requests.exceptions.RequestException(
+            message,
+        )
+
+    monkeypatch.setattr(
+        peri_scribe.external_sources.requests,
+        "get",
+        get,
+    )
+    with pytest.raises(
+        peri_scribe.exceptions.ExternalDataError,
+        match="Failed to download",
+    ):
+        peri_scribe.external_sources.fetch_external_source(source, tmp_path)
+
+
 def testdownload_links_parses_github_page_table() -> None:
     links = {
         "California": (
@@ -862,6 +912,7 @@ def test_fetch_buildings_combines_projected_centroids_into_wgs84(
         state_urls=None,
         url="https://example.com/legacy/{state}.geojson.zip",
         geodata_suffix=".shp",
+        stream=False,
     )
     dataframe = geopandas.GeoDataFrame(
         {"OBJECTID": [1]},

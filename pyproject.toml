@@ -18,6 +18,7 @@ dependencies = [
     "seaborn",
     "setuptools",  # For https://github.com/Esri/arcgis-python-api/issues/2428
     "simplekml",
+    "stream-unzip",
     "structlog",
     "tenacity",
     "time-machine",

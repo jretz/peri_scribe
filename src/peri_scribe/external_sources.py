@@ -20,13 +20,15 @@ A download source covers the whole country as one archive per state (the buildin
 footprints). A combined source (the building footprints) concatenates the per-state
 results into a single GeoPackage and keeps no other files; the building-footprint source
 reduces each footprint polygon to a centroid point and keeps no attributes, since only
-the buildings' locations are wanted. Downloads are converted in bounded chunks — a
-GeoJSON archive is parsed one feature at a time with ``ijson`` and any other vector data
-is read in chunks — so a source of any size is converted without loading the whole file
-into memory. The original archives are not kept once converted. The building footprints'
-per-state archive links are not constructed from a URL pattern; they are read from the
-"Download links" table on the dataset's repository page whenever the archives are
-downloaded, so a change in the link scheme is picked up automatically.
+the buildings' locations are wanted. The buildings source is streamed: its zip archives
+are decompressed as their bytes arrive and the conversion feeds on the stream, so the
+archive and its GeoJSON are never written to disk. Any other download is converted in
+bounded chunks — a GeoJSON archive is parsed one feature at a time with ``ijson`` and
+any other vector data is read in chunks — so a source of any size is converted without
+loading the whole file into memory. The original archives are not kept once converted.
+The building footprints' per-state archive links are not constructed from a URL pattern;
+they are read from the "Download links" table on the dataset's repository page whenever
+the archives are downloaded, so a change in the link scheme is picked up automatically.
 
 The fire-source reader skips these directories, so their GeoPackages are never mistaken
 for fire snapshots.
@@ -59,6 +61,7 @@ import shapely
 import structlog
 import us
 
+import peri_scribe.centroid_streaming
 import peri_scribe.exceptions
 import peri_scribe.feed_types
 import peri_scribe.geo_data
@@ -115,6 +118,12 @@ class ExternalSource:
     # When true, the per-state results are concatenated into a single GeoPackage named
     # for the source and the per-state files are removed.
     combine: bool = False
+    # When true, the source's archive is streamed and converted without ever writing the
+    # archive or its GeoJSON to disk: the archive's bytes feed ``stream_unzip`` while
+    # they arrive and each footprint is reduced to its centroid point. Only meaningful
+    # for a ``download`` source whose archive is a zip holding a GeoJSON member,
+    # combined into one GeoPackage, and reduced to centroids with no attributes.
+    stream: bool = False
     centroids: bool = False
     keep_attributes: bool = True
     geodata_suffix: str = ".geojson"
@@ -170,6 +179,7 @@ BUILDINGS_SOURCE = ExternalSource(
     layer_name="buildings",
     states=BUILDINGS_STATES,
     combine=True,
+    stream=True,
     centroids=True,
     keep_attributes=False,
     state_urls=buildings_state_urls,
@@ -552,6 +562,8 @@ def download_source(
     directory = source_directory_path(year_directory, source)
     directory.mkdir(parents=True, exist_ok=True)
     if source.combine:
+        if source.stream:
+            return (stream_combined_source(source, year_directory),)
         return (combine_downloaded_source(source, directory, year_directory),)
     paths: list[pathlib.Path] = []
     for state in source.states or (None,):
@@ -568,6 +580,110 @@ def download_source(
         url = state_download_url(source, state, state_urls)
         paths.append(download_and_convert(source, directory, url, output))
     return tuple(paths)
+
+
+def stream_combined_source(
+    source: ExternalSource,
+    year_directory: pathlib.Path,
+) -> pathlib.Path:
+    """Stream every state of *source* into one combined GeoPackage.
+
+    Each state's archive is downloaded and converted as one stream: the archive is
+    decompressed as its bytes arrive and each footprint is reduced to its centroid
+    point, appended directly into the source's single GeoPackage. Nothing is written to
+    disk except the combined GeoPackage, so the archive, its GeoJSON, and the per-state
+    files never exist. When the combined GeoPackage already exists, the download is
+    skipped entirely, since the archives are large and rarely change, and the page of
+    per-state links is not read.
+
+    Args:
+        source: The combined streaming download-backed external source.
+        year_directory: The year directory that holds the ``sources`` directory.
+
+    Returns:
+        The path of the combined GeoPackage.
+
+    Raises:
+        ValueError: If the source is not configured to reduce to centroid points
+            with no attributes, which the streaming conversion requires.
+    """
+    output = output_path(year_directory, source)
+    if output.is_file():
+        logger.debug(
+            "External source already present",
+            source=source.name,
+            path=output,
+        )
+        return output
+    if not source.centroids or source.keep_attributes:
+        message = (
+            f"Streaming source {source.name} must reduce to centroid points "
+            "with no attributes"
+        )
+        raise ValueError(message)
+    state_urls = source.state_urls() if source.state_urls is not None else None
+    layer_name = source.layer_name or source.name
+    feature_count = 0
+    wrote_any = False
+    for state in source.states:
+        url = state_download_url(source, state, state_urls)
+        count = stream_download_and_convert(
+            url,
+            output,
+            layer_name,
+            append=wrote_any,
+        )
+        wrote_any = wrote_any or count > 0
+        feature_count += count
+    logger.debug(
+        "Combined external source",
+        path=output,
+        features=feature_count,
+    )
+    return output
+
+
+def stream_download_and_convert(
+    url: str,
+    output: pathlib.Path,
+    layer_name: str,
+    *,
+    append: bool,
+) -> int:
+    """Stream *url*'s archive and convert it to centroid points at *output*.
+
+    The archive's bytes are read from the response as they arrive and converted by
+    ``peri_scribe.centroid_streaming`` without ever writing the archive or its
+    GeoJSON to disk.
+
+    Args:
+        url: The archive's URL.
+        output: The GeoPackage path to append to.
+        layer_name: The GeoPackage layer.
+        append: Append to an existing layer rather than creating the file.
+
+    Returns:
+        The number of features converted.
+
+    Raises:
+        ExternalDataError: If the download fails.
+    """
+    try:
+        response = requests.get(
+            url,
+            stream=True,
+            timeout=REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        return peri_scribe.centroid_streaming.convert_zip_stream(
+            response.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE),
+            output,
+            layer_name,
+            first=not append,
+        )
+    except requests.exceptions.RequestException as error:
+        message = f"Failed to download {url}: {error}"
+        raise peri_scribe.exceptions.ExternalDataError(message) from error
 
 
 def combine_downloaded_source(
