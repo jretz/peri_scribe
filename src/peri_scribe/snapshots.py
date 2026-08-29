@@ -25,8 +25,6 @@ AUXILIARY_DIRECTORY_NAMES = frozenset(
         ADMINISTRATIVE_BOUNDARIES_DIRECTORY_NAME,
         "buildings",
         "evacuations",
-        "red_flag_warnings",
-        "wui",
     },
 )
 

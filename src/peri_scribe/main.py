@@ -254,58 +254,6 @@ def fetch_evacuations(year_directory: pathlib.Path | None = None) -> None:
 
 @cli.command(
     help=(
-        "Fetch NWS Red Flag Warnings into YEAR_DIRECTORY.\n\n"
-        "Queries the NWS watches-and-warnings layer for Red Flag Warnings and Fire "
-        "Weather Watches and stores a snapshot under "
-        "YEAR_DIRECTORY/sources/red_flag_warnings whenever the layer's data "
-        "changes, keeping the season's history. "
-        f"{year_directory_default_help()}"
-    ),
-)
-@click.argument(
-    "year_directory",
-    type=click.Path(
-        path_type=pathlib.Path,
-        exists=True,
-        file_okay=False,
-    ),
-    required=False,
-)
-def fetch_red_flag_warnings(year_directory: pathlib.Path | None = None) -> None:
-    """Fetch Red Flag Warnings for the year directory."""
-    fetch_external_source(
-        peri_scribe.external_sources.RED_FLAG_WARNINGS_SOURCE,
-        year_directory,
-    )
-
-
-@cli.command(
-    help=(
-        "Fetch the wildland-urban interface (WUI) data into YEAR_DIRECTORY.\n\n"
-        "Downloads the conterminous-US WUI file geodatabase archive, extracts "
-        "it, and converts it to a GeoPackage under YEAR_DIRECTORY/sources/wui. "
-        f"{year_directory_default_help()}"
-    ),
-)
-@click.argument(
-    "year_directory",
-    type=click.Path(
-        path_type=pathlib.Path,
-        exists=True,
-        file_okay=False,
-    ),
-    required=False,
-)
-def fetch_wui(year_directory: pathlib.Path | None = None) -> None:
-    """Fetch wildland-urban interface data for the year directory."""
-    fetch_external_source(
-        peri_scribe.external_sources.WUI_SOURCE,
-        year_directory,
-    )
-
-
-@cli.command(
-    help=(
         "Derive the full and differential point and perimeter history for "
         "YEAR_DIRECTORY, then score each fire.\n\n"
         "Builds and writes both "

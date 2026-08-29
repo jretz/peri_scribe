@@ -1,21 +1,21 @@
 """Scoring fires to surface the ones people are most interested in.
 
-Each fire's score is a sum of points awarded across independent signals: its reported
-size, its largest single growth step, its size when first mapped, the buildings within a
-mile of it, whether it overlaps an evacuation zone, a red-flag warning, or the
-wildland-urban interface, and its official incident complexity level. A fire keeps the
-highest score it has ever reached, so a fire that was once interesting stays interesting
-for the rest of the season.
+Each fire's score is a weighted sum of points awarded across independent signals: its
+reported size, its largest single growth step, its size when first mapped, the buildings
+within a mile of it, whether it overlaps an evacuation zone, and its official incident
+complexity level. The score is a pure function of the current data: it never looks at
+previously recorded scores, so deleting the scores file and regenerating it changes
+nothing.
 
 The score is derived from the differential history GeoPackage (for size, growth,
 first-mapping size) and the cumulative full history (for geometry), plus the point
 history (for the official complexity level), then joined spatially against the retrieved
-external datasets: building centroids, evacuation zones, red-flag warnings, and the
-wildland-urban interface. Each external GeoPackage is queried through its R-Tree index,
-so only the features near a fire are ever read from it.
+external datasets: building centroids and evacuation zones. Each external GeoPackage is
+queried through its R-Tree index, so only the features near a fire are ever read from
+it.
 
 The results are written to ``{year}/derived/fire_scores.json``, along with a
-``{year}/derived/fire_scores_histogram.png`` histogram of the scores.
+``{year}/derived/fire_scores_ccdf.png`` complementary CDF of the scores.
 """
 
 from __future__ import annotations
@@ -45,9 +45,9 @@ import peri_scribe.snapshots
 
 
 SCORE_OUTPUT_FILENAME = "fire_scores.json"
-HISTOGRAM_OUTPUT_FILENAME = "fire_scores_histogram.png"
+CCDF_OUTPUT_FILENAME = "fire_scores_ccdf.png"
 
-FIRE_SCORES_VERSION = "2026-08-27"
+FIRE_SCORES_VERSION = "2026-08-28"
 
 # The buffer around a fire's footprint used to count threatened buildings.
 BUILDING_BUFFER_IN_METERS = 1609.34
@@ -94,8 +94,6 @@ BUILDING_COUNT_TIERS = (
 
 # Points awarded for overlapping each external hazard or threat layer.
 EVACUATION_POINTS = 3
-RED_FLAG_WARNING_POINTS = 2
-WUI_POINTS = 2
 
 # Official importance points by incident complexity level.
 IMPORTANCE_POINTS_BY_LEVEL = {
@@ -103,6 +101,18 @@ IMPORTANCE_POINTS_BY_LEVEL = {
     "Type 2 Incident": 2,
     "Type 3 Incident": 1,
 }
+
+# Weight applied to each signal's points when composing the total score. The weights are
+# calibrated so that the fires people are most interested in stand out from the season's
+# population; the official complexity level dominates, and the reported size, growth,
+# and evacuation signals carry the most weight, with the building count as a modest
+# tiebreaker.
+SIZE_WEIGHT = 27
+GROWTH_WEIGHT = 15
+FIRST_MAPPING_WEIGHT = 11
+BUILDINGS_WEIGHT = 4
+EVACUATION_WEIGHT = 11
+IMPORTANCE_WEIGHT = 120
 
 
 def tiered_points(
@@ -658,8 +668,6 @@ class FireScore:
     first_mapping_points: int
     building_points: int
     evacuation_points: int
-    red_flag_warning_points: int
-    wui_points: int
     importance_points: int
 
     @property
@@ -671,8 +679,6 @@ class FireScore:
             + self.first_mapping_points
             + self.building_points
             + self.evacuation_points
-            + self.red_flag_warning_points
-            + self.wui_points
             + self.importance_points
         )
 
@@ -683,8 +689,6 @@ def fire_score_for(
     *,
     building_count: int,
     evacuation_overlap: bool,
-    red_flag_warning_overlap: bool,
-    wui_overlap: bool,
 ) -> FireScore:
     """Return the score for one fire from its history and external signals.
 
@@ -693,8 +697,6 @@ def fire_score_for(
         metrics: The fire's size and growth measurements.
         building_count: The number of buildings within a mile of the fire.
         evacuation_overlap: Whether the fire overlaps an evacuation zone.
-        red_flag_warning_overlap: Whether the fire overlaps a red-flag warning.
-        wui_overlap: Whether the fire overlaps the wildland-urban interface.
 
     Returns:
         The fire's score.
@@ -702,19 +704,18 @@ def fire_score_for(
     return FireScore(
         name=record.name,
         identifier=record.identifier,
-        size_points=tiered_points(metrics.area_acres, SIZE_TIERS),
-        growth_points=tiered_points(metrics.growth_acres, GROWTH_TIERS),
-        first_mapping_points=tiered_points(
+        size_points=SIZE_WEIGHT * tiered_points(metrics.area_acres, SIZE_TIERS),
+        growth_points=GROWTH_WEIGHT * tiered_points(metrics.growth_acres, GROWTH_TIERS),
+        first_mapping_points=FIRST_MAPPING_WEIGHT
+        * tiered_points(
             metrics.first_mapping_acres,
             FIRST_MAPPING_TIERS,
         ),
-        building_points=tiered_points(building_count, BUILDING_COUNT_TIERS),
-        evacuation_points=EVACUATION_POINTS if evacuation_overlap else 0,
-        red_flag_warning_points=RED_FLAG_WARNING_POINTS
-        if red_flag_warning_overlap
-        else 0,
-        wui_points=WUI_POINTS if wui_overlap else 0,
-        importance_points=fire_importance_points(record.points),
+        building_points=BUILDINGS_WEIGHT
+        * tiered_points(building_count, BUILDING_COUNT_TIERS),
+        evacuation_points=EVACUATION_WEIGHT
+        * (EVACUATION_POINTS if evacuation_overlap else 0),
+        importance_points=IMPORTANCE_WEIGHT * fire_importance_points(record.points),
     )
 
 
@@ -734,67 +735,43 @@ def fire_scores_path(year_directory: pathlib.Path) -> pathlib.Path:
     )
 
 
-def fire_scores_histogram_path(year_directory: pathlib.Path) -> pathlib.Path:
-    """Return the path of the fire-scores histogram for *year_directory*.
+def fire_scores_ccdf_path(year_directory: pathlib.Path) -> pathlib.Path:
+    """Return the path of the fire-scores CCDF for *year_directory*.
 
     Args:
         year_directory: The year directory that holds the ``derived`` directory.
 
     Returns:
-        The fire-scores histogram output path.
+        The fire-scores CCDF output path.
     """
     return (
         year_directory
         / peri_scribe.fire_history.DERIVED_DIRECTORY_NAME
-        / HISTOGRAM_OUTPUT_FILENAME
-    )
-
-
-def best_score(previous_score: int | None, current_score: int) -> int:
-    """Return the highest score a fire has ever reached.
-
-    Args:
-        previous_score: The fire's previously recorded best score, or None.
-        current_score: The fire's current total score.
-
-    Returns:
-        The higher of the two.
-    """
-    return (
-        current_score
-        if previous_score is None
-        else max(
-            previous_score,
-            current_score,
-        )
+        / CCDF_OUTPUT_FILENAME
     )
 
 
 def score_entry(
     fire_score: FireScore,
-    previous_score: int | None,
 ) -> peri_scribe.models.FireScoreEntry:
     """Return the persisted score entry for a fire.
 
     Args:
         fire_score: The fire's current score.
-        previous_score: The fire's previously recorded best score, or None.
 
     Returns:
-        The entry holding the fire's best-ever score and current components.
+        The entry holding the fire's score and current components.
     """
     return peri_scribe.models.FireScoreEntry(
         name=fire_score.name,
         identifier=fire_score.identifier,
-        score=best_score(previous_score, fire_score.total),
+        score=fire_score.total,
         components=peri_scribe.models.FireScoreComponents(
             size=fire_score.size_points,
             growth=fire_score.growth_points,
             first_mapping=fire_score.first_mapping_points,
             buildings=fire_score.building_points,
             evacuation=fire_score.evacuation_points,
-            red_flag_warning=fire_score.red_flag_warning_points,
-            wui=fire_score.wui_points,
             importance=fire_score.importance_points,
         ),
     )
@@ -815,28 +792,6 @@ def fire_scores_document(
         version=FIRE_SCORES_VERSION,
         fires=entries,
     )
-
-
-def previous_scores(year_directory: pathlib.Path) -> dict[str, int]:
-    """Return each fire's previously recorded best score.
-
-    Args:
-        year_directory: The year directory that holds the fire-scores file.
-
-    Returns:
-        The best score keyed by each fire's identity key, or an empty mapping when no
-        scores have been written yet.
-    """
-    path = fire_scores_path(year_directory)
-    if not path.is_file():
-        return {}
-    document = peri_scribe.models.FireScores.model_validate_json(
-        path.read_text(encoding="utf-8"),
-    )
-    return {
-        identity_key(entry.name, entry.identifier): entry.score
-        for entry in document.fires
-    }
 
 
 def read_layer_if_present(
@@ -920,26 +875,6 @@ def latest_snapshot_layer(
     return path, source.layer_name
 
 
-def read_download_source(
-    year_directory: pathlib.Path,
-    source: peri_scribe.external_sources.ExternalSource,
-) -> geopandas.GeoDataFrame:
-    """Read a downloaded external source's GeoPackage.
-
-    Args:
-        year_directory: The year directory that holds the ``sources`` directory.
-        source: The download-kind external source.
-
-    Returns:
-        The source's features, or an empty GeoDataFrame when it is not available.
-    """
-    layer = download_source_layer(year_directory, source)
-    if layer is None:
-        return geopandas.GeoDataFrame()
-    path, layer_name = layer
-    return read_layer_if_present(path, layer_name)
-
-
 def read_latest_snapshot(
     year_directory: pathlib.Path,
     source: peri_scribe.external_sources.ExternalSource,
@@ -966,8 +901,6 @@ class ExternalSignals:
 
     building_counts: tuple[int, ...]
     evacuation_indices: frozenset[int]
-    red_flag_warning_indices: frozenset[int]
-    wui_indices: frozenset[int]
 
 
 def external_signals(
@@ -1008,33 +941,9 @@ def external_signals(
         if evacuations is not None and evacuations[0].is_file()
         else set()
     )
-    red_flag_warnings = latest_snapshot_layer(
-        year_directory,
-        peri_scribe.external_sources.RED_FLAG_WARNINGS_SOURCE,
-    )
-    red_flag_indices = (
-        overlapping_fire_indices(
-            geometries,
-            red_flag_warnings[0],
-            red_flag_warnings[1],
-        )
-        if red_flag_warnings is not None and red_flag_warnings[0].is_file()
-        else set()
-    )
-    wui = download_source_layer(
-        year_directory,
-        peri_scribe.external_sources.WUI_SOURCE,
-    )
-    wui_indices = (
-        overlapping_fire_indices(geometries, wui[0], wui[1])
-        if wui is not None and wui[0].is_file()
-        else set()
-    )
     return ExternalSignals(
         building_counts=tuple(building_counts),
         evacuation_indices=frozenset(evacuation_indices),
-        red_flag_warning_indices=frozenset(red_flag_indices),
-        wui_indices=frozenset(wui_indices),
     )
 
 
@@ -1291,14 +1200,15 @@ def _scoring_input(year_directory: pathlib.Path) -> _ScoringInput:
 def score_fires(year_directory: pathlib.Path) -> pathlib.Path:
     """Score every fire and write the results to the derived directory.
 
-    The current score is computed from the differential history and the retrieved
-    external datasets, then each fire keeps the highest score it has ever reached across
-    runs. The fire metrics are aggregated in a single groupby pass, the fire geometry
-    comes from the cumulative full history rather than re-unioned perimeters, and the
-    external datasets are queried through their R-Tree indexes, so neither the history
-    nor the external layers are ever processed one feature at a time. The results are
-    written to ``{year_directory}/derived/fire_scores.json``, along with a score
-    histogram to ``{year_directory}/derived/fire_scores_histogram.png``.
+    The score is computed from the differential history and the retrieved external
+    datasets; it never consults previously written scores, so deleting the scores file
+    and regenerating it changes nothing. The fire metrics are aggregated in a single
+    groupby pass, the fire geometry comes from the cumulative full history rather than
+    re-unioned perimeters, and the external datasets are queried through their R-Tree
+    indexes, so neither the history nor the external layers are ever processed one
+    feature at a time. The results are written to
+    ``{year_directory}/derived/fire_scores.json``, along with a complementary CDF to
+    ``{year_directory}/derived/fire_scores_ccdf.png``.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
@@ -1307,38 +1217,30 @@ def score_fires(year_directory: pathlib.Path) -> pathlib.Path:
         The path of the written fire-scores JSON.
     """
     scoring = _scoring_input(year_directory)
-    current = [
-        fire_score_for(
-            FireRecords(
-                name=scoring.names[index],
-                identifier=scoring.identifiers[index],
-                perimeters=scoring.empty_perimeters,
-                points=scoring.points_by_key.get(
-                    scoring.keys[index],
-                    scoring.empty_points,
-                ),
-            ),
-            scoring.metrics[index],
-            building_count=scoring.signals.building_counts[index],
-            evacuation_overlap=index in scoring.signals.evacuation_indices,
-            red_flag_warning_overlap=index in scoring.signals.red_flag_warning_indices,
-            wui_overlap=index in scoring.signals.wui_indices,
-        )
-        for index in range(len(scoring.keys))
-    ]
-    previous = previous_scores(year_directory)
     entries = [
         score_entry(
-            fire_score,
-            previous.get(identity_key(fire_score.name, fire_score.identifier)),
+            fire_score_for(
+                FireRecords(
+                    name=scoring.names[index],
+                    identifier=scoring.identifiers[index],
+                    perimeters=scoring.empty_perimeters,
+                    points=scoring.points_by_key.get(
+                        scoring.keys[index],
+                        scoring.empty_points,
+                    ),
+                ),
+                scoring.metrics[index],
+                building_count=scoring.signals.building_counts[index],
+                evacuation_overlap=index in scoring.signals.evacuation_indices,
+            ),
         )
-        for fire_score in current
+        for index in range(len(scoring.keys))
     ]
     entries.sort(key=lambda entry: (-entry.score, entry.name))
     document = fire_scores_document(entries)
     output_path = fire_scores_path(year_directory)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     peri_scribe.output.write_fire_scores(output_path, document)
-    histogram_path = fire_scores_histogram_path(year_directory)
-    peri_scribe.output.write_fire_scores_histogram(histogram_path, document)
+    ccdf_path = fire_scores_ccdf_path(year_directory)
+    peri_scribe.output.write_fire_scores_ccdf(ccdf_path, document)
     return output_path

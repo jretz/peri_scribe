@@ -232,11 +232,16 @@ def install_arcgis_query_stubs(
 
 
 def test_output_path_places_file_under_source_directory() -> None:
+    source = dataclasses.replace(
+        peri_scribe.external_sources.BUILDINGS_SOURCE,
+        states=(),
+        combine=False,
+    )
     path = peri_scribe.external_sources.output_path(
         YEAR_DIRECTORY,
-        peri_scribe.external_sources.WUI_SOURCE,
+        source,
     )
-    assert path == YEAR_DIRECTORY / "sources" / "wui" / "wui.gpkg"
+    assert path == YEAR_DIRECTORY / "sources" / "buildings" / "buildings.gpkg"
 
 
 def test_output_path_names_combined_geopackage() -> None:
@@ -266,15 +271,16 @@ def test_output_path_raises_for_live_arcgis_source() -> None:
 
 def test_output_path_names_per_state_geopackage() -> None:
     source = dataclasses.replace(
-        peri_scribe.external_sources.WUI_SOURCE,
+        peri_scribe.external_sources.BUILDINGS_SOURCE,
         states=("California",),
+        combine=False,
     )
     path = peri_scribe.external_sources.output_path(
         YEAR_DIRECTORY,
         source,
         state="California",
     )
-    assert path == YEAR_DIRECTORY / "sources" / "wui" / "California.gpkg"
+    assert path == YEAR_DIRECTORY / "sources" / "buildings" / "California.gpkg"
 
 
 def test_buildings_source_covers_every_us_state() -> None:
@@ -391,7 +397,10 @@ def testfetch_arcgis_source_writes_snapshot(
 def testfetch_arcgis_source_passes_where_clause(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = peri_scribe.external_sources.RED_FLAG_WARNINGS_SOURCE
+    source = dataclasses.replace(
+        peri_scribe.external_sources.EVACUATIONS_SOURCE,
+        where="Event IN ('Red Flag Warning', 'Fire Weather Watch')",
+    )
     monkeypatch.setattr(
         peri_scribe.external_sources.arcgis.gis,
         "GIS",
@@ -886,102 +895,6 @@ def test_fetch_buildings_combines_projected_centroids_into_wgs84(
     assert converted.geometry.iloc[0].y == pytest.approx(lat, abs=1e-12)
 
 
-def wui_dataframe() -> geopandas.GeoDataFrame:
-    """Return a small WUI dataframe for a file-geodatabase conversion test.
-
-    Returns:
-        Two polygon features with CLASS attributes in WGS84.
-    """
-    return geopandas.GeoDataFrame(
-        {"CLASS": ["WUI1", "WUI2"]},
-        geometry=[
-            shapely.geometry.box(0.0, 0.0, 1.0, 1.0),
-            shapely.geometry.box(5.0, 5.0, 6.0, 6.0),
-        ],
-        crs="EPSG:4326",
-    )
-
-
-def wui_archive_zip_bytes() -> bytes:
-    """Build an in-memory zip holding a file geodatabase directory.
-
-    Returns:
-        The zip archive's bytes, containing a ``.gdb`` directory with one file.
-    """
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w") as archive:
-        archive.writestr(
-            "US_WUI_block_1990_2020_change_v4.gdb/a00000001.gdbtable",
-            b"",
-        )
-    return buffer.getvalue()
-
-
-def install_wui_read_stub(
-    monkeypatch: pytest.MonkeyPatch,
-    read_paths: list[pathlib.Path],
-) -> None:
-    """Serve a stand-in GeoDataFrame when the WUI geodatabase is read.
-
-    The local GDAL build cannot write a real file geodatabase, so the conversion is
-    exercised by standing in for the read of the ``.gdb`` directory while all other
-    reads (including the test's own assertions) use the real reader.
-
-    Args:
-        monkeypatch: The monkeypatch fixture.
-        read_paths: Receives each path read as a file geodatabase.
-    """
-    real_read_file = peri_scribe.external_sources.geopandas.read_file
-
-    def fake_read_file(
-        path: object,
-        *,
-        max_features: int | None = None,
-        skip_features: int = 0,
-        **_kwargs: object,
-    ) -> object:
-        geodata_path = pathlib.Path(str(path))
-        if geodata_path.name.endswith(".gdb"):
-            read_paths.append(geodata_path)
-            dataframe = wui_dataframe()
-            if max_features is not None:
-                dataframe = dataframe.iloc[skip_features : skip_features + max_features]
-            return dataframe
-        return real_read_file(geodata_path, **_kwargs)
-
-    monkeypatch.setattr(
-        peri_scribe.external_sources.geopandas,
-        "read_file",
-        fake_read_file,
-    )
-
-
-def test_fetch_wui_converts_file_geodatabase_archive_to_geopackage(
-    tmp_path: pathlib.Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    source = peri_scribe.external_sources.WUI_SOURCE
-    read_paths: list[pathlib.Path] = []
-    install_wui_read_stub(monkeypatch, read_paths)
-    archive = wui_archive_zip_bytes()
-    monkeypatch.setattr(
-        peri_scribe.external_sources.requests,
-        "get",
-        lambda _url, **_kwargs: FakeResponse(archive),
-    )
-
-    result = peri_scribe.external_sources.fetch_external_source(source, tmp_path)
-    output = peri_scribe.external_sources.output_path(tmp_path, source)
-    assert result == (output,)
-    assert read_paths
-    assert read_paths[0].name == "US_WUI_block_1990_2020_change_v4.gdb"
-    directory = peri_scribe.external_sources.source_directory_path(tmp_path, source)
-    assert not (directory / "US_WUI_block_1990_2020_change_v4_gdb.zip").exists()
-    converted = geopandas.read_file(output, layer="wui")
-    assert list(converted.geometry.geom_type) == ["Polygon", "Polygon"]
-    assert list(converted["CLASS"]) == ["WUI1", "WUI2"]
-
-
 def testdownload_source_raises_when_geodata_cannot_be_read(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1087,13 +1000,34 @@ def testdownload_source_skips_when_output_present(
     assert len(calls) == 1
 
 
+def single_archive_source() -> peri_scribe.external_sources.ExternalSource:
+    """Return the buildings source as a single archive instead of per state.
+
+    The generic single-archive download path is exercised with this source so that
+    the skip-when-present behavior can be tested without the per-state machinery.
+
+    Returns:
+        A single-archive download source named after the buildings source.
+    """
+    return dataclasses.replace(
+        peri_scribe.external_sources.BUILDINGS_SOURCE,
+        states=(),
+        combine=False,
+        state_urls=None,
+        url="https://example.com/buildings.geojson.zip",
+    )
+
+
 def testdownload_source_skips_when_single_archive_output_present(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = peri_scribe.external_sources.WUI_SOURCE
-    install_wui_read_stub(monkeypatch, [])
-    archive = wui_archive_zip_bytes()
+    source = single_archive_source()
+    archive = archive_zip_bytes(
+        filename="buildings.geojson",
+        dataframe=building_dataframe(),
+        driver="GeoJSON",
+    )
     calls: list[str] = []
     monkeypatch.setattr(
         peri_scribe.external_sources.requests,

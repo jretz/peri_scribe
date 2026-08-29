@@ -299,13 +299,11 @@ class FireScoreComponents(pydantic.BaseModel):
     first_mapping: int
     buildings: int
     evacuation: int
-    red_flag_warning: int
-    wui: int
     importance: int
 
 
 class FireScoreEntry(pydantic.BaseModel):
-    """One fire's score, its best-ever score, and the current components."""
+    """One fire's score and the current components."""
 
     name: str
     identifier: str | None = None

@@ -20,8 +20,6 @@ if typing.TYPE_CHECKING:
 COMMANDS = [
     ("fetch-buildings", peri_scribe.external_sources.BUILDINGS_SOURCE),
     ("fetch-evacuations", peri_scribe.external_sources.EVACUATIONS_SOURCE),
-    ("fetch-red-flag-warnings", peri_scribe.external_sources.RED_FLAG_WARNINGS_SOURCE),
-    ("fetch-wui", peri_scribe.external_sources.WUI_SOURCE),
 ]
 
 

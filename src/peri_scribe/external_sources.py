@@ -9,26 +9,24 @@ the whole United States, not just California.
 Two retrieval kinds are supported:
 
 - ``arcgis``: an ArcGIS FeatureServer layer is queried and stored as a GeoPackage
-  snapshot. The layers are live (the evacuation zones refresh every few minutes and the
-  NWS watch/warning layer changes continuously), so each fetch stores a new
-  serial-numbered snapshot when the layer's features changed, keeping the season's
-  history for later per-fire analysis.
+  snapshot. The layers are live (the evacuation zones refresh every few minutes), so
+  each fetch stores a new serial-numbered snapshot when the layer's features changed,
+  keeping the season's history for later per-fire analysis.
 - ``download``: a file (typically a zip archive) is downloaded, extracted, and converted
   to a GeoPackage holding the same data. These datasets are static, so a source whose
   GeoPackage already exists is left alone.
 
-A download source covers the whole country either as one archive (the WUI file
-geodatabase) or as one archive per state (the building footprints). A combined source
-(the building footprints) concatenates the per-state results into a single GeoPackage
-and keeps no other files; the building-footprint source reduces each footprint polygon
-to a centroid point and keeps no attributes, since only the buildings' locations are
-wanted. Downloads are converted in bounded chunks — a GeoJSON archive is parsed one
-feature at a time with ``ijson`` and any other vector data is read in chunks — so a
-source of any size is converted without loading the whole file into memory. The original
-archives are not kept once converted. The building footprints' per-state archive links
-are not constructed from a URL pattern; they are read from the "Download links" table on
-the dataset's repository page whenever the archives are downloaded, so a change in the
-link scheme is picked up automatically.
+A download source covers the whole country as one archive per state (the building
+footprints). A combined source (the building footprints) concatenates the per-state
+results into a single GeoPackage and keeps no other files; the building-footprint source
+reduces each footprint polygon to a centroid point and keeps no attributes, since only
+the buildings' locations are wanted. Downloads are converted in bounded chunks — a
+GeoJSON archive is parsed one feature at a time with ``ijson`` and any other vector data
+is read in chunks — so a source of any size is converted without loading the whole file
+into memory. The original archives are not kept once converted. The building footprints'
+per-state archive links are not constructed from a URL pattern; they are read from the
+"Download links" table on the dataset's repository page whenever the archives are
+downloaded, so a change in the link scheme is picked up automatically.
 
 The fire-source reader skips these directories, so their GeoPackages are never mistaken
 for fire snapshots.
@@ -190,40 +188,9 @@ EVACUATIONS_SOURCE = ExternalSource(
     layer_name="evacuations",
 )
 
-# NWS watches and warnings, filtered to the fire-relevant events. Layer 6 holds every
-# active watch/warning polygon in the United States; the ``Event`` field distinguishes
-# Red Flag Warnings and Fire Weather Watches from the other event kinds.
-RED_FLAG_WARNINGS_SOURCE = ExternalSource(
-    name="red_flag_warnings",
-    kind=ExternalSourceKind.ARCGIS,
-    url=(
-        "https://services9.arcgis.com/RHVPKKiFTONKtxq3/ArcGIS/rest/services/"
-        "NWS_Watches_Warnings_v1/FeatureServer/6"
-    ),
-    layer_name="red_flag_warnings",
-    where="Event IN ('Red Flag Warning', 'Fire Weather Watch')",
-)
-
-# The SILVIS/USFS wildland-urban interface (WUI) change data for the conterminous United
-# States, from https://silvis.forest.wisc.edu/data/wui-change/. The download is a
-# national file geodatabase zip (its feature class is US_WUI_block_1990_2020_change_v4)
-# that the fetch extracts, reads, and converts to a GeoPackage.
-WUI_SOURCE = ExternalSource(
-    name="wui",
-    kind=ExternalSourceKind.DOWNLOAD,
-    url=(
-        "https://geoserver.silvis.forest.wisc.edu/geodata/wui_change_2020_v4/"
-        "zip/fgdb/US_WUI_block_1990_2020_change_v4_gdb.zip"
-    ),
-    layer_name="wui",
-    geodata_suffix=".gdb",
-)
-
 EXTERNAL_SOURCES = (
     BUILDINGS_SOURCE,
     EVACUATIONS_SOURCE,
-    RED_FLAG_WARNINGS_SOURCE,
-    WUI_SOURCE,
 )
 
 

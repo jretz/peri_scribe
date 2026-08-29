@@ -338,16 +338,14 @@ def test_fire_score_total_sums_all_signals() -> None:
     score = peri_scribe.fire_scores.FireScore(
         name="Bug",
         identifier="2026-a",
-        size_points=5,
-        growth_points=4,
-        first_mapping_points=3,
-        building_points=2,
-        evacuation_points=3,
-        red_flag_warning_points=2,
-        wui_points=2,
-        importance_points=1,
+        size_points=135,
+        growth_points=60,
+        first_mapping_points=33,
+        building_points=8,
+        evacuation_points=33,
+        importance_points=120,
     )
-    assert score.total == pytest.approx(22)
+    assert score.total == pytest.approx(389)
 
 
 def test_fire_score_for_combines_all_signals() -> None:
@@ -391,18 +389,14 @@ def test_fire_score_for_combines_all_signals() -> None:
         ),
         building_count=5,
         evacuation_overlap=True,
-        red_flag_warning_overlap=True,
-        wui_overlap=True,
     )
-    assert score.size_points == pytest.approx(5)
-    assert score.growth_points == pytest.approx(4)
-    assert score.first_mapping_points == pytest.approx(3)
-    assert score.building_points == 1
-    assert score.evacuation_points == pytest.approx(3)
-    assert score.red_flag_warning_points == pytest.approx(2)
-    assert score.wui_points == pytest.approx(2)
-    assert score.importance_points == pytest.approx(2)
-    assert score.total == pytest.approx(22)
+    assert score.size_points == pytest.approx(135)
+    assert score.growth_points == pytest.approx(60)
+    assert score.first_mapping_points == pytest.approx(33)
+    assert score.building_points == pytest.approx(4)
+    assert score.evacuation_points == pytest.approx(33)
+    assert score.importance_points == pytest.approx(240)
+    assert score.total == pytest.approx(505)
 
 
 def test_fire_score_for_awards_no_overlap_points_without_overlaps() -> None:
@@ -426,15 +420,12 @@ def test_fire_score_for_awards_no_overlap_points_without_overlaps() -> None:
         ),
         building_count=0,
         evacuation_overlap=False,
-        red_flag_warning_overlap=False,
-        wui_overlap=False,
     )
     assert score.name == "Point Only"
     assert score.identifier is None
     assert score.building_points == 0
     assert score.evacuation_points == 0
-    assert score.red_flag_warning_points == 0
-    assert score.wui_points == 0
+    assert score.importance_points == 0
 
 
 def test_fire_scores_path_names_output() -> None:
@@ -443,47 +434,34 @@ def test_fire_scores_path_names_output() -> None:
     ) == pathlib.Path("data/2026/derived/fire_scores.json")
 
 
-def test_fire_scores_histogram_path_names_output() -> None:
-    assert peri_scribe.fire_scores.fire_scores_histogram_path(
+def test_fire_scores_ccdf_path_names_output() -> None:
+    assert peri_scribe.fire_scores.fire_scores_ccdf_path(
         pathlib.Path("data/2026"),
-    ) == pathlib.Path("data/2026/derived/fire_scores_histogram.png")
+    ) == pathlib.Path("data/2026/derived/fire_scores_ccdf.png")
 
 
-def test_best_score_uses_current_when_no_previous() -> None:
-    assert peri_scribe.fire_scores.best_score(None, 7) == pytest.approx(7)
-
-
-def test_best_score_keeps_the_highest_score() -> None:
-    assert peri_scribe.fire_scores.best_score(10, 7) == pytest.approx(10)
-    assert peri_scribe.fire_scores.best_score(7, 10) == pytest.approx(10)
-
-
-def test_score_entry_maps_components_and_best_score() -> None:
+def test_score_entry_maps_components_and_total() -> None:
     fire_score = peri_scribe.fire_scores.FireScore(
         name="Bug",
         identifier="2026-a",
-        size_points=5,
-        growth_points=4,
-        first_mapping_points=3,
-        building_points=2,
-        evacuation_points=3,
-        red_flag_warning_points=2,
-        wui_points=2,
-        importance_points=1,
+        size_points=135,
+        growth_points=60,
+        first_mapping_points=33,
+        building_points=8,
+        evacuation_points=33,
+        importance_points=120,
     )
-    entry = peri_scribe.fire_scores.score_entry(fire_score, previous_score=30)
+    entry = peri_scribe.fire_scores.score_entry(fire_score)
     assert entry.name == "Bug"
     assert entry.identifier == "2026-a"
-    assert entry.score == pytest.approx(30)
+    assert entry.score == pytest.approx(389)
     assert entry.components.model_dump() == {
-        "size": 5,
-        "growth": 4,
-        "first_mapping": 3,
-        "buildings": 2,
-        "evacuation": 3,
-        "red_flag_warning": 2,
-        "wui": 2,
-        "importance": 1,
+        "size": 135,
+        "growth": 60,
+        "first_mapping": 33,
+        "buildings": 8,
+        "evacuation": 33,
+        "importance": 120,
     }
 
 
@@ -498,55 +476,12 @@ def test_fire_scores_document_wraps_entries_with_version() -> None:
             first_mapping=0,
             buildings=0,
             evacuation=0,
-            red_flag_warning=0,
-            wui=0,
             importance=0,
         ),
     )
     document = peri_scribe.fire_scores.fire_scores_document([entry])
     assert document.version == peri_scribe.fire_scores.FIRE_SCORES_VERSION
     assert document.fires == [entry]
-
-
-def test_previous_scores_returns_empty_without_file(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(pathlib.Path, "is_file", lambda _self: False)
-    assert peri_scribe.fire_scores.previous_scores(pathlib.Path("data/2026")) == {}
-
-
-def test_previous_scores_reads_existing_scores(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    document = {
-        "version": peri_scribe.fire_scores.FIRE_SCORES_VERSION,
-        "fires": [
-            {
-                "name": "Bug",
-                "identifier": "2026-a",
-                "score": 12,
-                "components": {
-                    "size": 5,
-                    "growth": 4,
-                    "first_mapping": 0,
-                    "buildings": 0,
-                    "evacuation": 3,
-                    "red_flag_warning": 0,
-                    "wui": 0,
-                    "importance": 0,
-                },
-            },
-        ],
-    }
-    monkeypatch.setattr(pathlib.Path, "is_file", lambda _self: True)
-    monkeypatch.setattr(
-        pathlib.Path,
-        "read_text",
-        lambda _self, *_arguments, **_keywords: json.dumps(document),
-    )
-    assert peri_scribe.fire_scores.previous_scores(pathlib.Path("data/2026")) == {
-        "2026-a": 12,
-    }
 
 
 def test_read_layer_if_present_returns_empty_without_file(
@@ -694,46 +629,6 @@ def test_latest_snapshot_layer_names_newest_snapshot(
     ) == (pathlib.Path("/sources/evacuations/0.gpkg"), "evacuations")
 
 
-def test_read_download_source_returns_empty_without_layer_name(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    source = peri_scribe.external_sources.ExternalSource(
-        name="none",
-        kind=peri_scribe.external_sources.ExternalSourceKind.DOWNLOAD,
-        url="https://example.test/file.zip",
-    )
-    assert peri_scribe.fire_scores.read_download_source(
-        pathlib.Path("data/2026"),
-        source,
-    ).empty
-
-
-def test_read_download_source_reads_source_geopackage(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    frame = geopandas.GeoDataFrame(
-        {"name": ["a"]},
-        geometry=[point(0, 0)],
-        crs="EPSG:4326",
-    )
-    monkeypatch.setattr(
-        peri_scribe.external_sources,
-        "output_path",
-        lambda _year_directory, _source: pathlib.Path("/sources/buildings.gpkg"),
-    )
-    monkeypatch.setattr(pathlib.Path, "is_file", lambda _self: True)
-    monkeypatch.setattr(
-        peri_scribe.geo_package,
-        "read_layer",
-        lambda _path, _layer_name: frame,
-    )
-    result = peri_scribe.fire_scores.read_download_source(
-        pathlib.Path("data/2026"),
-        peri_scribe.external_sources.BUILDINGS_SOURCE,
-    )
-    assert result is frame
-
-
 def test_read_latest_snapshot_returns_empty_without_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -787,7 +682,7 @@ def test_read_latest_snapshot_reads_newest_snapshot(
     assert result is frame
 
 
-def test_score_fires_writes_best_scores(
+def test_score_fires_writes_current_scores(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     perimeters = perimeter_frame(
@@ -839,11 +734,6 @@ def test_score_fires_writes_best_scores(
         lambda _year_directory, _source: None,
     )
     monkeypatch.setattr(
-        peri_scribe.fire_scores,
-        "previous_scores",
-        lambda _year_directory: {"2026-a": 9},
-    )
-    monkeypatch.setattr(
         pathlib.Path,
         "mkdir",
         lambda *_arguments, **_keywords: None,
@@ -854,11 +744,11 @@ def test_score_fires_writes_best_scores(
         "write_fire_scores",
         lambda path, document: writes.append((path, document)),
     )
-    histogram_writes: list[tuple[pathlib.Path, peri_scribe.models.FireScores]] = []
+    ccdf_writes: list[tuple[pathlib.Path, peri_scribe.models.FireScores]] = []
     monkeypatch.setattr(
         peri_scribe.output,
-        "write_fire_scores_histogram",
-        lambda path, document: histogram_writes.append((path, document)),
+        "write_fire_scores_ccdf",
+        lambda path, document: ccdf_writes.append((path, document)),
     )
 
     result = peri_scribe.fire_scores.score_fires(pathlib.Path("data/2026"))
@@ -867,11 +757,11 @@ def test_score_fires_writes_best_scores(
     assert len(writes) == 1
     _path, document = writes[0]
     assert document.fires[0].name == "Bug"
-    assert document.fires[0].score == pytest.approx(9)
-    assert document.fires[0].components.size == pytest.approx(5)
-    assert histogram_writes == [
+    assert document.fires[0].score == pytest.approx(168)
+    assert document.fires[0].components.size == pytest.approx(135)
+    assert ccdf_writes == [
         (
-            pathlib.Path("data/2026/derived/fire_scores_histogram.png"),
+            pathlib.Path("data/2026/derived/fire_scores_ccdf.png"),
             document,
         ),
     ]
@@ -924,7 +814,7 @@ def test_score_fires_streams_external_signals(
     buildings_path = tmp_path / "sources" / "buildings" / "buildings.gpkg"
     buildings_path.parent.mkdir(parents=True)
     buildings.to_file(buildings_path, layer="buildings")
-    for name in ("evacuations", "red_flag_warnings"):
+    for name in ("evacuations",):
         snapshot = tmp_path / "sources" / name / "snapshot.gpkg"
         snapshot.parent.mkdir(parents=True)
         geopandas.GeoDataFrame(
@@ -932,13 +822,6 @@ def test_score_fires_streams_external_signals(
             geometry=[square(1.0)],
             crs="EPSG:4326",
         ).to_file(snapshot, layer=name)
-    wui_path = tmp_path / "sources" / "wui" / "wui.gpkg"
-    wui_path.parent.mkdir(parents=True)
-    geopandas.GeoDataFrame(
-        {"name": ["zone"]},
-        geometry=[square(1.0)],
-        crs="EPSG:4326",
-    ).to_file(wui_path, layer="wui")
 
     def output_path(
         _year_directory: pathlib.Path,
@@ -963,11 +846,6 @@ def test_score_fires_streams_external_signals(
         read_layer_if_present,
     )
     monkeypatch.setattr(
-        peri_scribe.fire_scores,
-        "previous_scores",
-        lambda _year_directory: {},
-    )
-    monkeypatch.setattr(
         pathlib.Path,
         "mkdir",
         lambda *_arguments, **_keywords: None,
@@ -980,7 +858,7 @@ def test_score_fires_streams_external_signals(
     )
     monkeypatch.setattr(
         peri_scribe.output,
-        "write_fire_scores_histogram",
+        "write_fire_scores_ccdf",
         lambda _path, _document: None,
     )
 
@@ -989,12 +867,10 @@ def test_score_fires_streams_external_signals(
     assert result == tmp_path / "derived" / "fire_scores.json"
     entry = writes[0][1].fires[0]
     assert entry.name == "Bug"
-    assert entry.score == pytest.approx(18)
-    assert entry.components.buildings == pytest.approx(1)
-    assert entry.components.evacuation == pytest.approx(3)
-    assert entry.components.red_flag_warning == pytest.approx(2)
-    assert entry.components.wui == pytest.approx(2)
-    assert entry.components.importance == pytest.approx(2)
+    assert entry.score == pytest.approx(445)
+    assert entry.components.buildings == pytest.approx(4)
+    assert entry.components.evacuation == pytest.approx(33)
+    assert entry.components.importance == pytest.approx(240)
 
 
 def test_score_fires_sorts_entries_by_score_descending(
@@ -1044,11 +920,6 @@ def test_score_fires_sorts_entries_by_score_descending(
         lambda _year_directory, _source: None,
     )
     monkeypatch.setattr(
-        peri_scribe.fire_scores,
-        "previous_scores",
-        lambda _year_directory: {},
-    )
-    monkeypatch.setattr(
         pathlib.Path,
         "mkdir",
         lambda *_arguments, **_keywords: None,
@@ -1061,7 +932,7 @@ def test_score_fires_sorts_entries_by_score_descending(
     )
     monkeypatch.setattr(
         peri_scribe.output,
-        "write_fire_scores_histogram",
+        "write_fire_scores_ccdf",
         lambda _path, _document: None,
     )
 
@@ -1220,11 +1091,6 @@ def test_score_fires_scores_point_only_fire(
         lambda _year_directory, _source: None,
     )
     monkeypatch.setattr(
-        peri_scribe.fire_scores,
-        "previous_scores",
-        lambda _year_directory: {},
-    )
-    monkeypatch.setattr(
         pathlib.Path,
         "mkdir",
         lambda *_arguments, **_keywords: None,
@@ -1237,7 +1103,7 @@ def test_score_fires_scores_point_only_fire(
     )
     monkeypatch.setattr(
         peri_scribe.output,
-        "write_fire_scores_histogram",
+        "write_fire_scores_ccdf",
         lambda _path, _document: None,
     )
 
