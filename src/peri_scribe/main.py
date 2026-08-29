@@ -303,7 +303,8 @@ def create_kml_template(*, force: bool) -> None:
     help=(
         "Build the KML output for YEAR_DIRECTORY.\n\n"
         "Reads YEAR_DIRECTORY/derived/history_of_full_geography.gpkg and writes a "
-        "compressed KMZ file to YEAR_DIRECTORY/maps. "
+        "compressed KMZ file to YEAR_DIRECTORY/maps. Fires whose every computed or "
+        "reported area is missing or under 25 acres are excluded. "
         f"{year_directory_default_help()}"
     ),
 )

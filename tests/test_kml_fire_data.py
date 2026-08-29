@@ -178,6 +178,170 @@ def test_fire_perimeters_returns_empty_when_unknown() -> None:
     )
 
 
+def area_frame(
+    column: str,
+    rows: list[tuple[str | None, str]],
+    values: list[float | None],
+) -> geopandas.GeoDataFrame:
+    """Build a history frame with one area column populated.
+
+    Args:
+        column: The area column to add.
+        rows: The identifier and name of each row.
+        values: The area value of each row.
+
+    Returns:
+        The rows as a GeoDataFrame with *column* populated.
+    """
+    return geopandas.GeoDataFrame(
+        {
+            "fire_identifier": [identifier for identifier, _name in rows],
+            "fire_name": [name for _identifier, name in rows],
+            column: values,
+        },
+        geometry=[shapely.geometry.Point(0.0, 0.0) for _row in rows],
+        crs="EPSG:4326",
+    )
+
+
+def test_fire_area_key_keys_by_identifier() -> None:
+    assert peri_scribe.kml_fire_data.fire_area_key("id-bug", "Bug") == (
+        "id",
+        "id-bug",
+    )
+
+
+def test_fire_area_key_keys_by_name_when_identifier_missing() -> None:
+    assert peri_scribe.kml_fire_data.fire_area_key(None, "Bug") == ("name", "Bug")
+
+
+def test_fires_with_qualifying_area_keeps_fire_at_minimum() -> None:
+    perimeters = area_frame(
+        "area_acres",
+        [("id-bug", "Bug")],
+        [peri_scribe.kml_fire_data.MINIMUM_FIRE_AREA_IN_ACRES],
+    )
+    points = area_frame("incident_size", [("id-bug", "Bug")], [None])
+    assert peri_scribe.kml_fire_data.fires_with_qualifying_area(
+        perimeters,
+        points,
+        peri_scribe.kml_fire_data.MINIMUM_FIRE_AREA_IN_ACRES,
+    ) == {("id", "id-bug")}
+
+
+def test_fires_with_qualifying_area_keeps_fire_with_reported_area() -> None:
+    perimeters = tests.kml_helpers.geometry_frame([])
+    points = area_frame(
+        "discovery_acres",
+        [("id-bug", "Bug")],
+        [100.0],
+    )
+    assert peri_scribe.kml_fire_data.fires_with_qualifying_area(
+        perimeters,
+        points,
+        peri_scribe.kml_fire_data.MINIMUM_FIRE_AREA_IN_ACRES,
+    ) == {("id", "id-bug")}
+
+
+def test_fires_with_qualifying_area_keeps_fire_with_any_qualifying_indication() -> None:
+    perimeters = area_frame(
+        "area_acres",
+        [("id-bug", "Bug")],
+        [10.0],
+    )
+    points = area_frame(
+        "incident_size",
+        [("id-bug", "Bug")],
+        [30.0],
+    )
+    assert peri_scribe.kml_fire_data.fires_with_qualifying_area(
+        perimeters,
+        points,
+        peri_scribe.kml_fire_data.MINIMUM_FIRE_AREA_IN_ACRES,
+    ) == {("id", "id-bug")}
+
+
+def test_fires_with_qualifying_area_excludes_fire_below_minimum() -> None:
+    perimeters = area_frame(
+        "area_acres",
+        [("id-bug", "Bug")],
+        [10.0],
+    )
+    points = area_frame(
+        "final_acres",
+        [("id-bug", "Bug")],
+        [20.0],
+    )
+    assert (
+        peri_scribe.kml_fire_data.fires_with_qualifying_area(
+            perimeters,
+            points,
+            peri_scribe.kml_fire_data.MINIMUM_FIRE_AREA_IN_ACRES,
+        )
+        == frozenset()
+    )
+
+
+def test_fires_with_qualifying_area_excludes_fire_with_missing_areas() -> None:
+    perimeters = area_frame(
+        "area_acres",
+        [("id-bug", "Bug")],
+        [None],
+    )
+    points = area_frame(
+        "incident_size",
+        [("id-bug", "Bug")],
+        [None],
+    )
+    assert (
+        peri_scribe.kml_fire_data.fires_with_qualifying_area(
+            perimeters,
+            points,
+            peri_scribe.kml_fire_data.MINIMUM_FIRE_AREA_IN_ACRES,
+        )
+        == frozenset()
+    )
+
+
+def test_fires_with_qualifying_area_excludes_fire_without_area_columns() -> None:
+    perimeters = tests.kml_helpers.geometry_frame([
+        ("id-bug", "Bug", shapely.geometry.Point(0.0, 0.0)),
+    ])
+    points = tests.kml_helpers.geometry_frame([])
+    assert (
+        peri_scribe.kml_fire_data.fires_with_qualifying_area(
+            perimeters,
+            points,
+            peri_scribe.kml_fire_data.MINIMUM_FIRE_AREA_IN_ACRES,
+        )
+        == frozenset()
+    )
+
+
+def test_fire_qualifies_matches_any_identifier() -> None:
+    assert peri_scribe.kml_fire_data.fire_qualifies(
+        frozenset({"id-alias", "id-bug"}),
+        "Bug",
+        frozenset({("id", "id-bug")}),
+    )
+
+
+def test_fire_qualifies_matches_name_when_no_identifier() -> None:
+    assert peri_scribe.kml_fire_data.fire_qualifies(
+        frozenset(),
+        "Bug",
+        frozenset({("name", "Bug")}),
+    )
+
+
+def test_fire_qualifies_rejects_unmatched_fire() -> None:
+    assert not peri_scribe.kml_fire_data.fire_qualifies(
+        frozenset({"id-bug"}),
+        "Bug",
+        frozenset({("id", "id-other"), ("name", "Bug")}),
+    )
+
+
 def test_fire_geometries_matches_aliases_and_sorts_by_name() -> None:
     index = tests.kml_helpers.fire_index([
         tests.kml_helpers.fire_index_entry(

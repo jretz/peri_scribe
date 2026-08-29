@@ -12,6 +12,7 @@ import typing
 import zipfile
 
 import simplekml
+import structlog
 
 import peri_scribe.fire_differential
 import peri_scribe.fire_history
@@ -23,6 +24,13 @@ import peri_scribe.kml_icons
 import peri_scribe.kml_template
 import peri_scribe.kml_template_reader
 import peri_scribe.models
+
+
+if typing.TYPE_CHECKING:
+    import geopandas
+
+
+logger = structlog.get_logger()
 
 
 MAPS_DIRECTORY_NAME = "maps"
@@ -142,14 +150,53 @@ def write_kmz(
                 archive.writestr(filename, content)
 
 
+def area_qualified_index(
+    index: peri_scribe.models.FireIndex,
+    perimeters: geopandas.GeoDataFrame,
+    points: geopandas.GeoDataFrame,
+) -> peri_scribe.models.FireIndex:
+    """Return *index* with every fire lacking a qualifying area indication removed.
+
+    A fire stays in the output when any of its computed or reported areas reaches the
+    minimum; fires whose every area indication is missing or smaller are dropped, so the
+    season's tiny incidents do not clutter the map.
+
+    Args:
+        index: The fire index to filter.
+        perimeters: The perimeter history layer.
+        points: The point history layer.
+
+    Returns:
+        The index holding only the qualifying fires.
+    """
+    qualifying_keys = peri_scribe.kml_fire_data.fires_with_qualifying_area(
+        perimeters,
+        points,
+        peri_scribe.kml_fire_data.MINIMUM_FIRE_AREA_IN_ACRES,
+    )
+    return peri_scribe.models.FireIndex(
+        version=index.version,
+        fires=[
+            entry
+            for entry in index.fires
+            if peri_scribe.kml_fire_data.fire_qualifies(
+                peri_scribe.kml_fire_data.identifiers(entry),
+                entry.name,
+                qualifying_keys,
+            )
+        ],
+    )
+
+
 def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
     """Build and write the KMZ output for *year_directory*.
 
     The full history GeoPackage is read for geometry, the differential history supplies
     each fire's growth rings, the fire index supplies each fire's name and status, and
-    the KML template file supplies the symbolization. Each fire's plot images and the
-    folder icons are written into the archive beside the KML document. The output is
-    written under the year's ``maps`` directory.
+    the KML template file supplies the symbolization. Fires whose every computed or
+    reported area is missing or under the area minimum are excluded from the output.
+    Each fire's plot images and the folder icons are written into the archive beside the
+    KML document. The output is written under the year's ``maps`` directory.
 
     Args:
         year_directory: The year directory that holds the ``derived`` directory.
@@ -173,6 +220,14 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
     differential_perimeters = peri_scribe.geo_package.read_layer(
         differential_path,
         peri_scribe.fire_history.PERIMETER_LAYER_NAME,
+    )
+    fire_count = len(index.fires)
+    index = area_qualified_index(index, perimeters, points)
+    logger.debug(
+        "Excluded fires without a qualifying area",
+        fires=len(index.fires),
+        excluded_fires=fire_count - len(index.fires),
+        minimum_area_in_acres=peri_scribe.kml_fire_data.MINIMUM_FIRE_AREA_IN_ACRES,
     )
     template = peri_scribe.kml_template_reader.read_template(
         peri_scribe.kml_template.template_path(),

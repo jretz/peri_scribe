@@ -90,6 +90,7 @@ def perimeter_with_time(
 def geometry_frame(
     rows: list[tuple[str | None, str, shapely.geometry.base.BaseGeometry]],
     observation_times: list[datetime.datetime | None] | None = None,
+    area_acres: list[float | None] | None = None,
 ) -> geopandas.GeoDataFrame:
     """Build a history GeoDataFrame from (identifier, name, geometry) rows.
 
@@ -97,18 +98,22 @@ def geometry_frame(
         rows: The identifier, name, and geometry of each row.
         observation_times: The observation time of each row, or None for every
             row when omitted.
+        area_acres: The computed area of each row, or None to omit the column.
 
     Returns:
         The rows as a GeoDataFrame.
     """
+    data: dict[str, object] = {
+        "fire_identifier": [identifier for identifier, _name, _geometry in rows],
+        "fire_name": [name for _identifier, name, _geometry in rows],
+        "observation_time": (
+            [None] * len(rows) if observation_times is None else observation_times
+        ),
+    }
+    if area_acres is not None:
+        data["area_acres"] = area_acres
     return geopandas.GeoDataFrame(
-        {
-            "fire_identifier": [identifier for identifier, _name, _geometry in rows],
-            "fire_name": [name for _identifier, name, _geometry in rows],
-            "observation_time": (
-                [None] * len(rows) if observation_times is None else observation_times
-            ),
-        },
+        data,
         geometry=[geometry for _identifier, _name, geometry in rows],
         crs="EPSG:4326",
     )

@@ -26,6 +26,28 @@ if typing.TYPE_CHECKING:
     import shapely
 
 
+# The smallest computed or reported area that keeps a fire in the KMZ output. Fires
+# whose every area indication is missing or below this are the season's long tail of
+# tiny incidents, which clutter Google Earth without adding information.
+MINIMUM_FIRE_AREA_IN_ACRES = 25.0
+
+# The history columns that indicate a fire's area: the perimeter history's computed
+# acreage and the point history's reported sizes. A fire qualifies when any one of these
+# values reaches the minimum, so a mapped fire whose polygons are small is still kept
+# when its location record reports a larger size.
+PERIMETER_AREA_COLUMN = "area_acres"
+POINT_AREA_COLUMNS = ("incident_size", "discovery_acres", "final_acres")
+
+
+# The two kinds of area-qualification keys, so an identifier and a name that look alike
+# stay apart.
+IDENTIFIER_AREA_KEY = "id"
+NAME_AREA_KEY = "name"
+
+
+AreaKey = tuple[str, str]
+
+
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Perimeter:
     """One perimeter geometry and the time it was observed."""
@@ -88,6 +110,97 @@ def unique_filename_prefix(
         candidate = f"{prefix}-{counter}"
         counter += 1
     return candidate
+
+
+def fire_area_key(identifier: object, name: str) -> AreaKey:
+    """Return the key that identifies one history row's fire for area qualification.
+
+    A row with an identifier keys by it; a row without one keys by its name. The two
+    kinds of keys are tagged so an identifier and a name that look alike stay apart.
+
+    Args:
+        identifier: The row's fire identifier, or a missing value.
+        name: The row's fire name.
+
+    Returns:
+        The row's tagged identity key.
+    """
+    if peri_scribe.geo_package.is_missing(identifier):
+        return NAME_AREA_KEY, str(name)
+    return IDENTIFIER_AREA_KEY, str(identifier)
+
+
+def fires_with_qualifying_area(
+    perimeters: geopandas.GeoDataFrame,
+    points: geopandas.GeoDataFrame,
+    minimum_area_in_acres: float,
+) -> frozenset[AreaKey]:
+    """Return the identity keys of fires with any area indication at least the minimum.
+
+    A fire's computed area is the perimeter history's acreage column; its reported areas
+    are the size, discovery, and final acreage columns of the point history. A fire
+    qualifies when any one of those values reaches the minimum, so fires whose every
+    indication is missing or smaller are absent from the result.
+
+    Args:
+        perimeters: The perimeter history layer.
+        points: The point history layer.
+        minimum_area_in_acres: The smallest area that qualifies a fire.
+
+    Returns:
+        The tagged identity keys of the qualifying fires.
+    """
+    qualifying: set[AreaKey] = set()
+    perimeter_area = perimeters.get(PERIMETER_AREA_COLUMN)
+    if perimeter_area is not None:
+        for identifier, name, value in zip(
+            perimeters["fire_identifier"],
+            perimeters["fire_name"],
+            perimeter_area,
+            strict=True,
+        ):
+            acres = peri_scribe.geo_package.numeric_value(value)
+            if acres is not None and acres >= minimum_area_in_acres:
+                qualifying.add(fire_area_key(identifier, name))
+    for column in POINT_AREA_COLUMNS:
+        if column not in points.columns:
+            continue
+        for identifier, name, value in zip(
+            points["fire_identifier"],
+            points["fire_name"],
+            points[column],
+            strict=True,
+        ):
+            acres = peri_scribe.geo_package.numeric_value(value)
+            if acres is not None and acres >= minimum_area_in_acres:
+                qualifying.add(fire_area_key(identifier, name))
+    return frozenset(qualifying)
+
+
+def fire_qualifies(
+    fire_identifiers: frozenset[str],
+    entry_name: str,
+    qualifying_keys: frozenset[AreaKey],
+) -> bool:
+    """Return whether a fire with *fire_identifiers* and *entry_name* qualifies.
+
+    A fire qualifies when any of its identifiers, or its name when it has no
+    identifiers, appears among the qualifying keys.
+
+    Args:
+        fire_identifiers: The fire's identifiers.
+        entry_name: The fire's name.
+        qualifying_keys: The keys of the qualifying fires.
+
+    Returns:
+        True when the fire has a qualifying area indication.
+    """
+    if fire_identifiers:
+        return any(
+            (IDENTIFIER_AREA_KEY, identifier) in qualifying_keys
+            for identifier in fire_identifiers
+        )
+    return (NAME_AREA_KEY, entry_name) in qualifying_keys
 
 
 def perimeter_groups(

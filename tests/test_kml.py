@@ -466,9 +466,10 @@ def test_create_kmz_reads_history_and_writes_kmz(
         "history_geopackage_path",
         lambda _directory: pathlib.Path("/derived/full.gpkg"),
     )
-    perimeters = tests.kml_helpers.geometry_frame([
-        ("id-bug", "Bug", tests.kml_helpers.square(1.0)),
-    ])
+    perimeters = tests.kml_helpers.geometry_frame(
+        [("id-bug", "Bug", tests.kml_helpers.square(1.0))],
+        area_acres=[100.0],
+    )
     points = tests.kml_helpers.geometry_frame([
         ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
     ])
@@ -512,3 +513,64 @@ def test_create_kmz_reads_history_and_writes_kmz(
         ),
     }
     assert all(content.startswith(b"\x89PNG\r\n\x1a\n") for content in images.values())
+
+
+def test_create_kmz_excludes_fires_without_qualifying_area(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    year_directory = pathlib.Path("data/2026")
+    index = tests.kml_helpers.fire_index([
+        tests.kml_helpers.fire_index_entry("Bug", "active", identifier="id-bug"),
+        tests.kml_helpers.fire_index_entry(
+            "Tiny",
+            "active",
+            identifier="id-tiny",
+        ),
+    ])
+    monkeypatch.setattr(
+        peri_scribe.fire_index,
+        "load_fire_index",
+        lambda _directory: index,
+    )
+    monkeypatch.setattr(
+        peri_scribe.fire_history,
+        "history_geopackage_path",
+        lambda _directory: pathlib.Path("/derived/full.gpkg"),
+    )
+    perimeters = tests.kml_helpers.geometry_frame(
+        [
+            ("id-bug", "Bug", tests.kml_helpers.square(1.0)),
+            ("id-tiny", "Tiny", tests.kml_helpers.square(1.0)),
+        ],
+        area_acres=[100.0, 10.0],
+    )
+    points = tests.kml_helpers.geometry_frame([])
+
+    def read_layer(
+        _path: pathlib.Path,
+        layer_name: str,
+    ) -> geopandas.GeoDataFrame:
+        return perimeters if layer_name == "perimeter_history" else points
+
+    monkeypatch.setattr(peri_scribe.geo_package, "read_layer", read_layer)
+    template = peri_scribe.kml_template_reader.template_from(
+        peri_scribe.kml_template.template_kml(),
+    )
+    monkeypatch.setattr(
+        peri_scribe.kml_template_reader,
+        "read_template",
+        lambda _path: template,
+    )
+    writes: list[tuple[pathlib.Path, str, dict[str, bytes]]] = []
+    monkeypatch.setattr(
+        peri_scribe.kml,
+        "write_kmz",
+        lambda path, kml_text, images: writes.append((path, kml_text, images)),
+    )
+
+    peri_scribe.kml.create_kmz(year_directory)
+
+    _path, kml_text, images = writes[0]
+    assert "Bug" in kml_text
+    assert "Tiny" not in kml_text
+    assert not any(filename.startswith("id-tiny") for filename in images)
