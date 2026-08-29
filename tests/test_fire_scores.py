@@ -643,6 +643,12 @@ def test_read_latest_snapshot_returns_empty_without_snapshot(
     ).empty
 
 
+def test_load_fire_scores_returns_none_when_scores_are_missing(
+    tmp_path: pathlib.Path,
+) -> None:
+    assert peri_scribe.fire_scores.load_fire_scores(tmp_path) is None
+
+
 def test_read_latest_snapshot_returns_empty_without_layer_name(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

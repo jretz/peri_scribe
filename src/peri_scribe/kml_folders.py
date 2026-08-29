@@ -21,6 +21,9 @@ import peri_scribe.perimeter_progression
 
 ACTIVE_FIRES_FOLDER_NAME = "Active Fires"
 INACTIVE_FIRES_FOLDER_NAME = "Inactive Fires"
+TOP_FIRES_BY_NAME_FOLDER_NAME = "Top Fires by Name"
+TOP_FIRES_BY_SCORE_FOLDER_NAME = "Top Fires by Score"
+TOP_FIRE_COUNT = 25
 
 # The folder inside each fire's latest-perimeters folder that holds the polygons
 # filling the fire's interior.
@@ -307,3 +310,43 @@ def status_folder(
     progression_folder(folder, status_fires, style_urls)
     if status is peri_scribe.models.FireStatus.INACTIVE:
         set_invisible(folder)
+
+
+def top_fires(
+    fires: list[peri_scribe.kml_fire_data.FireGeometry],
+    scores: peri_scribe.models.FireScores,
+) -> list[peri_scribe.kml_fire_data.FireGeometry]:
+    """Return the highest-scoring fires that are present in *fires*.
+
+    Scores can include fires excluded from the map for lacking qualifying geography, so
+    the result is matched back to the already-filtered geometry list by name.
+
+    Args:
+        fires: The fires that can be shown in the KMZ.
+        scores: The saved score for each fire.
+
+    Returns:
+        The top fires in descending score order.
+    """
+    fires_by_name = {fire.name: fire for fire in fires}
+    return [
+        fires_by_name[entry.name]
+        for entry in sorted(
+            scores.fires,
+            key=lambda entry: (-entry.score, entry.name.casefold()),
+        )
+        if entry.name in fires_by_name
+    ][:TOP_FIRE_COUNT]
+
+
+def top_fires_folder(
+    container: simplekml.Container,
+    fires: list[peri_scribe.kml_fire_data.FireGeometry],
+    name: str,
+    style_urls: typing.Mapping[str, str],
+) -> None:
+    """Add a top-fires folder with the same two views as a status folder."""
+    folder = container.newfolder(name=name)
+    set_radio_folder(folder)
+    latest_perimeters_folder(folder, fires, style_urls)
+    progression_folder(folder, fires, style_urls)

@@ -17,6 +17,7 @@ import structlog
 import peri_scribe.fire_differential
 import peri_scribe.fire_history
 import peri_scribe.fire_index
+import peri_scribe.fire_scores
 import peri_scribe.geo_package
 import peri_scribe.kml_fire_data
 import peri_scribe.kml_folders
@@ -85,11 +86,13 @@ def fire_kml(
     fires: list[peri_scribe.kml_fire_data.FireGeometry],
     template: peri_scribe.kml_template_reader.Template,
     name: str,
+    scores: peri_scribe.models.FireScores | None = None,
 ) -> str:
     """Return the KML document string for *fires*.
 
     The document is named *name* and holds the template's styles and a top-level folder,
-    also named *name*, that holds one folder each for active and inactive fires.
+    also named *name*. When scores are supplied, it begins with two top-fire views,
+    followed by the existing active and inactive fire folders.
 
     Args:
         fires: The fires to symbolize.
@@ -110,6 +113,20 @@ def fire_kml(
     # radio buttons in Google Earth's Places panel.
     top_level = document.newfolder(name=name)
     peri_scribe.kml_folders.set_radio_folder(top_level)
+    if scores is not None:
+        score_sorted_fires = peri_scribe.kml_folders.top_fires(fires, scores)
+        peri_scribe.kml_folders.top_fires_folder(
+            top_level,
+            sorted(score_sorted_fires, key=lambda fire: fire.name.casefold()),
+            peri_scribe.kml_folders.TOP_FIRES_BY_NAME_FOLDER_NAME,
+            template.style_urls,
+        )
+        peri_scribe.kml_folders.top_fires_folder(
+            top_level,
+            score_sorted_fires,
+            peri_scribe.kml_folders.TOP_FIRES_BY_SCORE_FOLDER_NAME,
+            template.style_urls,
+        )
     peri_scribe.kml_folders.status_folder(
         top_level,
         fires,
@@ -205,6 +222,7 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
         The path of the written KMZ file.
     """
     index = peri_scribe.fire_index.load_fire_index(year_directory)
+    scores = peri_scribe.fire_scores.load_fire_scores(year_directory)
     history_path = peri_scribe.fire_history.history_geopackage_path(year_directory)
     perimeters = peri_scribe.geo_package.read_layer(
         history_path,
@@ -251,7 +269,12 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
     output_path = kmz_path(year_directory)
     write_kmz(
         output_path,
-        fire_kml(geometries, template, output_path.stem),
+        fire_kml(
+            geometries,
+            template,
+            output_path.stem,
+            scores or peri_scribe.models.FireScores(version="", fires=[]),
+        ),
         images,
     )
     return output_path

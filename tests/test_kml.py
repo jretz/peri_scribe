@@ -18,6 +18,7 @@ import peri_scribe.kml_fire_data
 import peri_scribe.kml_icons
 import peri_scribe.kml_template
 import peri_scribe.kml_template_reader
+import peri_scribe.models
 import peri_scribe.perimeter_progression
 import tests.kml_helpers
 
@@ -95,6 +96,69 @@ def test_fire_kml_names_the_document() -> None:
     )
     top_level = tests.kml_helpers.top_level_folder(document)
     assert tests.kml_helpers.folder_list_item_type(top_level) == "radioFolder"
+
+
+def test_fire_kml_puts_top_fires_before_status_folders() -> None:
+    fires = [
+        peri_scribe.kml_fire_data.FireGeometry(
+            name=name,
+            status=peri_scribe.models.FireStatus.ACTIVE,
+            point=shapely.geometry.Point(0.0, 0.0),
+            perimeters=(),
+        )
+        for name in ("Zulu", "Alpha")
+    ]
+    components = peri_scribe.models.FireScoreComponents(
+        size=0,
+        growth=0,
+        first_mapping=0,
+        buildings=0,
+        evacuation=0,
+        importance=0,
+    )
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            peri_scribe.models.FireScoreEntry(
+                name="Zulu",
+                score=3,
+                components=components,
+            ),
+            peri_scribe.models.FireScoreEntry(
+                name="Alpha",
+                score=2,
+                components=components,
+            ),
+        ],
+    )
+    template = peri_scribe.kml_template_reader.template_from(
+        peri_scribe.kml_template.template_kml(),
+    )
+    document = tests.kml_helpers.document_from(
+        peri_scribe.kml.fire_kml(fires, template, "test", scores),
+    )
+
+    top_level = tests.kml_helpers.folder_named(document, "test")
+    assert tests.kml_helpers.folder_names(top_level) == [
+        "Top Fires by Name",
+        "Top Fires by Score",
+        "Active Fires",
+        "Inactive Fires",
+    ]
+    top_by_name = tests.kml_helpers.folder_named(top_level, "Top Fires by Name")
+    top_by_score = tests.kml_helpers.folder_named(top_level, "Top Fires by Score")
+    assert tests.kml_helpers.folder_names(
+        tests.kml_helpers.folder_named(
+            top_by_name,
+            peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
+        ),
+    ) == ["Alpha", "Zulu"]
+    assert tests.kml_helpers.folder_names(
+        tests.kml_helpers.folder_named(
+            top_by_score,
+            peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
+        ),
+    ) == ["Zulu", "Alpha"]
 
 
 def test_fire_kml_includes_progression_maps_folder() -> None:
