@@ -6,7 +6,6 @@ import xml.etree.ElementTree as ET  # ruff: ignore[suspicious-xml-etree-import]
 
 import pytest
 import shapely.geometry
-import simplekml
 
 import peri_scribe.kml_geometry
 import peri_scribe.kml_template
@@ -30,9 +29,9 @@ def test_polygon_geometry_includes_holes() -> None:
         [(0.0, 0.0), (0.0, 2.0), (2.0, 2.0), (2.0, 0.0), (0.0, 0.0)],
         [[(0.5, 0.5), (0.5, 1.5), (1.5, 1.5), (1.5, 0.5), (0.5, 0.5)]],
     )
-    kml = simplekml.Kml()
+    writer = peri_scribe.kml_geometry.KmlWriter()
     peri_scribe.kml_geometry.polygon_geometry(
-        kml.document,
+        writer,
         "Bug",
         "#perimeter-fill",
         polygon,
@@ -40,7 +39,7 @@ def test_polygon_geometry_includes_holes() -> None:
         description=None,
     )
     placemark = tests.kml_helpers.placemark_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     assert tests.kml_helpers.exterior_coordinates(placemark) == [
@@ -86,9 +85,9 @@ def test_multi_polygon_geometry_holds_each_polygon() -> None:
         shapely.geometry.box(2.0, 2.0, 3.0, 3.0),
     ])
     expected_draw_order = 2
-    kml = simplekml.Kml()
+    writer = peri_scribe.kml_geometry.KmlWriter()
     peri_scribe.kml_geometry.multi_polygon_geometry(
-        kml.document,
+        writer,
         "Bug",
         "#perimeter-fill",
         multi_polygon,
@@ -96,7 +95,7 @@ def test_multi_polygon_geometry_holds_each_polygon() -> None:
         description=None,
     )
     placemark = tests.kml_helpers.placemark_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     geometry = placemark.find(tests.kml_helpers.kml_tag("MultiGeometry"))
@@ -115,9 +114,9 @@ def test_multi_polygon_geometry_holds_each_polygon() -> None:
 
 
 def test_perimeter_geometry_converts_polygon() -> None:
-    kml = simplekml.Kml()
+    writer = peri_scribe.kml_geometry.KmlWriter()
     peri_scribe.kml_geometry.perimeter_geometry(
-        kml.document,
+        writer,
         "Bug",
         "#perimeter-fill",
         tests.kml_helpers.square(1.0),
@@ -125,7 +124,7 @@ def test_perimeter_geometry_converts_polygon() -> None:
         description=None,
     )
     placemark = tests.kml_helpers.placemark_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     assert placemark.find(tests.kml_helpers.kml_tag("Polygon")) is not None
@@ -138,9 +137,9 @@ def test_perimeter_geometry_converts_multi_polygon() -> None:
         tests.kml_helpers.square(2.0),
     ])
     expected_draw_order = 5
-    kml = simplekml.Kml()
+    writer = peri_scribe.kml_geometry.KmlWriter()
     peri_scribe.kml_geometry.perimeter_geometry(
-        kml.document,
+        writer,
         "Bug",
         "#perimeter-fill",
         multi_polygon,
@@ -148,7 +147,7 @@ def test_perimeter_geometry_converts_multi_polygon() -> None:
         description=None,
     )
     placemark = tests.kml_helpers.placemark_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     geometry = placemark.find(tests.kml_helpers.kml_tag("MultiGeometry"))
@@ -164,10 +163,10 @@ def test_perimeter_geometry_converts_multi_polygon() -> None:
 
 def test_point_placemark_names_and_styles_point() -> None:
     point = shapely.geometry.Point(1.0, 2.0)
-    kml = simplekml.Kml()
+    writer = peri_scribe.kml_geometry.KmlWriter()
     expected_draw_order = peri_scribe.kml_template.point_draw_order(3)
     peri_scribe.kml_geometry.point_placemark(
-        kml.document,
+        writer,
         "Bug",
         "#point-icon",
         point,
@@ -175,7 +174,7 @@ def test_point_placemark_names_and_styles_point() -> None:
         description=None,
     )
     placemark = tests.kml_helpers.placemark_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     assert tests.kml_helpers.placemark_style_url(placemark) == "#point-icon"
@@ -184,9 +183,9 @@ def test_point_placemark_names_and_styles_point() -> None:
 
 
 def test_perimeter_placemark_names_and_styles_polygon() -> None:
-    kml = simplekml.Kml()
+    writer = peri_scribe.kml_geometry.KmlWriter()
     peri_scribe.kml_geometry.perimeter_placemark(
-        kml.document,
+        writer,
         "Interior",
         "#perimeter-fill",
         tests.kml_helpers.square(1.0),
@@ -194,7 +193,7 @@ def test_perimeter_placemark_names_and_styles_polygon() -> None:
         description=None,
     )
     placemark = tests.kml_helpers.placemark_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Interior",
     )
     assert tests.kml_helpers.placemark_style_url(placemark) == "#perimeter-fill"
@@ -203,9 +202,9 @@ def test_perimeter_placemark_names_and_styles_polygon() -> None:
 
 
 def test_polygon_geometry_sets_description() -> None:
-    kml = simplekml.Kml()
+    writer = peri_scribe.kml_geometry.KmlWriter()
     peri_scribe.kml_geometry.polygon_geometry(
-        kml.document,
+        writer,
         "Bug",
         "#perimeter-fill",
         tests.kml_helpers.square(1.0),
@@ -213,7 +212,7 @@ def test_polygon_geometry_sets_description() -> None:
         description="description text",
     )
     placemark = tests.kml_helpers.placemark_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     assert (
@@ -223,13 +222,13 @@ def test_polygon_geometry_sets_description() -> None:
 
 
 def test_multi_polygon_geometry_sets_description() -> None:
-    kml = simplekml.Kml()
+    writer = peri_scribe.kml_geometry.KmlWriter()
     multi_polygon = shapely.geometry.MultiPolygon([
         tests.kml_helpers.square(1.0),
         tests.kml_helpers.square(2.0),
     ])
     peri_scribe.kml_geometry.multi_polygon_geometry(
-        kml.document,
+        writer,
         "Bug",
         "#perimeter-fill",
         multi_polygon,
@@ -237,7 +236,7 @@ def test_multi_polygon_geometry_sets_description() -> None:
         description="description text",
     )
     placemark = tests.kml_helpers.placemark_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     assert (
@@ -247,9 +246,9 @@ def test_multi_polygon_geometry_sets_description() -> None:
 
 
 def test_point_placemark_sets_description() -> None:
-    kml = simplekml.Kml()
+    writer = peri_scribe.kml_geometry.KmlWriter()
     peri_scribe.kml_geometry.point_placemark(
-        kml.document,
+        writer,
         "Bug",
         "#point-icon",
         shapely.geometry.Point(1.0, 1.0),
@@ -257,7 +256,7 @@ def test_point_placemark_sets_description() -> None:
         description="description text",
     )
     placemark = tests.kml_helpers.placemark_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     assert (

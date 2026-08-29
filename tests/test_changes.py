@@ -12,8 +12,10 @@ import pytest
 import shapely.geometry
 
 import peri_scribe.changes
+import peri_scribe.feed_types
 import peri_scribe.geo_package
 import peri_scribe.models
+import peri_scribe.output
 import peri_scribe.snapshots
 from tests.factories import change_dataframe, change_feed
 
@@ -581,3 +583,349 @@ def test_latest_snapshot_path_returns_last_file() -> None:
         ],
     )
     assert result == pathlib.Path("/d/000___/000001,lastEdit=0.gpkg")
+
+
+def write_snapshot(
+    source_directory: pathlib.Path,
+    feed: peri_scribe.feed_types.Feed,
+    serial_number: int,
+    rows: list[tuple[int, str, tuple[float, float]]],
+) -> None:
+    """Write one snapshot GeoPackage under *source_directory*.
+
+    Args:
+        source_directory: The directory to write the snapshot into.
+        feed: The feed the snapshot's layer belongs to.
+        serial_number: The snapshot's serial number.
+        rows: The OBJECTID, name, and coordinates of each feature.
+    """
+    relative_path = peri_scribe.snapshots.SourceFile(
+        serial_number=serial_number,
+        last_edit_timestamp=0,
+    ).relative_path
+    path = source_directory / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    peri_scribe.output.write_geopackage(
+        path,
+        [
+            peri_scribe.models.LayerData(
+                name=feed.name,
+                dataframe=change_dataframe(rows),
+            ),
+        ],
+    )
+
+
+def snapshot_source_directory(
+    tmp_path: pathlib.Path,
+) -> pathlib.Path:
+    """Return an isolated feed snapshot directory under *tmp_path*.
+
+    The state directory is derived from the snapshot directory's parent, so the
+    snapshot directory sits one level under *tmp_path* to keep each test's state
+    files inside its own *tmp_path*.
+
+    Args:
+        tmp_path: The pytest-provided per-test directory.
+
+    Returns:
+        The feed's snapshot directory.
+    """
+    return tmp_path / "snapshots"
+
+
+def test_current_state_serial_number_returns_none_without_snapshots(
+    tmp_path: pathlib.Path,
+) -> None:
+    directory = snapshot_source_directory(tmp_path)
+    assert peri_scribe.changes.current_state_serial_number(directory) is None
+
+
+def test_read_current_features_reads_snapshots_without_state_file(
+    tmp_path: pathlib.Path,
+) -> None:
+    feed = change_feed()
+    directory = snapshot_source_directory(tmp_path)
+    write_snapshot(
+        directory,
+        feed,
+        0,
+        [(1, "a", (0.0, 0.0)), (2, "b", (1.0, 1.0))],
+    )
+    write_snapshot(
+        directory,
+        feed,
+        1,
+        [(2, "B", (1.0, 1.0)), (3, "c", (2.0, 2.0))],
+    )
+    existing = peri_scribe.changes.read_current_features(directory, feed)
+    assert existing is not None
+    assert list(existing["OBJECTID"]) == [1, 2, 3]
+    assert list(existing["name"]) == ["a", "B", "c"]
+
+
+def test_read_current_features_uses_fresh_state_file(
+    tmp_path: pathlib.Path,
+) -> None:
+    feed = change_feed()
+    directory = snapshot_source_directory(tmp_path)
+    write_snapshot(
+        directory,
+        feed,
+        0,
+        [(1, "a", (0.0, 0.0)), (2, "b", (1.0, 1.0))],
+    )
+    peri_scribe.changes.write_current_state(
+        directory,
+        feed,
+        change_dataframe([(2, "B", (1.0, 1.0)), (3, "c", (2.0, 2.0))]),
+    )
+    existing = peri_scribe.changes.read_current_features(directory, feed)
+    assert existing is not None
+    assert list(existing["OBJECTID"]) == [1, 2, 3]
+    assert list(existing["name"]) == ["a", "B", "c"]
+
+
+def test_read_current_features_rebuilds_when_state_is_stale(
+    tmp_path: pathlib.Path,
+) -> None:
+    feed = change_feed()
+    directory = snapshot_source_directory(tmp_path)
+    write_snapshot(directory, feed, 0, [(1, "a", (0.0, 0.0))])
+    write_snapshot(directory, feed, 1, [(2, "b", (1.0, 1.0))])
+    # A state file covering only the first snapshot, with stale content.
+    state_path = peri_scribe.snapshots.current_state_path(directory, feed.name, 0)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    peri_scribe.output.write_geopackage(
+        state_path,
+        [
+            peri_scribe.models.LayerData(
+                name=feed.name,
+                dataframe=change_dataframe([(1, "old", (0.0, 0.0))]),
+            ),
+        ],
+    )
+    existing = peri_scribe.changes.read_current_features(directory, feed)
+    assert existing is not None
+    assert list(existing["OBJECTID"]) == [1, 2]
+
+
+def test_read_current_features_falls_back_when_state_unreadable(
+    tmp_path: pathlib.Path,
+) -> None:
+    feed = change_feed()
+    directory = snapshot_source_directory(tmp_path)
+    write_snapshot(
+        directory,
+        feed,
+        0,
+        [(1, "a", (0.0, 0.0)), (2, "b", (1.0, 1.0))],
+    )
+    state_path = peri_scribe.snapshots.current_state_path(directory, feed.name, 0)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_bytes(b"not a geopackage")
+    existing = peri_scribe.changes.read_current_features(directory, feed)
+    assert existing is not None
+    assert list(existing["OBJECTID"]) == [1, 2]
+
+
+def test_write_current_state_merges_and_removes_older_state_files(
+    tmp_path: pathlib.Path,
+) -> None:
+    feed = change_feed()
+    directory = snapshot_source_directory(tmp_path)
+    write_snapshot(
+        directory,
+        feed,
+        0,
+        [(1, "a", (0.0, 0.0)), (2, "b", (1.0, 1.0))],
+    )
+    peri_scribe.changes.write_current_state(
+        directory,
+        feed,
+        change_dataframe([(2, "B", (1.0, 1.0))]),
+    )
+    write_snapshot(directory, feed, 1, [(3, "c", (2.0, 2.0))])
+    peri_scribe.changes.write_current_state(
+        directory,
+        feed,
+        change_dataframe([(3, "C", (2.0, 2.0))]),
+    )
+    state_files = peri_scribe.snapshots.current_state_file_paths(
+        directory,
+        feed.name,
+    )
+    assert [serial for serial, _path in state_files] == [1]
+    existing = peri_scribe.changes.read_current_features(directory, feed)
+    assert existing is not None
+    assert list(existing["name"]) == ["a", "B", "C"]
+
+
+def test_latest_features_by_object_id_normalizes_geometry_column_name() -> None:
+    stored = change_dataframe([(1, "a", (0.0, 0.0))])
+    fetched = change_dataframe([(2, "b", (1.0, 1.0))]).rename_geometry("geom")
+    merged = peri_scribe.changes.latest_features_by_object_id([stored, fetched])
+    assert merged is not None
+    assert merged.geometry.name == "geometry"
+    assert list(merged["OBJECTID"]) == [1, 2]
+
+
+def test_write_current_state_merges_fetched_geometry_column(
+    tmp_path: pathlib.Path,
+) -> None:
+    feed = change_feed()
+    directory = snapshot_source_directory(tmp_path)
+    write_snapshot(directory, feed, 0, [(1, "a", (0.0, 0.0))])
+    fetched = typing.cast(
+        "geopandas.GeoDataFrame",
+        change_dataframe([(2, "b", (1.0, 1.0))]).rename_geometry("geom"),
+    )
+    peri_scribe.changes.write_current_state(directory, feed, fetched)
+    existing = peri_scribe.changes.read_current_features(directory, feed)
+    assert existing is not None
+    assert list(existing["OBJECTID"]) == [1, 2]
+    assert list(existing["name"]) == ["a", "b"]
+
+
+def test_write_current_state_skips_without_snapshots(
+    tmp_path: pathlib.Path,
+) -> None:
+    feed = change_feed()
+    directory = snapshot_source_directory(tmp_path)
+    peri_scribe.changes.write_current_state(
+        directory,
+        feed,
+        change_dataframe([(1, "a", (0.0, 0.0))]),
+    )
+    assert (
+        peri_scribe.snapshots.current_state_file_paths(
+            directory,
+            feed.name,
+        )
+        == []
+    )
+
+
+def test_write_current_state_skips_without_object_id_column(
+    tmp_path: pathlib.Path,
+) -> None:
+    feed = change_feed()
+    directory = snapshot_source_directory(tmp_path)
+    # The snapshot and the new rows both lack an OBJECTID column, so no state
+    # keyed by OBJECTID can be maintained and nothing is written.
+    relative_path = peri_scribe.snapshots.SourceFile(
+        serial_number=0,
+        last_edit_timestamp=0,
+    ).relative_path
+    path = directory / relative_path
+    path.parent.mkdir(parents=True, exist_ok=True)
+    peri_scribe.output.write_geopackage(
+        path,
+        [
+            peri_scribe.models.LayerData(
+                name=feed.name,
+                dataframe=typing.cast(
+                    "geopandas.GeoDataFrame",
+                    change_dataframe([(1, "a", (0.0, 0.0))]).drop(
+                        columns=["OBJECTID"],
+                    ),
+                ),
+            ),
+        ],
+    )
+    frame = typing.cast(
+        "geopandas.GeoDataFrame",
+        change_dataframe([(2, "b", (1.0, 1.0))]).drop(columns=["OBJECTID"]),
+    )
+    peri_scribe.changes.write_current_state(directory, feed, frame)
+    assert (
+        peri_scribe.snapshots.current_state_file_paths(
+            directory,
+            feed.name,
+        )
+        == []
+    )
+
+
+def test_write_current_state_rebuilds_from_snapshots_when_state_unreadable(
+    tmp_path: pathlib.Path,
+) -> None:
+    feed = change_feed()
+    directory = snapshot_source_directory(tmp_path)
+    write_snapshot(
+        directory,
+        feed,
+        0,
+        [(1, "a", (0.0, 0.0)), (2, "b", (1.0, 1.0))],
+    )
+    state_path = peri_scribe.snapshots.current_state_path(directory, feed.name, 0)
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    state_path.write_bytes(b"not a geopackage")
+    peri_scribe.changes.write_current_state(
+        directory,
+        feed,
+        change_dataframe([(3, "c", (2.0, 2.0))]),
+    )
+    existing = peri_scribe.changes.read_current_features(directory, feed)
+    assert existing is not None
+    assert list(existing["name"]) == ["a", "b", "c"]
+
+
+def test_write_current_state_ignores_missing_old_state_file(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    feed = change_feed()
+    directory = snapshot_source_directory(tmp_path)
+    write_snapshot(directory, feed, 0, [(1, "a", (0.0, 0.0))])
+    write_snapshot(directory, feed, 1, [(2, "b", (1.0, 1.0))])
+    stale_path = peri_scribe.snapshots.current_state_path(directory, feed.name, 0)
+    current_path = peri_scribe.snapshots.current_state_path(directory, feed.name, 1)
+    stale_path.parent.mkdir(parents=True, exist_ok=True)
+    for path in (stale_path, current_path):
+        peri_scribe.output.write_geopackage(
+            path,
+            [
+                peri_scribe.models.LayerData(
+                    name=feed.name,
+                    dataframe=change_dataframe([(9, "stale", (9.0, 9.0))]),
+                ),
+            ],
+        )
+    original_unlink = pathlib.Path.unlink
+
+    def flaky_unlink(self: pathlib.Path) -> None:
+        if self == stale_path:
+            # The stale file disappears before the cleanup removes it, so the
+            # cleanup's unlink reports it missing.
+            original_unlink(self)
+            raise FileNotFoundError
+        original_unlink(self)
+
+    monkeypatch.setattr(pathlib.Path, "unlink", flaky_unlink)
+    peri_scribe.changes.write_current_state(
+        directory,
+        feed,
+        change_dataframe([(2, "B", (1.0, 1.0))]),
+    )
+    state_files = peri_scribe.snapshots.current_state_file_paths(
+        directory,
+        feed.name,
+    )
+    assert [serial for serial, _path in state_files] == [1]
+
+
+def test_current_state_file_paths_ignores_malformed_filenames(
+    tmp_path: pathlib.Path,
+) -> None:
+    feed = change_feed()
+    directory = snapshot_source_directory(tmp_path)
+    state_directory = peri_scribe.snapshots.current_state_directory_path(directory)
+    state_directory.mkdir(parents=True)
+    (state_directory / f"{feed.name}-state-junk.gpkg").write_bytes(b"")
+    (state_directory / f"{feed.name}-state-2.gpkg").write_bytes(b"")
+    state_files = peri_scribe.snapshots.current_state_file_paths(
+        directory,
+        feed.name,
+    )
+    assert [serial for serial, _path in state_files] == [2]

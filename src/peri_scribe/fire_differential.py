@@ -140,6 +140,30 @@ def geometry_difference(
     return polygonal_area(current.difference(previous))
 
 
+def geometry_grows_beyond(
+    current: shapely.Geometry | None,
+    previous: shapely.Geometry | None,
+) -> bool:
+    """Return whether *current* has polygonal area outside *previous*.
+
+    This is equivalent to ``geometry_difference(current, previous) is not None``, but it
+    does not construct the difference, so it is far cheaper when the caller only needs
+    to know whether a perimeter adds area.
+
+    Args:
+        current: The current geometry, or None.
+        previous: The previous geometry, or None.
+
+    Returns:
+        True when the difference has polygonal area.
+    """
+    if current is None or current.is_empty:
+        return False
+    if previous is None or previous.is_empty:
+        return polygonal_area(current) is not None
+    return not previous.covers(current)
+
+
 def geometry_intersection(
     current: shapely.Geometry | None,
     later: shapely.Geometry | None,
@@ -197,7 +221,7 @@ def growth_indices(
     indices: list[int] = []
     previous: shapely.Geometry | None = None
     for index, geometry in enumerate(corrected):
-        if geometry_difference(geometry, previous) is not None:
+        if geometry_grows_beyond(geometry, previous):
             indices.append(index)
         previous = geometry
     return indices
@@ -209,8 +233,8 @@ def representative_indices(
 ) -> dict[int, int]:
     """Return the full-perimeter index each survivor represents.
 
-    A survivor followed by perimeters that add no area is corrected by those
-    perimeters, so it keeps the attributes of the last one before the next survivor.
+    A survivor followed by perimeters that add no area is corrected by those perimeters,
+    so it keeps the attributes of the last one before the next survivor.
 
     Args:
         survivors: The surviving (growth) perimeter indices, in order.

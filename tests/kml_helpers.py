@@ -20,6 +20,7 @@ import pytest
 import shapely.geometry
 
 import peri_scribe.kml_fire_data
+import peri_scribe.kml_geometry
 import peri_scribe.kml_plot_data
 import peri_scribe.kml_plot_drawing
 import peri_scribe.kml_plot_rendering
@@ -218,6 +219,27 @@ def document_from(kml_text: str) -> ET.Element:
     if document is None:
         pytest.fail("KML has no Document element")
     return document
+
+
+def document_from_writer(
+    writer: peri_scribe.kml_geometry.KmlWriter,
+) -> ET.Element:
+    """Parse *writer*'s accumulated KML fragments into a document element.
+
+    The writer holds document content without the enclosing ``<kml>`` and
+    ``<Document>`` wrapper, so the wrapper is added here before parsing.
+
+    Args:
+        writer: The writer holding the KML content.
+
+    Returns:
+        The document element.
+    """
+    kml_text = (
+        f'<kml xmlns="{KML_NAMESPACE}" xmlns:gx="{GX_NAMESPACE}">'
+        f"<Document>{writer.text()}</Document></kml>"
+    )
+    return document_from(kml_text)
 
 
 def folder_named(

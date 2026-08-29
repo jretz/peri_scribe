@@ -1,31 +1,88 @@
 """Reading fire records and complex memberships from GeoPackage files.
 
-Interprets each configured feed's layer into fire records, full source rows, and
-complex memberships, and provides the attribute-value helpers the rest of the project
-uses to read those rows.
+Interprets each configured feed's layer into fire records, full source rows, and complex
+memberships, and provides the attribute-value helpers the rest of the project uses to
+read those rows.
 """
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import datetime
+import json
 import pathlib
 import re
 import sqlite3
+import threading
 import typing
 
 import geopandas
 import pandas as pd
+import shapely
+import structlog
 import us.states
 
 import peri_scribe.exceptions
 import peri_scribe.feed_types
 import peri_scribe.feeds
 import peri_scribe.models
+import peri_scribe.snapshots
 
 
-if typing.TYPE_CHECKING:
-    import shapely
+logger = structlog.get_logger()
+
+# The schema version of the record cache databases; bump it whenever the stored record
+# structure changes so that stale databases are rebuilt rather than misread.
+RECORD_CACHE_SCHEMA_VERSION = 1
+
+# One SQLite database per feed holds every snapshot's parsed records. The schema version
+# is recorded in ``user_version``; the ``snapshots`` table records each snapshot file's
+# size and modification time so the database can be checked against the filesystem, and
+# the ``rows`` and ``memberships`` tables hold the parsed contents of each snapshot,
+# keyed by its serial number.
+_RECORD_CACHE_SCHEMA = """
+CREATE TABLE snapshots (
+  serial INTEGER PRIMARY KEY,
+  last_edit INTEGER NOT NULL,
+  size INTEGER NOT NULL,
+  mtime_ns INTEGER NOT NULL
+);
+CREATE TABLE rows (
+  serial INTEGER NOT NULL,
+  object_id INTEGER,
+  source_name TEXT NOT NULL,
+  name TEXT,
+  status TEXT,
+  identifiers TEXT,
+  names TEXT,
+  geometry_wkb BLOB,
+  observed_at TEXT,
+  mission TEXT,
+  point_of_origin_state TEXT,
+  point_of_origin_fips TEXT,
+  attributes_json TEXT
+);
+CREATE INDEX rows_serial ON rows(serial);
+CREATE TABLE memberships (
+  serial INTEGER NOT NULL,
+  fire_identifier TEXT NOT NULL,
+  complex_identifier TEXT NOT NULL,
+  complex_name TEXT NOT NULL
+);
+"""
+
+# Serializes record cache database updates so that parallel readers never race to write
+# the same database; reads take no lock.
+_RECORD_CACHE_LOCK = threading.Lock()
+
+# Remembers, per process, the snapshot-directory signature at which each record cache
+# database was last verified, so steady-state reads skip the per-file freshness check.
+# Every snapshot write goes through ``write_geopackage``, which unlinks and recreates
+# the file, changing the bucket directory's modification time, so a changed snapshot set
+# is still detected on the next read; the memo only skips re-verifying files that cannot
+# have changed within this process.
+_RECORD_CACHE_SYNCED: dict[pathlib.Path, tuple[int | tuple[str, int], ...]] = {}
 
 
 def fire_status_from(value: object) -> peri_scribe.models.FireStatus | None:
@@ -108,9 +165,9 @@ def geometries_describe_same_shape(
     """Return whether two geometries describe the same shape.
 
     Shapes are compared topologically rather than byte-for-byte, so a source
-    re-serializing an unchanged geometry (different vertex order, ring orientation,
-    or ring type) still counts as the same shape. None and empty geometries each
-    count as equal to themselves.
+    re-serializing an unchanged geometry (different vertex order, ring orientation, or
+    ring type) still counts as the same shape. None and empty geometries each count as
+    equal to themselves.
 
     Args:
         left: One geometry, or None.
@@ -123,6 +180,10 @@ def geometries_describe_same_shape(
         return left is None and right is None
     if left.is_empty or right.is_empty:
         return left.is_empty and right.is_empty
+    if left.wkb == right.wkb:
+        # Byte-identical geometries are the same shape; short-circuit before the
+        # more expensive topological equality check.
+        return True
     return left.equals(right)
 
 
@@ -219,8 +280,8 @@ def mission_name_from(value: object) -> peri_scribe.models.MissionName | None:
         value: A raw mission code value.
 
     Returns:
-        The mission name parts, or None when *value* is missing, blank, or does not
-        name a fire.
+        The mission name parts, or None when *value* is missing, blank, or does not name
+        a fire.
     """
     if is_missing(value):
         return None
@@ -292,8 +353,8 @@ def fire_record_from_row(
     """Return the fire record described by *row*, or None when it has none.
 
     A row yields no record when its status is missing or when neither its name column
-    nor its mission code names a fire. Every identifier, name spelling, and timestamp
-    is read from the columns the feed configures.
+    nor its mission code names a fire. Every identifier, name spelling, and timestamp is
+    read from the columns the feed configures.
 
     Args:
         row: One feature row from a GeoPackage layer.
@@ -394,6 +455,80 @@ class FireRowRecord:
     object_id: int | None
     source_name: str
     attributes: dict[str, object]
+
+    @classmethod
+    def from_row(cls, row: sqlite3.Row) -> FireRowRecord:
+        """Return the row described by one record cache database row.
+
+        The record's fixed fields come from typed columns and the attribute bag comes
+        from a JSON column, mirroring how the row was stored by ``to_row``. The identity
+        and name sets are rebuilt as frozensets and timestamps are parsed by the same
+        normalization helpers the rest of the project uses.
+
+        Args:
+            row: One ``rows`` table row, keyed by column name.
+
+        Returns:
+            The fire row.
+        """
+        return cls(
+            record=peri_scribe.models.FireRecord(
+                name=row["name"],
+                status=peri_scribe.models.FireStatus(row["status"]),
+                identifiers=frozenset(json.loads(row["identifiers"])),
+                names=frozenset(json.loads(row["names"])),
+                geometry=(
+                    shapely.from_wkb(row["geometry_wkb"])
+                    if row["geometry_wkb"] is not None
+                    else None
+                ),
+                observed_at=observation_time_from(row["observed_at"]),
+                mission=row["mission"],
+                point_of_origin_state=row["point_of_origin_state"],
+                point_of_origin_fips=row["point_of_origin_fips"],
+            ),
+            object_id=row["object_id"],
+            source_name=row["source_name"],
+            attributes=json.loads(row["attributes_json"]),
+        )
+
+    def to_row(self, serial: int) -> tuple[object, ...]:
+        """Return this row's record cache database columns, keyed by *serial*.
+
+        Timestamps are stored as ISO-8601 text and the attribute bag as a JSON-safe
+        object, so the database is inspectable with standard SQLite tools.
+
+        Args:
+            serial: The serial number of the snapshot the row came from.
+
+        Returns:
+            The ``rows`` table columns, in schema order.
+        """
+        record = self.record
+        return (
+            serial,
+            self.object_id,
+            self.source_name,
+            record.name,
+            record.status.value,
+            json.dumps(sorted(record.identifiers)),
+            json.dumps(sorted(record.names)),
+            record.geometry.wkb if record.geometry is not None else None,
+            (
+                record.observed_at.isoformat()
+                if record.observed_at is not None
+                else None
+            ),
+            record.mission,
+            record.point_of_origin_state,
+            record.point_of_origin_fips,
+            json.dumps(
+                {
+                    key: _json_cache_value(value)
+                    for key, value in self.attributes.items()
+                },
+            ),
+        )
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -545,6 +680,383 @@ def read_geopackage(path: pathlib.Path) -> GeopackageContents:
                 if membership is not None:
                     memberships.append(membership)
     return GeopackageContents(rows=tuple(rows), memberships=tuple(memberships))
+
+
+def _json_cache_value(value: object) -> object:
+    """Return *value* in a JSON-serializable form for the record cache.
+
+    Missing values become None, numpy scalars become their Python equivalents, and
+    datetimes become ISO-8601 text, so the attribute bag stores cleanly in JSON.
+
+    Args:
+        value: An attribute value from a fire row.
+
+    Returns:
+        The JSON-serializable form of *value*.
+    """
+    if is_missing(value):
+        return None
+    if isinstance(value, (str, bool, int, float)):
+        return value
+    if hasattr(value, "item"):
+        return typing.cast("typing.Any", value).item()
+    if hasattr(value, "isoformat"):
+        return typing.cast("typing.Any", value).isoformat()
+    return str(value)
+
+
+def _reset_database(conn: sqlite3.Connection) -> None:
+    """Replace the record cache tables in *conn* with an empty current schema.
+
+    Args:
+        conn: The record cache database connection.
+    """
+    conn.executescript(
+        "DROP TABLE IF EXISTS rows;"
+        "DROP TABLE IF EXISTS memberships;"
+        "DROP TABLE IF EXISTS snapshots;",
+    )
+    conn.executescript(_RECORD_CACHE_SCHEMA)
+    conn.execute(f"PRAGMA user_version = {RECORD_CACHE_SCHEMA_VERSION}")
+    conn.commit()
+
+
+def _write_snapshot(
+    conn: sqlite3.Connection,
+    source_file: peri_scribe.snapshots.SourceFile,
+    size: int,
+    mtime_ns: int,
+    contents: GeopackageContents,
+) -> None:
+    """Store one snapshot's parsed contents in *conn*.
+
+    The snapshot's previous rows, if any, are replaced, so a rewritten snapshot file is
+    reflected without stale rows.
+
+    Args:
+        conn: The record cache database connection.
+        source_file: The snapshot being stored.
+        size: The snapshot file's size in bytes.
+        mtime_ns: The snapshot file's modification time in nanoseconds.
+        contents: The snapshot's parsed rows and memberships.
+    """
+    conn.execute(
+        "INSERT OR REPLACE INTO snapshots VALUES (?, ?, ?, ?)",
+        (
+            source_file.serial_number,
+            source_file.last_edit_timestamp,
+            size,
+            mtime_ns,
+        ),
+    )
+    conn.execute("DELETE FROM rows WHERE serial = ?", (source_file.serial_number,))
+    conn.execute(
+        "DELETE FROM memberships WHERE serial = ?",
+        (source_file.serial_number,),
+    )
+    conn.executemany(
+        "INSERT INTO rows (serial, object_id, source_name, name, status, "
+        "identifiers, names, geometry_wkb, observed_at, mission, "
+        "point_of_origin_state, point_of_origin_fips, attributes_json) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [row.to_row(source_file.serial_number) for row in contents.rows],
+    )
+    conn.executemany(
+        "INSERT INTO memberships VALUES (?, ?, ?, ?)",
+        [
+            (
+                source_file.serial_number,
+                membership.fire_identifier,
+                membership.complex_identifier,
+                membership.complex_name,
+            )
+            for membership in contents.memberships
+        ],
+    )
+
+
+def _snapshot_directories_signature(
+    source_directory: pathlib.Path,
+) -> tuple[int | tuple[str, int], ...] | None:
+    """Return a signature that changes whenever a snapshot file changes.
+
+    Snapshot files live in bucket subdirectories named for the serial number's
+    thousands, and every write goes through ``write_geopackage``, which unlinks and
+    recreates the file, so adding, removing, or rewriting a snapshot changes either the
+    bucket directory's modification time (a file in an existing bucket) or the feed
+    directory's (a new bucket). The signature is the feed directory's and each bucket
+    directory's modification times, so a matching signature means no snapshot file can
+    have changed since the signature was taken.
+
+    Args:
+        source_directory: The feed's snapshot directory.
+
+    Returns:
+        The signature, or None when the feed directory cannot be read.
+    """
+    try:
+        feed_mtime_ns = source_directory.stat().st_mtime_ns
+    except OSError:
+        return None
+    bucket_mtime_ns: list[tuple[str, int]] = []
+    for bucket in source_directory.iterdir():
+        if not bucket.is_dir():
+            continue
+        try:
+            bucket_mtime_ns.append((bucket.name, bucket.stat().st_mtime_ns))
+        except OSError:
+            continue
+    return (feed_mtime_ns, *sorted(bucket_mtime_ns))
+
+
+def _sync_database(
+    conn: sqlite3.Connection,
+    source_directory: pathlib.Path,
+) -> None:
+    """Bring *conn*'s snapshot rows in line with *source_directory*'s files.
+
+    Snapshots that are new or whose file size or modification time changed are read and
+    stored; snapshots whose files have disappeared are dropped. Snapshots are immutable
+    once written, so an unchanged file is not re-read.
+
+    Args:
+        conn: The record cache database connection.
+        source_directory: The feed's snapshot directory.
+    """
+    stored = {
+        serial: (size, mtime_ns)
+        for serial, _last_edit, size, mtime_ns in conn.execute(
+            "SELECT serial, last_edit, size, mtime_ns FROM snapshots",
+        )
+    }
+    current: dict[int, tuple[peri_scribe.snapshots.SourceFile, int, int]] = {}
+    for source_file in peri_scribe.snapshots.existing_source_files(source_directory):
+        path = source_directory / source_file.relative_path
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        current[source_file.serial_number] = (
+            source_file,
+            stat.st_size,
+            stat.st_mtime_ns,
+        )
+    for serial in set(stored) - set(current):
+        conn.execute("DELETE FROM rows WHERE serial = ?", (serial,))
+        conn.execute("DELETE FROM memberships WHERE serial = ?", (serial,))
+        conn.execute("DELETE FROM snapshots WHERE serial = ?", (serial,))
+    for serial, (source_file, size, mtime_ns) in current.items():
+        if stored.get(serial) == (size, mtime_ns):
+            continue
+        path = source_directory / source_file.relative_path
+        contents = read_geopackage(path)
+        _write_snapshot(conn, source_file, size, mtime_ns, contents)
+    conn.commit()
+
+
+def _open_and_sync(
+    db_path: pathlib.Path,
+    source_directory: pathlib.Path,
+) -> None:
+    """Open the record cache database and bring it in line with the snapshots.
+
+    A database with an outdated or missing schema is rebuilt before the snapshot rows
+    are synchronized.
+
+    Args:
+        db_path: The record cache database path.
+        source_directory: The feed's snapshot directory.
+    """
+    conn = sqlite3.connect(db_path)
+    try:
+        if (
+            conn.execute("PRAGMA user_version").fetchone()[0]
+            != RECORD_CACHE_SCHEMA_VERSION
+        ):
+            _reset_database(conn)
+        _sync_database(conn, source_directory)
+    finally:
+        conn.close()
+
+
+def _ensure_database_current(
+    db_path: pathlib.Path,
+    source_directory: pathlib.Path,
+) -> None:
+    """Ensure the record cache database at *db_path* is current and usable.
+
+    A database that cannot be read (a corrupt file or an unusable format) is replaced
+    and rebuilt once; the caller falls back to reading the GeoPackage directly if the
+    replacement also fails.
+
+    Args:
+        db_path: The record cache database path.
+        source_directory: The feed's snapshot directory.
+    """
+    signature = _snapshot_directories_signature(source_directory)
+    if signature is None:
+        # No snapshot directory to sync from.
+        return
+    if _RECORD_CACHE_SYNCED.get(db_path) == signature:
+        return
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        _open_and_sync(db_path, source_directory)
+    except sqlite3.DatabaseError:
+        logger.debug(
+            "Record cache database unusable; rebuilding",
+            path=str(db_path),
+        )
+        with contextlib.suppress(OSError):
+            db_path.unlink()
+        _open_and_sync(db_path, source_directory)
+    _RECORD_CACHE_SYNCED[db_path] = signature
+
+
+def _read_snapshot_contents(
+    conn: sqlite3.Connection,
+    serial: int,
+) -> GeopackageContents:
+    """Return the parsed contents stored for snapshot *serial* in *conn*.
+
+    Args:
+        conn: The record cache database connection, reading rows by column name.
+        serial: The snapshot's serial number.
+
+    Returns:
+        The snapshot's fire rows and complex memberships.
+    """
+    rows = conn.execute(
+        "SELECT serial, object_id, source_name, name, status, identifiers, "
+        "names, geometry_wkb, observed_at, mission, point_of_origin_state, "
+        "point_of_origin_fips, attributes_json FROM rows WHERE serial = ?",
+        (serial,),
+    ).fetchall()
+    memberships = conn.execute(
+        "SELECT fire_identifier, complex_identifier, complex_name "
+        "FROM memberships WHERE serial = ?",
+        (serial,),
+    ).fetchall()
+    return GeopackageContents(
+        rows=tuple(FireRowRecord.from_row(row) for row in rows),
+        memberships=tuple(
+            peri_scribe.models.ComplexMembership(
+                fire_identifier=row["fire_identifier"],
+                complex_identifier=row["complex_identifier"],
+                complex_name=row["complex_name"],
+            )
+            for row in memberships
+        ),
+    )
+
+
+def _fetch_snapshot_rows(
+    conn: sqlite3.Connection,
+    serial: int,
+) -> GeopackageContents | None:
+    """Return the contents stored for snapshot *serial*, or None when absent.
+
+    Args:
+        conn: The record cache database connection.
+        serial: The snapshot's serial number.
+
+    Returns:
+        The snapshot's fire rows and complex memberships, or None when the database does
+        not cover the snapshot.
+    """
+    conn.row_factory = sqlite3.Row
+    present = conn.execute(
+        "SELECT 1 FROM snapshots WHERE serial = ?",
+        (serial,),
+    ).fetchone()
+    if present is None:
+        return None
+    return _read_snapshot_contents(conn, serial)
+
+
+def _read_snapshot_rows(
+    db_path: pathlib.Path,
+    serial: int,
+) -> GeopackageContents | None:
+    """Return the contents stored for snapshot *serial* at *db_path*.
+
+    Args:
+        db_path: The record cache database path.
+        serial: The snapshot's serial number.
+
+    Returns:
+        The snapshot's fire rows and complex memberships, or None when the database does
+        not cover the snapshot.
+    """
+    conn = sqlite3.connect(db_path)
+    try:
+        return _fetch_snapshot_rows(conn, serial)
+    finally:
+        conn.close()
+
+
+def _read_cached_snapshot(
+    db_path: pathlib.Path,
+    serial: int,
+    path: pathlib.Path,
+) -> GeopackageContents:
+    """Return the cached contents stored for snapshot *serial*, or read the file.
+
+    A snapshot that the database does not cover (for example one written while the
+    database was being checked) and a database that cannot be read both fall back to
+    reading the GeoPackage directly, so the cache never fails a read.
+
+    Args:
+        db_path: The record cache database path.
+        serial: The snapshot's serial number.
+        path: The snapshot GeoPackage file to read.
+
+    Returns:
+        The snapshot's fire rows and complex memberships.
+    """
+    try:
+        contents = _read_snapshot_rows(db_path, serial)
+    except OSError, ValueError, sqlite3.Error:
+        logger.debug("Failed to read record cache", path=str(path))
+        return read_geopackage(path)
+    if contents is None:
+        return read_geopackage(path)
+    return contents
+
+
+def read_geopackage_cached(path: pathlib.Path) -> GeopackageContents:
+    """Return the contents of the GeoPackage at *path*, using its record cache.
+
+    Reading and decoding a GeoPackage is far more expensive than loading its parsed
+    contents from a database, and snapshots are immutable once written, so each feed's
+    parsed contents are cached in one SQLite database under the ``record_cache``
+    directory (``sources/record_cache/{feed}.db``). The database records each snapshot
+    file's size and modification time, so a snapshot that is ever rewritten (or restored
+    from a backup) is read and cached again, and a snapshot whose file disappears is
+    dropped. A missing, stale, corrupt, or unusable database never fails the read: it is
+    rebuilt from the GeoPackages, and a failed cache update falls back to reading the
+    file directly.
+
+    Args:
+        path: The snapshot GeoPackage file to read.
+
+    Returns:
+        The fire rows and complex memberships of the file.
+    """
+    try:
+        path.stat()
+        source_directory = path.parent.parent
+        db_path = peri_scribe.snapshots.record_cache_database_path(source_directory)
+        serial = peri_scribe.snapshots.SourceFile.from_path(path).serial_number
+    except OSError, ValueError:
+        return read_geopackage(path)
+    try:
+        with _RECORD_CACHE_LOCK:
+            _ensure_database_current(db_path, source_directory)
+    except OSError, ValueError, sqlite3.Error:
+        logger.debug("Failed to update record cache", path=str(path))
+        return read_geopackage(path)
+    return _read_cached_snapshot(db_path, serial, path)
 
 
 def read_layer(

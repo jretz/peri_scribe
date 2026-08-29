@@ -318,3 +318,10 @@ def test_fire_index_path_places_index_in_sources_directory() -> None:
     assert peri_scribe.snapshots.fire_index_path(
         pathlib.Path("/data/2026"),
     ) == pathlib.Path("/data/2026/sources/fires.json")
+
+
+def test_record_cache_database_path_is_one_file_per_feed() -> None:
+    source_directory = pathlib.Path("/base/data/2026/sources/Fires_One_0")
+    assert peri_scribe.snapshots.record_cache_database_path(source_directory) == (
+        pathlib.Path("/base/data/2026/sources/record_cache/Fires_One_0.db")
+    )

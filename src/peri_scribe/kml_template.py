@@ -293,33 +293,28 @@ def reversed_ring(coordinates: list[tuple[float, float]]) -> list[tuple[float, f
 
 
 def set_draw_order(
-    geometry: simplekml.Point | simplekml.Polygon | simplekml.MultiGeometry,
+    geometry: simplekml.Point | simplekml.Polygon,
     draw_order: int,
 ) -> None:
     """Set the gx:drawOrder of *geometry* to *draw_order*.
 
-    simplekml exposes gx:drawOrder only on LineString, but every geometry
-    serializes from the same internal element map, so the tag is set there for
-    points and polygons alike. A multi-geometry carries no draw order of its
-    own: the order goes on each geometry it contains, because Google Earth
-    ignores the tag on the MultiGeometry element itself.
+    simplekml exposes gx:drawOrder only on LineString, but every geometry serializes
+    from the same internal element map, so the tag is set there for points and polygons
+    alike. The template's fictional perimeters are all single polygons, so no
+    multi-geometry handling is needed here.
 
     Args:
         geometry: The geometry to order.
         draw_order: Lower values draw first, underneath later features.
     """
-    if isinstance(geometry, simplekml.MultiGeometry):
-        for contained_geometry in geometry._geometries:  # ruff: ignore[private-member-access]
-            set_draw_order(contained_geometry, draw_order)
-    else:
-        geometry._kml["gx:drawOrder"] = draw_order  # ruff: ignore[private-member-access]
+    geometry._kml["gx:drawOrder"] = draw_order  # ruff: ignore[private-member-access]
 
 
 def outline_draw_order(outline_count: int, newest_first_index: int) -> int:
     """Return the draw order of the outline at *newest_first_index*.
 
-    Outlines draw from oldest to newest, so the oldest outline draws first and
-    the newest draws last, above the others.
+    Outlines draw from oldest to newest, so the oldest outline draws first and the
+    newest draws last, above the others.
 
     Args:
         outline_count: The number of outlines drawn for the fire.
@@ -327,8 +322,7 @@ def outline_draw_order(outline_count: int, newest_first_index: int) -> int:
             outline first, where 0 is the newest.
 
     Returns:
-        The draw order, from 1 for the oldest outline to outline_count for the
-        newest.
+        The draw order, from 1 for the oldest outline to outline_count for the newest.
     """
     return outline_count - newest_first_index
 
@@ -336,17 +330,16 @@ def outline_draw_order(outline_count: int, newest_first_index: int) -> int:
 def band_draw_order(band_count: int, newest_first_index: int) -> int:
     """Return the draw order of the growth band at *newest_first_index*.
 
-    Bands draw from oldest to newest, so the oldest band draws first, at the
-    bottom of the stack, and the newest draws last, above the others.
+    Bands draw from oldest to newest, so the oldest band draws first, at the bottom of
+    the stack, and the newest draws last, above the others.
 
     Args:
         band_count: The number of bands drawn in the progression map.
-        newest_first_index: The band's position counting from the newest band
-            first, where 0 is the newest.
+        newest_first_index: The band's position counting from the newest band first,
+            where 0 is the newest.
 
     Returns:
-        The draw order, from 0 for the oldest band to band_count - 1 for the
-        newest.
+        The draw order, from 0 for the oldest band to band_count - 1 for the newest.
     """
     return band_count - 1 - newest_first_index
 
@@ -418,8 +411,7 @@ def point_placemark(
     Args:
         container: The folder that holds the placemark.
         center: The point location.
-        draw_order: The order in which the point draws, or None to leave it
-            un-ordered.
+        draw_order: The order in which the point draws, or None to leave it un-ordered.
     """
     point = container.newpoint(
         name=POINT_LOCATION_NAME,
@@ -471,10 +463,9 @@ def perimeter_placemark(
 def filled_perimeter_folder(document: simplekml.Document) -> None:
     """Add the "Latest Perimeters w/ Progression Outlines" folder to *document*.
 
-    The folder's geometry is centered 2 km due west of the point location. Draw
-    orders put the filled latest area on the bottom, stack the outline perimeters
-    from oldest to newest, and draw the point location last so its icon is never
-    covered.
+    The folder's geometry is centered 2 km due west of the point location. Draw orders
+    put the filled latest area on the bottom, stack the outline perimeters from oldest
+    to newest, and draw the point location last so its icon is never covered.
 
     Args:
         document: The template's document.
@@ -504,9 +495,9 @@ def filled_perimeter_folder(document: simplekml.Document) -> None:
 def progression_map_folder(document: simplekml.Document) -> None:
     """Add the "Perimeter Progression Maps" folder to *document*.
 
-    Draw orders put the oldest growth band on the bottom, stack the bands from
-    oldest to newest, and draw the point location last, above the newest band,
-    so its icon is never covered.
+    Draw orders put the oldest growth band on the bottom, stack the bands from oldest to
+    newest, and draw the point location last, above the newest band, so its icon is
+    never covered.
 
     Args:
         document: The template's document.
@@ -528,9 +519,9 @@ def progression_map_folder(document: simplekml.Document) -> None:
 def template_kml() -> str:
     """Return the KML symbolization template as a string.
 
-    The template has two folders that each show a fictional point and a set of
-    fictional perimeters. The styles attached to those placemarks are the
-    symbolization applied to real fire geography.
+    The template has two folders that each show a fictional point and a set of fictional
+    perimeters. The styles attached to those placemarks are the symbolization applied to
+    real fire geography.
 
     Returns:
         The KML template.
@@ -571,8 +562,8 @@ def create_template(*, force: bool = False) -> pathlib.Path | None:
         force: Overwrite the template when it already exists.
 
     Returns:
-        The path of the written template, or None when the template already
-        exists and *force* is False.
+        The path of the written template, or None when the template already exists and
+        *force* is False.
     """
     output_path = template_path()
     if output_path.exists() and not force:

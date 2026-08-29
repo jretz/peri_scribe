@@ -11,11 +11,13 @@ import pyproj
 import pytest
 import structlog
 
+import peri_scribe.changes
 import peri_scribe.feeds
 import peri_scribe.fire_index
 import peri_scribe.main
 import peri_scribe.output
 import peri_scribe.retry
+import peri_scribe.snapshots
 from tests.conftest import (
     RATE_LIMIT_ERROR_PAYLOAD,
     SAMPLE_FEED_NAME,
@@ -561,6 +563,61 @@ def test_fetch_full_writes_no_new_file_when_nothing_changed(
             last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
         ),
     )
+
+
+@pytest.mark.usefixtures("fetch_setup")
+def test_fetch_writes_current_state_file(
+    runner: click.testing.CliRunner,
+    feature_set_with_geometry: arcgis.features.FeatureSet,
+    geo_package_store: GeoPackageStore,
+    fetch_stubs: FetchStubs,
+) -> None:
+    fetch_stubs.feature_layers(
+        lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
+    )
+    result = invoke_fetch(runner)
+    assert result.exit_code == 0
+    state_path = peri_scribe.snapshots.current_state_path(
+        peri_scribe.snapshots.source_directory_path(
+            BASE_DIRECTORY,
+            2026,
+            SAMPLE_FEED_NAME,
+        ),
+        SAMPLE_FEED_NAME,
+        0,
+    )
+    assert geo_package_store.has(state_path)
+    written = geo_package_store.layer(state_path, SAMPLE_FEED_NAME)
+    assert list(written["name"]) == ["a", "b"]
+
+
+@pytest.mark.usefixtures("fetch_setup")
+def test_fetch_continues_when_state_update_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: click.testing.CliRunner,
+    feature_set_with_geometry: arcgis.features.FeatureSet,
+    geo_package_store: GeoPackageStore,
+    fetch_stubs: FetchStubs,
+) -> None:
+    fetch_stubs.feature_layers(
+        lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
+    )
+
+    def failing_state_update(
+        *_arguments: object,
+        **_keywords: object,
+    ) -> None:
+        message = "state write failed"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(
+        peri_scribe.changes,
+        "write_current_state",
+        failing_state_update,
+    )
+    result = invoke_fetch(runner)
+    assert result.exit_code == 0
+    assert geo_package_store.has(snapshot_path())
 
 
 @pytest.mark.usefixtures("fetch_setup")

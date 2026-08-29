@@ -17,12 +17,23 @@ FIRE_INDEX_FILENAME = "fires.json"
 # GeoPackage, which is not a fire-source snapshot.
 ADMINISTRATIVE_BOUNDARIES_DIRECTORY_NAME = "administrative_boundaries"
 
+# The directory under ``sources`` that holds each feed's maintained current-state
+# GeoPackage, which is a derived artifact rather than a fire-source snapshot.
+CURRENT_STATE_DIRECTORY_NAME = "current_state"
+
+# The directory under ``sources`` that holds the derived per-snapshot record caches,
+# which are derived artifacts rather than fire-source snapshots.
+RECORD_CACHE_DIRECTORY_NAME = "record_cache"
+
 # Directories under ``sources`` that hold auxiliary data rather than fire-source
 # snapshots. Fire-source reading skips these, so non-fire GeoPackages (the computed
-# California border and retrieved external datasets) are never mistaken for fire data.
+# California border, the maintained current-state files, the derived record caches,
+# and retrieved external datasets) are never mistaken for fire data.
 AUXILIARY_DIRECTORY_NAMES = frozenset(
     {
         ADMINISTRATIVE_BOUNDARIES_DIRECTORY_NAME,
+        CURRENT_STATE_DIRECTORY_NAME,
+        RECORD_CACHE_DIRECTORY_NAME,
         "buildings",
         "evacuations",
     },
@@ -199,6 +210,97 @@ def snapshot_path_for_last_edit_timestamp(
         if source_file.last_edit_timestamp == last_edit_timestamp:
             return directory / source_file.relative_path
     return None
+
+
+def current_state_directory_path(
+    source_directory: pathlib.Path,
+) -> pathlib.Path:
+    """Return the directory holding maintained current-state files.
+
+    The directory sits beside the feeds' snapshot directories under ``sources``, so the
+    state files are never scanned as snapshots of any one feed.
+
+    Args:
+        source_directory: A feed's snapshot directory, under ``sources``.
+
+    Returns:
+        The current-state directory path.
+    """
+    return source_directory.parent / CURRENT_STATE_DIRECTORY_NAME
+
+
+def current_state_path(
+    source_directory: pathlib.Path,
+    source_name: str,
+    serial_number: int,
+) -> pathlib.Path:
+    """Return the path of the current-state file covering snapshot *serial_number*.
+
+    The filename encodes the feed name and the serial number of the newest snapshot the
+    state covers, so a state file's freshness can be checked without opening it.
+
+    Args:
+        source_directory: The feed's snapshot directory.
+        source_name: The feed's name.
+        serial_number: The serial number of the newest snapshot the state covers.
+
+    Returns:
+        The path of the state file.
+    """
+    return current_state_directory_path(source_directory) / (
+        f"{source_name}-state-{serial_number}.gpkg"
+    )
+
+
+def current_state_file_paths(
+    source_directory: pathlib.Path,
+    source_name: str,
+) -> list[tuple[int, pathlib.Path]]:
+    """Return *source_name*'s current-state files, sorted by covered serial number.
+
+    Args:
+        source_directory: The feed's snapshot directory.
+        source_name: The feed's name.
+
+    Returns:
+        The (covered serial number, path) pairs in covered-serial order, or an empty
+        list when the feed has no state files. Malformed filenames are ignored.
+    """
+    directory = current_state_directory_path(source_directory)
+    if not directory.is_dir():
+        return []
+    prefix = f"{source_name}-state-"
+    state_files: list[tuple[int, pathlib.Path]] = []
+    for path in directory.glob(f"{prefix}*.gpkg"):
+        serial_text = path.stem[len(prefix) :]
+        try:
+            serial_number = int(serial_text)
+        except ValueError:
+            continue
+        state_files.append((serial_number, path))
+    return sorted(state_files)
+
+
+def record_cache_database_path(
+    source_directory: pathlib.Path,
+) -> pathlib.Path:
+    """Return the record cache database path for *source_directory*'s feed.
+
+    One SQLite database holds every snapshot's parsed records for a feed, so the cache
+    is a single file per feed, stored flat under the ``record_cache`` directory:
+    ``sources/record_cache/{feed}.db``.
+
+    Args:
+        source_directory: The feed's snapshot directory, under ``sources``.
+
+    Returns:
+        The path of the feed's record cache database.
+    """
+    return (
+        source_directory.parent
+        / RECORD_CACHE_DIRECTORY_NAME
+        / f"{source_directory.name}.db"
+    )
 
 
 def source_directory_path(

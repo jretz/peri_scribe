@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import dataclasses
+import os
 import pathlib
 
 import peri_scribe.exceptions
@@ -32,6 +34,35 @@ class ReadFireSources:
     memberships: tuple[peri_scribe.models.ComplexMembership, ...]
 
 
+def _read_geopackage(
+    path: pathlib.Path,
+) -> peri_scribe.geo_package.GeopackageContents:
+    """Read one GeoPackage, translating read failures into a readable message.
+
+    The snapshot's record cache is used when it is fresh, so repeated reads of the
+    stored snapshots (for the fire index and derived history) do not re-decode files
+    whose contents are already cached.
+
+    Args:
+        path: The GeoPackage file to read.
+
+    Returns:
+        The file's fire rows and complex memberships.
+
+    Raises:
+        SystemExit: If the GeoPackage cannot be read.
+        UnknownLayerError: If a layer does not correspond to a configured feed.
+    """
+    try:
+        return peri_scribe.geo_package.read_geopackage_cached(path)
+    except peri_scribe.exceptions.UnknownLayerError:
+        raise
+    except Exception as error:
+        # Fail fast with a readable message if a GeoPackage is unreadable.
+        message = f"Failed to read {path}: {error}"
+        raise SystemExit(message) from error
+
+
 def read_fire_sources(directory: pathlib.Path) -> ReadFireSources:
     """Read the fire rows and complex memberships under *directory* in one pass.
 
@@ -45,23 +76,18 @@ def read_fire_sources(directory: pathlib.Path) -> ReadFireSources:
 
     Returns:
         The fire rows, their source files, and the complex memberships.
-
-    Raises:
-        SystemExit: If a GeoPackage file cannot be read.
-        UnknownLayerError: If a layer does not correspond to a configured feed.
     """
+    files = list(peri_scribe.snapshots.geo_package_files(directory))
+    # GeoPackage reads release the GIL, so the files are read in parallel and the
+    # results are collected in file order to keep rows, paths, and memberships aligned.
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=os.cpu_count() or 1,
+    ) as executor:
+        contents_by_file = list(executor.map(_read_geopackage, files))
     rows: list[peri_scribe.geo_package.FireRowRecord] = []
     paths: list[pathlib.Path] = []
     memberships: list[peri_scribe.models.ComplexMembership] = []
-    for path in peri_scribe.snapshots.geo_package_files(directory):
-        try:
-            contents = peri_scribe.geo_package.read_geopackage(path)
-        except peri_scribe.exceptions.UnknownLayerError:
-            raise
-        except Exception as error:
-            # Fail fast with a readable message if a GeoPackage is unreadable.
-            message = f"Failed to read {path}: {error}"
-            raise SystemExit(message) from error
+    for path, contents in zip(files, contents_by_file, strict=True):
         rows.extend(contents.rows)
         paths.extend([path] * len(contents.rows))
         memberships.extend(contents.memberships)

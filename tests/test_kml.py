@@ -6,7 +6,6 @@ import datetime
 import pathlib
 import typing
 import zipfile
-import zlib
 
 import shapely.geometry
 
@@ -37,7 +36,7 @@ class FakeArchive:
     def __init__(self, *arguments: object, **keywords: object) -> None:
         self.arguments = arguments
         self.keywords = keywords
-        self.writes: list[tuple[str, str | bytes]] = []
+        self.writes: list[tuple[str, str | bytes, int | None]] = []
 
     def __enter__(self) -> typing.Self:
         return self
@@ -50,8 +49,13 @@ class FakeArchive:
     ) -> None:
         return None
 
-    def writestr(self, name: str, data: str | bytes) -> None:
-        self.writes.append((name, data))
+    def writestr(
+        self,
+        name: str,
+        data: str | bytes,
+        compress_type: int | None = None,
+    ) -> None:
+        self.writes.append((name, data, compress_type))
 
 
 def test_year_from_reads_directory_name() -> None:
@@ -474,8 +478,8 @@ def test_write_kmz_writes_compressed_document(
     archive = archives[0]
     assert archive.arguments == (path, "w")
     assert archive.keywords["compression"] == zipfile.ZIP_DEFLATED
-    assert archive.keywords["compresslevel"] == zlib.Z_BEST_COMPRESSION
-    assert archive.writes == [("doc.kml", "<kml/>")]
+    assert archive.keywords["compresslevel"] == peri_scribe.kml.KMZ_COMPRESSION_LEVEL
+    assert archive.writes == [("doc.kml", "<kml/>", None)]
 
 
 def test_write_kmz_writes_images(
@@ -508,8 +512,8 @@ def test_write_kmz_writes_images(
 
     (archive,) = archives
     assert archive.writes == [
-        ("doc.kml", "<kml/>"),
-        ("id-bug-area.png", image_content),
+        ("doc.kml", "<kml/>", None),
+        ("id-bug-area.png", image_content, zipfile.ZIP_STORED),
     ]
 
 

@@ -21,12 +21,18 @@ if TYPE_CHECKING:
 
 GEOMETRY_COLUMN_NAME = "geom"
 
+# The geometry column name GeoPackages report when read back: geopandas/pyogrio name the
+# geometry column ``geometry`` regardless of the name it was stored under, so frames
+# fetched (named ``geom``) and frames read back (named ``geometry``) must be renamed to
+# one name before they are merged.
+GEOPACKAGE_GEOMETRY_COLUMN_NAME = "geometry"
+
 # Column names used by the ArcGIS feature services and the GeoPackages that store them.
 OBJECT_ID_COLUMN_NAME = "OBJECTID"
 SHAPE_COLUMN_NAME = "SHAPE"
 
-# Minimum plausible coordinate magnitude, in meters, for a projected reference.
-# Smaller magnitudes are indistinguishable from degrees.
+# Minimum plausible coordinate magnitude, in meters, for a projected reference. Smaller
+# magnitudes are indistinguishable from degrees.
 MINIMUM_PROJECTED_MAGNITUDE_IN_METERS = 1_000.0
 
 # Fallback maximum coordinate magnitude, in meters, for a projected reference with no

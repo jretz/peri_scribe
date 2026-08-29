@@ -249,11 +249,18 @@ def test_load_boundaries_builds_box_and_reprojects(
     assert isinstance(loaded.border, shapely.geometry.LineString)
 
 
-def test_union_geometry_returns_none_without_geometries() -> None:
-    assert peri_scribe.california_border_classification.union_geometry([]) is None
+def test_union_geometry_returns_none_without_geometries(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
+    assert (
+        peri_scribe.california_border_classification.union_geometry([], boundaries)
+        is None
+    )
 
 
-def test_union_geometry_skips_missing_and_empty_geometries() -> None:
+def test_union_geometry_skips_missing_and_empty_geometries(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
     observations = [
         observation(
             FIRIS,
@@ -268,8 +275,130 @@ def test_union_geometry_skips_missing_and_empty_geometries() -> None:
             shapely.geometry.Polygon(),
         ),
     ]
-    union = peri_scribe.california_border_classification.union_geometry(observations)
+    union = peri_scribe.california_border_classification.union_geometry(
+        observations,
+        boundaries,
+    )
     assert isinstance(union, shapely.geometry.Point)
+
+
+def test_union_geometry_returns_single_geometry_directly(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    location = shapely.geometry.Point(-120.0, 39.0)
+    monkeypatch.setattr(
+        shapely,
+        "union_all",
+        lambda _geometries: pytest.fail("union_all must not be called"),
+    )
+    union = peri_scribe.california_border_classification.union_geometry(
+        [observation(FIRIS, location)],
+        boundaries,
+    )
+    assert union == (
+        peri_scribe.california_border_classification.reproject_to_california_albers(
+            location,
+            peri_scribe.models.NAD83_SPATIAL_REFERENCE_ID,
+        )
+    )
+
+
+def test_union_geometry_dedupes_identical_observations(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # One observation inside the California box and one outside, so the parts
+    # straddle the box and the true union is needed.
+    inside = shapely.geometry.Point(5.0, 5.0)
+    outside = shapely.geometry.Point(200.0, 200.0)
+    distinct_geometry_count = 2
+    union_inputs: list[list[shapely.Geometry]] = []
+    original_union_all = shapely.union_all
+
+    def recording_union_all(geometries: list[shapely.Geometry]) -> shapely.Geometry:
+        union_inputs.append(list(geometries))
+        return original_union_all(geometries)
+
+    monkeypatch.setattr(shapely, "union_all", recording_union_all)
+    monkeypatch.setattr(
+        peri_scribe.california_border_classification,
+        "reproject_to_california_albers",
+        lambda geometry, _wkid: geometry,
+    )
+    union = peri_scribe.california_border_classification.union_geometry(
+        [
+            observation(FIRIS, inside),
+            observation(FIRIS, inside),
+            observation(FIRIS, outside),
+        ],
+        boundaries,
+    )
+    assert isinstance(union, shapely.geometry.MultiPoint)
+    assert len(union.geoms) == distinct_geometry_count
+    assert [len(inputs) for inputs in union_inputs] == [distinct_geometry_count]
+
+
+def test_union_geometry_skips_union_for_one_sided_fire(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.california_border_classification,
+        "reproject_to_california_albers",
+        lambda geometry, _wkid: geometry,
+    )
+    monkeypatch.setattr(
+        shapely,
+        "union_all",
+        lambda _geometries: pytest.fail("union_all must not be called"),
+    )
+    union = peri_scribe.california_border_classification.union_geometry(
+        [
+            observation(FIRIS, shapely.geometry.box(1.0, 1.0, 2.0, 2.0)),
+            observation(FIRIS, shapely.geometry.box(1.0, 1.0, 2.0, 2.0)),
+            observation(FIRIS, shapely.geometry.box(3.0, 3.0, 4.0, 4.0)),
+            observation(FIRIS, shapely.geometry.Point(5.0, 5.0)),
+        ],
+        boundaries,
+    )
+    assert isinstance(union, shapely.geometry.GeometryCollection)
+    distinct_geometry_count = 3
+    assert len(union.geoms) == distinct_geometry_count
+
+
+def test_union_geometry_keeps_identical_geometries_from_different_sources(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    location = shapely.geometry.Point(5.0, 5.0)
+    reprojected: list[tuple[int, bytes]] = []
+    original = (
+        peri_scribe.california_border_classification.reproject_to_california_albers
+    )
+
+    def recording_reproject(geometry: shapely.Geometry, wkid: int) -> shapely.Geometry:
+        reprojected.append((wkid, geometry.wkb))
+        return original(geometry, wkid)
+
+    monkeypatch.setattr(
+        peri_scribe.california_border_classification,
+        "reproject_to_california_albers",
+        recording_reproject,
+    )
+    union = peri_scribe.california_border_classification.union_geometry(
+        [
+            observation(FIRIS, location),
+            observation(WFIGS_PERIMETER, location),
+        ],
+        boundaries,
+    )
+    assert isinstance(union, shapely.geometry.GeometryCollection)
+    # The identical geometry from each source is re-projected separately, so the
+    # deduplication is keyed on the source as well as the geometry.
+    source_count = 2
+    assert len(reprojected) == source_count
+    assert reprojected[0][0] != reprojected[1][0]
 
 
 def test_geometry_signal_inside_california(
@@ -383,6 +512,97 @@ def test_geometry_signal_handles_missing_union(
     assert not result.crosses
     assert not result.near
     assert result.distance_to_boundary_in_meters == float("inf")
+
+
+def test_geometry_signal_one_sided_inside_collection(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
+    union = shapely.geometry.GeometryCollection([
+        shapely.geometry.box(1.0, 1.0, 2.0, 2.0),
+        shapely.geometry.box(3.0, 3.0, 4.0, 4.0),
+        shapely.geometry.Point(5.0, 5.0),
+    ])
+    result = peri_scribe.california_border_classification.geometry_signal(
+        union,
+        boundaries,
+        PLANAR_CONFIG,
+    )
+    assert result.inside
+    assert result.inside_area_fraction == pytest.approx(1.0)
+    assert result.outside_area_fraction == pytest.approx(0.0)
+    assert result.outside_area_in_acres == pytest.approx(0.0)
+    assert not result.crosses
+    assert result.distance_to_boundary_in_meters == pytest.approx(95.0)
+
+
+def test_geometry_signal_one_sided_outside_collection(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
+    union = shapely.geometry.GeometryCollection([
+        shapely.geometry.box(150.0, 0.0, 160.0, 10.0),
+        shapely.geometry.Point(200.0, 200.0),
+    ])
+    result = peri_scribe.california_border_classification.geometry_signal(
+        union,
+        boundaries,
+        PLANAR_CONFIG,
+    )
+    assert not result.inside
+    assert result.inside_area_fraction == pytest.approx(0.0)
+    assert result.outside_area_fraction == pytest.approx(1.0)
+    assert not result.crosses
+    assert result.distance_to_boundary_in_meters == pytest.approx(50.0)
+
+
+def test_geometry_signal_one_sided_inside_point_only(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
+    union = shapely.geometry.GeometryCollection([
+        shapely.geometry.Point(5.0, 5.0),
+    ])
+    result = peri_scribe.california_border_classification.geometry_signal(
+        union,
+        boundaries,
+        PLANAR_CONFIG,
+    )
+    assert not result.inside
+    assert result.inside_area_fraction == pytest.approx(0.0)
+    assert result.outside_area_fraction == pytest.approx(0.0)
+    assert not result.crosses
+
+
+def test_geometry_signal_one_sided_outside_point_only(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
+    union = shapely.geometry.GeometryCollection([
+        shapely.geometry.Point(200.0, 200.0),
+    ])
+    result = peri_scribe.california_border_classification.geometry_signal(
+        union,
+        boundaries,
+        PLANAR_CONFIG,
+    )
+    assert not result.inside
+    assert result.inside_area_fraction == pytest.approx(0.0)
+    assert result.outside_area_fraction == pytest.approx(0.0)
+    assert not result.crosses
+
+
+def test_geometry_signal_one_sided_near_border(
+    boundaries: peri_scribe.california_border_classification.Boundaries,
+) -> None:
+    union = shapely.geometry.GeometryCollection([
+        shapely.geometry.box(101.0, 0.0, 102.0, 100.0),
+    ])
+    result = peri_scribe.california_border_classification.geometry_signal(
+        union,
+        boundaries,
+        PLANAR_CONFIG,
+    )
+    assert result.near
+    assert not result.inside
+    assert not result.crosses
+    assert result.distance_to_boundary_in_meters == pytest.approx(1.0)
 
 
 def test_freshest_observation_prefers_later_observation_time() -> None:

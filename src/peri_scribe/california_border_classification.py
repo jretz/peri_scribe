@@ -226,20 +226,45 @@ def load_boundaries(year_directory: pathlib.Path) -> Boundaries:
 
 def union_geometry(
     observations: typing.Iterable[FireObservation],
+    boundaries: Boundaries,
 ) -> shapely.Geometry | None:
-    """Return the union of the observations' geometries in California Albers.
+    """Return a geometry describing the observations in California Albers.
+
+    Observations of the same fire frequently repeat the same mapped geometry, so
+    byte-identical (source, geometry) pairs are collapsed before re-projection: the
+    re-projection is deterministic, and the union of the distinct geometries is the same
+    shape as the union of all of them. A single distinct geometry is returned as itself,
+    since the union of one geometry is the geometry.
+
+    When every distinct geometry lies entirely on one side of the California box, the
+    parts are returned unmerged as a collection instead of being unioned. The
+    classification's geometry signal recognizes such a one-sided collection and reads
+    the exact signal values from the parts: a one-sided fire's area fractions are 0 or
+    1, its border distance is the minimum over the parts, and it cannot cross the
+    border. Only a fire whose geometry straddles the box needs the true union, since
+    overlapping parts on both sides change the area fractions.
 
     Args:
         observations: The fire's observations.
+        boundaries: The California box and interstate border in CA Albers.
 
     Returns:
-        The union geometry in California Albers, or None when there is none.
+        The union (or unmerged collection) of the distinct geometries in California
+        Albers, or None when there are none.
     """
-    geometries: list[shapely.Geometry] = []
+    seen: set[tuple[FireSourceKind, bytes]] = set()
+    distinct: list[tuple[FireObservation, shapely.Geometry]] = []
     for observation in observations:
         geometry = observation.geometry
         if geometry is None or geometry.is_empty:
             continue
+        key = (observation.source, geometry.wkb)
+        if key in seen:
+            continue
+        seen.add(key)
+        distinct.append((observation, geometry))
+    geometries: list[shapely.Geometry] = []
+    for observation, geometry in distinct:
         geometries.append(
             reproject_to_california_albers(
                 geometry,
@@ -248,6 +273,13 @@ def union_geometry(
         )
     if not geometries:
         return None
+    if len(geometries) == 1:
+        return geometries[0]
+    box = boundaries.box
+    if all(box.contains(geometry) for geometry in geometries) or all(
+        not box.intersects(geometry) for geometry in geometries
+    ):
+        return shapely.GeometryCollection(geometries)
     return shapely.union_all(geometries)
 
 
@@ -258,10 +290,10 @@ def geometry_signal(
 ) -> GeometrySignal:
     """Compute the geometry signal for *union* against the California box.
 
-    The portion of the union lying inside the box is inside California (or in the
-    ocean or Mexico sliver the box absorbs); the rest lies on the far side of the
-    interstate border. A fire crosses the border when it lies on both sides of it. A
-    fire is inside when most of it lies within the box.
+    The portion of the union lying inside the box is inside California (or in the ocean
+    or Mexico sliver the box absorbs); the rest lies on the far side of the interstate
+    border. A fire crosses the border when it lies on both sides of it. A fire is inside
+    when most of it lies within the box.
 
     Args:
         union: The fire's union geometry in California Albers, or None.
@@ -282,9 +314,47 @@ def geometry_signal(
             near=False,
             inside=False,
         )
-    inside_area_in_square_meters = union.intersection(
-        boundaries.box,
-    ).area
+    box, border = boundaries.box, boundaries.border
+    # A one-sided fire arrives as the unmerged collection of its parts. Every part lies
+    # entirely on one side of the California box, so the signal values are exact without
+    # merging: the area fractions are 0 or 1 (overlapping parts would only be merged for
+    # the fractions, and one-sided parts leave them at the extremes), the border
+    # distance is the minimum over the parts, and a fire entirely outside the box cannot
+    # cross it because crossing requires some part inside.
+    if isinstance(union, shapely.GeometryCollection) and (
+        all(box.contains(part) for part in union.geoms)
+        or all(not box.intersects(part) for part in union.geoms)
+    ):
+        parts = list(union.geoms)
+        distance_to_boundary_in_meters = min(part.distance(border) for part in parts)
+        # The area fractions follow from which side the parts lie on. A part with no
+        # area (a point or line) contributes none, so the union has positive area
+        # exactly when some part does, and a one-sided union's fraction is the extreme
+        # value when it has area and 0 when it does not.
+        has_area = any(part.area > 0 for part in parts)
+        if all(box.contains(part) for part in parts):
+            inside_area_fraction = 1.0 if has_area else 0.0
+            outside_area_fraction = 0.0
+            outside_area_in_acres = 0.0
+        else:
+            inside_area_fraction = 0.0
+            outside_area_fraction = 1.0 if has_area else 0.0
+            outside_area_in_acres = (
+                union.area / peri_scribe.units.SQUARE_METERS_PER_ACRE
+            )
+        crosses = False
+        near = distance_to_boundary_in_meters <= config.near_border_buffer_in_meters
+        inside = inside_area_fraction >= config.inside_area_fraction_threshold
+        return GeometrySignal(
+            distance_to_boundary_in_meters=distance_to_boundary_in_meters,
+            outside_area_fraction=outside_area_fraction,
+            outside_area_in_acres=outside_area_in_acres,
+            inside_area_fraction=inside_area_fraction,
+            crosses=crosses,
+            near=near,
+            inside=inside,
+        )
+    inside_area_in_square_meters = union.intersection(box).area
     total_area_in_square_meters = union.area
     outside_area_in_square_meters = max(
         0.0,
@@ -329,9 +399,9 @@ def freshest_observation(
 ) -> FireObservation:
     """Return the freshest observation in *observations*.
 
-    Recency is decided by observation time first and snapshot serial number second,
-    so a perimeter with a later mapping time wins, and equally timed snapshots are
-    broken by the newest file.
+    Recency is decided by observation time first and snapshot serial number second, so a
+    perimeter with a later mapping time wins, and equally timed snapshots are broken by
+    the newest file.
 
     Args:
         observations: A non-empty list of observations.
@@ -538,11 +608,11 @@ def classify(
 ) -> peri_scribe.models.FireClassification:
     """Combine the three signals into a border classification.
 
-    CROSSES_CALIFORNIA_BORDER requires the geometry to span the California border.
-    A fire that does not cross is INSIDE_CALIFORNIA or OUTSIDE_CALIFORNIA, with the
-    near-border variants when it is within the near-border buffer or the FIRIS and
-    WFIGS extents disagree. The identifier signal only ever appears in the evidence;
-    it never changes the classification on its own.
+    CROSSES_CALIFORNIA_BORDER requires the geometry to span the California border. A
+    fire that does not cross is INSIDE_CALIFORNIA or OUTSIDE_CALIFORNIA, with the
+    near-border variants when it is within the near-border buffer or the FIRIS and WFIGS
+    extents disagree. The identifier signal only ever appears in the evidence; it never
+    changes the classification on its own.
 
     Args:
         geometry: The geometry signal.
@@ -626,7 +696,11 @@ def classify_fire(
         for record, path in zip(records, record_paths, strict=True)
     ]
     return classify(
-        geometry=geometry_signal(union_geometry(observations), boundaries, config),
+        geometry=geometry_signal(
+            union_geometry(observations, boundaries),
+            boundaries,
+            config,
+        ),
         extent=extent_signal(observations, config),
         identifier=identifier_signal(observations),
     )

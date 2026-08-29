@@ -166,6 +166,35 @@ def test_growth_indices_keeps_only_growth() -> None:
     assert peri_scribe.fire_differential.growth_indices(corrected) == [0, 1]
 
 
+def test_geometry_grows_beyond_returns_false_for_missing_current() -> None:
+    assert not peri_scribe.fire_differential.geometry_grows_beyond(
+        None,
+        square(1.0),
+    )
+
+
+def test_geometry_grows_beyond_returns_false_for_empty_current() -> None:
+    assert not peri_scribe.fire_differential.geometry_grows_beyond(
+        shapely.geometry.Polygon(),
+        square(1.0),
+    )
+
+
+def test_geometry_grows_beyond_returns_true_without_previous() -> None:
+    assert peri_scribe.fire_differential.geometry_grows_beyond(square(1.0), None)
+
+
+def test_geometry_grows_beyond_compares_to_previous() -> None:
+    assert peri_scribe.fire_differential.geometry_grows_beyond(
+        square(2.0),
+        square(1.0),
+    )
+    assert not peri_scribe.fire_differential.geometry_grows_beyond(
+        square(1.0),
+        square(2.0),
+    )
+
+
 def test_representative_indices_maps_survivors() -> None:
     assert peri_scribe.fire_differential.representative_indices(
         [0, 1, 3],

@@ -1,11 +1,10 @@
 """Building the perimeter progression bands that show how a fire grew.
 
-A fire's growth is read from the differential perimeter history, whose rings each
-show the area the fire added at one growth step. The rings are grouped into the day
-ranges the KML template names (the latest day, the two days before that, and so on),
-and each range becomes one band whose geometry is the union of its rings. The band
-set is defined here so the template generator and the KMZ output both use the same
-ranges and names.
+A fire's growth is read from the differential perimeter history, whose rings each show
+the area the fire added at one growth step. The rings are grouped into the day ranges
+the KML template names (the latest day, the two days before that, and so on), and each
+range becomes one band whose geometry is the union of its rings. The band set is defined
+here so the template generator and the KMZ output both use the same ranges and names.
 """
 
 from __future__ import annotations
@@ -37,10 +36,10 @@ class Ring:
 class ProgressionBand:
     """One progression-map band: a name and the day range it covers.
 
-    ``minimum_age_in_days`` is the newest age (days before the latest date) in the
-    band and ``maximum_age_in_days`` the oldest; a None maximum means the band
-    has no upper bound and covers every ring older than the minimum. The band names
-    oldest age ("128+ Days Before That").
+    ``minimum_age_in_days`` is the newest age (days before the latest date) in the band
+    and ``maximum_age_in_days`` the oldest; a None maximum means the band has no upper
+    bound and covers every ring older than the minimum. The band names oldest age ("128+
+    Days Before That").
     """
 
     name: str
@@ -114,8 +113,8 @@ class ProgressionBandRings:
 def ring_date(observation_time: datetime.datetime) -> datetime.date:
     """Return the California-local date of *observation_time*.
 
-    The band ranges count calendar days, so each ring needs a date in the time zone
-    the output labels use.
+    The band ranges count calendar days, so each ring needs a date in the time zone the
+    output labels use.
 
     Args:
         observation_time: The ring's observation time.
@@ -129,8 +128,8 @@ def ring_date(observation_time: datetime.datetime) -> datetime.date:
 def band_for_age(age: int) -> ProgressionBand | None:
     """Return the band that covers a ring *age* days old, or None.
 
-    The bands tile the ages from 0 upward without gaps, so the first band whose
-    range contains the age is the one.
+    The bands tile the ages from 0 upward without gaps, so the first band whose range
+    contains the age is the one.
 
     Args:
         age: The ring's age in days before the latest date.
@@ -153,10 +152,10 @@ def band_label(
 ) -> str:
     """Return the label naming the dates *band* covers for one fire.
 
-    The label shows the actual span of the fire's rings in the band, so a band the
-    fire only partially fills names the dates the fire really covers rather than the
-    band's full range. A single date is named alone. The open-ended band is named by
-    the boundary it starts at, because its data extends without a lower bound.
+    The label shows the actual span of the fire's rings in the band, so a band the fire
+    only partially fills names the dates the fire really covers rather than the band's
+    full range. A single date is named alone. The open-ended band is named by the
+    boundary it starts at, because its data extends without a lower bound.
 
     Args:
         band: The band to label.
@@ -186,21 +185,24 @@ class _BandedRings:
     geometry: shapely.Geometry
 
 
-def _banded_rings(
+def _dated_bands(
     rings: typing.Sequence[Ring],
-) -> tuple[_BandedRings, ...]:
-    """Return each band *rings* cover with its dated rings, newest first.
+) -> tuple[tuple[ProgressionBand, int, tuple[Ring, ...], str], ...]:
+    """Return *rings* grouped into day ranges without computing any geometry.
 
-    The differential history already reduced the fire to its growth rings, so a
-    band simply holds the rings whose dates fall in its range; a range with no
-    rings contributes nothing, and a fire with no rings yields none. Rings without
-    an observation time cannot be dated and are left out.
+    The differential history already reduced the fire to its growth rings, so a band
+    simply holds the rings whose dates fall in its range; a range with no rings
+    contributes nothing, and a fire with no rings yields none. Rings without an
+    observation time cannot be dated and are left out. No band geometry is computed here
+    so the KMZ path, which only needs the grouping, skips the costly union of each
+    band's rings.
 
     Args:
         rings: The fire's growth rings in chronological order.
 
     Returns:
-        One banded-rings entry per covered range, newest first.
+        One entry per covered range: the band, its position, its dated rings, and
+        the band's label.
     """
     dated: list[tuple[datetime.date, Ring]] = []
     for ring in rings:
@@ -217,23 +219,47 @@ def _banded_rings(
         band = band_for_age(age)
         if band is not None:
             by_band.setdefault(band, []).append((date, ring))
-    banded: list[_BandedRings] = []
+    entries: list[tuple[ProgressionBand, int, tuple[Ring, ...], str]] = []
     for band_index, band in enumerate(PROGRESSION_BANDS):
         bucket = by_band.get(band)
         if bucket is None:
             continue
         band_rings = tuple(ring for _date, ring in bucket)
+        dates = [date for date, _ring in bucket]
+        entries.append(
+            (
+                band,
+                band_index,
+                band_rings,
+                band_label(band, latest_date, dates),
+            ),
+        )
+    return tuple(entries)
+
+
+def _banded_rings(
+    rings: typing.Sequence[Ring],
+) -> tuple[_BandedRings, ...]:
+    """Return each band *rings* cover with its dated rings and union geometry.
+
+    Each band's geometry is the union of its rings' geometries, so a range whose rings
+    are all empty contributes nothing.
+
+    Args:
+        rings: The fire's growth rings in chronological order.
+
+    Returns:
+        One banded-rings entry per covered range, newest first.
+    """
+    banded: list[_BandedRings] = []
+    for band, band_index, band_rings, label in _dated_bands(rings):
         geometry = shapely.union_all([ring.geometry for ring in band_rings])
         if geometry.is_empty:
             continue
         banded.append(
             _BandedRings(
                 name=band.name,
-                label=band_label(
-                    band,
-                    latest_date,
-                    [date for date, _ring in bucket],
-                ),
+                label=label,
                 rings=band_rings,
                 band_index=band_index,
                 geometry=geometry,
@@ -247,9 +273,9 @@ def progression_bands(
 ) -> tuple[ProgressionBandGeometry, ...]:
     """Return one growth band per day range *rings* cover, newest first.
 
-    Each band is the union of the rings whose dates fall in the band's range, so a
-    range with no rings contributes no band, and a fire with no rings yields none.
-    Rings without an observation time cannot be dated and are left out.
+    Each band is the union of the rings whose dates fall in the band's range, so a range
+    with no rings contributes no band, and a fire with no rings yields none. Rings
+    without an observation time cannot be dated and are left out.
 
     Args:
         rings: The fire's growth rings in chronological order.
@@ -272,9 +298,9 @@ def progression_band_rings(
 ) -> tuple[ProgressionBandRings, ...]:
     """Return one day range's rings per band *rings* cover, newest first.
 
-    Each entry holds the individual rings whose dates fall in the band's range,
-    so the output can group them into folders by day range while styling each ring
-    by the band's color.
+    Each entry holds the individual rings whose dates fall in the band's range, so the
+    output can group them into folders by day range while styling each ring by the
+    band's color.
 
     Args:
         rings: The fire's growth rings in chronological order.
@@ -284,10 +310,13 @@ def progression_band_rings(
     """
     return tuple(
         ProgressionBandRings(
-            name=banded.name,
-            label=banded.label,
-            rings=banded.rings,
-            band_index=banded.band_index,
+            name=band.name,
+            label=label,
+            rings=band_rings,
+            band_index=band_index,
         )
-        for banded in _banded_rings(rings)
+        for band, band_index, band_rings, label in _dated_bands(rings)
+        # A band is dropped exactly when the union of its rings would be empty, which
+        # holds precisely when every ring geometry is empty.
+        if not all(ring.geometry.is_empty for ring in band_rings)
     )

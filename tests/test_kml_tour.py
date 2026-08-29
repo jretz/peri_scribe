@@ -5,8 +5,8 @@ from __future__ import annotations
 import datetime
 
 import pytest
-import simplekml
 
+import peri_scribe.kml_geometry
 import peri_scribe.kml_tour
 import tests.kml_helpers
 
@@ -43,10 +43,8 @@ def test_mapping_placemark_name_with_observation_time() -> None:
 
 
 def test_interior_ring_id_names_folder_and_index() -> None:
-    kml = simplekml.Kml()
-    folder = kml.document.newfolder(name="Bug")
-    assert peri_scribe.kml_tour.interior_ring_id(folder, 3) == (
-        f"progression-ring-{folder.id}-3"
+    assert peri_scribe.kml_tour.interior_ring_id("folder-7", 3) == (
+        "progression-ring-folder-7-3"
     )
 
 
@@ -132,11 +130,11 @@ def test_progression_tour_reveals_rings_and_waits() -> None:
     second = datetime.datetime(2026, 8, 8, 20, 0, tzinfo=datetime.UTC)
     third = datetime.datetime(2026, 8, 9, 20, 0, tzinfo=datetime.UTC)
     ring_times = [first, second, third]
-    kml = simplekml.Kml()
-    folder = kml.document.newfolder(name="Bug")
-    peri_scribe.kml_tour.progression_tour(folder, ring_times)
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    with writer.folder("Bug") as folder_id:
+        peri_scribe.kml_tour.progression_tour(writer, folder_id, ring_times)
     bug_folder = tests.kml_helpers.folder_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     tour = tests.kml_helpers.tour_named(bug_folder, "Progression")
@@ -148,7 +146,7 @@ def test_progression_tour_reveals_rings_and_waits() -> None:
     assert len(updates) == len(ring_times)
     assert len(waits) == len(ring_times)
     ring_ids = [
-        peri_scribe.kml_tour.interior_ring_id(folder, index)
+        peri_scribe.kml_tour.interior_ring_id(folder_id, index)
         for index in range(len(ring_times))
     ]
     assert [
@@ -166,11 +164,11 @@ def test_progression_tour_scales_waits_for_long_fire() -> None:
     second = datetime.datetime(2026, 8, 6, 0, 0, tzinfo=datetime.UTC)
     third = datetime.datetime(2026, 8, 26, 0, 0, tzinfo=datetime.UTC)
     ring_times = [first, second, third]
-    kml = simplekml.Kml()
-    folder = kml.document.newfolder(name="Bug")
-    peri_scribe.kml_tour.progression_tour(folder, ring_times)
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    with writer.folder("Bug") as folder_id:
+        peri_scribe.kml_tour.progression_tour(writer, folder_id, ring_times)
     bug_folder = tests.kml_helpers.folder_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     tour = tests.kml_helpers.tour_named(bug_folder, "Progression")
@@ -182,19 +180,21 @@ def test_progression_tour_scales_waits_for_long_fire() -> None:
     ])
 
 
-def test_assign_placemark_id_sets_placemark_id() -> None:
-    kml = simplekml.Kml()
-    folder = kml.document.newfolder(name="Bug")
-    placemark = folder.newpolygon(
-        name="Interior",
-        outerboundaryis=[(0, 0), (1, 0), (1, 1), (0, 0)],
+def test_progression_tour_assigns_targeted_placemark_ids() -> None:
+    """The tour's targets match the ids assigned to the folder's ring placemarks."""
+    observation_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    with writer.folder("Bug") as folder_id:
+        peri_scribe.kml_tour.progression_tour(writer, folder_id, [observation_time])
+    bug_folder = tests.kml_helpers.folder_named(
+        tests.kml_helpers.document_from_writer(writer),
+        "Bug",
     )
-    peri_scribe.kml_tour.assign_placemark_id(placemark, "custom-id")
-    interior = tests.kml_helpers.placemark_named(
-        tests.kml_helpers.folder_named(
-            tests.kml_helpers.document_from(kml.kml()),
-            "Bug",
-        ),
-        "Interior",
-    )
-    assert interior.get("id") == "custom-id"
+    tour = tests.kml_helpers.tour_named(bug_folder, "Progression")
+    update = tests.kml_helpers.tour_primitives(
+        tour,
+        tests.kml_helpers.gx_tag("AnimatedUpdate"),
+    )[0]
+    assert tests.kml_helpers.update_visibility_by_target(update) == {
+        peri_scribe.kml_tour.interior_ring_id(folder_id, 0): 1,
+    }

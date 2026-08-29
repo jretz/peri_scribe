@@ -2,15 +2,18 @@
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import pathlib
 import typing
 
 import pandas as pd
+import structlog
 
 import peri_scribe.feed_types
 import peri_scribe.geo_package
 import peri_scribe.models
+import peri_scribe.output
 import peri_scribe.snapshots
 import peri_scribe.units
 
@@ -18,6 +21,9 @@ import peri_scribe.units
 if typing.TYPE_CHECKING:
     import geopandas
     import shapely
+
+
+logger = structlog.get_logger()
 
 
 # When fetching only changed features, the cutoff for the query is moved back by this
@@ -77,6 +83,59 @@ def modified_datetime_from(value: object) -> datetime.datetime | None:
     return parsed.astimezone(datetime.UTC)
 
 
+def latest_features_by_object_id(
+    dataframes: typing.Iterable[geopandas.GeoDataFrame | None],
+) -> geopandas.GeoDataFrame | None:
+    """Return the latest feature per OBJECTID across *dataframes*.
+
+    A later frame's version of a feature supersedes an earlier one. Frames built from a
+    fetch name their geometry column ``geom`` while frames read back from a GeoPackage
+    name it ``geometry``, so every frame's geometry column is renamed to ``geometry``
+    before the merge, keeping the merged frame to a single geometry column. Returns None
+    when no frame is supplied or when the combined frame has no OBJECTID column, so
+    callers can treat a None result as "cannot compare against stored features".
+
+    Args:
+        dataframes: The feature frames to merge, in order from oldest to newest.
+
+    Returns:
+        The latest feature per OBJECTID, or None when no frame is supplied or the
+        combined frame has no OBJECTID column.
+    """
+    present: list[geopandas.GeoDataFrame] = []
+    for frame in dataframes:
+        if frame is None:
+            continue
+        normalized = frame
+        if (
+            normalized.geometry.name
+            != peri_scribe.models.GEOPACKAGE_GEOMETRY_COLUMN_NAME
+        ):
+            normalized = normalized.rename_geometry(
+                peri_scribe.models.GEOPACKAGE_GEOMETRY_COLUMN_NAME,
+            )
+        present.append(
+            typing.cast(
+                "geopandas.GeoDataFrame",
+                normalized,
+            ),
+        )
+    if not present:
+        return None
+    combined = typing.cast(
+        "geopandas.GeoDataFrame",
+        pd.concat(present, ignore_index=True),
+    )
+    if peri_scribe.models.OBJECT_ID_COLUMN_NAME not in combined.columns:
+        return None
+    return combined[
+        ~combined.duplicated(
+            subset=[peri_scribe.models.OBJECT_ID_COLUMN_NAME],
+            keep="last",
+        )
+    ]
+
+
 def existing_features(
     directory: pathlib.Path,
     feed: peri_scribe.feed_types.Feed,
@@ -101,20 +160,138 @@ def existing_features(
         )
         for source_file in peri_scribe.snapshots.existing_source_files(directory)
     ]
-    if not dataframes:
+    return latest_features_by_object_id(dataframes)
+
+
+def current_state_serial_number(
+    directory: pathlib.Path,
+) -> int | None:
+    """Return the serial number of the newest snapshot in *directory*.
+
+    Args:
+        directory: The directory holding the source's GeoPackage files.
+
+    Returns:
+        The newest snapshot's serial number, or None when the directory holds no
+        snapshots.
+    """
+    source_files = peri_scribe.snapshots.existing_source_files(directory)
+    if not source_files:
         return None
-    combined = typing.cast(
-        "geopandas.GeoDataFrame",
-        pd.concat(dataframes, ignore_index=True),
+    return source_files[-1].serial_number
+
+
+def read_current_features(
+    directory: pathlib.Path,
+    feed: peri_scribe.feed_types.Feed,
+) -> geopandas.GeoDataFrame | None:
+    """Return the latest stored feature per OBJECTID, from the state file when fresh.
+
+    The feed's maintained current-state file holds the latest feature per OBJECTID
+    across the snapshots it covers, so reading it costs one file read instead of a
+    read of every snapshot ever stored. The state file is used only when it covers
+    the newest snapshot; otherwise the snapshots are read directly, which is also how
+    a missing or unreadable state file is handled. A state file is fresh only when
+    its covered serial equals the newest snapshot serial, so a state file that
+    outlives a snapshot rollback is rebuilt rather than trusted.
+
+    Args:
+        directory: The directory holding the source's GeoPackage files.
+        feed: The feed whose layer is read from each file.
+
+    Returns:
+        The most recent feature per OBJECTID, or None when there are none.
+    """
+    state_files = peri_scribe.snapshots.current_state_file_paths(
+        directory,
+        feed.name,
     )
-    if peri_scribe.models.OBJECT_ID_COLUMN_NAME not in combined.columns:
-        return None
-    return combined[
-        ~combined.duplicated(
-            subset=[peri_scribe.models.OBJECT_ID_COLUMN_NAME],
-            keep="last",
-        )
-    ]
+    if state_files:
+        state_serial_number, state_path = state_files[-1]
+        newest_serial_number = current_state_serial_number(directory)
+        if (
+            newest_serial_number is not None
+            and state_serial_number == newest_serial_number
+        ):
+            try:
+                return peri_scribe.geo_package.read_layer_dataframe(
+                    state_path,
+                    feed,
+                )
+            except (OSError, RuntimeError, ValueError) as error:
+                logger.warning(
+                    "Failed to read current state; reading snapshots instead",
+                    feed=feed.name,
+                    path=str(state_path),
+                    error=str(error),
+                )
+    return existing_features(directory, feed)
+
+
+def write_current_state(
+    directory: pathlib.Path,
+    feed: peri_scribe.feed_types.Feed,
+    new_features: geopandas.GeoDataFrame,
+) -> None:
+    """Update *feed*'s current-state file to cover its newest snapshot.
+
+    The new state is the latest feature per OBJECTID across the previous state (or,
+    when there is no usable state file, every stored snapshot) and *new_features*,
+    the rows of the snapshot just written. The state file is named for the newest
+    snapshot's serial number, and any older state files for the feed are removed.
+    The snapshots remain the source of truth: the state file is only a derived
+    cache, rebuilt from the snapshots whenever it is missing, stale, or unreadable.
+
+    Args:
+        directory: The directory holding the source's GeoPackage files.
+        feed: The feed whose layer is stored.
+        new_features: The rows of the snapshot that was just written.
+    """
+    state_files = peri_scribe.snapshots.current_state_file_paths(
+        directory,
+        feed.name,
+    )
+    base: geopandas.GeoDataFrame | None = None
+    if state_files:
+        _state_serial_number, state_path = state_files[-1]
+        try:
+            base = peri_scribe.geo_package.read_layer_dataframe(
+                state_path,
+                feed,
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            logger.warning(
+                "Failed to read current state while updating; rebuilding from "
+                "snapshots",
+                feed=feed.name,
+                path=str(state_path),
+                error=str(error),
+            )
+    if base is None:
+        base = existing_features(directory, feed)
+    merged = latest_features_by_object_id([base, new_features])
+    newest_serial_number = current_state_serial_number(directory)
+    if merged is None or newest_serial_number is None:
+        return
+    state_path = peri_scribe.snapshots.current_state_path(
+        directory,
+        feed.name,
+        newest_serial_number,
+    )
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    peri_scribe.output.write_geopackage(
+        state_path,
+        [
+            peri_scribe.models.LayerData(
+                name=feed.name,
+                dataframe=merged,
+            ),
+        ],
+    )
+    for _old_serial_number, old_path in state_files:
+        if old_path != state_path:
+            with contextlib.suppress(FileNotFoundError):
+                old_path.unlink()
 
 
 def stored_object_ids(

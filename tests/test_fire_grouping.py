@@ -172,3 +172,117 @@ def test_warn_for_inconsistent_fires_logs_temporal_outlier() -> None:
     assert [event["event"] for event in warning_events(records, fires)] == [
         "Fire records span distant times",
     ]
+
+
+def test_warn_for_inconsistent_fires_ignores_duplicate_geometry_singleton() -> None:
+    records = [
+        fire_record(
+            "RIVER",
+            ACTIVE,
+            geometry=shapely.geometry.Point(0, 0),
+        ),
+        fire_record(
+            "RIVER",
+            INACTIVE,
+            geometry=shapely.geometry.Point(0, 0),
+        ),
+        fire_record(
+            "RIVER",
+            INACTIVE,
+            identifiers={"67e0a229-1214-4e17-a80d-c819f88013e8"},
+            geometry=shapely.geometry.Point(0.1, 0.1),
+        ),
+    ]
+    fires = [
+        peri_scribe.models.Fire(
+            name="RIVER",
+            status=ACTIVE,
+            identifier="67e0a229-1214-4e17-a80d-c819f88013e8",
+        ),
+    ]
+    with structlog.testing.capture_logs() as captured:
+        peri_scribe.fire_grouping.warn_for_inconsistent_fires(
+            records,
+            [[0, 1, 2]],
+            fires,
+        )
+    assert captured == []
+
+
+def test_warn_for_inconsistent_fires_logs_singleton_outlier_among_duplicates() -> None:
+    records = [
+        fire_record(
+            "RIVER",
+            ACTIVE,
+            geometry=shapely.geometry.Point(0, 0),
+        ),
+        fire_record(
+            "RIVER",
+            INACTIVE,
+            geometry=shapely.geometry.Point(0, 0),
+        ),
+        fire_record(
+            "RIVER",
+            INACTIVE,
+            identifiers={"67e0a229-1214-4e17-a80d-c819f88013e8"},
+            geometry=shapely.geometry.Point(10, 10),
+        ),
+    ]
+    fires = [
+        peri_scribe.models.Fire(
+            name="RIVER",
+            status=ACTIVE,
+            identifier="67e0a229-1214-4e17-a80d-c819f88013e8",
+        ),
+    ]
+    with structlog.testing.capture_logs() as captured:
+        peri_scribe.fire_grouping.warn_for_inconsistent_fires(
+            records,
+            [[0, 1, 2]],
+            fires,
+        )
+    assert [event["event"] for event in captured] == [
+        "Fire records span distant locations",
+    ]
+
+
+def test_group_fire_record_indices_merges_identical_geometry_records() -> None:
+    location = shapely.geometry.Point(0, 0)
+    records = [
+        fire_record("RIVER", ACTIVE, identifiers={"a"}, geometry=location),
+        fire_record("RIVER", ACTIVE, identifiers={"b"}, geometry=location),
+        fire_record("RIVER", ACTIVE, identifiers={"c"}, geometry=location),
+        fire_record(
+            "RIVER",
+            ACTIVE,
+            identifiers={"d"},
+            geometry=shapely.geometry.Point(50, 50),
+        ),
+    ]
+    groups = peri_scribe.fire_grouping.group_fire_record_indices(records)
+    assert groups == [[0, 1, 2], [3]]
+
+
+def test_group_fire_record_indices_unions_distinct_geometry_classes() -> None:
+    records = [
+        fire_record(
+            "RIVER",
+            ACTIVE,
+            identifiers={"a"},
+            geometry=shapely.geometry.Point(0, 0),
+        ),
+        fire_record(
+            "RIVER",
+            ACTIVE,
+            identifiers={"b"},
+            geometry=shapely.geometry.Point(0, 0),
+        ),
+        fire_record(
+            "RIVER",
+            ACTIVE,
+            identifiers={"c"},
+            geometry=shapely.geometry.Point(0.01, 0.01),
+        ),
+    ]
+    groups = peri_scribe.fire_grouping.group_fire_record_indices(records)
+    assert groups == [[0, 1, 2]]

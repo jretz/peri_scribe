@@ -75,8 +75,7 @@ def records_span_distant_locations(
     A record disagrees when the rest of the group has a geometry and the record has
     none, or when none of the other records' geometries is within the outlier
     tolerance; the distance from a record to the union of the others is the minimum
-    distance to any one of them. A spatial index limits the comparisons to records
-    that are actually close.
+    distance to any one of them.
 
     Args:
         records: The records that were grouped.
@@ -95,15 +94,7 @@ def records_span_distant_locations(
         for index, geometry in geometries_by_index.items()
         if not geometry.is_empty
     ]
-    positions = {index: position for position, (index, _geometry) in enumerate(members)}
-    has_other_match = [False] * len(members)
-    if len(members) >= MINIMUM_SPATIAL_GEOMETRIES:
-        for left, right in nearby_pairs(
-            [geometry for _index, geometry in members],
-            tolerance_in_degrees=FIRE_OUTLIER_TOLERANCE_IN_DEGREES,
-        ):
-            if left != right:
-                has_other_match[left] = True
+    matched_indices = _matched_within_outlier_tolerance(members)
     for index in group:
         geometry = records[index].geometry
         others_count = len(geometries_by_index) - (
@@ -111,13 +102,55 @@ def records_span_distant_locations(
         )
         if others_count == 0:
             continue
-        if (
-            geometry is None
-            or geometry.is_empty
-            or not has_other_match[positions[index]]
-        ):
+        if geometry is None or geometry.is_empty or index not in matched_indices:
             return True
     return False
+
+
+def _matched_within_outlier_tolerance(
+    members: list[tuple[int, shapely.Geometry]],
+) -> set[int]:
+    """Return the members with another member within the outlier tolerance.
+
+    Byte-identical geometries are within the tolerance of one another, so every member
+    of a multi-member identical-geometry class has a match and the rest of the
+    comparisons use one representative per class. Each representative is checked against
+    the others until one is found within the tolerance: a fire's own records are almost
+    always all near one another, so the first comparison settles the common case and
+    only an actual outlier requires checking every other representative.
+
+    Args:
+        members: The group's non-empty geometries, as (index, geometry) pairs.
+
+    Returns:
+        The indices of the members that have another member within the outlier
+        tolerance.
+    """
+    classes: dict[bytes, list[tuple[int, shapely.Geometry]]] = {}
+    for member in members:
+        classes.setdefault(member[1].wkb, []).append(member)
+    matched_indices: set[int] = set()
+    for class_members in classes.values():
+        if len(class_members) >= MINIMUM_SPATIAL_GEOMETRIES:
+            matched_indices.update(index for index, _geometry in class_members)
+    representatives = [class_members[0] for class_members in classes.values()]
+    for position, (index, geometry) in enumerate(representatives):
+        if index in matched_indices:
+            continue
+        for other_position, (other_index, other_geometry) in enumerate(
+            representatives,
+        ):
+            if position == other_position:
+                continue
+            if shapely.dwithin(
+                geometry,
+                other_geometry,
+                FIRE_OUTLIER_TOLERANCE_IN_DEGREES,
+            ):
+                matched_indices.add(index)
+                matched_indices.add(other_index)
+                break
+    return matched_indices
 
 
 def warn_for_inconsistent_fires(
@@ -240,12 +273,26 @@ def merge_records_by_name(
                 members.append((index, geometry))
         if len(members) < MINIMUM_SPATIAL_GEOMETRIES:
             continue
-        for left, right in nearby_pairs(
-            [geometry for _index, geometry in members],
-            tolerance_in_degrees=FIRE_PROXIMITY_TOLERANCE_IN_DEGREES,
-        ):
-            if left != right:
-                union(members[left][0], members[right][0])
+        # Records with byte-identical geometry are trivially within the tolerance of one
+        # another (a fire mapped repeatedly carries the same perimeter in many
+        # snapshots), so each identical-geometry class is unioned as a unit and the
+        # spatial index compares one representative per class. Uniting the class's
+        # representative with another class's representative connects every member of
+        # both classes through the class unions.
+        classes: dict[bytes, list[tuple[int, shapely.Geometry]]] = {}
+        for member in members:
+            classes.setdefault(member[1].wkb, []).append(member)
+        representatives = [class_members[0] for class_members in classes.values()]
+        for class_members in classes.values():
+            for index, _geometry in class_members[1:]:
+                union(class_members[0][0], index)
+        if len(representatives) >= MINIMUM_SPATIAL_GEOMETRIES:
+            for left, right in nearby_pairs(
+                [geometry for _index, geometry in representatives],
+                tolerance_in_degrees=FIRE_PROXIMITY_TOLERANCE_IN_DEGREES,
+            ):
+                if left != right:
+                    union(representatives[left][0], representatives[right][0])
 
 
 def fire_complexes(

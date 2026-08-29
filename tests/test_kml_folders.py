@@ -6,10 +6,10 @@ import datetime
 
 import pytest
 import shapely.geometry
-import simplekml
 
 import peri_scribe.kml_fire_data
 import peri_scribe.kml_folders
+import peri_scribe.kml_geometry
 import peri_scribe.kml_template
 import peri_scribe.kml_template_reader
 import peri_scribe.models
@@ -50,10 +50,10 @@ def test_fire_folder_includes_point_and_progression(
             ),
         ),
     )
-    kml = simplekml.Kml()
-    peri_scribe.kml_folders.fire_folder(kml.document, fire, style_urls)
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    peri_scribe.kml_folders.fire_folder(writer, fire, style_urls)
     folder = tests.kml_helpers.folder_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     assert tests.kml_helpers.placemark_names(folder) == ["Bug"]
@@ -115,10 +115,10 @@ def test_fire_folder_shows_only_available_perimeters(
             tests.kml_helpers.perimeter_with_time(tests.kml_helpers.square(1.0)),
         ),
     )
-    kml = simplekml.Kml()
-    peri_scribe.kml_folders.fire_folder(kml.document, fire, style_urls)
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    peri_scribe.kml_folders.fire_folder(writer, fire, style_urls)
     folder = tests.kml_helpers.folder_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     assert tests.kml_helpers.placemark_names(folder) == ["Bug", "Unknown Mapping"]
@@ -171,10 +171,10 @@ def test_fire_folder_draws_interior_from_difference_rings(
             ),
         ),
     )
-    kml = simplekml.Kml()
-    peri_scribe.kml_folders.fire_folder(kml.document, fire, style_urls)
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    peri_scribe.kml_folders.fire_folder(writer, fire, style_urls)
     folder = tests.kml_helpers.folder_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     assert tests.kml_helpers.placemark_names(folder) == ["Bug"]
@@ -239,10 +239,10 @@ def test_fire_folder_falls_back_to_complete_perimeter_without_dated_rings(
             ),
         ),
     )
-    kml = simplekml.Kml()
-    peri_scribe.kml_folders.fire_folder(kml.document, fire, style_urls)
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    peri_scribe.kml_folders.fire_folder(writer, fire, style_urls)
     folder = tests.kml_helpers.folder_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     assert tests.kml_helpers.placemark_names(folder) == ["Bug", "Unknown Mapping"]
@@ -260,10 +260,10 @@ def test_fire_folder_without_point_or_perimeters_is_empty(
         point=None,
         perimeters=(),
     )
-    kml = simplekml.Kml()
-    peri_scribe.kml_folders.fire_folder(kml.document, fire, style_urls)
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    peri_scribe.kml_folders.fire_folder(writer, fire, style_urls)
     folder = tests.kml_helpers.folder_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     assert tests.kml_helpers.placemark_names(folder) == []
@@ -291,10 +291,10 @@ def test_fire_folder_lists_point_tour_and_interior_in_order(
             ),
         ),
     )
-    kml = simplekml.Kml()
-    peri_scribe.kml_folders.fire_folder(kml.document, fire, style_urls)
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    peri_scribe.kml_folders.fire_folder(writer, fire, style_urls)
     bug_folder = tests.kml_helpers.folder_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     features = [
@@ -352,10 +352,10 @@ def test_fire_folder_adds_tour_for_fallback_polygon(
             tests.kml_helpers.perimeter_with_time(tests.kml_helpers.square(1.0)),
         ),
     )
-    kml = simplekml.Kml()
-    peri_scribe.kml_folders.fire_folder(kml.document, fire, style_urls)
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    peri_scribe.kml_folders.fire_folder(writer, fire, style_urls)
     bug_folder = tests.kml_helpers.folder_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     tour = tests.kml_helpers.tour_named(bug_folder, "Progression")
@@ -385,10 +385,10 @@ def test_fire_folder_without_polygons_has_no_tour(
         point=shapely.geometry.Point(1.0, 1.0),
         perimeters=(),
     )
-    kml = simplekml.Kml()
-    peri_scribe.kml_folders.fire_folder(kml.document, fire, style_urls)
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    peri_scribe.kml_folders.fire_folder(writer, fire, style_urls)
     bug_folder = tests.kml_helpers.folder_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     assert [
@@ -407,9 +407,9 @@ def test_latest_perimeters_folder_names_and_holds_fires(
             perimeters=(),
         ),
     ]
-    kml = simplekml.Kml()
-    peri_scribe.kml_folders.latest_perimeters_folder(kml.document, fires, style_urls)
-    document = tests.kml_helpers.document_from(kml.kml())
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    peri_scribe.kml_folders.latest_perimeters_folder(writer, fires, style_urls)
+    document = tests.kml_helpers.document_from_writer(writer)
     folder = tests.kml_helpers.folder_named(
         document,
         peri_scribe.kml_template.LATEST_PERIMETERS_FOLDER_NAME,
@@ -427,9 +427,9 @@ def test_progression_folder_holds_fires_without_rings(
         point=shapely.geometry.Point(1.0, 1.0),
         perimeters=(),
     )
-    kml = simplekml.Kml()
-    peri_scribe.kml_folders.progression_folder(kml.document, [fire], style_urls)
-    document = tests.kml_helpers.document_from(kml.kml())
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    peri_scribe.kml_folders.progression_folder(writer, [fire], style_urls)
+    document = tests.kml_helpers.document_from_writer(writer)
     folder = tests.kml_helpers.folder_named(
         document,
         peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
@@ -485,9 +485,9 @@ def test_progression_folder_holds_point_and_ring_folders(
             ),
         ),
     )
-    kml = simplekml.Kml()
-    peri_scribe.kml_folders.progression_folder(kml.document, [fire], style_urls)
-    document = tests.kml_helpers.document_from(kml.kml())
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    peri_scribe.kml_folders.progression_folder(writer, [fire], style_urls)
+    document = tests.kml_helpers.document_from_writer(writer)
     folder = tests.kml_helpers.folder_named(
         document,
         peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
@@ -607,10 +607,10 @@ def test_progression_folder_lists_point_tour_and_ring_folders_in_order(
             ),
         ),
     )
-    kml = simplekml.Kml()
-    peri_scribe.kml_folders.progression_folder(kml.document, [fire], style_urls)
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    peri_scribe.kml_folders.progression_folder(writer, [fire], style_urls)
     folder = tests.kml_helpers.folder_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
     )
     bug_folder = tests.kml_helpers.folder_named(folder, "Bug")
@@ -685,9 +685,9 @@ def test_progression_folder_hides_its_tree(style_urls: dict[str, str]) -> None:
             ),
         ),
     )
-    kml = simplekml.Kml()
-    peri_scribe.kml_folders.progression_folder(kml.document, [fire], style_urls)
-    document = tests.kml_helpers.document_from(kml.kml())
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    peri_scribe.kml_folders.progression_folder(writer, [fire], style_urls)
+    document = tests.kml_helpers.document_from_writer(writer)
     folder = tests.kml_helpers.folder_named(
         document,
         peri_scribe.perimeter_progression.PROGRESSION_MAPS_FOLDER_NAME,
@@ -726,14 +726,14 @@ def test_status_folder_filters_by_status(style_urls: dict[str, str]) -> None:
         point=None,
         perimeters=(),
     )
-    kml = simplekml.Kml()
+    writer = peri_scribe.kml_geometry.KmlWriter()
     peri_scribe.kml_folders.status_folder(
-        kml.document,
+        writer,
         [active, inactive],
         peri_scribe.models.FireStatus.ACTIVE,
         style_urls,
     )
-    document = tests.kml_helpers.document_from(kml.kml())
+    document = tests.kml_helpers.document_from_writer(writer)
     folder = tests.kml_helpers.folder_named(document, "Active Fires")
     perimeters_folder = tests.kml_helpers.folder_named(
         folder,
@@ -775,14 +775,14 @@ def test_status_folder_puts_same_fires_in_both_folders(
         point=None,
         perimeters=(),
     )
-    kml = simplekml.Kml()
+    writer = peri_scribe.kml_geometry.KmlWriter()
     peri_scribe.kml_folders.status_folder(
-        kml.document,
+        writer,
         [with_rings, point_only, empty],
         peri_scribe.models.FireStatus.ACTIVE,
         style_urls,
     )
-    document = tests.kml_helpers.document_from(kml.kml())
+    document = tests.kml_helpers.document_from_writer(writer)
     folder = tests.kml_helpers.folder_named(document, "Active Fires")
     latest = tests.kml_helpers.folder_named(
         folder,
@@ -815,10 +815,10 @@ def test_fire_folder_applies_description_to_every_placemark(
         ),
         description="<![CDATA[<b>Bug</b>]]>",
     )
-    kml = simplekml.Kml()
-    peri_scribe.kml_folders.fire_folder(kml.document, fire, style_urls)
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    peri_scribe.kml_folders.fire_folder(writer, fire, style_urls)
     folder = tests.kml_helpers.folder_named(
-        tests.kml_helpers.document_from(kml.kml()),
+        tests.kml_helpers.document_from_writer(writer),
         "Bug",
     )
     assert tests.kml_helpers.placemark_names(folder) == ["Bug", "Unknown Mapping"]

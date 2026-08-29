@@ -80,7 +80,10 @@ def fetch_feed_dataframe(
             layer,
             feature_set,
         )
-        existing = peri_scribe.changes.existing_features(source_directory, feed)
+        existing = peri_scribe.changes.read_current_features(
+            source_directory,
+            feed,
+        )
         geodataframe = peri_scribe.changes.drop_features_already_present(
             geodataframe,
             existing,
@@ -93,7 +96,7 @@ def fetch_feed_dataframe(
     if not change_columns:
         message = f"Feed {feed.name} has no change columns configured"
         raise ValueError(message)
-    existing = peri_scribe.changes.existing_features(source_directory, feed)
+    existing = peri_scribe.changes.read_current_features(source_directory, feed)
     cutoff = peri_scribe.changes.incremental_cutoff(existing, feed)
     where = peri_scribe.changes.where_clause_for(change_columns, cutoff)
     changed_ids = peri_scribe.geo_data.query_object_ids_with_retry(
@@ -343,6 +346,20 @@ def fetch_all_feeds(
                 ),
             ],
         )
+        try:
+            peri_scribe.changes.write_current_state(
+                source_directory,
+                feed,
+                geodataframe,
+            )
+        except (OSError, RuntimeError, ValueError) as error:
+            # The current-state file is only a derived cache; a failed update leaves the
+            # snapshots authoritative and the next fetch rebuilds the state.
+            logger.warning(
+                "Failed to update current state",
+                feed=feed.name,
+                error=str(error),
+            )
         snapshot_paths.append(output_path)
         wrote_snapshot = True
     if wrote_snapshot:

@@ -10,12 +10,9 @@ from __future__ import annotations
 import datetime
 import typing
 
+import peri_scribe.kml_geometry
 import peri_scribe.kml_template
 import peri_scribe.perimeter_progression
-
-
-if typing.TYPE_CHECKING:
-    import simplekml
 
 
 # A tour advances through fire time at one second of playback per day, and holds the
@@ -84,21 +81,21 @@ def mapping_placemark_name(observation_time: datetime.datetime | None) -> str:
     return f"{label} {MAPPING_NAME}"
 
 
-def interior_ring_id(folder: simplekml.Folder, index: int) -> str:
-    """Return the placemark id for *folder*'s interior ring at *index*.
+def interior_ring_id(folder_id: str, index: int) -> str:
+    """Return the placemark id for the ring at *index* in *folder_id*.
 
     The tour's animated updates target these ids, so each one must be unique across the
     document; the folder's own unique id keeps one fire's ring ids apart from every
     other fire's.
 
     Args:
-        folder: The fire folder that holds the ring.
+        folder_id: The unique id of the folder that holds the ring.
         index: The ring's position, oldest first.
 
     Returns:
         The ring's placemark id.
     """
-    return f"progression-ring-{folder.id}-{index}"
+    return f"progression-ring-{folder_id}-{index}"
 
 
 def tour_seconds_per_day(
@@ -179,10 +176,13 @@ def visibility_change(
 
 
 def progression_tour(
-    folder: simplekml.Folder,
+    writer: peri_scribe.kml_geometry.KmlWriter,
+    folder_id: str,
     ring_times: typing.Sequence[datetime.datetime | None],
+    *,
+    visible: bool = True,
 ) -> None:
-    """Add the "Progression" tour to *folder*.
+    """Append the "Progression" tour to *writer*.
 
     The tour shows the innermost ring alone, then waits for the fire time between
     observations at the tour's playback rate before revealing each next ring, and holds
@@ -193,18 +193,24 @@ def progression_tour(
     the rings' listing order does not affect it.
 
     Args:
-        folder: The fire folder that holds the tour.
+        writer: The writer to append to.
+        folder_id: The fire folder's unique id, used to name the tour's targets.
         ring_times: Each interior ring's observation time, oldest first.
+        visible: Whether the tour is visible.
     """
-    ring_ids = [interior_ring_id(folder, index) for index in range(len(ring_times))]
+    ring_ids = [interior_ring_id(folder_id, index) for index in range(len(ring_times))]
     seconds_per_day = tour_seconds_per_day(ring_times)
-    tour = folder.newgxtour(name=PROGRESSION_TOUR_NAME)
-    playlist = tour.newgxplaylist()
+    parts = writer.parts
+    parts.append("<gx:Tour>")
+    if not visible:
+        parts.append("<visibility>0</visibility>")
+    parts.append(f"<name>{PROGRESSION_TOUR_NAME}</name><gx:Playlist>")
     for index, ring_time in enumerate(ring_times):
-        playlist.newgxanimatedupdate().update.change = visibility_change(
-            ring_ids,
-            index,
+        parts.append(
+            "<gx:AnimatedUpdate><Update><targetHref></targetHref><Change>",
         )
+        parts.append(visibility_change(ring_ids, index))
+        parts.append("</Change></Update></gx:AnimatedUpdate>")
         if index + 1 < len(ring_times):
             wait_in_seconds = tour_wait_in_seconds(
                 ring_time,
@@ -213,20 +219,7 @@ def progression_tour(
             )
         else:
             wait_in_seconds = FINAL_TOUR_WAIT_IN_SECONDS
-        playlist.newgxwait(gxduration=wait_in_seconds)
-
-
-def assign_placemark_id(
-    placemark: simplekml.Polygon | simplekml.MultiGeometry,
-    placemark_id: str,
-) -> None:
-    """Assign *placemark* the stable id *placemark_id*.
-
-    The tour's animated updates reference the interior rings by their placemark ids, and
-    simplekml offers no public way to choose one, so the id is set directly.
-
-    Args:
-        placemark: The polygon or multi-geometry placemark to identify.
-        placemark_id: The id to assign.
-    """
-    placemark.placemark._id = placemark_id  # ruff: ignore[private-member-access]
+        parts.append(
+            f"<gx:Wait><gx:duration>{wait_in_seconds}</gx:duration></gx:Wait>",
+        )
+    parts.append("</gx:Playlist></gx:Tour>")

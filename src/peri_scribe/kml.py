@@ -11,7 +11,6 @@ import pathlib
 import typing
 import zipfile
 
-import simplekml
 import structlog
 
 import peri_scribe.fire_differential
@@ -21,6 +20,7 @@ import peri_scribe.fire_scores
 import peri_scribe.geo_package
 import peri_scribe.kml_fire_data
 import peri_scribe.kml_folders
+import peri_scribe.kml_geometry
 import peri_scribe.kml_icons
 import peri_scribe.kml_template
 import peri_scribe.kml_template_reader
@@ -38,10 +38,12 @@ MAPS_DIRECTORY_NAME = "maps"
 
 KMZ_DOCUMENT_FILENAME = "doc.kml"
 
-# DEFLATE is the compression Google Earth expects inside a KMZ, and level 9 is the
-# highest compression level it offers.
+# DEFLATE is the compression Google Earth expects inside a KMZ. Level 6 is used instead
+# of the maximum 9: the output is within 1% of level 9's size but compresses several
+# times faster, and the plot PNGs are already compressed (so they are stored without
+# recompressing rather than passed through DEFLATE a second time).
 KMZ_COMPRESSION = zipfile.ZIP_DEFLATED
-KMZ_COMPRESSION_LEVEL = 9
+KMZ_COMPRESSION_LEVEL = 6
 
 
 def year_from(year_directory: pathlib.Path) -> int:
@@ -97,49 +99,55 @@ def fire_kml(
     Args:
         fires: The fires to symbolize.
         template: The template supplying styles and style URLs.
-        name: The document's name, conventionally the output filename without
-            its extension.
+        name: The document's name, conventionally the output filename without its
+            extension.
 
     Returns:
         The KML document.
     """
-    kml = simplekml.Kml(name=name)
-    document = kml.document
-
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    writer.parts.append(
+        f'<kml xmlns="{peri_scribe.kml_geometry.KML_NAMESPACE}" '
+        f'xmlns:gx="{peri_scribe.kml_geometry.GX_NAMESPACE}">'
+        "<Document>",
+    )
     for style in template.styles:
-        document.styles.append(style)
+        writer.parts.append(str(style))
+    writer.parts.append(
+        f"<name>{peri_scribe.kml_geometry.escape_text(name)}</name>",
+    )
 
     # The top-level folder holds the status folders as radio options, so they display as
     # radio buttons in Google Earth's Places panel.
-    top_level = document.newfolder(name=name)
-    peri_scribe.kml_folders.set_radio_folder(top_level)
-    if scores is not None:
-        score_sorted_fires = peri_scribe.kml_folders.top_fires(fires, scores)
-        peri_scribe.kml_folders.top_fires_folder(
-            top_level,
-            sorted(score_sorted_fires, key=lambda fire: fire.name.casefold()),
-            peri_scribe.kml_folders.TOP_FIRES_BY_NAME_FOLDER_NAME,
+    with writer.folder(name, list_item_type="radioFolder"):
+        if scores is not None:
+            score_sorted_fires = peri_scribe.kml_folders.top_fires(fires, scores)
+            peri_scribe.kml_folders.top_fires_folder(
+                writer,
+                sorted(score_sorted_fires, key=lambda fire: fire.name.casefold()),
+                peri_scribe.kml_folders.TOP_FIRES_BY_NAME_FOLDER_NAME,
+                template.style_urls,
+            )
+            peri_scribe.kml_folders.top_fires_folder(
+                writer,
+                score_sorted_fires,
+                peri_scribe.kml_folders.TOP_FIRES_BY_SCORE_FOLDER_NAME,
+                template.style_urls,
+            )
+        peri_scribe.kml_folders.status_folder(
+            writer,
+            fires,
+            peri_scribe.models.FireStatus.ACTIVE,
             template.style_urls,
         )
-        peri_scribe.kml_folders.top_fires_folder(
-            top_level,
-            score_sorted_fires,
-            peri_scribe.kml_folders.TOP_FIRES_BY_SCORE_FOLDER_NAME,
+        peri_scribe.kml_folders.status_folder(
+            writer,
+            fires,
+            peri_scribe.models.FireStatus.INACTIVE,
             template.style_urls,
         )
-    peri_scribe.kml_folders.status_folder(
-        top_level,
-        fires,
-        peri_scribe.models.FireStatus.ACTIVE,
-        template.style_urls,
-    )
-    peri_scribe.kml_folders.status_folder(
-        top_level,
-        fires,
-        peri_scribe.models.FireStatus.INACTIVE,
-        template.style_urls,
-    )
-    return kml.kml()
+    writer.parts.append("</Document></kml>")
+    return writer.text()
 
 
 def write_kmz(
@@ -164,7 +172,13 @@ def write_kmz(
         archive.writestr(KMZ_DOCUMENT_FILENAME, kml_text)
         if images:
             for filename, content in images.items():
-                archive.writestr(filename, content)
+                # PNG bytes are already DEFLATE-compressed, so recompressing them is
+                # pure waste of time with no size benefit.
+                archive.writestr(
+                    filename,
+                    content,
+                    compress_type=zipfile.ZIP_STORED,
+                )
 
 
 def area_qualified_index(
