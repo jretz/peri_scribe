@@ -209,12 +209,12 @@ def validate_complete_sources(
 ) -> tuple[FeedValidationResult, ...]:
     """Validate each feed's stored snapshots against its complete snapshot.
 
-    Each feed's complete snapshot is read from the sources-complete directory and
-    compared against the latest stored feature per OBJECTID in the sources directory.
+    Each feed's complete snapshot is read from the validation directory and compared
+    against the latest stored feature per OBJECTID in the sources directory.
 
     Args:
         year_directory: The year directory holding both the sources and
-            sources-complete directories.
+            validation directories.
         feeds: The feeds to validate.
 
     Returns:
@@ -222,7 +222,7 @@ def validate_complete_sources(
     """
     results: list[FeedValidationResult] = []
     for feed in feeds:
-        complete_path = peri_scribe.snapshots.sources_complete_geopackage_path(
+        complete_path = peri_scribe.snapshots.validation_geopackage_path(
             year_directory,
             feed.name,
         )

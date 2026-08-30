@@ -204,7 +204,6 @@ def read_current_features(
     """
     state_files = peri_scribe.snapshots.current_state_file_paths(
         directory,
-        feed.name,
     )
     if state_files:
         state_serial_number, state_path = state_files[-1]
@@ -249,7 +248,6 @@ def write_current_state(
     """
     state_files = peri_scribe.snapshots.current_state_file_paths(
         directory,
-        feed.name,
     )
     base: geopandas.GeoDataFrame | None = None
     if state_files:
@@ -275,7 +273,6 @@ def write_current_state(
         return
     state_path = peri_scribe.snapshots.current_state_path(
         directory,
-        feed.name,
         newest_serial_number,
     )
     state_path.parent.mkdir(parents=True, exist_ok=True)

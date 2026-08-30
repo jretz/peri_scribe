@@ -22,7 +22,6 @@ import us
 
 import peri_scribe.exceptions
 import peri_scribe.external_sources
-import peri_scribe.feed_types
 import peri_scribe.geo_data
 import peri_scribe.models
 import peri_scribe.output
@@ -225,14 +224,9 @@ def install_arcgis_query_stubs(
         "geo_data_frame_from",
         lambda *_arguments: dataframe,
     )
-    monkeypatch.setattr(
-        peri_scribe.feed_types,
-        "observe_layer_last_edit_timestamp",
-        lambda _url, _name: SAMPLE_LAST_EDIT_TIMESTAMP,
-    )
 
 
-def test_output_path_places_file_under_source_directory() -> None:
+def test_output_path_places_single_file_under_sources() -> None:
     source = dataclasses.replace(
         peri_scribe.external_sources.BUILDINGS_SOURCE,
         states=(),
@@ -242,7 +236,7 @@ def test_output_path_places_file_under_source_directory() -> None:
         YEAR_DIRECTORY,
         source,
     )
-    assert path == YEAR_DIRECTORY / "sources" / "buildings" / "buildings.gpkg"
+    assert path == YEAR_DIRECTORY / "sources" / "buildings.gpkg"
 
 
 def test_output_path_names_combined_geopackage() -> None:
@@ -250,7 +244,7 @@ def test_output_path_names_combined_geopackage() -> None:
         YEAR_DIRECTORY,
         peri_scribe.external_sources.BUILDINGS_SOURCE,
     )
-    assert path == YEAR_DIRECTORY / "sources" / "buildings" / "buildings.gpkg"
+    assert path == YEAR_DIRECTORY / "sources" / "buildings.gpkg"
 
 
 def test_output_path_raises_for_combined_source_with_state() -> None:
@@ -262,12 +256,12 @@ def test_output_path_raises_for_combined_source_with_state() -> None:
         )
 
 
-def test_output_path_raises_for_live_arcgis_source() -> None:
-    with pytest.raises(ValueError, match="stores snapshots"):
-        peri_scribe.external_sources.output_path(
-            YEAR_DIRECTORY,
-            peri_scribe.external_sources.EVACUATIONS_SOURCE,
-        )
+def test_output_path_names_live_arcgis_source() -> None:
+    path = peri_scribe.external_sources.output_path(
+        YEAR_DIRECTORY,
+        peri_scribe.external_sources.EVACUATIONS_SOURCE,
+    )
+    assert path == YEAR_DIRECTORY / "sources" / "evacuations.gpkg"
 
 
 def test_output_path_names_per_state_geopackage() -> None:
@@ -289,11 +283,6 @@ def test_buildings_source_covers_every_us_state() -> None:
     assert len(states) == len(us.states.STATES) + 1
     assert "California" in states
     assert "District of Columbia" in states
-
-
-def test_external_source_names_are_auxiliary_directories() -> None:
-    names = {source.name for source in peri_scribe.external_sources.EXTERNAL_SOURCES}
-    assert names.issubset(peri_scribe.snapshots.AUXILIARY_DIRECTORY_NAMES)
 
 
 def test_every_external_source_has_a_retrieval_url() -> None:
@@ -362,10 +351,11 @@ def testfetch_arcgis_source_writes_snapshot(
         "write_geopackage",
         lambda path, layer_data: writes.append((path, layer_data)),
     )
+    replacements: list[tuple[pathlib.Path, pathlib.Path]] = []
     monkeypatch.setattr(
-        peri_scribe.feed_types,
-        "observe_layer_last_edit_timestamp",
-        lambda _url, _name: SAMPLE_LAST_EDIT_TIMESTAMP,
+        pathlib.Path,
+        "replace",
+        lambda source, destination: replacements.append((source, destination)),
     )
     monkeypatch.setattr(
         pathlib.Path,
@@ -374,13 +364,7 @@ def testfetch_arcgis_source_writes_snapshot(
     )
 
     result = peri_scribe.external_sources.fetch_external_source(source, YEAR_DIRECTORY)
-    expected = (
-        YEAR_DIRECTORY
-        / "sources"
-        / "evacuations"
-        / "000___"
-        / f"000000,lastEdit={SAMPLE_LAST_EDIT_TIMESTAMP}.gpkg"
-    )
+    expected = YEAR_DIRECTORY / "sources" / "evacuations.gpkg"
     assert result == (expected,)
     assert layers == [source.url]
     assert queries == [
@@ -391,7 +375,8 @@ def testfetch_arcgis_source_writes_snapshot(
     ]
     assert len(writes) == 1
     written_path, layer_data = writes[0]
-    assert written_path == expected
+    assert written_path == expected.with_name("evacuations.tmp.gpkg")
+    assert replacements == [(written_path, expected)]
     assert [layer.name for layer in layer_data] == ["evacuations"]
 
 
@@ -445,9 +430,9 @@ def testfetch_arcgis_source_passes_where_clause(
         lambda _path, _layer_data: None,
     )
     monkeypatch.setattr(
-        peri_scribe.feed_types,
-        "observe_layer_last_edit_timestamp",
-        lambda _url, _name: SAMPLE_LAST_EDIT_TIMESTAMP,
+        pathlib.Path,
+        "replace",
+        lambda _source, _destination: None,
     )
     monkeypatch.setattr(
         pathlib.Path,
@@ -552,9 +537,9 @@ def testfetch_arcgis_source_logs_geometry_warning(
         lambda _path, _layer_data: None,
     )
     monkeypatch.setattr(
-        peri_scribe.feed_types,
-        "observe_layer_last_edit_timestamp",
-        lambda _url, _name: SAMPLE_LAST_EDIT_TIMESTAMP,
+        pathlib.Path,
+        "replace",
+        lambda _source, _destination: None,
     )
     monkeypatch.setattr(
         pathlib.Path,
@@ -580,14 +565,15 @@ def testfetch_arcgis_source_skips_when_content_unchanged(
 
     first = peri_scribe.external_sources.fetch_external_source(source, tmp_path)
     assert len(first) == 1
-    assert first[0].name == f"000000,lastEdit={SAMPLE_LAST_EDIT_TIMESTAMP}.gpkg"
+    assert first[0].name == "evacuations.gpkg"
+    assert first[0].parent.name == "sources"
     second = peri_scribe.external_sources.fetch_external_source(source, tmp_path)
     assert second == first
-    snapshots = list((tmp_path / "sources" / "evacuations").rglob("*.gpkg"))
+    snapshots = list((tmp_path / "sources").rglob("*.gpkg"))
     assert len(snapshots) == 1
 
 
-def testfetch_arcgis_source_writes_new_snapshot_when_content_changed(
+def testfetch_arcgis_source_replaces_current_version_when_content_changed(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -602,18 +588,16 @@ def testfetch_arcgis_source_writes_new_snapshot_when_content_changed(
         lambda *_arguments: changed,
     )
     second = peri_scribe.external_sources.fetch_external_source(source, tmp_path)[0]
-    assert second != first
-    assert second.name == f"000001,lastEdit={SAMPLE_LAST_EDIT_TIMESTAMP}.gpkg"
+    assert second == first
+    stored = geopandas.read_file(second, layer="evacuations")
+    assert stored["OBJECTID"].tolist() == [99, 2]
     snapshot_names = {
-        path.name for path in (tmp_path / "sources" / "evacuations").rglob("*.gpkg")
+        path.name for path in (tmp_path / "sources").rglob("*.gpkg")
     }
-    assert snapshot_names == {
-        f"000000,lastEdit={SAMPLE_LAST_EDIT_TIMESTAMP}.gpkg",
-        f"000001,lastEdit={SAMPLE_LAST_EDIT_TIMESTAMP}.gpkg",
-    }
+    assert snapshot_names == {"evacuations.gpkg"}
 
 
-def testfetch_arcgis_source_writes_snapshot_when_latest_unreadable(
+def testfetch_arcgis_source_replaces_unreadable_current_version(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -622,28 +606,135 @@ def testfetch_arcgis_source_writes_snapshot_when_latest_unreadable(
     first = peri_scribe.external_sources.fetch_external_source(source, tmp_path)[0]
     first.write_bytes(b"not a geopackage")
     second = peri_scribe.external_sources.fetch_external_source(source, tmp_path)[0]
-    assert second != first
-    assert second.name == f"000001,lastEdit={SAMPLE_LAST_EDIT_TIMESTAMP}.gpkg"
+    assert second == first
+    stored = geopandas.read_file(second, layer="evacuations")
+    assert len(stored) == len(sample_arcgis_dataframe())
 
 
-def testfetch_arcgis_source_uses_current_time_when_timestamp_unobservable(
+def testfetch_arcgis_source_keeps_current_version_when_fetch_fails(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = peri_scribe.external_sources.EVACUATIONS_SOURCE
     install_arcgis_query_stubs(monkeypatch, sample_arcgis_dataframe())
+    first = peri_scribe.external_sources.fetch_external_source(source, tmp_path)[0]
+    assert first.name == "evacuations.gpkg"
+
+    def fail(_url: str, _gis: object) -> typing.Never:
+        message = "boom"
+        raise RuntimeError(message)
+
     monkeypatch.setattr(
-        peri_scribe.feed_types,
-        "observe_layer_last_edit_timestamp",
-        lambda _url, _name: None,
+        peri_scribe.external_sources.arcgis.features,
+        "FeatureLayer",
+        fail,
+    )
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        peri_scribe.external_sources.logger,
+        "warning",
+        lambda message, **_keywords: warnings.append(message),
+    )
+    second = peri_scribe.external_sources.fetch_external_source(source, tmp_path)
+    assert second == (first,)
+    assert any("keeping current data" in message for message in warnings)
+    stored = geopandas.read_file(first, layer="evacuations")
+    assert len(stored) == len(sample_arcgis_dataframe())
+
+
+def testfetch_arcgis_source_adopts_newest_legacy_snapshot(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = peri_scribe.external_sources.EVACUATIONS_SOURCE
+    directory = tmp_path / "sources" / "evacuations"
+    legacy_directory = directory / "000___"
+    legacy_directory.mkdir(parents=True)
+    for serial in (0, 1):
+        legacy_name = f"00000{serial},lastEdit={SAMPLE_LAST_EDIT_TIMESTAMP}.gpkg"
+        path = legacy_directory / legacy_name
+        peri_scribe.output.write_geopackage(
+            path,
+            [
+                peri_scribe.models.LayerData(
+                    name="evacuations",
+                    dataframe=sample_arcgis_dataframe(),
+                ),
+            ],
+        )
+    newest = sample_arcgis_dataframe()
+    newest.loc[0, "OBJECTID"] = 99
+    newest_path = (
+        legacy_directory / f"000002,lastEdit={SAMPLE_LAST_EDIT_TIMESTAMP}.gpkg"
+    )
+    peri_scribe.output.write_geopackage(
+        newest_path,
+        [
+            peri_scribe.models.LayerData(
+                name="evacuations",
+                dataframe=newest,
+            ),
+        ],
+    )
+
+    def fail(_url: str, _gis: object) -> typing.Never:
+        message = "boom"
+        raise RuntimeError(message)
+
+    monkeypatch.setattr(
+        peri_scribe.external_sources.arcgis.gis,
+        "GIS",
+        object,
     )
     monkeypatch.setattr(
-        peri_scribe.external_sources.time,
-        "time_ns",
-        lambda: 1_700_000_000_123_456_789,
+        peri_scribe.external_sources.arcgis.features,
+        "FeatureLayer",
+        fail,
     )
-    result = peri_scribe.external_sources.fetch_external_source(source, tmp_path)[0]
-    assert result.name == "000000,lastEdit=1700000000123.gpkg"
+    warnings: list[str] = []
+    monkeypatch.setattr(
+        peri_scribe.external_sources.logger,
+        "warning",
+        lambda message, **_keywords: warnings.append(message),
+    )
+    result = peri_scribe.external_sources.fetch_external_source(source, tmp_path)
+    output = tmp_path / "sources" / "evacuations.gpkg"
+    assert result == (output,)
+    assert any("keeping current data" in message for message in warnings)
+    assert geopandas.read_file(output, layer="evacuations")["OBJECTID"].tolist() == [
+        99,
+        2,
+    ]
+    assert not legacy_directory.exists()
+
+
+def testfetch_arcgis_source_removes_legacy_snapshots_when_current_exists(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = peri_scribe.external_sources.EVACUATIONS_SOURCE
+    install_arcgis_query_stubs(monkeypatch, sample_arcgis_dataframe())
+    first = peri_scribe.external_sources.fetch_external_source(source, tmp_path)[0]
+    assert first.name == "evacuations.gpkg"
+    legacy_directory = tmp_path / "sources" / "evacuations" / "000___"
+    legacy_directory.mkdir(parents=True)
+    legacy_path = (
+        legacy_directory / f"000000,lastEdit={SAMPLE_LAST_EDIT_TIMESTAMP}.gpkg"
+    )
+    peri_scribe.output.write_geopackage(
+        legacy_path,
+        [
+            peri_scribe.models.LayerData(
+                name="evacuations",
+                dataframe=sample_arcgis_dataframe(),
+            ),
+        ],
+    )
+    second = peri_scribe.external_sources.fetch_external_source(source, tmp_path)
+    assert second == (first,)
+    assert not legacy_directory.exists()
+    snapshots = list((tmp_path / "sources").rglob("*.gpkg"))
+    assert snapshots == [first]
 
 
 def test_stream_combined_source_requires_centroids_without_attributes(
@@ -841,8 +932,8 @@ def test_fetch_buildings_combines_state_centroids_into_single_geopackage(
         links["California"],
         links["Texas"],
     ]
-    directory = peri_scribe.external_sources.source_directory_path(tmp_path, source)
-    assert sorted(path.name for path in directory.iterdir()) == ["buildings.gpkg"]
+    sources = peri_scribe.snapshots.sources_directory_path(tmp_path)
+    assert sorted(path.name for path in sources.iterdir()) == ["buildings.gpkg"]
 
     converted = geopandas.read_file(output, layer="buildings")
     assert list(converted.columns) == ["geometry"]

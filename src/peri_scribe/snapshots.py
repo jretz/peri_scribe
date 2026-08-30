@@ -10,34 +10,12 @@ import peri_scribe.output
 
 
 SOURCES_DIRECTORY_NAME = "sources"
-SOURCES_COMPLETE_DIRECTORY_NAME = "sources-complete"
+VALIDATION_DIRECTORY_NAME = "validation"
 FIRE_INDEX_FILENAME = "fires.json"
 
-# The directory under ``sources`` that holds the computed administrative boundary
-# GeoPackage, which is not a fire-source snapshot.
-ADMINISTRATIVE_BOUNDARIES_DIRECTORY_NAME = "administrative_boundaries"
-
-# The directory under ``sources`` that holds each feed's maintained current-state
-# GeoPackage, which is a derived artifact rather than a fire-source snapshot.
-CURRENT_STATE_DIRECTORY_NAME = "current_state"
-
-# The directory under ``sources`` that holds the derived per-snapshot record caches,
-# which are derived artifacts rather than fire-source snapshots.
-RECORD_CACHE_DIRECTORY_NAME = "record_cache"
-
-# Directories under ``sources`` that hold auxiliary data rather than fire-source
-# snapshots. Fire-source reading skips these, so non-fire GeoPackages (the computed
-# California border, the maintained current-state files, the derived record caches,
-# and retrieved external datasets) are never mistaken for fire data.
-AUXILIARY_DIRECTORY_NAMES = frozenset(
-    {
-        ADMINISTRATIVE_BOUNDARIES_DIRECTORY_NAME,
-        CURRENT_STATE_DIRECTORY_NAME,
-        RECORD_CACHE_DIRECTORY_NAME,
-        "buildings",
-        "evacuations",
-    },
-)
+# The name of each feed's record-cache database, stored as a single file inside the
+# feed's snapshot directory.
+RECORD_CACHE_FILENAME = "record_cache.db"
 
 # The prefix that turns a source layer's ``editingInfo.lastEditDate`` value into the
 # timestamp stored in a snapshot filename.
@@ -163,10 +141,11 @@ def geo_package_files(directory: pathlib.Path) -> list[pathlib.Path]:
     """Return the fire-source GeoPackage files under *directory*, in sorted order.
 
     The directory tree is searched recursively, so snapshots stored under
-    ``sources/{feed}/{serial}.gpkg`` are all found. Auxiliary directories (the
-    administrative boundaries and retrieved external datasets) are skipped, since their
-    GeoPackages are not fire-source snapshots. Sorting makes the order deterministic:
-    feed directories by name, then snapshots by serial number.
+    ``sources/{feed}/{serial}.gpkg`` are all found. Files whose names do not encode a
+    snapshot serial number and last-edit timestamp (the retrieved external datasets, the
+    computed California border, and each feed's maintained current-state file) are not
+    fire-source snapshots and are skipped. Sorting makes the order deterministic: feed
+    directories by name, then snapshots by serial number.
 
     Args:
         directory: The directory tree to search.
@@ -185,11 +164,23 @@ def geo_package_files(directory: pathlib.Path) -> list[pathlib.Path]:
     except OSError as error:
         message = f"Failed to read {directory}: {error}"
         raise SystemExit(message) from error
-    return [
-        path
-        for path in paths
-        if path.relative_to(directory).parts[0] not in AUXILIARY_DIRECTORY_NAMES
-    ]
+    return [path for path in paths if _is_snapshot_filename(path.name)]
+
+
+def _is_snapshot_filename(filename: str) -> bool:
+    """Return whether *filename* encodes a snapshot serial and timestamp.
+
+    Args:
+        filename: The filename to inspect.
+
+    Returns:
+        True when the filename parses as a fire-source snapshot name.
+    """
+    try:
+        SourceFile.from_path(pathlib.Path(filename))
+    except ValueError:
+        return False
+    return True
 
 
 def snapshot_path_for_last_edit_timestamp(
@@ -212,66 +203,43 @@ def snapshot_path_for_last_edit_timestamp(
     return None
 
 
-def current_state_directory_path(
-    source_directory: pathlib.Path,
-) -> pathlib.Path:
-    """Return the directory holding maintained current-state files.
-
-    The directory sits beside the feeds' snapshot directories under ``sources``, so the
-    state files are never scanned as snapshots of any one feed.
-
-    Args:
-        source_directory: A feed's snapshot directory, under ``sources``.
-
-    Returns:
-        The current-state directory path.
-    """
-    return source_directory.parent / CURRENT_STATE_DIRECTORY_NAME
-
-
 def current_state_path(
     source_directory: pathlib.Path,
-    source_name: str,
     serial_number: int,
 ) -> pathlib.Path:
     """Return the path of the current-state file covering snapshot *serial_number*.
 
-    The filename encodes the feed name and the serial number of the newest snapshot the
-    state covers, so a state file's freshness can be checked without opening it.
+    The current-state file is a single file inside the feed's snapshot directory, named
+    for the serial number of the newest snapshot the state covers, so a state file's
+    freshness can be checked without opening it.
 
     Args:
         source_directory: The feed's snapshot directory.
-        source_name: The feed's name.
         serial_number: The serial number of the newest snapshot the state covers.
 
     Returns:
         The path of the state file.
     """
-    return current_state_directory_path(source_directory) / (
-        f"{source_name}-state-{serial_number}.gpkg"
-    )
+    return source_directory / f"state-{serial_number}.gpkg"
 
 
 def current_state_file_paths(
     source_directory: pathlib.Path,
-    source_name: str,
 ) -> list[tuple[int, pathlib.Path]]:
-    """Return *source_name*'s current-state files, sorted by covered serial number.
+    """Return the feed's current-state files, sorted by covered serial number.
 
     Args:
         source_directory: The feed's snapshot directory.
-        source_name: The feed's name.
 
     Returns:
         The (covered serial number, path) pairs in covered-serial order, or an empty
         list when the feed has no state files. Malformed filenames are ignored.
     """
-    directory = current_state_directory_path(source_directory)
-    if not directory.is_dir():
+    if not source_directory.is_dir():
         return []
-    prefix = f"{source_name}-state-"
+    prefix = "state-"
     state_files: list[tuple[int, pathlib.Path]] = []
-    for path in directory.glob(f"{prefix}*.gpkg"):
+    for path in source_directory.glob(f"{prefix}*.gpkg"):
         serial_text = path.stem[len(prefix) :]
         try:
             serial_number = int(serial_text)
@@ -287,8 +255,8 @@ def record_cache_database_path(
     """Return the record cache database path for *source_directory*'s feed.
 
     One SQLite database holds every snapshot's parsed records for a feed, so the cache
-    is a single file per feed, stored flat under the ``record_cache`` directory:
-    ``sources/record_cache/{feed}.db``.
+    is a single file stored inside the feed's snapshot directory:
+    ``sources/{feed}/record_cache.db``.
 
     Args:
         source_directory: The feed's snapshot directory, under ``sources``.
@@ -296,11 +264,7 @@ def record_cache_database_path(
     Returns:
         The path of the feed's record cache database.
     """
-    return (
-        source_directory.parent
-        / RECORD_CACHE_DIRECTORY_NAME
-        / f"{source_directory.name}.db"
-    )
+    return source_directory / RECORD_CACHE_FILENAME
 
 
 def source_directory_path(
@@ -415,39 +379,37 @@ def sources_directory_path(year_directory: pathlib.Path) -> pathlib.Path:
     return year_directory / SOURCES_DIRECTORY_NAME
 
 
-def sources_complete_directory_path(
+def validation_directory_path(
     year_directory: pathlib.Path,
 ) -> pathlib.Path:
-    """Return the sources-complete directory inside *year_directory*.
+    """Return the validation directory inside *year_directory*.
 
     The directory holds one full snapshot per source, fetched fresh for validation
     against the incremental snapshots in the sources directory.
 
     Args:
-        year_directory: The year directory that holds the ``sources-complete``
-            directory.
+        year_directory: The year directory that holds the ``validation`` directory.
 
     Returns:
-        The path to the year's sources-complete directory.
+        The path to the year's validation directory.
     """
-    return year_directory / SOURCES_COMPLETE_DIRECTORY_NAME
+    return year_directory / VALIDATION_DIRECTORY_NAME
 
 
-def sources_complete_geopackage_path(
+def validation_geopackage_path(
     year_directory: pathlib.Path,
     source_name: str,
 ) -> pathlib.Path:
     """Return the path where *source_name*'s complete snapshot is stored.
 
     Args:
-        year_directory: The year directory that holds the ``sources-complete``
-            directory.
+        year_directory: The year directory that holds the ``validation`` directory.
         source_name: The name of the source the snapshot came from.
 
     Returns:
         The path to the source's complete GeoPackage file.
     """
-    return sources_complete_directory_path(year_directory) / f"{source_name}.gpkg"
+    return validation_directory_path(year_directory) / f"{source_name}.gpkg"
 
 
 def fire_index_path(year_directory: pathlib.Path) -> pathlib.Path:

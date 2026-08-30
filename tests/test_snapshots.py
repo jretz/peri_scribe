@@ -153,9 +153,9 @@ def test_geo_package_files_returns_nested_files_in_sorted_order(
     alpha = directory / "sources" / "Alpha_0"
     beta = directory / "sources" / "Beta_0"
     files = [
-        beta / "000000,lastEdit=c.gpkg",
-        alpha / "000002,lastEdit=b.gpkg",
-        alpha / "000001,lastEdit=a.gpkg",
+        beta / "000000,lastEdit=3.gpkg",
+        alpha / "000002,lastEdit=2.gpkg",
+        alpha / "000001,lastEdit=1.gpkg",
     ]
     monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: True)
     monkeypatch.setattr(
@@ -164,9 +164,9 @@ def test_geo_package_files_returns_nested_files_in_sorted_order(
         lambda _self, _pattern: iter(files),
     )
     assert peri_scribe.snapshots.geo_package_files(directory) == [
-        alpha / "000001,lastEdit=a.gpkg",
-        alpha / "000002,lastEdit=b.gpkg",
-        beta / "000000,lastEdit=c.gpkg",
+        alpha / "000001,lastEdit=1.gpkg",
+        alpha / "000002,lastEdit=2.gpkg",
+        beta / "000000,lastEdit=3.gpkg",
     ]
 
 
@@ -177,16 +177,17 @@ def test_geo_package_files_returns_empty_list_without_directory(
     assert peri_scribe.snapshots.geo_package_files(pathlib.Path("/missing")) == []
 
 
-def test_geo_package_files_skips_auxiliary_directories(
+def test_geo_package_files_skips_non_snapshot_files(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     directory = pathlib.Path("/data/sources")
-    keep = directory / "Feed_0" / "000000,lastEdit=a.gpkg"
-    boundary = directory / "administrative_boundaries" / "CA_border.gpkg"
-    evacuations = directory / "evacuations" / "evacuations.gpkg"
+    keep = directory / "Feed_0" / "000000,lastEdit=1.gpkg"
+    boundary = directory / "CA_border.gpkg"
+    evacuations = directory / "evacuations.gpkg"
+    state = directory / "Feed_0" / "state-0.gpkg"
     stub_directory(
         monkeypatch,
-        [keep, boundary, evacuations],
+        [keep, boundary, evacuations, state],
     )
     assert peri_scribe.snapshots.geo_package_files(directory) == [keep]
 
@@ -283,18 +284,18 @@ def test_sources_directory_path_places_sources_under_year() -> None:
     ) == pathlib.Path("/data/2026/sources")
 
 
-def test_sources_complete_directory_path_places_complete_under_year() -> None:
-    assert peri_scribe.snapshots.sources_complete_directory_path(
+def test_validation_directory_path_places_validation_under_year() -> None:
+    assert peri_scribe.snapshots.validation_directory_path(
         pathlib.Path("/data/2026"),
-    ) == pathlib.Path("/data/2026/sources-complete")
+    ) == pathlib.Path("/data/2026/validation")
 
 
-def test_sources_complete_geopackage_path_places_file_in_complete_directory() -> None:
-    assert peri_scribe.snapshots.sources_complete_geopackage_path(
+def test_validation_geopackage_path_places_file_in_validation_directory() -> None:
+    assert peri_scribe.snapshots.validation_geopackage_path(
         pathlib.Path("/data/2026"),
         "CA_Perimeters_NIFC_FIRIS_public_view_0",
     ) == pathlib.Path(
-        "/data/2026/sources-complete/CA_Perimeters_NIFC_FIRIS_public_view_0.gpkg",
+        "/data/2026/validation/CA_Perimeters_NIFC_FIRIS_public_view_0.gpkg",
     )
 
 
@@ -323,5 +324,5 @@ def test_fire_index_path_places_index_in_sources_directory() -> None:
 def test_record_cache_database_path_is_one_file_per_feed() -> None:
     source_directory = pathlib.Path("/base/data/2026/sources/Fires_One_0")
     assert peri_scribe.snapshots.record_cache_database_path(source_directory) == (
-        pathlib.Path("/base/data/2026/sources/record_cache/Fires_One_0.db")
+        pathlib.Path("/base/data/2026/sources/Fires_One_0/record_cache.db")
     )

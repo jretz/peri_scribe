@@ -583,7 +583,6 @@ def test_fetch_writes_current_state_file(
             2026,
             SAMPLE_FEED_NAME,
         ),
-        SAMPLE_FEED_NAME,
         0,
     )
     assert geo_package_store.has(state_path)

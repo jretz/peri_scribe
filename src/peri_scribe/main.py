@@ -155,8 +155,8 @@ def index_fire_sources(year_directory: pathlib.Path | None = None) -> None:
 @cli.command(
     help=(
         "Ensure the California administrative boundary is available.\n\n"
-        "Writes or reuses the boundary GeoPackage under "
-        "YEAR_DIRECTORY/sources/administrative_boundaries. "
+        "Writes or reuses the boundary GeoPackage at "
+        "YEAR_DIRECTORY/sources/CA_border_with_AZ_NV_and_OR.gpkg. "
         f"{year_directory_default_help()}"
     ),
 )
@@ -203,7 +203,7 @@ def fetch_external_source(
         "repository page, downloads every US state's building-footprint archive, "
         "converts each footprint to its centroid point, and combines all of the "
         "points into a single GeoPackage at "
-        "YEAR_DIRECTORY/sources/buildings/buildings.gpkg. An existing combined "
+        "YEAR_DIRECTORY/sources/buildings.gpkg. An existing combined "
         "GeoPackage is left in place, and then neither the repository page nor any "
         "archive is downloaded. "
         f"{year_directory_default_help()}"
@@ -229,9 +229,10 @@ def fetch_buildings(year_directory: pathlib.Path | None = None) -> None:
 @cli.command(
     help=(
         "Fetch California evacuation zones into YEAR_DIRECTORY.\n\n"
-        "Queries the Cal OES evacuation aggregation layer and stores a snapshot "
-        "under YEAR_DIRECTORY/sources/evacuations whenever the layer's data "
-        "changes, keeping the season's history. "
+        "Queries the Cal OES evacuation aggregation layer and keeps the latest "
+        "version at YEAR_DIRECTORY/sources/evacuations.gpkg, "
+        "replacing it whenever the layer's data changes. A fetch that fails "
+        "logs a warning and keeps the stored version. "
         f"{year_directory_default_help()}"
     ),
 )
@@ -387,10 +388,10 @@ def full_pipeline(
     help=(
         "Validate that YEAR_DIRECTORY/sources covers a complete snapshot of every "
         "feed.\n\n"
-        "Fetches every feed in full into YEAR_DIRECTORY/sources-complete, then runs "
+        "Fetches every feed in full into YEAR_DIRECTORY/validation, then runs "
         "the incremental fetch so the stored sources reflect the same state, and "
         "compares the two. Problems are logged in a summary and the command still "
-        "exits successfully, leaving sources-complete in place for inspection; when "
+        "exits successfully, leaving validation in place for inspection; when "
         "no problems are found the directory is removed. "
         f"{year_directory_default_help()}"
     ),
@@ -412,7 +413,7 @@ def validate_sources(year_directory: pathlib.Path | None = None) -> None:
         year_directory,
     )
     year = peri_scribe.snapshots.year_for_year_directory(year_directory)
-    complete_directory = peri_scribe.snapshots.sources_complete_directory_path(
+    complete_directory = peri_scribe.snapshots.validation_directory_path(
         year_directory,
     )
     peri_scribe.output.remove_directory_tree(complete_directory)

@@ -123,7 +123,7 @@ def test_remove_directory_tree_removes_existing_directory(
     removed: list[pathlib.Path] = []
     monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: True)
     monkeypatch.setattr(shutil, "rmtree", removed.append)
-    path = pathlib.Path("/data/2026/sources-complete")
+    path = pathlib.Path("/data/2026/validation")
     peri_scribe.output.remove_directory_tree(path)
     assert removed == [path]
 
@@ -134,7 +134,7 @@ def test_remove_directory_tree_leaves_missing_path_alone(
     removed: list[pathlib.Path] = []
     monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: False)
     monkeypatch.setattr(shutil, "rmtree", removed.append)
-    path = pathlib.Path("/data/2026/sources-complete")
+    path = pathlib.Path("/data/2026/validation")
     peri_scribe.output.remove_directory_tree(path)
     assert removed == []
 

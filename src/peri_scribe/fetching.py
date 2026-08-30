@@ -380,12 +380,12 @@ def fetch_all_feeds_complete(
     *,
     year: int | None = None,
 ) -> tuple[pathlib.Path, ...]:
-    """Fetch every configured feed in full into the sources-complete directory.
+    """Fetch every configured feed in full into the validation directory.
 
     Every feed is fetched in full, regardless of what snapshots already exist, and
-    written to its own GeoPackage under ``sources-complete``. A feed that fails does
-    not stop the other feeds from being fetched, and all of the failures are reported
-    together after the remaining feeds have been attempted.
+    written to its own GeoPackage under ``validation``. A feed that fails does not stop
+    the other feeds from being fetched, and all of the failures are reported together
+    after the remaining feeds have been attempted.
 
     Args:
         base_dir: Directory under which the ``data`` directory tree is created.
@@ -415,7 +415,7 @@ def fetch_all_feeds_complete(
                 feed,
                 gis,
                 [],
-                peri_scribe.snapshots.sources_complete_directory_path(
+                peri_scribe.snapshots.validation_directory_path(
                     year_directory,
                 ),
             )
@@ -425,7 +425,7 @@ def fetch_all_feeds_complete(
         if geodataframe is None:
             errors.append(f"Failed to fetch {feed.name}: fetch produced no data")
             continue
-        output_path = peri_scribe.snapshots.sources_complete_geopackage_path(
+        output_path = peri_scribe.snapshots.validation_geopackage_path(
             year_directory,
             feed.name,
         )

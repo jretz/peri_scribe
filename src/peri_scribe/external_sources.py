@@ -1,17 +1,19 @@
 """Retrieving external (non-fire) datasets into a year's sources directory.
 
 The fire feeds describe the fires themselves; the datasets here describe what those
-fires threaten or what the conditions are around them. Each dataset is retrieved into
-its own directory under ``data/{year}/sources/{name}/``, the same tree that holds the
-fire-feed snapshots, so everything a report needs is in one place. The datasets cover
-the whole United States, not just California.
+fires threaten or what the conditions are around them. A source that produces a single
+GeoPackage stores it directly under ``data/{year}/sources/``, named for the source; a
+per-state source stores one GeoPackage per state under its own directory. Either way the
+datasets sit in the same tree as the fire-feed snapshots, so everything a report needs
+is in one place. The datasets cover the whole United States, not just California.
 
 Two retrieval kinds are supported:
 
 - ``arcgis``: an ArcGIS FeatureServer layer is queried and stored as a GeoPackage
-  snapshot. The layers are live (the evacuation zones refresh every few minutes), so
-  each fetch stores a new serial-numbered snapshot when the layer's features changed,
-  keeping the season's history for later per-fire analysis.
+  holding the layer's latest version. The layers are live (the evacuation zones refresh
+  every few minutes), so each fetch replaces the stored GeoPackage when the layer's
+  features changed; only the latest version is kept. A fetch that cannot reach the layer
+  logs a warning and keeps the stored version so the rest of the pipeline can proceed.
 - ``download``: a file (typically a zip archive) is downloaded, extracted, and converted
   to a GeoPackage holding the same data. These datasets are static, so a source whose
   GeoPackage already exists is left alone.
@@ -30,20 +32,21 @@ The building footprints' per-state archive links are not constructed from a URL 
 they are read from the "Download links" table on the dataset's repository page whenever
 the archives are downloaded, so a change in the link scheme is picked up automatically.
 
-The fire-source reader skips these directories, so their GeoPackages are never mistaken
+The fire-source reader skips these files, so their GeoPackages are never mistaken
 for fire snapshots.
 """
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import datetime
 import enum
 import hashlib
 import math
 import pathlib
+import shutil
 import tempfile
-import time
 import typing
 import urllib.parse
 import zipfile
@@ -63,7 +66,6 @@ import us
 
 import peri_scribe.centroid_streaming
 import peri_scribe.exceptions
-import peri_scribe.feed_types
 import peri_scribe.geo_data
 import peri_scribe.geo_package
 import peri_scribe.models
@@ -226,12 +228,12 @@ def output_path(
     *,
     state: str | None = None,
 ) -> pathlib.Path:
-    """Return the path where a downloaded *source*'s GeoPackage is stored.
+    """Return the path where *source*'s GeoPackage is stored.
 
-    A live ArcGIS source stores serial-numbered snapshots instead, so its output path is
-    chosen per fetch and this function is only meaningful for a download source. A
-    per-state source stores one GeoPackage per state; a combined source stores a single
-    GeoPackage named for the source.
+    A source that produces a single file stores it directly under the sources directory,
+    named for the source (or, for a live ArcGIS source, at that same fixed path holding
+    its latest version). A per-state download source produces one GeoPackage per state,
+    so its files stay under the source's own directory.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
@@ -242,19 +244,17 @@ def output_path(
         The path to the source's GeoPackage.
 
     Raises:
-        ValueError: If *source* is a live ArcGIS source, or a combined source and
-            *state* is given.
+        ValueError: If *source* is a combined source and *state* is given.
     """
-    if source.kind is ExternalSourceKind.ARCGIS:
-        message = f"Live source {source.name} stores snapshots, not a single file"
-        raise ValueError(message)
     if source.combine and state is not None:
         message = f"Source {source.name} combines its states into one GeoPackage"
         raise ValueError(message)
-    directory = source_directory_path(year_directory, source)
     if state is not None:
-        return directory / f"{state}.gpkg"
-    return directory / f"{source.name}.gpkg"
+        return source_directory_path(year_directory, source) / f"{state}.gpkg"
+    return (
+        peri_scribe.snapshots.sources_directory_path(year_directory)
+        / f"{source.name}.gpkg"
+    )
 
 
 def fetch_external_source(
@@ -263,10 +263,12 @@ def fetch_external_source(
 ) -> tuple[pathlib.Path, ...]:
     """Retrieve *source* into *year_directory*'s sources directory.
 
-    A live ArcGIS source is queried and stored as a serial-numbered snapshot, writing
-    nothing when its features are unchanged since the latest snapshot. A download
-    source's archive is downloaded, extracted, and converted to a GeoPackage, with the
-    per-state results combined into one file when the source combines them.
+    A live ArcGIS source is queried and stored as a single GeoPackage holding the
+    layer's latest version, writing nothing when its features are unchanged since the
+    stored version; a fetch that cannot retrieve the layer logs a warning and keeps the
+    stored version so the caller can proceed. A download source's archive is downloaded,
+    extracted, and converted to a GeoPackage, with the per-state results combined into
+    one file when the source combines them.
 
     Args:
         source: The external source to retrieve.
@@ -290,61 +292,110 @@ def fetch_arcgis_source(
     source: ExternalSource,
     year_directory: pathlib.Path,
 ) -> pathlib.Path:
-    """Query a live ArcGIS layer and store a snapshot when its data changed.
+    """Query a live ArcGIS layer and keep its latest version.
 
-    The layer is queried in full. When the features are identical to the latest stored
-    snapshot, nothing is written and that snapshot's path is returned. Otherwise a new
-    snapshot is written, numbered one past the largest stored serial number and named
-    for the layer's observed last-edit timestamp (the current time when the timestamp
-    cannot be observed), so each fetch keeps the season's history of the layer's state.
+    The layer is queried in full. When the stored GeoPackage already holds the same
+    features, nothing is written and its path is returned. Otherwise the stored
+    GeoPackage is replaced with the freshly fetched version, so only the latest version
+    of the layer is kept. Serial-numbered snapshots left by older runs are removed; when
+    no current version is stored, the newest of those snapshots is adopted as the
+    current version first, so no data is lost in the transition. When the layer cannot
+    be retrieved and a current version is stored, a warning is logged and the stored
+    version is kept so that the caller can proceed; when no version is stored at all,
+    the failure is raised.
 
     Args:
         source: The ArcGIS-backed external source.
         year_directory: The year directory that holds the ``sources`` directory.
 
     Returns:
-        The path of the stored snapshot.
+        The path of the stored GeoPackage.
+
+    Raises:
+        ExternalDataError: If the layer cannot be retrieved and no current version
+            is stored.
     """
     directory = source_directory_path(year_directory, source)
-    existing = peri_scribe.snapshots.existing_source_files(directory)
-    geodataframe = query_arcgis_source(source)
     layer_name = source.layer_name or source.name
-    if existing:
-        latest_path = directory / existing[-1].relative_path
-        if snapshot_matches(geodataframe, latest_path, layer_name):
-            logger.debug(
-                "External source unchanged",
+    output = output_path(year_directory, source)
+    adopt_or_remove_legacy_snapshots(directory, output)
+    try:
+        geodataframe = query_arcgis_source(source)
+    except peri_scribe.exceptions.ExternalDataError as error:
+        if output.is_file():
+            logger.warning(
+                "Failed to fetch external source; keeping current data",
                 source=source.name,
-                path=latest_path,
+                error=str(error),
             )
-            return latest_path
-    timestamp = snapshot_timestamp(source)
-    source_file = peri_scribe.snapshots.SourceFile(
-        serial_number=peri_scribe.snapshots.next_serial_number(
-            existing,
-            timestamp,
-            reuse_same_timestamp=False,
-        ),
-        last_edit_timestamp=timestamp,
-    )
-    path = directory / source_file.relative_path
-    path.parent.mkdir(parents=True, exist_ok=True)
-    peri_scribe.output.write_geopackage(
-        path,
-        [
-            peri_scribe.models.LayerData(
-                name=layer_name,
-                dataframe=geodataframe,
-            ),
-        ],
-    )
+            return output
+        raise
+    if output.is_file() and snapshot_matches(geodataframe, output, layer_name):
+        logger.debug(
+            "External source unchanged",
+            source=source.name,
+            path=output,
+        )
+        return output
+    temporary = output.with_name(f"{output.stem}.tmp.gpkg")
+    output.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        peri_scribe.output.write_geopackage(
+            temporary,
+            [
+                peri_scribe.models.LayerData(
+                    name=layer_name,
+                    dataframe=geodataframe,
+                ),
+            ],
+        )
+        temporary.replace(output)
+    finally:
+        temporary.unlink(missing_ok=True)
     logger.debug(
         "Fetched external source",
         source=source.name,
-        path=path,
+        path=output,
         features=len(geodataframe),
     )
-    return path
+    return output
+
+
+def adopt_or_remove_legacy_snapshots(
+    directory: pathlib.Path,
+    output: pathlib.Path,
+) -> None:
+    """Adopt the newest legacy snapshot as *output*, then remove legacy snapshots.
+
+    Older runs stored serial-numbered snapshots under a bucket directory
+    (``sources/{name}/000___/000000,lastEdit=...gpkg``); only the latest version is kept
+    now. When *output* is missing, the newest legacy snapshot is copied to it, so the
+    latest data survives the transition. The legacy snapshot files and their bucket
+    directories are then removed, so a source directory left by an older run is cleaned
+    up by the next fetch.
+
+    Args:
+        directory: The source's directory.
+        output: The current version's GeoPackage path.
+    """
+    legacy = peri_scribe.snapshots.existing_source_files(directory)
+    if not legacy:
+        return
+    legacy_paths = [directory / source_file.relative_path for source_file in legacy]
+    if not output.is_file():
+        output.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(legacy_paths[-1], output)
+        logger.debug(
+            "Adopted newest legacy snapshot as current version",
+            source=directory.name,
+            path=output,
+        )
+    for path in legacy_paths:
+        with contextlib.suppress(FileNotFoundError):
+            path.unlink()
+    for parent in {path.parent for path in legacy_paths}:
+        with contextlib.suppress(OSError):
+            parent.rmdir()
 
 
 def query_arcgis_source(source: ExternalSource) -> geopandas.GeoDataFrame:
@@ -386,27 +437,6 @@ def query_arcgis_source(source: ExternalSource) -> geopandas.GeoDataFrame:
         geometries,
         peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
     )
-
-
-def snapshot_timestamp(source: ExternalSource) -> int:
-    """Return the last-edit timestamp naming *source*'s next snapshot.
-
-    The layer's ``editingInfo.lastEditDate`` value is used when it can be observed; the
-    current time is used otherwise, so a snapshot can always be named.
-
-    Args:
-        source: The ArcGIS-backed external source.
-
-    Returns:
-        The timestamp in epoch milliseconds.
-    """
-    observed = peri_scribe.feed_types.observe_layer_last_edit_timestamp(
-        source.url,
-        source.name,
-    )
-    if observed is not None:
-        return observed
-    return time.time_ns() // 1_000_000
 
 
 def snapshot_matches(
@@ -560,11 +590,11 @@ def download_source(
         The paths of the written GeoPackages.
     """
     directory = source_directory_path(year_directory, source)
-    directory.mkdir(parents=True, exist_ok=True)
     if source.combine:
         if source.stream:
             return (stream_combined_source(source, year_directory),)
-        return (combine_downloaded_source(source, directory, year_directory),)
+        return (combine_downloaded_source(source, year_directory),)
+    directory.mkdir(parents=True, exist_ok=True)
     paths: list[pathlib.Path] = []
     for state in source.states or (None,):
         output = output_path(year_directory, source, state=state)
@@ -621,6 +651,7 @@ def stream_combined_source(
             "with no attributes"
         )
         raise ValueError(message)
+    output.parent.mkdir(parents=True, exist_ok=True)
     state_urls = source.state_urls() if source.state_urls is not None else None
     layer_name = source.layer_name or source.name
     feature_count = 0
@@ -688,7 +719,6 @@ def stream_download_and_convert(
 
 def combine_downloaded_source(
     source: ExternalSource,
-    directory: pathlib.Path,
     year_directory: pathlib.Path,
 ) -> pathlib.Path:
     """Download every state of *source* and combine them into one GeoPackage.
@@ -696,14 +726,12 @@ def combine_downloaded_source(
     Each state's archive is downloaded and converted inside a temporary directory, and
     the converted per-state GeoPackages are concatenated into the source's single
     GeoPackage. The temporary directory holds only intermediate files and is removed
-    when the conversion finishes, so the source directory ends up holding just the
-    combined GeoPackage. When the combined GeoPackage already exists, the download is
-    skipped entirely, since the archives are large and rarely change, and the page of
-    per-state links is not read.
+    when the conversion finishes. When the combined GeoPackage already exists, the
+    download is skipped entirely, since the archives are large and rarely change, and
+    the page of per-state links is not read.
 
     Args:
         source: The combined download-backed external source.
-        directory: The directory that holds the source's data.
         year_directory: The year directory that holds the ``sources`` directory.
 
     Returns:
@@ -721,7 +749,8 @@ def combine_downloaded_source(
     layer_name = source.layer_name or source.name
     wrote_any = False
     feature_count = 0
-    with tempfile.TemporaryDirectory(dir=directory) as temporary_directory:
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=output.parent) as temporary_directory:
         temporary_path = pathlib.Path(temporary_directory)
         for state in source.states:
             state_output = temporary_path / f"{state}.gpkg"

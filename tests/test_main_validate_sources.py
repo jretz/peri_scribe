@@ -34,7 +34,7 @@ def test_validate_sources_removes_complete_directory_when_clean(
     result = runner.invoke(peri_scribe.main.cli, ["validate-sources"])
     assert result.exit_code == 0
     year_directory = BASE_DIRECTORY / "data" / "2026"
-    complete_directory = peri_scribe.snapshots.sources_complete_directory_path(
+    complete_directory = peri_scribe.snapshots.validation_directory_path(
         year_directory,
     )
     assert stubs.fetch_complete_calls == [(BASE_DIRECTORY, 2026)]
@@ -62,7 +62,7 @@ def test_validate_sources_logs_summary_and_keeps_directory_with_problems(
         result = runner.invoke(peri_scribe.main.cli, ["validate-sources"])
     assert result.exit_code == 0
     year_directory = BASE_DIRECTORY / "data" / "2026"
-    complete_directory = peri_scribe.snapshots.sources_complete_directory_path(
+    complete_directory = peri_scribe.snapshots.validation_directory_path(
         year_directory,
     )
     assert stubs.removal_calls == [complete_directory]
@@ -104,7 +104,7 @@ def test_validate_sources_stops_when_complete_fetch_fails(
     assert result.exit_code == 1
     assert "boom" in result.output
     year_directory = BASE_DIRECTORY / "data" / "2026"
-    complete_directory = peri_scribe.snapshots.sources_complete_directory_path(
+    complete_directory = peri_scribe.snapshots.validation_directory_path(
         year_directory,
     )
     assert stubs.fetch_incremental_calls == []
@@ -133,7 +133,7 @@ def test_validate_sources_stops_when_incremental_fetch_fails(
     assert result.exit_code == 1
     assert "boom" in result.output
     year_directory = BASE_DIRECTORY / "data" / "2026"
-    complete_directory = peri_scribe.snapshots.sources_complete_directory_path(
+    complete_directory = peri_scribe.snapshots.validation_directory_path(
         year_directory,
     )
     assert stubs.fetch_complete_calls == [(BASE_DIRECTORY, 2026)]

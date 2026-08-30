@@ -41,7 +41,6 @@ import peri_scribe.fire_history
 import peri_scribe.geo_package
 import peri_scribe.models
 import peri_scribe.output
-import peri_scribe.snapshots
 
 
 SCORE_OUTPUT_FILENAME = "fire_scores.json"
@@ -933,21 +932,6 @@ def read_layer_if_present(
     return peri_scribe.geo_package.read_layer(path, layer_name)
 
 
-def latest_snapshot_path(directory: pathlib.Path) -> pathlib.Path | None:
-    """Return the path of the newest snapshot in *directory*, or None.
-
-    Args:
-        directory: A source directory holding serial-numbered snapshots.
-
-    Returns:
-        The newest snapshot's path, or None when the directory holds none.
-    """
-    source_files = peri_scribe.snapshots.existing_source_files(directory)
-    if not source_files:
-        return None
-    return directory / source_files[-1].relative_path
-
-
 def download_source_layer(
     year_directory: pathlib.Path,
     source: peri_scribe.external_sources.ExternalSource,
@@ -974,24 +958,23 @@ def latest_snapshot_layer(
     year_directory: pathlib.Path,
     source: peri_scribe.external_sources.ExternalSource,
 ) -> tuple[pathlib.Path, str] | None:
-    """Return the path and layer name of a live source's newest snapshot, or None.
+    """Return the path and layer name of a live source's GeoPackage, or None.
+
+    A live source keeps only its latest version, stored as a single GeoPackage named for
+    the source, so the layer is read from that fixed path when it exists.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
         source: The live external source.
 
     Returns:
-        The newest snapshot's path and layer name, or None when the source has no
-        layer or no snapshot.
+        The source's GeoPackage path and layer name, or None when the source has no
+        layer or no GeoPackage.
     """
     if source.layer_name is None:
         return None
-    directory = peri_scribe.external_sources.source_directory_path(
-        year_directory,
-        source,
-    )
-    path = latest_snapshot_path(directory)
-    if path is None:
+    path = peri_scribe.external_sources.output_path(year_directory, source)
+    if not path.is_file():
         return None
     return path, source.layer_name
 
@@ -1000,14 +983,14 @@ def read_latest_snapshot(
     year_directory: pathlib.Path,
     source: peri_scribe.external_sources.ExternalSource,
 ) -> geopandas.GeoDataFrame:
-    """Read the newest snapshot of a live external source.
+    """Read the latest version of a live external source.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
         source: The live external source.
 
     Returns:
-        The newest snapshot's features, or an empty GeoDataFrame when there are none.
+        The source's latest features, or an empty GeoDataFrame when there are none.
     """
     layer = latest_snapshot_layer(year_directory, source)
     if layer is None:

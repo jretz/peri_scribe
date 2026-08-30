@@ -621,9 +621,8 @@ def snapshot_source_directory(
 ) -> pathlib.Path:
     """Return an isolated feed snapshot directory under *tmp_path*.
 
-    The state directory is derived from the snapshot directory's parent, so the
-    snapshot directory sits one level under *tmp_path* to keep each test's state
-    files inside its own *tmp_path*.
+    The snapshot directory sits one level under *tmp_path*, so each test's
+    snapshots, current-state files, and record cache stay inside its own *tmp_path*.
 
     Args:
         tmp_path: The pytest-provided per-test directory.
@@ -694,7 +693,7 @@ def test_read_current_features_rebuilds_when_state_is_stale(
     write_snapshot(directory, feed, 0, [(1, "a", (0.0, 0.0))])
     write_snapshot(directory, feed, 1, [(2, "b", (1.0, 1.0))])
     # A state file covering only the first snapshot, with stale content.
-    state_path = peri_scribe.snapshots.current_state_path(directory, feed.name, 0)
+    state_path = peri_scribe.snapshots.current_state_path(directory, 0)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     peri_scribe.output.write_geopackage(
         state_path,
@@ -721,7 +720,7 @@ def test_read_current_features_falls_back_when_state_unreadable(
         0,
         [(1, "a", (0.0, 0.0)), (2, "b", (1.0, 1.0))],
     )
-    state_path = peri_scribe.snapshots.current_state_path(directory, feed.name, 0)
+    state_path = peri_scribe.snapshots.current_state_path(directory, 0)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_bytes(b"not a geopackage")
     existing = peri_scribe.changes.read_current_features(directory, feed)
@@ -751,10 +750,7 @@ def test_write_current_state_merges_and_removes_older_state_files(
         feed,
         change_dataframe([(3, "C", (2.0, 2.0))]),
     )
-    state_files = peri_scribe.snapshots.current_state_file_paths(
-        directory,
-        feed.name,
-    )
+    state_files = peri_scribe.snapshots.current_state_file_paths(directory)
     assert [serial for serial, _path in state_files] == [1]
     existing = peri_scribe.changes.read_current_features(directory, feed)
     assert existing is not None
@@ -798,10 +794,7 @@ def test_write_current_state_skips_without_snapshots(
         change_dataframe([(1, "a", (0.0, 0.0))]),
     )
     assert (
-        peri_scribe.snapshots.current_state_file_paths(
-            directory,
-            feed.name,
-        )
+        peri_scribe.snapshots.current_state_file_paths(directory)
         == []
     )
 
@@ -839,10 +832,7 @@ def test_write_current_state_skips_without_object_id_column(
     )
     peri_scribe.changes.write_current_state(directory, feed, frame)
     assert (
-        peri_scribe.snapshots.current_state_file_paths(
-            directory,
-            feed.name,
-        )
+        peri_scribe.snapshots.current_state_file_paths(directory)
         == []
     )
 
@@ -858,7 +848,7 @@ def test_write_current_state_rebuilds_from_snapshots_when_state_unreadable(
         0,
         [(1, "a", (0.0, 0.0)), (2, "b", (1.0, 1.0))],
     )
-    state_path = peri_scribe.snapshots.current_state_path(directory, feed.name, 0)
+    state_path = peri_scribe.snapshots.current_state_path(directory, 0)
     state_path.parent.mkdir(parents=True, exist_ok=True)
     state_path.write_bytes(b"not a geopackage")
     peri_scribe.changes.write_current_state(
@@ -879,8 +869,8 @@ def test_write_current_state_ignores_missing_old_state_file(
     directory = snapshot_source_directory(tmp_path)
     write_snapshot(directory, feed, 0, [(1, "a", (0.0, 0.0))])
     write_snapshot(directory, feed, 1, [(2, "b", (1.0, 1.0))])
-    stale_path = peri_scribe.snapshots.current_state_path(directory, feed.name, 0)
-    current_path = peri_scribe.snapshots.current_state_path(directory, feed.name, 1)
+    stale_path = peri_scribe.snapshots.current_state_path(directory, 0)
+    current_path = peri_scribe.snapshots.current_state_path(directory, 1)
     stale_path.parent.mkdir(parents=True, exist_ok=True)
     for path in (stale_path, current_path):
         peri_scribe.output.write_geopackage(
@@ -908,24 +898,16 @@ def test_write_current_state_ignores_missing_old_state_file(
         feed,
         change_dataframe([(2, "B", (1.0, 1.0))]),
     )
-    state_files = peri_scribe.snapshots.current_state_file_paths(
-        directory,
-        feed.name,
-    )
+    state_files = peri_scribe.snapshots.current_state_file_paths(directory)
     assert [serial for serial, _path in state_files] == [1]
 
 
 def test_current_state_file_paths_ignores_malformed_filenames(
     tmp_path: pathlib.Path,
 ) -> None:
-    feed = change_feed()
     directory = snapshot_source_directory(tmp_path)
-    state_directory = peri_scribe.snapshots.current_state_directory_path(directory)
-    state_directory.mkdir(parents=True)
-    (state_directory / f"{feed.name}-state-junk.gpkg").write_bytes(b"")
-    (state_directory / f"{feed.name}-state-2.gpkg").write_bytes(b"")
-    state_files = peri_scribe.snapshots.current_state_file_paths(
-        directory,
-        feed.name,
-    )
+    directory.mkdir(parents=True)
+    (directory / "state-junk.gpkg").write_bytes(b"")
+    (directory / "state-2.gpkg").write_bytes(b"")
+    state_files = peri_scribe.snapshots.current_state_file_paths(directory)
     assert [serial for serial, _path in state_files] == [2]

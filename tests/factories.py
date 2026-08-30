@@ -411,14 +411,22 @@ class GeoPackageStore:
     ) -> list[peri_scribe.snapshots.SourceFile]:
         """Return the source files stored under *directory*, in serial order.
 
+        Files that do not encode a snapshot serial number and timestamp (the
+        current-state files) are skipped, mirroring ``existing_source_files``.
+
         Returns:
             The stored source files, sorted by serial number.
         """
-        source_files = [
-            peri_scribe.snapshots.SourceFile.from_path(path)
-            for path, _layer_name in self.layers
-            if path.suffix == ".gpkg" and path.is_relative_to(directory)
-        ]
+        source_files: list[peri_scribe.snapshots.SourceFile] = []
+        for path, _layer_name in self.layers:
+            if path.suffix != ".gpkg" or not path.is_relative_to(directory):
+                continue
+            try:
+                source_files.append(
+                    peri_scribe.snapshots.SourceFile.from_path(path),
+                )
+            except ValueError:
+                continue
         return sorted(source_files, key=lambda source_file: source_file.serial_number)
 
     def read_layer(

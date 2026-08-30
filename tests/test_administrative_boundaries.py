@@ -194,12 +194,7 @@ def test_output_geopackage_path() -> None:
     path = peri_scribe.administrative_boundaries.output_geopackage_path(
         BASE_DIRECTORY,
     )
-    assert path == (
-        BASE_DIRECTORY
-        / "sources"
-        / "administrative_boundaries"
-        / "CA_border_with_AZ_NV_and_OR.gpkg"
-    )
+    assert path == BASE_DIRECTORY / "sources" / "CA_border_with_AZ_NV_and_OR.gpkg"
 
 
 def test_line_parts_returns_lines_from_collection() -> None:

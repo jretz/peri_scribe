@@ -889,9 +889,10 @@ def test_read_geopackage_cached_rebuilds_corrupt_database(
     path = write_cache_snapshot(tmp_path, feed, [("Park Fire", "Active")])
     peri_scribe.geo_package.read_geopackage_cached(path)
     record_cache_database_path(path).write_bytes(b"not a database")
-    # Change the feed directory so the in-process freshness memo re-verifies.
+    # Change the snapshot's bucket directory so the in-process freshness memo
+    # re-verifies and the corrupt database is rebuilt.
     os.utime(
-        path.parent.parent,
+        path.parent,
         ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000),
     )
     contents = peri_scribe.geo_package.read_geopackage_cached(path)
@@ -909,9 +910,10 @@ def test_read_geopackage_cached_rebuilds_outdated_schema(
     conn.execute("PRAGMA user_version = 999")
     conn.commit()
     conn.close()
-    # Change the feed directory so the in-process freshness memo re-verifies.
+    # Change the snapshot's bucket directory so the in-process freshness memo
+    # re-verifies and the outdated database is rebuilt.
     os.utime(
-        path.parent.parent,
+        path.parent,
         ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000),
     )
     again = peri_scribe.geo_package.read_geopackage_cached(path)

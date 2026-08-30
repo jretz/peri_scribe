@@ -299,11 +299,11 @@ def test_validate_complete_sources_validates_each_feed_in_order(
     assert [result.has_problems for result in results] == [False, True]
     assert read_calls == [
         (
-            year_directory / "sources-complete" / "Fires0_0.gpkg",
+            year_directory / "validation" / "Fires0_0.gpkg",
             feeds[0],
         ),
         (
-            year_directory / "sources-complete" / "Fires1_0.gpkg",
+            year_directory / "validation" / "Fires1_0.gpkg",
             feeds[1],
         ),
     ]

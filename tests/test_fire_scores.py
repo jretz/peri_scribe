@@ -16,7 +16,6 @@ import peri_scribe.fire_scores
 import peri_scribe.geo_package
 import peri_scribe.models
 import peri_scribe.output
-import peri_scribe.snapshots
 
 
 def point(x: float, y: float) -> shapely.geometry.Point:
@@ -593,45 +592,6 @@ def test_read_layer_if_present_reads_existing_file(
     assert result is frame
 
 
-def test_latest_snapshot_path_returns_none_without_snapshots(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        peri_scribe.snapshots,
-        "existing_source_files",
-        lambda _directory: [],
-    )
-    assert (
-        peri_scribe.fire_scores.latest_snapshot_path(
-            pathlib.Path("/sources/evacuations"),
-        )
-        is None
-    )
-
-
-def test_latest_snapshot_path_returns_newest_snapshot(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    directory = pathlib.Path("/sources/evacuations")
-    monkeypatch.setattr(
-        peri_scribe.snapshots,
-        "existing_source_files",
-        lambda _directory: [
-            peri_scribe.snapshots.SourceFile(
-                serial_number=0,
-                last_edit_timestamp=1,
-            ),
-            peri_scribe.snapshots.SourceFile(
-                serial_number=1,
-                last_edit_timestamp=2,
-            ),
-        ],
-    )
-    assert peri_scribe.fire_scores.latest_snapshot_path(directory) == (
-        directory / "000___" / "000001,lastEdit=2.gpkg"
-    )
-
-
 def test_download_source_layer_returns_none_without_layer_name() -> None:
     source = peri_scribe.external_sources.ExternalSource(
         name="none",
@@ -680,9 +640,11 @@ def test_latest_snapshot_layer_returns_none_without_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        peri_scribe.fire_scores,
-        "latest_snapshot_path",
-        lambda _directory: None,
+        peri_scribe.external_sources,
+        "output_path",
+        lambda _year_directory, _source: pathlib.Path(
+            "/sources/evacuations.gpkg",
+        ),
     )
     assert (
         peri_scribe.fire_scores.latest_snapshot_layer(
@@ -693,27 +655,32 @@ def test_latest_snapshot_layer_returns_none_without_snapshot(
     )
 
 
-def test_latest_snapshot_layer_names_newest_snapshot(
+def test_latest_snapshot_layer_names_source_geopackage(
+    tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    path = tmp_path / "evacuations.gpkg"
+    path.write_bytes(b"data")
     monkeypatch.setattr(
-        peri_scribe.fire_scores,
-        "latest_snapshot_path",
-        lambda _directory: pathlib.Path("/sources/evacuations/0.gpkg"),
+        peri_scribe.external_sources,
+        "output_path",
+        lambda _year_directory, _source: path,
     )
     assert peri_scribe.fire_scores.latest_snapshot_layer(
         pathlib.Path("data/2026"),
         peri_scribe.external_sources.EVACUATIONS_SOURCE,
-    ) == (pathlib.Path("/sources/evacuations/0.gpkg"), "evacuations")
+    ) == (path, "evacuations")
 
 
 def test_read_latest_snapshot_returns_empty_without_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        peri_scribe.fire_scores,
-        "latest_snapshot_path",
-        lambda _directory: None,
+        peri_scribe.external_sources,
+        "output_path",
+        lambda _year_directory, _source: pathlib.Path(
+            "/sources/evacuations.gpkg",
+        ),
     )
     assert peri_scribe.fire_scores.read_latest_snapshot(
         pathlib.Path("data/2026"),
@@ -741,7 +708,8 @@ def test_read_latest_snapshot_returns_empty_without_layer_name(
     ).empty
 
 
-def test_read_latest_snapshot_reads_newest_snapshot(
+def test_read_latest_snapshot_reads_source_geopackage(
+    tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     frame = geopandas.GeoDataFrame(
@@ -749,10 +717,12 @@ def test_read_latest_snapshot_reads_newest_snapshot(
         geometry=[square(1.0)],
         crs="EPSG:4326",
     )
+    path = tmp_path / "evacuations.gpkg"
+    path.write_bytes(b"data")
     monkeypatch.setattr(
-        peri_scribe.fire_scores,
-        "latest_snapshot_path",
-        lambda _directory: pathlib.Path("/sources/evacuations/0.gpkg"),
+        peri_scribe.external_sources,
+        "output_path",
+        lambda _year_directory, _source: path,
     )
     monkeypatch.setattr(
         peri_scribe.geo_package,
@@ -899,7 +869,7 @@ def test_score_fires_streams_external_signals(
     buildings_path.parent.mkdir(parents=True)
     buildings.to_file(buildings_path, layer="buildings")
     for name in ("evacuations",):
-        snapshot = tmp_path / "sources" / name / "snapshot.gpkg"
+        snapshot = tmp_path / "sources" / name / f"{name}.gpkg"
         snapshot.parent.mkdir(parents=True)
         geopandas.GeoDataFrame(
             {"name": ["zone"]},
@@ -918,11 +888,6 @@ def test_score_fires_streams_external_signals(
         peri_scribe.external_sources,
         "output_path",
         output_path,
-    )
-    monkeypatch.setattr(
-        peri_scribe.fire_scores,
-        "latest_snapshot_path",
-        lambda directory: directory / "snapshot.gpkg",
     )
     monkeypatch.setattr(
         peri_scribe.fire_scores,

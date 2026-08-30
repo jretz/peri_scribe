@@ -777,16 +777,18 @@ def _write_snapshot(
 
 def _snapshot_directories_signature(
     source_directory: pathlib.Path,
-) -> tuple[int | tuple[str, int], ...] | None:
+) -> tuple[tuple[str, int], ...] | None:
     """Return a signature that changes whenever a snapshot file changes.
 
     Snapshot files live in bucket subdirectories named for the serial number's
     thousands, and every write goes through ``write_geopackage``, which unlinks and
-    recreates the file, so adding, removing, or rewriting a snapshot changes either the
-    bucket directory's modification time (a file in an existing bucket) or the feed
-    directory's (a new bucket). The signature is the feed directory's and each bucket
-    directory's modification times, so a matching signature means no snapshot file can
-    have changed since the signature was taken.
+    recreates the file, so adding, removing, or rewriting a snapshot changes a bucket
+    directory's modification time, and adding or removing a bucket changes the set of
+    buckets. The signature is the buckets' names and modification times, so a matching
+    signature means no snapshot file can have changed since the signature was taken. The
+    feed directory's own modification time is deliberately excluded: the feed directory
+    also holds the record cache and current-state files, whose writes should not force
+    the snapshot cache to re-sync.
 
     Args:
         source_directory: The feed's snapshot directory.
@@ -795,7 +797,7 @@ def _snapshot_directories_signature(
         The signature, or None when the feed directory cannot be read.
     """
     try:
-        feed_mtime_ns = source_directory.stat().st_mtime_ns
+        source_directory.stat()
     except OSError:
         return None
     bucket_mtime_ns: list[tuple[str, int]] = []
@@ -806,7 +808,7 @@ def _snapshot_directories_signature(
             bucket_mtime_ns.append((bucket.name, bucket.stat().st_mtime_ns))
         except OSError:
             continue
-    return (feed_mtime_ns, *sorted(bucket_mtime_ns))
+    return tuple(sorted(bucket_mtime_ns))
 
 
 def _sync_database(
@@ -1029,8 +1031,8 @@ def read_geopackage_cached(path: pathlib.Path) -> GeopackageContents:
 
     Reading and decoding a GeoPackage is far more expensive than loading its parsed
     contents from a database, and snapshots are immutable once written, so each feed's
-    parsed contents are cached in one SQLite database under the ``record_cache``
-    directory (``sources/record_cache/{feed}.db``). The database records each snapshot
+    parsed contents are cached in one SQLite database stored inside the feed's snapshot
+    directory (``sources/{feed}/record_cache.db``). The database records each snapshot
     file's size and modification time, so a snapshot that is ever rewritten (or restored
     from a backup) is read and cached again, and a snapshot whose file disappears is
     dropped. A missing, stale, corrupt, or unusable database never fails the read: it is

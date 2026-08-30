@@ -464,7 +464,7 @@ def test_fetch_all_feeds_complete_writes_each_feed_in_full(
     ) -> object:
         assert existing_source_files == []
         assert source_directory == pathlib.Path(
-            "/base/data/2026/sources-complete",
+            "/base/data/2026/validation",
         )
         return frames[feed.name]
 
@@ -474,8 +474,8 @@ def test_fetch_all_feeds_complete_writes_each_feed_in_full(
         year=2026,
     )
     assert paths == (
-        pathlib.Path("/base/data/2026/sources-complete/Fires0_0.gpkg"),
-        pathlib.Path("/base/data/2026/sources-complete/Fires1_0.gpkg"),
+        pathlib.Path("/base/data/2026/validation/Fires0_0.gpkg"),
+        pathlib.Path("/base/data/2026/validation/Fires1_0.gpkg"),
     )
     assert [path for path, _layers in written] == list(paths)
     assert [
@@ -526,7 +526,7 @@ def test_fetch_all_feeds_complete_reports_failures_and_continues(
         "Failed to fetch Fires2_0: fetch produced no data"
     )
     assert written == [
-        pathlib.Path("/base/data/2026/sources-complete/Fires1_0.gpkg"),
+        pathlib.Path("/base/data/2026/validation/Fires1_0.gpkg"),
     ]
 
 
@@ -548,5 +548,5 @@ def test_fetch_all_feeds_complete_defaults_to_working_directory_and_year(
     year = datetime.date.today().year
     paths = peri_scribe.fetching.fetch_all_feeds_complete()
     assert paths == (
-        pathlib.Path(f"/fetch/data/{year}/sources-complete/Fires0_0.gpkg"),
+        pathlib.Path(f"/fetch/data/{year}/validation/Fires0_0.gpkg"),
     )

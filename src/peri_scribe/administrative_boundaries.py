@@ -47,7 +47,6 @@ NEIGHBOR_STATES = [us.states.AZ, us.states.NV, us.states.OR]
 CALIFORNIA_WHERE_CLAUSE = "STATE_ABBR='CA'"
 NEIGHBOR_WHERE_CLAUSE = "STATE_ABBR IN ('AZ','NV','OR')"
 
-OUTPUT_DIRECTORY_NAME = peri_scribe.snapshots.ADMINISTRATIVE_BOUNDARIES_DIRECTORY_NAME
 BOUNDARY_OUTPUT_FILENAME = "CA_border_with_AZ_NV_and_OR.gpkg"
 OUTPUT_LAYER_NAME = "CA_border_with_AZ_NV_and_OR"
 
@@ -86,6 +85,9 @@ BORDER_PATH_ENDPOINT_COUNT = 2
 def output_geopackage_path(year_directory: pathlib.Path) -> pathlib.Path:
     """Return the path of the administrative boundary GeoPackage.
 
+    The boundary is a single derived file stored directly under the sources directory,
+    named so it is not mistaken for a fire-source snapshot.
+
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
 
@@ -94,7 +96,6 @@ def output_geopackage_path(year_directory: pathlib.Path) -> pathlib.Path:
     """
     return (
         peri_scribe.snapshots.sources_directory_path(year_directory)
-        / OUTPUT_DIRECTORY_NAME
         / BOUNDARY_OUTPUT_FILENAME
     )
 
