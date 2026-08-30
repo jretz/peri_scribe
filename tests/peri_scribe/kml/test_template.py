@@ -1,0 +1,794 @@
+"""Tests for peri_scribe.kml.template."""
+
+from __future__ import annotations
+
+import pathlib
+import typing
+
+import defusedxml.ElementTree as DefusedElementTree
+import pyproj
+import pytest
+
+
+if typing.TYPE_CHECKING:
+    import xml.etree.ElementTree as ET
+
+
+import peri_scribe.kml.styles
+import peri_scribe.kml.template
+import peri_scribe.perimeters.progression
+
+
+KML_NAMESPACE = "http://www.opengis.net/kml/2.2"
+
+GX_NAMESPACE = "http://www.google.com/kml/ext/2.2"
+
+
+def kml_tag(name: str) -> str:
+    """Return the namespaced element tag for *name*.
+
+    Args:
+        name: The KML element name.
+
+    Returns:
+        The tag ElementTree uses for the element.
+    """
+    return f"{{{KML_NAMESPACE}}}{name}"
+
+
+def gx_tag(name: str) -> str:
+    """Return the namespaced element tag for the Google extension *name*.
+
+    Args:
+        name: The Google extension element name.
+
+    Returns:
+        The tag ElementTree uses for the element.
+    """
+    return f"{{{GX_NAMESPACE}}}{name}"
+
+
+@pytest.fixture
+def document() -> ET.Element:
+    """Return the parsed document element of the generated KML template.
+
+    Returns:
+        The template's Document element.
+    """
+    root = DefusedElementTree.fromstring(peri_scribe.kml.template.template_kml())
+    document = root.find(kml_tag("Document"))
+    if document is None:
+        pytest.fail("Template has no Document element")
+    return document
+
+
+def folder_named(
+    container: ET.Element,
+    name: str,
+) -> ET.Element:
+    """Return the folder named *name* inside *container*.
+
+    Args:
+        container: The element to search.
+        name: The folder name.
+
+    Returns:
+        The folder element.
+    """
+    for child in container:
+        if child.tag == kml_tag("Folder") and child.findtext(kml_tag("name")) == name:
+            return child
+    pytest.fail(f"Folder {name!r} not found")
+
+
+def placemark_named(folder: ET.Element, name: str) -> ET.Element:
+    """Return the placemark named *name* inside *folder*.
+
+    Args:
+        folder: The folder to search.
+        name: The placemark name.
+
+    Returns:
+        The placemark element.
+    """
+    for child in folder:
+        if (
+            child.tag == kml_tag("Placemark")
+            and child.findtext(kml_tag("name")) == name
+        ):
+            return child
+    pytest.fail(f"Placemark {name!r} not found")
+
+
+def folder_names(container: ET.Element) -> list[str]:
+    """Return the names of *container*'s folders, in order.
+
+    Args:
+        container: The element to inspect.
+
+    Returns:
+        The folder names.
+    """
+    names: list[str] = []
+    for child in container:
+        if child.tag != kml_tag("Folder"):
+            continue
+        name = child.findtext(kml_tag("name"))
+        if name is not None:
+            names.append(name)
+    return names
+
+
+def placemark_names(folder: ET.Element) -> list[str]:
+    """Return the names of *folder*'s placemarks, in order.
+
+    Args:
+        folder: The folder to inspect.
+
+    Returns:
+        The placemark names.
+    """
+    names: list[str] = []
+    for child in folder:
+        if child.tag != kml_tag("Placemark"):
+            continue
+        name = child.findtext(kml_tag("name"))
+        if name is not None:
+            names.append(name)
+    return names
+
+
+def style_with_id(document: ET.Element, style_id: str) -> ET.Element:
+    """Return the style with id *style_id* inside *document*.
+
+    Args:
+        document: The document to search.
+        style_id: The style id.
+
+    Returns:
+        The style element.
+    """
+    for child in document:
+        if child.tag == kml_tag("Style") and child.get("id") == style_id:
+            return child
+    pytest.fail(f"Style {style_id!r} not found")
+
+
+def placemark_style_url(placemark: ET.Element) -> str:
+    """Return the style URL of *placemark*.
+
+    Args:
+        placemark: The placemark to inspect.
+
+    Returns:
+        The style URL.
+    """
+    style_url = placemark.findtext(kml_tag("styleUrl"))
+    if style_url is None:
+        pytest.fail("Placemark has no styleUrl")
+    return style_url
+
+
+def draw_order(placemark: ET.Element) -> int:
+    """Return the gx:drawOrder of *placemark*'s geometry.
+
+    Args:
+        placemark: The placemark to inspect.
+
+    Returns:
+        The geometry's draw order.
+    """
+    for child in placemark:
+        if child.tag in {
+            kml_tag("Point"),
+            kml_tag("Polygon"),
+            kml_tag("MultiGeometry"),
+        }:
+            text = child.findtext(gx_tag("drawOrder"))
+            if text is None:
+                pytest.fail("Placemark has no gx:drawOrder")
+            return int(text)
+    pytest.fail("Placemark has no geometry")
+
+
+def poly_style_of(style: ET.Element) -> ET.Element:
+    """Return the PolyStyle of *style*.
+
+    Args:
+        style: The style to inspect.
+
+    Returns:
+        The PolyStyle element.
+    """
+    poly_style = style.find(kml_tag("PolyStyle"))
+    if poly_style is None:
+        pytest.fail("Style has no PolyStyle")
+    return poly_style
+
+
+def line_style_of(style: ET.Element) -> ET.Element:
+    """Return the LineStyle of *style*.
+
+    Args:
+        style: The style to inspect.
+
+    Returns:
+        The LineStyle element.
+    """
+    line_style = style.find(kml_tag("LineStyle"))
+    if line_style is None:
+        pytest.fail("Style has no LineStyle")
+    return line_style
+
+
+def icon_style_of(style: ET.Element) -> ET.Element:
+    """Return the IconStyle of *style*.
+
+    Args:
+        style: The style to inspect.
+
+    Returns:
+        The IconStyle element.
+    """
+    icon_style = style.find(kml_tag("IconStyle"))
+    if icon_style is None:
+        pytest.fail("Style has no IconStyle")
+    return icon_style
+
+
+def ring_coordinates(ring: ET.Element) -> list[tuple[float, float]]:
+    """Return the (longitude, latitude) coordinates of *ring*.
+
+    Args:
+        ring: The LinearRing element.
+
+    Returns:
+        The ring's (longitude, latitude) coordinates.
+    """
+    text = ring.findtext(kml_tag("coordinates"))
+    if text is None:
+        pytest.fail("Ring has no coordinates")
+    return [
+        (float(longitude), float(latitude))
+        for longitude, latitude, _altitude in (
+            coordinates.split(",") for coordinates in text.split()
+        )
+    ]
+
+
+def interior_coordinates(placemark: ET.Element) -> list[tuple[float, float]]:
+    """Return the coordinates of *placemark*'s polygon hole, or [] when it has none.
+
+    Args:
+        placemark: The placemark to inspect.
+
+    Returns:
+        The hole ring's (longitude, latitude) coordinates, or an empty list when the
+        placemark's polygon is solid.
+    """
+    ring = placemark.find(
+        f"{kml_tag('Polygon')}/{kml_tag('innerBoundaryIs')}/{kml_tag('LinearRing')}",
+    )
+    if ring is None:
+        return []
+    return ring_coordinates(ring)
+
+
+def exterior_coordinates(placemark: ET.Element) -> list[tuple[float, float]]:
+    """Return the outer ring coordinates of *placemark*'s polygon.
+
+    Args:
+        placemark: The placemark to inspect.
+
+    Returns:
+        The outer ring's (longitude, latitude) coordinates.
+    """
+    ring = placemark.find(
+        f"{kml_tag('Polygon')}/{kml_tag('outerBoundaryIs')}/{kml_tag('LinearRing')}",
+    )
+    if ring is None:
+        pytest.fail("Placemark has no polygon outer boundary")
+    return ring_coordinates(ring)
+
+
+def point_coordinates(placemark: ET.Element) -> tuple[float, float]:
+    """Return the (longitude, latitude) of *placemark*'s point geometry.
+
+    Args:
+        placemark: The placemark to inspect.
+
+    Returns:
+        The point's (longitude, latitude).
+    """
+    coordinates = placemark.find(f"{kml_tag('Point')}/{kml_tag('coordinates')}")
+    if coordinates is None or coordinates.text is None:
+        pytest.fail("Placemark has no point coordinates")
+    longitude, latitude, _altitude = coordinates.text.split(",")
+    return float(longitude), float(latitude)
+
+
+def bounding_box_center(coordinates: list[tuple[float, float]]) -> tuple[float, float]:
+    """Return the center of the bounding box of *coordinates*.
+
+    The center is unaffected by the closing duplicate of a closed ring, and for a
+    square it is exactly the square's center.
+
+    Args:
+        coordinates: The coordinates to bound.
+
+    Returns:
+        The bounding box center (longitude, latitude).
+    """
+    longitudes = [longitude for longitude, _latitude in coordinates]
+    latitudes = [latitude for _longitude, latitude in coordinates]
+    return (
+        (min(longitudes) + max(longitudes)) / 2,
+        (min(latitudes) + max(latitudes)) / 2,
+    )
+
+
+def assert_two_kilometers_due_west(longitude: float, latitude: float) -> None:
+    """Assert that the point is 2 km due west of the template's point location.
+
+    Args:
+        longitude: The longitude of the point to check.
+        latitude: The latitude of the point to check.
+    """
+    geodesic = pyproj.Geod(ellps="WGS84")
+    azimuth, _back_azimuth, distance = geodesic.inv(
+        peri_scribe.kml.template.POINT_CENTER.longitude,
+        peri_scribe.kml.template.POINT_CENTER.latitude,
+        longitude,
+        latitude,
+    )
+    assert distance == pytest.approx(2_000)
+    assert azimuth == pytest.approx(-90.0)
+
+
+def test_template_path_returns_data_templates_file() -> None:
+    assert peri_scribe.kml.template.template_path() == pathlib.Path(
+        "data",
+        "templates",
+        "PeriScribe Template.kml",
+    )
+
+
+def test_kml_color_converts_hex_and_opacity_to_aabbggrr() -> None:
+    assert peri_scribe.kml.styles.kml_color("#FF0000", 0) == "000000ff"
+    assert peri_scribe.kml.styles.kml_color("#FFFFFF", 0) == "00ffffff"
+    assert peri_scribe.kml.styles.kml_color("#FF0000", 50) == "7f0000ff"
+    assert peri_scribe.kml.styles.kml_color("#FF0000", 100) == "ff0000ff"
+    assert peri_scribe.kml.styles.kml_color("#FF2A00", 50) == "7f002aff"
+    assert peri_scribe.kml.styles.kml_color("#FFFF00", 100) == "ff00ffff"
+    assert peri_scribe.kml.styles.kml_color("#FFFFFF", 100) == "ffffffff"
+
+
+def test_square_coordinates_returns_closed_centered_ring() -> None:
+    coordinates = peri_scribe.kml.template.square_coordinates(
+        800,
+        peri_scribe.kml.template.POINT_CENTER,
+    )
+    assert coordinates[0] == coordinates[-1]
+
+    corners = coordinates[:-1]
+    assert len(set(corners)) == len(corners)
+
+    longitudes = [longitude for longitude, _latitude in corners]
+    latitudes = [latitude for _longitude, latitude in corners]
+    assert sum(longitudes) / len(corners) == pytest.approx(
+        peri_scribe.kml.template.POINT_CENTER.longitude,
+    )
+    assert sum(latitudes) / len(corners) == pytest.approx(
+        peri_scribe.kml.template.POINT_CENTER.latitude,
+    )
+
+
+def test_center_west_of_returns_point_two_kilometers_due_west() -> None:
+    west = peri_scribe.kml.template.center_west_of(
+        peri_scribe.kml.template.POINT_CENTER,
+        2_000,
+    )
+    assert_two_kilometers_due_west(west.longitude, west.latitude)
+
+
+def test_reversed_ring_reverses_direction_and_stays_closed() -> None:
+    ring = [
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (1.0, 1.0),
+        (0.0, 1.0),
+        (0.0, 0.0),
+    ]
+    assert peri_scribe.kml.template.reversed_ring(ring) == [
+        (0.0, 0.0),
+        (0.0, 1.0),
+        (1.0, 1.0),
+        (1.0, 0.0),
+        (0.0, 0.0),
+    ]
+
+
+def test_outline_draw_order_stacks_oldest_to_newest() -> None:
+    newest = peri_scribe.kml.styles.outline_draw_order(3, 0)
+    penultimate = peri_scribe.kml.styles.outline_draw_order(3, 1)
+    antepenultimate = peri_scribe.kml.styles.outline_draw_order(3, 2)
+    assert antepenultimate < penultimate < newest
+
+
+def test_band_draw_order_stacks_oldest_to_newest() -> None:
+    newest = peri_scribe.kml.styles.band_draw_order(8, 0)
+    second_newest = peri_scribe.kml.styles.band_draw_order(8, 1)
+    oldest = peri_scribe.kml.styles.band_draw_order(8, 7)
+    assert oldest < second_newest < newest
+    assert oldest == 0
+
+
+def test_point_draw_order_draws_above_every_outline() -> None:
+    newest_outline = peri_scribe.kml.styles.outline_draw_order(3, 0)
+    assert peri_scribe.kml.styles.point_draw_order(3) > newest_outline
+    assert peri_scribe.kml.styles.point_draw_order(0) == 1
+
+
+def test_template_kml_names_the_document(document: ET.Element) -> None:
+    assert document.findtext(kml_tag("name")) == (
+        peri_scribe.kml.template.TEMPLATE_TITLE
+    )
+
+
+def test_template_kml_defines_point_style(document: ET.Element) -> None:
+    point_style = style_with_id(document, "point-icon")
+    icon_style = icon_style_of(point_style)
+    assert icon_style.findtext(f"{kml_tag('Icon')}/{kml_tag('href')}") == (
+        peri_scribe.kml.styles.POINT_ICON_URL
+    )
+
+
+def test_template_kml_has_two_top_level_folders(document: ET.Element) -> None:
+    assert folder_names(document) == [
+        peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
+        peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
+    ]
+
+
+def test_template_kml_progression_names_follow_shared_definition(
+    document: ET.Element,
+) -> None:
+    progression = folder_named(
+        document,
+        peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
+    band_names = [
+        name for name in placemark_names(progression) if name != "Point Location"
+    ]
+    assert band_names == [
+        band.name for band in peri_scribe.perimeters.progression.PROGRESSION_BANDS
+    ]
+
+
+def test_template_kml_filled_perimeter_folder(document: ET.Element) -> None:
+    filled = folder_named(
+        document,
+        peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
+
+    point = placemark_named(filled, "Point Location")
+    assert placemark_style_url(point) == "#point-icon"
+
+    fill = placemark_named(filled, "Interior")
+    assert placemark_style_url(fill) == "#perimeter-fill"
+    assert interior_coordinates(fill) == []
+    fill_style = style_with_id(document, "perimeter-fill")
+    fill_poly_style = poly_style_of(fill_style)
+    assert fill_poly_style.findtext(kml_tag("color")) == "7f0000ff"
+    assert fill_poly_style.findtext(kml_tag("fill")) == "1"
+    assert fill_poly_style.findtext(kml_tag("outline")) == "0"
+
+    outline_placemarks = [
+        child
+        for child in filled
+        if child.tag == kml_tag("Placemark")
+        and child.findtext(kml_tag("name")) not in {"Point Location", "Interior"}
+    ]
+    expected_colors = {
+        "Latest Perimeter": "ff0000ff",
+        "Penultimate Perimeter": "ff00ffff",
+        "Antepenultimate Perimeter": "ffffffff",
+    }
+    assert len(outline_placemarks) == len(expected_colors)
+    for name, color in expected_colors.items():
+        outline_placemark = placemark_named(filled, name)
+        style_id = placemark_style_url(outline_placemark).removeprefix("#")
+        outline_style = style_with_id(document, style_id)
+        line_style = line_style_of(outline_style)
+        assert line_style.findtext(kml_tag("color")) == color
+        assert line_style.findtext(kml_tag("width")) == "1.5"
+        outline_poly_style = poly_style_of(outline_style)
+        assert outline_poly_style.findtext(kml_tag("color")) == "00ffffff"
+        assert outline_poly_style.findtext(kml_tag("fill")) == "1"
+        assert outline_poly_style.findtext(kml_tag("outline")) == "1"
+
+
+def test_template_kml_filled_perimeter_orders_placemarks(
+    document: ET.Element,
+) -> None:
+    filled = folder_named(
+        document,
+        peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
+    assert placemark_names(filled) == [
+        "Point Location",
+        "Interior",
+        "Latest Perimeter",
+        "Penultimate Perimeter",
+        "Antepenultimate Perimeter",
+    ]
+
+
+def test_template_kml_filled_perimeter_geometry_is_two_kilometers_due_west(
+    document: ET.Element,
+) -> None:
+    filled = folder_named(
+        document,
+        peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
+
+    point = placemark_named(filled, "Point Location")
+    point_longitude, point_latitude = point_coordinates(point)
+    assert_two_kilometers_due_west(point_longitude, point_latitude)
+
+    fill = placemark_named(filled, "Interior")
+    polygons = [
+        fill,
+        *[
+            placemark_named(filled, template.name)
+            for template in peri_scribe.kml.template.OUTLINED_PERIMETER_TEMPLATES
+        ],
+    ]
+    for polygon in polygons:
+        polygon_longitude, polygon_latitude = bounding_box_center(
+            exterior_coordinates(polygon),
+        )
+        assert polygon_longitude == pytest.approx(point_longitude)
+        assert polygon_latitude == pytest.approx(point_latitude)
+
+
+def test_template_kml_filled_perimeter_draw_orders(document: ET.Element) -> None:
+    filled = folder_named(
+        document,
+        peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
+    assert {
+        name: draw_order(placemark_named(filled, name))
+        for name in (
+            "Point Location",
+            "Interior",
+            "Latest Perimeter",
+            "Penultimate Perimeter",
+            "Antepenultimate Perimeter",
+        )
+    } == {
+        "Interior": peri_scribe.kml.template.LATEST_AREA_DRAW_ORDER,
+        "Antepenultimate Perimeter": 1,
+        "Penultimate Perimeter": 2,
+        "Latest Perimeter": 3,
+        "Point Location": 4,
+    }
+
+
+def test_template_kml_progression_map_draw_orders(document: ET.Element) -> None:
+    progression = folder_named(document, "Perimeter Progression Maps")
+    assert {
+        name: draw_order(placemark_named(progression, name))
+        for name in (
+            "Point Location",
+            "Latest Day",
+            "2 Days Before That",
+            "4 Days Before That",
+            "8 Days Before That",
+            "16 Days Before That",
+            "32 Days Before That",
+            "64 Days Before That",
+            "128+ Days Before That",
+        )
+    } == {
+        "Point Location": 8,
+        "Latest Day": 7,
+        "2 Days Before That": 6,
+        "4 Days Before That": 5,
+        "8 Days Before That": 4,
+        "16 Days Before That": 3,
+        "32 Days Before That": 2,
+        "64 Days Before That": 1,
+        "128+ Days Before That": 0,
+    }
+
+
+def test_template_kml_progression_map_folder(document: ET.Element) -> None:
+    progression = folder_named(document, "Perimeter Progression Maps")
+
+    point = placemark_named(progression, "Point Location")
+    assert placemark_style_url(point) == "#point-icon"
+
+    fill_placemarks = [
+        child
+        for child in progression
+        if child.tag == kml_tag("Placemark")
+        and child.findtext(kml_tag("name")) != "Point Location"
+    ]
+    expected_colors = {
+        "Latest Day": "7f002aff",
+        "2 Days Before That": "7f0073ff",
+        "4 Days Before That": "7f00aaff",
+        "8 Days Before That": "7f3359b3",
+        "16 Days Before That": "7f3b476e",
+        "32 Days Before That": "7f4a4a4a",
+        "64 Days Before That": "7f8a827a",
+        "128+ Days Before That": "7fbdb7b0",
+    }
+    assert len(fill_placemarks) == len(expected_colors)
+    for name, color in expected_colors.items():
+        fill_placemark = placemark_named(progression, name)
+        style_id = placemark_style_url(fill_placemark).removeprefix("#")
+        fill_style = style_with_id(document, style_id)
+        fill_poly_style = poly_style_of(fill_style)
+        assert fill_poly_style.findtext(kml_tag("color")) == color
+        assert fill_poly_style.findtext(kml_tag("fill")) == "1"
+        assert fill_poly_style.findtext(kml_tag("outline")) == "0"
+
+
+def test_template_kml_progression_map_geometry_stays_at_point(
+    document: ET.Element,
+) -> None:
+    progression = folder_named(document, "Perimeter Progression Maps")
+    point = placemark_named(progression, "Point Location")
+    longitude, latitude = point_coordinates(point)
+    assert longitude == pytest.approx(
+        peri_scribe.kml.template.POINT_CENTER.longitude,
+    )
+    assert latitude == pytest.approx(
+        peri_scribe.kml.template.POINT_CENTER.latitude,
+    )
+
+
+def test_template_kml_progression_map_polygons_exclude_smaller_squares(
+    document: ET.Element,
+) -> None:
+    progression = folder_named(document, "Perimeter Progression Maps")
+    templates = peri_scribe.kml.template.PROGRESSION_FILL_TEMPLATES
+    for index, template in enumerate(templates[:-1]):
+        next_template = templates[index + 1]
+        placemark = placemark_named(progression, template.name)
+        expected_hole = set(
+            peri_scribe.kml.template.square_coordinates(
+                next_template.side_length_in_meters,
+                peri_scribe.kml.template.POINT_CENTER,
+            ),
+        )
+        assert set(interior_coordinates(placemark)) == expected_hole
+    smallest_placemark = placemark_named(progression, templates[-1].name)
+    assert interior_coordinates(smallest_placemark) == []
+
+
+class RecordingFile:
+    """In-memory file stand-in that keeps its contents after being closed."""
+
+    def __init__(self) -> None:
+        self.content = ""
+
+    def write(self, text: str) -> int:
+        self.content += text
+        return len(text)
+
+    def __enter__(self) -> typing.Self:
+        return self
+
+    def __exit__(
+        self,
+        _exc_type: object,
+        _exc_value: object,
+        _traceback: object,
+    ) -> None:
+        return None
+
+
+def test_write_template_writes_template_kml(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = pathlib.Path("/templates/PeriScribe Template.kml")
+    files: list[RecordingFile] = []
+    made_directories: list[pathlib.Path] = []
+
+    def fake_open(
+        _self: pathlib.Path,
+        mode: str,
+        encoding: str,
+    ) -> RecordingFile:
+        assert mode == "w"
+        assert encoding == "utf-8"
+        file = RecordingFile()
+        files.append(file)
+        return file
+
+    def fake_mkdir(
+        _self: pathlib.Path,
+        *,
+        parents: bool,
+        exist_ok: bool,
+    ) -> None:
+        assert parents is True
+        assert exist_ok is True
+        made_directories.append(_self)
+
+    monkeypatch.setattr(pathlib.Path, "open", fake_open)
+    monkeypatch.setattr(pathlib.Path, "mkdir", fake_mkdir)
+
+    peri_scribe.kml.template.write_template(path)
+
+    assert made_directories == [pathlib.Path("/templates")]
+    assert files[0].content == peri_scribe.kml.template.template_kml()
+
+
+def test_create_template_writes_to_template_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    output_path = tmp_path / "PeriScribe Template.kml"
+    monkeypatch.setattr(
+        peri_scribe.kml.template,
+        "template_path",
+        lambda: output_path,
+    )
+    writes: list[pathlib.Path] = []
+    monkeypatch.setattr(
+        peri_scribe.kml.template,
+        "write_template",
+        writes.append,
+    )
+    output = peri_scribe.kml.template.create_template()
+    assert output == output_path
+    assert writes == [output_path]
+
+
+def test_create_template_refuses_to_overwrite_existing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    output_path = tmp_path / "PeriScribe Template.kml"
+    output_path.write_text("existing", encoding="utf-8")
+    monkeypatch.setattr(
+        peri_scribe.kml.template,
+        "template_path",
+        lambda: output_path,
+    )
+    writes: list[pathlib.Path] = []
+    monkeypatch.setattr(
+        peri_scribe.kml.template,
+        "write_template",
+        writes.append,
+    )
+    output = peri_scribe.kml.template.create_template()
+    assert output is None
+    assert writes == []
+    assert output_path.read_text(encoding="utf-8") == "existing"
+
+
+def test_create_template_force_overwrites_existing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    output_path = tmp_path / "PeriScribe Template.kml"
+    output_path.write_text("existing", encoding="utf-8")
+    monkeypatch.setattr(
+        peri_scribe.kml.template,
+        "template_path",
+        lambda: output_path,
+    )
+    writes: list[pathlib.Path] = []
+    monkeypatch.setattr(
+        peri_scribe.kml.template,
+        "write_template",
+        writes.append,
+    )
+    output = peri_scribe.kml.template.create_template(force=True)
+    assert output == output_path
+    assert writes == [output_path]

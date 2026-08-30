@@ -8,17 +8,18 @@ import pathlib
 import click
 import structlog
 
-import peri_scribe.administrative_boundaries
-import peri_scribe.external_sources
-import peri_scribe.feeds
-import peri_scribe.fetching
-import peri_scribe.fire_differential
-import peri_scribe.fire_scores
-import peri_scribe.kml
-import peri_scribe.kml_template
+import peri_scribe.fires.differential
+import peri_scribe.fires.scores
+import peri_scribe.kml.builder
+import peri_scribe.kml.template
 import peri_scribe.output
-import peri_scribe.snapshots
-import peri_scribe.source_validation
+import peri_scribe.sources.administrative_boundaries
+import peri_scribe.sources.digests
+import peri_scribe.sources.external_sources
+import peri_scribe.sources.feeds
+import peri_scribe.sources.fetching
+import peri_scribe.sources.snapshots
+import peri_scribe.sources.validation
 
 
 logger = structlog.get_logger()
@@ -30,7 +31,7 @@ def default_year_directory() -> pathlib.Path:
     Returns:
         The path to ``data/<current year>`` under the current working directory.
     """
-    return peri_scribe.snapshots.year_directory_path(
+    return peri_scribe.sources.snapshots.year_directory_path(
         pathlib.Path.cwd(),
         datetime.date.today().year,
     )
@@ -91,19 +92,19 @@ def ensure_admin_boundaries(year_directory: pathlib.Path | None = None) -> None:
     """Ensure needed administrative boundaries are available."""
     if year_directory is None:
         year_directory = default_year_directory()
-    peri_scribe.administrative_boundaries.ensure_administrative_boundaries(
+    peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries(
         year_directory,
     )
 
 
 def fetch_external_source(
-    source: peri_scribe.external_sources.ExternalSource,
+    source: peri_scribe.sources.external_sources.ExternalSource,
     year_directory: pathlib.Path | None,
 ) -> None:
     """Fetch *source* into *year_directory*, resolving the default directory."""
     if year_directory is None:
         year_directory = default_year_directory()
-    paths = peri_scribe.external_sources.fetch_external_source(
+    paths = peri_scribe.sources.external_sources.fetch_external_source(
         source,
         year_directory,
     )
@@ -139,7 +140,7 @@ def fetch_external_source(
 def fetch_buildings(year_directory: pathlib.Path | None = None) -> None:
     """Fetch building footprints for the year directory."""
     fetch_external_source(
-        peri_scribe.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
         year_directory,
     )
 
@@ -166,7 +167,7 @@ def fetch_buildings(year_directory: pathlib.Path | None = None) -> None:
 def fetch_evacuations(year_directory: pathlib.Path | None = None) -> None:
     """Fetch evacuation zones for the year directory."""
     fetch_external_source(
-        peri_scribe.external_sources.EVACUATIONS_SOURCE,
+        peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
         year_directory,
     )
 
@@ -179,7 +180,7 @@ def fetch_evacuations(year_directory: pathlib.Path | None = None) -> None:
 )
 def create_kml_template(*, force: bool) -> None:
     """Generate the KML template used to specify symbolization."""
-    output_path = peri_scribe.kml_template.create_template(force=force)
+    output_path = peri_scribe.kml.template.create_template(force=force)
     if output_path is None:
         return
     logger.info("Wrote KML template", path=output_path)
@@ -199,9 +200,9 @@ def stored_evacuations_digest(year_directory: pathlib.Path) -> str | None:
         The digest of the stored evacuations contents, or None when no version is
         stored.
     """
-    source = peri_scribe.external_sources.EVACUATIONS_SOURCE
-    return peri_scribe.external_sources.stored_geopackage_digest(
-        peri_scribe.external_sources.output_path(year_directory, source),
+    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+    return peri_scribe.sources.digests.stored_geopackage_digest(
+        peri_scribe.sources.external_sources.output_path(year_directory, source),
         source.layer_name or source.name,
     )
 
@@ -247,13 +248,13 @@ def update_kmz(
     """Fetch new source data, score fires, and rebuild the KMZ."""
     if year_directory is None:
         year_directory = default_year_directory()
-    result = peri_scribe.fetching.fetch_all_feeds(
-        peri_scribe.snapshots.base_directory_for_year_directory(year_directory),
-        year=peri_scribe.snapshots.year_for_year_directory(year_directory),
+    result = peri_scribe.sources.fetching.fetch_all_feeds(
+        peri_scribe.sources.snapshots.base_directory_for_year_directory(year_directory),
+        year=peri_scribe.sources.snapshots.year_for_year_directory(year_directory),
         full=force,
     )
     evacuations_digest_before = stored_evacuations_digest(year_directory)
-    for source in peri_scribe.external_sources.EXTERNAL_SOURCES:
+    for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES:
         fetch_external_source(source, year_directory)
     evacuations_changed = (
         stored_evacuations_digest(year_directory) != evacuations_digest_before
@@ -261,14 +262,14 @@ def update_kmz(
     if not result.changed and not evacuations_changed and not force:
         logger.debug("Nothing changed; skipping remaining pipeline steps")
         return
-    peri_scribe.administrative_boundaries.ensure_administrative_boundaries(
+    peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries(
         year_directory,
     )
-    peri_scribe.fire_differential.write_history_of_differential_geography(
+    peri_scribe.fires.differential.write_history_of_differential_geography(
         year_directory,
     )
-    peri_scribe.fire_scores.score_fires(year_directory)
-    peri_scribe.kml.create_kmz(year_directory)
+    peri_scribe.fires.scores.score_fires(year_directory)
+    peri_scribe.kml.builder.create_kmz(year_directory)
 
 
 @cli.command(
@@ -296,19 +297,19 @@ def validate_sources(year_directory: pathlib.Path | None = None) -> None:
     """Check that the stored sources cover a complete snapshot of every feed."""
     if year_directory is None:
         year_directory = default_year_directory()
-    base_directory = peri_scribe.snapshots.base_directory_for_year_directory(
+    base_directory = peri_scribe.sources.snapshots.base_directory_for_year_directory(
         year_directory,
     )
-    year = peri_scribe.snapshots.year_for_year_directory(year_directory)
-    complete_directory = peri_scribe.snapshots.validation_directory_path(
+    year = peri_scribe.sources.snapshots.year_for_year_directory(year_directory)
+    complete_directory = peri_scribe.sources.snapshots.validation_directory_path(
         year_directory,
     )
     peri_scribe.output.remove_directory_tree(complete_directory)
-    peri_scribe.fetching.fetch_all_feeds_complete(base_directory, year=year)
-    peri_scribe.fetching.fetch_all_feeds(base_directory, year=year)
-    results = peri_scribe.source_validation.validate_complete_sources(
+    peri_scribe.sources.fetching.fetch_all_feeds_complete(base_directory, year=year)
+    peri_scribe.sources.fetching.fetch_all_feeds(base_directory, year=year)
+    results = peri_scribe.sources.validation.validate_complete_sources(
         year_directory,
-        peri_scribe.feeds.FEEDS,
+        peri_scribe.sources.feeds.FEEDS,
     )
     problem_results = [result for result in results if result.has_problems]
     if not problem_results:

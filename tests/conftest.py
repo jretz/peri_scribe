@@ -13,22 +13,23 @@ import shapely.geometry
 import structlog
 import time_machine
 
-import peri_scribe.administrative_boundaries
-import peri_scribe.feed_types
-import peri_scribe.feeds
-import peri_scribe.fetching
-import peri_scribe.fire_differential
-import peri_scribe.fire_scores
-import peri_scribe.geo_package
-import peri_scribe.kml
-import peri_scribe.kml_plot_rendering
+import peri_scribe.fires.differential
+import peri_scribe.fires.scores
+import peri_scribe.geo.package
+import peri_scribe.geo.reading
+import peri_scribe.kml.builder
+import peri_scribe.kml.plot_rendering
 import peri_scribe.main
 import peri_scribe.models
 import peri_scribe.output
-import peri_scribe.snapshots
-import peri_scribe.source_validation
+import peri_scribe.sources.administrative_boundaries
+import peri_scribe.sources.feed_types
+import peri_scribe.sources.feeds
+import peri_scribe.sources.fetching
+import peri_scribe.sources.snapshots
+import peri_scribe.sources.validation
 import tests.factories
-import tests.kml_helpers
+import tests.peri_scribe.kml.kml_helpers
 from tests.factories import WGS84_WKID, GeoPackageStore, wgs84_feature_set
 from tests.main_stubs import (
     BASE_DIRECTORY,
@@ -113,13 +114,13 @@ def configure_structlog(log_output: structlog.testing.LogCapture) -> None:
     )
 
 
-def sample_feed() -> peri_scribe.feed_types.ArcGISFeed:
+def sample_feed() -> peri_scribe.sources.feed_types.ArcGISFeed:
     """Return the sample ArcGIS feed.
 
     Returns:
         The sample ArcGIS feed.
     """
-    return peri_scribe.feed_types.ArcGISFeed(
+    return peri_scribe.sources.feed_types.ArcGISFeed(
         url=SAMPLE_FEED_URL,
         fire_name_column=SAMPLE_FIRE_NAME_COLUMN,
         status_column=SAMPLE_STATUS_COLUMN,
@@ -163,10 +164,10 @@ def stub_fire_reader(
     ) -> None:
         def fake_read_geopackage(
             path: pathlib.Path,
-        ) -> peri_scribe.geo_package.GeopackageContents:
+        ) -> peri_scribe.geo.package.GeopackageContents:
             memberships = (memberships_by_path or {}).get(path, [])
             rows = tuple(
-                peri_scribe.geo_package.FireRowRecord(
+                peri_scribe.geo.package.FireRowRecord(
                     record=record,
                     object_id=None,
                     source_name="",
@@ -174,7 +175,7 @@ def stub_fire_reader(
                 )
                 for record in records_by_path.get(path, [])
             )
-            return peri_scribe.geo_package.GeopackageContents(
+            return peri_scribe.geo.package.GeopackageContents(
                 rows=rows,
                 memberships=tuple(memberships),
             )
@@ -185,12 +186,12 @@ def stub_fire_reader(
             return sorted(set(records_by_path) | set(memberships_by_path or {}))
 
         monkeypatch.setattr(
-            peri_scribe.geo_package,
+            peri_scribe.geo.package,
             "read_geopackage",
             fake_read_geopackage,
         )
         monkeypatch.setattr(
-            peri_scribe.snapshots,
+            peri_scribe.sources.snapshots,
             "geo_package_files",
             fake_geo_package_files,
         )
@@ -217,7 +218,7 @@ def feature_set_with_geometry() -> arcgis.features.FeatureSet:
 
 
 @pytest.fixture
-def feed() -> peri_scribe.feed_types.ArcGISFeed:
+def feed() -> peri_scribe.sources.feed_types.ArcGISFeed:
     """Return the sample ArcGIS feed.
 
     Returns:
@@ -244,7 +245,7 @@ def arc_gis_feed(
     complex_name_column: str | None = None,
     is_complex_child_column: str | None = None,
     change_columns: tuple[str, ...] = (),
-) -> peri_scribe.feed_types.ArcGISFeed:
+) -> peri_scribe.sources.feed_types.ArcGISFeed:
     """Build an ArcGIS feed with the given name and status columns.
 
     Args:
@@ -264,7 +265,7 @@ def arc_gis_feed(
     Returns:
         The ArcGIS feed.
     """
-    return peri_scribe.feed_types.ArcGISFeed(
+    return peri_scribe.sources.feed_types.ArcGISFeed(
         url=url,
         fire_name_column=fire_name_column,
         status_column=status_column,
@@ -282,8 +283,8 @@ def arc_gis_feed(
 
 def configure_feeds(
     monkeypatch: pytest.MonkeyPatch,
-    feeds: list[peri_scribe.feed_types.Feed],
-) -> list[peri_scribe.feed_types.Feed]:
+    feeds: list[peri_scribe.sources.feed_types.Feed],
+) -> list[peri_scribe.sources.feed_types.Feed]:
     """Point feeds.FEEDS at *feeds* and return them.
 
     Args:
@@ -293,14 +294,14 @@ def configure_feeds(
     Returns:
         The configured feeds.
     """
-    monkeypatch.setattr(peri_scribe.feeds, "FEEDS", feeds)
+    monkeypatch.setattr(peri_scribe.sources.feeds, "FEEDS", feeds)
     return feeds
 
 
 @pytest.fixture
 def configured_feeds(
     monkeypatch: pytest.MonkeyPatch,
-) -> list[peri_scribe.feed_types.Feed]:
+) -> list[peri_scribe.sources.feed_types.Feed]:
     """Point feeds.FEEDS at two configured feeds for GeoPackage reading.
 
     Returns:
@@ -318,7 +319,7 @@ def configured_feeds(
 @pytest.fixture
 def configured_feeds_with_identifiers(
     monkeypatch: pytest.MonkeyPatch,
-) -> list[peri_scribe.feed_types.Feed]:
+) -> list[peri_scribe.sources.feed_types.Feed]:
     """Point feeds.FEEDS at feeds with identifier and complex columns.
 
     The first feed is CA-layer-like, with an identifier column only. The second is
@@ -353,7 +354,7 @@ def configured_feeds_with_identifiers(
 @pytest.fixture
 def configured_feeds_with_mission(
     monkeypatch: pytest.MonkeyPatch,
-) -> list[peri_scribe.feed_types.Feed]:
+) -> list[peri_scribe.sources.feed_types.Feed]:
     """Point feeds.FEEDS at a CA-layer-like feed with mission and time columns.
 
     Returns:
@@ -378,7 +379,7 @@ def configured_feeds_with_mission(
 @pytest.fixture
 def configured_feeds_with_point_of_origin(
     monkeypatch: pytest.MonkeyPatch,
-) -> list[peri_scribe.feed_types.Feed]:
+) -> list[peri_scribe.sources.feed_types.Feed]:
     """Point feeds.FEEDS at a WFIGS-like feed with point of origin columns.
 
     Returns:
@@ -414,12 +415,12 @@ def stub_geo_package(
 
     def stub(layers: pd.DataFrame, dataframes: dict[str, pd.DataFrame]) -> None:
         monkeypatch.setattr(
-            peri_scribe.geo_package.geopandas,
+            peri_scribe.geo.package.geopandas,
             "list_layers",
             lambda _path: layers,
         )
         monkeypatch.setattr(
-            peri_scribe.geo_package.geopandas,
+            peri_scribe.geo.package.geopandas,
             "read_file",
             lambda _path, layer: dataframes[layer],
         )
@@ -456,12 +457,12 @@ def geo_package_store(
     store = GeoPackageStore()
     monkeypatch.setattr(peri_scribe.output, "write_geopackage", store.write)
     monkeypatch.setattr(
-        peri_scribe.snapshots,
+        peri_scribe.sources.snapshots,
         "existing_source_files",
         store.source_files,
     )
     monkeypatch.setattr(
-        peri_scribe.geo_package,
+        peri_scribe.geo.reading,
         "read_layer_dataframe",
         store.read_layer,
     )
@@ -479,9 +480,9 @@ def in_process_plot_image_bundles(
 ) -> None:
     """Render plots in-process instead of in a pool for one test."""
     monkeypatch.setattr(
-        peri_scribe.kml_plot_rendering,
+        peri_scribe.kml.plot_rendering,
         "plot_image_bundles",
-        tests.kml_helpers.serial_plot_image_bundles,
+        tests.peri_scribe.kml.kml_helpers.serial_plot_image_bundles,
     )
 
 
@@ -497,11 +498,11 @@ def snapshot_path(
         The snapshot path, assuming the 2026 test year, no prior snapshots, and a first
         serial number of 0.
     """
-    return peri_scribe.snapshots.source_geopackage_path(
+    return peri_scribe.sources.snapshots.source_geopackage_path(
         BASE_DIRECTORY,
         2026,
         feed_name,
-        peri_scribe.snapshots.SourceFile(
+        peri_scribe.sources.snapshots.SourceFile(
             serial_number=serial_number,
             last_edit_timestamp=last_edit_timestamp,
         ),
@@ -543,7 +544,7 @@ def update_kmz_stubs(
         evacuations_changed: bool = False,
     ) -> UpdateKmzStubs:
         stubs = UpdateKmzStubs(
-            fetch_result=peri_scribe.fetching.FetchResult(
+            fetch_result=peri_scribe.sources.fetching.FetchResult(
                 snapshot_paths=(),
                 changed=changed,
             ),
@@ -560,12 +561,12 @@ def update_kmz_stubs(
             *,
             year: int,
             full: bool = False,
-        ) -> peri_scribe.fetching.FetchResult:
+        ) -> peri_scribe.sources.fetching.FetchResult:
             stubs.fetch_calls.append((base_directory, year, full))
             return stubs.fetch_result
 
         monkeypatch.setattr(
-            peri_scribe.fetching,
+            peri_scribe.sources.fetching,
             "fetch_all_feeds",
             fetch_all_feeds,
         )
@@ -592,24 +593,24 @@ def update_kmz_stubs(
             ),
         )
         monkeypatch.setattr(
-            peri_scribe.administrative_boundaries,
+            peri_scribe.sources.administrative_boundaries,
             "ensure_administrative_boundaries",
             lambda year_directory=None: stubs.ensure_boundary_calls.append(
                 year_directory,
             ),
         )
         monkeypatch.setattr(
-            peri_scribe.fire_differential,
+            peri_scribe.fires.differential,
             "write_history_of_differential_geography",
             stubs.history_calls.append,
         )
         monkeypatch.setattr(
-            peri_scribe.fire_scores,
+            peri_scribe.fires.scores,
             "score_fires",
             stubs.scores_calls.append,
         )
         monkeypatch.setattr(
-            peri_scribe.kml,
+            peri_scribe.kml.builder,
             "create_kmz",
             stubs.kmz_calls.append,
         )
@@ -622,7 +623,7 @@ def update_kmz_stubs(
 def validate_sources_stubs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> typing.Callable[
-    [tuple[peri_scribe.source_validation.FeedValidationResult, ...]],
+    [tuple[peri_scribe.sources.validation.FeedValidationResult, ...]],
     ValidateSourcesStubs,
 ]:
     """Install step stubs for the validate-sources command.
@@ -633,7 +634,7 @@ def validate_sources_stubs(
     """
 
     def install(
-        results: tuple[peri_scribe.source_validation.FeedValidationResult, ...],
+        results: tuple[peri_scribe.sources.validation.FeedValidationResult, ...],
     ) -> ValidateSourcesStubs:
         stubs = ValidateSourcesStubs(
             fetch_complete_calls=[],
@@ -654,9 +655,9 @@ def validate_sources_stubs(
             base_directory: pathlib.Path,
             *,
             year: int,
-        ) -> peri_scribe.fetching.FetchResult:
+        ) -> peri_scribe.sources.fetching.FetchResult:
             stubs.fetch_incremental_calls.append((base_directory, year))
-            return peri_scribe.fetching.FetchResult(
+            return peri_scribe.sources.fetching.FetchResult(
                 snapshot_paths=(),
                 changed=False,
             )
@@ -664,22 +665,22 @@ def validate_sources_stubs(
         def validate_complete_sources(
             year_directory: pathlib.Path,
             feeds: object,
-        ) -> tuple[peri_scribe.source_validation.FeedValidationResult, ...]:
+        ) -> tuple[peri_scribe.sources.validation.FeedValidationResult, ...]:
             stubs.validate_calls.append(year_directory)
             return results
 
         monkeypatch.setattr(
-            peri_scribe.fetching,
+            peri_scribe.sources.fetching,
             "fetch_all_feeds_complete",
             fetch_all_feeds_complete,
         )
         monkeypatch.setattr(
-            peri_scribe.fetching,
+            peri_scribe.sources.fetching,
             "fetch_all_feeds",
             fetch_all_feeds,
         )
         monkeypatch.setattr(
-            peri_scribe.source_validation,
+            peri_scribe.sources.validation,
             "validate_complete_sources",
             validate_complete_sources,
         )

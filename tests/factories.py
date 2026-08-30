@@ -13,11 +13,11 @@ import pyproj.exceptions
 import shapely
 import shapely.geometry
 
-import peri_scribe.california_border_classification
-import peri_scribe.feed_types
 import peri_scribe.models
-import peri_scribe.perimeter_versions
-import peri_scribe.snapshots
+import peri_scribe.perimeters.border_classification
+import peri_scribe.perimeters.versions
+import peri_scribe.sources.feed_types
+import peri_scribe.sources.snapshots
 
 
 ACTIVE = peri_scribe.models.FireStatus.ACTIVE
@@ -27,13 +27,13 @@ INACTIVE = peri_scribe.models.FireStatus.INACTIVE
 
 
 FIRIS_PERIMETER = (
-    peri_scribe.california_border_classification.FireSourceKind.FIRIS_PERIMETER
+    peri_scribe.perimeters.border_classification.FireSourceKind.FIRIS_PERIMETER
 )
 WFIGS_PERIMETER = (
-    peri_scribe.california_border_classification.FireSourceKind.WFIGS_PERIMETER
+    peri_scribe.perimeters.border_classification.FireSourceKind.WFIGS_PERIMETER
 )
 WFIGS_LOCATION = (
-    peri_scribe.california_border_classification.FireSourceKind.WFIGS_LOCATION
+    peri_scribe.perimeters.border_classification.FireSourceKind.WFIGS_LOCATION
 )
 
 
@@ -94,7 +94,7 @@ def fire_record(
 
 def change_feed(
     change_columns: tuple[str, ...] = ("ModifiedOnDateTime_dt",),
-) -> peri_scribe.feed_types.Feed:
+) -> peri_scribe.sources.feed_types.Feed:
     """Return a feed with known change columns.
 
     Args:
@@ -103,7 +103,7 @@ def change_feed(
     Returns:
         The feed.
     """
-    return peri_scribe.feed_types.ArcGISFeed(
+    return peri_scribe.sources.feed_types.ArcGISFeed(
         url="https://example.test/ArcGIS/rest/services/Fires/FeatureServer/0",
         fire_name_column="name",
         status_column="status",
@@ -159,7 +159,7 @@ def point(x: float, y: float) -> shapely.geometry.Point:
 
 def observation(
     *,
-    source_kind: peri_scribe.california_border_classification.FireSourceKind = (
+    source_kind: peri_scribe.perimeters.border_classification.FireSourceKind = (
         FIRIS_PERIMETER
     ),
     geometry: shapely.geometry.base.BaseGeometry | None = None,
@@ -169,7 +169,7 @@ def observation(
     object_id: int | None = 1,
     source_file: str = "source.gpkg",
     attributes: dict[str, object] | None = None,
-) -> peri_scribe.perimeter_versions.SourceObservation:
+) -> peri_scribe.perimeters.versions.SourceObservation:
     """Build a source observation for a test.
 
     Args:
@@ -185,7 +185,7 @@ def observation(
     Returns:
         The observation.
     """
-    return peri_scribe.perimeter_versions.SourceObservation(
+    return peri_scribe.perimeters.versions.SourceObservation(
         source_kind=source_kind,
         geometry=geometry,
         observation_time=observation_time,
@@ -408,7 +408,7 @@ class GeoPackageStore:
     def source_files(
         self,
         directory: pathlib.Path,
-    ) -> list[peri_scribe.snapshots.SourceFile]:
+    ) -> list[peri_scribe.sources.snapshots.SourceFile]:
         """Return the source files stored under *directory*, in serial order.
 
         Files that do not encode a snapshot serial number and timestamp (the
@@ -417,13 +417,13 @@ class GeoPackageStore:
         Returns:
             The stored source files, sorted by serial number.
         """
-        source_files: list[peri_scribe.snapshots.SourceFile] = []
+        source_files: list[peri_scribe.sources.snapshots.SourceFile] = []
         for path, _layer_name in self.layers:
             if path.suffix != ".gpkg" or not path.is_relative_to(directory):
                 continue
             try:
                 source_files.append(
-                    peri_scribe.snapshots.SourceFile.from_path(path),
+                    peri_scribe.sources.snapshots.SourceFile.from_path(path),
                 )
             except ValueError:
                 continue
@@ -432,7 +432,7 @@ class GeoPackageStore:
     def read_layer(
         self,
         path: pathlib.Path,
-        feed: peri_scribe.feed_types.Feed,
+        feed: peri_scribe.sources.feed_types.Feed,
     ) -> geopandas.GeoDataFrame:
         """Return the layer for *feed* stored in the GeoPackage at *path*.
 

@@ -8,7 +8,7 @@ import typing
 
 
 if typing.TYPE_CHECKING:
-    import peri_scribe.fetching
+    import peri_scribe.sources.fetching
 
 
 SAMPLE_LAST_EDIT_TIMESTAMP = 2
@@ -22,7 +22,7 @@ BASE_DIRECTORY = pathlib.Path("/fetch")
 class UpdateKmzStubs:
     """Fetch outcome and recorded step calls for update-kmz tests."""
 
-    fetch_result: peri_scribe.fetching.FetchResult
+    fetch_result: peri_scribe.sources.fetching.FetchResult
     fetch_calls: list[tuple[pathlib.Path, int, bool]]
     external_calls: list[tuple[object, pathlib.Path]]
     ensure_boundary_calls: list[pathlib.Path | None]
