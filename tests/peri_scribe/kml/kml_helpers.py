@@ -364,6 +364,27 @@ def assert_tree_invisible(container: ET.Element) -> None:
         assert visibility(feature) == 0, feature.findtext(kml_tag("name"))
 
 
+def assert_tree_visible(container: ET.Element) -> None:
+    """Assert *container* and every feature beneath it is checked.
+
+    Args:
+        container: The folder whose whole tree must be visible.
+    """
+    for feature in container.iter():
+        if feature.tag not in {
+            kml_tag("Folder"),
+            kml_tag("Placemark"),
+            gx_tag("Tour"),
+        }:
+            continue
+        # Tour update instructions reuse Placemark and Folder tags but carry a
+        # targetId rather than being real features, so they are not part of the
+        # tree whose visibility is asserted here.
+        if feature.get("targetId") is not None:
+            continue
+        assert visibility(feature) is None, feature.findtext(kml_tag("name"))
+
+
 def point_coordinates(placemark: ET.Element) -> tuple[float, float]:
     """Return the (longitude, latitude) of *placemark*'s point geometry.
 

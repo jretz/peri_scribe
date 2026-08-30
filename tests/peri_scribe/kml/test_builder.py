@@ -183,6 +183,120 @@ def test_fire_kml_puts_top_fires_before_status_folders() -> None:
     ) == ["Zulu", "Alpha"]
 
 
+def test_fire_kml_shows_top_fires_by_name_progression_maps() -> None:
+    fires = [
+        peri_scribe.kml.fire_data.FireGeometry(
+            name=name,
+            status=peri_scribe.models.FireStatus.ACTIVE,
+            point=shapely.geometry.Point(0.0, 0.0),
+            perimeters=(),
+        )
+        for name in ("Zulu", "Alpha")
+    ]
+    components = peri_scribe.models.FireScoreComponents(
+        size=0,
+        growth=0,
+        first_mapping=0,
+        buildings=0,
+        evacuation=0,
+        importance=0,
+    )
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            peri_scribe.models.FireScoreEntry(
+                name="Zulu",
+                score=3,
+                components=components,
+                explanation="No notable size, growth, threat, or "
+                "official-importance signals.",
+            ),
+            peri_scribe.models.FireScoreEntry(
+                name="Alpha",
+                score=2,
+                components=components,
+                explanation="No notable size, growth, threat, or "
+                "official-importance signals.",
+            ),
+        ],
+    )
+    template = peri_scribe.kml.template_reader.template_from(
+        peri_scribe.kml.template.template_kml(),
+    )
+    document = tests.peri_scribe.kml.kml_helpers.document_from(
+        peri_scribe.kml.builder.fire_kml(fires, template, "test", scores),
+    )
+
+    top_level = tests.peri_scribe.kml.kml_helpers.folder_named(document, "test")
+    by_name = tests.peri_scribe.kml.kml_helpers.folder_named(
+        top_level,
+        "Top Fires by Name",
+    )
+    by_score = tests.peri_scribe.kml.kml_helpers.folder_named(
+        top_level,
+        "Top Fires by Score",
+    )
+    active = tests.peri_scribe.kml.kml_helpers.folder_named(
+        top_level,
+        "Active Fires",
+    )
+    inactive = tests.peri_scribe.kml.kml_helpers.folder_named(
+        top_level,
+        "Inactive Fires",
+    )
+    # The top-level radios load with only "Top Fires by Name" checked, and inside it
+    # the progression-maps view is the checked radio, so the progression maps are the
+    # default view on load.
+    assert tests.peri_scribe.kml.kml_helpers.visibility(by_name) is None
+    assert tests.peri_scribe.kml.kml_helpers.visibility(by_score) == 0
+    assert tests.peri_scribe.kml.kml_helpers.visibility(active) == 0
+    assert tests.peri_scribe.kml.kml_helpers.visibility(inactive) == 0
+    assert (
+        tests.peri_scribe.kml.kml_helpers.visibility(
+            tests.peri_scribe.kml.kml_helpers.folder_named(
+                by_name,
+                peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
+            ),
+        )
+        == 0
+    )
+    assert (
+        tests.peri_scribe.kml.kml_helpers.visibility(
+            tests.peri_scribe.kml.kml_helpers.folder_named(
+                by_name,
+                peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
+            ),
+        )
+        is None
+    )
+    # The checked "Top Fires by Name" radio keeps its unchecked latest-perimeters view
+    # usable, so checking its radio button in Google Earth shows the fire folders
+    # immediately. The unchecked top-level radios hide their whole trees, so they carry
+    # no visible content and their radio buttons load off instead of being selected.
+    by_name_latest = tests.peri_scribe.kml.kml_helpers.folder_named(
+        by_name,
+        peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
+    for fire_name in by_name_latest.findall(
+        tests.peri_scribe.kml.kml_helpers.kml_tag("Folder"),
+    ):
+        assert tests.peri_scribe.kml.kml_helpers.visibility(fire_name) is None
+    tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(active)
+    tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(by_score)
+    tests.peri_scribe.kml.kml_helpers.assert_tree_visible(
+        tests.peri_scribe.kml.kml_helpers.folder_named(
+            by_name,
+            peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
+        ),
+    )
+    tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(
+        tests.peri_scribe.kml.kml_helpers.folder_named(
+            by_score,
+            peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
+        ),
+    )
+
+
 def test_fire_kml_includes_progression_maps_folder() -> None:
     index = tests.peri_scribe.kml.kml_helpers.fire_index([
         tests.peri_scribe.kml.kml_helpers.fire_index_entry(

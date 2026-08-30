@@ -119,7 +119,11 @@ def fire_kml(
     )
 
     # The top-level folder holds the status folders as radio options, so they display as
-    # radio buttons in Google Earth's Places panel.
+    # radio buttons in Google Earth's Places panel. Google Earth checks the last radio
+    # option that has any visible content, so when scores are present the "Top Fires by
+    # Name" folder loads checked (its progression maps are the only visible content) and
+    # the other top-level radios load unchecked with their whole trees hidden; without
+    # scores the active fires folder loads checked.
     with writer.folder(name, list_item_type="radioFolder"):
         if scores is not None:
             score_sorted_fires = peri_scribe.kml.folders.top_fires(fires, scores)
@@ -128,19 +132,29 @@ def fire_kml(
                 sorted(score_sorted_fires, key=lambda fire: fire.name.casefold()),
                 peri_scribe.kml.folders.TOP_FIRES_BY_NAME_FOLDER_NAME,
                 template.style_urls,
+                progression_visible=True,
             )
             peri_scribe.kml.folders.top_fires_folder(
                 writer,
                 score_sorted_fires,
                 peri_scribe.kml.folders.TOP_FIRES_BY_SCORE_FOLDER_NAME,
                 template.style_urls,
+                visible=False,
             )
-        peri_scribe.kml.folders.status_folder(
-            writer,
-            fires,
-            peri_scribe.models.FireStatus.ACTIVE,
-            template.style_urls,
-        )
+            peri_scribe.kml.folders.status_folder(
+                writer,
+                fires,
+                peri_scribe.models.FireStatus.ACTIVE,
+                template.style_urls,
+                visible=False,
+            )
+        else:
+            peri_scribe.kml.folders.status_folder(
+                writer,
+                fires,
+                peri_scribe.models.FireStatus.ACTIVE,
+                template.style_urls,
+            )
         peri_scribe.kml.folders.status_folder(
             writer,
             fires,

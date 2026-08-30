@@ -191,6 +191,7 @@ def latest_perimeters_folder(
     style_urls: typing.Mapping[str, str],
     *,
     visible: bool = True,
+    children_visible: bool | None = None,
 ) -> None:
     """Append the folder holding each fire's symbolized geometry to *writer*.
 
@@ -199,19 +200,25 @@ def latest_perimeters_folder(
         fires: The fires to place in the folder.
         style_urls: The style URL for each template placemark name.
         visible: Whether the folder and its features are visible.
+        children_visible: Whether each fire's folder beneath this one is visible,
+            or None to match *visible*.
     """
+    if children_visible is None:
+        children_visible = visible
     with writer.folder(
         peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
         visible=visible,
     ):
         for fire in fires:
-            fire_folder(writer, fire, style_urls, visible=visible)
+            fire_folder(writer, fire, style_urls, visible=children_visible)
 
 
 def progression_folder(
     writer: peri_scribe.kml.geometry.KmlWriter,
     fires: list[peri_scribe.kml.fire_data.FireGeometry],
     style_urls: typing.Mapping[str, str],
+    *,
+    visible: bool = False,
 ) -> None:
     """Append the folder holding each fire's progression map to *writer*.
 
@@ -220,28 +227,38 @@ def progression_folder(
     from that range, styled by the range's color and marked with a colored icon. A fire
     with no growth rings holds just its point location, so every fire appears in this
     folder exactly as it does in the latest-perimeters folder. The folder and everything
-    beneath it loads unchecked, so the progression maps stay hidden until they are
-    enabled.
+    beneath it loads unchecked unless *visible* is true, so the progression maps stay
+    hidden until they are enabled.
 
     Args:
         writer: The writer to append to.
         fires: The fires to place in the folder.
         style_urls: The style URL for each template placemark name.
+        visible: Whether the folder and everything beneath it loads visible.
     """
     with writer.folder(
         peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
-        visible=False,
+        visible=visible,
     ):
         for fire in fires:
-            progression_fire_folder(writer, fire, style_urls)
+            progression_fire_folder(writer, fire, style_urls, visible=visible)
 
 
 def progression_fire_folder(
     writer: peri_scribe.kml.geometry.KmlWriter,
     fire: peri_scribe.kml.fire_data.FireGeometry,
     style_urls: typing.Mapping[str, str],
+    *,
+    visible: bool = False,
 ) -> None:
-    """Append one fire's progression-map folder to *writer*, hidden."""
+    """Append one fire's progression-map folder to *writer*.
+
+    Args:
+        writer: The writer to append to.
+        fire: The fire to symbolize.
+        style_urls: The style URL for each template placemark name.
+        visible: Whether the folder and everything beneath it loads visible.
+    """
     bands = peri_scribe.perimeters.progression.progression_band_rings(
         fire.progression_rings,
     )
@@ -251,7 +268,7 @@ def progression_fire_folder(
         if ring.observation_time is not None
     )
     ring_count = sum(len(band.rings) for band in bands)
-    with writer.folder(fire.name, visible=False) as folder_id:
+    with writer.folder(fire.name, visible=visible) as folder_id:
         if fire.point is not None:
             peri_scribe.kml.geometry.point_placemark(
                 writer,
@@ -260,19 +277,19 @@ def progression_fire_folder(
                 fire.point,
                 ring_count,
                 description=fire.description,
-                visible=False,
+                visible=visible,
             )
         if ring_times:
             peri_scribe.kml.tour.progression_tour(
                 writer,
                 folder_id,
                 ring_times,
-                visible=False,
+                visible=visible,
             )
         for position, band in enumerate(bands):
             with writer.folder(
                 band.label,
-                visible=False,
+                visible=visible,
                 item_icon=peri_scribe.kml.icons.progression_icon_filename(
                     band.band_index,
                 ),
@@ -290,7 +307,7 @@ def progression_fire_folder(
                         ring.geometry,
                         older_ring_count + ring_index,
                         description=fire.description,
-                        visible=False,
+                        visible=visible,
                         placemark_id=peri_scribe.kml.tour.interior_ring_id(
                             folder_id,
                             older_ring_count + ring_index,
@@ -317,6 +334,8 @@ def status_folder(
     fires: list[peri_scribe.kml.fire_data.FireGeometry],
     status: peri_scribe.models.FireStatus,
     style_urls: typing.Mapping[str, str],
+    *,
+    visible: bool | None = None,
 ) -> None:
     """Append the top-level folder for fires of *status* to *writer*.
 
@@ -325,22 +344,28 @@ def status_folder(
         fires: Every fire.
         status: The status whose fires belong in the folder.
         style_urls: The style URL for each template placemark name.
+        visible: Whether the folder loads checked, or None for the status default
+            (active fires load checked, inactive fires load unchecked).
 
     The inactive fires folder loads unchecked, along with everything beneath it, so
-    inactive fires stay hidden until the folder is enabled.
+    inactive fires stay hidden until the folder is enabled. A status folder that loads
+    unchecked keeps its whole tree hidden, so it carries no visible content and its
+    radio button in Google Earth loads off instead of being selected.
     """
     status_fires = [fire for fire in fires if fire.status is status]
-    invisible = status is peri_scribe.models.FireStatus.INACTIVE
+    inactive = status is peri_scribe.models.FireStatus.INACTIVE
+    if visible is None:
+        visible = not inactive
     with writer.folder(
         status_folder_name(status),
-        visible=not invisible,
+        visible=visible,
         list_item_type="radioFolder",
     ):
         latest_perimeters_folder(
             writer,
             status_fires,
             style_urls,
-            visible=not invisible,
+            visible=visible,
         )
         progression_folder(writer, status_fires, style_urls)
 
@@ -411,8 +436,38 @@ def top_fires_folder(
     fires: list[peri_scribe.kml.fire_data.FireGeometry],
     name: str,
     style_urls: typing.Mapping[str, str],
+    *,
+    visible: bool = True,
+    progression_visible: bool = False,
 ) -> None:
-    """Append a top-fires folder with the same two views as a status folder."""
-    with writer.folder(name, list_item_type="radioFolder"):
-        latest_perimeters_folder(writer, fires, style_urls)
-        progression_folder(writer, fires, style_urls)
+    """Append a top-fires folder with the same two views as a status folder.
+
+    The latest-perimeters and progression-maps views are radio options, so exactly
+    one loads checked: the latest-perimeters view when *progression_visible* is false,
+    and the progression-maps view when it is true. A folder that loads unchecked keeps
+    its whole tree hidden, so it carries no visible content and its radio button in
+    Google Earth loads off instead of being selected.
+
+    Args:
+        writer: The writer to append to.
+        fires: The fires to place in the folder.
+        name: The folder's name.
+        style_urls: The style URL for each template placemark name.
+        visible: Whether the folder itself loads checked.
+        progression_visible: Whether the folder's progression-maps view loads checked
+            instead of its latest-perimeters view.
+    """
+    with writer.folder(name, visible=visible, list_item_type="radioFolder"):
+        latest_perimeters_folder(
+            writer,
+            fires,
+            style_urls,
+            visible=visible and not progression_visible,
+            children_visible=visible,
+        )
+        progression_folder(
+            writer,
+            fires,
+            style_urls,
+            visible=visible and progression_visible,
+        )

@@ -803,6 +803,42 @@ def test_progression_folder_hides_its_tree(style_urls: dict[str, str]) -> None:
     tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(folder)
 
 
+def test_progression_folder_can_load_visible(style_urls: dict[str, str]) -> None:
+    point = shapely.geometry.Point(1.0, 1.0)
+    fire = peri_scribe.kml.fire_data.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=point,
+        perimeters=(),
+        progression_rings=(
+            peri_scribe.perimeters.progression.Ring(
+                geometry=tests.peri_scribe.kml.kml_helpers.square(1.0),
+                observation_time=datetime.datetime(
+                    2026,
+                    8,
+                    15,
+                    20,
+                    0,
+                    tzinfo=datetime.UTC,
+                ),
+            ),
+        ),
+    )
+    writer = peri_scribe.kml.geometry.KmlWriter()
+    peri_scribe.kml.folders.progression_folder(
+        writer,
+        [fire],
+        style_urls,
+        visible=True,
+    )
+    document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
+    folder = tests.peri_scribe.kml.kml_helpers.folder_named(
+        document,
+        peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
+    tests.peri_scribe.kml.kml_helpers.assert_tree_visible(folder)
+
+
 def test_status_folder_name_for_active() -> None:
     assert (
         peri_scribe.kml.folders.status_folder_name(
@@ -931,6 +967,114 @@ def test_top_fires_excludes_scores_without_matching_fire() -> None:
     assert peri_scribe.kml.folders.top_fires([fire], scores) == []
 
 
+def test_top_fires_folder_hides_progression_maps_by_default(
+    style_urls: dict[str, str],
+) -> None:
+    fire = peri_scribe.kml.fire_data.FireGeometry(
+        name="Zulu",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=shapely.geometry.Point(0.0, 0.0),
+        perimeters=(),
+    )
+    writer = peri_scribe.kml.geometry.KmlWriter()
+    peri_scribe.kml.folders.top_fires_folder(
+        writer,
+        [fire],
+        "Top Fires by Name",
+        style_urls,
+    )
+    document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
+    folder = tests.peri_scribe.kml.kml_helpers.folder_named(
+        document,
+        "Top Fires by Name",
+    )
+    latest = tests.peri_scribe.kml.kml_helpers.folder_named(
+        folder,
+        peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
+    progression = tests.peri_scribe.kml.kml_helpers.folder_named(
+        folder,
+        peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
+    # The latest-perimeters view is the checked radio, and the fire folders beneath
+    # it stay visible so the view shows when the radio is checked.
+    assert tests.peri_scribe.kml.kml_helpers.visibility(latest) is None
+    for fire_folder in latest.findall(
+        tests.peri_scribe.kml.kml_helpers.kml_tag("Folder"),
+    ):
+        assert tests.peri_scribe.kml.kml_helpers.visibility(fire_folder) is None
+    tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(progression)
+
+
+def test_top_fires_folder_can_show_progression_maps(
+    style_urls: dict[str, str],
+) -> None:
+    fire = peri_scribe.kml.fire_data.FireGeometry(
+        name="Zulu",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=shapely.geometry.Point(0.0, 0.0),
+        perimeters=(),
+    )
+    writer = peri_scribe.kml.geometry.KmlWriter()
+    peri_scribe.kml.folders.top_fires_folder(
+        writer,
+        [fire],
+        "Top Fires by Name",
+        style_urls,
+        progression_visible=True,
+    )
+    document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
+    folder = tests.peri_scribe.kml.kml_helpers.folder_named(
+        document,
+        "Top Fires by Name",
+    )
+    latest = tests.peri_scribe.kml.kml_helpers.folder_named(
+        folder,
+        peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
+    )
+    progression = tests.peri_scribe.kml.kml_helpers.folder_named(
+        folder,
+        peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
+    # The progression-maps view is the checked radio; the latest-perimeters view
+    # loads unchecked but keeps its fire folders visible, so checking its radio
+    # button in Google Earth shows them immediately.
+    assert tests.peri_scribe.kml.kml_helpers.visibility(latest) == 0
+    for fire_folder in latest.findall(
+        tests.peri_scribe.kml.kml_helpers.kml_tag("Folder"),
+    ):
+        assert tests.peri_scribe.kml.kml_helpers.visibility(fire_folder) is None
+    tests.peri_scribe.kml.kml_helpers.assert_tree_visible(progression)
+
+
+def test_top_fires_folder_hides_whole_tree_when_unchecked(
+    style_urls: dict[str, str],
+) -> None:
+    fire = peri_scribe.kml.fire_data.FireGeometry(
+        name="Zulu",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=shapely.geometry.Point(0.0, 0.0),
+        perimeters=(),
+    )
+    writer = peri_scribe.kml.geometry.KmlWriter()
+    peri_scribe.kml.folders.top_fires_folder(
+        writer,
+        [fire],
+        "Top Fires by Score",
+        style_urls,
+        visible=False,
+    )
+    document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
+    folder = tests.peri_scribe.kml.kml_helpers.folder_named(
+        document,
+        "Top Fires by Score",
+    )
+    # An unchecked top-fires folder hides its whole tree, so it carries no visible
+    # content and its radio button in Google Earth loads off instead of being selected.
+    assert tests.peri_scribe.kml.kml_helpers.visibility(folder) == 0
+    tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(folder)
+
+
 def test_status_folder_name_for_inactive() -> None:
     assert (
         peri_scribe.kml.folders.status_folder_name(
@@ -969,6 +1113,29 @@ def test_status_folder_filters_by_status(style_urls: dict[str, str]) -> None:
     assert tests.peri_scribe.kml.kml_helpers.folder_names(perimeters_folder) == [
         "Active Fire",
     ]
+
+
+def test_status_folder_can_load_hidden(style_urls: dict[str, str]) -> None:
+    active = peri_scribe.kml.fire_data.FireGeometry(
+        name="Active Fire",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=None,
+        perimeters=(),
+    )
+    writer = peri_scribe.kml.geometry.KmlWriter()
+    peri_scribe.kml.folders.status_folder(
+        writer,
+        [active],
+        peri_scribe.models.FireStatus.ACTIVE,
+        style_urls,
+        visible=False,
+    )
+    document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
+    folder = tests.peri_scribe.kml.kml_helpers.folder_named(document, "Active Fires")
+    # The folder and its whole tree load unchecked, so the folder carries no visible
+    # content and its radio button in Google Earth loads off instead of being selected.
+    assert tests.peri_scribe.kml.kml_helpers.visibility(folder) == 0
+    tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(folder)
 
 
 def test_status_folder_puts_same_fires_in_both_folders(
