@@ -470,6 +470,31 @@ def snapshot_matches(
     return dataframe_digest(dataframe) == dataframe_digest(stored)
 
 
+def stored_geopackage_digest(
+    path: pathlib.Path,
+    layer_name: str,
+) -> str | None:
+    """Return the content digest of the GeoPackage at *path*, or None.
+
+    A file that is missing or cannot be read has no digest; a readable file digests the
+    same as its contents, so two files holding the same features in a different row
+    order digest alike.
+
+    Args:
+        path: The GeoPackage to digest.
+        layer_name: The GeoPackage layer whose contents are digested.
+
+    Returns:
+        The digest of the layer's contents, or None when the file is missing or
+        unreadable.
+    """
+    try:
+        stored = geopandas.read_file(path, layer=layer_name)
+    except OSError, RuntimeError, ValueError:
+        return None
+    return dataframe_digest(stored)
+
+
 def dataframe_digest(dataframe: geopandas.GeoDataFrame) -> str:
     """Return an order-independent content digest for *dataframe*.
 

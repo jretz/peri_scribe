@@ -1,7 +1,7 @@
 """Generating the folder icons embedded in the KMZ output.
 
 Each folder in the output carries a small square icon colored to match the geometry it
-holds. The icons are generated in memory as PNG bytes on every create-kml run.
+holds. The icons are generated in memory as PNG bytes on every KMZ build.
 """
 
 from __future__ import annotations
@@ -237,7 +237,7 @@ def progression_icons(
     """Return the progression band icons for *template*, keyed by filename.
 
     Each icon is a square filled with the color its band's polygons are styled with,
-    generated in memory on every create-kml run.
+    generated in memory on every KMZ build.
 
     Args:
         template: The parsed KML template.
@@ -262,7 +262,7 @@ def interior_icon(
     """Return the interior folder icon for *template*.
 
     The icon is a square filled with the color the interior polygons are styled with,
-    generated in memory on every create-kml run.
+    generated in memory on every KMZ build.
 
     Args:
         template: The parsed KML template.
@@ -286,7 +286,7 @@ def perimeters_icon(
     like the latest perimeter outline and a line a third of the way up from the bottom
     colored like the penultimate perimeter outline. The colors are read from the
     template's line styles, so the folder reads as holding the fire's perimeter
-    outlines. The icon is generated in memory on every create-kml run.
+    outlines. The icon is generated in memory on every KMZ build.
 
     Args:
         template: The parsed KML template.

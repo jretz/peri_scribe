@@ -18,7 +18,7 @@ import peri_scribe.feed_types
 import peri_scribe.feeds
 import peri_scribe.fetching
 import peri_scribe.fire_differential
-import peri_scribe.fire_index
+import peri_scribe.fire_scores
 import peri_scribe.geo_package
 import peri_scribe.kml
 import peri_scribe.kml_plot_rendering
@@ -33,10 +33,7 @@ from tests.factories import WGS84_WKID, GeoPackageStore, wgs84_feature_set
 from tests.main_stubs import (
     BASE_DIRECTORY,
     SAMPLE_LAST_EDIT_TIMESTAMP,
-    FeedStub,
-    FetchStubs,
-    FullPipelineStubs,
-    LayerFactory,
+    UpdateKmzStubs,
     ValidateSourcesStubs,
 )
 
@@ -488,46 +485,6 @@ def in_process_plot_image_bundles(
     )
 
 
-@pytest.fixture
-def fetch_setup(
-    monkeypatch: pytest.MonkeyPatch,
-    geo_package_store: GeoPackageStore,
-) -> typing.Iterator[None]:
-    """Point the fetch command's boundaries at in-memory stubs and fix the date."""
-    monkeypatch.setattr(
-        pathlib.Path,
-        "cwd",
-        staticmethod(lambda: BASE_DIRECTORY),
-    )
-    monkeypatch.setattr(
-        peri_scribe.output,
-        "configure_logging",
-        lambda log_level: log_level,
-    )
-    monkeypatch.setattr(
-        peri_scribe.feeds,
-        "FEEDS",
-        [
-            FeedStub(
-                name=SAMPLE_FEED_NAME,
-                url=SAMPLE_FEED_URL,
-                last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
-            ),
-        ],
-    )
-    monkeypatch.setattr(peri_scribe.fetching.arcgis.gis, "GIS", object)
-    monkeypatch.setattr(
-        peri_scribe.fire_index,
-        "index_fire_sources",
-        lambda _year_directory: None,
-    )
-    with time_machine.travel(
-        datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
-        tick=False,
-    ):
-        yield
-
-
 def snapshot_path(
     *,
     feed_name: str = SAMPLE_FEED_NAME,
@@ -552,58 +509,6 @@ def snapshot_path(
 
 
 @pytest.fixture
-def list_fires_setup(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Silence log configuration so list-fires logs can be captured."""
-    monkeypatch.setattr(
-        peri_scribe.output,
-        "configure_logging",
-        lambda log_level: log_level,
-    )
-
-
-def invoke_fetch(
-    runner: click.testing.CliRunner,
-    *arguments: str,
-) -> click.testing.Result:
-    """Invoke the fetch command in the test runner.
-
-    Args:
-        runner: The test runner.
-        arguments: Extra command-line arguments after ``fetch``.
-
-    Returns:
-        The command result.
-    """
-    return runner.invoke(peri_scribe.main.cli, ["fetch", *arguments])
-
-
-@pytest.fixture
-def fetch_stubs(
-    monkeypatch: pytest.MonkeyPatch,
-) -> FetchStubs:
-    """Install feed and FeatureLayer stubs for the fetch command.
-
-    Returns:
-        The installers for feeds and FeatureLayer factories.
-    """
-
-    def stub_feeds(*feeds: FeedStub) -> None:
-        monkeypatch.setattr(peri_scribe.feeds, "FEEDS", list(feeds))
-
-    def stub_feature_layers(factory: LayerFactory) -> None:
-        monkeypatch.setattr(
-            peri_scribe.fetching.arcgis.features,
-            "FeatureLayer",
-            factory,
-        )
-
-    return FetchStubs(
-        feeds=stub_feeds,
-        feature_layers=stub_feature_layers,
-    )
-
-
-@pytest.fixture
 def current_year(
     monkeypatch: pytest.MonkeyPatch,
 ) -> typing.Iterator[None]:
@@ -621,25 +526,32 @@ def current_year(
 
 
 @pytest.fixture
-def full_pipeline_stubs(
+def update_kmz_stubs(
     monkeypatch: pytest.MonkeyPatch,
-) -> typing.Callable[..., FullPipelineStubs]:
-    """Install step stubs for the full-pipeline command.
+) -> typing.Callable[..., UpdateKmzStubs]:
+    """Install step stubs for the update-kmz command.
 
     Returns:
-        A callable taking whether the fetch changed something and returning the
-        installed fetch outcome and the lists recording each step's calls.
+        A callable taking whether the fetch changed something and whether the
+        evacuations were replaced, and returning the installed fetch outcome and the
+        lists recording each step's calls.
     """
 
-    def install(*, changed: bool) -> FullPipelineStubs:
-        stubs = FullPipelineStubs(
+    def install(
+        *,
+        changed: bool,
+        evacuations_changed: bool = False,
+    ) -> UpdateKmzStubs:
+        stubs = UpdateKmzStubs(
             fetch_result=peri_scribe.fetching.FetchResult(
                 snapshot_paths=(),
                 changed=changed,
             ),
             fetch_calls=[],
+            external_calls=[],
             ensure_boundary_calls=[],
             history_calls=[],
+            scores_calls=[],
             kmz_calls=[],
         )
 
@@ -657,6 +569,28 @@ def full_pipeline_stubs(
             "fetch_all_feeds",
             fetch_all_feeds,
         )
+        # The stored evacuations digest is observed before and after the external source
+        # fetch; the two observations differ only when the fetch replaced the stored
+        # evacuations.
+        digests = ["before", "after"] if evacuations_changed else ["same", "same"]
+
+        def stored_evacuations_digest(
+            _year_directory: pathlib.Path,
+        ) -> str | None:
+            return digests.pop() if digests else "same"
+
+        monkeypatch.setattr(
+            peri_scribe.main,
+            "stored_evacuations_digest",
+            stored_evacuations_digest,
+        )
+        monkeypatch.setattr(
+            peri_scribe.main,
+            "fetch_external_source",
+            lambda source, year_directory: stubs.external_calls.append(
+                (source, year_directory),
+            ),
+        )
         monkeypatch.setattr(
             peri_scribe.administrative_boundaries,
             "ensure_administrative_boundaries",
@@ -668,6 +602,11 @@ def full_pipeline_stubs(
             peri_scribe.fire_differential,
             "write_history_of_differential_geography",
             stubs.history_calls.append,
+        )
+        monkeypatch.setattr(
+            peri_scribe.fire_scores,
+            "score_fires",
+            stubs.scores_calls.append,
         )
         monkeypatch.setattr(
             peri_scribe.kml,

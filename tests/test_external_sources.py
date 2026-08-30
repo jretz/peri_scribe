@@ -591,9 +591,7 @@ def testfetch_arcgis_source_replaces_current_version_when_content_changed(
     assert second == first
     stored = geopandas.read_file(second, layer="evacuations")
     assert stored["OBJECTID"].tolist() == [99, 2]
-    snapshot_names = {
-        path.name for path in (tmp_path / "sources").rglob("*.gpkg")
-    }
+    snapshot_names = {path.name for path in (tmp_path / "sources").rglob("*.gpkg")}
     assert snapshot_names == {"evacuations.gpkg"}
 
 
@@ -1428,3 +1426,50 @@ def test_dataframe_digest_covers_every_attribute_kind() -> None:
     digest = peri_scribe.external_sources.dataframe_digest(dataframe)
     assert isinstance(digest, str)
     assert len(digest) == len(hashlib.sha256(b"x").hexdigest())
+
+
+def test_stored_geopackage_digest_returns_none_when_file_missing(
+    tmp_path: pathlib.Path,
+) -> None:
+    digest = peri_scribe.external_sources.stored_geopackage_digest(
+        tmp_path / "missing.gpkg",
+        "evacuations",
+    )
+    assert digest is None
+
+
+def test_stored_geopackage_digest_returns_none_when_file_unreadable(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "bad.gpkg"
+    path.write_bytes(b"not a geopackage")
+    digest = peri_scribe.external_sources.stored_geopackage_digest(
+        path,
+        "evacuations",
+    )
+    assert digest is None
+
+
+def test_stored_geopackage_digest_digests_file_contents(
+    tmp_path: pathlib.Path,
+) -> None:
+    output = peri_scribe.external_sources.output_path(
+        tmp_path,
+        peri_scribe.external_sources.EVACUATIONS_SOURCE,
+    )
+    output.parent.mkdir(parents=True, exist_ok=True)
+    peri_scribe.output.write_geopackage(
+        output,
+        [
+            peri_scribe.models.LayerData(
+                name="evacuations",
+                dataframe=sample_arcgis_dataframe(),
+            ),
+        ],
+    )
+    digest = peri_scribe.external_sources.stored_geopackage_digest(
+        output,
+        "evacuations",
+    )
+    stored = geopandas.read_file(output, layer="evacuations")
+    assert digest == peri_scribe.external_sources.dataframe_digest(stored)

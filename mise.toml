@@ -4,17 +4,11 @@ depends = ["venv"]
 raw_args = true
 run = "uv run --locked peri_scribe"
 
-[tasks.full-pipeline]
+[tasks.update-kmz]
 description = "Check for new source data and use it to generate new maps"
 depends = ["venv"]
 raw_args = true
-run = "uv run --locked peri_scribe full-pipeline"
-
-[tasks.create-kml]
-description = "Build the KML file for the specified year"
-depends = ["venv"]
-raw_args = true
-run = "uv run --locked peri_scribe create-kml"
+run = "uv run --locked peri_scribe update-kmz"
 
 [tasks.create-kml-template]
 description = "Generate the KML template used to specify symbolization"
@@ -27,36 +21,6 @@ description = "Ensure needed administrative boundaries are available"
 depends = ["venv"]
 raw_args = true
 run = "uv run --locked peri_scribe ensure-admin-boundaries"
-
-[tasks.current-timestamps]
-description = "Log the current timestamp for each configured feed"
-depends = ["venv"]
-raw_args = true
-run = "uv run --locked peri_scribe current-timestamps"
-
-[tasks.list-fires]
-description = "Log the name, status, and identifier of each fire"
-depends = ["venv"]
-raw_args = true
-run = "uv run --locked peri_scribe list-fires"
-
-[tasks.fetch]
-description = "Fetch each configured feed into a GeoPackage"
-depends = ["venv"]
-raw_args = true
-run = "uv run --locked peri_scribe fetch"
-
-[tasks.derive-geo-history]
-description = "Derive the full and differential point and perimeter history for YEAR_DIRECTORY"
-depends = ["venv"]
-raw_args = true
-run = "uv run --locked peri_scribe derive-geo-history"
-
-[tasks.index-fire-sources]
-description = "Build the fire source index for YEAR_DIRECTORY"
-depends = ["venv"]
-raw_args = true
-run = "uv run --locked peri_scribe index-fire-sources"
 
 [tasks.validate-sources]
 description = "Check that the stored sources cover a complete snapshot of every feed"

@@ -13,7 +13,6 @@ import peri_scribe.external_sources
 import peri_scribe.feeds
 import peri_scribe.fetching
 import peri_scribe.fire_differential
-import peri_scribe.fire_index
 import peri_scribe.fire_scores
 import peri_scribe.kml
 import peri_scribe.kml_template
@@ -56,33 +55,6 @@ def cli(log_level: str) -> None:
     peri_scribe.output.configure_logging(log_level)
 
 
-@cli.command()
-@click.option(
-    "--full",
-    is_flag=True,
-    help=(
-        "Fetch every feed in full, storing only features that are new or changed "
-        "since the stored snapshots."
-    ),
-)
-def fetch(*, full: bool) -> None:
-    """Fetch each configured feed into a GeoPackage."""
-    peri_scribe.fetching.fetch_all_feeds(full=full)
-
-
-@cli.command()
-def current_timestamps() -> None:
-    """Log the current last-edit timestamp for each configured feed."""
-    for index, feed in enumerate(peri_scribe.feeds.FEEDS, start=1):
-        logger.info(
-            "Feed %d",
-            index,
-            name=feed.name,
-            url=feed.url,
-            last_edit_timestamp=feed.current_last_edit_timestamp,
-        )
-
-
 def year_directory_default_help() -> str:
     """Return the help sentence naming the default year directory.
 
@@ -96,60 +68,6 @@ def year_directory_default_help() -> str:
         f"{peri_scribe.output.DATA_DIRECTORY}/"
         f"{datetime.date.today().year}."
     )
-
-
-@cli.command(
-    help=(
-        "Log the name, status, and identifier of each fire.\n\n"
-        "Reads YEAR_DIRECTORY/sources/fires.json, building it from the GeoPackage "
-        f"files first when it is missing. {year_directory_default_help()}"
-    ),
-)
-@click.argument(
-    "year_directory",
-    type=click.Path(
-        path_type=pathlib.Path,
-        exists=True,
-        file_okay=False,
-    ),
-    required=False,
-)
-def list_fires(year_directory: pathlib.Path | None = None) -> None:
-    if year_directory is None:
-        year_directory = default_year_directory()
-    for index, fire in enumerate(
-        peri_scribe.fire_index.load_fire_index(year_directory).fires,
-        start=1,
-    ):
-        logger.info(
-            "Fire %d",
-            index,
-            name=fire.name,
-            status=fire.status,
-            identifier=fire.identifier,
-        )
-
-
-@cli.command(
-    help=(
-        "Build the fire source index for YEAR_DIRECTORY.\n\n"
-        "The index is written to YEAR_DIRECTORY/sources/fires.json. "
-        f"{year_directory_default_help()}"
-    ),
-)
-@click.argument(
-    "year_directory",
-    type=click.Path(
-        path_type=pathlib.Path,
-        exists=True,
-        file_okay=False,
-    ),
-    required=False,
-)
-def index_fire_sources(year_directory: pathlib.Path | None = None) -> None:
-    if year_directory is None:
-        year_directory = default_year_directory()
-    peri_scribe.fire_index.index_fire_sources(year_directory)
 
 
 @cli.command(
@@ -253,39 +171,6 @@ def fetch_evacuations(year_directory: pathlib.Path | None = None) -> None:
     )
 
 
-@cli.command(
-    help=(
-        "Derive the full and differential point and perimeter history for "
-        "YEAR_DIRECTORY, then score each fire.\n\n"
-        "Builds and writes both "
-        "YEAR_DIRECTORY/derived/history_of_full_geography.gpkg and "
-        "YEAR_DIRECTORY/derived/history_of_differential_geography.gpkg with a "
-        "perimeter_history layer of per-perimeter growth and a point_history layer, "
-        "then writes each fire's score to "
-        "YEAR_DIRECTORY/derived/fire_scores.json. "
-        f" {year_directory_default_help()}"
-    ),
-)
-@click.argument(
-    "year_directory",
-    type=click.Path(
-        path_type=pathlib.Path,
-        exists=True,
-        file_okay=False,
-    ),
-    required=False,
-)
-def derive_geo_history(year_directory: pathlib.Path | None = None) -> None:
-    if year_directory is None:
-        year_directory = default_year_directory()
-    output_path = peri_scribe.fire_differential.write_history_of_differential_geography(
-        year_directory,
-    )
-    logger.info("Wrote differential history", path=output_path)
-    scores_path = peri_scribe.fire_scores.score_fires(year_directory)
-    logger.info("Wrote fire scores", path=scores_path)
-
-
 @cli.command()
 @click.option(
     "--force",
@@ -300,43 +185,41 @@ def create_kml_template(*, force: bool) -> None:
     logger.info("Wrote KML template", path=output_path)
 
 
-@cli.command(
-    help=(
-        "Build the KML output for YEAR_DIRECTORY.\n\n"
-        "Reads YEAR_DIRECTORY/derived/history_of_full_geography.gpkg and writes a "
-        "compressed KMZ file to YEAR_DIRECTORY/maps. Fires whose every computed or "
-        "reported area is missing or under 25 acres are excluded. "
-        f"{year_directory_default_help()}"
-    ),
-)
-@click.argument(
-    "year_directory",
-    type=click.Path(
-        path_type=pathlib.Path,
-        exists=True,
-        file_okay=False,
-    ),
-    required=False,
-)
-def create_kml(year_directory: pathlib.Path | None = None) -> None:
-    if year_directory is None:
-        year_directory = default_year_directory()
-    output_path = peri_scribe.kml.create_kmz(year_directory)
-    logger.info("Wrote KMZ", path=output_path)
+def stored_evacuations_digest(year_directory: pathlib.Path) -> str | None:
+    """Return the stored evacuations GeoPackage's content digest, or None.
+
+    The evacuation layer is the only external source that changes in place: its fetch
+    replaces the stored GeoPackage only when the layer's features changed, so comparing
+    the digest before and after the fetch reports whether the fetch found changes.
+
+    Args:
+        year_directory: The year directory that holds the ``sources`` directory.
+
+    Returns:
+        The digest of the stored evacuations contents, or None when no version is
+        stored.
+    """
+    source = peri_scribe.external_sources.EVACUATIONS_SOURCE
+    return peri_scribe.external_sources.stored_geopackage_digest(
+        peri_scribe.external_sources.output_path(year_directory, source),
+        source.layer_name or source.name,
+    )
 
 
 @cli.command(
     help=(
-        "Fetch feeds, then derive and symbolize fire geography for "
-        "YEAR_DIRECTORY.\n\n"
-        "Runs the fetch step first and exits when it wrote no new snapshot. "
-        "When the fetch changed something, the administrative boundaries are "
-        "ensured and the full and differential geography history and KML for "
-        "YEAR_DIRECTORY are built. --force runs the later steps even when the "
-        "fetch changed nothing; --full fetches every feed in full (storing only "
-        "new or changed features), catching source edits the incremental fetch "
-        "would miss; an error in any step stops the pipeline. "
-        f"{year_directory_default_help()}"
+        "Fetch all feeds and rebuild the KMZ for YEAR_DIRECTORY.\n\n"
+        "The fetch step fetches every configured fire feed and the external "
+        "sources (buildings, evacuations). When the fetch wrote a new fire "
+        "snapshot or replaced the stored evacuations, the administrative "
+        "boundaries are ensured and the full and differential geography "
+        "history, fire scores, and KML for YEAR_DIRECTORY are built. --force "
+        "fetches every "
+        "incremental feed in full (storing only new or changed features), "
+        "catching source edits the incremental fetch would miss, and runs the "
+        "later steps even when nothing changed; static feeds such as buildings "
+        "are downloaded only when missing, whether or not --force is given. "
+        f"An error in any step stops the pipeline. {year_directory_default_help()}"
     ),
 )
 @click.argument(
@@ -351,28 +234,31 @@ def create_kml(year_directory: pathlib.Path | None = None) -> None:
 @click.option(
     "--force",
     is_flag=True,
-    help="Run the later steps even when the fetch changed nothing.",
+    help=(
+        "Fetch every incremental feed in full and run the later steps even "
+        "when the fetch changed nothing."
+    ),
 )
-@click.option(
-    "--full",
-    is_flag=True,
-    help="Fetch every feed in full instead of only changed features.",
-)
-def full_pipeline(
+def update_kmz(
     year_directory: pathlib.Path | None = None,
     *,
     force: bool = False,
-    full: bool = False,
 ) -> None:
-    """Check for new source data and use it to generate new maps."""
+    """Fetch new source data, score fires, and rebuild the KMZ."""
     if year_directory is None:
         year_directory = default_year_directory()
     result = peri_scribe.fetching.fetch_all_feeds(
         peri_scribe.snapshots.base_directory_for_year_directory(year_directory),
         year=peri_scribe.snapshots.year_for_year_directory(year_directory),
-        full=full,
+        full=force,
     )
-    if not result.changed and not force:
+    evacuations_digest_before = stored_evacuations_digest(year_directory)
+    for source in peri_scribe.external_sources.EXTERNAL_SOURCES:
+        fetch_external_source(source, year_directory)
+    evacuations_changed = (
+        stored_evacuations_digest(year_directory) != evacuations_digest_before
+    )
+    if not result.changed and not evacuations_changed and not force:
         logger.debug("Nothing changed; skipping remaining pipeline steps")
         return
     peri_scribe.administrative_boundaries.ensure_administrative_boundaries(
@@ -381,6 +267,7 @@ def full_pipeline(
     peri_scribe.fire_differential.write_history_of_differential_geography(
         year_directory,
     )
+    peri_scribe.fire_scores.score_fires(year_directory)
     peri_scribe.kml.create_kmz(year_directory)
 
 

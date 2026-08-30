@@ -793,10 +793,7 @@ def test_write_current_state_skips_without_snapshots(
         feed,
         change_dataframe([(1, "a", (0.0, 0.0))]),
     )
-    assert (
-        peri_scribe.snapshots.current_state_file_paths(directory)
-        == []
-    )
+    assert peri_scribe.snapshots.current_state_file_paths(directory) == []
 
 
 def test_write_current_state_skips_without_object_id_column(
@@ -831,10 +828,7 @@ def test_write_current_state_skips_without_object_id_column(
         change_dataframe([(2, "b", (1.0, 1.0))]).drop(columns=["OBJECTID"]),
     )
     peri_scribe.changes.write_current_state(directory, feed, frame)
-    assert (
-        peri_scribe.snapshots.current_state_file_paths(directory)
-        == []
-    )
+    assert peri_scribe.snapshots.current_state_file_paths(directory) == []
 
 
 def test_write_current_state_rebuilds_from_snapshots_when_state_unreadable(
