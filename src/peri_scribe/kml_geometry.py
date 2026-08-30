@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import html
+import itertools
 import typing
 from collections.abc import Iterator
 
@@ -19,6 +20,27 @@ if typing.TYPE_CHECKING:
 
 KML_NAMESPACE = "http://www.opengis.net/kml/2.2"
 GX_NAMESPACE = "http://www.google.com/kml/ext/2.2"
+
+# Decimal places kept on every coordinate written to KML. Five places are about 1.1
+# meters, far below anything a map can show, and the extra digits ArcGIS carries are
+# arithmetic noise, so rounding shrinks the coordinate text without changing what
+# renders. The altitude component is omitted entirely: KML coordinates default it to
+# zero, and every geometry here draws clampToGround, which ignores it.
+COORDINATE_DECIMALS = 5
+
+
+def coordinate_pair(longitude: float, latitude: float) -> str:
+    """Return *longitude* and *latitude* as KML coordinate text.
+
+    Args:
+        longitude: The longitude to format.
+        latitude: The latitude to format.
+
+    Returns:
+        ``longitude,latitude`` with each value rounded to
+        :data:`COORDINATE_DECIMALS` decimal places.
+    """
+    return f"{longitude:.{COORDINATE_DECIMALS}f},{latitude:.{COORDINATE_DECIMALS}f}"
 
 
 def escape_text(text: str) -> str:
@@ -68,9 +90,10 @@ def ring_coordinates_text(ring: shapely.LinearRing) -> str:
         ring: The shapely ring to convert.
 
     Returns:
-        The ring's ``longitude,latitude,0.0`` tuples joined by spaces.
+        The ring's ``longitude,latitude`` pairs joined by spaces, rounded to
+        :data:`COORDINATE_DECIMALS` decimal places and carrying no altitude.
     """
-    return " ".join(f"{x},{y},0.0" for x, y in ring.coords)
+    return " ".join(itertools.starmap(coordinate_pair, ring.coords))
 
 
 class KmlWriter:
@@ -252,7 +275,7 @@ def point_placemark(
         placemark_id=None,
     )
     writer.parts.append(
-        f"<Point><coordinates>{point.x},{point.y},0.0</coordinates>"
+        f"<Point><coordinates>{coordinate_pair(point.x, point.y)}</coordinates>"
         f"<gx:drawOrder>{draw_order}</gx:drawOrder></Point>",
     )
     writer.parts.append("</Placemark>")

@@ -7,6 +7,7 @@ dependencies = [
     "click",
     "geopandas",
     "ijson",
+    "pillow",
     "pydantic",
     "pygments",  # For pytest code highlighting
     "pyproj",

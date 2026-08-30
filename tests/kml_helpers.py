@@ -375,7 +375,7 @@ def point_coordinates(placemark: ET.Element) -> tuple[float, float]:
     coordinates = placemark.find(f"{kml_tag('Point')}/{kml_tag('coordinates')}")
     if coordinates is None or coordinates.text is None:
         pytest.fail("Placemark has no point coordinates")
-    longitude, latitude, _altitude = coordinates.text.split(",")
+    longitude, latitude, *_altitude = coordinates.text.split(",")
     return float(longitude), float(latitude)
 
 
@@ -398,7 +398,7 @@ def exterior_coordinates(placemark: ET.Element) -> list[tuple[float, float]]:
         pytest.fail("Ring has no coordinates")
     return [
         (float(longitude), float(latitude))
-        for longitude, latitude, _altitude in (
+        for longitude, latitude, *_altitude in (
             coordinates.split(",") for coordinates in text.split()
         )
     ]
@@ -424,7 +424,7 @@ def interior_coordinates(placemark: ET.Element) -> list[tuple[float, float]]:
         pytest.fail("Ring has no coordinates")
     return [
         (float(longitude), float(latitude))
-        for longitude, latitude, _altitude in (
+        for longitude, latitude, *_altitude in (
             coordinates.split(",") for coordinates in text.split()
         )
     ]

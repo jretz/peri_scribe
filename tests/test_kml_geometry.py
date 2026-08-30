@@ -24,6 +24,20 @@ def test_ring_coordinates_converts_coordinates() -> None:
     ]
 
 
+def test_ring_coordinates_text_rounds_and_omits_altitude() -> None:
+    ring = shapely.geometry.LinearRing([
+        (-120.540340932131, 44.05275449364),
+        (-120.541198250056, 44.0527635164056),
+        (-120.539987133856, 44.0536779666668),
+        (-120.540340932131, 44.05275449364),
+    ])
+    assert (
+        peri_scribe.kml_geometry.ring_coordinates_text(ring)
+        == "-120.54034,44.05275 -120.54120,44.05276 "
+        "-120.53999,44.05368 -120.54034,44.05275"
+    )
+
+
 def test_polygon_geometry_includes_holes() -> None:
     polygon = shapely.geometry.Polygon(
         [(0.0, 0.0), (0.0, 2.0), (2.0, 2.0), (2.0, 0.0), (0.0, 0.0)],
@@ -180,6 +194,28 @@ def test_point_placemark_names_and_styles_point() -> None:
     assert tests.kml_helpers.placemark_style_url(placemark) == "#point-icon"
     assert tests.kml_helpers.point_coordinates(placemark) == (1.0, 2.0)
     assert tests.kml_helpers.draw_order(placemark) == expected_draw_order
+
+
+def test_point_placemark_coordinates_round_and_omit_altitude() -> None:
+    writer = peri_scribe.kml_geometry.KmlWriter()
+    peri_scribe.kml_geometry.point_placemark(
+        writer,
+        "Bug",
+        "#point-icon",
+        shapely.geometry.Point(1.23456789, -2.98765432),
+        0,
+        description=None,
+    )
+    placemark = tests.kml_helpers.placemark_named(
+        tests.kml_helpers.document_from_writer(writer),
+        "Bug",
+    )
+    coordinates = placemark.find(
+        f"{tests.kml_helpers.kml_tag('Point')}/"
+        f"{tests.kml_helpers.kml_tag('coordinates')}",
+    )
+    assert coordinates is not None
+    assert coordinates.text == "1.23457,-2.98765"
 
 
 def test_perimeter_placemark_names_and_styles_polygon() -> None:

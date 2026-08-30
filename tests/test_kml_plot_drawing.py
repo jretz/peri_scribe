@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import datetime
+import io
 
 import matplotlib.dates
 import pytest
+from PIL import Image
 
 import peri_scribe.kml_plot_data
 import peri_scribe.kml_plot_drawing
@@ -119,6 +121,35 @@ def test_draw_plot_returns_png_for_one_series() -> None:
         y_axis_label="Thousands of acres",
     )
     assert content.startswith(tests.kml_plot_helpers.PNG_SIGNATURE)
+
+
+def test_draw_plot_returns_palette_png_for_one_series() -> None:
+    content = peri_scribe.kml_plot_drawing.draw_plot(
+        peri_scribe.kml_plot_drawing.create_plot_renderer(),
+        (
+            peri_scribe.kml_plot_data.PlotSeries(
+                label="Area",
+                points=(
+                    tests.kml_plot_helpers.series_point(1, 10.0),
+                    tests.kml_plot_helpers.series_point(2, 20.0),
+                ),
+            ),
+        ),
+        y_axis_label="Thousands of acres",
+    )
+    assert content.startswith(tests.kml_plot_helpers.PNG_SIGNATURE)
+    with Image.open(io.BytesIO(content)) as image:
+        assert image.mode == "P"
+        assert image.size == (
+            round(
+                peri_scribe.kml_plot_drawing.FIGURE_WIDTH_IN_INCHES
+                * peri_scribe.kml_plot_drawing.IMAGE_DPI,
+            ),
+            round(
+                peri_scribe.kml_plot_drawing.FIGURE_HEIGHT_IN_INCHES
+                * peri_scribe.kml_plot_drawing.IMAGE_DPI,
+            ),
+        )
 
 
 def test_draw_plot_returns_png_for_multiple_series() -> None:

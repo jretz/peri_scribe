@@ -17,6 +17,7 @@ import matplotlib.dates
 import matplotlib.figure
 import matplotlib.ticker
 import seaborn as sns
+from PIL import Image
 
 import peri_scribe.kml_plot_data
 
@@ -35,6 +36,12 @@ FIGURE_HEIGHT_IN_INCHES = 3.0
 IMAGE_DPI = 100
 
 IMAGE_FORMAT = "png"
+
+# The rendered plot PNGs are quantized to a palette of this many colors: the charts are
+# flat-color line plots with an opaque white background, so a 256-color palette keeps
+# them looking identical while shrinking them dramatically (the truecolor RGBA bytes
+# matplotlib emits carry far more distinct colors than the image shows).
+PNG_PALETTE_COLOR_COUNT = 256
 
 DATE_FORMAT = "%m/%d"
 
@@ -151,6 +158,30 @@ def create_plot_renderer() -> PlotRenderer:
     )
 
 
+def _quantized_png(content: bytes) -> bytes:
+    """Return *content* as a smaller palette PNG.
+
+    Matplotlib's PNG output is truecolor RGBA; the plots draw no transparency (the
+    figure background is opaque white), so the alpha channel carries nothing and the
+    image is safe to convert to RGB and quantize to a 256-color palette, which shrinks
+    the bytes for storage in the KMZ.
+
+    Args:
+        content: Truecolor PNG bytes, as matplotlib wrote them.
+
+    Returns:
+        The same image as palette PNG bytes.
+    """
+    with Image.open(io.BytesIO(content)) as image:
+        quantized = image.convert("RGB").quantize(
+            colors=PNG_PALETTE_COLOR_COUNT,
+            method=Image.Quantize.FASTOCTREE,
+        )
+    output = io.BytesIO()
+    quantized.save(output, format=IMAGE_FORMAT, optimize=True)
+    return output.getvalue()
+
+
 def draw_plot(
     renderer: PlotRenderer,
     series_list: tuple[peri_scribe.kml_plot_data.PlotSeries, ...],
@@ -234,4 +265,4 @@ def draw_plot(
     buffer.seek(0)
     buffer.truncate()
     figure.savefig(buffer, format=IMAGE_FORMAT)
-    return buffer.getvalue()
+    return _quantized_png(buffer.getvalue())
