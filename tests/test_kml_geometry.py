@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
-import xml.etree.ElementTree as ET  # ruff: ignore[suspicious-xml-etree-import]
+import typing
 
 import pytest
 import shapely.geometry
+
+
+if typing.TYPE_CHECKING:
+    import xml.etree.ElementTree as ET
 
 import peri_scribe.kml_geometry
 import peri_scribe.kml_template

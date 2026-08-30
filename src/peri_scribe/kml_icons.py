@@ -188,7 +188,7 @@ def perimeters_icon_colors(
     )
 
 
-def _png_chunk(chunk_type: bytes, data: bytes) -> bytes:
+def png_chunk(chunk_type: bytes, data: bytes) -> bytes:
     """Return one PNG chunk with its length, type, data, and CRC.
 
     Args:
@@ -225,9 +225,9 @@ def solid_color_png(
     raw = row * side_in_pixels
     return (
         signature
-        + _png_chunk(b"IHDR", header)
-        + _png_chunk(b"IDAT", zlib.compress(raw, zlib.Z_BEST_COMPRESSION))
-        + _png_chunk(b"IEND", b"")
+        + png_chunk(b"IHDR", header)
+        + png_chunk(b"IDAT", zlib.compress(raw, zlib.Z_BEST_COMPRESSION))
+        + png_chunk(b"IEND", b"")
     )
 
 
@@ -312,7 +312,7 @@ def perimeters_icon(
     header = struct.pack(">IIBBBBB", side_in_pixels, side_in_pixels, 8, 6, 0, 0, 0)
     return (
         signature
-        + _png_chunk(b"IHDR", header)
-        + _png_chunk(b"IDAT", zlib.compress(b"".join(rows), zlib.Z_BEST_COMPRESSION))
-        + _png_chunk(b"IEND", b"")
+        + png_chunk(b"IHDR", header)
+        + png_chunk(b"IDAT", zlib.compress(b"".join(rows), zlib.Z_BEST_COMPRESSION))
+        + png_chunk(b"IEND", b"")
     )

@@ -164,10 +164,10 @@ def geo_package_files(directory: pathlib.Path) -> list[pathlib.Path]:
     except OSError as error:
         message = f"Failed to read {directory}: {error}"
         raise SystemExit(message) from error
-    return [path for path in paths if _is_snapshot_filename(path.name)]
+    return [path for path in paths if is_snapshot_filename(path.name)]
 
 
-def _is_snapshot_filename(filename: str) -> bool:
+def is_snapshot_filename(filename: str) -> bool:
     """Return whether *filename* encodes a snapshot serial and timestamp.
 
     Args:

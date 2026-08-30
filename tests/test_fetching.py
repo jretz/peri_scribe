@@ -49,7 +49,7 @@ def test_fetch_feed_dataframe_raises_without_change_columns() -> None:
     with pytest.raises(ValueError, match="no change columns"):
         peri_scribe.fetching.fetch_feed_dataframe(
             feed,
-            object(),  # ty: ignore
+            typing.cast("arcgis.features.FeatureLayer", object()),
             [peri_scribe.snapshots.SourceFile(serial_number=0, last_edit_timestamp=0)],
             pathlib.Path("/sources"),
         )
@@ -71,7 +71,7 @@ def test_fetch_feed_dataframe_returns_none_without_changed_ids(
     )
     result = peri_scribe.fetching.fetch_feed_dataframe(
         feed,
-        object(),  # ty: ignore
+        typing.cast("arcgis.features.FeatureLayer", object()),
         [peri_scribe.snapshots.SourceFile(serial_number=0, last_edit_timestamp=0)],
         pathlib.Path("/sources"),
     )
@@ -109,7 +109,7 @@ def test_fetch_feed_dataframe_returns_none_when_dedupe_removes_all(
     )
     result = peri_scribe.fetching.fetch_feed_dataframe(
         feed,
-        object(),  # ty: ignore
+        typing.cast("arcgis.features.FeatureLayer", object()),
         [peri_scribe.snapshots.SourceFile(serial_number=0, last_edit_timestamp=0)],
         pathlib.Path("/sources"),
     )
@@ -141,7 +141,7 @@ def test_fetch_feed_dataframe_queries_null_modified_rows(
     )
     result = peri_scribe.fetching.fetch_feed_dataframe(
         feed,
-        object(),  # ty: ignore
+        typing.cast("arcgis.features.FeatureLayer", object()),
         [peri_scribe.snapshots.SourceFile(serial_number=0, last_edit_timestamp=0)],
         pathlib.Path("/sources"),
     )
@@ -189,7 +189,7 @@ def test_fetch_feed_dataframe_fetches_ids_present_but_not_stored(
     )
     result = peri_scribe.fetching.fetch_feed_dataframe(
         feed,
-        object(),  # ty: ignore
+        typing.cast("arcgis.features.FeatureLayer", object()),
         [peri_scribe.snapshots.SourceFile(serial_number=0, last_edit_timestamp=0)],
         pathlib.Path("/sources"),
     )
@@ -246,7 +246,7 @@ def test_fetch_feed_dataframe_fetches_stored_active_rows_now_inactive(
     )
     result = peri_scribe.fetching.fetch_feed_dataframe(
         feed,
-        object(),  # ty: ignore
+        typing.cast("arcgis.features.FeatureLayer", object()),
         [peri_scribe.snapshots.SourceFile(serial_number=0, last_edit_timestamp=0)],
         pathlib.Path("/sources"),
     )
@@ -280,7 +280,7 @@ def test_fetch_feed_dataframe_returns_none_when_flip_candidates_are_unchanged(
     )
     result = peri_scribe.fetching.fetch_feed_dataframe(
         feed,
-        object(),  # ty: ignore
+        typing.cast("arcgis.features.FeatureLayer", object()),
         [peri_scribe.snapshots.SourceFile(serial_number=0, last_edit_timestamp=0)],
         pathlib.Path("/sources"),
     )
@@ -312,7 +312,7 @@ def test_fetch_feed_dataframe_skips_flip_query_without_stored_inactive(
     )
     result = peri_scribe.fetching.fetch_feed_dataframe(
         feed,
-        object(),  # ty: ignore
+        typing.cast("arcgis.features.FeatureLayer", object()),
         [peri_scribe.snapshots.SourceFile(serial_number=0, last_edit_timestamp=0)],
         pathlib.Path("/sources"),
     )
@@ -337,7 +337,7 @@ def test_fetch_feed_dataframe_fetches_full_when_directory_empty(
     )
     result = peri_scribe.fetching.fetch_feed_dataframe(
         feed,
-        object(),  # ty: ignore
+        typing.cast("arcgis.features.FeatureLayer", object()),
         [],
         pathlib.Path("/sources"),
     )
@@ -384,7 +384,7 @@ def test_fetch_feed_dataframe_full_fetches_whole_layer_and_dedupes(
     )
     result = peri_scribe.fetching.fetch_feed_dataframe(
         feed,
-        object(),  # ty: ignore
+        typing.cast("arcgis.features.FeatureLayer", object()),
         [peri_scribe.snapshots.SourceFile(serial_number=0, last_edit_timestamp=0)],
         pathlib.Path("/sources"),
         full=True,
@@ -420,7 +420,7 @@ def test_fetch_feed_dataframe_full_returns_none_when_dedupe_removes_all(
     )
     result = peri_scribe.fetching.fetch_feed_dataframe(
         feed,
-        object(),  # ty: ignore
+        typing.cast("arcgis.features.FeatureLayer", object()),
         [peri_scribe.snapshots.SourceFile(serial_number=0, last_edit_timestamp=0)],
         pathlib.Path("/sources"),
         full=True,

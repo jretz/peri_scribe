@@ -94,7 +94,7 @@ def records_span_distant_locations(
         for index, geometry in geometries_by_index.items()
         if not geometry.is_empty
     ]
-    matched_indices = _matched_within_outlier_tolerance(members)
+    matched_indices = matched_within_outlier_tolerance(members)
     for index in group:
         geometry = records[index].geometry
         others_count = len(geometries_by_index) - (
@@ -107,7 +107,7 @@ def records_span_distant_locations(
     return False
 
 
-def _matched_within_outlier_tolerance(
+def matched_within_outlier_tolerance(
     members: list[tuple[int, shapely.Geometry]],
 ) -> set[int]:
     """Return the members with another member within the outlier tolerance.

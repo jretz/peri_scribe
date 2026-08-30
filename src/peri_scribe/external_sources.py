@@ -905,11 +905,11 @@ class DownloadLinksParser(HTMLParser):
     def __init__(self) -> None:
         super().__init__()
         self.links: dict[str, str] = {}
-        self._heading_level: str | None = None
-        self._heading_text: list[str] = []
-        self._collecting = False
-        self._anchor_href: str | None = None
-        self._anchor_text: list[str] = []
+        self.heading_level: str | None = None
+        self.heading_text: list[str] = []
+        self.collecting = False
+        self.anchor_href: str | None = None
+        self.anchor_text: list[str] = []
 
     def handle_starttag(
         self,
@@ -918,39 +918,39 @@ class DownloadLinksParser(HTMLParser):
     ) -> None:
         attribute_map = dict(attrs)
         if tag in {"h1", "h2", "h3"}:
-            self._heading_level = tag
-            self._heading_text = []
+            self.heading_level = tag
+            self.heading_text = []
         elif tag == "a":
-            self._anchor_href = attribute_map.get("href")
-            self._anchor_text = []
+            self.anchor_href = attribute_map.get("href")
+            self.anchor_text = []
         elif (
             tag == "div"
             and "markdown-heading" in (attribute_map.get("class") or "").split()
         ):
             # A new README heading ends the previous section's link table.
-            self._collecting = False
+            self.collecting = False
 
     def handle_data(self, data: str) -> None:
-        if self._heading_level is not None:
-            self._heading_text.append(data)
-        elif self._anchor_href is not None:
-            self._anchor_text.append(data)
+        if self.heading_level is not None:
+            self.heading_text.append(data)
+        elif self.anchor_href is not None:
+            self.anchor_text.append(data)
 
     def handle_endtag(self, tag: str) -> None:
-        if tag in {"h1", "h2", "h3"} and tag == self._heading_level:
-            heading = "".join(self._heading_text).strip().lower()
+        if tag in {"h1", "h2", "h3"} and tag == self.heading_level:
+            heading = "".join(self.heading_text).strip().lower()
             if heading in {"download links", "downloads links"}:
-                self._collecting = True
-            self._heading_level = None
-            self._heading_text = []
+                self.collecting = True
+            self.heading_level = None
+            self.heading_text = []
         elif tag == "a":
-            if self._collecting:
-                label = "".join(self._anchor_text).strip()
-                href = self._anchor_href
+            if self.collecting:
+                label = "".join(self.anchor_text).strip()
+                href = self.anchor_href
                 if label and href is not None and href.startswith("http"):
                     self.links[label] = href
-            self._anchor_href = None
-            self._anchor_text = []
+            self.anchor_href = None
+            self.anchor_text = []
 
 
 def download_links(html_text: str) -> dict[str, str]:

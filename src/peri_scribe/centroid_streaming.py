@@ -45,12 +45,12 @@ MAXIMUM_VERTICES_PER_CHUNK = 2_000_000
 WGS84_SPATIAL_REFERENCE = pyproj.CRS.from_epsg(4326)
 WEB_MERCATOR_SPATIAL_REFERENCE = pyproj.CRS.from_epsg(3857)
 
-_TO_WEB_MERCATOR = pyproj.Transformer.from_crs(
+TO_WEB_MERCATOR = pyproj.Transformer.from_crs(
     WGS84_SPATIAL_REFERENCE,
     WEB_MERCATOR_SPATIAL_REFERENCE,
     always_xy=True,
 )
-_TO_WGS84 = pyproj.Transformer.from_crs(
+TO_WGS84 = pyproj.Transformer.from_crs(
     WEB_MERCATOR_SPATIAL_REFERENCE,
     WGS84_SPATIAL_REFERENCE,
     always_xy=True,
@@ -68,8 +68,8 @@ class ByteStream:
     """
 
     def __init__(self, chunks: typing.Iterable[bytes]) -> None:
-        self._chunks = iter(chunks)
-        self._buffer = b""
+        self.chunks = iter(chunks)
+        self.buffer = b""
 
     def read(self, size: int = -1) -> bytes:
         """Return the next up to *size* bytes of the stream.
@@ -81,17 +81,17 @@ class ByteStream:
             The bytes, or ``b""`` at the end of the stream.
         """
         if size < 0:
-            result = self._buffer + b"".join(self._chunks)
-            self._buffer = b""
+            result = self.buffer + b"".join(self.chunks)
+            self.buffer = b""
             return result
-        while len(self._buffer) < size:
+        while len(self.buffer) < size:
             try:
-                self._buffer += next(self._chunks)
+                self.buffer += next(self.chunks)
             except StopIteration:
                 break
-        if not self._buffer:
+        if not self.buffer:
             return b""
-        result, self._buffer = self._buffer[:size], self._buffer[size:]
+        result, self.buffer = self.buffer[:size], self.buffer[size:]
         return result
 
 
@@ -439,7 +439,7 @@ def polygon_centroids(chunk: GeometryChunk) -> np.ndarray:
         The ``(F, 2)`` centroid longitudes and latitudes.
     """
     projected = np.column_stack(
-        _TO_WEB_MERCATOR.transform(
+        TO_WEB_MERCATOR.transform(
             chunk.coordinates[:, 0],
             chunk.coordinates[:, 1],
         ),
@@ -447,7 +447,7 @@ def polygon_centroids(chunk: GeometryChunk) -> np.ndarray:
     sums = ring_centroid_sums(projected, chunk.ring_bounds)
     centroids_3857 = projected_centroids(projected, chunk, sums)
     return np.column_stack(
-        _TO_WGS84.transform(centroids_3857[:, 0], centroids_3857[:, 1]),
+        TO_WGS84.transform(centroids_3857[:, 0], centroids_3857[:, 1]),
     )
 
 

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import time
+import typing
 
 import arcgis.features
 import pandas as pd
@@ -157,7 +158,7 @@ def test_query_with_retry_succeeds_on_first_attempt(
     layer = QueryStub(outcomes)
     result = peri_scribe.geo_data.query_with_retry(
         SAMPLE_FEED_NAME,
-        layer,  # ty: ignore
+        typing.cast("arcgis.features.FeatureLayer", layer),
     )
     assert result is feature_set_with_geometry
     assert sleep_calls == []
@@ -177,7 +178,7 @@ def test_query_with_retry_retries_on_429_with_retry_after(
     layer = QueryStub(outcomes)
     result = peri_scribe.geo_data.query_with_retry(
         SAMPLE_FEED_NAME,
-        layer,  # ty: ignore
+        typing.cast("arcgis.features.FeatureLayer", layer),
     )
     assert result is feature_set_with_geometry
     assert sleep_calls == [60.0]
@@ -197,7 +198,7 @@ def test_query_with_retry_retries_on_loose_429(
     layer = QueryStub(outcomes)
     result = peri_scribe.geo_data.query_with_retry(
         SAMPLE_FEED_NAME,
-        layer,  # ty: ignore
+        typing.cast("arcgis.features.FeatureLayer", layer),
     )
     assert result is feature_set_with_geometry
     assert sleep_calls == [
@@ -219,7 +220,7 @@ def test_query_with_retry_exhausts_retries_and_raises(
     with pytest.raises(ValueError, match=re.escape(str(RATE_LIMIT_ERROR_PAYLOAD))):
         peri_scribe.geo_data.query_with_retry(
             SAMPLE_FEED_NAME,
-            layer,  # ty: ignore
+            typing.cast("arcgis.features.FeatureLayer", layer),
         )
     # Sleep called once per retry (max_retries times), not for the final failure.
     assert sleep_calls == [60.0] * max_retries
@@ -236,7 +237,7 @@ def test_query_with_retry_fails_immediately_on_non_429(
     with pytest.raises(RuntimeError, match="something else broke"):
         peri_scribe.geo_data.query_with_retry(
             SAMPLE_FEED_NAME,
-            layer,  # ty: ignore
+            typing.cast("arcgis.features.FeatureLayer", layer),
         )
     assert sleep_calls == []
 
@@ -257,7 +258,7 @@ def test_query_with_retry_retries_on_transient_error(
     layer = QueryStub(outcomes)
     result = peri_scribe.geo_data.query_with_retry(
         SAMPLE_FEED_NAME,
-        layer,  # ty: ignore
+        typing.cast("arcgis.features.FeatureLayer", layer),
     )
     assert result is feature_set_with_geometry
     # First transient error on attempt 1 → backoff = 2.0s
@@ -280,7 +281,7 @@ def test_query_with_retry_exhausts_transient_retries_and_raises(
     with pytest.raises(requests.exceptions.ConnectionError, match="Connection broken"):
         peri_scribe.geo_data.query_with_retry(
             SAMPLE_FEED_NAME,
-            layer,  # ty: ignore
+            typing.cast("arcgis.features.FeatureLayer", layer),
             max_retries=retries,
         )
     # Backoff for attempts 1, 2, 3 doubles from the base constant each time.
@@ -305,7 +306,7 @@ def test_query_with_retry_logs_rate_limit_reason(
     with structlog.testing.capture_logs() as captured:
         peri_scribe.geo_data.query_with_retry(
             SAMPLE_FEED_NAME,
-            layer,  # ty: ignore
+            typing.cast("arcgis.features.FeatureLayer", layer),
         )
     assert captured[0]["event"] == "Rate-limited; retrying after server-suggested delay"
     assert captured[0]["attempt"] == 1
@@ -329,7 +330,7 @@ def test_query_with_retry_logs_transient_reason(
     with structlog.testing.capture_logs() as captured:
         peri_scribe.geo_data.query_with_retry(
             SAMPLE_FEED_NAME,
-            layer,  # ty: ignore
+            typing.cast("arcgis.features.FeatureLayer", layer),
         )
     assert captured[0]["event"] == "Transient network error; retrying after backoff"
     assert captured[0]["attempt"] == 1
@@ -350,7 +351,7 @@ def test_query_object_ids_with_retry_returns_object_ids() -> None:
     layer = IdQueryStub({"objectIds": [3, 4]})
     result = peri_scribe.geo_data.query_object_ids_with_retry(
         SAMPLE_FEED_NAME,
-        layer,  # ty: ignore
+        typing.cast("arcgis.features.FeatureLayer", layer),
         where="1=1",
     )
     assert result == [3, 4]
@@ -364,6 +365,6 @@ def test_query_object_ids_with_retry_raises_without_object_ids() -> None:
     ):
         peri_scribe.geo_data.query_object_ids_with_retry(
             SAMPLE_FEED_NAME,
-            layer,  # ty: ignore
+            typing.cast("arcgis.features.FeatureLayer", layer),
             where="1=1",
         )

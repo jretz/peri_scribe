@@ -175,7 +175,7 @@ def band_label(
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class _BandedRings:
+class BandedRings:
     """One band's rings, its label, and the area they cover."""
 
     name: str
@@ -185,7 +185,7 @@ class _BandedRings:
     geometry: shapely.Geometry
 
 
-def _dated_bands(
+def dated_bands(
     rings: typing.Sequence[Ring],
 ) -> tuple[tuple[ProgressionBand, int, tuple[Ring, ...], str], ...]:
     """Return *rings* grouped into day ranges without computing any geometry.
@@ -237,9 +237,9 @@ def _dated_bands(
     return tuple(entries)
 
 
-def _banded_rings(
+def banded_rings(
     rings: typing.Sequence[Ring],
-) -> tuple[_BandedRings, ...]:
+) -> tuple[BandedRings, ...]:
     """Return each band *rings* cover with its dated rings and union geometry.
 
     Each band's geometry is the union of its rings' geometries, so a range whose rings
@@ -251,13 +251,13 @@ def _banded_rings(
     Returns:
         One banded-rings entry per covered range, newest first.
     """
-    banded: list[_BandedRings] = []
-    for band, band_index, band_rings, label in _dated_bands(rings):
+    banded: list[BandedRings] = []
+    for band, band_index, band_rings, label in dated_bands(rings):
         geometry = shapely.union_all([ring.geometry for ring in band_rings])
         if geometry.is_empty:
             continue
         banded.append(
-            _BandedRings(
+            BandedRings(
                 name=band.name,
                 label=label,
                 rings=band_rings,
@@ -289,7 +289,7 @@ def progression_bands(
             label=banded.label,
             geometry=banded.geometry,
         )
-        for banded in _banded_rings(rings)
+        for banded in banded_rings(rings)
     )
 
 
@@ -315,7 +315,7 @@ def progression_band_rings(
             rings=band_rings,
             band_index=band_index,
         )
-        for band, band_index, band_rings, label in _dated_bands(rings)
+        for band, band_index, band_rings, label in dated_bands(rings)
         # A band is dropped exactly when the union of its rings would be empty, which
         # holds precisely when every ring geometry is empty.
         if not all(ring.geometry.is_empty for ring in band_rings)

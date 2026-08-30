@@ -987,7 +987,7 @@ def test_read_geopackage_cached_falls_back_when_database_unusable(
 
     monkeypatch.setattr(
         peri_scribe.geo_package,
-        "_open_and_sync",
+        "open_and_sync",
         failing_sync,
     )
     contents = peri_scribe.geo_package.read_geopackage_cached(path)
@@ -1107,7 +1107,7 @@ def test_read_geopackage_cached_falls_back_when_read_fails(
 
     monkeypatch.setattr(
         peri_scribe.geo_package,
-        "_read_snapshot_contents",
+        "read_snapshot_contents",
         failing_read,
     )
     contents = peri_scribe.geo_package.read_geopackage_cached(path)
@@ -1171,7 +1171,7 @@ def test_read_geopackage_cached_reads_directly_when_snapshot_not_stored(
     )
     monkeypatch.setattr(
         peri_scribe.geo_package,
-        "_sync_database",
+        "sync_database",
         lambda *_arguments, **_keywords: None,
     )
     contents = peri_scribe.geo_package.read_geopackage_cached(second)

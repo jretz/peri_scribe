@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import pathlib
-import xml.etree.ElementTree as ET  # ruff: ignore[suspicious-xml-etree-import]
 
 import pytest
 
@@ -23,20 +22,36 @@ def test_placemark_style_urls_descends_into_folders() -> None:
 
 
 def test_collect_placemark_style_urls_skips_placemarks_without_style() -> None:
-    document = ET.Element(tests.kml_helpers.kml_tag("Document"))
-    folder = ET.SubElement(document, tests.kml_helpers.kml_tag("Folder"))
-    ET.SubElement(folder, tests.kml_helpers.kml_tag("name")).text = "Folder"
-    unstyled = ET.SubElement(folder, tests.kml_helpers.kml_tag("Placemark"))
-    ET.SubElement(unstyled, tests.kml_helpers.kml_tag("name")).text = "Unstyled"
-    unnamed = ET.SubElement(folder, tests.kml_helpers.kml_tag("Placemark"))
-    ET.SubElement(unnamed, tests.kml_helpers.kml_tag("Point"))
+    document = tests.kml_helpers.document_from(
+        """
+        <kml xmlns="http://www.opengis.net/kml/2.2">
+          <Document>
+            <Folder>
+              <name>Folder</name>
+              <Placemark><name>Unstyled</name></Placemark>
+              <Placemark><Point/></Placemark>
+            </Folder>
+          </Document>
+        </kml>
+        """,
+    )
     urls: dict[str, str] = {}
     peri_scribe.kml_template_reader.collect_placemark_style_urls(document, urls)
     assert urls == {}
 
 
 def test_style_from_requires_style_id() -> None:
-    style_element = ET.Element(tests.kml_helpers.kml_tag("Style"))
+    document = tests.kml_helpers.document_from(
+        """
+        <kml xmlns="http://www.opengis.net/kml/2.2">
+          <Document>
+            <Style/>
+          </Document>
+        </kml>
+        """,
+    )
+    style_element = document.find(tests.kml_helpers.kml_tag("Style"))
+    assert style_element is not None
     with pytest.raises(ValueError, match="no id attribute"):
         peri_scribe.kml_template_reader.style_from(style_element)
 
@@ -64,8 +79,7 @@ def test_template_from_collects_styles_and_style_urls() -> None:
 
 
 def test_template_from_requires_document() -> None:
-    root = ET.Element(tests.kml_helpers.kml_tag("kml"))
-    kml_text = ET.tostring(root, encoding="unicode")
+    kml_text = '<kml xmlns="http://www.opengis.net/kml/2.2"/>'
     with pytest.raises(ValueError, match="no Document element"):
         peri_scribe.kml_template_reader.template_from(kml_text)
 

@@ -34,7 +34,7 @@ class ReadFireSources:
     memberships: tuple[peri_scribe.models.ComplexMembership, ...]
 
 
-def _read_geopackage(
+def read_geopackage(
     path: pathlib.Path,
 ) -> peri_scribe.geo_package.GeopackageContents:
     """Read one GeoPackage, translating read failures into a readable message.
@@ -83,7 +83,7 @@ def read_fire_sources(directory: pathlib.Path) -> ReadFireSources:
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=os.cpu_count() or 1,
     ) as executor:
-        contents_by_file = list(executor.map(_read_geopackage, files))
+        contents_by_file = list(executor.map(read_geopackage, files))
     rows: list[peri_scribe.geo_package.FireRowRecord] = []
     paths: list[pathlib.Path] = []
     memberships: list[peri_scribe.models.ComplexMembership] = []

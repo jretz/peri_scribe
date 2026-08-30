@@ -33,7 +33,7 @@ INTERIOR_FOLDER_NAME = "Interior"
 PERIMETERS_FOLDER_NAME = "Perimeters"
 
 
-def _outline_placemarks(
+def outline_placemarks(
     writer: peri_scribe.kml_geometry.KmlWriter,
     fire: peri_scribe.kml_fire_data.FireGeometry,
     style_urls: typing.Mapping[str, str],
@@ -122,7 +122,7 @@ def fire_folder(
                 visible=visible,
                 item_icon=peri_scribe.kml_icons.perimeters_icon_filename(),
             ):
-                _outline_placemarks(
+                outline_placemarks(
                     writer,
                     fire,
                     style_urls,
@@ -130,7 +130,7 @@ def fire_folder(
                     visible=visible,
                 )
         else:
-            _outline_placemarks(
+            outline_placemarks(
                 writer,
                 fire,
                 style_urls,
@@ -232,10 +232,10 @@ def progression_folder(
         visible=False,
     ):
         for fire in fires:
-            _progression_fire_folder(writer, fire, style_urls)
+            progression_fire_folder(writer, fire, style_urls)
 
 
-def _progression_fire_folder(
+def progression_fire_folder(
     writer: peri_scribe.kml_geometry.KmlWriter,
     fire: peri_scribe.kml_fire_data.FireGeometry,
     style_urls: typing.Mapping[str, str],
@@ -344,7 +344,7 @@ def status_folder(
         progression_folder(writer, status_fires, style_urls)
 
 
-def _score_fire(
+def score_fire(
     entry: peri_scribe.models.FireScoreEntry,
     fires_by_identifier: typing.Mapping[
         str,
@@ -396,7 +396,7 @@ def top_fires(
     }
     fires_by_name = {fire.name: fire for fire in fires}
     matched = [
-        _score_fire(entry, fires_by_identifier, fires_by_name)
+        score_fire(entry, fires_by_identifier, fires_by_name)
         for entry in sorted(
             scores.fires,
             key=lambda entry: (-entry.score, entry.name.casefold()),

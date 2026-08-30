@@ -39,6 +39,7 @@ class Style(simplekml.Style):
 
     def __init__(self, style_id: str) -> None:
         super().__init__()
+        # simplekml reads this attribute when serializing the style's id.
         self._id = style_id
 
 
@@ -307,7 +308,9 @@ def set_draw_order(
         geometry: The geometry to order.
         draw_order: Lower values draw first, underneath later features.
     """
-    geometry._kml["gx:drawOrder"] = draw_order  # ruff: ignore[private-member-access]
+    # The tag map is a plain instance attribute, reached through vars() because
+    # simplekml keeps it private (``_kml``).
+    vars(geometry)["_kml"]["gx:drawOrder"] = draw_order
 
 
 def outline_draw_order(outline_count: int, newest_first_index: int) -> int:

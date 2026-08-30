@@ -1,18 +1,21 @@
 """Parsing the KML symbolization template.
 
-The template is a local, user-edited file rather than untrusted input, so the stdlib
-XML parser needs no defusedxml hardening. This module reads its styles and placemark
-style URLs for reuse when symbolizing real fire geography.
+The template's styles and placemark style URLs are read here for reuse when symbolizing
+real fire geography. The XML is parsed with defusedxml so the reader never trusts its
+input, even though the template is normally a local, user-edited file.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import pathlib
+import typing
 
-# The template is a local, user-edited file rather than untrusted input, so the
-# stdlib XML parser needs no defusedxml hardening.
-import xml.etree.ElementTree as ET  # ruff: ignore[suspicious-xml-etree-import]
+import defusedxml.ElementTree as DefusedElementTree
+
+
+if typing.TYPE_CHECKING:
+    import xml.etree.ElementTree as ET
 
 import peri_scribe.kml_template
 
@@ -135,7 +138,7 @@ def template_from(kml_text: str) -> Template:
     Raises:
         ValueError: When *kml_text* has no Document element.
     """
-    root = ET.fromstring(kml_text)  # ruff: ignore[suspicious-xml-element-tree-usage]
+    root = DefusedElementTree.fromstring(kml_text)
     document = root.find(kml_tag("Document"))
     if document is None:
         message = "KML template has no Document element"

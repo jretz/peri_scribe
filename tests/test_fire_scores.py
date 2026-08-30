@@ -1038,7 +1038,7 @@ def test_building_counts_within_streams_without_rtree(
     buildings.to_file(path, layer="buildings")
     monkeypatch.setattr(
         peri_scribe.fire_scores,
-        "_has_rtree",
+        "has_rtree",
         lambda _path, _layer: False,
     )
 
@@ -1088,7 +1088,7 @@ def test_overlapping_fire_indices_streams_without_rtree(
     zones.to_file(path, layer="zones")
     monkeypatch.setattr(
         peri_scribe.fire_scores,
-        "_has_rtree",
+        "has_rtree",
         lambda _path, _layer: False,
     )
 

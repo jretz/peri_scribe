@@ -107,8 +107,8 @@ class KmlWriter:
 
     def __init__(self) -> None:
         self.parts: list[str] = []
-        self._geometry_cache: dict[int, tuple[str, ...]] = {}
-        self._next_folder_id = 0
+        self.geometry_cache: dict[int, tuple[str, ...]] = {}
+        self.next_folder_id = 0
 
     def text(self) -> str:
         """Return the assembled KML document.
@@ -139,8 +139,8 @@ class KmlWriter:
         Yields:
             The folder's document-unique id string, used to name its tour targets.
         """
-        folder_id = str(self._next_folder_id)
-        self._next_folder_id += 1
+        folder_id = str(self.next_folder_id)
+        self.next_folder_id += 1
         parts = self.parts
         parts.append("<Folder>")
         parts.append(f"<name>{escape_text(name)}</name>")
@@ -178,14 +178,14 @@ class KmlWriter:
         Returns:
             The geometry element's KML text.
         """
-        cached = self._geometry_cache.get(id(geometry))
+        cached = self.geometry_cache.get(id(geometry))
         if cached is None:
             if geometry.geom_type == "Polygon":
                 polygons = [geometry]
             else:
                 polygons = list(geometry.geoms)
-            cached = tuple(_polygon_boundaries(polygon) for polygon in polygons)
-            self._geometry_cache[id(geometry)] = cached
+            cached = tuple(polygon_boundaries(polygon) for polygon in polygons)
+            self.geometry_cache[id(geometry)] = cached
         if geometry.geom_type == "Polygon":
             return (
                 f"<Polygon>{cached[0]}"
@@ -198,7 +198,7 @@ class KmlWriter:
         return f"<MultiGeometry>{inner}</MultiGeometry>"
 
 
-def _polygon_boundaries(polygon: shapely.Polygon) -> str:
+def polygon_boundaries(polygon: shapely.Polygon) -> str:
     """Return *polygon*'s outer and inner boundary KML text.
 
     Args:
@@ -221,7 +221,7 @@ def _polygon_boundaries(polygon: shapely.Polygon) -> str:
     return "".join(parts)
 
 
-def _open_placemark(
+def open_placemark(
     writer: KmlWriter,
     name: str,
     style_url: str,
@@ -266,7 +266,7 @@ def point_placemark(
         description: The balloon description, or None for none.
         visible: Whether the placemark is visible.
     """
-    _open_placemark(
+    open_placemark(
         writer,
         name,
         style_url,
@@ -304,7 +304,7 @@ def polygon_geometry(
         visible: Whether the placemark is visible.
         placemark_id: The placemark id, or None for none.
     """
-    _open_placemark(
+    open_placemark(
         writer,
         name,
         style_url,
@@ -339,7 +339,7 @@ def multi_polygon_geometry(
         visible: Whether the placemark is visible.
         placemark_id: The placemark id, or None for none.
     """
-    _open_placemark(
+    open_placemark(
         writer,
         name,
         style_url,

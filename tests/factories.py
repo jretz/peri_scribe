@@ -335,8 +335,8 @@ class FeatureLayerStub(FeatureLayerStubBase):
 class FailingTransformer:
     """Transformer stand-in whose corner transforms always fail."""
 
-    def transform(  # ruff: ignore[no-self-use]
-        self,
+    @staticmethod
+    def transform(
         longitude: float,
         latitude: float,
     ) -> tuple[float, float]:

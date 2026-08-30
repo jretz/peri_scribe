@@ -158,7 +158,7 @@ def create_plot_renderer() -> PlotRenderer:
     )
 
 
-def _quantized_png(content: bytes) -> bytes:
+def quantized_png(content: bytes) -> bytes:
     """Return *content* as a smaller palette PNG.
 
     Matplotlib's PNG output is truecolor RGBA; the plots draw no transparency (the
@@ -265,4 +265,4 @@ def draw_plot(
     buffer.seek(0)
     buffer.truncate()
     figure.savefig(buffer, format=IMAGE_FORMAT)
-    return _quantized_png(buffer.getvalue())
+    return quantized_png(buffer.getvalue())

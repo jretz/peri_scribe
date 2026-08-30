@@ -41,7 +41,7 @@ RECORD_CACHE_SCHEMA_VERSION = 1
 # size and modification time so the database can be checked against the filesystem, and
 # the ``rows`` and ``memberships`` tables hold the parsed contents of each snapshot,
 # keyed by its serial number.
-_RECORD_CACHE_SCHEMA = """
+RECORD_CACHE_SCHEMA = """
 CREATE TABLE snapshots (
   serial INTEGER PRIMARY KEY,
   last_edit INTEGER NOT NULL,
@@ -74,7 +74,7 @@ CREATE TABLE memberships (
 
 # Serializes record cache database updates so that parallel readers never race to write
 # the same database; reads take no lock.
-_RECORD_CACHE_LOCK = threading.Lock()
+RECORD_CACHE_LOCK = threading.Lock()
 
 # Remembers, per process, the snapshot-directory signature at which each record cache
 # database was last verified, so steady-state reads skip the per-file freshness check.
@@ -82,7 +82,7 @@ _RECORD_CACHE_LOCK = threading.Lock()
 # the file, changing the bucket directory's modification time, so a changed snapshot set
 # is still detected on the next read; the memo only skips re-verifying files that cannot
 # have changed within this process.
-_RECORD_CACHE_SYNCED: dict[pathlib.Path, tuple[int | tuple[str, int], ...]] = {}
+RECORD_CACHE_SYNCED: dict[pathlib.Path, tuple[int | tuple[str, int], ...]] = {}
 
 
 def fire_status_from(value: object) -> peri_scribe.models.FireStatus | None:
@@ -524,7 +524,7 @@ class FireRowRecord:
             record.point_of_origin_fips,
             json.dumps(
                 {
-                    key: _json_cache_value(value)
+                    key: json_cache_value(value)
                     for key, value in self.attributes.items()
                 },
             ),
@@ -682,7 +682,7 @@ def read_geopackage(path: pathlib.Path) -> GeopackageContents:
     return GeopackageContents(rows=tuple(rows), memberships=tuple(memberships))
 
 
-def _json_cache_value(value: object) -> object:
+def json_cache_value(value: object) -> object:
     """Return *value* in a JSON-serializable form for the record cache.
 
     Missing values become None, numpy scalars become their Python equivalents, and
@@ -705,7 +705,7 @@ def _json_cache_value(value: object) -> object:
     return str(value)
 
 
-def _reset_database(conn: sqlite3.Connection) -> None:
+def reset_database(conn: sqlite3.Connection) -> None:
     """Replace the record cache tables in *conn* with an empty current schema.
 
     Args:
@@ -716,12 +716,12 @@ def _reset_database(conn: sqlite3.Connection) -> None:
         "DROP TABLE IF EXISTS memberships;"
         "DROP TABLE IF EXISTS snapshots;",
     )
-    conn.executescript(_RECORD_CACHE_SCHEMA)
+    conn.executescript(RECORD_CACHE_SCHEMA)
     conn.execute(f"PRAGMA user_version = {RECORD_CACHE_SCHEMA_VERSION}")
     conn.commit()
 
 
-def _write_snapshot(
+def write_snapshot(
     conn: sqlite3.Connection,
     source_file: peri_scribe.snapshots.SourceFile,
     size: int,
@@ -775,7 +775,7 @@ def _write_snapshot(
     )
 
 
-def _snapshot_directories_signature(
+def snapshot_directories_signature(
     source_directory: pathlib.Path,
 ) -> tuple[tuple[str, int], ...] | None:
     """Return a signature that changes whenever a snapshot file changes.
@@ -811,7 +811,7 @@ def _snapshot_directories_signature(
     return tuple(sorted(bucket_mtime_ns))
 
 
-def _sync_database(
+def sync_database(
     conn: sqlite3.Connection,
     source_directory: pathlib.Path,
 ) -> None:
@@ -852,11 +852,11 @@ def _sync_database(
             continue
         path = source_directory / source_file.relative_path
         contents = read_geopackage(path)
-        _write_snapshot(conn, source_file, size, mtime_ns, contents)
+        write_snapshot(conn, source_file, size, mtime_ns, contents)
     conn.commit()
 
 
-def _open_and_sync(
+def open_and_sync(
     db_path: pathlib.Path,
     source_directory: pathlib.Path,
 ) -> None:
@@ -875,13 +875,13 @@ def _open_and_sync(
             conn.execute("PRAGMA user_version").fetchone()[0]
             != RECORD_CACHE_SCHEMA_VERSION
         ):
-            _reset_database(conn)
-        _sync_database(conn, source_directory)
+            reset_database(conn)
+        sync_database(conn, source_directory)
     finally:
         conn.close()
 
 
-def _ensure_database_current(
+def ensure_database_current(
     db_path: pathlib.Path,
     source_directory: pathlib.Path,
 ) -> None:
@@ -895,15 +895,15 @@ def _ensure_database_current(
         db_path: The record cache database path.
         source_directory: The feed's snapshot directory.
     """
-    signature = _snapshot_directories_signature(source_directory)
+    signature = snapshot_directories_signature(source_directory)
     if signature is None:
         # No snapshot directory to sync from.
         return
-    if _RECORD_CACHE_SYNCED.get(db_path) == signature:
+    if RECORD_CACHE_SYNCED.get(db_path) == signature:
         return
     db_path.parent.mkdir(parents=True, exist_ok=True)
     try:
-        _open_and_sync(db_path, source_directory)
+        open_and_sync(db_path, source_directory)
     except sqlite3.DatabaseError:
         logger.debug(
             "Record cache database unusable; rebuilding",
@@ -911,11 +911,11 @@ def _ensure_database_current(
         )
         with contextlib.suppress(OSError):
             db_path.unlink()
-        _open_and_sync(db_path, source_directory)
-    _RECORD_CACHE_SYNCED[db_path] = signature
+        open_and_sync(db_path, source_directory)
+    RECORD_CACHE_SYNCED[db_path] = signature
 
 
-def _read_snapshot_contents(
+def read_snapshot_contents(
     conn: sqlite3.Connection,
     serial: int,
 ) -> GeopackageContents:
@@ -952,7 +952,7 @@ def _read_snapshot_contents(
     )
 
 
-def _fetch_snapshot_rows(
+def fetch_snapshot_rows(
     conn: sqlite3.Connection,
     serial: int,
 ) -> GeopackageContents | None:
@@ -973,10 +973,10 @@ def _fetch_snapshot_rows(
     ).fetchone()
     if present is None:
         return None
-    return _read_snapshot_contents(conn, serial)
+    return read_snapshot_contents(conn, serial)
 
 
-def _read_snapshot_rows(
+def read_snapshot_rows(
     db_path: pathlib.Path,
     serial: int,
 ) -> GeopackageContents | None:
@@ -992,12 +992,12 @@ def _read_snapshot_rows(
     """
     conn = sqlite3.connect(db_path)
     try:
-        return _fetch_snapshot_rows(conn, serial)
+        return fetch_snapshot_rows(conn, serial)
     finally:
         conn.close()
 
 
-def _read_cached_snapshot(
+def read_cached_snapshot(
     db_path: pathlib.Path,
     serial: int,
     path: pathlib.Path,
@@ -1017,7 +1017,7 @@ def _read_cached_snapshot(
         The snapshot's fire rows and complex memberships.
     """
     try:
-        contents = _read_snapshot_rows(db_path, serial)
+        contents = read_snapshot_rows(db_path, serial)
     except OSError, ValueError, sqlite3.Error:
         logger.debug("Failed to read record cache", path=str(path))
         return read_geopackage(path)
@@ -1053,12 +1053,12 @@ def read_geopackage_cached(path: pathlib.Path) -> GeopackageContents:
     except OSError, ValueError:
         return read_geopackage(path)
     try:
-        with _RECORD_CACHE_LOCK:
-            _ensure_database_current(db_path, source_directory)
+        with RECORD_CACHE_LOCK:
+            ensure_database_current(db_path, source_directory)
     except OSError, ValueError, sqlite3.Error:
         logger.debug("Failed to update record cache", path=str(path))
         return read_geopackage(path)
-    return _read_cached_snapshot(db_path, serial, path)
+    return read_cached_snapshot(db_path, serial, path)
 
 
 def read_layer(
@@ -1124,12 +1124,12 @@ def read_layer_chunks(
         Each chunk of the layer's features, in row order.
     """
     if path.suffix.lower() == ".gpkg" and layer_name is not None:
-        yield from _read_gpkg_layer_chunks(path, layer_name, chunk_size)
+        yield from read_gpkg_layer_chunks(path, layer_name, chunk_size)
         return
-    yield from _read_skip_layer_chunks(path, layer_name, chunk_size)
+    yield from read_skip_layer_chunks(path, layer_name, chunk_size)
 
 
-def _read_skip_layer_chunks(
+def read_skip_layer_chunks(
     path: pathlib.Path,
     layer_name: str | None,
     chunk_size: int,
@@ -1153,7 +1153,7 @@ def _read_skip_layer_chunks(
         offset += len(dataframe)
 
 
-def _read_gpkg_layer_chunks(
+def read_gpkg_layer_chunks(
     path: pathlib.Path,
     layer_name: str,
     chunk_size: int,

@@ -31,7 +31,12 @@ run = "uv run --locked peri_scribe validate-sources"
 [tasks.format]
 description = "Format with ruff"
 depends = ["venv"]
-run = "uv run ruff format"
+run = "uv run ruff format --quiet"
+
+[tasks.format-check]
+description = "Check format with ruff"
+depends = ["venv"]
+run = "uv run ruff format --check --quiet"
 
 [tasks.lint]
 description = "Check and fix style with ruff"
@@ -54,6 +59,7 @@ run = [
     { task = "pytest" },
     { task = "lint" },
     { task = "typecheck" },
+    { task = "format-check" },
 ]
 
 [tasks.install-tools]
@@ -93,4 +99,5 @@ task.output = "quiet"
 
 [tools]
 "cargo:gitnr" = "latest"
+rg = "latest"
 uv = "latest"

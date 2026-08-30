@@ -19,7 +19,7 @@ if typing.TYPE_CHECKING:
     import pytest
 
 
-def _record_groups(
+def record_groups(
     *,
     fire: peri_scribe.models.Fire,
     complex_identifiers: frozenset[str] = frozenset(),
@@ -50,13 +50,13 @@ def test_classify_fire_sources_returns_empty_without_non_complex_fires() -> None
         identifier="parent",
         aliases=frozenset({"parent"}),
     )
-    record_groups = _record_groups(
+    groups = record_groups(
         fire=fire,
         complex_identifiers=frozenset({"parent"}),
     )
     assert (
         peri_scribe.classification.classify_fire_sources(
-            record_groups,
+            groups,
             pathlib.Path("/base"),
         )
         == {}
@@ -79,7 +79,7 @@ def test_classify_fire_sources_returns_empty_when_boundaries_missing(
     )
     with structlog.testing.capture_logs() as captured:
         result = peri_scribe.classification.classify_fire_sources(
-            _record_groups(fire=fire),
+            record_groups(fire=fire),
             pathlib.Path("/base"),
         )
     assert result == {}
@@ -113,7 +113,7 @@ def test_classify_fire_sources_classifies_each_fire(
         lambda **_keywords: classification,
     )
     result = peri_scribe.classification.classify_fire_sources(
-        _record_groups(fire=fire),
+        record_groups(fire=fire),
         pathlib.Path("/base"),
     )
     assert result == {id(fire): classification}
