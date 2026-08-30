@@ -13,21 +13,48 @@ import tests.peri_scribe.fires.fire_helpers
 
 
 def test_tiered_points_returns_zero_for_missing() -> None:
-    assert peri_scribe.fires.scoring.tiered_points(None, ((10.0, 1),)) == 0
+    assert (
+        peri_scribe.fires.scoring.tiered_points(
+            None,
+            (peri_scribe.fires.scoring.SizeTier(threshold=10.0, score=1),),
+        )
+        == 0
+    )
 
 
 def test_tiered_points_returns_zero_when_no_tier_is_met() -> None:
-    assert peri_scribe.fires.scoring.tiered_points(3.0, ((100.0, 5), (10.0, 1))) == 0
+    assert (
+        peri_scribe.fires.scoring.tiered_points(
+            3.0,
+            (
+                peri_scribe.fires.scoring.SizeTier(threshold=100.0, score=5),
+                peri_scribe.fires.scoring.SizeTier(threshold=10.0, score=1),
+            ),
+        )
+        == 0
+    )
 
 
 def test_tiered_points_returns_first_met_tier() -> None:
-    assert peri_scribe.fires.scoring.tiered_points(50.0, ((100.0, 5), (10.0, 1))) == 1
+    assert (
+        peri_scribe.fires.scoring.tiered_points(
+            50.0,
+            (
+                peri_scribe.fires.scoring.SizeTier(threshold=100.0, score=5),
+                peri_scribe.fires.scoring.SizeTier(threshold=10.0, score=1),
+            ),
+        )
+        == 1
+    )
 
 
 def test_tiered_points_meets_exact_threshold() -> None:
     assert peri_scribe.fires.scoring.tiered_points(
         100.0,
-        ((100.0, 5), (10.0, 1)),
+        (
+            peri_scribe.fires.scoring.SizeTier(threshold=100.0, score=5),
+            peri_scribe.fires.scoring.SizeTier(threshold=10.0, score=1),
+        ),
     ) == pytest.approx(5)
 
 
@@ -282,7 +309,7 @@ def test_signal_description_returns_none_without_points() -> None:
         peri_scribe.fires.scoring.signal_description(
             0,
             peri_scribe.fires.scoring.SIZE_WEIGHT,
-            peri_scribe.fires.scoring.SIZE_DESCRIPTIONS,
+            peri_scribe.fires.scoring.SIZE_TIERS,
         )
         is None
     )
@@ -293,10 +320,65 @@ def test_signal_description_names_the_tier() -> None:
         peri_scribe.fires.scoring.signal_description(
             4 * peri_scribe.fires.scoring.BUILDINGS_WEIGHT,
             peri_scribe.fires.scoring.BUILDINGS_WEIGHT,
-            peri_scribe.fires.scoring.BUILDING_COUNT_DESCRIPTIONS,
+            peri_scribe.fires.scoring.BUILDING_COUNT_TIERS,
         )
         == "over 1,000 structures within a mile"
     )
+
+
+def test_signal_description_returns_none_for_unknown_tier() -> None:
+    assert (
+        peri_scribe.fires.scoring.signal_description(
+            6 * peri_scribe.fires.scoring.SIZE_WEIGHT,
+            peri_scribe.fires.scoring.SIZE_WEIGHT,
+            peri_scribe.fires.scoring.SIZE_TIERS,
+        )
+        is None
+    )
+
+
+def test_tier_description_phrases_the_threshold() -> None:
+    assert (
+        peri_scribe.fires.scoring.SizeTier(
+            threshold=100_000.0,
+            score=5,
+        ).description
+        == "over 100,000 acres"
+    )
+    assert (
+        peri_scribe.fires.scoring.GrowthTier(
+            threshold=50_000.0,
+            score=4,
+        ).description
+        == "a single growth step over 50,000 acres"
+    )
+    assert (
+        peri_scribe.fires.scoring.FirstMappingTier(
+            threshold=5_000.0,
+            score=3,
+        ).description
+        == "already over 5,000 acres when first mapped"
+    )
+    assert (
+        peri_scribe.fires.scoring.BuildingCountTier(
+            threshold=1_000.0,
+            score=4,
+        ).description
+        == "over 1,000 structures within a mile"
+    )
+
+
+def test_importance_description_names_the_level() -> None:
+    assert (
+        peri_scribe.fires.scoring.importance_description(
+            2 * peri_scribe.fires.scoring.IMPORTANCE_WEIGHT,
+        )
+        == "a Type 2 Incident"
+    )
+
+
+def test_importance_description_returns_none_without_points() -> None:
+    assert peri_scribe.fires.scoring.importance_description(0) is None
 
 
 def test_fire_scores_document_wraps_entries_with_version() -> None:
