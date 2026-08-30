@@ -704,6 +704,125 @@ def test_status_folder_name_for_active() -> None:
     )
 
 
+def score_entry(
+    name: str,
+    identifier: str | None,
+    score: int,
+    explanation: str,
+) -> peri_scribe.models.FireScoreEntry:
+    """Return a saved score for a fire.
+
+    Args:
+        name: The fire's name.
+        identifier: The fire's identifier, or None.
+        score: The fire's score.
+        explanation: Why the fire has the score.
+
+    Returns:
+        The score entry.
+    """
+    return peri_scribe.models.FireScoreEntry(
+        name=name,
+        identifier=identifier,
+        score=score,
+        components=peri_scribe.models.FireScoreComponents(
+            size=0,
+            growth=0,
+            first_mapping=0,
+            buildings=0,
+            evacuation=0,
+            importance=0,
+        ),
+        explanation=explanation,
+    )
+
+
+def test_top_fires_matches_by_identifier() -> None:
+    big = peri_scribe.kml_fire_data.FireGeometry(
+        name="Timber",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=None,
+        perimeters=(),
+        identifiers=frozenset({"id-big", "alias-big"}),
+    )
+    small = peri_scribe.kml_fire_data.FireGeometry(
+        name="Timber",
+        status=peri_scribe.models.FireStatus.INACTIVE,
+        point=None,
+        perimeters=(),
+        identifiers=frozenset({"id-small"}),
+    )
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            score_entry(
+                "Timber",
+                "id-small",
+                4,
+                "Over 5 structures within a mile.",
+            ),
+            score_entry(
+                "Timber",
+                "id-big",
+                470,
+                "Over 250 structures within a mile.",
+            ),
+        ],
+    )
+    assert peri_scribe.kml_folders.top_fires([big, small], scores) == [big, small]
+
+
+def test_top_fires_matches_any_fire_identifier() -> None:
+    fire = peri_scribe.kml_fire_data.FireGeometry(
+        name="Timber",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=None,
+        perimeters=(),
+        identifiers=frozenset({"alias-big", "id-big"}),
+    )
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            score_entry(
+                "Timber",
+                "id-big",
+                470,
+                "Over 250 structures within a mile.",
+            ),
+        ],
+    )
+    assert peri_scribe.kml_folders.top_fires([fire], scores) == [fire]
+
+
+def test_top_fires_falls_back_to_name_without_identifier_match() -> None:
+    fire = peri_scribe.kml_fire_data.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=None,
+        perimeters=(),
+    )
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[score_entry("Bug", None, 12, "A Type 1 Incident.")],
+    )
+    assert peri_scribe.kml_folders.top_fires([fire], scores) == [fire]
+
+
+def test_top_fires_excludes_scores_without_matching_fire() -> None:
+    fire = peri_scribe.kml_fire_data.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=None,
+        perimeters=(),
+        identifiers=frozenset({"id-bug"}),
+    )
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[score_entry("Missing", "id-missing", 500, "A Type 1 Incident.")],
+    )
+    assert peri_scribe.kml_folders.top_fires([fire], scores) == []
+
+
 def test_status_folder_name_for_inactive() -> None:
     assert (
         peri_scribe.kml_folders.status_folder_name(

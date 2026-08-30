@@ -67,6 +67,7 @@ class FireGeometry:
     progression_rings: tuple[peri_scribe.perimeter_progression.Ring, ...] = ()
     description: str | None = None
     images: tuple[peri_scribe.kml_plot_rendering.PlotImage, ...] = ()
+    identifiers: frozenset[str] = frozenset()
 
 
 def identifiers(
@@ -394,6 +395,7 @@ def fire_description(
     entry: peri_scribe.models.FireIndexEntry,
     perimeters: geopandas.GeoDataFrame,
     points: geopandas.GeoDataFrame,
+    of_note: str | None = None,
 ) -> peri_scribe.kml_descriptions.FireDescription:
     """Return *entry*'s latest state for its balloon description.
 
@@ -407,6 +409,8 @@ def fire_description(
         entry: One fire index entry.
         perimeters: The perimeter history layer.
         points: The point history layer.
+        of_note: The fire's score explanation, shown as the balloon's final row, or
+            None when the fire has no saved score.
 
     Returns:
         The fire's latest state.
@@ -565,6 +569,39 @@ def fire_description(
             None,
             "attr_POOLandownerCategory",
         ),
+        of_note=of_note,
+    )
+
+
+def score_explanation_for(
+    notes_by_identifier: typing.Mapping[str, str],
+    notes_by_name: typing.Mapping[str, str],
+    fire_identifiers: frozenset[str],
+    name: str,
+) -> str | None:
+    """Return the score explanation matching *fire_identifiers* or *name*.
+
+    A fire's explanation is found by its identifiers first, so fires that share a name
+    but not an identity each show their own explanation; a fire no identifier matches
+    falls back to its name.
+
+    Args:
+        notes_by_identifier: Explanations keyed by score entry identifier.
+        notes_by_name: Explanations for score entries without identifiers, keyed
+            by name.
+        fire_identifiers: The fire's canonical identifier and aliases.
+        name: The fire's name.
+
+    Returns:
+        The explanation, or None when neither the identifiers nor the name match.
+    """
+    return next(
+        (
+            notes_by_identifier[identifier]
+            for identifier in fire_identifiers
+            if identifier in notes_by_identifier
+        ),
+        notes_by_name.get(name),
     )
 
 
@@ -573,6 +610,7 @@ def fire_geometries(
     perimeters: geopandas.GeoDataFrame,
     points: geopandas.GeoDataFrame,
     differential_perimeters: geopandas.GeoDataFrame,
+    scores: peri_scribe.models.FireScores | None = None,
 ) -> list[FireGeometry]:
     """Return each indexed fire's geometry and plots, sorted by case-folded name.
 
@@ -581,17 +619,37 @@ def fire_geometries(
     perimeters folder, the differential growth rings feed the progression maps, and the
     point and perimeter histories feed the line plots embedded in each fire's balloon.
     All of the fires' plots are rendered together, in parallel, in one shared process
-    pool.
+    pool. When scores are supplied, each fire's score explanation is shown as the final
+    row of its balloon, matched by identifier and falling back to name.
 
     Args:
         index: The fire index that names each fire and its status.
         perimeters: The perimeter history layer.
         points: The point history layer.
         differential_perimeters: The differential perimeter history layer.
+        scores: The saved score for each fire, or None.
 
     Returns:
         One entry per indexed fire, sorted by case-folded name.
     """
+    notes_by_identifier = (
+        {
+            entry.identifier: entry.explanation
+            for entry in scores.fires
+            if entry.identifier is not None
+        }
+        if scores is not None
+        else {}
+    )
+    notes_by_name = (
+        {
+            entry.name: entry.explanation
+            for entry in scores.fires
+            if entry.identifier is None
+        }
+        if scores is not None
+        else {}
+    )
     perimeter_by_identifier, perimeter_by_name = perimeter_groups(perimeters)
     ring_by_identifier, ring_by_name = perimeter_groups(differential_perimeters)
     point_by_identifier, point_by_name = point_locations(points)
@@ -673,8 +731,19 @@ def fire_geometries(
                 ),
                 perimeters=perimeter_observations,
                 progression_rings=progression_rings,
+                identifiers=fire_identifiers,
                 description=peri_scribe.kml_descriptions.description_html(
-                    fire_description(entry, perimeters, points),
+                    fire_description(
+                        entry,
+                        perimeters,
+                        points,
+                        of_note=score_explanation_for(
+                            notes_by_identifier,
+                            notes_by_name,
+                            fire_identifiers,
+                            entry.name,
+                        ),
+                    ),
                     tuple(image.filename for image in images),
                 ),
                 images=images,

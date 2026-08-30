@@ -480,6 +480,168 @@ def test_fire_geometries_attaches_plot_images(
     assert '<img src="id-bug-perimeter.png" />' in fire.description
 
 
+def test_score_explanation_for_prefers_identifier() -> None:
+    assert (
+        peri_scribe.kml_fire_data.score_explanation_for(
+            {"id-big": "Over 250 structures within a mile."},
+            {"Timber": "Over 5 structures within a mile."},
+            frozenset({"id-big"}),
+            "Timber",
+        )
+        == "Over 250 structures within a mile."
+    )
+
+
+def test_score_explanation_for_matches_any_identifier() -> None:
+    assert (
+        peri_scribe.kml_fire_data.score_explanation_for(
+            {"id-big": "Over 250 structures within a mile."},
+            {},
+            frozenset({"alias", "id-big"}),
+            "Timber",
+        )
+        == "Over 250 structures within a mile."
+    )
+
+
+def test_score_explanation_for_falls_back_to_name() -> None:
+    assert (
+        peri_scribe.kml_fire_data.score_explanation_for(
+            {},
+            {"Timber": "Over 5 structures within a mile."},
+            frozenset(),
+            "Timber",
+        )
+        == "Over 5 structures within a mile."
+    )
+
+
+def test_score_explanation_for_returns_none_without_match() -> None:
+    assert (
+        peri_scribe.kml_fire_data.score_explanation_for(
+            {},
+            {},
+            frozenset({"id-other"}),
+            "Timber",
+        )
+        is None
+    )
+
+
+def test_fire_geometries_puts_score_explanation_in_balloon() -> None:
+    index = tests.kml_helpers.fire_index([
+        tests.kml_helpers.fire_index_entry("Bug", "active", identifier="id-bug"),
+    ])
+    perimeters = tests.kml_helpers.geometry_frame([
+        ("id-bug", "Bug", tests.kml_helpers.square(1.0)),
+    ])
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            peri_scribe.models.FireScoreEntry(
+                name="Bug",
+                identifier="id-bug",
+                score=389,
+                components=peri_scribe.models.FireScoreComponents(
+                    size=135,
+                    growth=60,
+                    first_mapping=33,
+                    buildings=8,
+                    evacuation=33,
+                    importance=120,
+                ),
+                explanation="Over 100,000 acres, and a Type 1 Incident.",
+            ),
+        ],
+    )
+    (with_scores,) = peri_scribe.kml_fire_data.fire_geometries(
+        index,
+        perimeters,
+        tests.kml_helpers.geometry_frame([]),
+        tests.kml_helpers.geometry_frame([]),
+        scores=scores,
+    )
+    assert with_scores.description is not None
+    assert "<b>Of note</b>" in with_scores.description
+    assert "Over 100,000 acres, and a Type 1 Incident." in with_scores.description
+    (without_scores,) = peri_scribe.kml_fire_data.fire_geometries(
+        index,
+        perimeters,
+        tests.kml_helpers.geometry_frame([]),
+        tests.kml_helpers.geometry_frame([]),
+    )
+    assert without_scores.description is not None
+    assert "<b>Of note</b>" in without_scores.description
+    assert (
+        "Over 100,000 acres, and a Type 1 Incident." not in without_scores.description
+    )
+
+
+def test_fire_geometries_matches_score_explanation_by_identifier() -> None:
+    index = tests.kml_helpers.fire_index([
+        tests.kml_helpers.fire_index_entry(
+            "Timber",
+            "active",
+            identifier="id-big",
+        ),
+        tests.kml_helpers.fire_index_entry(
+            "Timber",
+            "inactive",
+            identifier="id-small",
+        ),
+    ])
+    perimeters = tests.kml_helpers.geometry_frame([
+        ("id-big", "Timber", tests.kml_helpers.square(2.0)),
+        ("id-small", "Timber", tests.kml_helpers.square(1.0)),
+    ])
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            peri_scribe.models.FireScoreEntry(
+                name="Timber",
+                identifier="id-small",
+                score=4,
+                components=peri_scribe.models.FireScoreComponents(
+                    size=0,
+                    growth=0,
+                    first_mapping=0,
+                    buildings=4,
+                    evacuation=0,
+                    importance=0,
+                ),
+                explanation="Over 5 structures within a mile.",
+            ),
+            peri_scribe.models.FireScoreEntry(
+                name="Timber",
+                identifier="id-big",
+                score=470,
+                components=peri_scribe.models.FireScoreComponents(
+                    size=54,
+                    growth=0,
+                    first_mapping=11,
+                    buildings=12,
+                    evacuation=33,
+                    importance=360,
+                ),
+                explanation=(
+                    "Over 250 structures within a mile, and a Type 1 Incident."
+                ),
+            ),
+        ],
+    )
+    big, small = peri_scribe.kml_fire_data.fire_geometries(
+        index,
+        perimeters,
+        tests.kml_helpers.geometry_frame([]),
+        tests.kml_helpers.geometry_frame([]),
+        scores=scores,
+    )
+    assert big.description is not None
+    assert "Over 250 structures within a mile" in big.description
+    assert small.description is not None
+    assert "Over 5 structures within a mile" in small.description
+
+
 def test_fire_geometries_skips_images_without_enough_dates() -> None:
     index = tests.kml_helpers.fire_index([
         tests.kml_helpers.fire_index_entry("Bug", "active", identifier="id-bug"),
@@ -638,6 +800,7 @@ def test_fire_description_prefers_latest_perimeter_values() -> None:
         entry,
         description_perimeter_frame(),
         description_point_frame(),
+        of_note="Over 100,000 acres, and a Type 1 Incident.",
     )
     assert description.area_in_acres == pytest.approx(20.0)
     assert description.percent_contained == pytest.approx(20.0)
@@ -677,6 +840,7 @@ def test_fire_description_prefers_latest_perimeter_values() -> None:
     )
     assert description.fire_behavior == "Active; Creeping; Smoldering; Running"
     assert description.landowner_category == "Federal"
+    assert description.of_note == "Over 100,000 acres, and a Type 1 Incident."
 
 
 def test_fire_description_falls_back_to_point_when_perimeter_missing() -> None:

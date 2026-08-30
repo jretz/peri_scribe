@@ -463,6 +463,83 @@ def test_score_entry_maps_components_and_total() -> None:
         "evacuation": 33,
         "importance": 120,
     }
+    assert entry.explanation == (
+        "Over 100,000 acres, a single growth step over "
+        "50,000 acres, already over 5,000 acres when first mapped, over "
+        "50 structures within a mile, overlap with an evacuation zone, and "
+        "a Type 3 Incident."
+    )
+
+
+def test_score_explanation_describes_each_contributing_signal() -> None:
+    fire_score = peri_scribe.fire_scores.FireScore(
+        name="Bug",
+        identifier="2026-a",
+        size_points=27,
+        growth_points=15,
+        first_mapping_points=11,
+        building_points=0,
+        evacuation_points=0,
+        importance_points=0,
+    )
+    assert peri_scribe.fire_scores.score_explanation(fire_score) == (
+        "Over 1,000 acres, a single growth step over "
+        "5,000 acres, and already over 100 acres when first mapped."
+    )
+
+
+def test_score_explanation_mentions_evacuation_and_importance() -> None:
+    fire_score = peri_scribe.fire_scores.FireScore(
+        name="Bug",
+        identifier="2026-a",
+        size_points=0,
+        growth_points=0,
+        first_mapping_points=0,
+        building_points=0,
+        evacuation_points=33,
+        importance_points=360,
+    )
+    assert peri_scribe.fire_scores.score_explanation(fire_score) == (
+        "Overlap with an evacuation zone, and a Type 1 Incident."
+    )
+
+
+def test_score_explanation_says_no_signals_when_score_is_zero() -> None:
+    fire_score = peri_scribe.fire_scores.FireScore(
+        name="Bug",
+        identifier="2026-a",
+        size_points=0,
+        growth_points=0,
+        first_mapping_points=0,
+        building_points=0,
+        evacuation_points=0,
+        importance_points=0,
+    )
+    assert peri_scribe.fire_scores.score_explanation(fire_score) == (
+        "No notable size, growth, threat, or official-importance signals."
+    )
+
+
+def test_signal_description_returns_none_without_points() -> None:
+    assert (
+        peri_scribe.fire_scores.signal_description(
+            0,
+            peri_scribe.fire_scores.SIZE_WEIGHT,
+            peri_scribe.fire_scores.SIZE_DESCRIPTIONS,
+        )
+        is None
+    )
+
+
+def test_signal_description_names_the_tier() -> None:
+    assert (
+        peri_scribe.fire_scores.signal_description(
+            4 * peri_scribe.fire_scores.BUILDINGS_WEIGHT,
+            peri_scribe.fire_scores.BUILDINGS_WEIGHT,
+            peri_scribe.fire_scores.BUILDING_COUNT_DESCRIPTIONS,
+        )
+        == "over 1,000 structures within a mile"
+    )
 
 
 def test_fire_scores_document_wraps_entries_with_version() -> None:
@@ -478,6 +555,7 @@ def test_fire_scores_document_wraps_entries_with_version() -> None:
             evacuation=0,
             importance=0,
         ),
+        explanation="Over 1,000 acres.",
     )
     document = peri_scribe.fire_scores.fire_scores_document([entry])
     assert document.version == peri_scribe.fire_scores.FIRE_SCORES_VERSION

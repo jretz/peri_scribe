@@ -344,6 +344,35 @@ def status_folder(
         progression_folder(writer, status_fires, style_urls)
 
 
+def _score_fire(
+    entry: peri_scribe.models.FireScoreEntry,
+    fires_by_identifier: typing.Mapping[
+        str,
+        peri_scribe.kml_fire_data.FireGeometry,
+    ],
+    fires_by_name: typing.Mapping[str, peri_scribe.kml_fire_data.FireGeometry],
+) -> peri_scribe.kml_fire_data.FireGeometry | None:
+    """Return the geometry matching *entry*, by identifier first and then name.
+
+    Args:
+        entry: One saved score.
+        fires_by_identifier: The showable fires keyed by each identifier.
+        fires_by_name: The showable fires keyed by name.
+
+    Returns:
+        The entry's geometry, or None when neither its identifier nor its name matches a
+        showable fire.
+    """
+    fire = (
+        fires_by_identifier.get(entry.identifier)
+        if entry.identifier is not None
+        else None
+    )
+    if fire is None:
+        fire = fires_by_name.get(entry.name)
+    return fire
+
+
 def top_fires(
     fires: list[peri_scribe.kml_fire_data.FireGeometry],
     scores: peri_scribe.models.FireScores,
@@ -351,7 +380,9 @@ def top_fires(
     """Return the highest-scoring fires that are present in *fires*.
 
     Scores can include fires excluded from the map for lacking qualifying geography, so
-    the result is matched back to the already-filtered geometry list by name.
+    the result is matched back to the already-filtered geometry list. A score is matched
+    by identifier first, so fires that share a name but not an identity each resolve to
+    their own geometry; a score whose identifier matches no fire falls back to its name.
 
     Args:
         fires: The fires that can be shown in the KMZ.
@@ -360,15 +391,18 @@ def top_fires(
     Returns:
         The top fires in descending score order.
     """
+    fires_by_identifier = {
+        identifier: fire for fire in fires for identifier in fire.identifiers
+    }
     fires_by_name = {fire.name: fire for fire in fires}
-    return [
-        fires_by_name[entry.name]
+    matched = [
+        _score_fire(entry, fires_by_identifier, fires_by_name)
         for entry in sorted(
             scores.fires,
             key=lambda entry: (-entry.score, entry.name.casefold()),
         )
-        if entry.name in fires_by_name
-    ][:TOP_FIRE_COUNT]
+    ]
+    return [fire for fire in matched if fire is not None][:TOP_FIRE_COUNT]
 
 
 def top_fires_folder(

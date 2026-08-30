@@ -309,12 +309,13 @@ class FireScoreComponents(pydantic.BaseModel):
 
 
 class FireScoreEntry(pydantic.BaseModel):
-    """One fire's score and the current components."""
+    """One fire's score, the current components, and why it has that score."""
 
     name: str
     identifier: str | None = None
     score: int
     components: FireScoreComponents
+    explanation: str
 
 
 class FireScores(pydantic.BaseModel):

@@ -42,6 +42,7 @@ def full_description() -> peri_scribe.kml_descriptions.FireDescription:
         fuel_model="Timber (Litter and Understory); Brush (2 feet); GS1; Grass",
         fire_behavior="Active; Creeping; Smoldering",
         landowner_category="Federal",
+        of_note="Over 100,000 acres, and a Type 1 Incident.",
     )
 
 
@@ -219,6 +220,7 @@ def test_description_rows_includes_every_present_value() -> None:
         ("Fuel model", "Timber (Litter and Understory); Brush (2 feet); GS1; Grass"),
         ("Fire behavior", "Active; Creeping; Smoldering"),
         ("Landowner category", "Federal"),
+        ("Of note", "Over 100,000 acres, and a Type 1 Incident."),
     ]
 
 
@@ -243,6 +245,7 @@ def test_description_rows_marks_missing_values_with_hyphens() -> None:
         ("Fuel model", "--"),
         ("Fire behavior", "--"),
         ("Landowner category", "--"),
+        ("Of note", "--"),
     ]
 
 

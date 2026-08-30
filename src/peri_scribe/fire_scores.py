@@ -47,7 +47,7 @@ import peri_scribe.snapshots
 SCORE_OUTPUT_FILENAME = "fire_scores.json"
 CCDF_OUTPUT_FILENAME = "fire_scores_ccdf.png"
 
-FIRE_SCORES_VERSION = "2026-08-28"
+FIRE_SCORES_VERSION = "2026-08-29"
 
 # The buffer around a fire's footprint used to count threatened buildings.
 BUILDING_BUFFER_IN_METERS = 1609.34
@@ -92,6 +92,33 @@ BUILDING_COUNT_TIERS = (
     (5.0, 1),
 )
 
+# Human-readable descriptions of each tier's points, used in the per-fire score
+# explanations. Each map is keyed by the tier's points, matching the tier tuples above.
+SIZE_DESCRIPTIONS = {
+    5: "over 100,000 acres",
+    4: "over 50,000 acres",
+    3: "over 25,000 acres",
+    2: "over 10,000 acres",
+    1: "over 1,000 acres",
+}
+GROWTH_DESCRIPTIONS = {
+    4: "a single growth step over 50,000 acres",
+    3: "a single growth step over 25,000 acres",
+    2: "a single growth step over 10,000 acres",
+    1: "a single growth step over 5,000 acres",
+}
+FIRST_MAPPING_DESCRIPTIONS = {
+    3: "already over 5,000 acres when first mapped",
+    2: "already over 1,000 acres when first mapped",
+    1: "already over 100 acres when first mapped",
+}
+BUILDING_COUNT_DESCRIPTIONS = {
+    4: "over 1,000 structures within a mile",
+    3: "over 250 structures within a mile",
+    2: "over 50 structures within a mile",
+    1: "over 5 structures within a mile",
+}
+
 # Points awarded for overlapping each external hazard or threat layer.
 EVACUATION_POINTS = 3
 
@@ -100,6 +127,11 @@ IMPORTANCE_POINTS_BY_LEVEL = {
     "Type 1 Incident": 3,
     "Type 2 Incident": 2,
     "Type 3 Incident": 1,
+}
+IMPORTANCE_DESCRIPTIONS = {
+    3: "a Type 1 Incident",
+    2: "a Type 2 Incident",
+    1: "a Type 3 Incident",
 }
 
 # Weight applied to each signal's points when composing the total score. The weights are
@@ -134,6 +166,27 @@ def tiered_points(
         if value >= threshold:
             return points
     return 0
+
+
+def signal_description(
+    points: int,
+    weight: int,
+    descriptions: dict[int, str],
+) -> str | None:
+    """Return the human description of a signal's tier, or None for no points.
+
+    Args:
+        points: The signal's weighted points.
+        weight: The weight the signal's tier points were multiplied by.
+        descriptions: The tier-points-to-description map.
+
+    Returns:
+        The description for the signal's tier, or None when the signal
+        contributed no points.
+    """
+    if points == 0:
+        return None
+    return descriptions[points // weight]
 
 
 def importance_points(complexity_level: str | None) -> int:
@@ -770,6 +823,53 @@ def fire_scores_ccdf_path(year_directory: pathlib.Path) -> pathlib.Path:
     )
 
 
+def score_explanation(fire_score: FireScore) -> str:
+    """Return a short English explanation of why a fire has its score.
+
+    Each signal that contributed points is described in one phrase, in the order the
+    components are stored; signals that contributed nothing are omitted. A fire whose
+    signals all scored zero gets a sentence saying so.
+
+    Args:
+        fire_score: The fire's score.
+
+    Returns:
+        The explanation sentence.
+    """
+    phrases = [
+        signal_description(fire_score.size_points, SIZE_WEIGHT, SIZE_DESCRIPTIONS),
+        signal_description(
+            fire_score.growth_points,
+            GROWTH_WEIGHT,
+            GROWTH_DESCRIPTIONS,
+        ),
+        signal_description(
+            fire_score.first_mapping_points,
+            FIRST_MAPPING_WEIGHT,
+            FIRST_MAPPING_DESCRIPTIONS,
+        ),
+        signal_description(
+            fire_score.building_points,
+            BUILDINGS_WEIGHT,
+            BUILDING_COUNT_DESCRIPTIONS,
+        ),
+        "overlap with an evacuation zone" if fire_score.evacuation_points else None,
+        signal_description(
+            fire_score.importance_points,
+            IMPORTANCE_WEIGHT,
+            IMPORTANCE_DESCRIPTIONS,
+        ),
+    ]
+    present = [phrase for phrase in phrases if phrase is not None]
+    if not present:
+        return "No notable size, growth, threat, or official-importance signals."
+    if len(present) == 1:
+        sentence = present[0]
+    else:
+        sentence = ", ".join(present[:-1]) + ", and " + present[-1]
+    return sentence[0].upper() + sentence[1:] + "."
+
+
 def score_entry(
     fire_score: FireScore,
 ) -> peri_scribe.models.FireScoreEntry:
@@ -779,7 +879,8 @@ def score_entry(
         fire_score: The fire's current score.
 
     Returns:
-        The entry holding the fire's score and current components.
+        The entry holding the fire's score, current components, and an explanation of
+        the score.
     """
     return peri_scribe.models.FireScoreEntry(
         name=fire_score.name,
@@ -793,6 +894,7 @@ def score_entry(
             evacuation=fire_score.evacuation_points,
             importance=fire_score.importance_points,
         ),
+        explanation=score_explanation(fire_score),
     )
 
 

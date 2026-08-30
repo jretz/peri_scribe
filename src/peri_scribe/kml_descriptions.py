@@ -258,6 +258,7 @@ class FireDescription:
     fuel_model: str | None = None
     fire_behavior: str | None = None
     landowner_category: str | None = None
+    of_note: str | None = None
 
 
 def escape_text(value: str) -> str:
@@ -322,6 +323,7 @@ def description_rows(
         ("Fuel model", description.fuel_model),
         ("Fire behavior", description.fire_behavior),
         ("Landowner category", description.landowner_category),
+        ("Of note", description.of_note),
     ]
     for label, value in candidates:
         rows.append((label, "--" if value is None else value))

@@ -269,6 +269,7 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
         perimeters,
         points,
         differential_perimeters,
+        scores=scores,
     )
     images = {
         image.filename: image.content for fire in geometries for image in fire.images

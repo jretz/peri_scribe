@@ -127,11 +127,15 @@ def test_fire_kml_puts_top_fires_before_status_folders() -> None:
                 name="Zulu",
                 score=3,
                 components=components,
+                explanation="No notable size, growth, threat, or "
+                "official-importance signals.",
             ),
             peri_scribe.models.FireScoreEntry(
                 name="Alpha",
                 score=2,
                 components=components,
+                explanation="No notable size, growth, threat, or "
+                "official-importance signals.",
             ),
         ],
     )

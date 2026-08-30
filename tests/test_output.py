@@ -215,6 +215,7 @@ def test_write_fire_scores_writes_pretty_printed_json(
                     "evacuation": 3,
                     "importance": 0,
                 },
+                "explanation": "Overlap with an evacuation zone.",
             },
         ],
     })
@@ -262,6 +263,7 @@ def test_write_fire_scores_ccdf_plots_complementary(
                     "evacuation": 3,
                     "importance": 0,
                 },
+                "explanation": "Overlap with an evacuation zone.",
             },
         ],
     })
@@ -316,6 +318,7 @@ def test_write_fire_scores_ccdf_renders_at_requested_size(
                     "evacuation": 3,
                     "importance": 0,
                 },
+                "explanation": "Overlap with an evacuation zone.",
             },
         ],
     })
@@ -380,6 +383,8 @@ def test_write_fire_scores_ccdf_labels_knees(
                     "evacuation": 0,
                     "importance": 0,
                 },
+                "explanation": "No notable size, growth, threat, or "
+                "official-importance signals.",
             }
             for index, score in enumerate(scores)
         ],
@@ -428,6 +433,7 @@ def test_write_fire_scores_ccdf_draws_plot_when_knees_fail(
                     "evacuation": 3,
                     "importance": 0,
                 },
+                "explanation": "Overlap with an evacuation zone.",
             },
         ],
     })
