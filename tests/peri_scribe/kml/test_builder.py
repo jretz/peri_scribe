@@ -18,7 +18,6 @@ import peri_scribe.kml.icons
 import peri_scribe.kml.template
 import peri_scribe.kml.template_reader
 import peri_scribe.models
-import peri_scribe.perimeters.progression
 import tests.peri_scribe.kml.kml_helpers
 
 
@@ -169,21 +168,17 @@ def test_fire_kml_puts_top_fires_before_status_folders() -> None:
         top_level,
         "Top Fires by Score",
     )
-    assert tests.peri_scribe.kml.kml_helpers.folder_names(
-        tests.peri_scribe.kml.kml_helpers.folder_named(
-            top_by_name,
-            peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
-        ),
-    ) == ["Alpha", "Zulu"]
-    assert tests.peri_scribe.kml.kml_helpers.folder_names(
-        tests.peri_scribe.kml.kml_helpers.folder_named(
-            top_by_score,
-            peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
-        ),
-    ) == ["Zulu", "Alpha"]
+    assert tests.peri_scribe.kml.kml_helpers.folder_names(top_by_name) == [
+        "Alpha",
+        "Zulu",
+    ]
+    assert tests.peri_scribe.kml.kml_helpers.folder_names(top_by_score) == [
+        "Zulu",
+        "Alpha",
+    ]
 
 
-def test_fire_kml_shows_top_fires_by_name_progression_maps() -> None:
+def test_fire_kml_loads_top_fires_by_name_checked() -> None:
     fires = [
         peri_scribe.kml.fire_data.FireGeometry(
             name=name,
@@ -244,60 +239,21 @@ def test_fire_kml_shows_top_fires_by_name_progression_maps() -> None:
         top_level,
         "Inactive Fires",
     )
-    # The top-level radios load with only "Top Fires by Name" checked, and inside it
-    # the progression-maps view is the checked radio, so the progression maps are the
-    # default view on load.
+    # The top-level radios load with only "Top Fires by Name" checked, so its fires
+    # are the default view on load. The unchecked top-level radios hide their whole
+    # trees, so they carry no visible content and their radio buttons load off instead
+    # of being selected.
     assert tests.peri_scribe.kml.kml_helpers.visibility(by_name) is None
     assert tests.peri_scribe.kml.kml_helpers.visibility(by_score) == 0
     assert tests.peri_scribe.kml.kml_helpers.visibility(active) == 0
     assert tests.peri_scribe.kml.kml_helpers.visibility(inactive) == 0
-    assert (
-        tests.peri_scribe.kml.kml_helpers.visibility(
-            tests.peri_scribe.kml.kml_helpers.folder_named(
-                by_name,
-                peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
-            ),
-        )
-        == 0
-    )
-    assert (
-        tests.peri_scribe.kml.kml_helpers.visibility(
-            tests.peri_scribe.kml.kml_helpers.folder_named(
-                by_name,
-                peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
-            ),
-        )
-        is None
-    )
-    # The checked "Top Fires by Name" radio keeps its unchecked latest-perimeters view
-    # usable, so checking its radio button in Google Earth shows the fire folders
-    # immediately. The unchecked top-level radios hide their whole trees, so they carry
-    # no visible content and their radio buttons load off instead of being selected.
-    by_name_latest = tests.peri_scribe.kml.kml_helpers.folder_named(
-        by_name,
-        peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
-    )
-    for fire_name in by_name_latest.findall(
-        tests.peri_scribe.kml.kml_helpers.kml_tag("Folder"),
-    ):
-        assert tests.peri_scribe.kml.kml_helpers.visibility(fire_name) is None
+    tests.peri_scribe.kml.kml_helpers.assert_tree_visible(by_name)
     tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(active)
     tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(by_score)
-    tests.peri_scribe.kml.kml_helpers.assert_tree_visible(
-        tests.peri_scribe.kml.kml_helpers.folder_named(
-            by_name,
-            peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
-        ),
-    )
-    tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(
-        tests.peri_scribe.kml.kml_helpers.folder_named(
-            by_score,
-            peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
-        ),
-    )
+    tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(inactive)
 
 
-def test_fire_kml_includes_progression_maps_folder() -> None:
+def test_fire_kml_holds_fires_directly_under_status_folders() -> None:
     index = tests.peri_scribe.kml.kml_helpers.fire_index([
         tests.peri_scribe.kml.kml_helpers.fire_index_entry(
             "Bug",
@@ -339,39 +295,26 @@ def test_fire_kml_includes_progression_maps_folder() -> None:
         tests.peri_scribe.kml.kml_helpers.top_level_folder(document),
         "Active Fires",
     )
-    active_progression = tests.peri_scribe.kml.kml_helpers.folder_named(
-        active,
-        peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
-    )
-    assert (
-        tests.peri_scribe.kml.kml_helpers.folder_list_item_type(active_progression)
-        is None
-    )
-    assert tests.peri_scribe.kml.kml_helpers.folder_names(active_progression) == ["Bug"]
-    bug_folder = tests.peri_scribe.kml.kml_helpers.folder_named(
-        active_progression,
-        "Bug",
-    )
+    assert tests.peri_scribe.kml.kml_helpers.folder_list_item_type(active) is None
+    assert tests.peri_scribe.kml.kml_helpers.folder_names(active) == ["Bug"]
+    bug_folder = tests.peri_scribe.kml.kml_helpers.folder_named(active, "Bug")
     assert tests.peri_scribe.kml.kml_helpers.folder_list_item_type(bug_folder) is None
-    assert tests.peri_scribe.kml.kml_helpers.placemark_names(bug_folder) == ["Bug"]
+    assert tests.peri_scribe.kml.kml_helpers.placemark_names(bug_folder) == [
+        "Bug",
+        "08/15 13:00 Perimeter",
+    ]
     assert tests.peri_scribe.kml.kml_helpers.folder_names(bug_folder) == ["Interior"]
 
     inactive = tests.peri_scribe.kml.kml_helpers.folder_named(
         tests.peri_scribe.kml.kml_helpers.top_level_folder(document),
         "Inactive Fires",
     )
-    inactive_progression = tests.peri_scribe.kml.kml_helpers.folder_named(
-        inactive,
-        peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
-    )
-    assert tests.peri_scribe.kml.kml_helpers.folder_names(inactive_progression) == [
+    assert tests.peri_scribe.kml.kml_helpers.folder_names(inactive) == ["ALTA"]
+    alta_folder = tests.peri_scribe.kml.kml_helpers.folder_named(inactive, "ALTA")
+    assert tests.peri_scribe.kml.kml_helpers.placemark_names(alta_folder) == [
         "ALTA",
+        "08/15 13:00 Perimeter",
     ]
-    alta_folder = tests.peri_scribe.kml.kml_helpers.folder_named(
-        inactive_progression,
-        "ALTA",
-    )
-    assert tests.peri_scribe.kml.kml_helpers.placemark_names(alta_folder) == ["ALTA"]
     assert tests.peri_scribe.kml.kml_helpers.folder_names(alta_folder) == ["Interior"]
 
 
@@ -425,21 +368,8 @@ def test_fire_kml_builds_active_and_inactive_folders(
         "Inactive Fires",
     ]
     active = tests.peri_scribe.kml.kml_helpers.folder_named(top_level, "Active Fires")
-    assert (
-        tests.peri_scribe.kml.kml_helpers.folder_list_item_type(active) == "radioFolder"
-    )
-    active_perimeters = tests.peri_scribe.kml.kml_helpers.folder_named(
-        active,
-        peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
-    )
-    assert (
-        tests.peri_scribe.kml.kml_helpers.folder_list_item_type(active_perimeters)
-        is None
-    )
-    bug_folder = tests.peri_scribe.kml.kml_helpers.folder_named(
-        active_perimeters,
-        "Bug",
-    )
+    assert tests.peri_scribe.kml.kml_helpers.folder_list_item_type(active) is None
+    bug_folder = tests.peri_scribe.kml.kml_helpers.folder_named(active, "Bug")
     assert tests.peri_scribe.kml.kml_helpers.placemark_names(bug_folder) == ["Bug"]
     assert tests.peri_scribe.kml.kml_helpers.placemark_names(
         tests.peri_scribe.kml.kml_helpers.folder_named(bug_folder, "Perimeters"),
@@ -457,22 +387,8 @@ def test_fire_kml_builds_active_and_inactive_folders(
         top_level,
         "Inactive Fires",
     )
-    assert (
-        tests.peri_scribe.kml.kml_helpers.folder_list_item_type(inactive)
-        == "radioFolder"
-    )
-    inactive_perimeters = tests.peri_scribe.kml.kml_helpers.folder_named(
-        inactive,
-        peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
-    )
-    assert (
-        tests.peri_scribe.kml.kml_helpers.folder_list_item_type(inactive_perimeters)
-        is None
-    )
-    alta_folder = tests.peri_scribe.kml.kml_helpers.folder_named(
-        inactive_perimeters,
-        "ALTA",
-    )
+    assert tests.peri_scribe.kml.kml_helpers.folder_list_item_type(inactive) is None
+    alta_folder = tests.peri_scribe.kml.kml_helpers.folder_named(inactive, "ALTA")
     assert tests.peri_scribe.kml.kml_helpers.placemark_names(alta_folder) == ["ALTA"]
     assert (
         tests.peri_scribe.kml.kml_helpers.draw_order(
@@ -539,16 +455,8 @@ def test_fire_kml_hides_inactive_fires_tree(
     tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(inactive)
 
     active = tests.peri_scribe.kml.kml_helpers.folder_named(top_level, "Active Fires")
-    active_perimeters = tests.peri_scribe.kml.kml_helpers.folder_named(
-        active,
-        peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
-    )
-    bug_folder = tests.peri_scribe.kml.kml_helpers.folder_named(
-        active_perimeters,
-        "Bug",
-    )
+    bug_folder = tests.peri_scribe.kml.kml_helpers.folder_named(active, "Bug")
     assert tests.peri_scribe.kml.kml_helpers.visibility(active) is None
-    assert tests.peri_scribe.kml.kml_helpers.visibility(active_perimeters) is None
     assert tests.peri_scribe.kml.kml_helpers.visibility(bug_folder) is None
     for placemark in bug_folder.findall(
         tests.peri_scribe.kml.kml_helpers.kml_tag("Placemark"),
@@ -560,57 +468,6 @@ def test_fire_kml_hides_inactive_fires_tree(
         )
         is None
     )
-
-
-def test_fire_kml_hides_active_progression_maps(
-    in_process_plot_image_bundles: None,
-) -> None:
-    index = tests.peri_scribe.kml.kml_helpers.fire_index([
-        tests.peri_scribe.kml.kml_helpers.fire_index_entry(
-            "Bug",
-            "active",
-            identifier="id-bug",
-        ),
-        tests.peri_scribe.kml.kml_helpers.fire_index_entry(
-            "ALTA",
-            "inactive",
-            identifier="id-alta",
-        ),
-    ])
-    observation_time = datetime.datetime(2026, 8, 15, 20, 0, tzinfo=datetime.UTC)
-    perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
-        [
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
-            ("id-alta", "ALTA", tests.peri_scribe.kml.kml_helpers.square(2.0)),
-        ],
-        observation_times=[observation_time, observation_time],
-    )
-    points = tests.peri_scribe.kml.kml_helpers.geometry_frame([
-        ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
-        ("id-alta", "ALTA", shapely.geometry.Point(2.0, 2.0)),
-    ])
-    template = peri_scribe.kml.template_reader.template_from(
-        peri_scribe.kml.template.template_kml(),
-    )
-    fires = peri_scribe.kml.fire_data.fire_geometries(
-        index,
-        perimeters,
-        points,
-        perimeters,
-    )
-    document = tests.peri_scribe.kml.kml_helpers.document_from(
-        peri_scribe.kml.builder.fire_kml(fires, template, name="PeriScribe Fires 2026"),
-    )
-
-    active = tests.peri_scribe.kml.kml_helpers.folder_named(
-        tests.peri_scribe.kml.kml_helpers.top_level_folder(document),
-        "Active Fires",
-    )
-    progression = tests.peri_scribe.kml.kml_helpers.folder_named(
-        active,
-        peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
-    )
-    tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(progression)
 
 
 def test_fire_kml_shows_derived_point_for_inactive_fire_without_location() -> None:
@@ -639,14 +496,7 @@ def test_fire_kml_shows_derived_point_for_inactive_fire_without_location() -> No
         tests.peri_scribe.kml.kml_helpers.top_level_folder(document),
         "Inactive Fires",
     )
-    perimeters_folder = tests.peri_scribe.kml.kml_helpers.folder_named(
-        inactive,
-        peri_scribe.kml.template.LATEST_PERIMETERS_FOLDER_NAME,
-    )
-    alta_folder = tests.peri_scribe.kml.kml_helpers.folder_named(
-        perimeters_folder,
-        "ALTA",
-    )
+    alta_folder = tests.peri_scribe.kml.kml_helpers.folder_named(inactive, "ALTA")
     assert tests.peri_scribe.kml.kml_helpers.placemark_names(alta_folder) == [
         "ALTA",
         "Unknown Mapping",
@@ -794,7 +644,6 @@ def test_create_kmz_reads_history_and_writes_kmz(
     assert "PeriScribe Fires 2026" in kml_text
     assert set(images) == {
         peri_scribe.kml.icons.interior_progression_icon_filename(),
-        peri_scribe.kml.icons.interior_icon_filename(),
         peri_scribe.kml.icons.perimeters_icon_filename(),
     }
     assert all(content.startswith(b"\x89PNG\r\n\x1a\n") for content in images.values())

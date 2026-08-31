@@ -140,9 +140,9 @@ def fire_kml(
     # The top-level folder holds the status folders as radio options, so they display as
     # radio buttons in Google Earth's Places panel. Google Earth checks the last radio
     # option that has any visible content, so when scores are present the "Top Fires by
-    # Name" folder loads checked (its progression maps are the only visible content) and
-    # the other top-level radios load unchecked with their whole trees hidden; without
-    # scores the active fires folder loads checked.
+    # Name" folder loads checked (its fires are the only visible content) and the other
+    # top-level radios load unchecked with their whole trees hidden; without scores the
+    # active fires folder loads checked.
     with writer.folder(name, list_item_type="radioFolder"):
         if scores is not None:
             score_sorted_fires = peri_scribe.kml.folders.top_fires(fires, scores)
@@ -152,7 +152,6 @@ def fire_kml(
                 peri_scribe.kml.folders.TOP_FIRES_BY_NAME_FOLDER_NAME,
                 template.style_urls,
                 ring_style_urls,
-                progression_visible=True,
             )
             peri_scribe.kml.folders.top_fires_folder(
                 writer,
@@ -349,11 +348,8 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
     images[peri_scribe.kml.icons.interior_progression_icon_filename()] = (
         peri_scribe.kml.icons.interior_progression_icon()
     )
-    images[peri_scribe.kml.icons.interior_icon_filename()] = (
-        peri_scribe.kml.icons.interior_icon(template)
-    )
     images[peri_scribe.kml.icons.perimeters_icon_filename()] = (
-        peri_scribe.kml.icons.perimeters_icon(template)
+        peri_scribe.kml.icons.perimeters_icon()
     )
     output_path = kmz_path(year_directory)
     write_kmz(
