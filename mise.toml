@@ -8,7 +8,17 @@ run = "uv run --locked peri_scribe"
 description = "Check for new source data and use it to generate new maps"
 depends = ["venv"]
 raw_args = true
-run = "uv run --locked peri_scribe update-kmz"
+run = [
+    "uv run --locked peri_scribe update-kmz",
+]
+
+[tasks.prod]
+description = "Check for new source data and use it to generate new maps"
+depends = ["venv"]
+run = [
+    "uv run --locked peri_scribe --log-level warning update-kmz",
+    { task = "sync-kmz" },
+]
 
 [tasks.ensure-admin-boundaries]
 description = "Ensure needed administrative boundaries are available"
@@ -21,6 +31,11 @@ description = "Check that the stored sources cover a complete snapshot of every 
 depends = ["venv"]
 raw_args = true
 run = "uv run --locked peri_scribe validate-sources"
+
+[tasks.sync-kmz]
+description = "Ensure the latest KMZ is available for public download"
+raw_args = true
+run = "rclone sync 'data/2026/maps/PeriScribe Fires 2026.kmz' PeriScribe:peri-scribe"
 
 [tasks.format]
 description = "Format with ruff"
@@ -93,5 +108,6 @@ task.output = "quiet"
 
 [tools]
 "cargo:gitnr" = "latest"
+rclone = "latest"
 rg = "latest"
 uv = "latest"
