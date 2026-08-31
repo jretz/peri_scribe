@@ -9,29 +9,27 @@ from __future__ import annotations
 import struct
 import zlib
 
+import peri_scribe.kml.colormap
 import peri_scribe.kml.styles
 import peri_scribe.kml.template
 import peri_scribe.kml.template_reader
-import peri_scribe.perimeters.progression
 
 
-# Each progression-map subfolder's icon is a square of this many pixels on a side.
+# Each progression-map "Interior" folder's icon is a square of this many pixels on a
+# side.
 PROGRESSION_ICON_SIDE_LENGTH_IN_PIXELS = 16
 
 # The "Perimeters" folder icon's background color.
 PERIMETERS_ICON_BACKGROUND_COLOR = (0x32, 0x4B, 0x32)
 
 
-def progression_icon_filename(band_index: int) -> str:
-    """Return the filename of the icon for the band at *band_index*.
-
-    Args:
-        band_index: The band's position in the shared band set, newest first.
+def interior_progression_icon_filename() -> str:
+    """Return the filename of the progression-map "Interior" folder's icon.
 
     Returns:
         The icon filename.
     """
-    return f"progression-band-{band_index + 1}.png"
+    return "interior-progression.png"
 
 
 def interior_icon_filename() -> str:
@@ -120,26 +118,6 @@ def template_line_color_rgb(
         The (red, green, blue) components.
     """
     return kml_color_rgb(template_style(template, placemark_name).linestyle.color)
-
-
-def progression_icon_colors(
-    template: peri_scribe.kml.template_reader.Template,
-) -> tuple[tuple[int, int, int], ...]:
-    """Return each progression band's polygon fill color as an RGB triple.
-
-    A band's icon is filled with the same color the band's polygons are styled with,
-    read from the template's fill styles.
-
-    Args:
-        template: The parsed KML template.
-
-    Returns:
-        One RGB triple per shared progression band, newest band first.
-    """
-    return tuple(
-        template_fill_color_rgb(template, band.name)
-        for band in peri_scribe.perimeters.progression.PROGRESSION_BANDS
-    )
 
 
 def interior_icon_color(
@@ -232,29 +210,31 @@ def solid_color_png(
     )
 
 
-def progression_icons(
-    template: peri_scribe.kml.template_reader.Template,
-) -> dict[str, bytes]:
-    """Return the progression band icons for *template*, keyed by filename.
+def interior_progression_icon() -> bytes:
+    """Return the progression-map "Interior" folder icon as a PNG.
 
-    Each icon is a square filled with the color its band's polygons are styled with,
-    generated in memory on every KMZ build.
-
-    Args:
-        template: The parsed KML template.
+    The icon is a vertical Turbo gradient: sixteen horizontal one-pixel lines, the top
+    line in Turbo's last (hottest) color and the bottom line in Turbo's first (coolest)
+    color, with the lines in between linearly interpolated across the full colormap. The
+    icon is generated in memory on every KMZ build.
 
     Returns:
-        The icon filename for each shared progression band, mapped to its PNG
-        bytes.
+        The icon's PNG bytes.
     """
-    colors = progression_icon_colors(template)
-    return {
-        progression_icon_filename(index): solid_color_png(
-            *color,
-            PROGRESSION_ICON_SIDE_LENGTH_IN_PIXELS,
-        )
-        for index, color in enumerate(colors)
-    }
+    side_in_pixels = PROGRESSION_ICON_SIDE_LENGTH_IN_PIXELS
+    colors = peri_scribe.kml.colormap.sample_turbo(side_in_pixels)[::-1]
+    rows: list[bytes] = []
+    for rgb in colors:
+        pixel = bytes((*[round(component * 255) for component in rgb], 255))
+        rows.append(b"\x00" + pixel * side_in_pixels)
+    signature = b"\x89PNG\r\n\x1a\n"
+    header = struct.pack(">IIBBBBB", side_in_pixels, side_in_pixels, 8, 6, 0, 0, 0)
+    return (
+        signature
+        + png_chunk(b"IHDR", header)
+        + png_chunk(b"IDAT", zlib.compress(b"".join(rows), zlib.Z_BEST_COMPRESSION))
+        + png_chunk(b"IEND", b"")
+    )
 
 
 def interior_icon(

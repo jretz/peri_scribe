@@ -7,6 +7,7 @@ import datetime
 import pytest
 import shapely.geometry
 
+import peri_scribe.kml.builder
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
 import peri_scribe.kml.geometry
@@ -22,6 +23,23 @@ def style_urls() -> dict[str, str]:
     return peri_scribe.kml.template_reader.template_from(
         peri_scribe.kml.template.template_kml(),
     ).style_urls
+
+
+def ring_style_urls_for(
+    fire: peri_scribe.kml.fire_data.FireGeometry,
+) -> dict[str, str]:
+    """Return a ring style URL for every color *fire*'s rings use.
+
+    The mapping mirrors the builder's, so the fire's rings resolve to the styles the
+    KMZ document defines.
+
+    Args:
+        fire: The fire to symbolize.
+
+    Returns:
+        The ring style URLs.
+    """
+    return peri_scribe.kml.builder.ring_style_urls_for([fire])
 
 
 def test_fire_folder_includes_point_and_progression(
@@ -492,7 +510,7 @@ def test_progression_folder_holds_fires_without_rings(
         perimeters=(),
     )
     writer = peri_scribe.kml.geometry.KmlWriter()
-    peri_scribe.kml.folders.progression_folder(writer, [fire], style_urls)
+    peri_scribe.kml.folders.progression_folder(writer, [fire], style_urls, {})
     document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
     folder = tests.peri_scribe.kml.kml_helpers.folder_named(
         document,
@@ -512,6 +530,237 @@ def test_progression_folder_holds_point_and_ring_folders(
         name="Bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
         point=point,
+        perimeters=(),
+        progression_rings=(
+            peri_scribe.perimeters.progression.Ring(
+                geometry=tests.peri_scribe.kml.kml_helpers.square(1.0),
+                observation_time=datetime.datetime(
+                    2026,
+                    8,
+                    13,
+                    20,
+                    0,
+                    tzinfo=datetime.UTC,
+                ),
+                area=100.0,
+            ),
+            peri_scribe.perimeters.progression.Ring(
+                geometry=tests.peri_scribe.kml.kml_helpers.square(2.0),
+                observation_time=datetime.datetime(
+                    2026,
+                    8,
+                    14,
+                    20,
+                    0,
+                    tzinfo=datetime.UTC,
+                ),
+                area=100.0,
+            ),
+            peri_scribe.perimeters.progression.Ring(
+                geometry=tests.peri_scribe.kml.kml_helpers.square(3.0),
+                observation_time=datetime.datetime(
+                    2026,
+                    8,
+                    15,
+                    20,
+                    0,
+                    tzinfo=datetime.UTC,
+                ),
+                area=100.0,
+            ),
+        ),
+    )
+    ring_style_urls = ring_style_urls_for(fire)
+    writer = peri_scribe.kml.geometry.KmlWriter()
+    peri_scribe.kml.folders.progression_folder(
+        writer,
+        [fire],
+        style_urls,
+        ring_style_urls,
+    )
+    document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
+    folder = tests.peri_scribe.kml.kml_helpers.folder_named(
+        document,
+        peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
+    bug_folder = tests.peri_scribe.kml.kml_helpers.folder_named(folder, "Bug")
+    assert tests.peri_scribe.kml.kml_helpers.placemark_names(bug_folder) == ["Bug"]
+    assert tests.peri_scribe.kml.kml_helpers.folder_names(bug_folder) == ["Interior"]
+
+    interior_folder = tests.peri_scribe.kml.kml_helpers.folder_named(
+        bug_folder,
+        "Interior",
+    )
+    assert tests.peri_scribe.kml.kml_helpers.placemark_names(interior_folder) == [
+        "08/15 13:00 Interior",
+        "08/14 13:00 Interior",
+        "08/13 13:00 Interior",
+    ]
+
+    # The fire has three equal-area rings, so its active span holds all three and its
+    # coolest color sits partway up the ramp; the rings interpolate by timestamp.
+    assert (
+        tests.peri_scribe.kml.kml_helpers.placemark_style_url(
+            tests.peri_scribe.kml.kml_helpers.placemark_named(
+                interior_folder,
+                "08/13 13:00 Interior",
+            ),
+        )
+        == "#ring-fill-fc8524"
+    )
+    assert (
+        tests.peri_scribe.kml.kml_helpers.placemark_style_url(
+            tests.peri_scribe.kml.kml_helpers.placemark_named(
+                interior_folder,
+                "08/14 13:00 Interior",
+            ),
+        )
+        == "#ring-fill-e24209"
+    )
+    assert (
+        tests.peri_scribe.kml.kml_helpers.placemark_style_url(
+            tests.peri_scribe.kml.kml_helpers.placemark_named(
+                interior_folder,
+                "08/15 13:00 Interior",
+            ),
+        )
+        == "#ring-fill-ac1701"
+    )
+
+    assert {
+        name: tests.peri_scribe.kml.kml_helpers.draw_order(
+            tests.peri_scribe.kml.kml_helpers.placemark_named(interior_folder, name),
+        )
+        for name in (
+            "08/13 13:00 Interior",
+            "08/14 13:00 Interior",
+            "08/15 13:00 Interior",
+        )
+    } == {
+        "08/13 13:00 Interior": 0,
+        "08/14 13:00 Interior": 1,
+        "08/15 13:00 Interior": 2,
+    }
+    assert tests.peri_scribe.kml.kml_helpers.draw_order(
+        tests.peri_scribe.kml.kml_helpers.placemark_named(bug_folder, "Bug"),
+    ) == len(fire.progression_rings)
+
+    assert (
+        tests.peri_scribe.kml.kml_helpers.folder_item_icon_href(interior_folder)
+        == "interior-progression.png"
+    )
+
+    assert set(
+        tests.peri_scribe.kml.kml_helpers.exterior_coordinates(
+            tests.peri_scribe.kml.kml_helpers.placemark_named(
+                interior_folder,
+                "08/15 13:00 Interior",
+            ),
+        ),
+    ) == {
+        (-1.5, -1.5),
+        (1.5, -1.5),
+        (1.5, 1.5),
+        (-1.5, 1.5),
+    }
+    assert set(
+        tests.peri_scribe.kml.kml_helpers.exterior_coordinates(
+            tests.peri_scribe.kml.kml_helpers.placemark_named(
+                interior_folder,
+                "08/13 13:00 Interior",
+            ),
+        ),
+    ) == {
+        (-0.5, -0.5),
+        (0.5, -0.5),
+        (0.5, 0.5),
+        (-0.5, 0.5),
+    }
+    assert set(
+        tests.peri_scribe.kml.kml_helpers.exterior_coordinates(
+            tests.peri_scribe.kml.kml_helpers.placemark_named(
+                interior_folder,
+                "08/14 13:00 Interior",
+            ),
+        ),
+    ) == {
+        (-1.0, -1.0),
+        (1.0, -1.0),
+        (1.0, 1.0),
+        (-1.0, 1.0),
+    }
+
+
+def test_progression_folder_falls_back_to_latest_perimeter(
+    style_urls: dict[str, str],
+) -> None:
+    point = shapely.geometry.Point(1.0, 1.0)
+    latest_time = datetime.datetime(2026, 8, 15, 20, 0, tzinfo=datetime.UTC)
+    fire = peri_scribe.kml.fire_data.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=point,
+        perimeters=(
+            tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
+                tests.peri_scribe.kml.kml_helpers.square(3.0),
+                latest_time,
+            ),
+        ),
+    )
+    ring_style_urls = ring_style_urls_for(fire)
+    writer = peri_scribe.kml.geometry.KmlWriter()
+    peri_scribe.kml.folders.progression_folder(
+        writer,
+        [fire],
+        style_urls,
+        ring_style_urls,
+    )
+    document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
+    folder = tests.peri_scribe.kml.kml_helpers.folder_named(
+        document,
+        peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
+    )
+    bug_folder = tests.peri_scribe.kml.kml_helpers.folder_named(folder, "Bug")
+    interior_folder = tests.peri_scribe.kml.kml_helpers.folder_named(
+        bug_folder,
+        "Interior",
+    )
+    # The fire has no dated rings, so the interior is its complete latest perimeter in
+    # the hottest color.
+    assert tests.peri_scribe.kml.kml_helpers.placemark_names(interior_folder) == [
+        "08/15 13:00 Interior",
+    ]
+    assert (
+        tests.peri_scribe.kml.kml_helpers.placemark_style_url(
+            tests.peri_scribe.kml.kml_helpers.placemark_named(
+                interior_folder,
+                "08/15 13:00 Interior",
+            ),
+        )
+        == "#ring-fill-ac1701"
+    )
+    assert set(
+        tests.peri_scribe.kml.kml_helpers.exterior_coordinates(
+            tests.peri_scribe.kml.kml_helpers.placemark_named(
+                interior_folder,
+                "08/15 13:00 Interior",
+            ),
+        ),
+    ) == {
+        (-1.5, -1.5),
+        (1.5, -1.5),
+        (1.5, 1.5),
+        (-1.5, 1.5),
+    }
+
+
+def test_progression_folder_lists_point_tour_and_interior_in_order(
+    style_urls: dict[str, str],
+) -> None:
+    fire = peri_scribe.kml.fire_data.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=shapely.geometry.Point(1.0, 1.0),
         perimeters=(),
         progression_rings=(
             peri_scribe.perimeters.progression.Ring(
@@ -550,155 +799,12 @@ def test_progression_folder_holds_point_and_ring_folders(
         ),
     )
     writer = peri_scribe.kml.geometry.KmlWriter()
-    peri_scribe.kml.folders.progression_folder(writer, [fire], style_urls)
-    document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
-    folder = tests.peri_scribe.kml.kml_helpers.folder_named(
-        document,
-        peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
+    peri_scribe.kml.folders.progression_folder(
+        writer,
+        [fire],
+        style_urls,
+        ring_style_urls_for(fire),
     )
-    bug_folder = tests.peri_scribe.kml.kml_helpers.folder_named(folder, "Bug")
-    assert tests.peri_scribe.kml.kml_helpers.placemark_names(bug_folder) == ["Bug"]
-    assert tests.peri_scribe.kml.kml_helpers.folder_names(bug_folder) == [
-        "08/15",
-        "08/13 - 08/14",
-    ]
-
-    latest_folder = tests.peri_scribe.kml.kml_helpers.folder_named(bug_folder, "08/15")
-    two_days_folder = tests.peri_scribe.kml.kml_helpers.folder_named(
-        bug_folder,
-        "08/13 - 08/14",
-    )
-    assert tests.peri_scribe.kml.kml_helpers.placemark_names(latest_folder) == [
-        "08/15 13:00 Interior",
-    ]
-    assert tests.peri_scribe.kml.kml_helpers.placemark_names(two_days_folder) == [
-        "08/13 13:00 Interior",
-        "08/14 13:00 Interior",
-    ]
-
-    assert (
-        tests.peri_scribe.kml.kml_helpers.placemark_style_url(
-            tests.peri_scribe.kml.kml_helpers.placemark_named(
-                latest_folder,
-                "08/15 13:00 Interior",
-            ),
-        )
-        == "#days-fill-1"
-    )
-    assert (
-        tests.peri_scribe.kml.kml_helpers.placemark_style_url(
-            tests.peri_scribe.kml.kml_helpers.placemark_named(
-                two_days_folder,
-                "08/13 13:00 Interior",
-            ),
-        )
-        == "#days-fill-2"
-    )
-    assert (
-        tests.peri_scribe.kml.kml_helpers.placemark_style_url(
-            tests.peri_scribe.kml.kml_helpers.placemark_named(
-                two_days_folder,
-                "08/14 13:00 Interior",
-            ),
-        )
-        == "#days-fill-2"
-    )
-
-    assert {
-        name: tests.peri_scribe.kml.kml_helpers.draw_order(
-            tests.peri_scribe.kml.kml_helpers.placemark_named(container, name),
-        )
-        for container, name in (
-            (two_days_folder, "08/13 13:00 Interior"),
-            (two_days_folder, "08/14 13:00 Interior"),
-            (latest_folder, "08/15 13:00 Interior"),
-            (bug_folder, "Bug"),
-        )
-    } == {
-        "08/13 13:00 Interior": 0,
-        "08/14 13:00 Interior": 1,
-        "08/15 13:00 Interior": 2,
-        "Bug": 3,
-    }
-
-    assert (
-        tests.peri_scribe.kml.kml_helpers.folder_item_icon_href(latest_folder)
-        == "progression-band-1.png"
-    )
-    assert (
-        tests.peri_scribe.kml.kml_helpers.folder_item_icon_href(two_days_folder)
-        == "progression-band-2.png"
-    )
-
-    assert set(
-        tests.peri_scribe.kml.kml_helpers.exterior_coordinates(
-            tests.peri_scribe.kml.kml_helpers.placemark_named(
-                latest_folder,
-                "08/15 13:00 Interior",
-            ),
-        ),
-    ) == {
-        (-1.5, -1.5),
-        (1.5, -1.5),
-        (1.5, 1.5),
-        (-1.5, 1.5),
-    }
-    assert set(
-        tests.peri_scribe.kml.kml_helpers.exterior_coordinates(
-            tests.peri_scribe.kml.kml_helpers.placemark_named(
-                two_days_folder,
-                "08/13 13:00 Interior",
-            ),
-        ),
-    ) == {
-        (-0.5, -0.5),
-        (0.5, -0.5),
-        (0.5, 0.5),
-        (-0.5, 0.5),
-    }
-    assert set(
-        tests.peri_scribe.kml.kml_helpers.exterior_coordinates(
-            tests.peri_scribe.kml.kml_helpers.placemark_named(
-                two_days_folder,
-                "08/14 13:00 Interior",
-            ),
-        ),
-    ) == {
-        (-1.0, -1.0),
-        (1.0, -1.0),
-        (1.0, 1.0),
-        (-1.0, 1.0),
-    }
-
-
-def test_progression_folder_lists_point_tour_and_ring_folders_in_order(
-    style_urls: dict[str, str],
-) -> None:
-    first_time = datetime.datetime(2026, 8, 13, 20, 0, tzinfo=datetime.UTC)
-    second_time = datetime.datetime(2026, 8, 14, 20, 0, tzinfo=datetime.UTC)
-    third_time = datetime.datetime(2026, 8, 15, 20, 0, tzinfo=datetime.UTC)
-    fire = peri_scribe.kml.fire_data.FireGeometry(
-        name="Bug",
-        status=peri_scribe.models.FireStatus.ACTIVE,
-        point=shapely.geometry.Point(1.0, 1.0),
-        perimeters=(),
-        progression_rings=(
-            peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(1.0),
-                observation_time=first_time,
-            ),
-            peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(2.0),
-                observation_time=second_time,
-            ),
-            peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(3.0),
-                observation_time=third_time,
-            ),
-        ),
-    )
-    writer = peri_scribe.kml.geometry.KmlWriter()
-    peri_scribe.kml.folders.progression_folder(writer, [fire], style_urls)
     folder = tests.peri_scribe.kml.kml_helpers.folder_named(
         tests.peri_scribe.kml.kml_helpers.document_from_writer(writer),
         peri_scribe.perimeters.progression.PROGRESSION_MAPS_FOLDER_NAME,
@@ -723,8 +829,7 @@ def test_progression_folder_lists_point_tour_and_ring_folders_in_order(
     ] == [
         (tests.peri_scribe.kml.kml_helpers.kml_tag("Placemark"), "Bug"),
         (tests.peri_scribe.kml.kml_helpers.gx_tag("Tour"), "Progression"),
-        (tests.peri_scribe.kml.kml_helpers.kml_tag("Folder"), "08/15"),
-        (tests.peri_scribe.kml.kml_helpers.kml_tag("Folder"), "08/13 - 08/14"),
+        (tests.peri_scribe.kml.kml_helpers.kml_tag("Folder"), "Interior"),
     ]
     tour = tests.peri_scribe.kml.kml_helpers.tour_named(bug_folder, "Progression")
     updates = tests.peri_scribe.kml.kml_helpers.tour_primitives(
@@ -735,37 +840,45 @@ def test_progression_folder_lists_point_tour_and_ring_folders_in_order(
         tour,
         tests.peri_scribe.kml.kml_helpers.gx_tag("Wait"),
     )
-    two_days_folder = tests.peri_scribe.kml.kml_helpers.folder_named(
+    interior_folder = tests.peri_scribe.kml.kml_helpers.folder_named(
         bug_folder,
-        "08/13 - 08/14",
+        "Interior",
     )
-    latest_folder = tests.peri_scribe.kml.kml_helpers.folder_named(bug_folder, "08/15")
-    # The rings live in different day-range subfolders, but the tour reveals them
-    # in the same chronological order the latest-perimeters tour does.
+    # All three rings live in the single Interior folder, listed newest first; the
+    # tour still reveals them in the same chronological order the latest-perimeters
+    # tour does.
     interior = [
         tests.peri_scribe.kml.kml_helpers.placemark_named(
-            two_days_folder,
-            "08/13 13:00 Interior",
-        ),
-        tests.peri_scribe.kml.kml_helpers.placemark_named(
-            two_days_folder,
-            "08/14 13:00 Interior",
-        ),
-        tests.peri_scribe.kml.kml_helpers.placemark_named(
-            latest_folder,
+            interior_folder,
+            name,
+        )
+        for name in (
             "08/15 13:00 Interior",
-        ),
+            "08/14 13:00 Interior",
+            "08/13 13:00 Interior",
+        )
     ]
     assert len(updates) == len(interior)
     assert len(waits) == len(interior)
-    interior_ids = [placemark.get("id") for placemark in interior]
+    oldest_id = tests.peri_scribe.kml.kml_helpers.placemark_named(
+        interior_folder,
+        "08/13 13:00 Interior",
+    ).get("id")
+    middle_id = tests.peri_scribe.kml.kml_helpers.placemark_named(
+        interior_folder,
+        "08/14 13:00 Interior",
+    ).get("id")
+    newest_id = tests.peri_scribe.kml.kml_helpers.placemark_named(
+        interior_folder,
+        "08/15 13:00 Interior",
+    ).get("id")
     assert [
         tests.peri_scribe.kml.kml_helpers.update_visibility_by_target(update)
         for update in updates
     ] == [
-        {interior_ids[0]: 1, interior_ids[1]: 0, interior_ids[2]: 0},
-        {interior_ids[0]: 1, interior_ids[1]: 1, interior_ids[2]: 0},
-        {interior_ids[0]: 1, interior_ids[1]: 1, interior_ids[2]: 1},
+        {oldest_id: 1, middle_id: 0, newest_id: 0},
+        {oldest_id: 1, middle_id: 1, newest_id: 0},
+        {oldest_id: 1, middle_id: 1, newest_id: 1},
     ]
     assert [
         tests.peri_scribe.kml.kml_helpers.wait_duration(wait) for wait in waits
@@ -794,7 +907,12 @@ def test_progression_folder_hides_its_tree(style_urls: dict[str, str]) -> None:
         ),
     )
     writer = peri_scribe.kml.geometry.KmlWriter()
-    peri_scribe.kml.folders.progression_folder(writer, [fire], style_urls)
+    peri_scribe.kml.folders.progression_folder(
+        writer,
+        [fire],
+        style_urls,
+        ring_style_urls_for(fire),
+    )
     document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
     folder = tests.peri_scribe.kml.kml_helpers.folder_named(
         document,
@@ -829,6 +947,7 @@ def test_progression_folder_can_load_visible(style_urls: dict[str, str]) -> None
         writer,
         [fire],
         style_urls,
+        ring_style_urls_for(fire),
         visible=True,
     )
     document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
@@ -982,6 +1101,7 @@ def test_top_fires_folder_hides_progression_maps_by_default(
         [fire],
         "Top Fires by Name",
         style_urls,
+        {},
     )
     document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
     folder = tests.peri_scribe.kml.kml_helpers.folder_named(
@@ -1021,6 +1141,7 @@ def test_top_fires_folder_can_show_progression_maps(
         [fire],
         "Top Fires by Name",
         style_urls,
+        {},
         progression_visible=True,
     )
     document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
@@ -1062,6 +1183,7 @@ def test_top_fires_folder_hides_whole_tree_when_unchecked(
         [fire],
         "Top Fires by Score",
         style_urls,
+        {},
         visible=False,
     )
     document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
@@ -1103,6 +1225,7 @@ def test_status_folder_filters_by_status(style_urls: dict[str, str]) -> None:
         [active, inactive],
         peri_scribe.models.FireStatus.ACTIVE,
         style_urls,
+        {},
     )
     document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
     folder = tests.peri_scribe.kml.kml_helpers.folder_named(document, "Active Fires")
@@ -1128,6 +1251,7 @@ def test_status_folder_can_load_hidden(style_urls: dict[str, str]) -> None:
         [active],
         peri_scribe.models.FireStatus.ACTIVE,
         style_urls,
+        {},
         visible=False,
     )
     document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
@@ -1177,6 +1301,9 @@ def test_status_folder_puts_same_fires_in_both_folders(
         [with_rings, point_only, empty],
         peri_scribe.models.FireStatus.ACTIVE,
         style_urls,
+        peri_scribe.kml.builder.ring_style_urls_for(
+            [with_rings, point_only, empty],
+        ),
     )
     document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
     folder = tests.peri_scribe.kml.kml_helpers.folder_named(document, "Active Fires")

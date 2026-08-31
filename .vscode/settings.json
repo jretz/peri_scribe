@@ -21,6 +21,7 @@
         "FIPS",
         "FIRIS",
         "geodataframe",
+        "geodesically",
         "Geometryless",
         "geopackage",
         "geopandas",

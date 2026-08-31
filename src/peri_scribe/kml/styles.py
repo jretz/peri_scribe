@@ -172,3 +172,38 @@ def outlined_perimeter_style(
     style.polystyle.fill = 1
     style.polystyle.outline = 1
     return style
+
+
+def progression_ring_style_id(color: str) -> str:
+    """Return the style id for the progression ring color *color*.
+
+    The id is derived from the color, so every ring drawn in the same color shares one
+    style.
+
+    Args:
+        color: The color as ``#RRGGBB``.
+
+    Returns:
+        The style id.
+    """
+    return f"ring-fill-{color[1:]}"
+
+
+def progression_ring_style(style_id: str, color: str) -> Style:
+    """Return the fill style for one progression-ring color.
+
+    The progression rings fill at 50% opacity with no outline, so the newest ring reads
+    hottest while the older rings beneath it stay visible.
+
+    Args:
+        style_id: The style's id.
+        color: The color as ``#RRGGBB``.
+
+    Returns:
+        The style, with a filled polygon style.
+    """
+    style = Style(style_id)
+    style.polystyle.color = kml_color(color, FILL_OPACITY_PERCENT)
+    style.polystyle.fill = 1
+    style.polystyle.outline = 0
+    return style

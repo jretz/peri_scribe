@@ -2,19 +2,17 @@
 
 from __future__ import annotations
 
+import peri_scribe.kml.colormap
 import peri_scribe.kml.icons
 import peri_scribe.kml.template
 import peri_scribe.kml.template_reader
-import peri_scribe.perimeters.progression
 import tests.peri_scribe.kml.kml_helpers
 
 
-def test_progression_icon_filename_names_the_band() -> None:
+def test_interior_progression_icon_filename_names_the_folder() -> None:
     assert (
-        peri_scribe.kml.icons.progression_icon_filename(0) == "progression-band-1.png"
-    )
-    assert (
-        peri_scribe.kml.icons.progression_icon_filename(7) == "progression-band-8.png"
+        peri_scribe.kml.icons.interior_progression_icon_filename()
+        == "interior-progression.png"
     )
 
 
@@ -74,6 +72,44 @@ def test_solid_color_png_fills_a_square() -> None:
     assert tests.peri_scribe.kml.kml_helpers.png_color(content) == (1, 2, 3)
 
 
+def test_interior_progression_icon_draws_the_turbo_gradient() -> None:
+    rows = tests.peri_scribe.kml.kml_helpers.png_pixel_rows(
+        peri_scribe.kml.icons.interior_progression_icon(),
+    )
+    side = peri_scribe.kml.icons.PROGRESSION_ICON_SIDE_LENGTH_IN_PIXELS
+    colors = peri_scribe.kml.colormap.sample_turbo(side)[::-1]
+    assert len(rows) == side
+    for row, rgb in zip(rows, colors, strict=True):
+        expected = (*[round(component * 255) for component in rgb], 255)
+        assert row == [expected] * side
+    assert (
+        rows[0]
+        == [
+            (
+                *[
+                    round(component * 255)
+                    for component in peri_scribe.kml.colormap.TURBO_RAMP[-1]
+                ],
+                255,
+            ),
+        ]
+        * side
+    )
+    assert (
+        rows[-1]
+        == [
+            (
+                *[
+                    round(component * 255)
+                    for component in peri_scribe.kml.colormap.TURBO_RAMP[0]
+                ],
+                255,
+            ),
+        ]
+        * side
+    )
+
+
 def test_interior_icon_matches_template_color() -> None:
     template = peri_scribe.kml.template_reader.template_from(
         peri_scribe.kml.template.template_kml(),
@@ -81,24 +117,3 @@ def test_interior_icon_matches_template_color() -> None:
     assert tests.peri_scribe.kml.kml_helpers.png_color(
         peri_scribe.kml.icons.interior_icon(template),
     ) == (255, 0, 0)
-
-
-def test_progression_icons_match_template_colors() -> None:
-    template = peri_scribe.kml.template_reader.template_from(
-        peri_scribe.kml.template.template_kml(),
-    )
-    icons = peri_scribe.kml.icons.progression_icons(template)
-    assert set(icons) == {
-        peri_scribe.kml.icons.progression_icon_filename(index)
-        for index in range(len(peri_scribe.perimeters.progression.PROGRESSION_BANDS))
-    }
-    assert tests.peri_scribe.kml.kml_helpers.png_color(
-        icons["progression-band-1.png"],
-    ) == (255, 42, 0)
-    assert tests.peri_scribe.kml.kml_helpers.png_color(
-        icons["progression-band-8.png"],
-    ) == (
-        176,
-        183,
-        189,
-    )

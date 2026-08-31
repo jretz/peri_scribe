@@ -1,8 +1,9 @@
 """Building the KML output for a year's fires.
 
 The output is a compressed KML document (a KMZ file). The symbolization comes from the
-KML template file: its styles are copied into the output, and each fire's placemarks
-reuse the style URLs the template assigns to the corresponding placemarks.
+KML template file, whose styles are copied into the output and whose style URLs the fire
+placemarks reuse; the progression-map ring colors are the exception, computed from the
+Turbo colormap instead of the template.
 """
 
 from __future__ import annotations
@@ -18,11 +19,13 @@ import peri_scribe.fires.files
 import peri_scribe.fires.index
 import peri_scribe.fires.score_files
 import peri_scribe.geo.reading
+import peri_scribe.kml.colormap
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
 import peri_scribe.kml.geometry
 import peri_scribe.kml.icons
 import peri_scribe.kml.selection
+import peri_scribe.kml.styles
 import peri_scribe.kml.template
 import peri_scribe.kml.template_reader
 import peri_scribe.models
@@ -90,22 +93,29 @@ def fire_kml(
     template: peri_scribe.kml.template_reader.Template,
     name: str,
     scores: peri_scribe.models.FireScores | None = None,
+    ring_style_urls: typing.Mapping[str, str] | None = None,
 ) -> str:
     """Return the KML document string for *fires*.
 
-    The document is named *name* and holds the template's styles and a top-level folder,
-    also named *name*. When scores are supplied, it begins with two top-fire views,
-    followed by the existing active and inactive fire folders.
+    The document is named *name* and holds the template's styles, the progression-ring
+    styles, and a top-level folder, also named *name*. When scores are supplied, it
+    begins with two top-fire views, followed by the existing active and inactive fire
+    folders.
 
     Args:
         fires: The fires to symbolize.
         template: The template supplying styles and style URLs.
         name: The document's name, conventionally the output filename without its
             extension.
+        scores: The saved score for each fire, or None.
+        ring_style_urls: The style URL for each progression ring color, keyed by its
+            ``#RRGGBB`` color, or None for none.
 
     Returns:
         The KML document.
     """
+    if ring_style_urls is None:
+        ring_style_urls = ring_style_urls_for(fires)
     writer = peri_scribe.kml.geometry.KmlWriter()
     writer.parts.append(
         f'<kml xmlns="{peri_scribe.kml.geometry.KML_NAMESPACE}" '
@@ -114,6 +124,15 @@ def fire_kml(
     )
     for style in template.styles:
         writer.parts.append(str(style))
+    for color, style_url in ring_style_urls.items():
+        writer.parts.append(
+            str(
+                peri_scribe.kml.styles.progression_ring_style(
+                    style_url.lstrip("#"),
+                    color,
+                ),
+            ),
+        )
     writer.parts.append(
         f"<name>{peri_scribe.kml.geometry.escape_text(name)}</name>",
     )
@@ -132,6 +151,7 @@ def fire_kml(
                 sorted(score_sorted_fires, key=lambda fire: fire.name.casefold()),
                 peri_scribe.kml.folders.TOP_FIRES_BY_NAME_FOLDER_NAME,
                 template.style_urls,
+                ring_style_urls,
                 progression_visible=True,
             )
             peri_scribe.kml.folders.top_fires_folder(
@@ -139,6 +159,7 @@ def fire_kml(
                 score_sorted_fires,
                 peri_scribe.kml.folders.TOP_FIRES_BY_SCORE_FOLDER_NAME,
                 template.style_urls,
+                ring_style_urls,
                 visible=False,
             )
             peri_scribe.kml.folders.status_folder(
@@ -146,6 +167,7 @@ def fire_kml(
                 fires,
                 peri_scribe.models.FireStatus.ACTIVE,
                 template.style_urls,
+                ring_style_urls,
                 visible=False,
             )
         else:
@@ -154,12 +176,14 @@ def fire_kml(
                 fires,
                 peri_scribe.models.FireStatus.ACTIVE,
                 template.style_urls,
+                ring_style_urls,
             )
         peri_scribe.kml.folders.status_folder(
             writer,
             fires,
             peri_scribe.models.FireStatus.INACTIVE,
             template.style_urls,
+            ring_style_urls,
         )
     writer.parts.append("</Document></kml>")
     return writer.text()
@@ -234,6 +258,39 @@ def area_qualified_index(
     )
 
 
+def ring_style_urls_for(
+    fires: list[peri_scribe.kml.fire_data.FireGeometry],
+) -> dict[str, str]:
+    """Return the style URL for each progression ring color *fires* use.
+
+    The hottest color is always included because a fire with no dated rings falls back
+    to its latest perimeter in that color. Colors are keyed by their ``#RRGGBB`` form,
+    so every fire whose rings share a color shares one style.
+
+    Args:
+        fires: The fires to symbolize.
+
+    Returns:
+        The style URL for each ring color.
+    """
+    colors = {
+        peri_scribe.kml.colormap.color_hex(
+            peri_scribe.kml.colormap.TURBO_RAMP[-1],
+        ),
+    }
+    for fire in fires:
+        colors.update(
+            peri_scribe.kml.colormap.color_hex(rgb)
+            for _ring, rgb in peri_scribe.kml.colormap.progression_ring_colors(
+                fire.progression_rings,
+            )
+        )
+    return {
+        color: f"#{peri_scribe.kml.styles.progression_ring_style_id(color)}"
+        for color in sorted(colors)
+    }
+
+
 def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
     """Build and write the KMZ output for *year_directory*.
 
@@ -289,7 +346,9 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
     images = {
         image.filename: image.content for fire in geometries for image in fire.images
     }
-    images.update(peri_scribe.kml.icons.progression_icons(template))
+    images[peri_scribe.kml.icons.interior_progression_icon_filename()] = (
+        peri_scribe.kml.icons.interior_progression_icon()
+    )
     images[peri_scribe.kml.icons.interior_icon_filename()] = (
         peri_scribe.kml.icons.interior_icon(template)
     )

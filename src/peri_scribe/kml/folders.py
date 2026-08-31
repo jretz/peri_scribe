@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import typing
 
+import peri_scribe.kml.colormap
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.geometry
 import peri_scribe.kml.icons
@@ -217,16 +218,16 @@ def progression_folder(
     writer: peri_scribe.kml.geometry.KmlWriter,
     fires: list[peri_scribe.kml.fire_data.FireGeometry],
     style_urls: typing.Mapping[str, str],
+    ring_style_urls: typing.Mapping[str, str],
     *,
     visible: bool = False,
 ) -> None:
     """Append the folder holding each fire's progression map to *writer*.
 
-    Each fire gets a folder holding its point location and, when it has growth rings,
-    one subfolder per day range it covers; each subfolder holds the fire's growth rings
-    from that range, styled by the range's color and marked with a colored icon. A fire
-    with no growth rings holds just its point location, so every fire appears in this
-    folder exactly as it does in the latest-perimeters folder. The folder and everything
+    Each fire gets a folder holding its point location and, when it has growth rings, an
+    ``Interior`` folder holding the rings styled by their day's color. A fire with no
+    growth rings holds just its point location, so every fire appears in this folder
+    exactly as it does in the latest-perimeters folder. The folder and everything
     beneath it loads unchecked unless *visible* is true, so the progression maps stay
     hidden until they are enabled.
 
@@ -234,6 +235,8 @@ def progression_folder(
         writer: The writer to append to.
         fires: The fires to place in the folder.
         style_urls: The style URL for each template placemark name.
+        ring_style_urls: The style URL for each progression ring color, keyed by its
+            ``#RRGGBB`` color.
         visible: Whether the folder and everything beneath it loads visible.
     """
     with writer.folder(
@@ -241,33 +244,66 @@ def progression_folder(
         visible=visible,
     ):
         for fire in fires:
-            progression_fire_folder(writer, fire, style_urls, visible=visible)
+            progression_fire_folder(
+                writer,
+                fire,
+                style_urls,
+                ring_style_urls,
+                visible=visible,
+            )
 
 
 def progression_fire_folder(
     writer: peri_scribe.kml.geometry.KmlWriter,
     fire: peri_scribe.kml.fire_data.FireGeometry,
     style_urls: typing.Mapping[str, str],
+    ring_style_urls: typing.Mapping[str, str],
     *,
     visible: bool = False,
 ) -> None:
     """Append one fire's progression-map folder to *writer*.
 
+    The folder leads with the fire's point location, then a "Progression" tour when the
+    fire has rings, then an ``Interior`` folder holding every growth ring flat, each
+    styled by the color for the day it was observed. A fire with no dated rings falls
+    back to its complete latest perimeter, styled with the hottest color, so every fire
+    with perimeters appears in this folder as it does in the latest-perimeters folder.
+    The interior lists its rings newest first while the tour replays them oldest first.
+
     Args:
         writer: The writer to append to.
         fire: The fire to symbolize.
         style_urls: The style URL for each template placemark name.
+        ring_style_urls: The style URL for each progression ring color, keyed by
+            its ``#RRGGBB`` color.
         visible: Whether the folder and everything beneath it loads visible.
     """
-    bands = peri_scribe.perimeters.progression.progression_band_rings(
+    colored_rings = peri_scribe.kml.colormap.progression_ring_colors(
         fire.progression_rings,
     )
-    ring_times = tuple(
-        ring.observation_time
-        for ring in fire.progression_rings
-        if ring.observation_time is not None
-    )
-    ring_count = sum(len(band.rings) for band in bands)
+    if colored_rings:
+        rings = [
+            (ring, peri_scribe.kml.colormap.color_hex(rgb))
+            for ring, rgb in colored_rings
+        ]
+        ring_times = tuple(ring.observation_time for ring, _color in rings)
+    elif fire.perimeters:
+        latest_perimeter = fire.perimeters[-1]
+        rings = [
+            (
+                peri_scribe.perimeters.progression.Ring(
+                    geometry=latest_perimeter.geometry,
+                    observation_time=latest_perimeter.observation_time,
+                ),
+                peri_scribe.kml.colormap.color_hex(
+                    peri_scribe.kml.colormap.TURBO_RAMP[-1],
+                ),
+            ),
+        ]
+        ring_times = (latest_perimeter.observation_time,)
+    else:
+        rings = []
+        ring_times = ()
     with writer.folder(fire.name, visible=visible) as folder_id:
         if fire.point is not None:
             peri_scribe.kml.geometry.point_placemark(
@@ -275,7 +311,7 @@ def progression_fire_folder(
                 fire.name,
                 style_urls[peri_scribe.kml.template.POINT_LOCATION_NAME],
                 fire.point,
-                ring_count,
+                len(rings),
                 description=fire.description,
                 visible=visible,
             )
@@ -286,31 +322,27 @@ def progression_fire_folder(
                 ring_times,
                 visible=visible,
             )
-        for position, band in enumerate(bands):
+        if rings:
             with writer.folder(
-                band.label,
+                INTERIOR_FOLDER_NAME,
                 visible=visible,
-                item_icon=peri_scribe.kml.icons.progression_icon_filename(
-                    band.band_index,
-                ),
+                item_icon=(peri_scribe.kml.icons.interior_progression_icon_filename()),
             ):
-                older_ring_count = sum(
-                    len(candidate.rings) for candidate in bands[position + 1 :]
-                )
-                for ring_index, ring in enumerate(band.rings):
+                for index in range(len(rings) - 1, -1, -1):
+                    ring, color = rings[index]
                     peri_scribe.kml.geometry.perimeter_placemark(
                         writer,
                         peri_scribe.kml.tour.interior_placemark_name(
                             ring.observation_time,
                         ),
-                        style_urls[band.name],
+                        ring_style_urls[color],
                         ring.geometry,
-                        older_ring_count + ring_index,
+                        index,
                         description=fire.description,
                         visible=visible,
                         placemark_id=peri_scribe.kml.tour.interior_ring_id(
                             folder_id,
-                            older_ring_count + ring_index,
+                            index,
                         ),
                     )
 
@@ -334,6 +366,7 @@ def status_folder(
     fires: list[peri_scribe.kml.fire_data.FireGeometry],
     status: peri_scribe.models.FireStatus,
     style_urls: typing.Mapping[str, str],
+    ring_style_urls: typing.Mapping[str, str],
     *,
     visible: bool | None = None,
 ) -> None:
@@ -344,6 +377,8 @@ def status_folder(
         fires: Every fire.
         status: The status whose fires belong in the folder.
         style_urls: The style URL for each template placemark name.
+        ring_style_urls: The style URL for each progression ring color, keyed by its
+            ``#RRGGBB`` color.
         visible: Whether the folder loads checked, or None for the status default
             (active fires load checked, inactive fires load unchecked).
 
@@ -367,7 +402,7 @@ def status_folder(
             style_urls,
             visible=visible,
         )
-        progression_folder(writer, status_fires, style_urls)
+        progression_folder(writer, status_fires, style_urls, ring_style_urls)
 
 
 def score_fire(
@@ -436,6 +471,7 @@ def top_fires_folder(
     fires: list[peri_scribe.kml.fire_data.FireGeometry],
     name: str,
     style_urls: typing.Mapping[str, str],
+    ring_style_urls: typing.Mapping[str, str],
     *,
     visible: bool = True,
     progression_visible: bool = False,
@@ -453,6 +489,8 @@ def top_fires_folder(
         fires: The fires to place in the folder.
         name: The folder's name.
         style_urls: The style URL for each template placemark name.
+        ring_style_urls: The style URL for each progression ring color, keyed by its
+            ``#RRGGBB`` color.
         visible: Whether the folder itself loads checked.
         progression_visible: Whether the folder's progression-maps view loads checked
             instead of its latest-perimeters view.
@@ -469,5 +507,6 @@ def top_fires_folder(
             writer,
             fires,
             style_urls,
+            ring_style_urls,
             visible=visible and progression_visible,
         )

@@ -354,7 +354,7 @@ def test_fire_kml_includes_progression_maps_folder() -> None:
     )
     assert tests.peri_scribe.kml.kml_helpers.folder_list_item_type(bug_folder) is None
     assert tests.peri_scribe.kml.kml_helpers.placemark_names(bug_folder) == ["Bug"]
-    assert tests.peri_scribe.kml.kml_helpers.folder_names(bug_folder) == ["08/15"]
+    assert tests.peri_scribe.kml.kml_helpers.folder_names(bug_folder) == ["Interior"]
 
     inactive = tests.peri_scribe.kml.kml_helpers.folder_named(
         tests.peri_scribe.kml.kml_helpers.top_level_folder(document),
@@ -372,7 +372,7 @@ def test_fire_kml_includes_progression_maps_folder() -> None:
         "ALTA",
     )
     assert tests.peri_scribe.kml.kml_helpers.placemark_names(alta_folder) == ["ALTA"]
-    assert tests.peri_scribe.kml.kml_helpers.folder_names(alta_folder) == ["08/15"]
+    assert tests.peri_scribe.kml.kml_helpers.folder_names(alta_folder) == ["Interior"]
 
 
 def test_fire_kml_builds_active_and_inactive_folders(
@@ -793,14 +793,9 @@ def test_create_kmz_reads_history_and_writes_kmz(
     assert "Active Fires" in kml_text
     assert "PeriScribe Fires 2026" in kml_text
     assert set(images) == {
+        peri_scribe.kml.icons.interior_progression_icon_filename(),
         peri_scribe.kml.icons.interior_icon_filename(),
         peri_scribe.kml.icons.perimeters_icon_filename(),
-        *(
-            peri_scribe.kml.icons.progression_icon_filename(index)
-            for index in range(
-                len(peri_scribe.perimeters.progression.PROGRESSION_BANDS),
-            )
-        ),
     }
     assert all(content.startswith(b"\x89PNG\r\n\x1a\n") for content in images.values())
 

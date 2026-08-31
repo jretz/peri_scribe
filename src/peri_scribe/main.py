@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import datetime
 import pathlib
 
@@ -11,6 +12,7 @@ import structlog
 import peri_scribe.fires.differential
 import peri_scribe.fires.scores
 import peri_scribe.kml.builder
+import peri_scribe.kml.colormap
 import peri_scribe.kml.template
 import peri_scribe.output
 import peri_scribe.sources.administrative_boundaries
@@ -184,6 +186,60 @@ def create_kml_template(*, force: bool) -> None:
     if output_path is None:
         return
     logger.info("Wrote KML template", path=output_path)
+
+
+@cli.command()
+@click.option(
+    "--trim-start",
+    type=int,
+    default=0,
+    show_default=True,
+    help="Colors to exclude from the start of the colormap.",
+)
+@click.option(
+    "--trim-end",
+    type=int,
+    default=0,
+    show_default=True,
+    help="Colors to exclude from the end of the colormap.",
+)
+@click.option(
+    "--output",
+    type=click.Path(
+        path_type=pathlib.Path,
+        dir_okay=False,
+        writable=True,
+    ),
+    help="Write the strip to this PNG file instead of printing it to the terminal.",
+)
+def show_turbo_colormap(
+    *,
+    trim_start: int,
+    trim_end: int,
+    output: pathlib.Path | None,
+) -> None:
+    """Print a Turbo colormap strip to the terminal as an inline image.
+
+    The strip renders in memory and prints as an iTerm2 inline-image escape sequence
+    (OSC 1337), which terminals including iTerm2 and WezTerm display directly in the
+    terminal. The full 256-color colormap is shown unless --trim-start or --trim-end
+    remove colors from the corresponding ends. With --output the strip is written to
+    that file as a plain PNG instead.
+    """
+    png = peri_scribe.kml.colormap.turbo_colormap_png(
+        trim_start=trim_start,
+        trim_end=trim_end,
+    )
+    if output is None:
+        encoded = base64.b64encode(png).decode("ascii")
+        # The width parameter scales the inline image to the full terminal width;
+        # without it iTerm2 sizes the image from its DPI metadata, which renders the
+        # strip narrower than the window.
+        click.echo(f"\x1b]1337;File=inline=1;width=100%:{encoded}\a")
+    else:
+        output.parent.mkdir(parents=True, exist_ok=True)
+        output.write_bytes(png)
+        logger.info("Wrote Turbo colormap strip", path=output)
 
 
 def stored_evacuations_digest(year_directory: pathlib.Path) -> str | None:

@@ -354,6 +354,54 @@ def test_differential_perimeter_dataframe_back_propagates_null_values() -> None:
     assert output["type"].tolist() == ["b", "c"]
 
 
+def test_differential_perimeter_dataframe_skips_collapsed_growth(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    records = [
+        {
+            "fire_name": "Bug",
+            "fire_identifier": "2026-cacdd-000001",
+            "area_acres": 100.0,
+        },
+        {
+            "fire_name": "Bug",
+            "fire_identifier": "2026-cacdd-000001",
+            "area_acres": 150.0,
+        },
+        {
+            "fire_name": "Bug",
+            "fire_identifier": "2026-cacdd-000001",
+            "area_acres": 140.0,
+        },
+    ]
+    frame = full_perimeter_frame(
+        records,
+        [square(1.0), square(2.0), square(1.5)],
+    )
+    real_difference = peri_scribe.fires.differential.geometry_difference
+
+    def collapsing_difference(
+        current: shapely.geometry.base.BaseGeometry | None,
+        previous: shapely.geometry.base.BaseGeometry | None,
+    ) -> shapely.geometry.base.BaseGeometry | None:
+        # A numerically degenerate sliver makes the covers-based growth check report
+        # growth whose constructed difference collapses to nothing.
+        if previous is not None and previous.equals(square(1.0)):
+            return None
+        return real_difference(current, previous)
+
+    monkeypatch.setattr(
+        peri_scribe.fires.differential,
+        "geometry_difference",
+        collapsing_difference,
+    )
+    output = peri_scribe.fires.differential.differential_perimeter_dataframe(frame)
+    # The second growth step collapses, so it contributes no ring and the area of its
+    # empty difference is never measured.
+    assert len(output) == 1
+    assert output.geometry.iloc[0].equals(square(1.0))
+
+
 def test_write_history_of_differential_geography_writes_two_layers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

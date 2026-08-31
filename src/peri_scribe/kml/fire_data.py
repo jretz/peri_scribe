@@ -18,6 +18,7 @@ import peri_scribe.kml.selection
 import peri_scribe.kml.text
 import peri_scribe.models
 import peri_scribe.perimeters.progression
+import peri_scribe.units
 
 
 if typing.TYPE_CHECKING:
@@ -50,6 +51,36 @@ class FireGeometry:
     description: str | None = None
     images: tuple[peri_scribe.kml.plot_rendering.PlotImage, ...] = ()
     identifiers: frozenset[str] = frozenset()
+
+
+# A differential ring smaller than this adds nothing visible to the map, so it is
+# dropped rather than carried into the KMZ.
+MINIMUM_RING_AREA_IN_SQUARE_METERS = 1.0
+
+
+def progression_ring(
+    perimeter: Perimeter,
+) -> peri_scribe.perimeters.progression.Ring | None:
+    """Return *perimeter* as a growth ring, or None when it is too small.
+
+    The ring's area is measured geodesically from its geometry so the growth-window and
+    color logic later work in true map area rather than whatever acreage the source
+    reported.
+
+    Args:
+        perimeter: The differential perimeter to turn into a ring.
+
+    Returns:
+        The ring, or None when its area is at most one square meter.
+    """
+    area_in_square_meters = peri_scribe.units.area_in_square_meters(perimeter.geometry)
+    if area_in_square_meters <= MINIMUM_RING_AREA_IN_SQUARE_METERS:
+        return None
+    return peri_scribe.perimeters.progression.Ring(
+        geometry=perimeter.geometry,
+        observation_time=perimeter.observation_time,
+        area=area_in_square_meters,
+    )
 
 
 def fire_perimeters(
@@ -161,18 +192,17 @@ def fire_geometries(
             frozenset(used_prefixes),
         )
         used_prefixes.add(prefix)
+        progression_rings = tuple(
+            ring
+            for observation in ring_observations
+            if (ring := progression_ring(observation)) is not None
+        )
         pending.append(
             (
                 entry,
                 fire_identifiers,
                 perimeter_observations,
-                tuple(
-                    peri_scribe.perimeters.progression.Ring(
-                        geometry=ring.geometry,
-                        observation_time=ring.observation_time,
-                    )
-                    for ring in ring_observations
-                ),
+                progression_rings,
             ),
         )
         plot_bundles.append(

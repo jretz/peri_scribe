@@ -13,7 +13,7 @@ import peri_scribe.kml.fire_data
 import peri_scribe.kml.selection
 import peri_scribe.kml.text
 import peri_scribe.models
-import peri_scribe.perimeters.progression
+import peri_scribe.units
 import tests.peri_scribe.kml.kml_helpers
 
 
@@ -734,16 +734,44 @@ def test_fire_geometries_includes_progression_rings() -> None:
         rings,
     )
     (fire,) = fires
-    assert fire.progression_rings == (
-        peri_scribe.perimeters.progression.Ring(
-            geometry=tests.peri_scribe.kml.kml_helpers.square(1.0),
-            observation_time=first_time,
+    assert [
+        (ring.geometry, ring.observation_time) for ring in fire.progression_rings
+    ] == [
+        (tests.peri_scribe.kml.kml_helpers.square(1.0), first_time),
+        (tests.peri_scribe.kml.kml_helpers.square(2.0), second_time),
+    ]
+    assert [ring.area for ring in fire.progression_rings] == [
+        peri_scribe.units.area_in_square_meters(ring.geometry)
+        for ring in fire.progression_rings
+    ]
+
+
+def test_fire_geometries_drops_tiny_rings() -> None:
+    index = tests.peri_scribe.kml.kml_helpers.fire_index([
+        tests.peri_scribe.kml.kml_helpers.fire_index_entry(
+            "Bug",
+            "active",
+            identifier="id-bug",
         ),
-        peri_scribe.perimeters.progression.Ring(
-            geometry=tests.peri_scribe.kml.kml_helpers.square(2.0),
-            observation_time=second_time,
-        ),
+    ])
+    observation_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
+    rings = tests.peri_scribe.kml.kml_helpers.geometry_frame(
+        [
+            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+            ("id-bug", "Bug", shapely.geometry.box(0.0, 0.0, 1e-6, 1e-6)),
+        ],
+        observation_times=[observation_time, observation_time],
     )
+    fires = peri_scribe.kml.fire_data.fire_geometries(
+        index,
+        tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
+        tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
+        rings,
+    )
+    (fire,) = fires
+    assert [ring.geometry for ring in fire.progression_rings] == [
+        tests.peri_scribe.kml.kml_helpers.square(1.0),
+    ]
 
 
 def description_perimeter_frame() -> geopandas.GeoDataFrame:

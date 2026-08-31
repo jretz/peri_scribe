@@ -148,9 +148,12 @@ def geometry_grows_beyond(
 ) -> bool:
     """Return whether *current* has polygonal area outside *previous*.
 
-    This is equivalent to ``geometry_difference(current, previous) is not None``, but it
-    does not construct the difference, so it is far cheaper when the caller only needs
-    to know whether a perimeter adds area.
+    This is equivalent to ``geometry_difference(current, previous) is not None`` for the
+    overwhelming majority of geometries, but it does not construct the difference, so it
+    is far cheaper when the caller only needs to know whether a perimeter adds area. The
+    two can disagree on numerically degenerate slivers, where the covers predicate
+    reports growth but the constructed difference collapses to nothing;
+    :func:`differential_rows_for_fire` drops those survivors when it builds the rows.
 
     Args:
         current: The current geometry, or None.
@@ -366,14 +369,19 @@ def differential_rows_for_fire(
     representatives = representative_indices(survivors, len(geometries))
     rows: list[dict[str, object]] = []
     for position, survivor in enumerate(survivors):
-        representative = representatives[survivor]
-        row = dict(attributes[representative])
         cumulative_geometry = typing.cast("shapely.Geometry", corrected[survivor])
         previous_geometry = None if survivor == 0 else corrected[survivor - 1]
         differential_geometry = typing.cast(
             "shapely.Geometry",
             geometry_difference(cumulative_geometry, previous_geometry),
         )
+        if differential_geometry is None:
+            # The cheap covers-based growth check can report growth whose constructed
+            # difference collapses to a numerically empty sliver; such a step adds no
+            # visible area, so it contributes no ring.
+            continue
+        representative = representatives[survivor]
+        row = dict(attributes[representative])
         row["geometry"] = differential_geometry
         for column in GROWTH_COLUMNS:
             cumulative_value = attributes[representative].get(column)

@@ -15,6 +15,23 @@ METERS_PER_KILOMETER = 1000.0
 MILES_PER_KILOMETER = 0.621371192237334
 
 
+def area_in_square_meters(geometry: shapely.Geometry) -> float:
+    """Return *geometry*'s area in square meters.
+
+    The area is computed geodesically so it is accurate anywhere on Earth.
+
+    Args:
+        geometry: The geometry to measure, in WGS 84 degrees.
+
+    Returns:
+        The absolute area in square meters.
+    """
+    area_in_square_meters, _perimeter = pyproj.Geod(
+        ellps="WGS84",
+    ).geometry_area_perimeter(geometry)
+    return abs(area_in_square_meters)
+
+
 def area_in_acres(geometry: shapely.Geometry) -> float:
     """Return *geometry*'s area in acres.
 
@@ -26,10 +43,7 @@ def area_in_acres(geometry: shapely.Geometry) -> float:
     Returns:
         The absolute area in acres.
     """
-    area_in_square_meters, _perimeter = pyproj.Geod(
-        ellps="WGS84",
-    ).geometry_area_perimeter(geometry)
-    return abs(area_in_square_meters) / SQUARE_METERS_PER_ACRE
+    return area_in_square_meters(geometry) / SQUARE_METERS_PER_ACRE
 
 
 def exterior_perimeter_in_miles(geometry: shapely.Geometry | None) -> float | None:
