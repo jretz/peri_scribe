@@ -22,7 +22,7 @@ ACTIVE_FIRES_FOLDER_NAME = "Active Fires"
 INACTIVE_FIRES_FOLDER_NAME = "Inactive Fires"
 TOP_FIRES_BY_NAME_FOLDER_NAME = "Top Fires by Name"
 TOP_FIRES_BY_SCORE_FOLDER_NAME = "Top Fires by Score"
-TOP_FIRE_COUNT = 25
+TOP_FIRE_COUNT = 50
 
 # The folder inside each fire's folder that holds its outline perimeters, present only
 # when the fire has more than one.
