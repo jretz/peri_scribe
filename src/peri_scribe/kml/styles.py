@@ -1,21 +1,15 @@
-"""Building the KML styles and draw order for template placemarks."""
+"""Building the KML styles and draw order for fire placemarks."""
 
 from __future__ import annotations
-
-import typing
 
 import simplekml
 
 
-if typing.TYPE_CHECKING:
-    import peri_scribe.kml.template
-
-
 class Style(simplekml.Style):
-    """A style whose id the template assigns.
+    """A style whose id is assigned by the application.
 
-    simplekml otherwise numbers every style's id itself; the template's styles need
-    stable ids so placemarks can reference them by URL.
+    simplekml otherwise numbers every style's id itself; placemarks need stable ids so
+    they can reference styles by URL.
     """
 
     def __init__(self, style_id: str) -> None:
@@ -28,6 +22,41 @@ POINT_ICON_URL = "http://maps.google.com/mapfiles/kml/shapes/firedept.png"
 
 
 POINT_STYLE_ID = "point-icon"
+
+
+POINT_LOCATION_NAME = "Point Location"
+
+
+FILLED_PERIMETER_NAME = "Interior"
+FILLED_PERIMETER_STYLE_ID = "perimeter-fill"
+FILLED_PERIMETER_COLOR = "#FF0000"
+
+
+OUTLINED_PERIMETER_NAMES = (
+    "Latest Perimeter",
+    "Penultimate Perimeter",
+    "Antepenultimate Perimeter",
+)
+OUTLINED_PERIMETER_STYLE_IDS = (
+    "perimeter-outline-1",
+    "perimeter-outline-2",
+    "perimeter-outline-3",
+)
+OUTLINED_PERIMETER_COLORS = ("#FF0000", "#FFFF00", "#FFFFFF")
+
+
+PLACEMARK_STYLE_URLS = {
+    POINT_LOCATION_NAME: f"#{POINT_STYLE_ID}",
+    FILLED_PERIMETER_NAME: f"#{FILLED_PERIMETER_STYLE_ID}",
+    **{
+        name: f"#{style_id}"
+        for name, style_id in zip(
+            OUTLINED_PERIMETER_NAMES,
+            OUTLINED_PERIMETER_STYLE_IDS,
+            strict=True,
+        )
+    },
+}
 
 
 FILL_OPACITY_PERCENT = 50
@@ -67,8 +96,8 @@ def set_draw_order(
 
     simplekml exposes gx:drawOrder only on LineString, but every geometry serializes
     from the same internal element map, so the tag is set there for points and polygons
-    alike. The template's fictional perimeters are all single polygons, so no
-    multi-geometry handling is needed here.
+    alike. The application's perimeters are all single polygons, so no multi-geometry
+    handling is needed here.
 
     Args:
         geometry: The geometry to order.
@@ -136,42 +165,58 @@ def point_style() -> Style:
     return style
 
 
-def filled_perimeter_style(
-    template: peri_scribe.kml.template.PerimeterTemplate,
-) -> Style:
-    """Return the fill style for *template*.
+def filled_perimeter_style(style_id: str, color: str) -> Style:
+    """Return the filled polygon style with *style_id* and *color*.
 
     Args:
-        template: The perimeter the style symbolizes.
+        style_id: The style's identifier.
+        color: The fill color as ``#RRGGBB``.
 
     Returns:
         The style, with a filled polygon style.
     """
-    style = Style(template.style_id)
-    style.polystyle.color = kml_color(template.color, FILL_OPACITY_PERCENT)
+    style = Style(style_id)
+    style.polystyle.color = kml_color(color, FILL_OPACITY_PERCENT)
     style.polystyle.fill = 1
     style.polystyle.outline = 0
     return style
 
 
-def outlined_perimeter_style(
-    template: peri_scribe.kml.template.PerimeterTemplate,
-) -> Style:
-    """Return the outline style for *template*.
+def outlined_perimeter_style(style_id: str, color: str) -> Style:
+    """Return the outline style with *style_id* and *color*.
 
     Args:
-        template: The perimeter the style symbolizes.
+        style_id: The style's identifier.
+        color: The outline color as ``#RRGGBB``.
 
     Returns:
         The style, with a line style and a transparently filled polygon style.
     """
-    style = Style(template.style_id)
-    style.linestyle.color = kml_color(template.color, OUTLINE_OPACITY_PERCENT)
+    style = Style(style_id)
+    style.linestyle.color = kml_color(color, OUTLINE_OPACITY_PERCENT)
     style.linestyle.width = OUTLINE_WIDTH
     style.polystyle.color = TRANSPARENT_FILL_COLOR
     style.polystyle.fill = 1
     style.polystyle.outline = 1
     return style
+
+
+def symbolization_styles() -> tuple[Style, ...]:
+    """Return the application's fixed fire-symbolization styles.
+
+    Returns:
+        The styles used by every generated KML document.
+    """
+    return (
+        point_style(),
+        filled_perimeter_style(FILLED_PERIMETER_STYLE_ID, FILLED_PERIMETER_COLOR),
+        *map(
+            outlined_perimeter_style,
+            OUTLINED_PERIMETER_STYLE_IDS,
+            OUTLINED_PERIMETER_COLORS,
+            strict=True,
+        ),
+    )
 
 
 def progression_ring_style_id(color: str) -> str:

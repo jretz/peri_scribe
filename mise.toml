@@ -10,12 +10,6 @@ depends = ["venv"]
 raw_args = true
 run = "uv run --locked peri_scribe update-kmz"
 
-[tasks.create-kml-template]
-description = "Generate the KML template used to specify symbolization"
-depends = ["venv"]
-raw_args = true
-run = "uv run --locked peri_scribe create-kml-template"
-
 [tasks.ensure-admin-boundaries]
 description = "Ensure needed administrative boundaries are available"
 depends = ["venv"]

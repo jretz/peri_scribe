@@ -11,8 +11,7 @@ import peri_scribe.kml.builder
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
 import peri_scribe.kml.geometry
-import peri_scribe.kml.template
-import peri_scribe.kml.template_reader
+import peri_scribe.kml.styles
 import peri_scribe.models
 import peri_scribe.perimeters.progression
 import tests.peri_scribe.kml.kml_helpers
@@ -20,9 +19,7 @@ import tests.peri_scribe.kml.kml_helpers
 
 @pytest.fixture
 def style_urls() -> dict[str, str]:
-    return peri_scribe.kml.template_reader.template_from(
-        peri_scribe.kml.template.template_kml(),
-    ).style_urls
+    return peri_scribe.kml.styles.PLACEMARK_STYLE_URLS
 
 
 def ring_style_urls_for(

@@ -4,15 +4,12 @@ from __future__ import annotations
 
 import typing
 
-import peri_scribe.kml.template
 import peri_scribe.main
-import peri_scribe.output
 from tests.conftest import CLICK_USAGE_ERROR_EXIT_CODE
 
 
 if typing.TYPE_CHECKING:
     import click.testing
-    import pytest
 
 
 def test_cli_help(runner: click.testing.CliRunner) -> None:
@@ -32,26 +29,3 @@ def test_cli_requires_subcommand(runner: click.testing.CliRunner) -> None:
     assert result.exit_code == CLICK_USAGE_ERROR_EXIT_CODE
     assert "Commands:" in result.output
     assert "update-kmz" in result.output
-
-
-def test_cli_configures_logging_from_log_level(
-    monkeypatch: pytest.MonkeyPatch,
-    runner: click.testing.CliRunner,
-) -> None:
-    configured_levels: list[str] = []
-    monkeypatch.setattr(
-        peri_scribe.output,
-        "configure_logging",
-        configured_levels.append,
-    )
-    monkeypatch.setattr(
-        peri_scribe.kml.template,
-        "create_template",
-        lambda **_keywords: None,
-    )
-    result = runner.invoke(
-        peri_scribe.main.cli,
-        ["--log-level", "DEBUG", "create-kml-template"],
-    )
-    assert result.exit_code == 0
-    assert configured_levels == ["debug"]

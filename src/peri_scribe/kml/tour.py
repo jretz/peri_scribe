@@ -11,7 +11,7 @@ import datetime
 import typing
 
 import peri_scribe.kml.geometry
-import peri_scribe.kml.template
+import peri_scribe.kml.styles
 import peri_scribe.perimeters.progression
 
 
@@ -61,8 +61,8 @@ def interior_placemark_name(observation_time: datetime.datetime | None) -> str:
     """
     label = time_label(observation_time)
     if label is None:
-        return peri_scribe.kml.template.FILLED_PERIMETER_TEMPLATE.name
-    return f"{label} {peri_scribe.kml.template.FILLED_PERIMETER_TEMPLATE.name}"
+        return peri_scribe.kml.styles.FILLED_PERIMETER_NAME
+    return f"{label} {peri_scribe.kml.styles.FILLED_PERIMETER_NAME}"
 
 
 def mapping_placemark_name(observation_time: datetime.datetime | None) -> str:

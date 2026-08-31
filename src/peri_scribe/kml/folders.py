@@ -13,7 +13,6 @@ import peri_scribe.kml.fire_data
 import peri_scribe.kml.geometry
 import peri_scribe.kml.icons
 import peri_scribe.kml.styles
-import peri_scribe.kml.template
 import peri_scribe.kml.tour
 import peri_scribe.models
 import peri_scribe.perimeters.progression
@@ -55,16 +54,14 @@ def outline_placemarks(
         ring_count: The number of interior rings drawn beneath the outlines.
         visible: Whether each outline is visible.
     """
-    for index, template in enumerate(
-        peri_scribe.kml.template.OUTLINED_PERIMETER_TEMPLATES,
-    ):
+    for index, name in enumerate(peri_scribe.kml.styles.OUTLINED_PERIMETER_NAMES):
         if len(fire.perimeters) <= index:
             break
         perimeter = fire.perimeters[-(index + 1)]
         peri_scribe.kml.geometry.perimeter_placemark(
             writer,
             peri_scribe.kml.tour.mapping_placemark_name(perimeter.observation_time),
-            style_urls[template.name],
+            style_urls[name],
             perimeter.geometry,
             peri_scribe.kml.styles.outline_draw_order(outline_count, index)
             + ring_count,
@@ -103,7 +100,7 @@ def fire_folder(
     """
     outline_count = min(
         len(fire.perimeters),
-        len(peri_scribe.kml.template.OUTLINED_PERIMETER_TEMPLATES),
+        len(peri_scribe.kml.styles.OUTLINED_PERIMETER_NAMES),
     )
     colored_rings = peri_scribe.kml.colormap.progression_ring_colors(
         fire.progression_rings,
@@ -136,7 +133,7 @@ def fire_folder(
             peri_scribe.kml.geometry.point_placemark(
                 writer,
                 fire.name,
-                style_urls[peri_scribe.kml.template.POINT_LOCATION_NAME],
+                style_urls[peri_scribe.kml.styles.POINT_LOCATION_NAME],
                 fire.point,
                 peri_scribe.kml.styles.point_draw_order(outline_count) + len(rings),
                 description=fire.description,

@@ -1,9 +1,8 @@
 """Building the KML output for a year's fires.
 
-The output is a compressed KML document (a KMZ file). The symbolization comes from the
-KML template file, whose styles are copied into the output and whose style URLs the fire
-placemarks reuse; the progression-map ring colors are the exception, computed from the
-Turbo colormap instead of the template.
+The output is a compressed KML document (a KMZ file). Symbolization styles and placemark
+style URLs are defined in code; progression-map ring colors are computed from the Turbo
+colormap.
 """
 
 from __future__ import annotations
@@ -26,8 +25,6 @@ import peri_scribe.kml.geometry
 import peri_scribe.kml.icons
 import peri_scribe.kml.selection
 import peri_scribe.kml.styles
-import peri_scribe.kml.template
-import peri_scribe.kml.template_reader
 import peri_scribe.models
 
 
@@ -90,21 +87,19 @@ def kmz_path(year_directory: pathlib.Path) -> pathlib.Path:
 
 def fire_kml(
     fires: list[peri_scribe.kml.fire_data.FireGeometry],
-    template: peri_scribe.kml.template_reader.Template,
     name: str,
     scores: peri_scribe.models.FireScores | None = None,
     ring_style_urls: typing.Mapping[str, str] | None = None,
 ) -> str:
     """Return the KML document string for *fires*.
 
-    The document is named *name* and holds the template's styles, the progression-ring
-    styles, and a top-level folder, also named *name*. When scores are supplied, it
-    begins with two top-fire views, followed by the existing active and inactive fire
-    folders.
+    The document is named *name* and holds the symbolization styles, the
+    progression-ring styles, and a top-level folder, also named *name*. When scores are
+    supplied, it begins with two top-fire views, followed by the existing active and
+    inactive fire folders.
 
     Args:
         fires: The fires to symbolize.
-        template: The template supplying styles and style URLs.
         name: The document's name, conventionally the output filename without its
             extension.
         scores: The saved score for each fire, or None.
@@ -122,7 +117,7 @@ def fire_kml(
         f'xmlns:gx="{peri_scribe.kml.geometry.GX_NAMESPACE}">'
         "<Document>",
     )
-    for style in template.styles:
+    for style in peri_scribe.kml.styles.symbolization_styles():
         writer.parts.append(str(style))
     for color, style_url in ring_style_urls.items():
         writer.parts.append(
@@ -150,14 +145,14 @@ def fire_kml(
                 writer,
                 sorted(score_sorted_fires, key=lambda fire: fire.name.casefold()),
                 peri_scribe.kml.folders.TOP_FIRES_BY_NAME_FOLDER_NAME,
-                template.style_urls,
+                peri_scribe.kml.styles.PLACEMARK_STYLE_URLS,
                 ring_style_urls,
             )
             peri_scribe.kml.folders.top_fires_folder(
                 writer,
                 score_sorted_fires,
                 peri_scribe.kml.folders.TOP_FIRES_BY_SCORE_FOLDER_NAME,
-                template.style_urls,
+                peri_scribe.kml.styles.PLACEMARK_STYLE_URLS,
                 ring_style_urls,
                 visible=False,
             )
@@ -165,7 +160,7 @@ def fire_kml(
                 writer,
                 fires,
                 peri_scribe.models.FireStatus.ACTIVE,
-                template.style_urls,
+                peri_scribe.kml.styles.PLACEMARK_STYLE_URLS,
                 ring_style_urls,
                 visible=False,
             )
@@ -174,14 +169,14 @@ def fire_kml(
                 writer,
                 fires,
                 peri_scribe.models.FireStatus.ACTIVE,
-                template.style_urls,
+                peri_scribe.kml.styles.PLACEMARK_STYLE_URLS,
                 ring_style_urls,
             )
         peri_scribe.kml.folders.status_folder(
             writer,
             fires,
             peri_scribe.models.FireStatus.INACTIVE,
-            template.style_urls,
+            peri_scribe.kml.styles.PLACEMARK_STYLE_URLS,
             ring_style_urls,
         )
     writer.parts.append("</Document></kml>")
@@ -295,10 +290,11 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
 
     The full history GeoPackage is read for geometry, the differential history supplies
     each fire's growth rings, the fire index supplies each fire's name and status, and
-    the KML template file supplies the symbolization. Fires whose every computed or
-    reported area is missing or under the area minimum are excluded from the output.
-    Each fire's plot images and the folder icons are written into the archive beside the
-    KML document. The output is written under the year's ``maps`` directory.
+    the code-defined styles and placemark style URLs supply the symbolization. Fires
+    whose every computed or reported area is missing or under the area minimum are
+    excluded from the output. Each fire's plot images and the folder icons are written
+    into the archive beside the KML document. The output is written under the year's
+    ``maps`` directory.
 
     Args:
         year_directory: The year directory that holds the ``derived`` directory.
@@ -332,9 +328,6 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
         excluded_fires=fire_count - len(index.fires),
         minimum_area_in_acres=peri_scribe.kml.selection.MINIMUM_FIRE_AREA_IN_ACRES,
     )
-    template = peri_scribe.kml.template_reader.read_template(
-        peri_scribe.kml.template.template_path(),
-    )
     geometries = peri_scribe.kml.fire_data.fire_geometries(
         index,
         perimeters,
@@ -356,7 +349,6 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
         output_path,
         fire_kml(
             geometries,
-            template,
             output_path.stem,
             scores or peri_scribe.models.FireScores(version="", fires=[]),
         ),

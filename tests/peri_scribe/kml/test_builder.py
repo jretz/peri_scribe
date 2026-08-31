@@ -15,8 +15,6 @@ import peri_scribe.geo.reading
 import peri_scribe.kml.builder
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.icons
-import peri_scribe.kml.template
-import peri_scribe.kml.template_reader
 import peri_scribe.models
 import tests.peri_scribe.kml.kml_helpers
 
@@ -85,9 +83,6 @@ def test_fire_kml_names_the_document() -> None:
     points = tests.peri_scribe.kml.kml_helpers.geometry_frame([
         ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
     ])
-    template = peri_scribe.kml.template_reader.template_from(
-        peri_scribe.kml.template.template_kml(),
-    )
     fires = peri_scribe.kml.fire_data.fire_geometries(
         index,
         perimeters,
@@ -95,7 +90,7 @@ def test_fire_kml_names_the_document() -> None:
         perimeters,
     )
     document = tests.peri_scribe.kml.kml_helpers.document_from(
-        peri_scribe.kml.builder.fire_kml(fires, template, name="PeriScribe Fires 2026"),
+        peri_scribe.kml.builder.fire_kml(fires, name="PeriScribe Fires 2026"),
     )
 
     assert (
@@ -146,11 +141,8 @@ def test_fire_kml_puts_top_fires_before_status_folders() -> None:
             ),
         ],
     )
-    template = peri_scribe.kml.template_reader.template_from(
-        peri_scribe.kml.template.template_kml(),
-    )
     document = tests.peri_scribe.kml.kml_helpers.document_from(
-        peri_scribe.kml.builder.fire_kml(fires, template, "test", scores),
+        peri_scribe.kml.builder.fire_kml(fires, "test", scores),
     )
 
     top_level = tests.peri_scribe.kml.kml_helpers.folder_named(document, "test")
@@ -215,11 +207,8 @@ def test_fire_kml_loads_top_fires_by_name_checked() -> None:
             ),
         ],
     )
-    template = peri_scribe.kml.template_reader.template_from(
-        peri_scribe.kml.template.template_kml(),
-    )
     document = tests.peri_scribe.kml.kml_helpers.document_from(
-        peri_scribe.kml.builder.fire_kml(fires, template, "test", scores),
+        peri_scribe.kml.builder.fire_kml(fires, "test", scores),
     )
 
     top_level = tests.peri_scribe.kml.kml_helpers.folder_named(document, "test")
@@ -278,9 +267,6 @@ def test_fire_kml_holds_fires_directly_under_status_folders() -> None:
         ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
         ("id-alta", "ALTA", shapely.geometry.Point(2.0, 2.0)),
     ])
-    template = peri_scribe.kml.template_reader.template_from(
-        peri_scribe.kml.template.template_kml(),
-    )
     fires = peri_scribe.kml.fire_data.fire_geometries(
         index,
         perimeters,
@@ -288,7 +274,7 @@ def test_fire_kml_holds_fires_directly_under_status_folders() -> None:
         perimeters,
     )
     document = tests.peri_scribe.kml.kml_helpers.document_from(
-        peri_scribe.kml.builder.fire_kml(fires, template, name="PeriScribe Fires 2026"),
+        peri_scribe.kml.builder.fire_kml(fires, name="PeriScribe Fires 2026"),
     )
 
     active = tests.peri_scribe.kml.kml_helpers.folder_named(
@@ -355,11 +341,8 @@ def test_fire_kml_builds_active_and_inactive_folders(
         points,
         tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
     )
-    template = peri_scribe.kml.template_reader.template_from(
-        peri_scribe.kml.template.template_kml(),
-    )
     document = tests.peri_scribe.kml.kml_helpers.document_from(
-        peri_scribe.kml.builder.fire_kml(fires, template, name="PeriScribe Fires 2026"),
+        peri_scribe.kml.builder.fire_kml(fires, name="PeriScribe Fires 2026"),
     )
 
     top_level = tests.peri_scribe.kml.kml_helpers.top_level_folder(document)
@@ -434,9 +417,6 @@ def test_fire_kml_hides_inactive_fires_tree(
         ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
         ("id-alta", "ALTA", shapely.geometry.Point(2.0, 2.0)),
     ])
-    template = peri_scribe.kml.template_reader.template_from(
-        peri_scribe.kml.template.template_kml(),
-    )
     fires = peri_scribe.kml.fire_data.fire_geometries(
         index,
         perimeters,
@@ -444,7 +424,7 @@ def test_fire_kml_hides_inactive_fires_tree(
         perimeters,
     )
     document = tests.peri_scribe.kml.kml_helpers.document_from(
-        peri_scribe.kml.builder.fire_kml(fires, template, name="PeriScribe Fires 2026"),
+        peri_scribe.kml.builder.fire_kml(fires, name="PeriScribe Fires 2026"),
     )
 
     top_level = tests.peri_scribe.kml.kml_helpers.top_level_folder(document)
@@ -486,11 +466,8 @@ def test_fire_kml_shows_derived_point_for_inactive_fire_without_location() -> No
         tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
         tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
     )
-    template = peri_scribe.kml.template_reader.template_from(
-        peri_scribe.kml.template.template_kml(),
-    )
     document = tests.peri_scribe.kml.kml_helpers.document_from(
-        peri_scribe.kml.builder.fire_kml(fires, template, name="PeriScribe Fires 2026"),
+        peri_scribe.kml.builder.fire_kml(fires, name="PeriScribe Fires 2026"),
     )
     inactive = tests.peri_scribe.kml.kml_helpers.folder_named(
         tests.peri_scribe.kml.kml_helpers.top_level_folder(document),
@@ -619,14 +596,6 @@ def test_create_kmz_reads_history_and_writes_kmz(
         return perimeters if layer_name == "perimeter_history" else points
 
     monkeypatch.setattr(peri_scribe.geo.reading, "read_layer", read_layer)
-    template = peri_scribe.kml.template_reader.template_from(
-        peri_scribe.kml.template.template_kml(),
-    )
-    monkeypatch.setattr(
-        peri_scribe.kml.template_reader,
-        "read_template",
-        lambda _path: template,
-    )
     writes: list[tuple[pathlib.Path, str, dict[str, bytes]]] = []
     monkeypatch.setattr(
         peri_scribe.kml.builder,
@@ -691,14 +660,6 @@ def test_create_kmz_excludes_fires_without_qualifying_area(
         return perimeters if layer_name == "perimeter_history" else points
 
     monkeypatch.setattr(peri_scribe.geo.reading, "read_layer", read_layer)
-    template = peri_scribe.kml.template_reader.template_from(
-        peri_scribe.kml.template.template_kml(),
-    )
-    monkeypatch.setattr(
-        peri_scribe.kml.template_reader,
-        "read_template",
-        lambda _path: template,
-    )
     writes: list[tuple[pathlib.Path, str, dict[str, bytes]]] = []
     monkeypatch.setattr(
         peri_scribe.kml.builder,

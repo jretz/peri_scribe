@@ -13,7 +13,6 @@ import peri_scribe.fires.differential
 import peri_scribe.fires.scores
 import peri_scribe.kml.builder
 import peri_scribe.kml.colormap
-import peri_scribe.kml.template
 import peri_scribe.output
 import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.digests
@@ -172,20 +171,6 @@ def fetch_evacuations(year_directory: pathlib.Path | None = None) -> None:
         peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
         year_directory,
     )
-
-
-@cli.command()
-@click.option(
-    "--force",
-    is_flag=True,
-    help="Write the KML template, even if it already exists.",
-)
-def create_kml_template(*, force: bool) -> None:
-    """Generate the KML template used to specify symbolization."""
-    output_path = peri_scribe.kml.template.create_template(force=force)
-    if output_path is None:
-        return
-    logger.info("Wrote KML template", path=output_path)
 
 
 @cli.command()
