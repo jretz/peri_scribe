@@ -456,8 +456,8 @@ def test_building_counts_within_includes_points_on_upper_boundary(
     path = tmp_path / "buildings.sqlite"
     write_database(points, path)
     # The box filter and tile selection include a point exactly on the tile boundary,
-    # but exact containment (like the legacy implementation) excludes a point on the
-    # query geometry's boundary; a box strictly containing the point counts it.
+    # Exact containment excludes a point on the query geometry's boundary; a box
+    # strictly containing the point counts it.
     counts = peri_scribe.sources.buildings.building_counts_within(
         [shapely.geometry.box(0.4, 0.4, 0.5, 0.5)],
         path,

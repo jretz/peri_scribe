@@ -108,10 +108,10 @@ def fetch_feed_dataframe(
         layer,
         where=where,
     )
-    # A source may publish features without updating their modified timestamps, so
-    # the timestamp query alone can miss features that are present in the layer but
-    # never stored (for example a WFIGS row re-added with an old modified time).
-    # Compare the layer's full OBJECTID set against the stored set to catch them.
+    # A source may publish features without updating their modified timestamps, so the
+    # timestamp query alone can miss features that are present in the layer but never
+    # stored (for example a WFIGS row re-added with an outdated modified time). Compare
+    # the layer's full OBJECTID set against the stored set to catch them.
     stored_ids = peri_scribe.sources.feed_state.stored_object_ids(existing)
     layer_ids = set(
         peri_scribe.geo.data.query_object_ids_with_retry(

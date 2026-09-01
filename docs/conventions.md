@@ -6,7 +6,7 @@ The code exists for the purpose of being easily read and understood by humans. T
 
 Prefer small, module level functions for everything. Where classes make sense, frozen, kw-only dataclasses are preferred. Where values have meanings, use enums instead of strings or integers. Type hints should be used for all function arguments and return values.
 
-Use `mise lint` to check style and format code. Use `mise typecheck` to check for type hints. Never make changes to `ruff` or `ty` rules in pyproject.toml. Work hard to avoid disabling them on a given line of code. That is only acceptable where third party libraries are not compatible with type hints. When a rule is disabled on a line, only disable the specific rule, not type checking altogether. Do not dismiss linting or type checking errors, even if you think they are not important (e.g., only cosmetic).
+Linting and typechecking run as a part of the test suite. Never make changes to `ruff` or `ty` rules in pyproject.toml. Work hard to avoid disabling them on a given line of code. That is only acceptable where third party libraries are not compatible with type hints. When a rule is disabled on a line, only disable the specific rule, not type checking altogether. Do not dismiss linting or type checking errors, even if you think they are not important (e.g., only cosmetic).
 
 Do not leave dead code in the codebase.
 
@@ -39,3 +39,10 @@ Functions that interact with external data sources and generated state (cached d
 ## Public vs. Private
 
 Treat all functions, methods, variables, classes, etc. as public. Do not use leading underscores to indicate otherwise. When there is a concern about exposing something publicly, make all access to it go through a method/property/etc. Ensure that accessor does not expose the underlying object so directly that there is no point to have the accessor.
+
+
+## Migration
+
+When behavior changes, do not reference the old behavior in comments or docstrings. Instead, describe the new behavior.
+
+Where migration code is desirable, make it a standalone script in a folder called `migrations` in the root of the project. The script should be idempotent and tested on a copy of the production data. Nothing in `src` or `tests` should reference the migration code.

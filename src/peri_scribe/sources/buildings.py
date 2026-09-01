@@ -17,13 +17,12 @@ query envelope, decompresses their payloads into NumPy arrays, filters by the en
 with NumPy, and tests exact polygon containment only for the remaining points, so
 building counts never touch GeoPandas, GeoPackage geometry blobs, or an R-Tree index.
 
-The archives are streamed exactly like the old centroid conversion: the archive's bytes
-arrive from the HTTP response, ``stream_unzip`` decompresses the GeoJSON member as they
-arrive, and the parsed geometry feeds the same bounded centroid conversion. Neither the
-archive nor its GeoJSON is ever written to disk, and the database is written to a
-temporary path and atomically renamed into place only after validation succeeds, so an
-existing valid database survives any download or generation failure and the legacy
-``buildings.gpkg`` is left untouched.
+The archive's bytes arrive from the HTTP response, ``stream_unzip`` decompresses the
+GeoJSON member as they arrive, and each parsed geometry passes through the bounded
+centroid conversion. Neither the archive nor its GeoJSON is ever written to disk, and
+the database is written to a temporary path and atomically renamed into place only after
+validation succeeds, so an existing valid database survives any download or generation
+failure.
 """
 
 from __future__ import annotations

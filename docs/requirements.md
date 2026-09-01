@@ -2,28 +2,41 @@
 
 ## Project: PeriScribe
 
-This is a tool for systematic gathering and symbolizing of fire geography for use in fire behavior analysis and presentation.
+PeriScribe gathers fire geography from configured ArcGIS feeds, preserves source snapshots, derives cleaned fire histories, calculates fire scores, and produces a symbolized KMZ for Google Earth. The current implementation stores data below `data/<year>/` in the working directory.
 
-Fire geography is pulled from configurable data sources at regular time intervals, symbolized in a way that indicates the growth of fires over time, and then made available in KML files. Each fire has a point associated with it (e.g., with a flame icon as a symbol) and a perimeter (a set of polygons) for each day that the fire is actively mapped. When there is more than one perimeter for a fire on a given day, the latest perimeter for that day is used.
+## Implemented behavior
 
-## Notifications
+The configured fire feeds are:
 
-When the output KML files are updated, a notification is sent to a configurable list of recipients. The notification includes a description of changes.
+- CAL FIRE/NIFC perimeters, which retain historical updates.
+- WFIGS current perimeters, which retain the latest perimeter for active fires.
+- WFIGS current incident locations, which provide fire points.
 
-## Configuration
+The pipeline also retrieves California evacuation zones and a nationwide building centroid database. Fire-feed snapshots are append-only GeoPackages. The evacuation layer is kept as its latest GeoPackage, while the buildings source is stored as a compact SQLite database at `sources/buildings.sqlite`.
 
-### Data Sources and Notification Recipients
+`update-kmz` performs the following operations:
 
-A JSON file contains a list of notification recipients. Each recipient has properties indicating how to send the notification (email? text message? other?) and when (e.g., Any perimeter grew by a certain percentage or number of acres? Update to a fire that started in the last day and is over a certain number of acres?).
+1. Fetch fire feeds incrementally, plus the external sources.
+2. Ensure the administrative-boundary GeoPackage exists at `sources/CA_border_with_AZ_NV_and_OR.gpkg`.
+3. Write `derived/history_of_full_geography.gpkg` with `perimeter_history` and `point_history` layers.
+4. Write `derived/history_of_differential_geography.gpkg` containing growth rings.
+5. Write `derived/fire_scores.json` and `derived/fire_scores_ccdf.png`.
+6. Write `maps/PeriScribe Fires <year>.kmz`.
 
-### Symbolization
+The later steps run when fire data or evacuation data changed, or when `--force` is provided. A failed step stops the pipeline. The KMZ includes active and inactive fire folders, latest perimeters, progression rings, fire information, and score-based top fire views.
 
-There is a template file in KML format. It contains a fictional point location and a set of fictional perimeters for a single fictional fire. The location of those geographic elements do not matter. The point is named "Point Location". The latest perimeter is named "Perimeter (current)", the previous "Perimeter (old 1)", the one before that "Perimeter (old 2)", and so on ("Perimeter (current)" is required and any number of "Perimeter (old #)" templates can be present). When symbolizing real fire data, the styles associated with the fictional fire are used. This allows Google Earth, or other KML tools, to be used as the UI for specifying symbolization.
+## Configuration and operation
 
-### Cached Data Location
+Run `peri_scribe --help` for the available commands:
 
-This might be an object store like Amazon S3, an SFTP server at a web host, or a local file system (idea: use rclone to enable many different kinds of data stores without having to implement them?).
+- `update-kmz` runs the end-to-end pipeline.
+- `fetch-buildings` and `fetch-evacuations` retrieve individual external sources.
+- `ensure-admin-boundaries` retrieves or reuses the administrative boundaries.
+- `validate-sources` compares incremental snapshots with complete fresh downloads.
+- `show-turbo-colormap` previews or writes the colormap used for progression rings.
 
-### KML Output Location
+The pipeline commands accept an optional year-directory argument; when omitted it defaults to `data/<current year>`. `show-turbo-colormap` instead accepts colormap trim options and an optional PNG output path.
 
-This might be an object store like Amazon S3, an SFTP server at a web host, or a local file system (idea: use rclone to enable many different kinds of data stores without having to implement them?).
+## Future work
+
+Notifications, configurable recipients and delivery rules, and a reporting command remain future requirements.

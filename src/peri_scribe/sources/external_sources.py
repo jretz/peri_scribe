@@ -35,8 +35,7 @@ of a GeoPackage: a dedicated converter (``peri_scribe.sources.buildings``) strea
 state's archive directly into the database, so the archives and their GeoJSON are never
 written to disk, and the stored file holds only quantized centroid records in compressed
 0.5° tiles with no attributes. The database is regenerated only when it is
-missing or no longer matches the expected format, and the legacy ``buildings.gpkg`` is
-left untouched.
+missing or no longer matches the expected format.
 
 The fire-source reader skips these files, so their GeoPackages are never mistaken
 for fire snapshots.
@@ -44,11 +43,9 @@ for fire snapshots.
 
 from __future__ import annotations
 
-import contextlib
 import dataclasses
 import enum
 import pathlib
-import shutil
 import typing
 from collections.abc import Callable
 
@@ -292,10 +289,8 @@ def fetch_arcgis_source(
     The layer is queried in full. When the stored GeoPackage already holds the same
     features, nothing is written and its path is returned. Otherwise the stored
     GeoPackage is replaced with the freshly fetched version, so only the latest version
-    of the layer is kept. Serial-numbered snapshots left by older runs are removed; when
-    no current version is stored, the newest of those snapshots is adopted as the
-    current version first, so no data is lost in the transition. When the layer cannot
-    be retrieved and a current version is stored, a warning is logged and the stored
+    of the layer is kept at the source's fixed output path. When the layer cannot be
+    retrieved and a current version is stored, a warning is logged and the stored
     version is kept so that the caller can proceed; when no version is stored at all,
     the failure is raised.
 
@@ -310,10 +305,8 @@ def fetch_arcgis_source(
         ExternalDataError: If the layer cannot be retrieved and no current version
             is stored.
     """
-    directory = source_directory_path(year_directory, source)
     layer_name = source.layer_name or source.name
     output = output_path(year_directory, source)
-    adopt_or_remove_legacy_snapshots(directory, output)
     try:
         geodataframe = query_arcgis_source(source)
     except peri_scribe.exceptions.ExternalDataError as error:
@@ -358,43 +351,6 @@ def fetch_arcgis_source(
         features=len(geodataframe),
     )
     return output
-
-
-def adopt_or_remove_legacy_snapshots(
-    directory: pathlib.Path,
-    output: pathlib.Path,
-) -> None:
-    """Adopt the newest legacy snapshot as *output*, then remove legacy snapshots.
-
-    Older runs stored serial-numbered snapshots under a bucket directory
-    (``sources/{name}/000___/000000,lastEdit=...gpkg``); only the latest version is kept
-    now. When *output* is missing, the newest legacy snapshot is copied to it, so the
-    latest data survives the transition. The legacy snapshot files and their bucket
-    directories are then removed, so a source directory left by an older run is cleaned
-    up by the next fetch.
-
-    Args:
-        directory: The source's directory.
-        output: The current version's GeoPackage path.
-    """
-    legacy = peri_scribe.sources.snapshots.existing_source_files(directory)
-    if not legacy:
-        return
-    legacy_paths = [directory / source_file.relative_path for source_file in legacy]
-    if not output.is_file():
-        output.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(legacy_paths[-1], output)
-        logger.debug(
-            "Adopted newest legacy snapshot as current version",
-            source=directory.name,
-            path=output,
-        )
-    for path in legacy_paths:
-        with contextlib.suppress(FileNotFoundError):
-            path.unlink()
-    for parent in {path.parent for path in legacy_paths}:
-        with contextlib.suppress(OSError):
-            parent.rmdir()
 
 
 def query_arcgis_source(source: ExternalSource) -> geopandas.GeoDataFrame:

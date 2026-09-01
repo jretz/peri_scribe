@@ -21,7 +21,6 @@ import peri_scribe.sources.archives
 import peri_scribe.sources.external_sources
 import peri_scribe.sources.snapshots
 import tests.peri_scribe.sources.external_source_helpers
-from tests.main_stubs import SAMPLE_LAST_EDIT_TIMESTAMP
 
 
 YEAR_DIRECTORY = pathlib.Path("/data/2026")
@@ -538,113 +537,6 @@ def test_fetch_arcgis_source_keeps_current_version_when_fetch_fails(
     assert len(stored) == len(
         tests.peri_scribe.sources.external_source_helpers.sample_arcgis_dataframe(),
     )
-
-
-def test_fetch_arcgis_source_adopts_newest_legacy_snapshot(
-    tmp_path: pathlib.Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
-    directory = tmp_path / "sources" / "evacuations"
-    legacy_directory = directory / "000___"
-    legacy_directory.mkdir(parents=True)
-    for serial in (0, 1):
-        legacy_name = f"00000{serial},lastEdit={SAMPLE_LAST_EDIT_TIMESTAMP}.gpkg"
-        path = legacy_directory / legacy_name
-        peri_scribe.output.write_geopackage(
-            path,
-            [
-                peri_scribe.models.LayerData(
-                    name="evacuations",
-                    dataframe=tests.peri_scribe.sources.external_source_helpers.sample_arcgis_dataframe(),
-                ),
-            ],
-        )
-    newest = tests.peri_scribe.sources.external_source_helpers.sample_arcgis_dataframe()
-    newest.loc[0, "OBJECTID"] = 99
-    newest_path = (
-        legacy_directory / f"000002,lastEdit={SAMPLE_LAST_EDIT_TIMESTAMP}.gpkg"
-    )
-    peri_scribe.output.write_geopackage(
-        newest_path,
-        [
-            peri_scribe.models.LayerData(
-                name="evacuations",
-                dataframe=newest,
-            ),
-        ],
-    )
-
-    def fail(_url: str, _gis: object) -> typing.Never:
-        message = "boom"
-        raise RuntimeError(message)
-
-    monkeypatch.setattr(
-        peri_scribe.sources.external_sources.arcgis.gis,
-        "GIS",
-        object,
-    )
-    monkeypatch.setattr(
-        peri_scribe.sources.external_sources.arcgis.features,
-        "FeatureLayer",
-        fail,
-    )
-    warnings: list[str] = []
-    monkeypatch.setattr(
-        peri_scribe.sources.external_sources.logger,
-        "warning",
-        lambda message, **_keywords: warnings.append(message),
-    )
-    result = peri_scribe.sources.external_sources.fetch_external_source(
-        source,
-        tmp_path,
-    )
-    output = tmp_path / "sources" / "evacuations.gpkg"
-    assert result == (output,)
-    assert any("keeping current data" in message for message in warnings)
-    assert geopandas.read_file(output, layer="evacuations")["OBJECTID"].tolist() == [
-        99,
-        2,
-    ]
-    assert not legacy_directory.exists()
-
-
-def test_fetch_arcgis_source_removes_legacy_snapshots_when_current_exists(
-    tmp_path: pathlib.Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
-    install_arcgis_query_stubs(
-        monkeypatch,
-        tests.peri_scribe.sources.external_source_helpers.sample_arcgis_dataframe(),
-    )
-    first = peri_scribe.sources.external_sources.fetch_external_source(
-        source,
-        tmp_path,
-    )[0]
-    assert first.name == "evacuations.gpkg"
-    legacy_directory = tmp_path / "sources" / "evacuations" / "000___"
-    legacy_directory.mkdir(parents=True)
-    legacy_path = (
-        legacy_directory / f"000000,lastEdit={SAMPLE_LAST_EDIT_TIMESTAMP}.gpkg"
-    )
-    peri_scribe.output.write_geopackage(
-        legacy_path,
-        [
-            peri_scribe.models.LayerData(
-                name="evacuations",
-                dataframe=tests.peri_scribe.sources.external_source_helpers.sample_arcgis_dataframe(),
-            ),
-        ],
-    )
-    second = peri_scribe.sources.external_sources.fetch_external_source(
-        source,
-        tmp_path,
-    )
-    assert second == (first,)
-    assert not legacy_directory.exists()
-    snapshots = list((tmp_path / "sources").rglob("*.gpkg"))
-    assert snapshots == [first]
 
 
 def test_buildings_state_urls_reads_repo_page_every_fetch(

@@ -2,33 +2,39 @@
 
 ## Form
 
-peri_scribe is a command line tool with commands for retrieving data from sources, cleaning and organizing that data, and generating maps. All of that is in place and maturing. At least one additional command is planned:
+PeriScribe is a command-line application. `src/peri_scribe/main.py` defines the CLI and coordinates the pipeline; domain logic is divided among source retrieval, geography processing, fire scoring, and KML modules.
 
-`report` will read GeoPackage files for the most recent days and generate a report about fires. Examples might include:
-    - The top 10 active fires by area
-    - The fastest growing fires
-      - By absolute area growth
-      - By percentage growth for fires over a certain area threshold
-    - Fires that have exceeded a certain area threshold for the first time
+The primary workflow is:
 
-## Data Handling
+`fetch fire feeds and external sources → classify and index fires → derive full history → derive differential history → score fires → create KMZ`
 
-- The data from each source is kept as close to the format of the sources as is practical. This includes all attributes, geometry, and coordinate reference systems. This reduces the possible number of bugs that could result in data loss in the system (e.g., in CRS transformations). As long as this data is safe, any downstream consumers (e.g., KML generation or reporting) can be re-run after fixing problems there.
-- Libraries used for data handling include:
-  - [arcgis](https://pypi.org/project/arcgis/) from ESRI is used to retrieve data from ArcGIS Hub.
-  - [GeoPandas](https://pypi.org/project/geopandas/) is used to handle data in memory, and to write it to disk as GeoPackage files.
-  - [pyproj](https://pypi.org/project/pyproj/) is used to handle coordinate reference system analysis.
+`update-kmz` skips the derived outputs when no fire or evacuation data changed, unless `--force` is supplied. `validate-sources` is a separate diagnostic workflow that performs a complete fetch and compares it with the incremental snapshots.
 
-## Data Validation and Cleansing
+## Data handling
 
-Some feeds provide conflicting information about what coordinate reference system is used for their data. The system does its best to detect the correct coordinate reference system from one of those indicated by the feed (e.g., by checking the scale of the coordinates to determine meters vs. degrees).
+Fire-feed data is kept close to the source format: source attributes, geometry, source coordinate reference systems, and observation metadata are retained in the snapshot GeoPackages. Snapshots are stored under:
 
-Many kinds of issues with fire perimeter polygons are detected and corrected in a copy of the data (the original download cache is append-only and is never modified). These include:
+`data/<year>/sources/<feed>/<serial-bucket>/<serial>,lastEdit=<timestamp>.gpkg`
 
-- Small perimeters (e.g., 2 acres) published as new perimeter mappings of large fires (e.g., 100,000 acres). These are ignored.
-- A series of thousands of collinear points. These excess points are removed.
-- Thousands of points in a very small area (one case had 40K points within 10 meters of each other) . These are reduced to a small number of points.
+The fire index is stored at `sources/fires.json`. External datasets are stored beside the fire snapshots: the latest evacuation layer is `sources/evacuations.gpkg`, and building locations are in `sources/buildings.sqlite`. The buildings converter streams the Microsoft USBuildingFootprints state archives into quantized centroid tiles and does not retain the downloaded archives.
 
-## Code Structure
+Derived data is written below `data/<year>/derived/`:
 
-`main.py` contains all the logic to implement the CLI, and nothing else. All application logic is dispatched to other modules.
+- `history_of_full_geography.gpkg` contains perimeter and point histories.
+- `history_of_differential_geography.gpkg` contains corrected growth rings.
+- `fire_scores.json` contains one score and explanation per fire.
+- `fire_scores_ccdf.png` plots the score distribution.
+
+## Data validation and cleansing
+
+Source coordinate reference systems are interpreted from feed metadata, with checks for coordinate scale where feeds are inconsistent. Derived processing classifies sources against the California border, reconciles competing perimeter records, removes implausibly small perimeter updates, and cleans geometry for KML. Differential history subtracts later perimeters so shrinkage does not appear as fire growth.
+
+The original source snapshots are not modified by these cleansing steps. The output KMZ excludes fires without a qualifying area indication and includes latest-perimeter and progression-map views.
+
+## Libraries
+
+ArcGIS is used for FeatureServer access; GeoPandas, Shapely, pyproj, and pyogrio support geospatial processing and GeoPackages; Pydantic validates serialized documents; Click implements the CLI; and Pillow/matplotlib support generated KML imagery and score visualization.
+
+## Future work
+
+A reporting command and notifications are not implemented yet.

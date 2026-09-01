@@ -13,9 +13,9 @@
 
 ## Input/Output
 
-No tests should touch the network in any way. All network access should be mocked out. This includes access to ArcGIS Hub, and any other data sources.
+No tests should touch the network in any way. All network access should be mocked out. This includes ArcGIS FeatureServer and any other data sources.
 
-No tests should write to disk. All file access should be mocked out, or done through in memory files.
+Tests must not write to the repository or depend on persistent local state. Code that intentionally reads or writes files should use pytest's per-test `tmp_path` directory or an equivalent isolated temporary location; network access remains mocked.
 
 ## Test Coverage
 
@@ -23,5 +23,4 @@ Do not introduce pragmas to ignore test coverage.
 
 ## What to Test
 
-Tests should ensure behavior is correct and they should be independent of implementation.
-For example, if code constants change (e.g., the default number of retries), tests should still pass. If a function body has most of its code replaced with calls to a library, but it behaves in the same way, tests should still pass.
+Tests should ensure behavior is correct and they should be independent of implementation. For example, if code constants change (e.g., the default number of retries), tests should still pass. If a function body has most of its code replaced with calls to a library, but it behaves in the same way, tests should still pass.

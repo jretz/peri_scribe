@@ -8,6 +8,7 @@
         "arcgis",
         "autouse",
         "codewhale",
+        "colormap",
         "compresslevel",
         "Crosswhite",
         "dataclass",

@@ -72,8 +72,7 @@ def test_effective_time_prefers_as_of_date_over_capture_date() -> None:
 
 
 def test_effective_time_falls_back_to_snapshot_when_current_date_is_stale() -> None:
-    # A poly_DateCurrent value left behind in the attributes is no longer consulted
-    # once the observation column has read it; a dateless row falls to the snapshot.
+    # A dateless row uses the snapshot timestamp after the observation column is read.
     snapshot_time = tests.factories.utc(2026, 8, 17, 1, 42)
     observed = tests.factories.observation(
         snapshot_time=snapshot_time,

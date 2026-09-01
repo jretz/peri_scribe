@@ -3,9 +3,9 @@
 Each fire's score is a weighted sum of points awarded across independent signals: its
 reported size, its largest single growth step, its size when first mapped, the buildings
 within a mile of it, whether it overlaps an evacuation zone, and its official incident
-complexity level. The score is a pure function of the current data: it never looks at
-previously recorded scores, so deleting the scores file and regenerating it changes
-nothing.
+complexity level. The score is a pure function of the current data. It does not depend
+on the contents of the scores file, so regenerating it from unchanged inputs produces
+the same scores.
 
 The score is derived from the differential history GeoPackage (for size, growth,
 first-mapping size) and the cumulative full history (for geometry), plus the point
@@ -427,12 +427,12 @@ def score_fires(year_directory: pathlib.Path) -> pathlib.Path:
     """Score every fire and write the results to the derived directory.
 
     The score is computed from the differential history and the retrieved external
-    datasets; it never consults previously written scores, so deleting the scores file
-    and regenerating it changes nothing. The fire metrics are aggregated in a single
-    groupby pass, the fire geometry comes from the cumulative full history rather than
-    re-unioned perimeters, and the external datasets are queried through their R-Tree
-    indexes, so neither the history nor the external layers are ever processed one
-    feature at a time. The results are written to
+    datasets. It does not depend on the contents of the scores file, so regenerating it
+    from unchanged inputs produces the same scores. The fire metrics are aggregated in a
+    single groupby pass, the fire geometry comes from the cumulative full history;
+    perimeter records are not re-unioned during scoring. The external datasets are
+    queried through their R-Tree indexes, so neither the history nor the external layers
+    are ever processed one feature at a time. The results are written to
     ``{year_directory}/derived/fire_scores.json``, along with a complementary CDF to
     ``{year_directory}/derived/fire_scores_ccdf.png``.
 
