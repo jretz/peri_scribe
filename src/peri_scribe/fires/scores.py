@@ -10,9 +10,10 @@ nothing.
 The score is derived from the differential history GeoPackage (for size, growth,
 first-mapping size) and the cumulative full history (for geometry), plus the point
 history (for the official complexity level), then joined spatially against the retrieved
-external datasets: building centroids and evacuation zones. Each external GeoPackage is
-queried through its R-Tree index, so only the features near a fire are ever read from
-it.
+external datasets: building centroids and evacuation zones. Building counts come from
+the compact buildings database, whose tiles are selected by each fire's envelope and
+whose payloads are filtered in NumPy; the evacuation GeoPackage is queried through its
+R-Tree index. Either way, only the features near a fire are ever read.
 
 The results are written to ``{year}/derived/fire_scores.json``, along with a
 ``{year}/derived/fire_scores_ccdf.png`` complementary CDF of the scores.
@@ -37,6 +38,7 @@ import peri_scribe.fires.scoring
 import peri_scribe.geo.parsing
 import peri_scribe.geo.reading
 import peri_scribe.output
+import peri_scribe.sources.buildings
 import peri_scribe.sources.external_sources
 
 
@@ -60,28 +62,6 @@ def read_layer_if_present(
     if not path.is_file():
         return geopandas.GeoDataFrame()
     return peri_scribe.geo.reading.read_layer(path, layer_name)
-
-
-def download_source_layer(
-    year_directory: pathlib.Path,
-    source: peri_scribe.sources.external_sources.ExternalSource,
-) -> tuple[pathlib.Path, str] | None:
-    """Return the path and layer name of a downloaded external source, or None.
-
-    Args:
-        year_directory: The year directory that holds the ``sources`` directory.
-        source: The download-kind external source.
-
-    Returns:
-        The source's GeoPackage path and layer name, or None when the source has no
-        layer.
-    """
-    if source.layer_name is None:
-        return None
-    return (
-        peri_scribe.sources.external_sources.output_path(year_directory, source),
-        source.layer_name,
-    )
 
 
 def latest_snapshot_layer(
@@ -145,9 +125,11 @@ def external_signals(
 ) -> ExternalSignals:
     """Compute each fire's external spatial signals.
 
-    Each dataset is read only when its GeoPackage is present, so a missing dataset
-    contributes nothing and a present one is queried through its R-Tree index rather
-    than read whole. The returned counts and indices are aligned with the fires.
+    Each dataset is read only when its database is present, so a missing dataset
+    contributes nothing. Building counts are queried through the compact buildings
+    database's tiles, and the evacuation layer through its R-Tree index, so only the
+    features near a fire are ever read. The returned counts and indices are aligned with
+    the fires.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
@@ -158,15 +140,14 @@ def external_signals(
     Returns:
         The external signals for the fires.
     """
-    buildings = download_source_layer(
+    buildings_path = peri_scribe.sources.external_sources.output_path(
         year_directory,
         peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
     )
-    if buildings is not None and buildings[0].is_file():
-        building_counts = peri_scribe.fires.overlaps.building_counts_within(
+    if buildings_path.is_file():
+        building_counts = peri_scribe.sources.buildings.building_counts_within(
             buffered,
-            buildings[0],
-            buildings[1],
+            buildings_path,
         )
     else:
         building_counts = [0] * fire_count

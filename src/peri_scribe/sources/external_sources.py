@@ -19,18 +19,24 @@ Two retrieval kinds are supported:
   GeoPackage already exists is left alone.
 
 A download source covers the whole country as one archive per state (the building
-footprints). A combined source (the building footprints) concatenates the per-state
-results into a single GeoPackage and keeps no other files; the building-footprint source
-reduces each footprint polygon to a centroid point and keeps no attributes, since only
-the buildings' locations are wanted. The buildings source is streamed: its zip archives
-are decompressed as their bytes arrive and the conversion feeds on the stream, so the
-archive and its GeoJSON are never written to disk. Any other download is converted in
-bounded chunks — a GeoJSON archive is parsed one feature at a time with ``ijson`` and
-any other vector data is read in chunks — so a source of any size is converted without
-loading the whole file into memory. The original archives are not kept once converted.
-The building footprints' per-state archive links are not constructed from a URL pattern;
-they are read from the "Download links" table on the dataset's repository page whenever
-the archives are downloaded, so a change in the link scheme is picked up automatically.
+footprints). A combined source concatenates the per-state results into a single
+GeoPackage and keeps no other files; a source may reduce each footprint polygon to a
+centroid point and keep no attributes, since only the buildings' locations are wanted.
+Any download is converted in bounded chunks — a GeoJSON archive is parsed one feature at
+a time with ``ijson`` and any other vector data is read in chunks — so a source of any
+size is converted without loading the whole file into memory. The original archives are
+not kept once converted. The building footprints' per-state archive links are not
+constructed from a URL pattern; they are read from the "Download links" table on the
+dataset's repository page whenever the archives are downloaded, so a change in the link
+scheme is picked up automatically.
+
+The buildings source stores its data as the compact buildings SQLite database instead
+of a GeoPackage: a dedicated converter (``peri_scribe.sources.buildings``) streams every
+state's archive directly into the database, so the archives and their GeoJSON are never
+written to disk, and the stored file holds only quantized centroid records in compressed
+0.5° tiles with no attributes. The database is regenerated only when it is
+missing or no longer matches the expected format, and the legacy ``buildings.gpkg`` is
+left untouched.
 
 The fire-source reader skips these files, so their GeoPackages are never mistaken
 for fire snapshots.
@@ -56,6 +62,7 @@ import peri_scribe.geo.data
 import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.sources.archives
+import peri_scribe.sources.buildings
 import peri_scribe.sources.digests
 import peri_scribe.sources.downloading
 import peri_scribe.sources.snapshots
@@ -92,7 +99,12 @@ class ExternalSource:
     feature's centroid point instead of its original geometry, and ``geodata_suffix``
     names the file (or file geodatabase directory, for a ``.gdb`` archive) inside the
     extracted archive that holds the vector data. When ``keep_attributes`` is false the
-    converted GeoPackage holds only the geometry, dropping every attribute column.
+    converted GeoPackage holds only the geometry, dropping every attribute column. When
+    ``compact_database`` is true the source's output is the compact buildings SQLite
+    database (``sources/{name}.sqlite``), produced and read by the dedicated buildings
+    converter rather than the generic GeoPackage conversion paths; the database holds no
+    named layers, so ``layer_name`` is not required, and the other conversion options do
+    not apply.
     """
 
     name: str
@@ -101,6 +113,10 @@ class ExternalSource:
     layer_name: str | None = None
     where: str | None = None
     states: tuple[str, ...] = ()
+    # When true, the source's output is the compact buildings SQLite database, built and
+    # read by the dedicated buildings converter rather than the generic GeoPackage
+    # conversion paths.
+    compact_database: bool = False
     # When true, the per-state results are concatenated into a single GeoPackage named
     # for the source and the per-state files are removed.
     combine: bool = False
@@ -153,13 +169,9 @@ BUILDINGS_SOURCE = ExternalSource(
     name="buildings",
     kind=ExternalSourceKind.DOWNLOAD,
     url="https://github.com/microsoft/USBuildingFootprints",
-    layer_name="buildings",
     states=BUILDINGS_STATES,
-    combine=True,
-    stream=True,
-    centroids=True,
-    keep_attributes=False,
     state_urls=buildings_state_urls,
+    compact_database=True,
 )
 
 EVACUATIONS_SOURCE = ExternalSource(
@@ -203,12 +215,13 @@ def output_path(
     *,
     state: str | None = None,
 ) -> pathlib.Path:
-    """Return the path where *source*'s GeoPackage is stored.
+    """Return the path where *source*'s database is stored.
 
     A source that produces a single file stores it directly under the sources directory,
     named for the source (or, for a live ArcGIS source, at that same fixed path holding
-    its latest version). A per-state download source produces one GeoPackage per state,
-    so its files stay under the source's own directory.
+    its latest version). A per-state download source produces one file per state, so its
+    files stay under the source's own directory. A compact source uses the ``.sqlite``
+    suffix; every other source stores a GeoPackage.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
@@ -216,19 +229,20 @@ def output_path(
         state: The state, for a per-state source.
 
     Returns:
-        The path to the source's GeoPackage.
+        The path to the source's database.
 
     Raises:
         ValueError: If *source* is a combined source and *state* is given.
     """
     if source.combine and state is not None:
-        message = f"Source {source.name} combines its states into one GeoPackage"
+        message = f"Source {source.name} combines its states into one database"
         raise ValueError(message)
+    suffix = ".sqlite" if source.compact_database else ".gpkg"
     if state is not None:
-        return source_directory_path(year_directory, source) / f"{state}.gpkg"
+        return source_directory_path(year_directory, source) / f"{state}{suffix}"
     return (
         peri_scribe.sources.snapshots.sources_directory_path(year_directory)
-        / f"{source.name}.gpkg"
+        / f"{source.name}{suffix}"
     )
 
 
@@ -238,10 +252,11 @@ def fetch_external_source(
 ) -> tuple[pathlib.Path, ...]:
     """Retrieve *source* into *year_directory*'s sources directory.
 
-    A live ArcGIS source is queried and stored as a single GeoPackage holding the
-    layer's latest version, writing nothing when its features are unchanged since the
-    stored version; a fetch that cannot retrieve the layer logs a warning and keeps the
-    stored version so the caller can proceed. A download source's archive is downloaded,
+    A compact source's database is built by the dedicated buildings converter. A live
+    ArcGIS source is queried and stored as a single GeoPackage holding the layer's
+    latest version, writing nothing when its features are unchanged since the stored
+    version; a fetch that cannot retrieve the layer logs a warning and keeps the stored
+    version so the caller can proceed. A download source's archive is downloaded,
     extracted, and converted to a GeoPackage, with the per-state results combined into
     one file when the source combines them.
 
@@ -250,11 +265,16 @@ def fetch_external_source(
         year_directory: The year directory that holds the ``sources`` directory.
 
     Returns:
-        The paths of the retrieved GeoPackages.
+        The paths of the retrieved databases.
 
     Raises:
         ExternalDataError: If the source cannot be retrieved.
     """
+    if source.compact_database:
+        return peri_scribe.sources.buildings.fetch_buildings_database(
+            source,
+            year_directory,
+        )
     if source.kind is ExternalSourceKind.ARCGIS:
         return (fetch_arcgis_source(source, year_directory),)
     if source.kind is ExternalSourceKind.DOWNLOAD:

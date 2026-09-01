@@ -5,8 +5,10 @@ from __future__ import annotations
 import datetime
 import json
 import pathlib
+import tempfile
 
 import geopandas
+import numpy as np
 import pytest
 
 import peri_scribe.fires.files
@@ -14,6 +16,7 @@ import peri_scribe.fires.scores
 import peri_scribe.geo.reading
 import peri_scribe.models
 import peri_scribe.output
+import peri_scribe.sources.buildings
 import peri_scribe.sources.external_sources
 import tests.peri_scribe.fires.fire_helpers
 
@@ -47,35 +50,6 @@ def test_read_layer_if_present_reads_existing_file(
         "perimeter_history",
     )
     assert result is frame
-
-
-def test_download_source_layer_returns_none_without_layer_name() -> None:
-    source = peri_scribe.sources.external_sources.ExternalSource(
-        name="none",
-        kind=peri_scribe.sources.external_sources.ExternalSourceKind.DOWNLOAD,
-        url="https://example.test/file.zip",
-    )
-    assert (
-        peri_scribe.fires.scores.download_source_layer(
-            pathlib.Path("data/2026"),
-            source,
-        )
-        is None
-    )
-
-
-def test_download_source_layer_names_source_geopackage(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        peri_scribe.sources.external_sources,
-        "output_path",
-        lambda _year_directory, _source: pathlib.Path("/sources/buildings.gpkg"),
-    )
-    assert peri_scribe.fires.scores.download_source_layer(
-        pathlib.Path("data/2026"),
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
-    ) == (pathlib.Path("/sources/buildings.gpkg"), "buildings")
 
 
 def test_latest_snapshot_layer_returns_none_without_layer_name() -> None:
@@ -229,9 +203,9 @@ def test_score_fires_writes_current_scores(
         read_layer_if_present,
     )
     monkeypatch.setattr(
-        peri_scribe.fires.scores,
-        "download_source_layer",
-        lambda _year_directory, _source: None,
+        peri_scribe.sources.external_sources,
+        "output_path",
+        lambda _year_directory, _source: pathlib.Path("/missing/buildings.sqlite"),
     )
     monkeypatch.setattr(
         peri_scribe.fires.scores,
@@ -311,14 +285,21 @@ def test_score_fires_streams_external_signals(
             return points
         return tests.peri_scribe.fires.fire_helpers.empty_frame()
 
-    buildings = geopandas.GeoDataFrame(
-        {"name": ["a"] * 5},
-        geometry=[tests.peri_scribe.fires.fire_helpers.point(0, 0)] * 5,
-        crs="EPSG:4326",
-    )
-    buildings_path = tmp_path / "sources" / "buildings" / "buildings.gpkg"
+    buildings_path = tmp_path / "sources" / "buildings" / "buildings.sqlite"
     buildings_path.parent.mkdir(parents=True)
-    buildings.to_file(buildings_path, layer="buildings")
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        partition_directory = pathlib.Path(temporary_directory)
+        with peri_scribe.sources.buildings.PartitionFiles(
+            partition_directory,
+        ) as partition_files:
+            peri_scribe.sources.buildings.append_centroids_to_partitions(
+                np.asarray([[0.0, 0.0]] * 5),
+                partition_files,
+            )
+        peri_scribe.sources.buildings.build_tiles_database(
+            partition_directory,
+            buildings_path,
+        )
     for name in ("evacuations",):
         snapshot = tmp_path / "sources" / name / f"{name}.gpkg"
         snapshot.parent.mkdir(parents=True)
@@ -333,7 +314,8 @@ def test_score_fires_streams_external_signals(
         source: peri_scribe.sources.external_sources.ExternalSource,
         **_keywords: object,
     ) -> pathlib.Path:
-        return tmp_path / "sources" / source.name / f"{source.name}.gpkg"
+        suffix = ".sqlite" if source.compact_database else ".gpkg"
+        return tmp_path / "sources" / source.name / f"{source.name}{suffix}"
 
     monkeypatch.setattr(
         peri_scribe.sources.external_sources,
@@ -413,9 +395,9 @@ def test_score_fires_sorts_entries_by_score_descending(
         read_layer_if_present,
     )
     monkeypatch.setattr(
-        peri_scribe.fires.scores,
-        "download_source_layer",
-        lambda _year_directory, _source: None,
+        peri_scribe.sources.external_sources,
+        "output_path",
+        lambda _year_directory, _source: pathlib.Path("/missing/buildings.sqlite"),
     )
     monkeypatch.setattr(
         peri_scribe.fires.scores,
@@ -472,9 +454,9 @@ def test_score_fires_scores_point_only_fire(
         read_layer_if_present,
     )
     monkeypatch.setattr(
-        peri_scribe.fires.scores,
-        "download_source_layer",
-        lambda _year_directory, _source: None,
+        peri_scribe.sources.external_sources,
+        "output_path",
+        lambda _year_directory, _source: pathlib.Path("/missing/buildings.sqlite"),
     )
     monkeypatch.setattr(
         peri_scribe.fires.scores,

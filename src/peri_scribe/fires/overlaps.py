@@ -1,4 +1,10 @@
-"""Overlap detection between fires, buildings, and evacuation zones."""
+"""Overlap detection between fires and evacuation zones.
+
+Evacuation-zone overlap uses the layer's GeoPackage R-Tree index: only the zones whose
+envelopes overlap a fire footprint are fetched from the file, then those zones are
+tested for intersection through a spatial index over the fire geometries. Building
+counts use the compact buildings database's dedicated reader instead of this module.
+"""
 
 from __future__ import annotations
 
@@ -148,87 +154,6 @@ def fetch_layer_geometries(
         dtype=object,
     )
     return np.asarray(shapely.from_wkb(geometry_wkb))
-
-
-def count_points_within(
-    points: np.ndarray,
-    valid: list[tuple[int, shapely.Geometry]],
-    counts: list[int],
-) -> list[int]:
-    """Accumulate, into *counts*, how many *points* fall inside each valid geometry.
-
-    Args:
-        points: The candidate points.
-        valid: The ``(index, geometry)`` pairs to test against.
-        counts: The per-fire counts, mutated in place.
-
-    Returns:
-        The updated *counts* list.
-    """
-    tree_geometries = np.asarray([geometry for _index, geometry in valid])
-    tree = shapely.STRtree(tree_geometries)
-    input_indices, tree_indices = tree.query(points)
-    if len(input_indices) == 0:
-        return counts
-    within = shapely.within(points[input_indices], tree_geometries[tree_indices])
-    for position, count in enumerate(
-        np.bincount(tree_indices[within], minlength=len(valid)),
-    ):
-        if count:
-            counts[valid[position][0]] += int(count)
-    return counts
-
-
-def building_counts_within(
-    buffered_geometries: list[shapely.Geometry | None],
-    path: pathlib.Path,
-    layer_name: str,
-    chunk_size: int = SCORING_CHUNK_SIZE,
-) -> list[int]:
-    """Return how many building points lie within each buffered geometry.
-
-    The buildings GeoPackage's R-Tree index is used to fetch only the building points
-    whose envelopes overlap a buffered fire footprint, so the layer is never read whole;
-    the fetched points are then tested for containment through a spatial index over the
-    buffered geometries. The buildings layer is in WGS84, matching the buffered
-    geometries.
-
-    Args:
-        buffered_geometries: One buffered geometry per fire, in WGS84, or None.
-        path: The buildings GeoPackage.
-        layer_name: The buildings layer.
-        chunk_size: The maximum number of features read at once when the layer has no
-            R-Tree index and the streaming fallback is used.
-
-    Returns:
-        One building count per fire, aligned with *buffered_geometries*.
-    """
-    valid = [
-        (index, geometry)
-        for index, geometry in enumerate(buffered_geometries)
-        if geometry is not None and not geometry.is_empty
-    ]
-    counts = [0] * len(buffered_geometries)
-    if not valid:
-        return counts
-    if has_rtree(path, layer_name):
-        boxes = [(index, *geometry.bounds) for index, geometry in valid]
-        fire_fids = candidate_fids(path, layer_name, boxes)
-        if fire_fids:
-            fids = sorted({fid for fids in fire_fids.values() for fid in fids})
-            count_points_within(
-                fetch_layer_geometries(path, layer_name, fids),
-                valid,
-                counts,
-            )
-        return counts
-    for chunk in peri_scribe.geo.reading.read_layer_chunks(
-        path,
-        layer_name,
-        chunk_size,
-    ):
-        count_points_within(np.asarray(chunk.geometry), valid, counts)
-    return counts
 
 
 def overlapping_fire_indices(

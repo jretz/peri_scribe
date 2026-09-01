@@ -185,6 +185,9 @@ def test_stream_combined_source_requires_centroids_without_attributes(
         peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
         states=("California",),
         keep_attributes=True,
+        combine=True,
+        stream=True,
+        compact_database=False,
     )
     with pytest.raises(ValueError, match="must reduce to centroid points"):
         peri_scribe.sources.external_sources.fetch_external_source(source, tmp_path)
@@ -197,6 +200,11 @@ def test_stream_download_and_convert_raises_when_download_fails(
     source = dataclasses.replace(
         peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
         states=("California",),
+        combine=True,
+        stream=True,
+        centroids=True,
+        keep_attributes=False,
+        compact_database=False,
     )
     links = {
         state: (

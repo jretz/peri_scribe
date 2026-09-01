@@ -121,11 +121,10 @@ def fetch_external_source(
         "Fetch building centroids into YEAR_DIRECTORY.\n\n"
         "Reads the per-state download links from the Microsoft USBuildingFootprints "
         "repository page, downloads every US state's building-footprint archive, "
-        "converts each footprint to its centroid point, and combines all of the "
-        "points into a single GeoPackage at "
-        "YEAR_DIRECTORY/sources/buildings.gpkg. An existing combined "
-        "GeoPackage is left in place, and then neither the repository page nor any "
-        "archive is downloaded. "
+        "streams each footprint's centroid into the compact buildings database at "
+        "YEAR_DIRECTORY/sources/buildings.sqlite, and removes the temporary "
+        "partition files. An existing valid database is left in place, and then "
+        "neither the repository page nor any archive is downloaded. "
         f"{year_directory_default_help()}"
     ),
 )

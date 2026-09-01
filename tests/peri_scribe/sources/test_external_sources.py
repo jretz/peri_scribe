@@ -68,6 +68,7 @@ def test_output_path_places_single_file_under_sources() -> None:
         peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
         states=(),
         combine=False,
+        compact_database=False,
     )
     path = peri_scribe.sources.external_sources.output_path(
         YEAR_DIRECTORY,
@@ -76,19 +77,25 @@ def test_output_path_places_single_file_under_sources() -> None:
     assert path == YEAR_DIRECTORY / "sources" / "buildings.gpkg"
 
 
-def test_output_path_names_combined_geopackage() -> None:
+def test_output_path_names_compact_buildings_database() -> None:
     path = peri_scribe.sources.external_sources.output_path(
         YEAR_DIRECTORY,
         peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
     )
-    assert path == YEAR_DIRECTORY / "sources" / "buildings.gpkg"
+    assert path == YEAR_DIRECTORY / "sources" / "buildings.sqlite"
 
 
 def test_output_path_raises_for_combined_source_with_state() -> None:
+    source = dataclasses.replace(
+        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        states=("California", "Texas"),
+        combine=True,
+        compact_database=False,
+    )
     with pytest.raises(ValueError, match="combines its states"):
         peri_scribe.sources.external_sources.output_path(
             YEAR_DIRECTORY,
-            peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+            source,
             state="California",
         )
 
@@ -106,6 +113,7 @@ def test_output_path_names_per_state_geopackage() -> None:
         peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
         states=("California",),
         combine=False,
+        compact_database=False,
     )
     path = peri_scribe.sources.external_sources.output_path(
         YEAR_DIRECTORY,
@@ -125,13 +133,17 @@ def test_buildings_source_covers_every_us_state() -> None:
 def test_every_external_source_has_a_retrieval_url() -> None:
     for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES:
         assert source.url
-        assert source.layer_name
+        if not source.compact_database:
+            assert source.layer_name
 
 
 def test_fetch_external_source_raises_for_unknown_kind() -> None:
     source = typing.cast(
         "peri_scribe.sources.external_sources.ExternalSource",
-        types.SimpleNamespace(kind=object()),
+        types.SimpleNamespace(
+            compact_database=False,
+            kind=object(),
+        ),
     )
     with pytest.raises(
         peri_scribe.exceptions.ExternalDataError,
@@ -734,6 +746,11 @@ def test_fetch_buildings_combines_state_centroids_into_single_geopackage(
     source = dataclasses.replace(
         peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
         states=("California", "Texas"),
+        combine=True,
+        stream=True,
+        centroids=True,
+        keep_attributes=False,
+        compact_database=False,
     )
     links = {
         state: (
@@ -778,6 +795,16 @@ def test_fetch_buildings_combines_state_centroids_into_single_geopackage(
         links["California"],
         links["Texas"],
     ]
+    second = peri_scribe.sources.external_sources.fetch_external_source(
+        source,
+        tmp_path,
+    )
+    assert second == result
+    assert urls == [
+        peri_scribe.sources.external_sources.BUILDINGS_SOURCE.url,
+        links["California"],
+        links["Texas"],
+    ]
     sources = peri_scribe.sources.snapshots.sources_directory_path(tmp_path)
     assert sorted(path.name for path in sources.iterdir()) == ["buildings.gpkg"]
 
@@ -802,6 +829,11 @@ def test_fetch_buildings_skips_page_when_combined_output_present(
     source = dataclasses.replace(
         peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
         states=("California",),
+        combine=True,
+        stream=True,
+        centroids=True,
+        keep_attributes=False,
+        compact_database=False,
     )
     links = {
         state: (
@@ -858,6 +890,10 @@ def test_fetch_buildings_combines_projected_centroids_into_wgs84(
         url="https://example.com/legacy/{state}.geojson.zip",
         geodata_suffix=".shp",
         stream=False,
+        combine=True,
+        centroids=True,
+        keep_attributes=False,
+        compact_database=False,
     )
     dataframe = geopandas.GeoDataFrame(
         {"OBJECTID": [1]},
@@ -883,6 +919,11 @@ def test_fetch_buildings_combines_projected_centroids_into_wgs84(
     )
     output = peri_scribe.sources.external_sources.output_path(tmp_path, source)
     assert result == (output,)
+    second = peri_scribe.sources.external_sources.fetch_external_source(
+        source,
+        tmp_path,
+    )
+    assert second == result
     converted = geopandas.read_file(output, layer="buildings")
     assert list(converted.columns) == ["geometry"]
     assert converted.geometry.geom_type.iloc[0] == "Point"

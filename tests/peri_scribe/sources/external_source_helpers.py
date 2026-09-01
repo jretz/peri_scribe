@@ -171,6 +171,7 @@ def per_state_template_source() -> peri_scribe.sources.external_sources.External
         state_urls=None,
         url="https://example.com/legacy/{state}.geojson.zip",
         stream=False,
+        compact_database=False,
     )
 
 
@@ -189,4 +190,5 @@ def single_archive_source() -> peri_scribe.sources.external_sources.ExternalSour
         combine=False,
         state_urls=None,
         url="https://example.com/buildings.geojson.zip",
+        compact_database=False,
     )

@@ -1,4 +1,4 @@
-"""Tests for peri_scribe.fires.scores."""
+"""Tests for peri_scribe.fires.overlaps."""
 
 from __future__ import annotations
 
@@ -8,54 +8,12 @@ import typing
 import geopandas
 import shapely.geometry
 
-import peri_scribe.fires.buffering
 import peri_scribe.fires.overlaps
 import tests.peri_scribe.fires.fire_helpers
 
 
 if typing.TYPE_CHECKING:
     import pytest
-
-
-def test_building_counts_within_counts_points_across_chunks(
-    tmp_path: pathlib.Path,
-) -> None:
-    buffered = peri_scribe.fires.buffering.buffered_fire_geometries(
-        [
-            tests.peri_scribe.fires.fire_helpers.square(1.0),
-            tests.peri_scribe.fires.fire_helpers.square(0.1),
-        ],
-    )
-    buildings = geopandas.GeoDataFrame(
-        {"name": ["a"] * 6},
-        geometry=[tests.peri_scribe.fires.fire_helpers.point(0, 0)] * 3
-        + [
-            tests.peri_scribe.fires.fire_helpers.point(50, 50),
-            tests.peri_scribe.fires.fire_helpers.point(60, 60),
-            tests.peri_scribe.fires.fire_helpers.point(70, 70),
-        ],
-        crs="EPSG:4326",
-    )
-    path = tmp_path / "buildings.gpkg"
-    buildings.to_file(path, layer="buildings")
-
-    counts = peri_scribe.fires.overlaps.building_counts_within(
-        buffered,
-        path,
-        "buildings",
-        chunk_size=2,
-    )
-
-    assert counts == [3, 3]
-
-
-def test_building_counts_within_returns_zero_without_geometry() -> None:
-    counts = peri_scribe.fires.overlaps.building_counts_within(
-        [None, shapely.geometry.Polygon()],
-        pathlib.Path("/unused.gpkg"),
-        "buildings",
-    )
-    assert counts == [0, 0]
 
 
 def test_overlapping_fire_indices_detects_overlap(
@@ -138,43 +96,6 @@ def test_overlapping_fire_indices_reads_z_geometries(
     )
 
     assert indices == {0}
-
-
-def test_building_counts_within_streams_without_rtree(
-    tmp_path: pathlib.Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    buffered = peri_scribe.fires.buffering.buffered_fire_geometries(
-        [
-            tests.peri_scribe.fires.fire_helpers.square(1.0),
-            tests.peri_scribe.fires.fire_helpers.square(0.1),
-        ],
-    )
-    buildings = geopandas.GeoDataFrame(
-        {"name": ["a"] * 5},
-        geometry=[tests.peri_scribe.fires.fire_helpers.point(0, 0)] * 3
-        + [
-            tests.peri_scribe.fires.fire_helpers.point(50, 50),
-            tests.peri_scribe.fires.fire_helpers.point(60, 60),
-        ],
-        crs="EPSG:4326",
-    )
-    path = tmp_path / "buildings.gpkg"
-    buildings.to_file(path, layer="buildings")
-    monkeypatch.setattr(
-        peri_scribe.fires.overlaps,
-        "has_rtree",
-        lambda _path, _layer: False,
-    )
-
-    counts = peri_scribe.fires.overlaps.building_counts_within(
-        buffered,
-        path,
-        "buildings",
-        chunk_size=2,
-    )
-
-    assert counts == [3, 3]
 
 
 def test_overlapping_fire_indices_returns_empty_when_no_feature_overlaps(
