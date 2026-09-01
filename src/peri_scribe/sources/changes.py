@@ -26,6 +26,13 @@ def parse_iso_datetime(text: str) -> datetime.datetime | None:
 
     Returns:
         The parsed datetime, or None when *text* is blank or invalid.
+
+    Examples:
+        >>> parse_iso_datetime("2025-08-05T20:30:00")
+        datetime.datetime(2025, 8, 5, 20, 30)
+
+        >>> parse_iso_datetime("not a date") is None
+        True
     """
     try:
         return datetime.datetime.fromisoformat(text.strip())
@@ -45,6 +52,13 @@ def modified_datetime_from(value: object) -> datetime.datetime | None:
 
     Returns:
         The parsed UTC datetime, or None when *value* is blank or not parseable.
+
+    Examples:
+        >>> modified_datetime_from(0).isoformat()
+        '1970-01-01T00:00:00+00:00'
+
+        >>> modified_datetime_from("") is None
+        True
     """
     if peri_scribe.geo.parsing.is_missing(value):
         return None

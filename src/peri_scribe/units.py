@@ -25,6 +25,10 @@ def area_in_square_meters(geometry: shapely.Geometry) -> float:
 
     Returns:
         The absolute area in square meters.
+
+    Examples:
+        >>> area_in_square_meters(shapely.Point(0, 0))
+        0.0
     """
     area_in_square_meters, _perimeter = pyproj.Geod(
         ellps="WGS84",
@@ -42,6 +46,10 @@ def area_in_acres(geometry: shapely.Geometry) -> float:
 
     Returns:
         The absolute area in acres.
+
+    Examples:
+        >>> area_in_acres(shapely.Point(0, 0))
+        0.0
     """
     return area_in_square_meters(geometry) / SQUARE_METERS_PER_ACRE
 
@@ -60,6 +68,10 @@ def exterior_perimeter_in_miles(geometry: shapely.Geometry | None) -> float | No
     Returns:
         The exterior perimeter length in miles, or None when there is no polygon
         exterior to measure.
+
+    Examples:
+        >>> exterior_perimeter_in_miles(None) is None
+        True
     """
     if geometry is None or geometry.is_empty:
         return None

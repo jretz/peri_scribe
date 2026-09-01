@@ -22,6 +22,10 @@ def fire_scores_path(year_directory: pathlib.Path) -> pathlib.Path:
 
     Returns:
         The fire-scores output path.
+
+    Examples:
+        >>> fire_scores_path(pathlib.Path("data/2025"))
+        PosixPath('data/2025/derived/fire_scores.json')
     """
     return (
         year_directory
@@ -57,6 +61,10 @@ def fire_scores_ccdf_path(year_directory: pathlib.Path) -> pathlib.Path:
 
     Returns:
         The fire-scores CCDF output path.
+
+    Examples:
+        >>> fire_scores_ccdf_path(pathlib.Path("data/2025"))
+        PosixPath('data/2025/derived/fire_scores_ccdf.png')
     """
     return (
         year_directory

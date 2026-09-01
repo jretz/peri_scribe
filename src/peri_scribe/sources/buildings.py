@@ -129,6 +129,10 @@ def encode_longitude(longitude: float) -> int:
 
     Returns:
         The encoded longitude.
+
+    Examples:
+        >>> encode_longitude(-122.5)
+        -12250000
     """
     return round(longitude * COORDINATE_SCALE)
 
@@ -141,6 +145,10 @@ def encode_latitude(latitude: float) -> int:
 
     Returns:
         The encoded latitude.
+
+    Examples:
+        >>> encode_latitude(37.75)
+        3775000
     """
     return round(latitude * COORDINATE_SCALE)
 
@@ -166,6 +174,10 @@ def encode_record(longitude: float, latitude: float) -> bytes:
 
     Returns:
         The record's eight bytes.
+
+    Examples:
+        >>> encode_record(-122.5, 37.75)
+        b'p\\x14E\\xff\\x18\\x9a9\\x00'
     """
     return struct.pack(
         "<ii",
@@ -183,6 +195,10 @@ def tile_id(encoded_longitude: int, encoded_latitude: int) -> int:
 
     Returns:
         The tile id.
+
+    Examples:
+        >>> tile_id(0, 0)
+        129960
     """
     column = (encoded_longitude + LONGITUDE_OFFSET) // TILE_STEPS
     row = (encoded_latitude + LATITUDE_OFFSET) // TILE_STEPS
@@ -214,6 +230,10 @@ def partition_id(tile_id: int) -> int:
 
     Returns:
         The partition number, from 0 to ``PARTITION_COUNT - 1``.
+
+    Examples:
+        >>> partition_id(37)
+        5
     """
     return tile_id % PARTITION_COUNT
 
@@ -238,6 +258,10 @@ def partition_filename(partition: int) -> str:
 
     Returns:
         The file name.
+
+    Examples:
+        >>> partition_filename(3)
+        'partition-03.bin'
     """
     return f"partition-{partition:02d}.bin"
 
@@ -627,6 +651,10 @@ def normalized_sql(statement: str) -> str:
 
     Returns:
         The statement with runs of whitespace collapsed to single spaces.
+
+    Examples:
+        >>> normalized_sql("CREATE  TABLE   tiles (id INTEGER)")
+        'CREATE TABLE tiles (id INTEGER)'
     """
     return " ".join(statement.split())
 

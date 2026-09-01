@@ -271,6 +271,13 @@ def sql_literal(value: object) -> str:
 
     Raises:
         ValueError: If *value* is not text, a number, or a boolean.
+
+    Examples:
+        >>> sql_literal("active")
+        "'active'"
+
+        >>> sql_literal(True)
+        'true'
     """
     if isinstance(value, str):
         return f"'{value}'"

@@ -25,6 +25,10 @@ def attribute_value(
 
     Returns:
         The first non-missing value, or None.
+
+    Examples:
+        >>> attribute_value({"old": None, "new": "value"}, "old", "new")
+        'value'
     """
     for column_name in column_names:
         if column_name in attributes:
@@ -46,6 +50,10 @@ def text_attribute(
 
     Returns:
         The first non-blank text value, or None.
+
+    Examples:
+        >>> text_attribute({"name": "  Rumsey Fire  "}, "name")
+        'Rumsey Fire'
     """
     value = attribute_value(attributes, *column_names)
     if value is None:
@@ -66,6 +74,10 @@ def float_attribute(
 
     Returns:
         The first numeric value as a float, or None.
+
+    Examples:
+        >>> float_attribute({"acres": "12.5"}, "acres")
+        12.5
     """
     return peri_scribe.geo.parsing.numeric_value(
         attribute_value(attributes, *column_names),
@@ -84,6 +96,10 @@ def datetime_attribute(
 
     Returns:
         The first datetime value, or None.
+
+    Examples:
+        >>> datetime_attribute({"edited": 0}, "edited").isoformat()
+        '1970-01-01T00:00:00+00:00'
     """
     return peri_scribe.sources.changes.modified_datetime_from(
         attribute_value(attributes, *column_names),

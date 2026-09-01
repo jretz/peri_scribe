@@ -276,7 +276,7 @@ def extent_signal(
     )
 
 
-def unit_state_code_is_out_of_state(token: str) -> bool:
+def unit_state_code_is_out_of_california(token: str) -> bool:
     """Return whether *token* embeds a non-California US state code.
 
     Args:
@@ -284,6 +284,13 @@ def unit_state_code_is_out_of_state(token: str) -> bool:
 
     Returns:
         True when the token starts with a recognized state code other than California's.
+
+    Examples:
+        >>> unit_state_code_is_out_of_california("NV-CCD")
+        True
+
+        >>> unit_state_code_is_out_of_california("CA-LNU")
+        False
     """
     folded = token.casefold()
     if len(folded) < STATE_CODE_LENGTH:
@@ -307,6 +314,13 @@ def state_tokens_from_mission(mission: str) -> list[str]:
 
     Returns:
         The mission's state-code candidate tokens.
+
+    Examples:
+        >>> state_tokens_from_mission("2025-NV-123456")
+        ['NV']
+
+        >>> state_tokens_from_mission("NV-CCD-BUG")
+        ['NV']
     """
     if peri_scribe.models.is_unique_fire_identifier(mission):
         return [mission.split("-")[1]]
@@ -314,11 +328,11 @@ def state_tokens_from_mission(mission: str) -> list[str]:
     return [first] if len(first) == STATE_CODE_LENGTH else []
 
 
-def out_of_state_unit_from(
+def out_of_california_unit_from(
     identifiers: frozenset[str],
     mission: str | None,
 ) -> bool:
-    """Return whether a fire identifier or mission names an out-of-state unit.
+    """Return whether a fire identifier or mission names an out-of-California unit.
 
     Args:
         identifiers: The fire's identifiers.
@@ -334,7 +348,7 @@ def out_of_state_unit_from(
     ]
     if mission is not None:
         tokens.extend(state_tokens_from_mission(mission))
-    return any(unit_state_code_is_out_of_state(token) for token in tokens)
+    return any(unit_state_code_is_out_of_california(token) for token in tokens)
 
 
 def identifier_signal(
@@ -350,7 +364,7 @@ def identifier_signal(
         home.
     """
     for observation in observations:
-        if out_of_state_unit_from(
+        if out_of_california_unit_from(
             observation.identifiers,
             observation.mission,
         ):

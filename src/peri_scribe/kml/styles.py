@@ -77,6 +77,10 @@ def kml_color(red_green_blue: str, opacity_in_percent: int) -> str:
 
     Returns:
         The KML color string.
+
+    Examples:
+        >>> kml_color("#FF0080", 50)
+        '7f8000ff'
     """
     red = red_green_blue[1:3]
     green = red_green_blue[3:5]

@@ -55,6 +55,10 @@ def year_from(year_directory: pathlib.Path) -> int:
 
     Returns:
         The year as an integer.
+
+    Examples:
+        >>> year_from(pathlib.Path("data/2025"))
+        2025
     """
     return int(year_directory.name)
 
@@ -67,6 +71,10 @@ def kmz_filename(year: int) -> str:
 
     Returns:
         The filename.
+
+    Examples:
+        >>> kmz_filename(2025)
+        'PeriScribe Fires 2025.kmz'
     """
     return f"PeriScribe Fires {year}.kmz"
 
@@ -79,6 +87,10 @@ def kmz_path(year_directory: pathlib.Path) -> pathlib.Path:
 
     Returns:
         The output KMZ path.
+
+    Examples:
+        >>> kmz_path(pathlib.Path("data/2025"))
+        PosixPath('data/2025/maps/PeriScribe Fires 2025.kmz')
     """
     return (
         year_directory / MAPS_DIRECTORY_NAME / kmz_filename(year_from(year_directory))

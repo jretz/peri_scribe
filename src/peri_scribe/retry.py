@@ -66,6 +66,15 @@ def rate_limit_in_seconds_from_payload(payload: dict[str, object]) -> int | None
     Returns:
         The server-suggested retry-after seconds, the fallback delay when the payload
         has no retry-after hint, or None when the payload is not a rate-limit error.
+
+    Examples:
+        >>> rate_limit_in_seconds_from_payload(
+        ...     {"error": {"code": 429, "details": ["Retry after 8 sec"]}},
+        ... )
+        8
+
+        >>> rate_limit_in_seconds_from_payload({}) is None
+        True
     """
     error_info = payload.get("error")
     if (
@@ -158,6 +167,10 @@ def retry_reason(error: BaseException) -> str:
 
     Returns:
         The reason a retry is being made for *error*.
+
+    Examples:
+        >>> retry_reason(ValueError({"error": {"code": 429}}))
+        'Rate-limited; retrying after server-suggested delay'
     """
     if rate_limit_retry_in_seconds(error) is not None:
         return "Rate-limited; retrying after server-suggested delay"

@@ -39,6 +39,10 @@ def coordinate_pair(longitude: float, latitude: float) -> str:
     Returns:
         ``longitude,latitude`` with each value rounded to
         :data:`COORDINATE_DECIMALS` decimal places.
+
+    Examples:
+        >>> coordinate_pair(-121.123456, 38.987654)
+        '-121.12346,38.98765'
     """
     return f"{longitude:.{COORDINATE_DECIMALS}f},{latitude:.{COORDINATE_DECIMALS}f}"
 
@@ -55,6 +59,13 @@ def escape_text(text: str) -> str:
 
     Returns:
         The escaped text.
+
+    Examples:
+        >>> escape_text("A & B")
+        'A &amp; B'
+
+        >>> escape_text("<![CDATA[<b>Fire</b>]]>")
+        '<![CDATA[<b>Fire</b>]]>'
     """
     result: list[str] = []
     start = 0

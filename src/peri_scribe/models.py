@@ -102,6 +102,13 @@ def is_globally_unique_identifier(value: str) -> bool:
 
     Returns:
         True when *value* matches the GUID shape.
+
+    Examples:
+        >>> is_globally_unique_identifier("286b7f1d-8945-4a5d-9d81-5235c18af1fe")
+        True
+
+        >>> is_globally_unique_identifier("2025-LNU-123456")
+        False
     """
     return GLOBALLY_UNIQUE_IDENTIFIER_PATTERN.fullmatch(value) is not None
 
@@ -114,6 +121,13 @@ def is_unique_fire_identifier(value: str) -> bool:
 
     Returns:
         True when *value* matches the unique fire identifier shape.
+
+    Examples:
+        >>> is_unique_fire_identifier("2025-LNU-123456")
+        True
+
+        >>> is_unique_fire_identifier("286b7f1d-8945-4a5d-9d81-5235c18af1fe")
+        False
     """
     if is_globally_unique_identifier(value):
         return False
@@ -132,6 +146,10 @@ def canonical_fire_identifier(identifiers: typing.Iterable[str]) -> str | None:
 
     Returns:
         The canonical identifier, or None when there are none.
+
+    Examples:
+        >>> canonical_fire_identifier(["other", "2025-LNU-123456", "guid"])
+        '2025-LNU-123456'
     """
     unique = sorted(
         identifier
@@ -163,6 +181,10 @@ def normalize_fire_name(name: str) -> str:
 
     Returns:
         The normalized name.
+
+    Examples:
+        >>> normalize_fire_name("  Santa-Rosa / Fire  ")
+        'santa rosa fire'
     """
     return " ".join(SEPARATOR_PATTERN.sub(" ", name.casefold()).split())
 

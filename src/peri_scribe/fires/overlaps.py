@@ -37,6 +37,16 @@ def gpkg_geometry_header_size(flags: int) -> int:
 
     Returns:
         The header size in bytes.
+
+    Examples:
+        >>> gpkg_geometry_header_size(0)
+        8
+
+        >>> gpkg_geometry_header_size(0x02)
+        40
+
+        >>> gpkg_geometry_header_size(0x04)
+        56
     """
     if flags & 0x04:
         return 56

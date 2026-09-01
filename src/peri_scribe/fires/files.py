@@ -83,6 +83,10 @@ def history_geopackage_path(year_directory: pathlib.Path) -> pathlib.Path:
 
     Returns:
         The output GeoPackage path.
+
+    Examples:
+        >>> history_geopackage_path(pathlib.Path("data/2025"))
+        PosixPath('data/2025/derived/history_of_full_geography.gpkg')
     """
     return year_directory / DERIVED_DIRECTORY_NAME / HISTORY_OUTPUT_FILENAME
 

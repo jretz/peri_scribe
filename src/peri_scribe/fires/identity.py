@@ -24,6 +24,13 @@ def identity_key(name: str, identifier: str | None) -> str:
 
     Returns:
         The fire's stable key.
+
+    Examples:
+        >>> identity_key("Camp Fire", "2025-LNU-123456")
+        '2025-LNU-123456'
+
+        >>> identity_key("Camp Fire", None)
+        'name:Camp Fire'
     """
     return identifier if identifier is not None else f"name:{name}"
 

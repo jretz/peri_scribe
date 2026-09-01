@@ -32,6 +32,13 @@ def fire_status_from(value: object) -> peri_scribe.models.FireStatus | None:
 
     Raises:
         ValueError: If the value does not represent a known status.
+
+    Examples:
+        >>> fire_status_from("active")
+        <FireStatus.ACTIVE: 'active'>
+
+        >>> fire_status_from(None) is None
+        True
     """
     if is_missing(value):
         return None
@@ -58,6 +65,13 @@ def is_missing(value: object) -> bool:
 
     Returns:
         True when *value* is missing.
+
+    Examples:
+        >>> is_missing(None)
+        True
+
+        >>> is_missing("")
+        False
     """
     if value is None:
         return True
@@ -75,6 +89,13 @@ def numeric_value(value: object) -> float | None:
 
     Returns:
         The numeric value, or None when it cannot be interpreted as a number.
+
+    Examples:
+        >>> numeric_value("12.5")
+        12.5
+
+        >>> numeric_value("unknown") is None
+        True
     """
     if is_missing(value):
         return None
@@ -132,6 +153,10 @@ def normalize_identifier(value: object) -> str | None:
 
     Returns:
         The normalized identifier, or None when the value is missing.
+
+    Examples:
+        >>> normalize_identifier(" {ABC-123} ")
+        'abc-123'
     """
     if is_missing(value):
         return None
@@ -156,6 +181,13 @@ def is_complex_child_from(value: object) -> bool:
 
     Raises:
         ValueError: If the value does not represent a known boolean.
+
+    Examples:
+        >>> is_complex_child_from("yes")
+        True
+
+        >>> is_complex_child_from("no")
+        False
     """
     if value is None:
         return False
@@ -196,6 +228,10 @@ def fire_name_from(value: object) -> str | None:
 
     Returns:
         The stripped name, or None when *value* is missing or blank.
+
+    Examples:
+        >>> fire_name_from("  Rumsey Fire  ")
+        'Rumsey Fire'
     """
     if is_missing(value):
         return None
@@ -218,6 +254,10 @@ def mission_name_from(value: object) -> peri_scribe.models.MissionName | None:
     Returns:
         The mission name parts, or None when *value* is missing, blank, or does not name
         a fire.
+
+    Examples:
+        >>> mission_name_from("CA-LNU-RUMSEY-UPDATED-N40Y")
+        MissionName(name='RUMSEY-UPDATED', base_name='RUMSEY')
     """
     if is_missing(value):
         return None

@@ -62,6 +62,13 @@ def json_safe_value(value: object) -> object:
 
     Returns:
         The value converted to JSON-native types where possible.
+
+    Examples:
+        >>> json_safe_value(datetime.date(2025, 1, 2))
+        '2025-01-02'
+
+        >>> json_safe_value((1, datetime.date(2025, 1, 2)))
+        [1, '2025-01-02']
     """
     if peri_scribe.geo.parsing.is_missing(value):
         return None
@@ -84,6 +91,10 @@ def attributes_json(attributes: dict[str, object]) -> str:
 
     Returns:
         The attributes as a compact JSON string.
+
+    Examples:
+        >>> attributes_json({"fire_name": "Example", "acres": 12})
+        '{"acres": 12, "fire_name": "Example"}'
     """
     return json.dumps(
         {str(key): json_safe_value(value) for key, value in attributes.items()},

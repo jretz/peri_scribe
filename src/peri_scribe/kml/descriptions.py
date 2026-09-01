@@ -57,6 +57,13 @@ def format_number(value: float | None, decimal_places: int = 0) -> str | None:
 
     Returns:
         The formatted number, or None when *value* is None.
+
+    Examples:
+        >>> format_number(1234.5, 1)
+        '1,234.5'
+
+        >>> format_number(None) is None
+        True
     """
     if value is None:
         return None
@@ -73,6 +80,10 @@ def format_in_acres(value: float | None) -> str | None:
 
     Returns:
         The formatted area, like ``102,003 acres`` or ``6.5 acres``, or None.
+
+    Examples:
+        >>> format_in_acres(6.5)
+        '6.5 acres'
     """
     if value is None:
         return None
@@ -93,6 +104,13 @@ def format_in_percent(value: float | None) -> str | None:
 
     Returns:
         The formatted percentage, like ``77%``, or None.
+
+    Examples:
+        >>> format_in_percent(77)
+        '77%'
+
+        >>> format_in_percent(0.5)
+        '0.5%'
     """
     if value is None:
         return None
@@ -109,6 +127,13 @@ def round_to_significant_digits(value: float, digits: int) -> float:
 
     Returns:
         The rounded value.
+
+    Examples:
+        >>> round_to_significant_digits(1234.5, 3)
+        1230.0
+
+        >>> round_to_significant_digits(1205.6, 3)
+        1210.0
     """
     if math.isclose(value, 0.0):
         return 0.0
@@ -128,6 +153,13 @@ def format_perimeter_length(value: float | None) -> str | None:
 
     Returns:
         The formatted length, or None when *value* is None.
+
+    Examples:
+        >>> format_perimeter_length(3.1415)
+        '3.1'
+
+        >>> format_perimeter_length(5678.123)
+        '5,680'
     """
     if value is None:
         return None
@@ -148,6 +180,10 @@ def format_in_miles(value: float | None) -> str | None:
 
     Returns:
         The formatted length, like ``33.1 miles``, or None.
+
+    Examples:
+        >>> format_in_miles(33.14)
+        '33.1 miles'
     """
     if value is None:
         return None
@@ -173,6 +209,10 @@ def format_containment(
 
     Returns:
         The formatted containment, or None.
+
+    Examples:
+        >>> format_containment(68, 33.1)
+        '68% (22.5 of 33.1 miles)'
     """
     if percent_contained is None:
         return None
@@ -197,6 +237,10 @@ def format_cost_in_dollars(value: float | None) -> str | None:
 
     Returns:
         The formatted cost, like ``$104,600,000``, or None.
+
+    Examples:
+        >>> format_cost_in_dollars(104600000)
+        '$104,600,000'
     """
     if value is None:
         return None
@@ -211,6 +255,10 @@ def format_personnel_count(value: float | None) -> str | None:
 
     Returns:
         The formatted count, like ``1,234``, or None.
+
+    Examples:
+        >>> format_personnel_count(1234)
+        '1,234'
     """
     if value is None:
         return None
@@ -228,6 +276,12 @@ def format_pacific_time(value: datetime.datetime | None) -> str | None:
 
     Returns:
         The formatted timestamp, like ``08/02 22:30 PDT``, or None.
+
+    Examples:
+        >>> format_pacific_time(
+        ...     datetime.datetime(2025, 8, 2, 5, 30, tzinfo=datetime.UTC),
+        ... )
+        '08/01 22:30 PDT'
     """
     if value is None:
         return None

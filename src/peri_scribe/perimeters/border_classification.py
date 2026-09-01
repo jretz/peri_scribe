@@ -118,6 +118,10 @@ def source_kind_for_feed_name(feed_name: str) -> FireSourceKind:
 
     Raises:
         ValueError: If the feed name does not name a known fire source.
+
+    Examples:
+        >>> source_kind_for_feed_name("CA_Perimeters_NIFC_FIRIS")
+        <FireSourceKind.FIRIS_PERIMETER: 'firis_perimeter'>
     """
     if "CA_Perimeters_NIFC_FIRIS" in feed_name:
         return FireSourceKind.FIRIS_PERIMETER
@@ -137,6 +141,10 @@ def snapshot_serial_number(path: pathlib.Path) -> int:
 
     Returns:
         The serial number from the filename.
+
+    Examples:
+        >>> snapshot_serial_number(pathlib.Path("000012,lastEdit=1.gpkg"))
+        12
     """
     return peri_scribe.sources.snapshots.SourceFile.from_path(path).serial_number
 

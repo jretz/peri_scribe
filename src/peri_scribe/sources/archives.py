@@ -106,6 +106,13 @@ def download_links(html_text: str) -> dict[str, str]:
 
     Returns:
         The mapping from state name to archive URL, in table order.
+
+    Examples:
+        >>> download_links(
+        ...     '<div class="markdown-heading"><h2>Download links</h2></div>'
+        ...     '<a href="https://example.com/ca.zip">California</a>'
+        ... )
+        {'California': 'https://example.com/ca.zip'}
     """
     parser = DownloadLinksParser()
     parser.feed(html_text)

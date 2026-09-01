@@ -38,6 +38,10 @@ def curve_knees(scores: list[int]) -> list[tuple[int, float]]:
 
     Returns:
         The knee points as (score, complementary share) pairs, in score order.
+
+    Examples:
+        >>> curve_knees([1, 2, 3, 4])
+        []
     """
     values, counts = np.unique(scores, return_counts=True)
     total = len(scores)

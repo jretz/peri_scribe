@@ -40,6 +40,10 @@ def time_label(observation_time: datetime.datetime | None) -> str | None:
 
     Returns:
         The label, or None when *observation_time* is None.
+
+    Examples:
+        >>> time_label(datetime.datetime(2025, 8, 5, 20, 30, tzinfo=datetime.UTC))
+        '08/05 13:30'
     """
     if observation_time is None:
         return None
@@ -58,6 +62,10 @@ def interior_placemark_name(observation_time: datetime.datetime | None) -> str:
     Returns:
         The placemark name, ``<date> Interior`` when the time is known and
         ``Interior`` otherwise.
+
+    Examples:
+        >>> interior_placemark_name(None)
+        'Interior'
     """
     label = time_label(observation_time)
     if label is None:
@@ -94,6 +102,10 @@ def interior_ring_id(folder_id: str, index: int) -> str:
 
     Returns:
         The ring's placemark id.
+
+    Examples:
+        >>> interior_ring_id("fire-1", 2)
+        'progression-ring-fire-1-2'
     """
     return f"progression-ring-{folder_id}-{index}"
 
@@ -113,6 +125,10 @@ def tour_seconds_per_day(
 
     Returns:
         The playback rate in seconds per day.
+
+    Examples:
+        >>> tour_seconds_per_day([])
+        1.0
     """
     observed_times = [time for time in ring_times if time is not None]
     if not observed_times:

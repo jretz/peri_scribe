@@ -41,6 +41,13 @@ class SourceFile:
 
         Returns:
             The bucket subdirectory and filename, relative to the source directory.
+
+        Examples:
+            >>> SourceFile(
+            ...     serial_number=1234,
+            ...     last_edit_timestamp=1700000000000,
+            ... ).relative_path
+            PosixPath('001___/001234,lastEdit=1700000000000.gpkg')
         """
         bucket = f"{(self.serial_number // 1000):03d}___"
         filename = (
@@ -64,6 +71,10 @@ class SourceFile:
 
         Raises:
             ValueError: If the filename does not encode a serial number and timestamp.
+
+        Examples:
+            >>> SourceFile.from_path(pathlib.Path("000012,lastEdit=1700000000000.gpkg"))
+            SourceFile(serial_number=12, last_edit_timestamp=1700000000000)
         """
         serial_text, separator, timestamp_text = path.stem.partition(",")
         if not separator or not timestamp_text.startswith(LAST_EDIT_TIMESTAMP_PREFIX):
@@ -99,6 +110,13 @@ def next_serial_number(
 
     Returns:
         The serial number for the new snapshot.
+
+    Examples:
+        >>> next_serial_number([], 1700000000000)
+        0
+
+        >>> next_serial_number([SourceFile(serial_number=2, last_edit_timestamp=1)], 2)
+        3
     """
     source_files = list(existing)
     if reuse_same_timestamp:
@@ -175,6 +193,13 @@ def is_snapshot_filename(filename: str) -> bool:
 
     Returns:
         True when the filename parses as a fire-source snapshot name.
+
+    Examples:
+        >>> is_snapshot_filename("000012,lastEdit=1700000000000.gpkg")
+        True
+
+        >>> is_snapshot_filename("state-12.gpkg")
+        False
     """
     try:
         SourceFile.from_path(pathlib.Path(filename))
@@ -321,6 +346,14 @@ def source_name_from_snapshot_path(path: pathlib.Path) -> str:
 
     Returns:
         The source (feed) directory name.
+
+    Examples:
+        >>> source_name_from_snapshot_path(
+        ...     pathlib.Path(
+        ...         "data/2025/sources/incidents/000___/000012,lastEdit=1.gpkg",
+        ...     ),
+        ... )
+        'incidents'
     """
     return path.parent.parent.name
 
@@ -334,6 +367,10 @@ def year_directory_path(base_dir: pathlib.Path, year: int) -> pathlib.Path:
 
     Returns:
         The path to the year's data directory.
+
+    Examples:
+        >>> year_directory_path(pathlib.Path("project"), 2025)
+        PosixPath('project/data/2025')
     """
     return base_dir / peri_scribe.output.DATA_DIRECTORY / str(year)
 
@@ -363,6 +400,10 @@ def base_directory_for_year_directory(
 
     Returns:
         The base directory.
+
+    Examples:
+        >>> base_directory_for_year_directory(pathlib.Path("project/data/2025"))
+        PosixPath('project')
     """
     return year_directory.parent.parent
 
@@ -375,6 +416,10 @@ def sources_directory_path(year_directory: pathlib.Path) -> pathlib.Path:
 
     Returns:
         The path to the year's sources directory.
+
+    Examples:
+        >>> sources_directory_path(pathlib.Path("data/2025"))
+        PosixPath('data/2025/sources')
     """
     return year_directory / SOURCES_DIRECTORY_NAME
 
@@ -392,6 +437,10 @@ def validation_directory_path(
 
     Returns:
         The path to the year's validation directory.
+
+    Examples:
+        >>> validation_directory_path(pathlib.Path("data/2025"))
+        PosixPath('data/2025/validation')
     """
     return year_directory / VALIDATION_DIRECTORY_NAME
 
@@ -420,5 +469,9 @@ def fire_index_path(year_directory: pathlib.Path) -> pathlib.Path:
 
     Returns:
         The path to the year's fire index file.
+
+    Examples:
+        >>> fire_index_path(pathlib.Path("data/2025"))
+        PosixPath('data/2025/sources/fires.json')
     """
     return sources_directory_path(year_directory) / FIRE_INDEX_FILENAME

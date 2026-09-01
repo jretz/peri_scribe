@@ -469,15 +469,15 @@ def test_extent_signal_ignores_zero_area_firis_perimeter() -> None:
     assert not result.disagrees
 
 
-def test_unit_state_code_is_out_of_state_detects_nevada() -> None:
-    assert peri_scribe.perimeters.signals.unit_state_code_is_out_of_state(
+def test_unit_state_code_is_out_of_california_detects_nevada() -> None:
+    assert peri_scribe.perimeters.signals.unit_state_code_is_out_of_california(
         "nvccd",
     )
 
 
-def test_unit_state_code_is_out_of_state_accepts_california() -> None:
+def test_unit_state_code_is_out_of_california_accepts_california() -> None:
     assert (
-        peri_scribe.perimeters.signals.unit_state_code_is_out_of_state(
+        peri_scribe.perimeters.signals.unit_state_code_is_out_of_california(
             "cahvt",
         )
         is False
@@ -486,7 +486,7 @@ def test_unit_state_code_is_out_of_state_accepts_california() -> None:
 
 def test_unit_state_code_is_out_of_state_ignores_non_state_codes() -> None:
     assert (
-        peri_scribe.perimeters.signals.unit_state_code_is_out_of_state(
+        peri_scribe.perimeters.signals.unit_state_code_is_out_of_california(
             "lpf",
         )
         is False
@@ -495,37 +495,37 @@ def test_unit_state_code_is_out_of_state_ignores_non_state_codes() -> None:
 
 def test_unit_state_code_is_out_of_state_ignores_short_tokens() -> None:
     assert (
-        peri_scribe.perimeters.signals.unit_state_code_is_out_of_state(
+        peri_scribe.perimeters.signals.unit_state_code_is_out_of_california(
             "c",
         )
         is False
     )
 
 
-def test_out_of_state_unit_from_reads_identifiers_and_missions() -> None:
-    assert peri_scribe.perimeters.signals.out_of_state_unit_from(
+def test_out_of_california_unit_from_reads_identifiers_and_missions() -> None:
+    assert peri_scribe.perimeters.signals.out_of_california_unit_from(
         frozenset({"2026-nvccd-030683"}),
         None,
     )
-    assert peri_scribe.perimeters.signals.out_of_state_unit_from(
+    assert peri_scribe.perimeters.signals.out_of_california_unit_from(
         frozenset(),
         "2026-NVCCD-030683",
     )
-    assert not peri_scribe.perimeters.signals.out_of_state_unit_from(
+    assert not peri_scribe.perimeters.signals.out_of_california_unit_from(
         frozenset({"2026-cahvt-000753"}),
         "CA-LNU-OTHER",
     )
 
 
 def test_out_of_state_unit_from_uses_mission_state_token() -> None:
-    assert peri_scribe.perimeters.signals.out_of_state_unit_from(
+    assert peri_scribe.perimeters.signals.out_of_california_unit_from(
         frozenset(),
         "NV-CCD-BUG",
     )
 
 
 def test_out_of_state_unit_from_ignores_mission_name_tokens() -> None:
-    assert not peri_scribe.perimeters.signals.out_of_state_unit_from(
+    assert not peri_scribe.perimeters.signals.out_of_california_unit_from(
         frozenset(),
         "CA-HVT-MILEPOST18-N57B",
     )

@@ -350,6 +350,13 @@ def is_mixed_case(name: str) -> bool:
 
     Returns:
         True when the name contains both uppercase and lowercase letters.
+
+    Examples:
+        >>> is_mixed_case("Camp Fire")
+        True
+
+        >>> is_mixed_case("CAMP FIRE")
+        False
     """
     return name.lower() != name and name.upper() != name
 
