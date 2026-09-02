@@ -92,30 +92,6 @@ class FirePlot:
     y_axis_label: str
 
 
-def matching_rows(
-    frame: geopandas.GeoDataFrame,
-    fire_identifiers: frozenset[str],
-    entry_name: str,
-) -> geopandas.GeoDataFrame:
-    """Return the rows of *frame* that belong to one fire.
-
-    A fire with identifiers is matched by those identifiers; a fire without any is
-    matched by name. The layer's rows are already in chronological order, so the result
-    preserves that order.
-
-    Args:
-        frame: The history layer to search.
-        fire_identifiers: The fire's identifiers.
-        entry_name: The fire's name, used when it has no identifiers.
-
-    Returns:
-        The matching rows.
-    """
-    if fire_identifiers:
-        return frame[frame["fire_identifier"].isin(sorted(fire_identifiers))]
-    return frame[frame["fire_name"] == entry_name]
-
-
 def series_points(
     frame: geopandas.GeoDataFrame,
     observation_column: str,
@@ -291,10 +267,8 @@ def source_attribute_points(
 
 
 def fire_plots(
-    fire_identifiers: frozenset[str],
-    entry_name: str,
-    perimeters: geopandas.GeoDataFrame,
-    points: geopandas.GeoDataFrame,
+    perimeter_rows: geopandas.GeoDataFrame,
+    point_rows: geopandas.GeoDataFrame,
 ) -> tuple[FirePlot, ...]:
     """Return the four plots describing one fire's history.
 
@@ -306,17 +280,12 @@ def fire_plots(
     source attributes, since the personnel count has no derived column.
 
     Args:
-        fire_identifiers: The fire's identifiers.
-        entry_name: The fire's name, used when it has no identifiers.
-        perimeters: The perimeter history layer.
-        points: The point history layer.
+        perimeter_rows: The fire's perimeter history rows, already selected.
+        point_rows: The fire's point history rows, already selected.
 
     Returns:
         The fire's plots, in area, perimeter, cost, then personnel order.
     """
-    perimeter_rows = matching_rows(perimeters, fire_identifiers, entry_name)
-    point_rows = matching_rows(points, fire_identifiers, entry_name)
-
     area_points = scaled_points(
         merge_series_points(
             series_points(perimeter_rows, "observation_time", "area_acres"),

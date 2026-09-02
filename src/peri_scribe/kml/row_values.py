@@ -14,36 +14,7 @@ import peri_scribe.geo.parsing
 
 
 if typing.TYPE_CHECKING:
-    import geopandas
     import pandas as pd
-
-
-def latest_matching_row(
-    frame: geopandas.GeoDataFrame,
-    fire_identifiers: frozenset[str],
-    entry_name: str,
-) -> pd.Series | None:
-    """Return the chronologically latest row of *frame* for one fire, or None.
-
-    A fire with identifiers is matched by those identifiers; a fire without any is
-    matched by name. The layer's rows are already in chronological order, so the last
-    matching row is the latest.
-
-    Args:
-        frame: The history layer to search.
-        fire_identifiers: The fire's identifiers.
-        entry_name: The fire's name, used when it has no identifiers.
-
-    Returns:
-        The latest matching row, or None when the fire has none.
-    """
-    if fire_identifiers:
-        matched = frame[frame["fire_identifier"].isin(sorted(fire_identifiers))]
-    else:
-        matched = frame[frame["fire_name"] == entry_name]
-    if matched.empty:
-        return None
-    return matched.iloc[-1]
 
 
 def column_value(row: pd.Series | None, column: str) -> object:

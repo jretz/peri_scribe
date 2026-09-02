@@ -524,6 +524,40 @@ def test_fire_geometries_attaches_plot_images(
     assert '<img src="id-bug-perimeter.png" />' in fire.description
 
 
+def test_fire_geometries_matches_identifier_less_fire_by_name(
+    in_process_plot_image_bundles: None,
+) -> None:
+    index = tests.peri_scribe.kml.kml_helpers.fire_index([
+        tests.peri_scribe.kml.kml_helpers.fire_index_entry(
+            "Bug",
+            "active",
+        ),
+    ])
+    # The fire has no identifier, yet its history rows carry one; the name match must
+    # still include those rows for the plots and description.
+    perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
+        [
+            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(2.0)),
+        ],
+        observation_times=[
+            datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC),
+            datetime.datetime(2026, 8, 6, 20, 0, tzinfo=datetime.UTC),
+        ],
+        area_acres=[10.0, 20.0],
+    )
+    (fire,) = peri_scribe.kml.fire_data.fire_geometries(
+        index,
+        perimeters,
+        tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
+        tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
+    )
+    assert fire.name == "Bug"
+    assert fire.images
+    assert fire.description is not None
+    assert "20 acres" in fire.description
+
+
 def test_score_explanation_for_prefers_identifier() -> None:
     assert (
         peri_scribe.kml.text.score_explanation_for(

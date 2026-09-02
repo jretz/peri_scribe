@@ -7,7 +7,6 @@ import typing
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.plot_data
 import peri_scribe.kml.row_values
-import peri_scribe.kml.selection
 import peri_scribe.models
 import peri_scribe.units
 
@@ -46,8 +45,8 @@ FUEL_MODEL_ATTRIBUTE_KEYS: dict[int, tuple[str, str]] = {
 
 def fire_description(
     entry: peri_scribe.models.FireIndexEntry,
-    perimeters: geopandas.GeoDataFrame,
-    points: geopandas.GeoDataFrame,
+    perimeter_rows: geopandas.GeoDataFrame,
+    point_rows: geopandas.GeoDataFrame,
     of_note: str | None = None,
 ) -> peri_scribe.kml.descriptions.FireDescription:
     """Return *entry*'s latest state for its balloon description.
@@ -60,25 +59,16 @@ def fire_description(
 
     Args:
         entry: One fire index entry.
-        perimeters: The perimeter history layer.
-        points: The point history layer.
+        perimeter_rows: The fire's perimeter history rows, already selected.
+        point_rows: The fire's point history rows, already selected.
         of_note: The fire's score explanation, shown as the balloon's final row, or
             None when the fire has no saved score.
 
     Returns:
         The fire's latest state.
     """
-    fire_identifiers = peri_scribe.kml.selection.identifiers(entry)
-    perimeter_row = peri_scribe.kml.row_values.latest_matching_row(
-        perimeters,
-        fire_identifiers,
-        entry.name,
-    )
-    point_row = peri_scribe.kml.row_values.latest_matching_row(
-        points,
-        fire_identifiers,
-        entry.name,
-    )
+    perimeter_row = perimeter_rows.iloc[-1] if not perimeter_rows.empty else None
+    point_row = point_rows.iloc[-1] if not point_rows.empty else None
 
     exterior_perimeter_in_miles = None
     if perimeter_row is not None:

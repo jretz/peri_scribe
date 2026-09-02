@@ -10,62 +10,6 @@ import peri_scribe.kml.plot_data
 import tests.peri_scribe.kml.kml_plot_helpers
 
 
-def test_matching_rows_matches_identifier() -> None:
-    frame = tests.peri_scribe.kml.kml_plot_helpers.geo_frame(
-        {
-            "fire_identifier": ["id-bug", "id-alta", "id-bug"],
-            "fire_name": ["Bug", "ALTA", "Bug"],
-        },
-        [
-            tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
-            tests.peri_scribe.kml.kml_plot_helpers.square(2.0),
-            tests.peri_scribe.kml.kml_plot_helpers.square(3.0),
-        ],
-    )
-    matched = peri_scribe.kml.plot_data.matching_rows(
-        frame,
-        frozenset({"id-bug"}),
-        "Bug",
-    )
-    assert list(matched["fire_identifier"]) == ["id-bug", "id-bug"]
-
-
-def test_matching_rows_falls_back_to_name() -> None:
-    frame = tests.peri_scribe.kml.kml_plot_helpers.geo_frame(
-        {
-            "fire_identifier": ["id-bug", "id-alta", "id-bug"],
-            "fire_name": ["Bug", "ALTA", "Bug"],
-        },
-        [
-            tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
-            tests.peri_scribe.kml.kml_plot_helpers.square(2.0),
-            tests.peri_scribe.kml.kml_plot_helpers.square(3.0),
-        ],
-    )
-    matched = peri_scribe.kml.plot_data.matching_rows(
-        frame,
-        frozenset(),
-        "Bug",
-    )
-    assert list(matched["fire_name"]) == ["Bug", "Bug"]
-
-
-def test_matching_rows_returns_empty_without_match() -> None:
-    frame = tests.peri_scribe.kml.kml_plot_helpers.geo_frame(
-        {
-            "fire_identifier": ["id-bug"],
-            "fire_name": ["Bug"],
-        },
-        [tests.peri_scribe.kml.kml_plot_helpers.square(1.0)],
-    )
-    matched = peri_scribe.kml.plot_data.matching_rows(
-        frame,
-        frozenset({"id-alta"}),
-        "ALTA",
-    )
-    assert matched.empty
-
-
 def test_series_points_reads_values_and_times() -> None:
     frame = tests.peri_scribe.kml.kml_plot_helpers.geo_frame(
         {
@@ -394,8 +338,6 @@ def test_source_attribute_points_returns_empty_for_missing_columns() -> None:
 
 def test_fire_plots_builds_four_plots_with_labels() -> None:
     plots = peri_scribe.kml.plot_data.fire_plots(
-        frozenset({"id-bug"}),
-        "Bug",
         tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame(
             [
                 (
@@ -442,8 +384,6 @@ def test_fire_plots_builds_four_plots_with_labels() -> None:
 
 def test_fire_plots_merges_area_and_cost_from_both_feeds() -> None:
     plots = peri_scribe.kml.plot_data.fire_plots(
-        frozenset({"id-bug"}),
-        "Bug",
         tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame(
             [
                 (
@@ -510,8 +450,6 @@ def test_fire_plots_merges_personnel_from_both_feeds() -> None:
         [tests.peri_scribe.kml.kml_plot_helpers.square(3.0)],
     )
     plots = peri_scribe.kml.plot_data.fire_plots(
-        frozenset({"id-bug"}),
-        "Bug",
         perimeter,
         point,
     )

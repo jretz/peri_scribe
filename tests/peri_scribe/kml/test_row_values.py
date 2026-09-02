@@ -15,51 +15,6 @@ import peri_scribe.kml.text
 import tests.peri_scribe.kml.kml_helpers
 
 
-def test_latest_matching_row_matches_by_identifier() -> None:
-    later = datetime.datetime(2026, 8, 6, 20, 0, tzinfo=datetime.UTC)
-    frame = tests.peri_scribe.kml.kml_helpers.geometry_frame(
-        [
-            ("id-a", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
-            ("id-a", "Bug", tests.peri_scribe.kml.kml_helpers.square(2.0)),
-        ],
-        observation_times=[
-            datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC),
-            later,
-        ],
-    )
-    row = peri_scribe.kml.row_values.latest_matching_row(
-        frame,
-        frozenset({"id-a"}),
-        "Bug",
-    )
-    assert row is not None
-    assert row["observation_time"] == later
-
-
-def test_latest_matching_row_matches_by_name_without_identifier() -> None:
-    frame = tests.peri_scribe.kml.kml_helpers.geometry_frame([
-        (None, "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
-        (None, "Bug", tests.peri_scribe.kml.kml_helpers.square(2.0)),
-    ])
-    row = peri_scribe.kml.row_values.latest_matching_row(frame, frozenset(), "Bug")
-    assert row is not None
-    assert row["fire_name"] == "Bug"
-
-
-def test_latest_matching_row_returns_none_without_match() -> None:
-    frame = tests.peri_scribe.kml.kml_helpers.geometry_frame([
-        ("id-a", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
-    ])
-    assert (
-        peri_scribe.kml.row_values.latest_matching_row(
-            frame,
-            frozenset({"id-b"}),
-            "Bug",
-        )
-        is None
-    )
-
-
 def test_column_value_returns_none_for_missing_row_or_column() -> None:
     frame = tests.peri_scribe.kml.kml_helpers.geometry_frame([
         ("id-a", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
