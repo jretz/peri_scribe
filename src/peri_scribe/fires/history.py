@@ -10,8 +10,10 @@ never creates a version.
 
 from __future__ import annotations
 
+import concurrent.futures
 import datetime
 import json
+import os
 import pathlib
 
 import geopandas
@@ -36,6 +38,11 @@ IDENTITY_COLUMNS = [
     "complex_identifier",
     "border_classification",
 ]
+
+# The per-fire work mixes geometry calls that release the GIL with Python-side attribute
+# and dictionary work that does not, so more than a handful of workers only adds GIL
+# contention, so cap the pool size.
+HISTORY_ROW_WORKER_COUNT = min(4, os.cpu_count() or 1)
 
 
 def classification_text(
@@ -480,6 +487,10 @@ def history_layer_rows(
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     """Return the perimeter and point history rows for every non-complex fire.
 
+    Each fire's rows are derived from only that fire's records, and the cleaning and
+    geodesic area work releases the GIL, so the fires are built in parallel and their
+    rows are collected in fire order.
+
     Args:
         record_groups: The grouped fire records.
         classifications: Each fire's classification, keyed by fire identity.
@@ -490,23 +501,36 @@ def history_layer_rows(
     Returns:
         All perimeter rows and all point rows.
     """
+    non_complex_fires = [
+        (fire, group)
+        for fire, group in zip(
+            record_groups.fires,
+            record_groups.groups,
+            strict=True,
+        )
+        if not peri_scribe.fires.sources.fire_is_complex_parent(record_groups, group)
+    ]
+    if not non_complex_fires:
+        return [], []
     perimeter_rows: list[dict[str, object]] = []
     point_rows: list[dict[str, object]] = []
-    for fire, group in zip(
-        record_groups.fires,
-        record_groups.groups,
-        strict=True,
-    ):
-        if peri_scribe.fires.sources.fire_is_complex_parent(record_groups, group):
-            continue
-        fire_perimeter_rows, fire_point_rows = history_rows_for_fire(
-            fire,
-            group,
-            full_rows,
-            full_paths,
-            sources_directory=sources_directory,
-            classification=classifications.get(id(fire)),
-        )
-        perimeter_rows.extend(fire_perimeter_rows)
-        point_rows.extend(fire_point_rows)
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=HISTORY_ROW_WORKER_COUNT,
+    ) as executor:
+        futures = [
+            executor.submit(
+                history_rows_for_fire,
+                fire,
+                group,
+                full_rows,
+                full_paths,
+                sources_directory=sources_directory,
+                classification=classifications.get(id(fire)),
+            )
+            for fire, group in non_complex_fires
+        ]
+        for future in futures:
+            fire_perimeter_rows, fire_point_rows = future.result()
+            perimeter_rows.extend(fire_perimeter_rows)
+            point_rows.extend(fire_point_rows)
     return perimeter_rows, point_rows

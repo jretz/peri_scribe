@@ -264,6 +264,202 @@ def test_history_layer_rows_skips_complex_parents(
     assert point_rows == []
 
 
+def grouped_history_input() -> tuple[
+    peri_scribe.fires.sources.FireRecordGroups,
+    list[peri_scribe.geo.package.FireRowRecord],
+    list[pathlib.Path],
+    pathlib.Path,
+]:
+    """Return grouped history inputs covering perimeter and point-only fires.
+
+    Returns:
+        The record groups, the fire rows, the rows' source paths, and the source
+        directory.
+    """
+    sources_directory = pathlib.Path("data/2026/sources")
+    perimeter_path = (
+        sources_directory
+        / FIRIS_FEED_NAME
+        / "000___"
+        / "000000,lastEdit=1786929991427.gpkg"
+    )
+    point_path = (
+        sources_directory
+        / WFIGS_LOCATION_FEED_NAME
+        / "000___"
+        / "000000,lastEdit=1786955463975.gpkg"
+    )
+    perimeter_records = [
+        tests.factories.fire_record(
+            name,
+            tests.factories.ACTIVE,
+            identifiers=frozenset({identifier}),
+            geometry=tests.factories.polygon((0, 0), (1, 0), (1, 1), (0, 0)),
+            observed_at=tests.factories.utc(2026, 8, 16, 0, 10),
+        )
+        for name, identifier in (
+            ("Ant", "2026-cacdd-000001"),
+            ("Crab", "2026-cacdd-000003"),
+        )
+    ]
+    point_records = [
+        tests.factories.fire_record(
+            name,
+            tests.factories.ACTIVE,
+            identifiers=frozenset({identifier}),
+            geometry=tests.factories.point(0, 0),
+        )
+        for name, identifier in (
+            ("Ant", "2026-cacdd-000001"),
+            ("Bee", "2026-cacdd-000002"),
+            ("Crab", "2026-cacdd-000003"),
+        )
+    ]
+    rows = [
+        peri_scribe.geo.package.FireRowRecord(
+            record=perimeter_records[0],
+            object_id=1,
+            source_name=FIRIS_FEED_NAME,
+            attributes={"area_acres": 100},
+        ),
+        peri_scribe.geo.package.FireRowRecord(
+            record=point_records[0],
+            object_id=1,
+            source_name=WFIGS_LOCATION_FEED_NAME,
+            attributes={"IncidentSize": 100},
+        ),
+        peri_scribe.geo.package.FireRowRecord(
+            record=point_records[1],
+            object_id=1,
+            source_name=WFIGS_LOCATION_FEED_NAME,
+            attributes={"IncidentSize": 100},
+        ),
+        peri_scribe.geo.package.FireRowRecord(
+            record=perimeter_records[1],
+            object_id=1,
+            source_name=FIRIS_FEED_NAME,
+            attributes={"area_acres": 100},
+        ),
+        peri_scribe.geo.package.FireRowRecord(
+            record=point_records[2],
+            object_id=1,
+            source_name=WFIGS_LOCATION_FEED_NAME,
+            attributes={"IncidentSize": 100},
+        ),
+    ]
+    paths = [perimeter_path, point_path, point_path, perimeter_path, point_path]
+    record_groups = peri_scribe.fires.sources.FireRecordGroups(
+        records=tuple(row.record for row in rows),
+        record_paths=tuple(paths),
+        fires=(
+            tests.factories.fire(name="Ant", identifier="2026-cacdd-000001"),
+            tests.factories.fire(name="Bee", identifier="2026-cacdd-000002"),
+            tests.factories.fire(name="Crab", identifier="2026-cacdd-000003"),
+        ),
+        groups=((0, 1), (2,), (3, 4)),
+        complex_identifiers=frozenset(),
+    )
+    return record_groups, rows, paths, sources_directory
+
+
+def test_history_layer_rows_collects_rows_in_fire_order() -> None:
+    record_groups, rows, paths, sources_directory = grouped_history_input()
+    perimeter_rows, point_rows = peri_scribe.fires.history.history_layer_rows(
+        record_groups,
+        {},
+        rows,
+        paths,
+        sources_directory,
+    )
+    assert [row["fire_identifier"] for row in perimeter_rows] == [
+        "2026-cacdd-000001",
+        "2026-cacdd-000003",
+    ]
+    assert [row["fire_identifier"] for row in point_rows] == [
+        "2026-cacdd-000001",
+        "2026-cacdd-000002",
+        "2026-cacdd-000003",
+    ]
+
+
+def test_history_layer_rows_parallel_matches_single_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record_groups, rows, paths, sources_directory = grouped_history_input()
+    monkeypatch.setattr(
+        peri_scribe.fires.history,
+        "HISTORY_ROW_WORKER_COUNT",
+        1,
+    )
+    single_perimeter_rows, single_point_rows = (
+        peri_scribe.fires.history.history_layer_rows(
+            record_groups,
+            {},
+            rows,
+            paths,
+            sources_directory,
+        )
+    )
+    monkeypatch.setattr(
+        peri_scribe.fires.history,
+        "HISTORY_ROW_WORKER_COUNT",
+        4,
+    )
+    parallel_perimeter_rows, parallel_point_rows = (
+        peri_scribe.fires.history.history_layer_rows(
+            record_groups,
+            {},
+            rows,
+            paths,
+            sources_directory,
+        )
+    )
+    assert parallel_perimeter_rows == single_perimeter_rows
+    assert parallel_point_rows == single_point_rows
+
+
+def test_history_layer_rows_propagates_worker_exception(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record_groups, rows, paths, sources_directory = grouped_history_input()
+    real_history_rows_for_fire = peri_scribe.fires.history.history_rows_for_fire
+
+    def failing_history_rows_for_fire(
+        fire: peri_scribe.models.Fire,
+        group: tuple[int, ...],
+        full_rows: list[peri_scribe.geo.package.FireRowRecord],
+        full_paths: list[pathlib.Path],
+        *,
+        sources_directory: pathlib.Path,
+        classification: peri_scribe.models.FireClassification | None,
+    ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        if fire.identifier == "2026-cacdd-000003":
+            message = "perimeter failure"
+            raise RuntimeError(message)
+        return real_history_rows_for_fire(
+            fire,
+            group,
+            full_rows,
+            full_paths,
+            sources_directory=sources_directory,
+            classification=classification,
+        )
+
+    monkeypatch.setattr(
+        peri_scribe.fires.history,
+        "history_rows_for_fire",
+        failing_history_rows_for_fire,
+    )
+    with pytest.raises(RuntimeError, match="perimeter failure"):
+        peri_scribe.fires.history.history_layer_rows(
+            record_groups,
+            {},
+            rows,
+            paths,
+            sources_directory,
+        )
+
+
 def test_history_geopackage_path_names_output() -> None:
     assert peri_scribe.fires.files.history_geopackage_path(
         pathlib.Path("data/2026"),

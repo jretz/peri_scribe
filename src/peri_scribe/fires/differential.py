@@ -8,6 +8,8 @@ perimeter as corrections, so the differential layer shows only growth.
 
 from __future__ import annotations
 
+import concurrent.futures
+import os
 import pathlib
 import typing
 
@@ -28,6 +30,11 @@ if typing.TYPE_CHECKING:
 
 
 DIFFERENTIAL_OUTPUT_FILENAME = "history_of_differential_geography.gpkg"
+
+# The per-fire work mixes geometry calls that release the GIL with Python-side attribute
+# work that does not, so more than a handful of workers only adds GIL contention, so cap
+# the pool.
+DIFFERENTIAL_WORKER_COUNT = min(4, os.cpu_count() or 1)
 
 GROWTH_COLUMNS = [
     "area_acres",
@@ -408,6 +415,10 @@ def differential_perimeter_dataframe(
 ) -> geopandas.GeoDataFrame:
     """Build the differential perimeter history from the full history.
 
+    Each fire's growth rows are derived from only that fire's perimeters, and the
+    intersection and area work releases the GIL, so the fires are processed in parallel
+    and their rows are collected in fire order.
+
     Args:
         full_perimeters: The full perimeter history layer.
 
@@ -415,10 +426,22 @@ def differential_perimeter_dataframe(
         The differential perimeter rows as a GeoDataFrame in the output spatial
         reference.
     """
-    rows: list[dict[str, object]] = []
+    fire_attributes: list[list[dict[str, object]]] = []
+    fire_geometries: list[list[shapely.Geometry | None]] = []
     for positions in fire_positions(full_perimeters):
         attributes, geometries = group_records(full_perimeters, positions)
-        rows.extend(differential_rows_for_fire(attributes, geometries))
+        fire_attributes.append(attributes)
+        fire_geometries.append(geometries)
+    rows: list[dict[str, object]] = []
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=DIFFERENTIAL_WORKER_COUNT,
+    ) as executor:
+        for fire_rows in executor.map(
+            differential_rows_for_fire,
+            fire_attributes,
+            fire_geometries,
+        ):
+            rows.extend(fire_rows)
     return peri_scribe.fires.history.build_dataframe(
         rows,
         DIFFERENTIAL_PERIMETER_COLUMNS,

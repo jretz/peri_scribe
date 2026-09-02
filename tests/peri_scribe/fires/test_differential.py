@@ -50,6 +50,38 @@ def full_perimeter_frame(
     return geopandas.GeoDataFrame(rows, geometry=geometries, crs="EPSG:4326")
 
 
+def multiple_fire_perimeter_frame() -> tuple[geopandas.GeoDataFrame, list[str]]:
+    """Return a full perimeter frame with several growing fires.
+
+    Each fire's perimeters grow, so every perimeter adds a differential row and the
+    output rows follow the frame's fire order one-for-one.
+
+    Returns:
+        The frame and each row's fire identifier in frame order.
+    """
+    fire_identifiers = [
+        "2026-cacdd-000001",
+        "2026-cacdd-000001",
+        "2026-cacdd-000002",
+        "2026-cacdd-000002",
+        "2026-cacdd-000002",
+        "2026-cacdd-000003",
+    ]
+    sides = [1.0, 2.0, 1.0, 2.0, 3.0, 2.0]
+    records = [
+        {
+            "fire_name": "Bug",
+            "fire_identifier": fire_identifier,
+            "area_acres": 100.0 * side,
+        }
+        for fire_identifier, side in zip(fire_identifiers, sides, strict=True)
+    ]
+    return (
+        full_perimeter_frame(records, [square(side) for side in sides]),
+        fire_identifiers,
+    )
+
+
 def test_differential_geopackage_path_names_output() -> None:
     assert peri_scribe.fires.differential.differential_geopackage_path(
         pathlib.Path("data/2026"),
@@ -400,6 +432,28 @@ def test_differential_perimeter_dataframe_skips_collapsed_growth(
     # empty difference is never measured.
     assert len(output) == 1
     assert output.geometry.iloc[0].equals(square(1.0))
+
+
+def test_differential_perimeter_dataframe_parallel_matches_single_worker(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    frame, fire_identifiers = multiple_fire_perimeter_frame()
+    monkeypatch.setattr(
+        peri_scribe.fires.differential,
+        "DIFFERENTIAL_WORKER_COUNT",
+        1,
+    )
+    single_worker = peri_scribe.fires.differential.differential_perimeter_dataframe(
+        frame,
+    )
+    monkeypatch.setattr(
+        peri_scribe.fires.differential,
+        "DIFFERENTIAL_WORKER_COUNT",
+        4,
+    )
+    parallel = peri_scribe.fires.differential.differential_perimeter_dataframe(frame)
+    assert parallel.equals(single_worker)
+    assert parallel["fire_identifier"].tolist() == fire_identifiers
 
 
 def test_write_history_of_differential_geography_writes_two_layers(
