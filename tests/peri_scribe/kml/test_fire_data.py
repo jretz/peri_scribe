@@ -13,6 +13,7 @@ import peri_scribe.kml.fire_data
 import peri_scribe.kml.selection
 import peri_scribe.kml.text
 import peri_scribe.models
+import peri_scribe.perimeters.progression
 import peri_scribe.units
 import tests.peri_scribe.kml.kml_helpers
 
@@ -521,7 +522,7 @@ def test_fire_geometries_attaches_plot_images(
     assert [image.filename for image in fire.images] == ["id-bug-perimeter.png"]
     assert fire.images[0].content
     assert fire.description is not None
-    assert '<img src="id-bug-perimeter.png" />' in fire.description
+    assert fire.description.identifier == "id-bug"
 
 
 def test_fire_geometries_matches_identifier_less_fire_by_name(
@@ -555,7 +556,7 @@ def test_fire_geometries_matches_identifier_less_fire_by_name(
     assert fire.name == "Bug"
     assert fire.images
     assert fire.description is not None
-    assert "20 acres" in fire.description
+    assert fire.description.area_in_acres == pytest.approx(20.0)
 
 
 def test_score_explanation_for_prefers_identifier() -> None:
@@ -644,8 +645,9 @@ def test_fire_geometries_puts_score_explanation_in_balloon() -> None:
         scores=scores,
     )
     assert with_scores.description is not None
-    assert "<b>Of note</b>" in with_scores.description
-    assert "Over 100,000 acres, and a Type 1 Incident." in with_scores.description
+    assert (
+        with_scores.description.of_note == "Over 100,000 acres, and a Type 1 Incident."
+    )
     (without_scores,) = peri_scribe.kml.fire_data.fire_geometries(
         index,
         perimeters,
@@ -653,10 +655,7 @@ def test_fire_geometries_puts_score_explanation_in_balloon() -> None:
         tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
     )
     assert without_scores.description is not None
-    assert "<b>Of note</b>" in without_scores.description
-    assert (
-        "Over 100,000 acres, and a Type 1 Incident." not in without_scores.description
-    )
+    assert without_scores.description.of_note is None
 
 
 def test_fire_geometries_matches_score_explanation_by_identifier() -> None:
@@ -719,9 +718,12 @@ def test_fire_geometries_matches_score_explanation_by_identifier() -> None:
         scores=scores,
     )
     assert big.description is not None
-    assert "Over 250 structures within a mile" in big.description
+    assert (
+        big.description.of_note
+        == "Over 250 structures within a mile, and a Type 1 Incident."
+    )
     assert small.description is not None
-    assert "Over 5 structures within a mile" in small.description
+    assert small.description.of_note == "Over 5 structures within a mile."
 
 
 def test_fire_geometries_skips_images_without_enough_dates() -> None:
@@ -806,6 +808,79 @@ def test_fire_geometries_drops_tiny_rings() -> None:
     assert [ring.geometry for ring in fire.progression_rings] == [
         tests.peri_scribe.kml.kml_helpers.square(1.0),
     ]
+
+
+def test_ring_added_areas_measure_disjoint_rings_own_areas() -> None:
+    first_geometry = tests.peri_scribe.kml.kml_helpers.square(1.0)
+    second_geometry = shapely.geometry.box(2.0, -0.5, 3.0, 0.5)
+    added_areas_in_acres = peri_scribe.kml.fire_data.ring_added_areas_in_acres(
+        (
+            peri_scribe.perimeters.progression.Ring(
+                geometry=first_geometry,
+                observation_time=None,
+            ),
+            peri_scribe.perimeters.progression.Ring(
+                geometry=second_geometry,
+                observation_time=None,
+            ),
+        ),
+    )
+    assert added_areas_in_acres == pytest.approx(
+        (
+            peri_scribe.units.area_in_acres(first_geometry),
+            peri_scribe.units.area_in_acres(second_geometry),
+        ),
+    )
+
+
+def test_ring_added_areas_measure_net_of_earlier_fire_when_overlapping() -> None:
+    inner_geometry = tests.peri_scribe.kml.kml_helpers.square(1.0)
+    outer_geometry = tests.peri_scribe.kml.kml_helpers.square(2.0)
+    inner_area_in_acres = peri_scribe.units.area_in_acres(inner_geometry)
+    added_areas_in_acres = peri_scribe.kml.fire_data.ring_added_areas_in_acres(
+        (
+            peri_scribe.perimeters.progression.Ring(
+                geometry=inner_geometry,
+                observation_time=None,
+            ),
+            peri_scribe.perimeters.progression.Ring(
+                geometry=outer_geometry,
+                observation_time=None,
+            ),
+        ),
+    )
+    # The outer ring redraws the ground the inner ring already claimed, so it adds
+    # only the area beyond the earlier fire rather than its whole geometry.
+    assert added_areas_in_acres == pytest.approx(
+        (
+            inner_area_in_acres,
+            peri_scribe.units.area_in_acres(outer_geometry) - inner_area_in_acres,
+        ),
+    )
+
+
+def test_ring_added_areas_returns_nothing_without_rings() -> None:
+    assert peri_scribe.kml.fire_data.ring_added_areas_in_acres(()) == ()
+
+
+def test_ring_added_areas_measure_zero_for_ground_already_claimed() -> None:
+    geometry = tests.peri_scribe.kml.kml_helpers.square(1.0)
+    added_areas_in_acres = peri_scribe.kml.fire_data.ring_added_areas_in_acres(
+        (
+            peri_scribe.perimeters.progression.Ring(
+                geometry=geometry,
+                observation_time=None,
+            ),
+            peri_scribe.perimeters.progression.Ring(
+                geometry=geometry,
+                observation_time=None,
+            ),
+        ),
+    )
+    assert added_areas_in_acres == pytest.approx(
+        (peri_scribe.units.area_in_acres(geometry), 0.0),
+        abs=1e-6,
+    )
 
 
 def description_perimeter_frame() -> geopandas.GeoDataFrame:

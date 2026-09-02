@@ -8,12 +8,15 @@ import pytest
 import shapely.geometry
 
 import peri_scribe.kml.builder
+import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
 import peri_scribe.kml.geometry
+import peri_scribe.kml.plot_rendering
 import peri_scribe.kml.styles
 import peri_scribe.models
 import peri_scribe.perimeters.progression
+import peri_scribe.units
 import tests.peri_scribe.kml.kml_helpers
 
 
@@ -1295,9 +1298,35 @@ def test_status_folder_holds_every_fire(
     ]
 
 
-def test_fire_folder_applies_description_to_every_placemark(
+def balloon_text(
+    description: peri_scribe.kml.descriptions.FireDescription,
+    image_filenames: tuple[str, ...] = (),
+    leading_rows: tuple[tuple[str, str | None], ...] = (),
+) -> str:
+    """Return *description*'s balloon as the KML parser reads it.
+
+    Args:
+        description: The fire description to render.
+        image_filenames: The plot image filenames to show below the table.
+        leading_rows: The rows to lead the table with.
+
+    Returns:
+        The balloon's CDATA content, without the section markers the parser strips.
+    """
+    html = peri_scribe.kml.descriptions.description_html(
+        description,
+        image_filenames,
+        leading_rows=leading_rows,
+    )
+    return html[len("<![CDATA[") : -len("]]>")]
+
+
+def test_fire_folder_applies_fire_balloon_to_point_and_outline_placemarks(
     style_urls: dict[str, str],
 ) -> None:
+    description = peri_scribe.kml.descriptions.FireDescription(
+        identifier="2026-cabug-000001",
+    )
     fire = peri_scribe.kml.fire_data.FireGeometry(
         name="Bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
@@ -1307,7 +1336,13 @@ def test_fire_folder_applies_description_to_every_placemark(
                 tests.peri_scribe.kml.kml_helpers.square(1.0),
             ),
         ),
-        description="<![CDATA[<b>Bug</b>]]>",
+        description=description,
+        images=(
+            peri_scribe.kml.plot_rendering.PlotImage(
+                filename="id-bug-perimeter.png",
+                content=b"png",
+            ),
+        ),
     )
     writer = peri_scribe.kml.geometry.KmlWriter()
     peri_scribe.kml.folders.fire_folder(
@@ -1324,15 +1359,151 @@ def test_fire_folder_applies_description_to_every_placemark(
         "Bug",
         "Unknown Mapping",
     ]
+    expected = balloon_text(description, ("id-bug-perimeter.png",))
+    for name in ("Bug", "Unknown Mapping"):
+        balloon = tests.peri_scribe.kml.kml_helpers.description_text(
+            tests.peri_scribe.kml.kml_helpers.placemark_named(folder, name),
+        )
+        assert balloon == expected
+        assert "Added area" not in balloon
+
+
+def test_fire_folder_interior_ring_balloons_lead_with_added_area(
+    style_urls: dict[str, str],
+) -> None:
+    description = peri_scribe.kml.descriptions.FireDescription(
+        identifier="2026-cabug-000001",
+    )
+    first_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
+    second_time = datetime.datetime(2026, 8, 7, 20, 0, tzinfo=datetime.UTC)
+    first_ring = tests.peri_scribe.kml.kml_helpers.square(1.0)
+    second_ring = tests.peri_scribe.kml.kml_helpers.square(2.0)
+    fire = peri_scribe.kml.fire_data.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=shapely.geometry.Point(1.0, 1.0),
+        perimeters=(),
+        progression_rings=(
+            peri_scribe.perimeters.progression.Ring(
+                geometry=first_ring,
+                observation_time=first_time,
+            ),
+            peri_scribe.perimeters.progression.Ring(
+                geometry=second_ring,
+                observation_time=second_time,
+            ),
+        ),
+        description=description,
+    )
+    writer = peri_scribe.kml.geometry.KmlWriter()
+    peri_scribe.kml.folders.fire_folder(
+        writer,
+        fire,
+        style_urls,
+        peri_scribe.kml.builder.ring_style_urls_for([fire]),
+    )
+    folder = tests.peri_scribe.kml.kml_helpers.folder_named(
+        tests.peri_scribe.kml.kml_helpers.document_from_writer(writer),
+        "Bug",
+    )
+    point_balloon = tests.peri_scribe.kml.kml_helpers.description_text(
+        tests.peri_scribe.kml.kml_helpers.placemark_named(folder, "Bug"),
+    )
+    assert point_balloon == balloon_text(description)
+    assert "Added area" not in point_balloon
     interior_folder = tests.peri_scribe.kml.kml_helpers.folder_named(folder, "Interior")
     assert tests.peri_scribe.kml.kml_helpers.placemark_names(interior_folder) == [
-        "Interior",
+        "08/07 13:00 Interior",
+        "08/05 13:00 Interior",
     ]
-    for container in (folder, interior_folder):
-        for name in tests.peri_scribe.kml.kml_helpers.placemark_names(container):
-            assert tests.peri_scribe.kml.kml_helpers.placemark_named(
-                container,
+    # The second ring redraws the whole fire, so it adds only the ground beyond the
+    # first ring rather than its entire geometry.
+    first_added_area_in_acres = peri_scribe.units.area_in_acres(first_ring)
+    second_added_area_in_acres = (
+        peri_scribe.units.area_in_acres(second_ring) - first_added_area_in_acres
+    )
+    expected_balloons = {
+        "08/05 13:00 Interior": balloon_text(
+            description,
+            leading_rows=(
+                (
+                    peri_scribe.kml.descriptions.ADDED_AREA_LABEL,
+                    peri_scribe.kml.descriptions.format_in_acres(
+                        first_added_area_in_acres,
+                    ),
+                ),
+            ),
+        ),
+        "08/07 13:00 Interior": balloon_text(
+            description,
+            leading_rows=(
+                (
+                    peri_scribe.kml.descriptions.ADDED_AREA_LABEL,
+                    peri_scribe.kml.descriptions.format_in_acres(
+                        second_added_area_in_acres,
+                    ),
+                ),
+            ),
+        ),
+    }
+    for name, expected in expected_balloons.items():
+        balloon = tests.peri_scribe.kml.kml_helpers.description_text(
+            tests.peri_scribe.kml.kml_helpers.placemark_named(
+                interior_folder,
                 name,
-            ).findtext(
-                tests.peri_scribe.kml.kml_helpers.kml_tag("description"),
-            ) == ("<b>Bug</b>")
+            ),
+        )
+        assert balloon == expected
+        assert "<b>Identifier</b>" in balloon
+
+
+def test_fire_folder_fallback_ring_balloon_leads_with_its_area(
+    style_urls: dict[str, str],
+) -> None:
+    description = peri_scribe.kml.descriptions.FireDescription(
+        identifier="2026-cabug-000001",
+    )
+    fire = peri_scribe.kml.fire_data.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=shapely.geometry.Point(1.0, 1.0),
+        perimeters=(
+            tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
+                tests.peri_scribe.kml.kml_helpers.square(1.0),
+            ),
+        ),
+        description=description,
+    )
+    writer = peri_scribe.kml.geometry.KmlWriter()
+    peri_scribe.kml.folders.fire_folder(
+        writer,
+        fire,
+        style_urls,
+        peri_scribe.kml.builder.ring_style_urls_for([fire]),
+    )
+    folder = tests.peri_scribe.kml.kml_helpers.folder_named(
+        tests.peri_scribe.kml.kml_helpers.document_from_writer(writer),
+        "Bug",
+    )
+    interior_folder = tests.peri_scribe.kml.kml_helpers.folder_named(folder, "Interior")
+    balloon = tests.peri_scribe.kml.kml_helpers.description_text(
+        tests.peri_scribe.kml.kml_helpers.placemark_named(
+            interior_folder,
+            "Interior",
+        ),
+    )
+    # The fallback ring is the fire's whole latest perimeter, so it added that entire
+    # area at its observation rather than a slice.
+    added_area_in_acres = peri_scribe.units.area_in_acres(
+        tests.peri_scribe.kml.kml_helpers.square(1.0),
+    )
+    assert balloon == balloon_text(
+        description,
+        leading_rows=(
+            (
+                peri_scribe.kml.descriptions.ADDED_AREA_LABEL,
+                peri_scribe.kml.descriptions.format_in_acres(added_area_in_acres),
+            ),
+        ),
+    )
+    assert balloon.index("<b>Added area</b>") < balloon.index("<b>Area</b>")

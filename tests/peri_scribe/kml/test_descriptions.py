@@ -278,6 +278,44 @@ def test_description_html_alternates_row_backgrounds() -> None:
     assert "<tr><td><b>Cost to date</b></td>" in html
 
 
+def test_description_html_leads_with_given_rows() -> None:
+    html = peri_scribe.kml.descriptions.description_html(
+        full_description(),
+        leading_rows=((peri_scribe.kml.descriptions.ADDED_AREA_LABEL, "8,523 acres"),),
+    )
+    color = peri_scribe.kml.descriptions.ALT_ROW_BACKGROUND_COLOR
+    background = f'<tr style="background-color:{color};"'
+    assert (
+        f"{background}><td><b>{peri_scribe.kml.descriptions.ADDED_AREA_LABEL}</b>"
+        "</td><td>8,523 acres</td></tr>" in html
+    )
+    assert "<tr><td><b>Area</b></td>" in html
+    assert html.index("<td><b>Added area</b></td>") < html.index("<td><b>Area</b></td>")
+
+
+def test_description_html_continues_row_alternation_after_leading_rows() -> None:
+    html = peri_scribe.kml.descriptions.description_html(
+        full_description(),
+        leading_rows=(
+            (peri_scribe.kml.descriptions.ADDED_AREA_LABEL, "0.5 acres"),
+            ("Earlier note", "yes"),
+        ),
+    )
+    color = peri_scribe.kml.descriptions.ALT_ROW_BACKGROUND_COLOR
+    background = f'<tr style="background-color:{color};"'
+    assert f"{background}><td><b>Added area</b></td>" in html
+    assert "<tr><td><b>Earlier note</b></td>" in html
+    assert f"{background}><td><b>Area</b></td>" in html
+
+
+def test_description_html_shows_hyphens_for_missing_leading_values() -> None:
+    html = peri_scribe.kml.descriptions.description_html(
+        full_description(),
+        leading_rows=((peri_scribe.kml.descriptions.ADDED_AREA_LABEL, None),),
+    )
+    assert html.index("<td><b>Added area</b></td>") < html.index("<td>--</td>")
+
+
 def test_description_html_includes_images_after_table() -> None:
     html = peri_scribe.kml.descriptions.description_html(
         full_description(),

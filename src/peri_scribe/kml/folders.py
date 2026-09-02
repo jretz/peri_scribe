@@ -9,6 +9,7 @@ from __future__ import annotations
 import typing
 
 import peri_scribe.kml.colormap
+import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.geometry
 import peri_scribe.kml.icons
@@ -32,6 +33,47 @@ PERIMETERS_FOLDER_NAME = "Perimeters"
 INTERIOR_FOLDER_NAME = "Interior"
 
 
+def fire_balloon(
+    fire: peri_scribe.kml.fire_data.FireGeometry,
+    added_area_in_acres: float | None = None,
+) -> str | None:
+    """Return the KML balloon text for *fire*'s placemarks.
+
+    Every placemark showing the fire as a whole carries the same balloon describing the
+    fire's latest state, so a reader sees the same facts whether they click the point,
+    an outline, or a ring. With *added_area_in_acres*, the text instead opens that
+    balloon's table with the area a growth ring added to the fire, so the ring's own
+    growth reads above the fire's shared state. A fire without a description has no
+    balloon.
+
+    Args:
+        fire: The fire to describe.
+        added_area_in_acres: The acres the placemark's growth ring added, or None for
+            the fire's own placemarks.
+
+    Returns:
+        The balloon's KML description text, or None when the fire has no description.
+    """
+    if fire.description is None:
+        return None
+    image_filenames = tuple(image.filename for image in fire.images)
+    if added_area_in_acres is None:
+        return peri_scribe.kml.descriptions.description_html(
+            fire.description,
+            image_filenames,
+        )
+    return peri_scribe.kml.descriptions.description_html(
+        fire.description,
+        image_filenames,
+        leading_rows=(
+            (
+                peri_scribe.kml.descriptions.ADDED_AREA_LABEL,
+                peri_scribe.kml.descriptions.format_in_acres(added_area_in_acres),
+            ),
+        ),
+    )
+
+
 def outline_placemarks(
     writer: peri_scribe.kml.geometry.KmlWriter,
     fire: peri_scribe.kml.fire_data.FireGeometry,
@@ -40,11 +82,13 @@ def outline_placemarks(
     ring_count: int,
     *,
     visible: bool,
+    description: str | None,
 ) -> None:
     """Append *fire*'s outline perimeters, newest first, to *writer*.
 
     The outlines draw above the fire's interior rings, so each outline stays visible
-    over the rings beneath it.
+    over the rings beneath it. Each outline carries *description*, the balloon the
+    fire's own placemarks share.
 
     Args:
         writer: The writer to append to.
@@ -53,6 +97,7 @@ def outline_placemarks(
         outline_count: The number of outlines to draw.
         ring_count: The number of interior rings drawn beneath the outlines.
         visible: Whether each outline is visible.
+        description: The balloon text each outline shows.
     """
     for index, name in enumerate(peri_scribe.kml.styles.OUTLINED_PERIMETER_NAMES):
         if len(fire.perimeters) <= index:
@@ -65,7 +110,7 @@ def outline_placemarks(
             perimeter.geometry,
             peri_scribe.kml.styles.outline_draw_order(outline_count, index)
             + ring_count,
-            description=fire.description,
+            description=description,
             visible=visible,
         )
 
@@ -80,15 +125,17 @@ def fire_folder(
 ) -> None:
     """Append the folder symbolizing *fire* to *writer*.
 
-    The folder leads with the fire's point location, then a "Progression" tour, then
-    its latest, penultimate, and antepenultimate perimeter outlines, each shown when the
+    The folder leads with the fire's point location, then a "Progression" tour, then its
+    latest, penultimate, and antepenultimate perimeter outlines, each shown when the
     fire's history has one, and finally an ``Interior`` folder holding its growth rings
     styled by the color for the day each was observed. A fire with more than one
     perimeter holds its outline perimeters in a ``Perimeters`` folder; a fire with a
     single perimeter shows it directly. A fire with no dated rings falls back to its
     complete latest perimeter, styled with the hottest color, so every fire with
     perimeters appears with an interior. The interior lists its rings newest first while
-    the tour replays them oldest first.
+    the tour replays them oldest first. Each interior ring's balloon opens with the area
+    that ring added to the fire, so the ring's own growth reads above the fire's shared
+    balloon.
 
     Args:
         writer: The writer to append to.
@@ -128,6 +175,7 @@ def fire_folder(
     else:
         rings = []
         ring_times = ()
+    description = fire_balloon(fire)
     with writer.folder(fire.name, visible=visible) as folder_id:
         if fire.point is not None:
             peri_scribe.kml.geometry.point_placemark(
@@ -136,7 +184,7 @@ def fire_folder(
                 style_urls[peri_scribe.kml.styles.POINT_LOCATION_NAME],
                 fire.point,
                 peri_scribe.kml.styles.point_draw_order(outline_count) + len(rings),
-                description=fire.description,
+                description=description,
                 visible=visible,
             )
         if ring_times:
@@ -159,6 +207,7 @@ def fire_folder(
                     outline_count,
                     len(rings),
                     visible=visible,
+                    description=description,
                 )
         else:
             outline_placemarks(
@@ -168,8 +217,12 @@ def fire_folder(
                 outline_count,
                 len(rings),
                 visible=visible,
+                description=description,
             )
         if rings:
+            added_areas_in_acres = peri_scribe.kml.fire_data.ring_added_areas_in_acres(
+                tuple(ring for ring, _color in rings),
+            )
             with writer.folder(
                 INTERIOR_FOLDER_NAME,
                 visible=visible,
@@ -185,7 +238,10 @@ def fire_folder(
                         ring_style_urls[color],
                         ring.geometry,
                         index,
-                        description=fire.description,
+                        description=fire_balloon(
+                            fire,
+                            added_areas_in_acres[index],
+                        ),
                         visible=visible,
                         placemark_id=peri_scribe.kml.tour.interior_ring_id(
                             folder_id,

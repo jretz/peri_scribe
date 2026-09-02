@@ -296,6 +296,24 @@ def placemark_style_url(placemark: ET.Element) -> str:
     return style_url
 
 
+def description_text(placemark: ET.Element) -> str:
+    """Return *placemark*'s balloon text as the KML parser reads it.
+
+    The writer stores each balloon inside a CDATA section so its HTML survives as
+    markup, and the parser hands the section's content back without the markers.
+
+    Args:
+        placemark: The placemark to inspect.
+
+    Returns:
+        The balloon text.
+    """
+    text = placemark.findtext(kml_tag("description"))
+    if text is None:
+        pytest.fail("Placemark has no description")
+    return text
+
+
 def draw_order(placemark: ET.Element) -> int:
     """Return the gx:drawOrder of *placemark*'s geometry.
 

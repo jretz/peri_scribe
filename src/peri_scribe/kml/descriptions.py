@@ -3,7 +3,9 @@
 A fire's geography is drawn as several placemarks: its point location, its latest filled
 perimeter, a few outline perimeters, and its growth rings. Every one of those placemarks
 shows the same balloon describing the fire's latest state, so the person reading the map
-sees the fire's current size, cost, and timing regardless of which shape they click.
+sees the fire's current size, cost, and timing regardless of which shape they click. A
+growth ring's balloon opens with the area that ring added to the fire, so a reader sees
+how much new ground that observation brought above the fire's shared facts.
 
 The description is formatted for people rather than for a database: numbers carry
 thousands separators and units, and timestamps are shown in America/Los_Angeles time
@@ -45,6 +47,10 @@ ALT_ROW_BACKGROUND_COLOR = "#EEF3F8"
 # The balloon's body text is slightly larger than Google Earth's default, so the
 # description reads easily at a glance.
 BODY_FONT_SIZE_IN_PIXELS = 14
+
+# The label shown above a growth ring's balloon table for the area that ring added to
+# the fire, so the ring's own growth reads above the fire's latest state.
+ADDED_AREA_LABEL = "Added area"
 
 
 def format_number(value: float | None, decimal_places: int = 0) -> str | None:
@@ -387,17 +393,23 @@ def description_rows(
 def description_html(
     description: FireDescription,
     image_filenames: tuple[str, ...] = (),
+    leading_rows: tuple[tuple[str, str | None], ...] = (),
 ) -> str:
     """Return *description* as the HTML KML balloon text.
 
     The text is wrapped in a CDATA section so the HTML tags it contains survive as
     markup rather than being read as KML text. Each of *image_filenames* is shown below
     the table as an image whose source is a file stored beside the KML in the KMZ
-    archive.
+    archive. Each row in *leading_rows* opens the table above *description*'s own rows,
+    so a growth ring's balloon can lead with the area that ring added to the fire before
+    the fire's shared facts; a row whose value is missing shows two hyphens, like the
+    fire's own rows.
 
     Args:
         description: The fire's latest state.
         image_filenames: The relative filename of each plot image to show, in
+            display order.
+        leading_rows: The (label, value) rows to show at the top of the table, in
             display order.
 
     Returns:
@@ -407,7 +419,8 @@ def description_html(
     parts = [
         f'<table cellspacing="0" cellpadding="4"{body_style}>',
     ]
-    for index, (label, value) in enumerate(description_rows(description)):
+    rows = [*leading_rows, *description_rows(description)]
+    for index, (label, value) in enumerate(rows):
         background = (
             f' style="background-color:{ALT_ROW_BACKGROUND_COLOR};"'
             if index % 2 == 0
@@ -415,7 +428,7 @@ def description_html(
         )
         parts.append(
             f"<tr{background}><td><b>{escape_text(label)}</b></td>"
-            f"<td>{escape_text(value)}</td></tr>",
+            f"<td>{escape_text('--' if value is None else value)}</td></tr>",
         )
     parts.append("</table>")
     parts.extend(

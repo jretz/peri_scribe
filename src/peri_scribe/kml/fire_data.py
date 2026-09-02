@@ -11,6 +11,8 @@ import dataclasses
 import datetime
 import typing
 
+import shapely
+
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.history_index
 import peri_scribe.kml.plot_data
@@ -24,7 +26,6 @@ import peri_scribe.units
 
 if typing.TYPE_CHECKING:
     import geopandas
-    import shapely
 
 
 # The smallest computed or reported area that keeps a fire in the KMZ output. Fires
@@ -49,7 +50,7 @@ class FireGeometry:
     point: shapely.Point | None
     perimeters: tuple[Perimeter, ...]
     progression_rings: tuple[peri_scribe.perimeters.progression.Ring, ...] = ()
-    description: str | None = None
+    description: peri_scribe.kml.descriptions.FireDescription | None = None
     images: tuple[peri_scribe.kml.plot_rendering.PlotImage, ...] = ()
     identifiers: frozenset[str] = frozenset()
 
@@ -82,6 +83,47 @@ def progression_ring(
         observation_time=perimeter.observation_time,
         area=area_in_square_meters,
     )
+
+
+def ring_added_areas_in_acres(
+    rings: typing.Sequence[peri_scribe.perimeters.progression.Ring],
+) -> tuple[float, ...]:
+    """Return each ring's added area in acres, in chronological order.
+
+    A ring's added area is the area of the fire once that ring is included minus the
+    area of the fire with only the earlier rings, measured from the ring geometries as
+    the KMZ draws them. The interior ring balloons show each ring's added area so a
+    reader can see how much new ground that ring's observation added; measuring the
+    unions rather than trusting each ring's own area keeps that figure honest when a
+    ring re-covers ground an earlier ring already claimed.
+
+    Args:
+        rings: The fire's growth rings in chronological order.
+
+    Returns:
+        Each ring's added area in acres, in the input order.
+    """
+    cumulative_areas_in_acres: list[float] = []
+    combined_geometry: shapely.Geometry | None = None
+    for ring in rings:
+        combined_geometry = (
+            ring.geometry
+            if combined_geometry is None
+            else shapely.union(combined_geometry, ring.geometry)
+        )
+        cumulative_areas_in_acres.append(
+            peri_scribe.units.area_in_acres(combined_geometry),
+        )
+    added_areas_in_acres: list[float] = []
+    previous_area_in_acres = 0.0
+    for cumulative_area_in_acres in cumulative_areas_in_acres:
+        # A later ring never removes ground from the fire it joins, so a tiny negative
+        # difference is measurement noise, not shrinkage.
+        added_areas_in_acres.append(
+            max(0.0, cumulative_area_in_acres - previous_area_in_acres),
+        )
+        previous_area_in_acres = cumulative_area_in_acres
+    return tuple(added_areas_in_acres)
 
 
 def fire_perimeters(
@@ -311,25 +353,22 @@ def fire_geometries(
                 perimeters=perimeter_observations,
                 progression_rings=progression_rings,
                 identifiers=fire_identifiers,
-                description=peri_scribe.kml.descriptions.description_html(
-                    peri_scribe.kml.text.fire_description(
-                        entry,
-                        peri_scribe.kml.history_index.select_rows(
-                            perimeters,
-                            perimeter_positions,
-                        ),
-                        peri_scribe.kml.history_index.select_rows(
-                            points,
-                            point_positions,
-                        ),
-                        of_note=peri_scribe.kml.text.score_explanation_for(
-                            notes_by_identifier,
-                            notes_by_name,
-                            fire_identifiers,
-                            entry.name,
-                        ),
+                description=peri_scribe.kml.text.fire_description(
+                    entry,
+                    peri_scribe.kml.history_index.select_rows(
+                        perimeters,
+                        perimeter_positions,
                     ),
-                    tuple(image.filename for image in images),
+                    peri_scribe.kml.history_index.select_rows(
+                        points,
+                        point_positions,
+                    ),
+                    of_note=peri_scribe.kml.text.score_explanation_for(
+                        notes_by_identifier,
+                        notes_by_name,
+                        fire_identifiers,
+                        entry.name,
+                    ),
                 ),
                 images=images,
             ),
