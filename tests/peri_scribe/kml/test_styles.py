@@ -22,3 +22,13 @@ def test_band_draw_order_counts_from_newest() -> None:
         peri_scribe.kml.styles.band_draw_order(band_count, newest_first_index)
         == expected_draw_order
     )
+
+
+def test_outlined_perimeter_style_fills_with_transparent_outline_color() -> None:
+    color = "#FF0000"
+    style = peri_scribe.kml.styles.outlined_perimeter_style("outline", color)
+    assert style.linestyle.color == peri_scribe.kml.styles.kml_color(
+        color,
+        peri_scribe.kml.styles.OUTLINE_OPACITY_PERCENT,
+    )
+    assert style.polystyle.color == peri_scribe.kml.styles.kml_color(color, 0)

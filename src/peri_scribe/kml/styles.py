@@ -89,9 +89,6 @@ def kml_color(red_green_blue: str, opacity_in_percent: int) -> str:
     return f"{alpha:02x}{blue}{green}{red}".lower()
 
 
-TRANSPARENT_FILL_COLOR = kml_color("#FFFFFF", 0)
-
-
 def set_draw_order(
     geometry: simplekml.Point | simplekml.Polygon,
     draw_order: int,
@@ -189,6 +186,10 @@ def filled_perimeter_style(style_id: str, color: str) -> Style:
 def outlined_perimeter_style(style_id: str, color: str) -> Style:
     """Return the outline style with *style_id* and *color*.
 
+    The polygon fills in the outline color at zero opacity, so the fill never shows on
+    the map while Google Earth's list icon, which reads the fill color, matches the
+    outline.
+
     Args:
         style_id: The style's identifier.
         color: The outline color as ``#RRGGBB``.
@@ -199,7 +200,7 @@ def outlined_perimeter_style(style_id: str, color: str) -> Style:
     style = Style(style_id)
     style.linestyle.color = kml_color(color, OUTLINE_OPACITY_PERCENT)
     style.linestyle.width = OUTLINE_WIDTH
-    style.polystyle.color = TRANSPARENT_FILL_COLOR
+    style.polystyle.color = kml_color(color, 0)
     style.polystyle.fill = 1
     style.polystyle.outline = 1
     return style
