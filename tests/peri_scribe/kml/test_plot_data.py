@@ -2,12 +2,19 @@
 
 from __future__ import annotations
 
+import datetime
 import json
+import typing
 
 import pytest
 
 import peri_scribe.kml.plot_data
+import peri_scribe.units
 import tests.peri_scribe.kml.kml_plot_helpers
+
+
+if typing.TYPE_CHECKING:
+    import shapely
 
 
 def test_series_points_reads_values_and_times() -> None:
@@ -517,3 +524,52 @@ def test_plot_frame_melts_series() -> None:
     assert list(frame.columns) == ["label", "observation_time", "value"]
     assert frame["label"].tolist() == ["Area", "Cost to date"]
     assert frame["value"].tolist() == [10.0, 1000.0]
+
+
+def test_fire_plots_measures_each_exterior_perimeter_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    observations: list[
+        tuple[
+            datetime.datetime | None,
+            shapely.Geometry,
+            float | None,
+            float | None,
+            float | None,
+            float | None,
+        ]
+    ] = [
+        (
+            tests.peri_scribe.kml.kml_plot_helpers.observation_time(day),
+            tests.peri_scribe.kml.kml_plot_helpers.square(float(day)),
+            None,
+            50.0,
+            None,
+            None,
+        )
+        for day in (1, 2, 3)
+    ]
+    frame = tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame(observations)
+    calls = 0
+    original = peri_scribe.units.exterior_perimeter_in_miles
+
+    def counting_measure(geometry: shapely.Geometry | None) -> float | None:
+        nonlocal calls
+        calls += 1
+        return original(geometry)
+
+    monkeypatch.setattr(
+        peri_scribe.units,
+        "exterior_perimeter_in_miles",
+        counting_measure,
+    )
+    plots = peri_scribe.kml.plot_data.fire_plots(
+        frame,
+        tests.peri_scribe.kml.kml_plot_helpers.point_frame([]),
+    )
+    assert calls == len(observations)
+    perimeter_lines = plots[1].series
+    assert [len(series.points) for series in perimeter_lines] == [
+        len(observations),
+        len(observations),
+    ]

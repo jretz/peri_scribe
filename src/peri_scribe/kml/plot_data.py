@@ -76,6 +76,14 @@ class SeriesPoint:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
+class ExteriorMeasurement:
+    """One perimeter row's observation time and exterior length in miles."""
+
+    observation_time: datetime.datetime | None
+    length_in_miles: float | None
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class PlotSeries:
     """One line to draw: a label and its measurements over time."""
 
@@ -125,42 +133,88 @@ def series_points(
     return tuple(points)
 
 
-def exterior_perimeter_points(
+def exterior_perimeter_measurements(
     frame: geopandas.GeoDataFrame,
-) -> tuple[SeriesPoint, ...]:
-    """Return each perimeter's exterior length in miles over time.
+) -> tuple[ExteriorMeasurement, ...]:
+    """Return each perimeter row's observation time and exterior length in miles.
+
+    Each row's exterior length is measured exactly once here, so the exterior and
+    contained perimeter lines built from the measurements never measure the same
+    geometry twice.
 
     Args:
         frame: The perimeter history layer.
 
     Returns:
-        The exterior perimeter points, in the layer's row order.
+        One measurement per row, in the layer's row order.
     """
     if "observation_time" not in frame.columns:
         return ()
-    points: list[SeriesPoint] = []
+    measurements: list[ExteriorMeasurement] = []
     for observation_time, geometry in zip(
         frame["observation_time"],
         frame.geometry,
         strict=True,
     ):
-        time = peri_scribe.geo.parsing.observation_time_from(observation_time)
-        length = peri_scribe.units.exterior_perimeter_in_miles(geometry)
-        if time is not None and length is not None:
-            points.append(SeriesPoint(observation_time=time, value=length))
+        measurements.append(
+            ExteriorMeasurement(
+                observation_time=peri_scribe.geo.parsing.observation_time_from(
+                    observation_time,
+                ),
+                length_in_miles=peri_scribe.units.exterior_perimeter_in_miles(
+                    geometry,
+                ),
+            ),
+        )
+    return tuple(measurements)
+
+
+def exterior_perimeter_points(
+    frame: geopandas.GeoDataFrame,
+    exterior_measurements: tuple[ExteriorMeasurement, ...] | None = None,
+) -> tuple[SeriesPoint, ...]:
+    """Return each perimeter's exterior length in miles over time.
+
+    When *exterior_measurements* is supplied it is used instead of measuring *frame*
+    again, so callers that build both perimeter lines can measure each geometry once.
+
+    Args:
+        frame: The perimeter history layer.
+        exterior_measurements: Each row's exterior length, or None to measure *frame*.
+
+    Returns:
+        The exterior perimeter points, in the layer's row order.
+    """
+    if exterior_measurements is None:
+        exterior_measurements = exterior_perimeter_measurements(frame)
+    points: list[SeriesPoint] = []
+    for measurement in exterior_measurements:
+        observation_time = measurement.observation_time
+        length_in_miles = measurement.length_in_miles
+        if observation_time is not None and length_in_miles is not None:
+            points.append(
+                SeriesPoint(
+                    observation_time=observation_time,
+                    value=length_in_miles,
+                ),
+            )
     return tuple(points)
 
 
 def contained_perimeter_points(
     frame: geopandas.GeoDataFrame,
+    exterior_measurements: tuple[ExteriorMeasurement, ...] | None = None,
 ) -> tuple[SeriesPoint, ...]:
     """Return each perimeter's contained length in miles over time.
 
     The contained length is the exterior perimeter length multiplied by the containment
-    percentage, so a perimeter without a percentage has no contained length.
+    percentage, so a perimeter without a percentage has no contained length. When
+    *exterior_measurements* is supplied it is used instead of measuring *frame* again,
+    so callers that build both perimeter lines can measure each geometry once.
 
     Args:
         frame: The perimeter history layer.
+        exterior_measurements: Each row's exterior length, or None to measure *frame*.
 
     Returns:
         The contained perimeter points, in the layer's row order.
@@ -169,21 +223,26 @@ def contained_perimeter_points(
         return ()
     if "percent_contained" not in frame.columns:
         return ()
+    if exterior_measurements is None:
+        exterior_measurements = exterior_perimeter_measurements(frame)
     points: list[SeriesPoint] = []
-    for observation_time, geometry, percent_contained in zip(
-        frame["observation_time"],
-        frame.geometry,
+    for measurement, percent_contained in zip(
+        exterior_measurements,
         frame["percent_contained"],
         strict=True,
     ):
-        time = peri_scribe.geo.parsing.observation_time_from(observation_time)
-        length = peri_scribe.units.exterior_perimeter_in_miles(geometry)
+        observation_time = measurement.observation_time
+        length_in_miles = measurement.length_in_miles
         in_percent = peri_scribe.geo.parsing.numeric_value(percent_contained)
-        if time is not None and length is not None and in_percent is not None:
+        if (
+            observation_time is not None
+            and length_in_miles is not None
+            and in_percent is not None
+        ):
             points.append(
                 SeriesPoint(
-                    observation_time=time,
-                    value=length * in_percent / CONTAINMENT_IN_PERCENT,
+                    observation_time=observation_time,
+                    value=length_in_miles * in_percent / CONTAINMENT_IN_PERCENT,
                 ),
             )
     return tuple(points)
@@ -322,6 +381,7 @@ def fire_plots(
         ),
         source_attribute_points(point_rows, POINT_PERSONNEL_ATTRIBUTE_KEY),
     )
+    exterior_measurements = exterior_perimeter_measurements(perimeter_rows)
 
     return (
         FirePlot(
@@ -339,11 +399,17 @@ def fire_plots(
             series=(
                 PlotSeries(
                     label=EXTERIOR_PERIMETER_SERIES_LABEL,
-                    points=exterior_perimeter_points(perimeter_rows),
+                    points=exterior_perimeter_points(
+                        perimeter_rows,
+                        exterior_measurements,
+                    ),
                 ),
                 PlotSeries(
                     label=CONTAINED_PERIMETER_SERIES_LABEL,
-                    points=contained_perimeter_points(perimeter_rows),
+                    points=contained_perimeter_points(
+                        perimeter_rows,
+                        exterior_measurements,
+                    ),
                 ),
             ),
             y_axis_label=PERIMETER_AXIS_LABEL,
