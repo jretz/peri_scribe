@@ -22,6 +22,10 @@ import peri_scribe.kml.plot_drawing
 # it runs.
 WORKER_NICENESS_INCREMENT = 10
 
+# The most concurrent processes the plot pool may start. A batch render is capped at
+# this many workers even on machines with more cores.
+PLOT_WORKER_LIMIT = 6
+
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class PlotImage:
@@ -106,7 +110,7 @@ def worker_count_for(task_count: int) -> int:
     """Return the number of workers the plot pool should use.
 
     A pool never needs more workers than it has plots to render, and never more than the
-    machine has cores.
+    machine has cores or ``PLOT_WORKER_LIMIT``, whichever is lower.
 
     Args:
         task_count: The number of plots the pool will render.
@@ -114,7 +118,7 @@ def worker_count_for(task_count: int) -> int:
     Returns:
         The number of workers, at least one.
     """
-    return max(1, min(task_count, os.cpu_count() or 1))
+    return max(1, min(task_count, PLOT_WORKER_LIMIT, os.cpu_count() or 1))
 
 
 def plot_image_bundles(

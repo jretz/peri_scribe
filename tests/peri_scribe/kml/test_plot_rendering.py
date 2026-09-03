@@ -118,14 +118,21 @@ def test_render_plot_request_raises_without_initialized_renderer(
         )
 
 
-def test_worker_count_for_caps_at_cores_and_tasks(
+def test_worker_count_for_caps_at_worker_limit_cores_and_tasks(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    cpu_count = 12
+    limit = peri_scribe.kml.plot_rendering.PLOT_WORKER_LIMIT
+    # Fewer plots than the other caps win: one worker per plot.
+    task_count = 2
+    monkeypatch.setattr(os, "cpu_count", lambda: limit + 6)
+    assert peri_scribe.kml.plot_rendering.worker_count_for(task_count) == task_count
+    # A machine with more cores than the limit still caps the pool at the limit.
+    assert peri_scribe.kml.plot_rendering.worker_count_for(100) == limit
+    # A machine with fewer cores than the limit caps the pool at its cores.
+    cpu_count = 4
     monkeypatch.setattr(os, "cpu_count", lambda: cpu_count)
     assert peri_scribe.kml.plot_rendering.worker_count_for(100) == cpu_count
-    task_count = 2
-    assert peri_scribe.kml.plot_rendering.worker_count_for(task_count) == task_count
+    # A single-core machine gets one worker.
     monkeypatch.setattr(os, "cpu_count", lambda: 1)
     assert peri_scribe.kml.plot_rendering.worker_count_for(5) == 1
 
