@@ -6,7 +6,6 @@
 
 ## Implementation Docs
 
-- [Open Questions](docs/open_questions.md) — Open questions and discussions related to the project.
 - [Development Tools](docs/development_tools.md) — Tools and setup for development.
 - [Conventions](docs/conventions.md) — Coding conventions and style guide for the project.
 - [Testing](docs/testing.md) — Testing guidelines and instructions for the project.

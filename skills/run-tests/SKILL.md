@@ -18,4 +18,4 @@ Run the offline KMZ stage directly from the project root with the project's virt
 
 All tests should run in well under a minute.
 
-The ruff format check will give a warning about COM812 - ignore that. Do not ignore (or cause tooling to ignore) and other warnings or errors that arise from any of the test statges.
+The ruff format check will give a warning about COM812 - ignore that. Do not ignore (or cause tooling to ignore) any other warnings or errors that arise from any of the test stages.

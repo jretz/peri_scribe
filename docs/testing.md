@@ -2,7 +2,7 @@
 
 ## Conventions
 
-[Conventions](../docs/conventions.md) — Coding conventions and style guide for the project also apply to testing code.
+[Conventions](conventions.md) — Coding conventions and style guide for the project also apply to testing code.
 
 ## Decomposition
 

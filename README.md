@@ -51,4 +51,4 @@ administrative boundaries ───────┘                │
 
 ## Status
 
-The ingestion, validation, history derivation, scoring, and KMZ pipeline is prototyped and actively maturing. A reporting command and notifications remain future work.
+The ingestion, validation, history derivation, scoring, and KMZ pipeline is built and is maturing. A reporting command and notifications remain future work.
