@@ -14,7 +14,18 @@
 
 ## Environment and Tooling
 
-- Determine the shell in use (bash, zsh, fish, etc.) early in a turn that will involve shell commands so that they can be formatted correctly for that shell from the start.
+### Shell
+
+Determine the shell in use (bash, fish, zsh, etc.) early in a turn that will involve shell commands so that they can be formatted correctly for that shell from the start.
+
+### Python Virtual Environment
+
+`mise` and `uv` can be difficult in a sandbox because their cache directories are not accessible. To run Python commands in a sandbox, use the interpreter in the virtual environment directly. For example, `.venv/bin/python my_script.py my_args`.
+
+### Skills
+
+- [create-kmz-in-sandbox](skills/create-kmz-in-sandbox/SKILL.md) — Generate PeriScribe KMZ files from existing local derived data when multiprocessing or sandbox constraints make the normal CLI unreliable.
+- [run-tests](skills/run-tests/SKILL.md) — Run project tests in a sandbox (this should be done at the end of every turn that modifies code to ensure the changes do not break existing functionality).
 
 ## Off Limits
 
