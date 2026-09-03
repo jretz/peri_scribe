@@ -24,8 +24,7 @@ Determine the shell in use (bash, fish, zsh, etc.) early in a turn that will inv
 
 ### Skills
 
-- [create-kmz-in-sandbox](skills/create-kmz-in-sandbox/SKILL.md) — Generate PeriScribe KMZ files from existing local derived data when multiprocessing or sandbox constraints make the normal CLI unreliable.
-- [run-tests](skills/run-tests/SKILL.md) — Run project tests in a sandbox (this should be done at the end of every turn that modifies code to ensure the changes do not break existing functionality).
+There are a number of skills available for use in this project. They help get around the limitations of the sandbox and provide a more structured way to perform tasks. Use them when appropriate.
 
 ## Off Limits
 
