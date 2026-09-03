@@ -1125,6 +1125,781 @@ def test_top_fires_excludes_scores_without_matching_fire() -> None:
     assert peri_scribe.kml.folders.top_fires([fire], scores) == []
 
 
+REFERENCE_TIME = datetime.datetime(2026, 8, 20, 12, 0, tzinfo=datetime.UTC)
+
+
+def active_fire(
+    name: str,
+    *,
+    description: peri_scribe.kml.descriptions.FireDescription | None = None,
+    perimeters: tuple[peri_scribe.kml.fire_data.Perimeter, ...] = (),
+    identifiers: frozenset[str] = frozenset(),
+) -> peri_scribe.kml.fire_data.FireGeometry:
+    """Return an active fire with the given description and perimeters.
+
+    Args:
+        name: The fire's name.
+        description: The fire's latest state, or None.
+        perimeters: The fire's perimeters, oldest first.
+        identifiers: The fire's identifiers.
+
+    Returns:
+        The active fire.
+    """
+    return peri_scribe.kml.fire_data.FireGeometry(
+        name=name,
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=None,
+        perimeters=perimeters,
+        description=description,
+        identifiers=identifiers,
+    )
+
+
+def growing_fire(
+    name: str,
+    baseline_side: float,
+    latest_side: float,
+    reference_time: datetime.datetime,
+) -> peri_scribe.kml.fire_data.FireGeometry:
+    """Return an active fire growing from *baseline_side* to *latest_side*.
+
+    The baseline perimeter sits at the start of the 48-hour window and the latest one
+    at *reference_time*, so the fire's growth over the window is measurable.
+
+    Args:
+        name: The fire's name.
+        baseline_side: The side length of the baseline square.
+        latest_side: The side length of the latest square.
+        reference_time: The time the snapshot is as of.
+
+    Returns:
+        The growing fire.
+    """
+    return active_fire(
+        name,
+        perimeters=(
+            peri_scribe.kml.fire_data.Perimeter(
+                geometry=tests.peri_scribe.kml.kml_helpers.square(baseline_side),
+                observation_time=reference_time - datetime.timedelta(hours=48),
+            ),
+            peri_scribe.kml.fire_data.Perimeter(
+                geometry=tests.peri_scribe.kml.kml_helpers.square(latest_side),
+                observation_time=reference_time,
+            ),
+        ),
+    )
+
+
+def test_score_maps_partitions_entries_by_identity() -> None:
+    identified = score_entry("Timber", "id-big", 470, "Large.")
+    named = score_entry("Bug", None, 12, "A Type 1 Incident.")
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[identified, named],
+    )
+
+    by_identifier, by_name = peri_scribe.kml.folders.score_maps(scores)
+
+    assert by_identifier == {"id-big": identified}
+    assert by_name == {"Bug": named}
+
+
+def test_score_value_for_fire_matches_by_identifier() -> None:
+    identified = score_entry("Timber", "id-big", 470, "Large.")
+    scores = peri_scribe.models.FireScores(version="test", fires=[identified])
+    by_identifier, by_name = peri_scribe.kml.folders.score_maps(scores)
+    fire = active_fire("Timber", identifiers=frozenset({"id-big", "alias-big"}))
+
+    assert (
+        peri_scribe.kml.folders.score_value_for_fire(
+            fire,
+            by_identifier,
+            by_name,
+        )
+        == identified.score
+    )
+
+
+def test_score_value_for_fire_falls_back_to_name() -> None:
+    named = score_entry("Bug", None, 12, "A Type 1 Incident.")
+    scores = peri_scribe.models.FireScores(version="test", fires=[named])
+    by_identifier, by_name = peri_scribe.kml.folders.score_maps(scores)
+    fire = active_fire("Bug")
+
+    assert (
+        peri_scribe.kml.folders.score_value_for_fire(
+            fire,
+            by_identifier,
+            by_name,
+        )
+        == named.score
+    )
+
+
+def test_score_value_for_fire_returns_none_without_match() -> None:
+    named = score_entry("Bug", None, 12, "A Type 1 Incident.")
+    scores = peri_scribe.models.FireScores(version="test", fires=[named])
+    by_identifier, by_name = peri_scribe.kml.folders.score_maps(scores)
+    fire = active_fire("Missing", identifiers=frozenset({"id-missing"}))
+
+    assert (
+        peri_scribe.kml.folders.score_value_for_fire(
+            fire,
+            by_identifier,
+            by_name,
+        )
+        is None
+    )
+
+
+def test_notable_score_threshold_uses_top_fraction() -> None:
+    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            for index in range(10)
+        ],
+    )
+    # Ten fires keep the highest-scoring fifth, so the cutoff is the second-highest
+    # score.
+    expected_threshold = sorted(
+        (entry.score for entry in scores.fires),
+        reverse=True,
+    )[1]
+    assert (
+        peri_scribe.kml.folders.notable_score_threshold(fires, scores)
+        == expected_threshold
+    )
+
+
+def test_notable_score_threshold_ignores_inactive_fires() -> None:
+    fire = peri_scribe.kml.fire_data.FireGeometry(
+        name="Old",
+        status=peri_scribe.models.FireStatus.INACTIVE,
+        point=None,
+        perimeters=(),
+    )
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[score_entry("Old", None, 500, "A Type 1 Incident.")],
+    )
+
+    assert peri_scribe.kml.folders.notable_score_threshold([fire], scores) is None
+
+
+def test_notable_score_threshold_returns_none_without_active_score() -> None:
+    fire = active_fire("Unscored")
+    scores = peri_scribe.models.FireScores(version="test", fires=[])
+
+    assert peri_scribe.kml.folders.notable_score_threshold([fire], scores) is None
+
+
+def test_new_notable_fires_returns_empty_without_reference_time() -> None:
+    fire = active_fire(
+        "New",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            discovery_time=REFERENCE_TIME,
+        ),
+    )
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[score_entry("New", None, 10, "Notable.")],
+    )
+
+    assert peri_scribe.kml.folders.new_notable_fires([fire], scores, None) == []
+
+
+def test_new_notable_fires_returns_empty_without_active_score() -> None:
+    fire = active_fire(
+        "Unscored",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            discovery_time=REFERENCE_TIME,
+        ),
+    )
+    scores = peri_scribe.models.FireScores(version="test", fires=[])
+
+    assert (
+        peri_scribe.kml.folders.new_notable_fires(
+            [fire],
+            scores,
+            REFERENCE_TIME,
+        )
+        == []
+    )
+
+
+def test_new_notable_fires_includes_recent_high_score_fire() -> None:
+    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            for index in range(10)
+        ],
+    )
+    recent = REFERENCE_TIME - datetime.timedelta(days=1)
+    candidate = active_fire(
+        "New",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            discovery_time=recent,
+        ),
+    )
+    scores.fires.append(score_entry("New", None, 10, "Notable."))
+    fires.append(candidate)
+
+    assert peri_scribe.kml.folders.new_notable_fires(
+        fires,
+        scores,
+        REFERENCE_TIME,
+    ) == [candidate]
+
+
+def test_new_notable_fires_sorts_by_score_descending() -> None:
+    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            for index in range(10)
+        ],
+    )
+    recent = REFERENCE_TIME - datetime.timedelta(days=1)
+    lower = active_fire(
+        "Lower",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            discovery_time=recent,
+        ),
+    )
+    higher = active_fire(
+        "Higher",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            discovery_time=recent,
+        ),
+    )
+    scores.fires.append(score_entry("Lower", None, 10, "Notable."))
+    scores.fires.append(score_entry("Higher", None, 12, "Notable."))
+    fires.extend([lower, higher])
+
+    assert peri_scribe.kml.folders.new_notable_fires(
+        fires,
+        scores,
+        REFERENCE_TIME,
+    ) == [higher, lower]
+
+
+def test_new_notable_fires_excludes_stale_discovery() -> None:
+    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            for index in range(10)
+        ],
+    )
+    stale = REFERENCE_TIME - datetime.timedelta(days=6)
+    candidate = active_fire(
+        "Old",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            discovery_time=stale,
+        ),
+    )
+    scores.fires.append(score_entry("Old", None, 20, "Notable."))
+    fires.append(candidate)
+
+    assert (
+        peri_scribe.kml.folders.new_notable_fires(
+            fires,
+            scores,
+            REFERENCE_TIME,
+        )
+        == []
+    )
+
+
+def test_new_notable_fires_excludes_future_discovery() -> None:
+    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            for index in range(10)
+        ],
+    )
+    future = REFERENCE_TIME + datetime.timedelta(hours=1)
+    candidate = active_fire(
+        "Future",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            discovery_time=future,
+        ),
+    )
+    scores.fires.append(score_entry("Future", None, 20, "Notable."))
+    fires.append(candidate)
+
+    assert (
+        peri_scribe.kml.folders.new_notable_fires(
+            fires,
+            scores,
+            REFERENCE_TIME,
+        )
+        == []
+    )
+
+
+def test_new_notable_fires_excludes_missing_description() -> None:
+    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            for index in range(10)
+        ],
+    )
+    candidate = active_fire("NoDescription")
+    scores.fires.append(score_entry("NoDescription", None, 20, "Notable."))
+    fires.append(candidate)
+
+    assert (
+        peri_scribe.kml.folders.new_notable_fires(
+            fires,
+            scores,
+            REFERENCE_TIME,
+        )
+        == []
+    )
+
+
+def test_new_notable_fires_excludes_missing_discovery_time() -> None:
+    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            for index in range(10)
+        ],
+    )
+    candidate = active_fire(
+        "NoDiscovery",
+        description=peri_scribe.kml.descriptions.FireDescription(),
+    )
+    scores.fires.append(score_entry("NoDiscovery", None, 20, "Notable."))
+    fires.append(candidate)
+
+    assert (
+        peri_scribe.kml.folders.new_notable_fires(
+            fires,
+            scores,
+            REFERENCE_TIME,
+        )
+        == []
+    )
+
+
+def test_new_notable_fires_excludes_below_threshold() -> None:
+    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            for index in range(10)
+        ],
+    )
+    recent = REFERENCE_TIME - datetime.timedelta(days=1)
+    candidate = active_fire(
+        "Low",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            discovery_time=recent,
+        ),
+    )
+    scores.fires.append(score_entry("Low", None, 5, "Notable."))
+    fires.append(candidate)
+
+    assert (
+        peri_scribe.kml.folders.new_notable_fires(
+            fires,
+            scores,
+            REFERENCE_TIME,
+        )
+        == []
+    )
+
+
+def test_new_notable_fires_excludes_unscored_fire() -> None:
+    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            for index in range(10)
+        ],
+    )
+    recent = REFERENCE_TIME - datetime.timedelta(days=1)
+    candidate = active_fire(
+        "Unscored",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            discovery_time=recent,
+        ),
+    )
+    fires.append(candidate)
+
+    assert (
+        peri_scribe.kml.folders.new_notable_fires(
+            fires,
+            scores,
+            REFERENCE_TIME,
+        )
+        == []
+    )
+
+
+def test_fire_growth_compares_latest_area_with_window_start() -> None:
+    fire = growing_fire("Grower", 0.02, 0.03, REFERENCE_TIME)
+    baseline = peri_scribe.units.area_in_acres(
+        tests.peri_scribe.kml.kml_helpers.square(0.02),
+    )
+    latest = peri_scribe.units.area_in_acres(
+        tests.peri_scribe.kml.kml_helpers.square(0.03),
+    )
+
+    growth_in_acres, growth_in_percent = peri_scribe.kml.folders.fire_growth(
+        fire,
+        REFERENCE_TIME,
+    )
+
+    assert growth_in_acres == pytest.approx(latest - baseline)
+    assert growth_in_percent == pytest.approx((latest - baseline) / baseline * 100.0)
+
+
+def test_fire_growth_sorts_perimeters_chronologically() -> None:
+    fire = active_fire(
+        "Scrambled",
+        perimeters=(
+            peri_scribe.kml.fire_data.Perimeter(
+                geometry=tests.peri_scribe.kml.kml_helpers.square(0.03),
+                observation_time=REFERENCE_TIME,
+            ),
+            peri_scribe.kml.fire_data.Perimeter(
+                geometry=tests.peri_scribe.kml.kml_helpers.square(0.02),
+                observation_time=REFERENCE_TIME - datetime.timedelta(hours=48),
+            ),
+        ),
+    )
+    baseline = peri_scribe.units.area_in_acres(
+        tests.peri_scribe.kml.kml_helpers.square(0.02),
+    )
+    latest = peri_scribe.units.area_in_acres(
+        tests.peri_scribe.kml.kml_helpers.square(0.03),
+    )
+
+    growth_in_acres, _growth_in_percent = peri_scribe.kml.folders.fire_growth(
+        fire,
+        REFERENCE_TIME,
+    )
+
+    assert growth_in_acres == pytest.approx(latest - baseline)
+
+
+def test_fire_growth_without_timed_perimeters_is_unknown() -> None:
+    fire = active_fire(
+        "Timeless",
+        perimeters=(
+            peri_scribe.kml.fire_data.Perimeter(
+                geometry=tests.peri_scribe.kml.kml_helpers.square(0.02),
+                observation_time=None,
+            ),
+        ),
+    )
+
+    assert peri_scribe.kml.folders.fire_growth(fire, REFERENCE_TIME) == (None, None)
+
+
+def test_fire_growth_without_window_start_counts_whole_area() -> None:
+    fire = active_fire(
+        "Newborn",
+        perimeters=(
+            peri_scribe.kml.fire_data.Perimeter(
+                geometry=tests.peri_scribe.kml.kml_helpers.square(0.03),
+                observation_time=REFERENCE_TIME - datetime.timedelta(hours=24),
+            ),
+            peri_scribe.kml.fire_data.Perimeter(
+                geometry=tests.peri_scribe.kml.kml_helpers.square(0.04),
+                observation_time=REFERENCE_TIME,
+            ),
+        ),
+    )
+
+    growth_in_acres, growth_in_percent = peri_scribe.kml.folders.fire_growth(
+        fire,
+        REFERENCE_TIME,
+    )
+
+    assert growth_in_acres == pytest.approx(
+        peri_scribe.units.area_in_acres(
+            tests.peri_scribe.kml.kml_helpers.square(0.04),
+        ),
+    )
+    assert growth_in_percent is None
+
+
+def test_fire_growth_percent_is_unknown_without_baseline_area() -> None:
+    fire = active_fire(
+        "FromNothing",
+        perimeters=(
+            peri_scribe.kml.fire_data.Perimeter(
+                geometry=shapely.geometry.Point(0.0, 0.0),
+                observation_time=REFERENCE_TIME - datetime.timedelta(hours=48),
+            ),
+            peri_scribe.kml.fire_data.Perimeter(
+                geometry=tests.peri_scribe.kml.kml_helpers.square(0.03),
+                observation_time=REFERENCE_TIME,
+            ),
+        ),
+    )
+
+    growth_in_acres, growth_in_percent = peri_scribe.kml.folders.fire_growth(
+        fire,
+        REFERENCE_TIME,
+    )
+
+    assert growth_in_percent is None
+    assert growth_in_acres == pytest.approx(
+        peri_scribe.units.area_in_acres(
+            tests.peri_scribe.kml.kml_helpers.square(0.03),
+        ),
+    )
+
+
+def test_fast_growing_fires_by_acres_filters_and_sorts() -> None:
+    fires = [
+        growing_fire("Small", 0.01, 0.015, REFERENCE_TIME),
+        growing_fire("Huge", 0.02, 0.04, REFERENCE_TIME),
+        growing_fire("Big", 0.02, 0.03, REFERENCE_TIME),
+    ]
+
+    assert [
+        fire.name
+        for fire in peri_scribe.kml.folders.fast_growing_fires_by_acres(
+            fires,
+            REFERENCE_TIME,
+        )
+    ] == ["Huge", "Big"]
+
+
+def test_fast_growing_fires_by_acres_returns_empty_without_reference_time() -> None:
+    fires = [growing_fire("Big", 0.02, 0.03, REFERENCE_TIME)]
+
+    assert peri_scribe.kml.folders.fast_growing_fires_by_acres(fires, None) == []
+
+
+def test_fast_growing_fires_by_acres_includes_zero_baseline_growth() -> None:
+    fire = active_fire(
+        "Newborn",
+        perimeters=(
+            peri_scribe.kml.fire_data.Perimeter(
+                geometry=tests.peri_scribe.kml.kml_helpers.square(0.03),
+                observation_time=REFERENCE_TIME,
+            ),
+        ),
+    )
+
+    assert peri_scribe.kml.folders.fast_growing_fires_by_acres(
+        [fire],
+        REFERENCE_TIME,
+    ) == [fire]
+
+
+def test_fast_growing_fires_by_acres_limits_to_top_count() -> None:
+    fires = [
+        growing_fire(f"Grower {index}", 0.02, 0.03, REFERENCE_TIME)
+        for index in range(51)
+    ]
+
+    assert (
+        len(
+            peri_scribe.kml.folders.fast_growing_fires_by_acres(
+                fires,
+                REFERENCE_TIME,
+            ),
+        )
+        == peri_scribe.kml.folders.TOP_FIRE_COUNT
+    )
+
+
+def test_fast_growing_fires_by_percent_filters_and_sorts() -> None:
+    fires = [
+        growing_fire("Small", 0.1, 0.102, REFERENCE_TIME),
+        growing_fire("Huge", 0.03, 0.04, REFERENCE_TIME),
+        growing_fire("Big", 0.02, 0.03, REFERENCE_TIME),
+    ]
+
+    assert [
+        fire.name
+        for fire in peri_scribe.kml.folders.fast_growing_fires_by_percent(
+            fires,
+            REFERENCE_TIME,
+        )
+    ] == ["Big", "Huge"]
+
+
+def test_fast_growing_fires_by_percent_returns_empty_without_reference_time() -> None:
+    fires = [growing_fire("Big", 0.02, 0.03, REFERENCE_TIME)]
+
+    assert peri_scribe.kml.folders.fast_growing_fires_by_percent(fires, None) == []
+
+
+def test_fast_growing_fires_by_percent_excludes_zero_baseline_growth() -> None:
+    fire = active_fire(
+        "Newborn",
+        perimeters=(
+            peri_scribe.kml.fire_data.Perimeter(
+                geometry=tests.peri_scribe.kml.kml_helpers.square(0.03),
+                observation_time=REFERENCE_TIME,
+            ),
+        ),
+    )
+
+    assert (
+        peri_scribe.kml.folders.fast_growing_fires_by_percent(
+            [fire],
+            REFERENCE_TIME,
+        )
+        == []
+    )
+
+
+def test_fast_growing_fires_by_percent_limits_to_top_count() -> None:
+    fires = [
+        growing_fire(f"Grower {index}", 0.02, 0.03, REFERENCE_TIME)
+        for index in range(51)
+    ]
+
+    assert (
+        len(
+            peri_scribe.kml.folders.fast_growing_fires_by_percent(
+                fires,
+                REFERENCE_TIME,
+            ),
+        )
+        == peri_scribe.kml.folders.TOP_FIRE_COUNT
+    )
+
+
+def test_most_personnel_fires_sorts_known_personnel() -> None:
+    low = active_fire(
+        "Low",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            total_personnel=10.0,
+            observation_time=REFERENCE_TIME,
+        ),
+    )
+    high = active_fire(
+        "High",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            total_personnel=100.0,
+            observation_time=REFERENCE_TIME,
+        ),
+    )
+
+    assert [
+        fire.name
+        for fire in peri_scribe.kml.folders.most_personnel_fires(
+            [low, high],
+            REFERENCE_TIME,
+        )
+    ] == ["High", "Low"]
+
+
+def test_most_personnel_fires_excludes_missing_personnel() -> None:
+    missing_description = active_fire("NoDescription")
+    missing_count = active_fire(
+        "NoCount",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            observation_time=REFERENCE_TIME,
+        ),
+    )
+    staffed = active_fire(
+        "Staffed",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            total_personnel=5.0,
+            observation_time=REFERENCE_TIME,
+        ),
+    )
+
+    assert [
+        fire.name
+        for fire in peri_scribe.kml.folders.most_personnel_fires(
+            [missing_description, missing_count, staffed],
+            REFERENCE_TIME,
+        )
+    ] == ["Staffed"]
+
+
+def test_most_personnel_fires_excludes_stale_update() -> None:
+    stale = active_fire(
+        "Stale",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            total_personnel=50.0,
+            observation_time=REFERENCE_TIME - datetime.timedelta(days=8),
+        ),
+    )
+
+    assert peri_scribe.kml.folders.most_personnel_fires([stale], REFERENCE_TIME) == []
+
+
+def test_most_personnel_fires_excludes_missing_update() -> None:
+    fire = active_fire(
+        "NoUpdate",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            total_personnel=50.0,
+        ),
+    )
+
+    assert peri_scribe.kml.folders.most_personnel_fires([fire], REFERENCE_TIME) == []
+
+
+def test_most_personnel_fires_excludes_future_update() -> None:
+    fire = active_fire(
+        "Future",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            total_personnel=50.0,
+            observation_time=REFERENCE_TIME + datetime.timedelta(hours=1),
+        ),
+    )
+
+    assert peri_scribe.kml.folders.most_personnel_fires([fire], REFERENCE_TIME) == []
+
+
+def test_most_personnel_fires_returns_empty_without_reference_time() -> None:
+    fire = active_fire(
+        "Staffed",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            total_personnel=5.0,
+            observation_time=REFERENCE_TIME,
+        ),
+    )
+
+    assert peri_scribe.kml.folders.most_personnel_fires([fire], None) == []
+
+
+def test_most_personnel_fires_limits_to_top_count() -> None:
+    fires = [
+        active_fire(
+            f"Staffed {index}",
+            description=peri_scribe.kml.descriptions.FireDescription(
+                total_personnel=float(index),
+                observation_time=REFERENCE_TIME,
+            ),
+        )
+        for index in range(51)
+    ]
+
+    assert (
+        len(peri_scribe.kml.folders.most_personnel_fires(fires, REFERENCE_TIME))
+        == peri_scribe.kml.folders.TOP_FIRE_COUNT
+    )
+
+
 def test_top_fires_folder_holds_fires_visible_by_default(
     style_urls: dict[str, str],
 ) -> None:

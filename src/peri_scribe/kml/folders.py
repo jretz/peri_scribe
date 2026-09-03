@@ -6,6 +6,9 @@ folders to a shared :class:`peri_scribe.kml.geometry.KmlWriter`.
 
 from __future__ import annotations
 
+import datetime
+import math
+import operator
 import typing
 
 import peri_scribe.kml.colormap
@@ -17,6 +20,7 @@ import peri_scribe.kml.styles
 import peri_scribe.kml.tour
 import peri_scribe.models
 import peri_scribe.perimeters.progression
+import peri_scribe.units
 
 
 ACTIVE_FIRES_FOLDER_NAME = "Active Fires"
@@ -24,6 +28,27 @@ INACTIVE_FIRES_FOLDER_NAME = "Inactive Fires"
 TOP_FIRES_BY_NAME_FOLDER_NAME = "Top Fires by Name"
 TOP_FIRES_BY_SCORE_FOLDER_NAME = "Top Fires by Score"
 TOP_FIRE_COUNT = 50
+
+NEW_NOTABLE_FIRES_FOLDER_NAME = "New, Notable Fires"
+FAST_GROWING_FIRES_BY_ACRES_FOLDER_NAME = "Fast Growing Fires (acres)"
+FAST_GROWING_FIRES_BY_PERCENT_FOLDER_NAME = "Fast Growing Fires (%)"
+MOST_PERSONNEL_FIRES_FOLDER_NAME = "Fires with Most Personnel"
+
+# A newly discovered fire stays in the "New, Notable Fires" view for this long.
+NEW_NOTABLE_DISCOVERY_LOOKBACK = datetime.timedelta(days=5)
+
+# The growth window for the fast-growing views, and the minimum growth a fire needs to
+# qualify for each.
+FAST_GROWTH_LOOKBACK = datetime.timedelta(hours=48)
+MINIMUM_FAST_GROWTH_IN_ACRES = 1000.0
+MINIMUM_FAST_GROWTH_IN_PERCENT = 10.0
+
+# A fire stays in the "Fires with Most Personnel" view only while it was updated this
+# recently.
+MOST_PERSONNEL_UPDATE_LOOKBACK = datetime.timedelta(days=7)
+
+# The fraction of the highest-scoring active fires that defines "notable".
+NOTABLE_SCORE_FRACTION = 0.20
 
 # The folder inside each fire's folder that holds its outline perimeters, present only
 # when the fire has more than one.
@@ -364,6 +389,294 @@ def top_fires(
         )
     ]
     return [fire for fire in matched if fire is not None][:TOP_FIRE_COUNT]
+
+
+def score_maps(
+    scores: peri_scribe.models.FireScores,
+) -> tuple[
+    dict[str, peri_scribe.models.FireScoreEntry],
+    dict[str, peri_scribe.models.FireScoreEntry],
+]:
+    """Return the score entries keyed by identifier and by name.
+
+    An entry with an identifier is keyed by that identifier; an entry without one is
+    keyed by its name. The two maps mirror how a score is matched back to a fire, so a
+    fire resolves to the same entry however it is looked up.
+
+    Args:
+        scores: The saved score for each fire.
+
+    Returns:
+        The entries keyed by identifier and by name.
+    """
+    scores_by_identifier: dict[str, peri_scribe.models.FireScoreEntry] = {}
+    scores_by_name: dict[str, peri_scribe.models.FireScoreEntry] = {}
+    for entry in scores.fires:
+        identifier = entry.identifier
+        if identifier is not None:
+            scores_by_identifier[identifier] = entry
+        else:
+            scores_by_name[entry.name] = entry
+    return scores_by_identifier, scores_by_name
+
+
+def score_value_for_fire(
+    fire: peri_scribe.kml.fire_data.FireGeometry,
+    scores_by_identifier: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
+    scores_by_name: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
+) -> int | None:
+    """Return *fire*'s score, or None when no entry matches it.
+
+    A fire's identifiers are checked first, so fires that share a name but not an
+    identity each resolve to their own score; a fire whose identifier matches nothing
+    falls back to its name.
+
+    Args:
+        fire: The fire to score.
+        scores_by_identifier: Score entries keyed by identifier.
+        scores_by_name: Score entries keyed by name.
+
+    Returns:
+        The fire's score, or None when no entry matches.
+    """
+    for identifier in sorted(fire.identifiers):
+        entry = scores_by_identifier.get(identifier)
+        if entry is not None:
+            return entry.score
+    entry = scores_by_name.get(fire.name)
+    return None if entry is None else entry.score
+
+
+def notable_score_threshold(
+    fires: list[peri_scribe.kml.fire_data.FireGeometry],
+    scores: peri_scribe.models.FireScores,
+) -> int | None:
+    """Return the lowest score in the top fraction of active fires.
+
+    The threshold is the score of the last fire in the highest-scoring
+    :data:`NOTABLE_SCORE_FRACTION` of active fires, so a fire at or above it is among
+    that fraction.
+
+    Args:
+        fires: The fires that can be shown in the KMZ.
+        scores: The saved score for each fire.
+
+    Returns:
+        The cutoff score, or None when no active fire has a score.
+    """
+    scores_by_identifier, scores_by_name = score_maps(scores)
+    active_scores: list[int] = []
+    for fire in fires:
+        if fire.status is not peri_scribe.models.FireStatus.ACTIVE:
+            continue
+        score = score_value_for_fire(fire, scores_by_identifier, scores_by_name)
+        if score is not None:
+            active_scores.append(score)
+    if not active_scores:
+        return None
+    active_scores.sort(reverse=True)
+    top_count = max(1, math.ceil(len(active_scores) * NOTABLE_SCORE_FRACTION))
+    return active_scores[top_count - 1]
+
+
+def new_notable_fires(
+    fires: list[peri_scribe.kml.fire_data.FireGeometry],
+    scores: peri_scribe.models.FireScores,
+    reference_time: datetime.datetime | None,
+) -> list[peri_scribe.kml.fire_data.FireGeometry]:
+    """Return the newly discovered fires that score among the top active fires.
+
+    A fire qualifies when it was discovered within
+    :data:`NEW_NOTABLE_DISCOVERY_LOOKBACK` of *reference_time* and its score meets the
+    active-fire threshold.
+
+    Args:
+        fires: The fires that can be shown in the KMZ.
+        scores: The saved score for each fire.
+        reference_time: The wall-clock time of the KMZ generation, or None when no
+            reference time is available.
+
+    Returns:
+        The qualifying fires in descending score order.
+    """
+    if reference_time is None:
+        return []
+    threshold = notable_score_threshold(fires, scores)
+    if threshold is None:
+        return []
+    scores_by_identifier, scores_by_name = score_maps(scores)
+    cutoff = reference_time - NEW_NOTABLE_DISCOVERY_LOOKBACK
+    scored: list[tuple[peri_scribe.kml.fire_data.FireGeometry, int]] = []
+    for fire in fires:
+        discovery_time = (
+            fire.description.discovery_time if fire.description is not None else None
+        )
+        if discovery_time is None:
+            continue
+        if discovery_time < cutoff or discovery_time > reference_time:
+            continue
+        score = score_value_for_fire(fire, scores_by_identifier, scores_by_name)
+        if score is None or score < threshold:
+            continue
+        scored.append((fire, score))
+    scored.sort(key=lambda pair: (-pair[1], pair[0].name.casefold()))
+    return [fire for fire, _score in scored]
+
+
+def fire_growth(
+    fire: peri_scribe.kml.fire_data.FireGeometry,
+    reference_time: datetime.datetime,
+) -> tuple[float | None, float | None]:
+    """Return *fire*'s growth over the fast-growth window.
+
+    The fire's latest known area is compared with its area at the start of the window,
+    measured from its perimeters. A fire first observed inside the window has no area
+    at the window's start, so it is treated as having grown from zero acres: its whole
+    latest area counts as growth, and its growth in percent is unknown because a zero
+    baseline has no percentage.
+
+    Args:
+        fire: The fire to measure.
+        reference_time: The wall-clock time of the KMZ generation.
+
+    Returns:
+        The growth in acres and percent, or None for each when it cannot be measured.
+    """
+    timed_perimeters: list[
+        tuple[datetime.datetime, peri_scribe.kml.fire_data.Perimeter],
+    ] = []
+    for perimeter in fire.perimeters:
+        observation_time = perimeter.observation_time
+        if observation_time is not None:
+            timed_perimeters.append((observation_time, perimeter))
+    if not timed_perimeters:
+        return None, None
+    timed_perimeters.sort(key=operator.itemgetter(0))
+    latest_perimeter = timed_perimeters[-1][1]
+    latest_area_in_acres = peri_scribe.units.area_in_acres(
+        latest_perimeter.geometry,
+    )
+    cutoff = reference_time - FAST_GROWTH_LOOKBACK
+    baseline_perimeter: peri_scribe.kml.fire_data.Perimeter | None = None
+    for observation_time, perimeter in reversed(timed_perimeters):
+        if observation_time <= cutoff:
+            baseline_perimeter = perimeter
+            break
+    if baseline_perimeter is None:
+        return latest_area_in_acres, None
+    baseline_area_in_acres = peri_scribe.units.area_in_acres(
+        baseline_perimeter.geometry,
+    )
+    growth_in_acres = latest_area_in_acres - baseline_area_in_acres
+    growth_in_percent = (
+        growth_in_acres / baseline_area_in_acres * 100.0
+        if baseline_area_in_acres > 0
+        else None
+    )
+    return growth_in_acres, growth_in_percent
+
+
+def fast_growing_fires_by_acres(
+    fires: list[peri_scribe.kml.fire_data.FireGeometry],
+    reference_time: datetime.datetime | None,
+) -> list[peri_scribe.kml.fire_data.FireGeometry]:
+    """Return the fires that grew most in acres over the fast-growth window.
+
+    A fire qualifies when it grew at least :data:`MINIMUM_FAST_GROWTH_IN_ACRES` acres;
+    a fire first observed inside the window is treated as having grown from zero acres,
+    so its whole latest area counts. The result is limited to :data:`TOP_FIRE_COUNT`
+    fires.
+
+    Args:
+        fires: The fires that can be shown in the KMZ.
+        reference_time: The wall-clock time of the KMZ generation, or None when no
+            reference time is available.
+
+    Returns:
+        The qualifying fires in descending growth order.
+    """
+    if reference_time is None:
+        return []
+    growing: list[tuple[peri_scribe.kml.fire_data.FireGeometry, float]] = []
+    for fire in fires:
+        growth_in_acres, _growth_in_percent = fire_growth(fire, reference_time)
+        if (
+            growth_in_acres is not None
+            and growth_in_acres >= MINIMUM_FAST_GROWTH_IN_ACRES
+        ):
+            growing.append((fire, growth_in_acres))
+    growing.sort(key=lambda pair: (-pair[1], pair[0].name.casefold()))
+    return [fire for fire, _growth_in_acres in growing][:TOP_FIRE_COUNT]
+
+
+def fast_growing_fires_by_percent(
+    fires: list[peri_scribe.kml.fire_data.FireGeometry],
+    reference_time: datetime.datetime | None,
+) -> list[peri_scribe.kml.fire_data.FireGeometry]:
+    """Return the fires that grew most by percent over the fast-growth window.
+
+    A fire qualifies when it grew at least :data:`MINIMUM_FAST_GROWTH_IN_PERCENT`
+    percent; a fire without an area at the window's start has no growth percent and is
+    skipped. The result is limited to :data:`TOP_FIRE_COUNT` fires.
+
+    Args:
+        fires: The fires that can be shown in the KMZ.
+        reference_time: The wall-clock time of the KMZ generation, or None when no
+            reference time is available.
+
+    Returns:
+        The qualifying fires in descending growth order.
+    """
+    if reference_time is None:
+        return []
+    growing: list[tuple[peri_scribe.kml.fire_data.FireGeometry, float]] = []
+    for fire in fires:
+        _growth_in_acres, growth_in_percent = fire_growth(fire, reference_time)
+        if (
+            growth_in_percent is not None
+            and growth_in_percent >= MINIMUM_FAST_GROWTH_IN_PERCENT
+        ):
+            growing.append((fire, growth_in_percent))
+    growing.sort(key=lambda pair: (-pair[1], pair[0].name.casefold()))
+    return [fire for fire, _growth_in_percent in growing][:TOP_FIRE_COUNT]
+
+
+def most_personnel_fires(
+    fires: list[peri_scribe.kml.fire_data.FireGeometry],
+    reference_time: datetime.datetime | None,
+) -> list[peri_scribe.kml.fire_data.FireGeometry]:
+    """Return the fires with the most known personnel, updated recently.
+
+    A fire qualifies when its personnel count is known and it was updated within
+    :data:`MOST_PERSONNEL_UPDATE_LOOKBACK` of *reference_time*; the result is limited to
+    :data:`TOP_FIRE_COUNT` fires.
+
+    Args:
+        fires: The fires that can be shown in the KMZ.
+        reference_time: The wall-clock time of the KMZ generation, or None when no
+            reference time is available.
+
+    Returns:
+        The qualifying fires in descending personnel order.
+    """
+    if reference_time is None:
+        return []
+    cutoff = reference_time - MOST_PERSONNEL_UPDATE_LOOKBACK
+    staffed: list[tuple[peri_scribe.kml.fire_data.FireGeometry, float]] = []
+    for fire in fires:
+        if fire.description is None:
+            continue
+        total_personnel = fire.description.total_personnel
+        observation_time = fire.description.observation_time
+        if total_personnel is None:
+            continue
+        if observation_time is None:
+            continue
+        if observation_time < cutoff or observation_time > reference_time:
+            continue
+        staffed.append((fire, total_personnel))
+    staffed.sort(key=lambda pair: (-pair[1], pair[0].name.casefold()))
+    return [fire for fire, _total_personnel in staffed][:TOP_FIRE_COUNT]
 
 
 def top_fires_folder(

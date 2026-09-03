@@ -8,11 +8,13 @@ import typing
 import zipfile
 
 import shapely.geometry
+import time_machine
 
 import peri_scribe.fires.files
 import peri_scribe.fires.index
 import peri_scribe.geo.reading
 import peri_scribe.kml.builder
+import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.icons
 import peri_scribe.models
@@ -150,7 +152,6 @@ def test_fire_kml_puts_top_fires_before_status_folders() -> None:
         "Top Fires by Name",
         "Top Fires by Score",
         "Active Fires",
-        "Inactive Fires",
     ]
     top_by_name = tests.peri_scribe.kml.kml_helpers.folder_named(
         top_level,
@@ -168,6 +169,118 @@ def test_fire_kml_puts_top_fires_before_status_folders() -> None:
         "Zulu",
         "Alpha",
     ]
+
+
+SCENARIO_TIME = datetime.datetime(2026, 8, 20, 12, 0, tzinfo=datetime.UTC)
+
+
+def new_folder_scenario() -> tuple[
+    list[peri_scribe.kml.fire_data.FireGeometry],
+    peri_scribe.models.FireScores,
+]:
+    """Return one fire that qualifies for every new top-level folder.
+
+    Returns:
+        The fire and its score.
+    """
+    fire = peri_scribe.kml.fire_data.FireGeometry(
+        name="Alpha",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=shapely.geometry.Point(0.0, 0.0),
+        perimeters=(
+            peri_scribe.kml.fire_data.Perimeter(
+                geometry=tests.peri_scribe.kml.kml_helpers.square(0.02),
+                observation_time=SCENARIO_TIME - datetime.timedelta(hours=48),
+            ),
+            peri_scribe.kml.fire_data.Perimeter(
+                geometry=tests.peri_scribe.kml.kml_helpers.square(0.03),
+                observation_time=SCENARIO_TIME,
+            ),
+        ),
+        description=peri_scribe.kml.descriptions.FireDescription(
+            discovery_time=SCENARIO_TIME - datetime.timedelta(days=1),
+            observation_time=SCENARIO_TIME,
+            total_personnel=50.0,
+        ),
+    )
+    components = peri_scribe.models.FireScoreComponents(
+        size=0,
+        growth=0,
+        first_mapping=0,
+        buildings=0,
+        evacuation=0,
+        importance=0,
+    )
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            peri_scribe.models.FireScoreEntry(
+                name="Alpha",
+                score=10,
+                components=components,
+                explanation="No notable size, growth, threat, or "
+                "official-importance signals.",
+            ),
+        ],
+    )
+    return [fire], scores
+
+
+NEW_FOLDER_NAMES = [
+    "New, Notable Fires",
+    "Fast Growing Fires (acres)",
+    "Fast Growing Fires (%)",
+    "Fires with Most Personnel",
+]
+
+
+def test_fire_kml_puts_new_folders_before_top_fires() -> None:
+    fires, scores = new_folder_scenario()
+    with time_machine.travel(SCENARIO_TIME):
+        document = tests.peri_scribe.kml.kml_helpers.document_from(
+            peri_scribe.kml.builder.fire_kml(fires, "test", scores),
+        )
+
+    top_level = tests.peri_scribe.kml.kml_helpers.folder_named(document, "test")
+    assert tests.peri_scribe.kml.kml_helpers.folder_names(top_level) == [
+        "New, Notable Fires",
+        "Fast Growing Fires (acres)",
+        "Fast Growing Fires (%)",
+        "Fires with Most Personnel",
+        "Top Fires by Name",
+        "Top Fires by Score",
+        "Active Fires",
+    ]
+
+
+def test_fire_kml_loads_new_folders_unchecked() -> None:
+    fires, scores = new_folder_scenario()
+    with time_machine.travel(SCENARIO_TIME):
+        document = tests.peri_scribe.kml.kml_helpers.document_from(
+            peri_scribe.kml.builder.fire_kml(fires, "test", scores),
+        )
+
+    top_level = tests.peri_scribe.kml.kml_helpers.folder_named(document, "test")
+    by_name = tests.peri_scribe.kml.kml_helpers.folder_named(
+        top_level,
+        "Top Fires by Name",
+    )
+    active = tests.peri_scribe.kml.kml_helpers.folder_named(
+        top_level,
+        "Active Fires",
+    )
+    # The new folders hold their fires directly and load unchecked, so "Top Fires by
+    # Name" stays the last radio option with visible content and loads checked; the
+    # status folders stay unchecked beneath it.
+    for name in NEW_FOLDER_NAMES:
+        folder = tests.peri_scribe.kml.kml_helpers.folder_named(top_level, name)
+        assert tests.peri_scribe.kml.kml_helpers.visibility(folder) == 0
+        tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(folder)
+        assert tests.peri_scribe.kml.kml_helpers.folder_names(folder) == ["Alpha"]
+    assert tests.peri_scribe.kml.kml_helpers.visibility(by_name) is None
+    tests.peri_scribe.kml.kml_helpers.assert_tree_visible(by_name)
+    assert tests.peri_scribe.kml.kml_helpers.visibility(active) == 0
+    tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(active)
 
 
 def test_fire_kml_loads_top_fires_by_name_checked() -> None:
@@ -224,22 +337,86 @@ def test_fire_kml_loads_top_fires_by_name_checked() -> None:
         top_level,
         "Active Fires",
     )
+    # The top-level radios load with only "Top Fires by Name" checked, so its fires
+    # are the default view on load. The unchecked top-level radios hide their whole
+    # trees, so they carry no visible content and their radio buttons load off instead
+    # of being selected. A status folder with no fires is omitted.
+    assert tests.peri_scribe.kml.kml_helpers.folder_names(top_level) == [
+        "Top Fires by Name",
+        "Top Fires by Score",
+        "Active Fires",
+    ]
+    assert tests.peri_scribe.kml.kml_helpers.visibility(by_name) is None
+    assert tests.peri_scribe.kml.kml_helpers.visibility(by_score) == 0
+    assert tests.peri_scribe.kml.kml_helpers.visibility(active) == 0
+    tests.peri_scribe.kml.kml_helpers.assert_tree_visible(by_name)
+    tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(active)
+    tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(by_score)
+
+
+def test_fire_kml_checks_active_fires_without_top_fires() -> None:
+    fires, _scores = new_folder_scenario()
+    empty_scores = peri_scribe.models.FireScores(version="test", fires=[])
+    with time_machine.travel(SCENARIO_TIME):
+        document = tests.peri_scribe.kml.kml_helpers.document_from(
+            peri_scribe.kml.builder.fire_kml(fires, "test", empty_scores),
+        )
+
+    top_level = tests.peri_scribe.kml.kml_helpers.folder_named(document, "test")
+    assert tests.peri_scribe.kml.kml_helpers.folder_names(top_level) == [
+        "Fast Growing Fires (acres)",
+        "Fast Growing Fires (%)",
+        "Fires with Most Personnel",
+        "Active Fires",
+    ]
+    active = tests.peri_scribe.kml.kml_helpers.folder_named(
+        top_level,
+        "Active Fires",
+    )
+    # Without any top fires the active fires folder is the last radio option with
+    # visible content, so it loads checked.
+    assert tests.peri_scribe.kml.kml_helpers.visibility(active) is None
+    tests.peri_scribe.kml.kml_helpers.assert_tree_visible(active)
+
+
+def test_fire_kml_checks_inactive_fires_without_top_or_active_fires() -> None:
+    fire = peri_scribe.kml.fire_data.FireGeometry(
+        name="Done",
+        status=peri_scribe.models.FireStatus.INACTIVE,
+        point=None,
+        perimeters=(),
+    )
+    empty_scores = peri_scribe.models.FireScores(version="test", fires=[])
+    document = tests.peri_scribe.kml.kml_helpers.document_from(
+        peri_scribe.kml.builder.fire_kml([fire], "test", empty_scores),
+    )
+
+    top_level = tests.peri_scribe.kml.kml_helpers.folder_named(document, "test")
+    assert tests.peri_scribe.kml.kml_helpers.folder_names(top_level) == [
+        "Inactive Fires",
+    ]
     inactive = tests.peri_scribe.kml.kml_helpers.folder_named(
         top_level,
         "Inactive Fires",
     )
-    # The top-level radios load with only "Top Fires by Name" checked, so its fires
-    # are the default view on load. The unchecked top-level radios hide their whole
-    # trees, so they carry no visible content and their radio buttons load off instead
-    # of being selected.
-    assert tests.peri_scribe.kml.kml_helpers.visibility(by_name) is None
-    assert tests.peri_scribe.kml.kml_helpers.visibility(by_score) == 0
-    assert tests.peri_scribe.kml.kml_helpers.visibility(active) == 0
-    assert tests.peri_scribe.kml.kml_helpers.visibility(inactive) == 0
-    tests.peri_scribe.kml.kml_helpers.assert_tree_visible(by_name)
-    tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(active)
-    tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(by_score)
-    tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(inactive)
+    assert tests.peri_scribe.kml.kml_helpers.visibility(inactive) is None
+    tests.peri_scribe.kml.kml_helpers.assert_tree_visible(inactive)
+
+
+def test_fire_kml_without_fires_has_no_top_level_folders() -> None:
+    empty_scores = peri_scribe.models.FireScores(version="test", fires=[])
+    documents = [
+        tests.peri_scribe.kml.kml_helpers.document_from(
+            peri_scribe.kml.builder.fire_kml([], "test"),
+        ),
+        tests.peri_scribe.kml.kml_helpers.document_from(
+            peri_scribe.kml.builder.fire_kml([], "test", empty_scores),
+        ),
+    ]
+
+    for document in documents:
+        top_level = tests.peri_scribe.kml.kml_helpers.folder_named(document, "test")
+        assert tests.peri_scribe.kml.kml_helpers.folder_names(top_level) == []
 
 
 def test_fire_kml_holds_fires_directly_under_status_folders() -> None:

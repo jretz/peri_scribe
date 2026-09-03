@@ -7,6 +7,7 @@ colormap.
 
 from __future__ import annotations
 
+import datetime
 import pathlib
 import typing
 import zipfile
@@ -97,6 +98,161 @@ def kmz_path(year_directory: pathlib.Path) -> pathlib.Path:
     )
 
 
+def fire_view_folders(
+    writer: peri_scribe.kml.geometry.KmlWriter,
+    fires: list[peri_scribe.kml.fire_data.FireGeometry],
+    scores: peri_scribe.models.FireScores,
+    style_urls: typing.Mapping[str, str],
+    ring_style_urls: typing.Mapping[str, str],
+) -> None:
+    """Append every top-level fire view folder that holds fires, given scores.
+
+    The newly discovered, fast-growing, and most-personnel views come first, each
+    loading unchecked with its whole tree hidden; the top-fire views follow, with the
+    top fires by name loading checked. The status folders load checked only when there
+    are no top fires, so a folder is always checked as long as any fire exists.
+
+    Args:
+        writer: The writer to append to.
+        fires: Every fire.
+        scores: The saved score for each fire.
+        style_urls: The style URL for each template placemark name.
+        ring_style_urls: The style URL for each progression ring color, keyed by its
+            ``#RRGGBB`` color.
+    """
+    wall_clock_time = datetime.datetime.now(datetime.UTC)
+    new_notable = peri_scribe.kml.folders.new_notable_fires(
+        fires,
+        scores,
+        wall_clock_time,
+    )
+    fast_growing_by_acres = peri_scribe.kml.folders.fast_growing_fires_by_acres(
+        fires,
+        wall_clock_time,
+    )
+    fast_growing_by_percent = peri_scribe.kml.folders.fast_growing_fires_by_percent(
+        fires,
+        wall_clock_time,
+    )
+    most_personnel = peri_scribe.kml.folders.most_personnel_fires(
+        fires,
+        wall_clock_time,
+    )
+    score_sorted_fires = peri_scribe.kml.folders.top_fires(fires, scores)
+    top_by_name_fires = sorted(
+        score_sorted_fires,
+        key=lambda fire: fire.name.casefold(),
+    )
+    if new_notable:
+        peri_scribe.kml.folders.top_fires_folder(
+            writer,
+            new_notable,
+            peri_scribe.kml.folders.NEW_NOTABLE_FIRES_FOLDER_NAME,
+            style_urls,
+            ring_style_urls,
+            visible=False,
+        )
+    if fast_growing_by_acres:
+        peri_scribe.kml.folders.top_fires_folder(
+            writer,
+            fast_growing_by_acres,
+            peri_scribe.kml.folders.FAST_GROWING_FIRES_BY_ACRES_FOLDER_NAME,
+            style_urls,
+            ring_style_urls,
+            visible=False,
+        )
+    if fast_growing_by_percent:
+        peri_scribe.kml.folders.top_fires_folder(
+            writer,
+            fast_growing_by_percent,
+            peri_scribe.kml.folders.FAST_GROWING_FIRES_BY_PERCENT_FOLDER_NAME,
+            style_urls,
+            ring_style_urls,
+            visible=False,
+        )
+    if most_personnel:
+        peri_scribe.kml.folders.top_fires_folder(
+            writer,
+            most_personnel,
+            peri_scribe.kml.folders.MOST_PERSONNEL_FIRES_FOLDER_NAME,
+            style_urls,
+            ring_style_urls,
+            visible=False,
+        )
+    if top_by_name_fires:
+        peri_scribe.kml.folders.top_fires_folder(
+            writer,
+            top_by_name_fires,
+            peri_scribe.kml.folders.TOP_FIRES_BY_NAME_FOLDER_NAME,
+            style_urls,
+            ring_style_urls,
+        )
+    if score_sorted_fires:
+        peri_scribe.kml.folders.top_fires_folder(
+            writer,
+            score_sorted_fires,
+            peri_scribe.kml.folders.TOP_FIRES_BY_SCORE_FOLDER_NAME,
+            style_urls,
+            ring_style_urls,
+            visible=False,
+        )
+    fire_status_folders(
+        writer,
+        fires,
+        style_urls,
+        ring_style_urls,
+        top_fires_present=bool(top_by_name_fires),
+    )
+
+
+def fire_status_folders(
+    writer: peri_scribe.kml.geometry.KmlWriter,
+    fires: list[peri_scribe.kml.fire_data.FireGeometry],
+    style_urls: typing.Mapping[str, str],
+    ring_style_urls: typing.Mapping[str, str],
+    *,
+    top_fires_present: bool,
+) -> None:
+    """Append the active and inactive fire folders that hold fires.
+
+    The active fires folder loads checked unless the top fires view is checked instead;
+    the inactive fires folder loads checked only when there is no top-fire view and no
+    active fire to check. A status folder with no fires is omitted.
+
+    Args:
+        writer: The writer to append to.
+        fires: Every fire.
+        style_urls: The style URL for each template placemark name.
+        ring_style_urls: The style URL for each progression ring color, keyed by its
+            ``#RRGGBB`` color.
+        top_fires_present: Whether the checked top fires by name view was written.
+    """
+    has_active_fires = any(
+        fire.status is peri_scribe.models.FireStatus.ACTIVE for fire in fires
+    )
+    has_inactive_fires = any(
+        fire.status is peri_scribe.models.FireStatus.INACTIVE for fire in fires
+    )
+    if has_active_fires:
+        peri_scribe.kml.folders.status_folder(
+            writer,
+            fires,
+            peri_scribe.models.FireStatus.ACTIVE,
+            style_urls,
+            ring_style_urls,
+            visible=not top_fires_present,
+        )
+    if has_inactive_fires:
+        peri_scribe.kml.folders.status_folder(
+            writer,
+            fires,
+            peri_scribe.models.FireStatus.INACTIVE,
+            style_urls,
+            ring_style_urls,
+            visible=not top_fires_present and not has_active_fires,
+        )
+
+
 def fire_kml(
     fires: list[peri_scribe.kml.fire_data.FireGeometry],
     name: str,
@@ -106,9 +262,11 @@ def fire_kml(
     """Return the KML document string for *fires*.
 
     The document is named *name* and holds the symbolization styles, the
-    progression-ring styles, and a top-level folder, also named *name*. When scores are
-    supplied, it begins with two top-fire views, followed by the existing active and
-    inactive fire folders.
+    progression-ring styles, and a top-level folder, also named *name*. The top-level
+    folder holds the fire views as radio options, each created only when it holds fires.
+    When scores are supplied the folder begins with the newly discovered, fast growing,
+    and most-personnel views, followed by the top-fire views and the active and inactive
+    fire folders; without scores it holds the active and inactive fire folders.
 
     Args:
         fires: The fires to symbolize.
@@ -144,53 +302,27 @@ def fire_kml(
         f"<name>{peri_scribe.kml.geometry.escape_text(name)}</name>",
     )
 
-    # The top-level folder holds the status folders as radio options, so they display as
-    # radio buttons in Google Earth's Places panel. Google Earth checks the last radio
-    # option that has any visible content, so when scores are present the "Top Fires by
-    # Name" folder loads checked (its fires are the only visible content) and the other
-    # top-level radios load unchecked with their whole trees hidden; without scores the
-    # active fires folder loads checked.
+    # The top-level folder holds the fire views as radio options, each created only when
+    # it holds fires. Google Earth checks the last radio option that has any visible
+    # content, so exactly one folder loads checked: the top fires by name when scores
+    # are present, else the active fires, else the inactive fires.
     with writer.folder(name, list_item_type="radioFolder"):
         if scores is not None:
-            score_sorted_fires = peri_scribe.kml.folders.top_fires(fires, scores)
-            peri_scribe.kml.folders.top_fires_folder(
-                writer,
-                sorted(score_sorted_fires, key=lambda fire: fire.name.casefold()),
-                peri_scribe.kml.folders.TOP_FIRES_BY_NAME_FOLDER_NAME,
-                peri_scribe.kml.styles.PLACEMARK_STYLE_URLS,
-                ring_style_urls,
-            )
-            peri_scribe.kml.folders.top_fires_folder(
-                writer,
-                score_sorted_fires,
-                peri_scribe.kml.folders.TOP_FIRES_BY_SCORE_FOLDER_NAME,
-                peri_scribe.kml.styles.PLACEMARK_STYLE_URLS,
-                ring_style_urls,
-                visible=False,
-            )
-            peri_scribe.kml.folders.status_folder(
+            fire_view_folders(
                 writer,
                 fires,
-                peri_scribe.models.FireStatus.ACTIVE,
+                scores,
                 peri_scribe.kml.styles.PLACEMARK_STYLE_URLS,
                 ring_style_urls,
-                visible=False,
             )
         else:
-            peri_scribe.kml.folders.status_folder(
+            fire_status_folders(
                 writer,
                 fires,
-                peri_scribe.models.FireStatus.ACTIVE,
                 peri_scribe.kml.styles.PLACEMARK_STYLE_URLS,
                 ring_style_urls,
+                top_fires_present=False,
             )
-        peri_scribe.kml.folders.status_folder(
-            writer,
-            fires,
-            peri_scribe.models.FireStatus.INACTIVE,
-            peri_scribe.kml.styles.PLACEMARK_STYLE_URLS,
-            ring_style_urls,
-        )
     writer.parts.append("</Document></kml>")
     return writer.text()
 
