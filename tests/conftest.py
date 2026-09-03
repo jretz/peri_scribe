@@ -105,7 +105,7 @@ def log_output() -> structlog.testing.LogCapture:
     return structlog.testing.LogCapture()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture(autouse=True)  # ruff: ignore[pytest-fixture-autouse]
 def configure_structlog(log_output: structlog.testing.LogCapture) -> None:
     """Configures structlog to use the LogCapture processor for all tests."""
     structlog.configure(

@@ -101,6 +101,7 @@ fixture-parentheses = false
 lines-after-imports = 2
 
 [tool.ruff.lint.per-file-ignores]
+# "tests/conftest.py" = ["pytest-fixture-autouse"]
 "tests/**/*.py" = [
     # Specific rules
     "unused-function-argument",  # https://docs.astral.sh/ruff/rules/unused-function-argument/
