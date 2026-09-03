@@ -11,11 +11,12 @@ records of a tile are collected into the same partition no matter which state th
 from; each partition is then processed one at a time, well under the memory budget. A
 tile's records are sorted by their raw 8-byte representation (which groups identical
 coordinate prefixes and compresses far better than spatial order) and the sorted payload
-is zlib-compressed into one ``tiles`` row per occupied tile. The database holds metadata
-describing the coordinate encoding, and the reader selects the tiles intersecting a
-query envelope, decompresses their payloads into NumPy arrays, filters by the envelope
-with NumPy, and tests exact polygon containment only for the remaining points, so
-building counts never touch GeoPandas, GeoPackage geometry blobs, or an R-Tree index.
+is zstd-compressed at level 2 into one ``tiles`` row per occupied tile. The database
+holds metadata describing the coordinate encoding, and the reader selects the tiles
+intersecting a query envelope, decompresses their payloads into NumPy arrays, filters by
+the envelope with NumPy, and tests exact polygon containment only for the remaining
+points, so building counts never touch GeoPandas, GeoPackage geometry blobs, or an
+R-Tree index.
 
 The archive's bytes arrive from the HTTP response, ``stream_unzip`` decompresses the
 GeoJSON member as they arrive, and each parsed geometry passes through the bounded
@@ -28,12 +29,12 @@ failure.
 from __future__ import annotations
 
 import collections
+import compression.zstd
 import pathlib
 import sqlite3
 import struct
 import tempfile
 import typing
-import zlib
 
 import ijson
 import numpy as np
@@ -77,7 +78,7 @@ RECORD_SIZE_BYTES = 8
 PARTITION_COUNT = 16
 
 # The database format version, recorded in the metadata and checked on read.
-BUILDINGS_VERSION = "2026-08-31"
+BUILDINGS_VERSION = "2026-09-03"
 
 REQUEST_TIMEOUT_SECONDS = 60
 
@@ -346,7 +347,7 @@ def compress_tile_points(points: np.ndarray) -> bytes:
 
     The points are sorted by their raw 8-byte representation, so identical coordinate
     prefixes become adjacent and the payload compresses far better than spatial order
-    would. The sorted records are then zlib-compressed at level 1, which keeps the
+    would. The sorted records are then zstd-compressed at level 2, which keeps the
     database build fast while still shrinking the payload substantially.
 
     Args:
@@ -357,7 +358,7 @@ def compress_tile_points(points: np.ndarray) -> bytes:
     """
     records = np.ascontiguousarray(points.view("V8").reshape(-1))
     records.sort()
-    return zlib.compress(records, level=1)
+    return compression.zstd.compress(records, level=2)
 
 
 def decode_payload(payload: bytes) -> np.ndarray:
@@ -369,7 +370,10 @@ def decode_payload(payload: bytes) -> np.ndarray:
     Returns:
         The decoded encoded coordinate pairs.
     """
-    return np.frombuffer(zlib.decompress(payload), dtype="<i4").reshape(-1, 2)
+    return np.frombuffer(
+        compression.zstd.decompress(payload),
+        dtype="<i4",
+    ).reshape(-1, 2)
 
 
 class PartitionFiles:
