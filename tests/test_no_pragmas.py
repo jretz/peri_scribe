@@ -79,15 +79,12 @@ def pragma_matches() -> str:
     Returns:
         The ripgrep output for the matches, or an empty string when there are none.
     """
-    mise_path = shutil.which("mise")
-    if mise_path is None:
-        pytest.fail("mise is required to run the pragma check")
+    rg_path = shutil.which("rg")  # This will pick up the mise managed version
+    if rg_path is None:
+        pytest.fail("rg is required to run the pragma check")
     result = subprocess.run(
         [
-            mise_path,
-            "exec",
-            "--",
-            "rg",
+            rg_path,
             "--line-number",
             "--no-heading",
             "--color",

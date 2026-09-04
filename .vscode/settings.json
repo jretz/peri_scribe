@@ -63,6 +63,7 @@
         "rclone",
         "reprojected",
         "resetidcounter",
+        "rumdl",
         "seaborn",
         "setuptools",
         "showlocals",

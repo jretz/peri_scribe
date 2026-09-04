@@ -109,6 +109,10 @@ lines-after-imports = 2
     "assert",  # https://docs.astral.sh/ruff/rules/assert/
 ]
 
+[tool.rumdl]
+line-length = 88
+respect-gitignore = true
+
 [tool.ty.rules]
 division-by-zero = "error"
 possibly-missing-import = "warn"

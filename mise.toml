@@ -50,7 +50,10 @@ run = "uv run ruff format --check --quiet"
 [tasks.lint]
 description = "Check and fix style with ruff"
 depends = ["venv"]
-run = "uv run ruff check --fix"
+run = [
+    "rumdl check",
+    "uv run ruff check --fix",
+]
 
 [tasks.typecheck]
 description = "Check type hints with ty"
@@ -103,6 +106,9 @@ run = [
     "echo 'data/' >> .gitignore",
 ]
 
+[env]
+_.python.venv = { path = ".venv" }
+
 [settings]
 task.output = "quiet"
 
@@ -110,4 +116,5 @@ task.output = "quiet"
 "cargo:gitnr" = "latest"
 rclone = "latest"
 rg = "latest"
+rumdl = "latest"
 uv = "latest"
