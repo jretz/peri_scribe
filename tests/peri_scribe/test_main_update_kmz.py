@@ -46,6 +46,7 @@ def test_update_kmz_runs_all_steps_when_fetch_changed(
     assert stubs.history_calls == [year_directory]
     assert stubs.scores_calls == [year_directory]
     assert stubs.kmz_calls == [year_directory]
+    assert stubs.report_calls == [year_directory]
 
 
 @pytest.mark.usefixtures("current_year")
@@ -66,6 +67,7 @@ def test_update_kmz_defaults_to_current_year_directory(
     assert stubs.history_calls == [year_directory]
     assert stubs.scores_calls == [year_directory]
     assert stubs.kmz_calls == [year_directory]
+    assert stubs.report_calls == [year_directory]
 
 
 @pytest.mark.usefixtures("current_year")
@@ -85,6 +87,7 @@ def test_update_kmz_fetches_external_sources_but_skips_steps_when_nothing_change
     assert stubs.history_calls == []
     assert stubs.scores_calls == []
     assert stubs.kmz_calls == []
+    assert stubs.report_calls == []
 
 
 @pytest.mark.usefixtures("current_year")
@@ -105,6 +108,7 @@ def test_update_kmz_runs_steps_when_evacuations_changed(
     assert stubs.history_calls == [year_directory]
     assert stubs.scores_calls == [year_directory]
     assert stubs.kmz_calls == [year_directory]
+    assert stubs.report_calls == [year_directory]
 
 
 def test_stored_evacuations_digest_uses_evacuations_output(
@@ -154,6 +158,7 @@ def test_update_kmz_force_fetches_feeds_in_full_and_runs_steps_when_unchanged(
     assert stubs.history_calls == [year_directory]
     assert stubs.scores_calls == [year_directory]
     assert stubs.kmz_calls == [year_directory]
+    assert stubs.report_calls == [year_directory]
 
 
 @pytest.mark.usefixtures("current_year")
@@ -184,6 +189,7 @@ def test_update_kmz_stops_when_fetch_fails(
     assert stubs.history_calls == []
     assert stubs.scores_calls == []
     assert stubs.kmz_calls == []
+    assert stubs.report_calls == []
 
 
 @pytest.mark.usefixtures("current_year")
@@ -208,6 +214,7 @@ def test_update_kmz_stops_when_external_source_fetch_fails(
     assert stubs.history_calls == []
     assert stubs.scores_calls == []
     assert stubs.kmz_calls == []
+    assert stubs.report_calls == []
 
 
 @pytest.mark.usefixtures("current_year")
@@ -233,6 +240,7 @@ def test_update_kmz_stops_when_a_step_fails(
     assert stubs.history_calls == []
     assert stubs.scores_calls == []
     assert stubs.kmz_calls == []
+    assert stubs.report_calls == []
 
 
 @pytest.mark.usefixtures("current_year")
@@ -254,6 +262,7 @@ def test_update_kmz_stops_when_scoring_fails(
     assert stubs.history_calls == [BASE_DIRECTORY / "data" / "2026"]
     assert stubs.scores_calls == []
     assert stubs.kmz_calls == []
+    assert stubs.report_calls == []
 
 
 def test_update_kmz_help_names_current_year_default(

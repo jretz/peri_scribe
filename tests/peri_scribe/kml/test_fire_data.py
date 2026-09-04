@@ -525,6 +525,39 @@ def test_fire_geometries_attaches_plot_images(
     assert fire.description.identifier == "id-bug"
 
 
+def test_fire_geometries_skips_plot_images_when_render_plots_is_false(
+    in_process_plot_image_bundles: None,
+) -> None:
+    index = tests.peri_scribe.kml.kml_helpers.fire_index([
+        tests.peri_scribe.kml.kml_helpers.fire_index_entry(
+            "Bug",
+            "active",
+            identifier="id-bug",
+        ),
+    ])
+    perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
+        [
+            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(2.0)),
+        ],
+        observation_times=[
+            datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC),
+            datetime.datetime(2026, 8, 6, 20, 0, tzinfo=datetime.UTC),
+        ],
+    )
+    fires = peri_scribe.kml.fire_data.fire_geometries(
+        index,
+        perimeters,
+        tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
+        tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
+        render_plots=False,
+    )
+    (fire,) = fires
+    assert fire.images == ()
+    assert fire.description is not None
+    assert fire.description.identifier == "id-bug"
+
+
 def test_fire_geometries_matches_identifier_less_fire_by_name(
     in_process_plot_image_bundles: None,
 ) -> None:

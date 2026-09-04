@@ -15,6 +15,8 @@ import peri_scribe.fires.scores
 import peri_scribe.kml.builder
 import peri_scribe.kml.colormap
 import peri_scribe.output
+import peri_scribe.report.gathering
+import peri_scribe.report.markdown
 import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.digests
 import peri_scribe.sources.external_sources
@@ -248,6 +250,48 @@ def stored_evacuations_digest(year_directory: pathlib.Path) -> str | None:
     )
 
 
+def write_reports(year_directory: pathlib.Path) -> pathlib.Path:
+    """Gather and render fire reports for *year_directory*.
+
+    Reports are gathered from the stored derived outputs and rendered as Markdown, so
+    they can be produced on their own or as the final step of the pipeline.
+
+    Args:
+        year_directory: The year directory that holds the ``derived`` directory.
+
+    Returns:
+        The path of the written reports.
+    """
+    report = peri_scribe.report.gathering.gather_report(year_directory)
+    return peri_scribe.report.markdown.render_markdown_report(report, year_directory)
+
+
+@cli.command(
+    help=(
+        "Write fire reports for YEAR_DIRECTORY.\n\n"
+        "Gathers the new and notable fires, the fastest growing fires by acres "
+        "and by percent, and the top fires from the stored derived outputs, and "
+        "writes them to YEAR_DIRECTORY/reports. "
+        f"{year_directory_default_help()}"
+    ),
+)
+@click.argument(
+    "year_directory",
+    type=click.Path(
+        path_type=pathlib.Path,
+        exists=True,
+        file_okay=False,
+    ),
+    required=False,
+)
+def reports(year_directory: pathlib.Path | None = None) -> None:
+    """Write fire reports for the year directory."""
+    if year_directory is None:
+        year_directory = default_year_directory()
+    path = write_reports(year_directory)
+    logger.info("Wrote fire reports", path=path)
+
+
 @cli.command(
     help=(
         "Fetch all feeds and rebuild the KMZ for YEAR_DIRECTORY.\n\n"
@@ -255,8 +299,8 @@ def stored_evacuations_digest(year_directory: pathlib.Path) -> str | None:
         "sources (buildings, evacuations). When the fetch wrote a new fire "
         "snapshot or replaced the stored evacuations, the administrative "
         "boundaries are ensured and the full and differential geography "
-        "history, fire scores, and KML for YEAR_DIRECTORY are built. --force "
-        "fetches every "
+        "history, fire scores, KML, and fire reports for YEAR_DIRECTORY are "
+        "built. --force fetches every "
         "incremental feed in full (storing only new or changed features), "
         "catching source edits the incremental fetch would miss, and runs the "
         "later steps even when nothing changed; static feeds such as buildings "
@@ -286,7 +330,7 @@ def update_kmz(
     *,
     force: bool = False,
 ) -> None:
-    """Fetch new source data, score fires, and rebuild the KMZ."""
+    """Fetch new source data, score fires, rebuild the KMZ, and write reports."""
     if year_directory is None:
         year_directory = default_year_directory()
     result = peri_scribe.sources.fetching.fetch_all_feeds(
@@ -311,6 +355,7 @@ def update_kmz(
     )
     peri_scribe.fires.scores.score_fires(year_directory)
     peri_scribe.kml.builder.create_kmz(year_directory)
+    write_reports(year_directory)
 
 
 @cli.command(

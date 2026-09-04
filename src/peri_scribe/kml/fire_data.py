@@ -270,6 +270,8 @@ def fire_geometries(
     points: geopandas.GeoDataFrame,
     differential_perimeters: geopandas.GeoDataFrame,
     scores: peri_scribe.models.FireScores | None = None,
+    *,
+    render_plots: bool = True,
 ) -> list[FireGeometry]:
     """Return each indexed fire's geometry and plots, sorted by case-folded name.
 
@@ -277,9 +279,10 @@ def fire_geometries(
     latest perimeter when no location is known. The full perimeters feed the latest
     perimeters folder, the differential growth rings feed the progression maps, and the
     point and perimeter histories feed the line plots embedded in each fire's balloon.
-    All of the fires' plots are rendered together, in parallel, in one shared process
-    pool. When scores are supplied, each fire's score explanation is shown as the final
-    row of its balloon, matched by identifier and falling back to name.
+    When *render_plots* is True the fires' plots are rendered together, in parallel, in
+    one shared process pool. When scores are supplied, each fire's score explanation is
+    shown as the final row of its balloon, matched by identifier and falling back to
+    name.
 
     Args:
         index: The fire index that names each fire and its status.
@@ -287,6 +290,9 @@ def fire_geometries(
         points: The point history layer.
         differential_perimeters: The differential perimeter history layer.
         scores: The saved score for each fire, or None.
+        render_plots: Whether to render each fire's plot images. Callers that only need
+            each fire's description and perimeters pass False to skip the rendering
+            step.
 
     Returns:
         One entry per indexed fire, sorted by case-folded name.
@@ -327,9 +333,12 @@ def fire_geometries(
         ring_by_identifier=ring_by_identifier,
         ring_by_name=ring_by_name,
     )
-    image_bundles = peri_scribe.kml.plot_rendering.plot_image_bundles(
-        tuple(plot_bundles),
-    )
+    if render_plots:
+        image_bundles = peri_scribe.kml.plot_rendering.plot_image_bundles(
+            tuple(plot_bundles),
+        )
+    else:
+        image_bundles = tuple(() for _plot_bundle in plot_bundles)
     fires: list[FireGeometry] = []
     for (
         entry,

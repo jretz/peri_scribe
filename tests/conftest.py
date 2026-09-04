@@ -554,6 +554,7 @@ def update_kmz_stubs(
             history_calls=[],
             scores_calls=[],
             kmz_calls=[],
+            report_calls=[],
         )
 
         def fetch_all_feeds(
@@ -613,6 +614,11 @@ def update_kmz_stubs(
             peri_scribe.kml.builder,
             "create_kmz",
             stubs.kmz_calls.append,
+        )
+        monkeypatch.setattr(
+            peri_scribe.main,
+            "write_reports",
+            stubs.report_calls.append,
         )
         return stubs
 

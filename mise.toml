@@ -26,6 +26,12 @@ depends = ["venv"]
 raw_args = true
 run = "uv run --locked peri_scribe ensure-admin-boundaries"
 
+[tasks.reports]
+description = "Write fire reports for YEAR_DIRECTORY"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked peri_scribe reports"
+
 [tasks.validate-sources]
 description = "Check that the stored sources cover a complete snapshot of every feed"
 depends = ["venv"]

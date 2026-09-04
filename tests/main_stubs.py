@@ -29,6 +29,7 @@ class UpdateKmzStubs:
     history_calls: list[pathlib.Path]
     scores_calls: list[pathlib.Path]
     kmz_calls: list[pathlib.Path]
+    report_calls: list[pathlib.Path]
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
