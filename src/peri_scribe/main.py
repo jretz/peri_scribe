@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import datetime
+import importlib.metadata
 import pathlib
 
 import click
@@ -370,3 +371,34 @@ def validate_sources(year_directory: pathlib.Path | None = None) -> None:
         len(problem_results),
         len(results),
     )
+
+
+def distribution_version() -> str:
+    """Return the installed peri_scribe distribution's version.
+
+    ``__package__`` names the package this module belongs to, and the distribution is
+    installed under that same name, so it supplies the metadata lookup name without
+    repeating it in source here. The version comes from the installed distribution's
+    metadata rather than from source, so it cannot drift from the released version.
+
+    Returns:
+        The installed distribution's version string.
+
+    Raises:
+        RuntimeError: If the module was not imported as part of its package, so the
+            distribution name is unknown.
+    """
+    if __package__ is None:
+        message = (
+            "the installed distribution name is unknown because this module was "
+            "not imported as part of its package"
+        )
+        raise RuntimeError(message)
+    version = importlib.metadata.version(__package__)
+    return f"{__package__} v{version}"
+
+
+@cli.command()
+def version() -> None:
+    """Print the installed peri_scribe version."""
+    click.echo(distribution_version())
