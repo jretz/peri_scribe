@@ -52,6 +52,12 @@ BODY_FONT_SIZE_IN_PIXELS = 14
 # the fire, so the ring's own growth reads above the fire's latest state.
 ADDED_AREA_LABEL = "Added area"
 
+# The labels for the facts the report's summary headings name, spelled here because the
+# report and the balloon both show these facts and a shared spelling keeps their tables
+# in step.
+AREA_LABEL = "Area"
+DISCOVERY_LABEL = "Discovery"
+
 
 def format_number(value: float | None, decimal_places: int = 0) -> str | None:
     """Format *value* with thousands separators and *decimal_places* decimals.
@@ -335,22 +341,23 @@ def escape_text(value: str) -> str:
 
 def description_rows(
     description: FireDescription,
-) -> list[tuple[str, str]]:
+) -> list[tuple[str, str | None]]:
     """Return the label/value rows shown in *description*'s balloon.
 
-    Every row is always present; a row whose value is missing keeps its label and shows
-    two hyphens, so the reader can see at a glance which facts the fire lacks rather
-    than guessing from omitted rows.
+    Every fact the balloon's table shows appears once in its reading order, with None as
+    the value when the fire lacks that fact, so each renderer decides how to show
+    absence: the balloon's HTML shows two hyphens and the reports leave the row out.
+    Because the balloon and the reports both build their tables from these rows, the two
+    keep the same facts, labels, and text.
 
     Args:
         description: The fire's latest state.
 
     Returns:
-        The display rows, in reading order.
+        The display rows, in reading order, with None where a value is missing.
     """
-    rows: list[tuple[str, str]] = []
-    candidates: list[tuple[str, str | None]] = [
-        ("Area", format_in_acres(description.area_in_acres)),
+    return [
+        (AREA_LABEL, format_in_acres(description.area_in_acres)),
         (
             "Exterior perimeter",
             format_in_miles(description.exterior_perimeter_in_miles),
@@ -375,7 +382,7 @@ def description_rows(
         ("Identifier", description.identifier),
         ("Mission", description.mission),
         ("Protecting unit", description.protecting_unit),
-        ("Discovery", format_pacific_time(description.discovery_time)),
+        (DISCOVERY_LABEL, format_pacific_time(description.discovery_time)),
         ("Last update", format_pacific_time(description.observation_time)),
         ("Initial response", format_pacific_time(description.initial_response_time)),
         ("Incident type", description.incident_type),
@@ -385,9 +392,6 @@ def description_rows(
         ("Landowner category", description.landowner_category),
         ("Of note", description.of_note),
     ]
-    for label, value in candidates:
-        rows.append((label, "--" if value is None else value))
-    return rows
 
 
 def description_html(

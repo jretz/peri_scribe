@@ -19,6 +19,7 @@ import peri_scribe.fires.index
 import peri_scribe.fires.score_files
 import peri_scribe.geo.reading
 import peri_scribe.kml.builder
+import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
 import peri_scribe.models
@@ -26,17 +27,21 @@ import peri_scribe.models
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class FireReportEntry:
-    """One fire's facts as the report renders them."""
+    """One fire's facts as the report renders them.
+
+    The fire's description carries the same latest-state facts the fire's KMZ balloon
+    table shows, so the report's details can include every fact the balloon would; the
+    growth over the fast-growth window and the saved score are measures the balloons do
+    not show, so they ride alongside as report-only fields.
+    """
 
     name: str
-    identifier: str | None
+    identifier: str | None = None
     status: peri_scribe.models.FireStatus
-    area_in_acres: float | None
-    percent_contained: float | None
-    discovery_time: datetime.datetime | None
-    growth_in_acres: float | None
-    growth_in_percent: float | None
-    score: int | None
+    description: peri_scribe.kml.descriptions.FireDescription | None = None
+    growth_in_acres: float | None = None
+    growth_in_percent: float | None = None
+    score: int | None = None
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -62,10 +67,10 @@ def report_entry(
 ) -> FireReportEntry:
     """Return the report facts for one fire.
 
-    The fire's latest area, containment, and discovery time come from its description;
-    its growth over the fast-growth window is measured from its perimeters. The score is
-    matched by identifier first and then name, mirroring how the KMZ resolves a fire to
-    its saved score.
+    The fire's latest-state facts ride along as its description so the report's details
+    can show the same data the fire's KMZ balloon shows; its growth over the fast-growth
+    window is measured from its perimeters. The score is matched by identifier first and
+    then name, mirroring how the KMZ resolves a fire to its saved score.
 
     Args:
         fire: The fire to describe.
@@ -76,7 +81,6 @@ def report_entry(
     Returns:
         The fire's report facts.
     """
-    description = fire.description
     growth_in_acres, growth_in_percent = peri_scribe.kml.folders.fire_growth(
         fire,
         reference_time,
@@ -85,13 +89,7 @@ def report_entry(
         name=fire.name,
         identifier=peri_scribe.models.canonical_fire_identifier(fire.identifiers),
         status=fire.status,
-        area_in_acres=description.area_in_acres if description is not None else None,
-        percent_contained=(
-            description.percent_contained if description is not None else None
-        ),
-        discovery_time=(
-            description.discovery_time if description is not None else None
-        ),
+        description=fire.description,
         growth_in_acres=growth_in_acres,
         growth_in_percent=growth_in_percent,
         score=peri_scribe.kml.folders.score_value_for_fire(

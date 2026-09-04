@@ -67,9 +67,7 @@ def make_entry(
         name=name,
         identifier=identifier,
         status=peri_scribe.models.FireStatus.ACTIVE,
-        area_in_acres=None,
-        percent_contained=None,
-        discovery_time=None,
+        description=None,
         growth_in_acres=None,
         growth_in_percent=None,
         score=None,
@@ -98,12 +96,14 @@ def test_report_entry_captures_fire_facts(
         datetime.datetime(2026, 8, 2, tzinfo=datetime.UTC),
     )
 
+    description = entry.description
+    assert description is not None
     assert entry.name == "Bug"
     assert entry.identifier == "2026-casnd-150541"
     assert entry.status is peri_scribe.models.FireStatus.ACTIVE
-    assert entry.area_in_acres == pytest.approx(100.0)
-    assert entry.percent_contained == pytest.approx(50.0)
-    assert entry.discovery_time == datetime.datetime(
+    assert description.area_in_acres == pytest.approx(100.0)
+    assert description.percent_contained == pytest.approx(50.0)
+    assert description.discovery_time == datetime.datetime(
         2026,
         8,
         1,

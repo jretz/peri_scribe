@@ -224,28 +224,28 @@ def test_description_rows_includes_every_present_value() -> None:
     ]
 
 
-def test_description_rows_marks_missing_values_with_hyphens() -> None:
+def test_description_rows_returns_none_for_missing_values() -> None:
     description = peri_scribe.kml.descriptions.FireDescription()
     assert peri_scribe.kml.descriptions.description_rows(description) == [
-        ("Area", "--"),
-        ("Exterior perimeter", "--"),
-        ("Containment", "--"),
-        ("Cost to date", "--"),
-        ("Estimated final cost", "--"),
-        ("Personnel", "--"),
-        ("Source", "--"),
-        ("Identifier", "--"),
-        ("Mission", "--"),
-        ("Protecting unit", "--"),
-        ("Discovery", "--"),
-        ("Last update", "--"),
-        ("Initial response", "--"),
-        ("Incident type", "--"),
-        ("Incident complexity", "--"),
-        ("Fuel model", "--"),
-        ("Fire behavior", "--"),
-        ("Landowner category", "--"),
-        ("Of note", "--"),
+        ("Area", None),
+        ("Exterior perimeter", None),
+        ("Containment", None),
+        ("Cost to date", None),
+        ("Estimated final cost", None),
+        ("Personnel", None),
+        ("Source", None),
+        ("Identifier", None),
+        ("Mission", None),
+        ("Protecting unit", None),
+        ("Discovery", None),
+        ("Last update", None),
+        ("Initial response", None),
+        ("Incident type", None),
+        ("Incident complexity", None),
+        ("Fuel model", None),
+        ("Fire behavior", None),
+        ("Landowner category", None),
+        ("Of note", None),
     ]
 
 
@@ -306,6 +306,13 @@ def test_description_html_continues_row_alternation_after_leading_rows() -> None
     assert f"{background}><td><b>Added area</b></td>" in html
     assert "<tr><td><b>Earlier note</b></td>" in html
     assert f"{background}><td><b>Area</b></td>" in html
+
+
+def test_description_html_shows_hyphens_for_missing_values() -> None:
+    description = peri_scribe.kml.descriptions.FireDescription()
+    html = peri_scribe.kml.descriptions.description_html(description)
+    missing_rows = peri_scribe.kml.descriptions.description_rows(description)
+    assert html.count("<td>--</td>") == len(missing_rows)
 
 
 def test_description_html_shows_hyphens_for_missing_leading_values() -> None:
