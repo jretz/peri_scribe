@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import typing
 
+import peri_scribe.areas
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.plot_data
 import peri_scribe.kml.row_values
@@ -53,9 +54,12 @@ def fire_description(
 
     The latest perimeter supplies the fire's area, containment, cost, and timing; where
     a perimeter has no value for a fact the latest point location is used instead. The
-    protecting unit, initial response time, incident type, complexity, fuels, fire
-    behavior, landowner category, and personnel count come only from the sources'
-    original attributes, which the history preserves verbatim.
+    area shown is the reported acreage unless the perimeter's measured area is
+    significantly larger, in which case the measured area is shown because the reported
+    figure trails the polygon the source published. The protecting unit, initial
+    response time, incident type, complexity, fuels, fire behavior, landowner category,
+    and personnel count come only from the sources' original attributes, which the
+    history preserves verbatim.
 
     Args:
         entry: One fire index entry.
@@ -81,6 +85,18 @@ def fire_description(
         area_in_acres = peri_scribe.kml.row_values.float_value(
             point_row,
             "incident_size",
+        )
+    if (
+        area_in_acres is not None
+        and perimeter_row is not None
+        and perimeter_row.geometry is not None
+        and not perimeter_row.geometry.is_empty
+    ):
+        # The reported acreage can trail the polygon the source published; when the
+        # geometry is significantly larger the measured area is what users should see.
+        area_in_acres = peri_scribe.areas.presented_area_in_acres(
+            area_in_acres,
+            peri_scribe.units.area_in_acres(perimeter_row.geometry),
         )
 
     percent_contained = peri_scribe.kml.row_values.float_value(

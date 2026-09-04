@@ -15,7 +15,7 @@ if typing.TYPE_CHECKING:
     import shapely
 
 
-FIRE_SCORES_VERSION = "2026-08-29"
+FIRE_SCORES_VERSION = "2026-09-04"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -37,7 +37,7 @@ class SignalTier(abc.ABC):
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class SizeTier(SignalTier):
-    """A tier on a fire's reported size."""
+    """A tier on a fire's presented size."""
 
     @property
     def description(self) -> str:
@@ -238,7 +238,12 @@ def complexity_level(source_attributes_json: object) -> str | None:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class PerimeterMetrics:
-    """The size and growth measurements derived from a fire's perimeters."""
+    """The size and growth measurements a fire's score tiers read.
+
+    Each acreage is the value presented to users: the reported acreage unless the
+    measured geometry is significantly larger, so a stale report does not understate the
+    fire.
+    """
 
     area_acres: float | None
     growth_acres: float | None

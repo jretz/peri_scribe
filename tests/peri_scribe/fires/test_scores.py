@@ -12,6 +12,7 @@ import numpy as np
 import pytest
 
 import peri_scribe.fires.files
+import peri_scribe.fires.identity
 import peri_scribe.fires.scores
 import peri_scribe.geo.reading
 import peri_scribe.models
@@ -483,3 +484,57 @@ def test_score_fires_scores_point_only_fire(
     peri_scribe.fires.scores.score_fires(pathlib.Path("data/2026"))
 
     assert [entry.name for entry in writes[0][1].fires] == ["Smoke"]
+
+
+def test_fire_metrics_prefers_geometry_when_reported_understates() -> None:
+    perimeters = geopandas.GeoDataFrame(
+        {
+            "fire_name": ["Snow", "Snow"],
+            "fire_identifier": ["2026-a", "2026-a"],
+            "area_acres": [1100.0, 1200.0],
+            "area_acres_differential": [1100.0, 100.0],
+            "area_acres_from_geometry": [2939.0, 3039.0],
+            "area_acres_from_geometry_differential": [2939.0, 100.0],
+            "observation_time": [
+                datetime.datetime(2026, 9, 3, 1, 0),
+                datetime.datetime(2026, 9, 4, 1, 0),
+            ],
+        },
+        geometry=[
+            tests.peri_scribe.fires.fire_helpers.square(0.01),
+            tests.peri_scribe.fires.fire_helpers.square(0.01),
+        ],
+        crs="EPSG:4326",
+    )
+    perimeter_keys = peri_scribe.fires.identity.group_keys(perimeters)
+    metrics, first_mapping = peri_scribe.fires.scores.fire_metrics(
+        perimeters,
+        perimeter_keys,
+    )
+    assert metrics.loc["2026-a", "max_area"] == pytest.approx(3039.0)
+    assert metrics.loc["2026-a", "max_growth"] == pytest.approx(2939.0)
+    assert first_mapping["2026-a"] == pytest.approx(2939.0)
+
+
+def test_fire_metrics_keeps_reported_when_geometry_agrees() -> None:
+    perimeters = geopandas.GeoDataFrame(
+        {
+            "fire_name": ["Snow"],
+            "fire_identifier": ["2026-a"],
+            "area_acres": [1100.0],
+            "area_acres_differential": [1100.0],
+            "area_acres_from_geometry": [1110.0],
+            "area_acres_from_geometry_differential": [1110.0],
+            "observation_time": [datetime.datetime(2026, 9, 3, 1, 0)],
+        },
+        geometry=[tests.peri_scribe.fires.fire_helpers.square(0.01)],
+        crs="EPSG:4326",
+    )
+    perimeter_keys = peri_scribe.fires.identity.group_keys(perimeters)
+    metrics, first_mapping = peri_scribe.fires.scores.fire_metrics(
+        perimeters,
+        perimeter_keys,
+    )
+    assert metrics.loc["2026-a", "max_area"] == pytest.approx(1100.0)
+    assert metrics.loc["2026-a", "max_growth"] == pytest.approx(1100.0)
+    assert first_mapping["2026-a"] == pytest.approx(1100.0)

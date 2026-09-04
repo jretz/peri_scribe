@@ -85,9 +85,14 @@ description = "Install all tools managed by mise"
 sources = ["mise.toml"]
 run = "mise install"
 
-[tasks.upgrade-tools]
-description = "Upgrade tools managed by mise"
-run = "mise upgrade --local --minimum-release-age 3d"
+[tasks.upgrade-dependencies]
+description = "Upgrade tools managed by mise and packages managed by uv"
+run = [
+    "mise upgrade --local --minimum-release-age 3d",
+    { task = "lock" },
+    "uv sync --upgrade",
+    "touch .venv",
+]
 
 [tasks.lock]
 description = "Regenerate mise.lock from mise.toml"

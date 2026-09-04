@@ -569,6 +569,12 @@ def test_fire_geometries_matches_identifier_less_fire_by_name(
     ])
     # The fire has no identifier, yet its history rows carry one; the name match must
     # still include those rows for the plots and description.
+    first_area_in_acres = peri_scribe.units.area_in_acres(
+        tests.peri_scribe.kml.kml_helpers.square(1.0),
+    )
+    second_area_in_acres = peri_scribe.units.area_in_acres(
+        tests.peri_scribe.kml.kml_helpers.square(2.0),
+    )
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
         [
             ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
@@ -578,7 +584,7 @@ def test_fire_geometries_matches_identifier_less_fire_by_name(
             datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC),
             datetime.datetime(2026, 8, 6, 20, 0, tzinfo=datetime.UTC),
         ],
-        area_acres=[10.0, 20.0],
+        area_acres=[first_area_in_acres, second_area_in_acres],
     )
     (fire,) = peri_scribe.kml.fire_data.fire_geometries(
         index,
@@ -589,7 +595,7 @@ def test_fire_geometries_matches_identifier_less_fire_by_name(
     assert fire.name == "Bug"
     assert fire.images
     assert fire.description is not None
-    assert fire.description.area_in_acres == pytest.approx(20.0)
+    assert fire.description.area_in_acres == pytest.approx(second_area_in_acres)
 
 
 def test_score_explanation_for_prefers_identifier() -> None:
@@ -922,13 +928,19 @@ def description_perimeter_frame() -> geopandas.GeoDataFrame:
     Returns:
         The frame.
     """
+    first_area_in_acres = peri_scribe.units.area_in_acres(
+        tests.peri_scribe.kml.kml_helpers.square(1.0),
+    )
+    second_area_in_acres = peri_scribe.units.area_in_acres(
+        tests.peri_scribe.kml.kml_helpers.square(2.0),
+    )
     return geopandas.GeoDataFrame(
         {
             "fire_identifier": ["id-bug", "id-bug"],
             "fire_name": ["Bug", "Bug"],
             "source": ["firis_perimeter", "firis_perimeter"],
             "mission": ["CA-BUG-1", "CA-BUG-2"],
-            "area_acres": [10.0, 20.0],
+            "area_acres": [first_area_in_acres, second_area_in_acres],
             "percent_contained": [10.0, 20.0],
             "estimated_cost_to_date": [1000.0, 2000.0],
             "estimated_final_cost": [1500.0, 2500.0],
@@ -1035,7 +1047,11 @@ def test_fire_description_prefers_latest_perimeter_values() -> None:
         description_point_frame(),
         of_note="Over 100,000 acres, and a Type 1 Incident.",
     )
-    assert description.area_in_acres == pytest.approx(20.0)
+    assert description.area_in_acres == pytest.approx(
+        peri_scribe.units.area_in_acres(
+            tests.peri_scribe.kml.kml_helpers.square(2.0),
+        ),
+    )
     assert description.percent_contained == pytest.approx(20.0)
     assert description.estimated_cost_to_date_in_dollars == pytest.approx(2000.0)
     assert description.estimated_final_cost_in_dollars == pytest.approx(2500.0)
@@ -1076,12 +1092,58 @@ def test_fire_description_prefers_latest_perimeter_values() -> None:
     assert description.of_note == "Over 100,000 acres, and a Type 1 Incident."
 
 
+def test_fire_description_presents_geometry_when_reported_understates() -> None:
+    entry = tests.peri_scribe.kml.kml_helpers.fire_index_entry(
+        "Bug",
+        "active",
+        identifier="id-bug",
+    )
+    reported_in_acres = 100.0
+    geometry = tests.peri_scribe.kml.kml_helpers.square(0.02)
+    perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
+        [("id-bug", "Bug", geometry)],
+        area_acres=[reported_in_acres],
+    )
+    description = peri_scribe.kml.text.fire_description(
+        entry,
+        perimeters,
+        tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
+    )
+    assert description.area_in_acres == pytest.approx(
+        peri_scribe.units.area_in_acres(geometry),
+    )
+    assert description.area_in_acres != pytest.approx(reported_in_acres)
+
+
+def test_fire_description_keeps_reported_area_within_agreement() -> None:
+    entry = tests.peri_scribe.kml.kml_helpers.fire_index_entry(
+        "Bug",
+        "active",
+        identifier="id-bug",
+    )
+    reported_in_acres = 1000.0
+    geometry = tests.peri_scribe.kml.kml_helpers.square(0.02)
+    perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
+        [("id-bug", "Bug", geometry)],
+        area_acres=[reported_in_acres],
+    )
+    description = peri_scribe.kml.text.fire_description(
+        entry,
+        perimeters,
+        tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
+    )
+    assert description.area_in_acres == pytest.approx(reported_in_acres)
+
+
 def test_fire_description_falls_back_to_point_when_perimeter_missing() -> None:
     entry = tests.peri_scribe.kml.kml_helpers.fire_index_entry(
         "Bug",
         "active",
         identifier="id-bug",
     )
+    # The perimeter row carries no values of its own, so the point row supplies the
+    # facts; its geometry is drawn at the point-reported 30-acre scale so the fallback
+    # size is not treated as an understatement against a larger map.
     empty_perimeters = geopandas.GeoDataFrame(
         {
             "fire_identifier": ["id-bug"],
@@ -1096,7 +1158,7 @@ def test_fire_description_falls_back_to_point_when_perimeter_missing() -> None:
             "observation_time": [None],
             "source_attributes": [json.dumps({})],
         },
-        geometry=[tests.peri_scribe.kml.kml_helpers.square(1.0)],
+        geometry=[tests.peri_scribe.kml.kml_helpers.square(0.0032)],
         crs="EPSG:4326",
     )
     description = peri_scribe.kml.text.fire_description(
@@ -1125,7 +1187,13 @@ def test_fire_description_falls_back_to_point_when_perimeter_missing() -> None:
         24,
         tzinfo=datetime.UTC,
     )
-    assert description.exterior_perimeter_in_miles == pytest.approx(275.75, rel=0.01)
+    # The exterior perimeter follows the small agreement-scale geometry.
+    assert description.exterior_perimeter_in_miles == pytest.approx(
+        peri_scribe.units.exterior_perimeter_in_miles(
+            tests.peri_scribe.kml.kml_helpers.square(0.0032),
+        ),
+        rel=0.01,
+    )
     assert description.incident_type == "WF"
     assert (
         description.incident_complexity == "Type 4 Incident; Type 5 Incident; Type 3 IC"

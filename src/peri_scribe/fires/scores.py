@@ -1,11 +1,15 @@
 """Scoring fires to surface the ones people are most interested in.
 
 Each fire's score is a weighted sum of points awarded across independent signals: its
-reported size, its largest single growth step, its size when first mapped, the buildings
-within a mile of it, whether it overlaps an evacuation zone, and its official incident
-complexity level. The score is a pure function of the current data. It does not depend
-on the contents of the scores file, so regenerating it from unchanged inputs produces
-the same scores.
+size, its largest single growth step, its size when first mapped, the buildings within a
+mile of it, whether it overlaps an evacuation zone, and its official incident complexity
+level. The score is a pure function of the current data. It does not depend on the
+contents of the scores file, so regenerating it from unchanged inputs produces the same
+scores.
+
+The size signals are measured from the mapped perimeters, and where a row's
+geometry-measured area is significantly larger than the acreage its source reported, the
+measured area is used so a stale reported figure does not understate the fire.
 
 The score is derived from the differential history GeoPackage (for size, growth,
 first-mapping size) and the cumulative full history (for geometry), plus the point
@@ -28,6 +32,7 @@ import typing
 import geopandas
 import pandas as pd
 
+import peri_scribe.areas
 import peri_scribe.fires.buffering
 import peri_scribe.fires.differential
 import peri_scribe.fires.files
@@ -274,11 +279,45 @@ def read_history(
     return perimeters, points, full_perimeters
 
 
+def presented_acreage_series(
+    reported_in_acres: pd.Series,
+    calculated_in_acres: pd.Series,
+) -> pd.Series:
+    """Return the presented acreage for each pair of reported and measured acres.
+
+    Args:
+        reported_in_acres: Each row's reported acreage.
+        calculated_in_acres: Each row's geometry-measured acreage.
+
+    Returns:
+        One presented acreage per row, aligned with the inputs.
+    """
+    return pd.to_numeric(
+        pd.Series(
+            map(
+                peri_scribe.areas.presented_area_in_acres,
+                reported_in_acres,
+                calculated_in_acres,
+                strict=True,
+            ),
+            index=reported_in_acres.index,
+        ),
+        errors="coerce",
+    )
+
+
 def fire_metrics(
     perimeters: geopandas.GeoDataFrame,
     perimeter_keys: pd.Series,
 ) -> tuple[pd.DataFrame, pd.Series]:
     """Return per-fire size, growth, and first-mapping metrics.
+
+    Each growth row's reported acreage is compared against the same row's
+    geometry-measured acreage, and the presented value is the reported acreage unless
+    the measured one is significantly larger, so a stale reported figure does not
+    understate the signals that describe and rank a fire. A layer without the
+    geometry-measured columns (for example one written before they existed) is scored
+    from its reported acreages alone.
 
     Args:
         perimeters: The differential perimeter layer.
@@ -291,16 +330,35 @@ def fire_metrics(
     if perimeters.empty:
         return pd.DataFrame(), pd.Series(dtype=object)
     keyed = perimeters.assign(key=perimeter_keys)
+    if (
+        "area_acres_from_geometry" in keyed.columns
+        and "area_acres_from_geometry_differential" in keyed.columns
+    ):
+        keyed = keyed.assign(
+            presented_area_acres=presented_acreage_series(
+                keyed["area_acres"],
+                keyed["area_acres_from_geometry"],
+            ),
+            presented_growth_acres=presented_acreage_series(
+                keyed["area_acres_differential"],
+                keyed["area_acres_from_geometry_differential"],
+            ),
+        )
+        area_column = "presented_area_acres"
+        growth_column = "presented_growth_acres"
+    else:
+        area_column = "area_acres"
+        growth_column = "area_acres_differential"
     metrics = keyed.groupby("key", sort=False).agg(
-        max_area=("area_acres", "max"),
-        max_growth=("area_acres_differential", "max"),
+        max_area=(area_column, "max"),
+        max_growth=(growth_column, "max"),
     )
     first_mapping = (
         keyed
         .sort_values("observation_time")
         .groupby("key", sort=False)
         .head(1)
-        .set_index("key")["area_acres"]
+        .set_index("key")[area_column]
     )
     return metrics, first_mapping
 
