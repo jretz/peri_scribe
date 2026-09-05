@@ -43,3 +43,9 @@ it for you.
 - mise.lock
 - tests/test_no_pragmas.py
 - any markdown files (AGENTS.md, README.md, docs/*.md, etc.)
+
+## Geographic Area of Interest
+
+This project is about the entire United States. It might appear to be about California
+because that state has rich data sources that are being used. But the project is about
+the entire country.

@@ -224,7 +224,11 @@ def test_fetch_arcgis_source_writes_snapshot(
     assert queries == [
         (
             "evacuations",
-            {"where": "1=1", "out_sr": peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID},
+            {
+                "where": "1=1",
+                "out_sr": peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+                "order_by_fields": "OBJECTID",
+            },
         ),
     ]
     assert len(writes) == 1
@@ -299,6 +303,7 @@ def test_fetch_arcgis_source_passes_where_clause(
         {
             "where": "Event IN ('Red Flag Warning', 'Fire Weather Watch')",
             "out_sr": peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+            "order_by_fields": "OBJECTID",
         },
     ]
 

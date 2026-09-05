@@ -181,9 +181,20 @@ EVACUATIONS_SOURCE = ExternalSource(
     layer_name="evacuations",
 )
 
+MAJOR_CITIES_SOURCE = ExternalSource(
+    name="major_cities",
+    kind=ExternalSourceKind.ARCGIS,
+    url=(
+        "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/"
+        "USA_Major_Cities_/FeatureServer/0"
+    ),
+    layer_name="major_cities",
+)
+
 EXTERNAL_SOURCES = (
     BUILDINGS_SOURCE,
     EVACUATIONS_SOURCE,
+    MAJOR_CITIES_SOURCE,
 )
 
 
@@ -374,6 +385,11 @@ def query_arcgis_source(source: ExternalSource) -> geopandas.GeoDataFrame:
             parameters={
                 "where": source.where or "1=1",
                 "out_sr": peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+                # Ordering by the object id sends the ArcGIS client's paging down a
+                # single-threaded path. Its concurrent paging races on the shared SSL
+                # context and, although the connection is verified, reports it
+                # unverified, spamming a misleading InsecureRequestWarning per page.
+                "order_by_fields": "OBJECTID",
             },
         )
     except Exception as error:

@@ -175,6 +175,32 @@ def fetch_evacuations(year_directory: pathlib.Path | None = None) -> None:
     )
 
 
+@cli.command(
+    help=(
+        "Fetch USA Major Cities into YEAR_DIRECTORY.\n\n"
+        "Retrieves the latest version of a list of major US cities at "
+        "YEAR_DIRECTORY/sources/major_cities.gpkg, replacing it whenever the layer's "
+        "data changes. A fetch that fails logs a warning and keeps the stored version. "
+        f"{year_directory_default_help()}"
+    ),
+)
+@click.argument(
+    "year_directory",
+    type=click.Path(
+        path_type=pathlib.Path,
+        exists=True,
+        file_okay=False,
+    ),
+    required=False,
+)
+def fetch_major_cities(year_directory: pathlib.Path | None = None) -> None:
+    """Fetch USA Major Cities for the year directory."""
+    fetch_external_source(
+        peri_scribe.sources.external_sources.MAJOR_CITIES_SOURCE,
+        year_directory,
+    )
+
+
 @cli.command()
 @click.option(
     "--trim-start",
@@ -295,17 +321,16 @@ def reports(year_directory: pathlib.Path | None = None) -> None:
 @cli.command(
     help=(
         "Fetch all feeds and rebuild the KMZ for YEAR_DIRECTORY.\n\n"
-        "The fetch step fetches every configured fire feed and the external "
-        "sources (buildings, evacuations). When the fetch wrote a new fire "
-        "snapshot or replaced the stored evacuations, the administrative "
-        "boundaries are ensured and the full and differential geography "
-        "history, fire scores, KML, and fire reports for YEAR_DIRECTORY are "
-        "built. --force fetches every "
-        "incremental feed in full (storing only new or changed features), "
-        "catching source edits the incremental fetch would miss, and runs the "
-        "later steps even when nothing changed; static feeds such as buildings "
-        "are downloaded only when missing, whether or not --force is given. "
-        f"An error in any step stops the pipeline. {year_directory_default_help()}"
+        "The fetch step fetches every configured fire feed and the external sources "
+        "(buildings, evacuations, and major cities). When the fetch wrote a new fire "
+        "snapshot or replaced the stored evacuations, the administrative boundaries "
+        "are ensured and the full and differential geography history, fire scores, "
+        "KML, and fire reports for YEAR_DIRECTORY are built. --force fetches every "
+        "incremental feed in full (storing only new or changed features), catching "
+        "source edits the incremental fetch would miss, and runs the later steps even "
+        "when nothing changed; static feeds such as buildings are downloaded only when "
+        "missing, whether or not --force is given. An error in any step stops the "
+        f"pipeline. {year_directory_default_help()}"
     ),
 )
 @click.argument(

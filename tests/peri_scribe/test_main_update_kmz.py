@@ -39,8 +39,8 @@ def test_update_kmz_runs_all_steps_when_fetch_changed(
     assert result.exit_code == 0
     year_directory = pathlib.Path("data/2026")
     assert stubs.external_calls == [
-        (peri_scribe.sources.external_sources.BUILDINGS_SOURCE, year_directory),
-        (peri_scribe.sources.external_sources.EVACUATIONS_SOURCE, year_directory),
+        (source, year_directory)
+        for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES
     ]
     assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == [year_directory]
@@ -60,8 +60,8 @@ def test_update_kmz_defaults_to_current_year_directory(
     year_directory = BASE_DIRECTORY / "data" / "2026"
     assert stubs.fetch_calls == [(BASE_DIRECTORY, 2026, False)]
     assert stubs.external_calls == [
-        (peri_scribe.sources.external_sources.BUILDINGS_SOURCE, year_directory),
-        (peri_scribe.sources.external_sources.EVACUATIONS_SOURCE, year_directory),
+        (source, year_directory)
+        for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES
     ]
     assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == [year_directory]
@@ -80,8 +80,8 @@ def test_update_kmz_fetches_external_sources_but_skips_steps_when_nothing_change
     assert result.exit_code == 0
     year_directory = BASE_DIRECTORY / "data" / "2026"
     assert stubs.external_calls == [
-        (peri_scribe.sources.external_sources.BUILDINGS_SOURCE, year_directory),
-        (peri_scribe.sources.external_sources.EVACUATIONS_SOURCE, year_directory),
+        (source, year_directory)
+        for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES
     ]
     assert stubs.ensure_boundary_calls == []
     assert stubs.history_calls == []
@@ -101,8 +101,8 @@ def test_update_kmz_runs_steps_when_evacuations_changed(
     year_directory = BASE_DIRECTORY / "data" / "2026"
     assert stubs.fetch_calls == [(BASE_DIRECTORY, 2026, False)]
     assert stubs.external_calls == [
-        (peri_scribe.sources.external_sources.BUILDINGS_SOURCE, year_directory),
-        (peri_scribe.sources.external_sources.EVACUATIONS_SOURCE, year_directory),
+        (source, year_directory)
+        for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES
     ]
     assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == [year_directory]
