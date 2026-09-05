@@ -14,6 +14,10 @@ import peri_scribe.report.markdown
 REPORT_SECTION_COUNT = 5
 GROWTH_SECTION_COUNT = 2
 
+# The summary sections whose location column headings appear when the report holds a
+# located fire in each of them: New, Notable Fires and Top Fires.
+LOCATION_COLUMN_SECTION_COUNT = 2
+
 
 def make_entry(
     name: str,
@@ -26,6 +30,7 @@ def make_entry(
     score: int | None = None,
     growth_in_acres: float | None = None,
     growth_in_percent: float | None = None,
+    location: str | None = None,
 ) -> peri_scribe.report.gathering.FireReportEntry:
     """Return a report entry carrying only the requested facts.
 
@@ -43,6 +48,7 @@ def make_entry(
         score: The fire's score, or None.
         growth_in_acres: The fire's acreage growth, or None.
         growth_in_percent: The fire's percent growth, or None.
+        location: The fire's nearest-city location phrase, or None.
 
     Returns:
         An active fire entry carrying the requested facts.
@@ -62,6 +68,7 @@ def make_entry(
         growth_in_acres=growth_in_acres,
         growth_in_percent=growth_in_percent,
         score=score,
+        location=location,
     )
 
 
@@ -499,3 +506,129 @@ def test_render_markdown_report_writes_file(tmp_path: pathlib.Path) -> None:
 
     assert path == year_directory / "reports" / "PeriScribe Fires 2026.md"
     assert "PeriScribe Fires 2026" in path.read_text(encoding="utf-8")
+
+
+def test_location_cell_returns_location_text() -> None:
+    entry = make_entry("Bug", location="15 mi ESE of Portland, OR")
+
+    assert (
+        peri_scribe.report.markdown.location_cell(entry) == "15 mi ESE of Portland, OR"
+    )
+
+
+def test_location_cell_returns_none_without_location() -> None:
+    assert peri_scribe.report.markdown.location_cell(make_entry("Bug")) is None
+
+
+def test_fire_detail_rows_lead_with_location() -> None:
+    entry = make_entry(
+        "Bug",
+        identifier="id-bug",
+        area_in_acres=100.0,
+        location="15 mi ESE of Portland, OR",
+    )
+
+    assert peri_scribe.report.markdown.fire_detail_rows(entry) == (
+        ("Location", "15 mi ESE of Portland, OR"),
+        ("Area", "100 acres"),
+        ("Identifier", "id-bug"),
+    )
+
+
+def test_fire_detail_lines_show_location_row() -> None:
+    entry = make_entry(
+        "Bug",
+        identifier="id-bug",
+        area_in_acres=100.0,
+        location="15 mi ESE of Portland, OR",
+    )
+
+    assert peri_scribe.report.markdown.fire_detail_lines(entry) == [
+        "### Bug",
+        "",
+        "| Fact       | Value                     |",
+        "| ---------- | ------------------------- |",
+        "| Location   | 15 mi ESE of Portland, OR |",
+        "| Area       | 100 acres                 |",
+        "| Identifier | id-bug                    |",
+    ]
+
+
+def test_fire_table_section_renders_location_column() -> None:
+    bug = make_entry(
+        "Bug",
+        identifier="id-bug",
+        area_in_acres=100.0,
+        location="15 mi ESE of Portland, OR",
+    )
+    fire = make_entry(
+        "Fire",
+        identifier="id-fire",
+        growth_in_acres=5000.0,
+    )
+    lines = peri_scribe.report.markdown.fire_table_section(
+        "Fastest Growing Fires (acres)",
+        (bug, fire),
+        columns=(
+            (
+                peri_scribe.report.markdown.LOCATION_LABEL,
+                peri_scribe.report.markdown.location_cell,
+                False,
+            ),
+            (
+                peri_scribe.report.markdown.GROWTH_LABEL,
+                peri_scribe.report.markdown.growth_in_acres_cell,
+                True,
+            ),
+            (
+                peri_scribe.report.markdown.AREA_LABEL,
+                peri_scribe.report.markdown.area_fact,
+                True,
+            ),
+        ),
+        anchors={bug: "bug-id-bug", fire: "fire-id-fire"},
+    )
+
+    heading = next(line for line in lines if line.startswith("| Fire"))
+    assert "Location" in heading
+    bug_row = next(line for line in lines if "[**Bug**](#bug-id-bug)" in line)
+    assert "15 mi ESE of Portland, OR" in bug_row
+    fire_row = next(line for line in lines if "[**Fire**](#fire-id-fire)" in line)
+    assert "15 mi ESE of Portland, OR" not in fire_row
+    assert "+5,000 acres" in fire_row
+
+
+# The summary sections that show the location column when the report holds a located
+# fire in each of them: New, Notable Fires and Top Fires.
+LOCATION_COLUMN_SECTION_COUNT = 2
+
+
+def test_markdown_text_shows_location_in_sections_and_details() -> None:
+    bug = make_entry(
+        "Bug",
+        identifier="id-bug",
+        area_in_acres=100.0,
+        discovery_time=datetime.datetime(2026, 8, 1, tzinfo=datetime.UTC),
+        location="15 mi ESE of Portland, OR",
+    )
+    report = peri_scribe.report.gathering.FireReport(
+        new_notable_fires=(bug,),
+        fastest_growing_by_acres=(),
+        fastest_growing_by_percent=(),
+        top_fires=(bug,),
+        fire_details=(bug,),
+    )
+
+    text = peri_scribe.report.markdown.markdown_text(report, 2026)
+
+    assert "| Location" in text
+    assert "15 mi ESE of Portland, OR" in text
+    summary_lines = text.split("## Fire Details")[0].splitlines()
+    assert (
+        sum(
+            1
+            for line in summary_lines
+            if line.startswith("| Fire") and "Location" in line
+        )
+        == LOCATION_COLUMN_SECTION_COUNT
+    )

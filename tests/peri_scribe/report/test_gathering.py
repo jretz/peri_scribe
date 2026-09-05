@@ -5,7 +5,9 @@ from __future__ import annotations
 import datetime
 import pathlib
 
+import geopandas
 import pytest
+import shapely.geometry
 
 import peri_scribe.fires.differential
 import peri_scribe.fires.files
@@ -17,6 +19,8 @@ import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
 import peri_scribe.models
 import peri_scribe.report.gathering
+import peri_scribe.report.locations
+import peri_scribe.sources.external_sources
 import tests.peri_scribe.kml.kml_helpers
 
 
@@ -359,3 +363,337 @@ def test_gather_report_uses_empty_scores_when_missing(
     peri_scribe.report.gathering.gather_report(year_directory)
 
     assert scores_values == [peri_scribe.models.FireScores(version="", fires=[])]
+
+
+def located_fire(
+    name: str,
+    identifier: str,
+) -> peri_scribe.kml.fire_data.FireGeometry:
+    """Return an active fire with one mapped perimeter.
+
+    Args:
+        name: The fire's name.
+        identifier: The fire's identifier.
+
+    Returns:
+        A fire whose latest perimeter is a non-empty polygon, so its location can be
+        measured from an interior.
+    """
+    return peri_scribe.kml.fire_data.FireGeometry(
+        name=name,
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=None,
+        perimeters=(
+            peri_scribe.kml.fire_data.Perimeter(
+                geometry=shapely.geometry.Point(-122.6750, 45.5051).buffer(0.1),
+                observation_time=None,
+            ),
+        ),
+        identifiers=frozenset({identifier}),
+        description=None,
+    )
+
+
+def test_report_entry_captures_location() -> None:
+    fire = make_fire("Bug", "2026-casnd-150541")
+
+    entry = peri_scribe.report.gathering.report_entry(
+        fire,
+        {},
+        {},
+        datetime.datetime(2026, 8, 2, tzinfo=datetime.UTC),
+        location="15 mi ESE of Portland, OR",
+    )
+
+    assert entry.location == "15 mi ESE of Portland, OR"
+
+
+def test_fire_identity_prefers_canonical_identifier() -> None:
+    fire = located_fire("Bug", "2026-casnd-150541")
+
+    assert peri_scribe.report.gathering.fire_identity(fire) == "2026-casnd-150541"
+
+
+def test_fire_identity_uses_name_without_identifier() -> None:
+    fire = peri_scribe.kml.fire_data.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=None,
+        perimeters=(),
+    )
+
+    assert peri_scribe.report.gathering.fire_identity(fire) == "Bug"
+
+
+def test_fire_location_formats_nearest_city_phrase(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fire = located_fire("Bug", "2026-casnd-150541")
+    nearest = peri_scribe.report.locations.NearestCity(
+        name="Portland",
+        state_abbreviation="OR",
+        distance_in_miles=14.6,
+        bearing_in_degrees=112.5,
+    )
+    monkeypatch.setattr(
+        peri_scribe.report.locations,
+        "nearest_city",
+        lambda _interior, _cities: nearest,
+    )
+
+    location = peri_scribe.report.gathering.fire_location(
+        fire,
+        geopandas.GeoDataFrame(),
+    )
+
+    assert location == "15 mi ESE of Portland, OR"
+
+
+def test_fire_location_returns_none_without_geometry() -> None:
+    fire = make_fire("Bug", "2026-casnd-150541")
+
+    assert (
+        peri_scribe.report.gathering.fire_location(
+            fire,
+            geopandas.GeoDataFrame(),
+        )
+        is None
+    )
+
+
+def test_fire_location_returns_none_with_empty_perimeter() -> None:
+    fire = peri_scribe.kml.fire_data.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=None,
+        perimeters=(
+            peri_scribe.kml.fire_data.Perimeter(
+                geometry=shapely.geometry.Polygon(),
+                observation_time=None,
+            ),
+        ),
+    )
+
+    assert (
+        peri_scribe.report.gathering.fire_location(
+            fire,
+            geopandas.GeoDataFrame(),
+        )
+        is None
+    )
+
+
+def test_fire_location_returns_none_without_cities() -> None:
+    fire = located_fire("Bug", "2026-casnd-150541")
+
+    assert (
+        peri_scribe.report.gathering.fire_location(
+            fire,
+            geopandas.GeoDataFrame(),
+        )
+        is None
+    )
+
+
+def test_fire_location_measures_from_point_without_perimeter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    point = shapely.geometry.Point(-122.6750, 45.5051)
+    fire = peri_scribe.kml.fire_data.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=point,
+        perimeters=(),
+        identifiers=frozenset({"2026-casnd-150541"}),
+    )
+    measured: list[shapely.Geometry] = []
+
+    def nearest_city(
+        geometry: shapely.Geometry,
+        _cities: geopandas.GeoDataFrame,
+    ) -> peri_scribe.report.locations.NearestCity:
+        measured.append(geometry)
+        return peri_scribe.report.locations.NearestCity(
+            name="Portland",
+            state_abbreviation="OR",
+            distance_in_miles=14.6,
+            bearing_in_degrees=112.5,
+        )
+
+    monkeypatch.setattr(
+        peri_scribe.report.locations,
+        "nearest_city",
+        nearest_city,
+    )
+
+    location = peri_scribe.report.gathering.fire_location(
+        fire,
+        geopandas.GeoDataFrame(),
+    )
+
+    assert measured == [point]
+    assert location == "15 mi ESE of Portland, OR"
+
+
+def test_fire_location_falls_back_to_point_for_empty_perimeter(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    point = shapely.geometry.Point(-122.6750, 45.5051)
+    fire = peri_scribe.kml.fire_data.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=point,
+        perimeters=(
+            peri_scribe.kml.fire_data.Perimeter(
+                geometry=shapely.geometry.Polygon(),
+                observation_time=None,
+            ),
+        ),
+        identifiers=frozenset({"2026-casnd-150541"}),
+    )
+    measured: list[shapely.Geometry] = []
+
+    def nearest_city(
+        geometry: shapely.Geometry,
+        _cities: geopandas.GeoDataFrame,
+    ) -> peri_scribe.report.locations.NearestCity:
+        measured.append(geometry)
+        return peri_scribe.report.locations.NearestCity(
+            name="Portland",
+            state_abbreviation="OR",
+            distance_in_miles=14.6,
+            bearing_in_degrees=112.5,
+        )
+
+    monkeypatch.setattr(
+        peri_scribe.report.locations,
+        "nearest_city",
+        nearest_city,
+    )
+
+    location = peri_scribe.report.gathering.fire_location(
+        fire,
+        geopandas.GeoDataFrame(),
+    )
+
+    assert measured == [point]
+    assert location == "15 mi ESE of Portland, OR"
+
+
+def test_fire_location_measures_point_to_nearest_city() -> None:
+    point = shapely.geometry.Point(-122.6750, 45.5051)
+    fire = peri_scribe.kml.fire_data.FireGeometry(
+        name="Bug",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=point,
+        perimeters=(),
+        identifiers=frozenset({"2026-casnd-150541"}),
+    )
+    cities = geopandas.GeoDataFrame(
+        {
+            "NAME": ["Faraway", "Portland"],
+            "STATE_ABBR": ["OR", "OR"],
+            "geometry": [
+                shapely.geometry.Point(-123.5, 45.5051),
+                point,
+            ],
+        },
+        crs="EPSG:4326",
+    )
+
+    location = peri_scribe.report.gathering.fire_location(fire, cities)
+
+    assert location == "0 mi of Portland, OR"
+
+
+def test_fire_locations_maps_each_located_fire_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    located = located_fire("Bug", "2026-casnd-150541")
+    without_perimeter = make_fire("Fire", "2026-casnd-150542")
+    nearest = peri_scribe.report.locations.NearestCity(
+        name="Portland",
+        state_abbreviation="OR",
+        distance_in_miles=14.6,
+        bearing_in_degrees=112.5,
+    )
+    monkeypatch.setattr(
+        peri_scribe.report.locations,
+        "nearest_city",
+        lambda _interior, _cities: nearest,
+    )
+
+    locations = peri_scribe.report.gathering.fire_locations(
+        (located, located, without_perimeter),
+        geopandas.GeoDataFrame(),
+    )
+
+    assert locations == {"2026-casnd-150541": "15 mi ESE of Portland, OR"}
+
+
+def test_located_entries_attach_location_phrases(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fire = located_fire("Bug", "2026-casnd-150541")
+    nearest = peri_scribe.report.locations.NearestCity(
+        name="Portland",
+        state_abbreviation="OR",
+        distance_in_miles=14.6,
+        bearing_in_degrees=112.5,
+    )
+    monkeypatch.setattr(
+        peri_scribe.report.locations,
+        "nearest_city",
+        lambda _interior, _cities: nearest,
+    )
+    monkeypatch.setattr(
+        peri_scribe.report.gathering,
+        "read_cities_layer",
+        lambda _year_directory: geopandas.GeoDataFrame(),
+    )
+
+    entries = peri_scribe.report.gathering.located_entries(
+        (fire,),
+        {},
+        {},
+        datetime.datetime(2026, 8, 2, tzinfo=datetime.UTC),
+        pathlib.Path("data/2026"),
+    )
+
+    assert entries[0].location == "15 mi ESE of Portland, OR"
+
+
+def test_read_cities_layer_reads_stored_layer(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    year_directory = tmp_path / "2026"
+    path = peri_scribe.sources.external_sources.output_path(
+        year_directory,
+        peri_scribe.sources.external_sources.MAJOR_CITIES_SOURCE,
+    )
+    path.parent.mkdir(parents=True)
+    path.touch()
+    calls: list[tuple[pathlib.Path, str]] = []
+
+    def read_layer(
+        path: pathlib.Path,
+        layer_name: str,
+    ) -> geopandas.GeoDataFrame:
+        calls.append((path, layer_name))
+        return geopandas.GeoDataFrame()
+
+    monkeypatch.setattr(peri_scribe.geo.reading, "read_layer", read_layer)
+
+    frame = peri_scribe.report.gathering.read_cities_layer(year_directory)
+
+    assert calls == [(path, "major_cities")]
+    assert frame.empty
+
+
+def test_read_cities_layer_returns_empty_frame_when_absent(
+    tmp_path: pathlib.Path,
+) -> None:
+    frame = peri_scribe.report.gathering.read_cities_layer(tmp_path / "2026")
+
+    assert frame.empty

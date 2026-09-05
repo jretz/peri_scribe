@@ -35,6 +35,12 @@ GROWTH_IN_PERCENT_LABEL = f"{GROWTH_LABEL} (%)"
 AREA_LABEL = peri_scribe.kml.descriptions.AREA_LABEL
 DISCOVERY_LABEL = peri_scribe.kml.descriptions.DISCOVERY_LABEL
 
+# The label for the fire's nearest-city location, spelled once here so the summary
+# tables' column heading and the details tables' row label stay in step. The location is
+# a fact of the fire's own report rather than of the KMZ balloon, so it is not one of
+# the balloon labels above.
+LOCATION_LABEL = "Location"
+
 # A callable that returns one fire's text for one table column, or None when the fire
 # lacks that fact.
 ColumnTextFor = typing.Callable[
@@ -108,6 +114,20 @@ def growth_in_percent_cell(
     if entry.growth_in_percent is None:
         return None
     return f"+{peri_scribe.kml.descriptions.format_in_percent(entry.growth_in_percent)}"
+
+
+def location_cell(
+    entry: peri_scribe.report.gathering.FireReportEntry,
+) -> str | None:
+    """Return *entry*'s nearest-city location text for a table cell, or None.
+
+    Args:
+        entry: The fire to describe.
+
+    Returns:
+        The location phrase, like ``15 mi ESE of Portland, OR``, or None.
+    """
+    return entry.location
 
 
 def area_fact(
@@ -301,11 +321,13 @@ def fire_detail_rows(
 ) -> tuple[tuple[str, str], ...]:
     """Return the label/value rows *entry*'s details table shows.
 
-    The rows are the facts the fire's KMZ balloon table shows, with the same labels and
-    text and in the balloon's order, so the report and the map carry the same data for
-    each fire; a fact the fire lacks is left out rather than shown as a placeholder.
-    Growth over the fast-growth window follows when it is large enough to display a
-    nonzero value, so a fire that merely held steady is not described as having grown.
+    The location leads the table when the fire has one, because it is the fact that
+    places the fire before the facts of its latest state. The remaining rows are the
+    facts the fire's KMZ balloon table shows, with the same labels and text and in the
+    balloon's order, so the report and the map carry the same data for each fire; a fact
+    the fire lacks is left out rather than shown as a placeholder. Growth over the
+    fast-growth window follows when it is large enough to display a nonzero value, so a
+    fire that merely held steady is not described as having grown.
 
     Args:
         entry: The fire to describe.
@@ -314,6 +336,8 @@ def fire_detail_rows(
         The details table's rows, each holding a label and a value.
     """
     rows: list[tuple[str, str]] = []
+    if entry.location is not None:
+        rows.append((LOCATION_LABEL, entry.location))
     if entry.description is not None:
         for label, value in peri_scribe.kml.descriptions.description_rows(
             entry.description,
@@ -403,6 +427,7 @@ def markdown_text(
             "New, Notable Fires",
             report.new_notable_fires,
             columns=(
+                (LOCATION_LABEL, location_cell, False),
                 (DISCOVERY_LABEL, discovery_cell, False),
                 (AREA_LABEL, area_fact, True),
             ),
@@ -414,6 +439,7 @@ def markdown_text(
             "Fastest Growing Fires (acres)",
             report.fastest_growing_by_acres,
             columns=(
+                (LOCATION_LABEL, location_cell, False),
                 (GROWTH_LABEL, growth_in_acres_cell, True),
                 (AREA_LABEL, area_fact, True),
             ),
@@ -425,6 +451,7 @@ def markdown_text(
             "Fastest Growing Fires (%)",
             report.fastest_growing_by_percent,
             columns=(
+                (LOCATION_LABEL, location_cell, False),
                 (GROWTH_LABEL, growth_in_percent_cell, True),
                 (AREA_LABEL, area_fact, True),
             ),
@@ -435,7 +462,10 @@ def markdown_text(
         fire_table_section(
             "Top Fires",
             report.top_fires,
-            columns=((AREA_LABEL, area_fact, True),),
+            columns=(
+                (LOCATION_LABEL, location_cell, False),
+                (AREA_LABEL, area_fact, True),
+            ),
             anchors=anchors,
         ),
     )

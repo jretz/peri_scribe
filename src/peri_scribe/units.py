@@ -14,6 +14,8 @@ METERS_PER_KILOMETER = 1000.0
 
 MILES_PER_KILOMETER = 0.621371192237334
 
+METERS_PER_MILE = 1609.344
+
 
 def area_in_square_meters(geometry: shapely.Geometry) -> float:
     """Return *geometry*'s area in square meters.
