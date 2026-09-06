@@ -20,9 +20,10 @@ centroid database. Fire-feed snapshots are append-only GeoPackages. The evacuati
 is kept as its latest GeoPackage, while the buildings source is stored as a compact
 SQLite database at `sources/buildings.sqlite`.
 
-`update-kmz` performs the following operations:
+`run` performs the following operations:
 
-1. Fetch fire feeds incrementally, plus the external sources.
+1. Fetch fire feeds incrementally, plus the external sources (buildings, evacuations,
+   and major cities).
 2. Ensure the administrative-boundary GeoPackage exists at
    `sources/CA_border_with_AZ_NV_and_OR.gpkg`.
 3. Write `derived/history_of_full_geography.gpkg` with `perimeter_history` and
@@ -30,27 +31,27 @@ SQLite database at `sources/buildings.sqlite`.
 4. Write `derived/history_of_differential_geography.gpkg` containing growth rings.
 5. Write `derived/fire_scores.json` and `derived/fire_scores_ccdf.png`.
 6. Write `maps/PeriScribe Fires <year>.kmz`.
+7. Write `reports/PeriScribe Fires <year>.md`.
 
-The later steps run when fire data or evacuation data changed, or when `--force` is
-provided. A failed step stops the pipeline. The KMZ includes active and inactive fire
-folders, latest perimeters, progression rings, fire information, and score-based top
-fire views.
+These operations form the stages fetch, geography, score, kmz, and reports. The later
+stages run when fire data or evacuation data changed, or when `--unconditional` is
+provided; a single stage or a range can be selected with `--only`, `--from`, and `--to`.
+A failed step stops the pipeline. The KMZ includes active and inactive fire folders,
+latest perimeters, progression rings, fire information, and score-based top fire views.
 
 ## Configuration and operation
 
 Run `peri_scribe --help` for the available commands:
 
-- `update-kmz` runs the end-to-end pipeline.
-- `fetch-buildings` and `fetch-evacuations` retrieve individual external sources.
-- `ensure-admin-boundaries` retrieves or reuses the administrative boundaries.
+- `run` runs the end-to-end pipeline; `--list-stages` prints each stage and its
+  description without running anything.
 - `validate-sources` compares incremental snapshots with complete fresh downloads.
-- `show-turbo-colormap` previews or writes the colormap used for progression rings.
+- `show-colormap` previews or writes the colormap used for progression rings.
 
-The pipeline commands accept an optional year-directory argument; when omitted it
-defaults to `data/<current year>`. `show-turbo-colormap` instead accepts colormap trim
-options and an optional PNG output path.
+The `run` command accepts an optional year-directory argument; when omitted it defaults
+to `data/<current year>`. `show-colormap` instead accepts colormap trim options and an
+optional PNG output path.
 
 ## Future work
 
-Notifications, configurable recipients and delivery rules, and a reporting command
-remain future requirements.
+Notifications, configurable recipients and delivery rules remain future requirements.

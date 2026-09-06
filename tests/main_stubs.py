@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import pathlib
 import typing
 
@@ -19,12 +20,13 @@ BASE_DIRECTORY = pathlib.Path("/fetch")
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class UpdateKmzStubs:
-    """Fetch outcome and recorded step calls for update-kmz tests."""
+class RunStubs:
+    """Fetch outcome and recorded step calls for run-command tests."""
 
     fetch_result: peri_scribe.sources.fetching.FetchResult
     fetch_calls: list[tuple[pathlib.Path, int, bool]]
     external_calls: list[tuple[object, pathlib.Path]]
+    write_state_calls: list[tuple[pathlib.Path, datetime.datetime]]
     ensure_boundary_calls: list[pathlib.Path | None]
     history_calls: list[pathlib.Path]
     scores_calls: list[pathlib.Path]

@@ -23,7 +23,7 @@ be undesirable.
    history needed by later stages.
 4. Use `.venv/bin/python`, because the geospatial and plotting dependencies are
    installed there and KMZ rendering may use spawned workers. Do not invoke `peri_scribe
-   update-kmz`; that command fetches network feeds first.
+   run`; that command fetches network feeds first.
 5. Verify that the expected GeoPackages, score JSON/PNG, and `maps/PeriScribe Fires
    <year>.kmz` were written and are non-empty. Inspect the KMZ as a zip when useful, and
    do not treat file size alone as proof of correctness.

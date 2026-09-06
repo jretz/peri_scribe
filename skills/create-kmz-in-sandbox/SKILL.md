@@ -5,7 +5,7 @@ description: "Generate PeriScribe KMZ files from existing local derived data whe
 
 # Create PeriScribe KMZ in the Sandbox
 
-Use this skill when the user needs PeriScribe's KMZ output and the normal `update-kmz`
+Use this skill when the user needs PeriScribe's KMZ output and the normal `run`
 command is unsuitable because it fetches network feeds or because the plotting pool is
 sensitive to interpreter, pickling, and timeout details.
 
@@ -30,9 +30,9 @@ Preserve these multiprocessing invariants:
 - Call the module-level `peri_scribe.kml.builder.create_kmz`; do not define pool
   workers, payloads, lambdas, or local closures in `__main__`. Spawned children must be
   able to import the worker and its data types from `peri_scribe.*` modules.
-- Do not use `update-kmz` for this offline task: it fetches feeds and rebuilds derived
-  data. `create_kmz` consumes the already-derived local data under `data/2026/` and
-  performs plotting and zipping.
+- Do not use `run` for this offline task: it fetches feeds and rebuilds derived data.
+  `create_kmz` consumes the already-derived local data under `data/2026/` and performs
+  plotting and zipping.
 - Sandbox niceness failures are expected and handled by the pool initializer; do not
   treat a denied `os.nice()` call as the root failure.
 

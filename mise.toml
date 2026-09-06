@@ -4,44 +4,52 @@ depends = ["venv"]
 raw_args = true
 run = "uv run --locked peri_scribe"
 
-[tasks.update-kmz]
-description = "Check for new source data and use it to generate new maps"
+[tasks.run-offline]
+description = "Run the main module's offline run command steps"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked peri_scribe run --from geography"
+
+[tasks.run-online]
+description = "Run the main module's run command steps"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked peri_scribe run"
+
+[tasks.kmz]
+description = "Generate KMZ file"
 depends = ["venv"]
 raw_args = true
 run = [
-    "uv run --locked peri_scribe update-kmz",
+    "uv run --locked peri_scribe run --only kmz",
 ]
 
-[tasks.prod]
-description = "Check for new source data and use it to generate new maps"
+[tasks.reports]
+description = "Generate reports"
+depends = ["venv"]
+raw_args = true
+run = [
+    "uv run --locked peri_scribe run --only reports",
+]
+
+[tasks.run-production]
+description = "Check for new source data and use it to generate new maps and reports"
 depends = ["venv"]
 run = [
-    "uv run --locked peri_scribe --log-level warning update-kmz",
+    "uv run --locked peri_scribe --log-level warning run --full-fetch-interval 6h",
     { task = "sync-kmz" },
 ]
 
-[tasks.ensure-admin-boundaries]
-description = "Ensure needed administrative boundaries are available"
-depends = ["venv"]
+[tasks.sync-kmz]
+description = "Ensure the latest KMZ is available for public download"
 raw_args = true
-run = "uv run --locked peri_scribe ensure-admin-boundaries"
-
-[tasks.reports]
-description = "Write fire reports for YEAR_DIRECTORY"
-depends = ["venv"]
-raw_args = true
-run = "uv run --locked peri_scribe reports"
+run = 'rclone sync "data/$(date +%Y)/maps/PeriScribe Fires $(date +%Y).kmz" PeriScribe:peri-scribe'
 
 [tasks.validate-sources]
 description = "Check that the stored sources cover a complete snapshot of every feed"
 depends = ["venv"]
 raw_args = true
 run = "uv run --locked peri_scribe validate-sources"
-
-[tasks.sync-kmz]
-description = "Ensure the latest KMZ is available for public download"
-raw_args = true
-run = "rclone sync 'data/2026/maps/PeriScribe Fires 2026.kmz' PeriScribe:peri-scribe"
 
 [tasks.format]
 description = "Format with ruff"

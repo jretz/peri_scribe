@@ -26,6 +26,7 @@ import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.feeds
 import peri_scribe.sources.fetching
+import peri_scribe.sources.full_fetch_state
 import peri_scribe.sources.snapshots
 import peri_scribe.sources.validation
 import tests.factories
@@ -35,7 +36,7 @@ from tests.factories import WGS84_WKID, GeoPackageStore, wgs84_feature_set
 from tests.main_stubs import (
     BASE_DIRECTORY,
     SAMPLE_LAST_EDIT_TIMESTAMP,
-    UpdateKmzStubs,
+    RunStubs,
     ValidateSourcesStubs,
 )
 
@@ -528,29 +529,31 @@ def current_year(
 
 
 @pytest.fixture
-def update_kmz_stubs(
-    monkeypatch: pytest.MonkeyPatch,
-) -> typing.Callable[..., UpdateKmzStubs]:
-    """Install step stubs for the update-kmz command.
+def run_stubs(monkeypatch: pytest.MonkeyPatch) -> typing.Callable[..., RunStubs]:
+    """Install step stubs for the run command.
 
     Returns:
-        A callable taking whether the fetch changed something and whether the
-        evacuations were replaced, and returning the installed fetch outcome and the
-        lists recording each step's calls.
+        A callable taking whether the fetch changed something, whether the evacuations
+        were replaced, and the stored full-fetch state, and returning the installed
+        fetch outcome and the lists recording each step's calls.
     """
 
     def install(
         *,
         changed: bool,
         evacuations_changed: bool = False,
-    ) -> UpdateKmzStubs:
-        stubs = UpdateKmzStubs(
+        stored_state: (
+            peri_scribe.sources.full_fetch_state.FullFetchState | None
+        ) = None,
+    ) -> RunStubs:
+        stubs = RunStubs(
             fetch_result=peri_scribe.sources.fetching.FetchResult(
                 snapshot_paths=(),
                 changed=changed,
             ),
             fetch_calls=[],
             external_calls=[],
+            write_state_calls=[],
             ensure_boundary_calls=[],
             history_calls=[],
             scores_calls=[],
@@ -571,6 +574,29 @@ def update_kmz_stubs(
             peri_scribe.sources.fetching,
             "fetch_all_feeds",
             fetch_all_feeds,
+        )
+
+        def read_state(
+            _path: pathlib.Path,
+        ) -> peri_scribe.sources.full_fetch_state.FullFetchState | None:
+            return stored_state
+
+        def write_state(
+            path: pathlib.Path,
+            *,
+            last_full_fetch: datetime.datetime,
+        ) -> None:
+            stubs.write_state_calls.append((path, last_full_fetch))
+
+        monkeypatch.setattr(
+            peri_scribe.sources.full_fetch_state,
+            "read_state",
+            read_state,
+        )
+        monkeypatch.setattr(
+            peri_scribe.sources.full_fetch_state,
+            "write_state",
+            write_state,
         )
         # The stored evacuations digest is observed before and after the external source
         # fetch; the two observations differ only when the fetch replaced the stored

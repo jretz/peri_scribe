@@ -11,20 +11,21 @@ The primary workflow is:
 ```text
 fetch fire feeds and external sources
     ↓
-classify and index fires
-    ↓
-derive full history
-    ↓
-derive differential history
+derive geography history
     ↓
 score fires
     ↓
 create KMZ
+    ↓
+write fire reports
 ```
 
-`update-kmz` skips the derived outputs when no fire or evacuation data changed, unless
-`--force` is supplied. `validate-sources` is a separate diagnostic workflow that
-performs a complete fetch and compares it with the incremental snapshots.
+`run` organizes these steps into the stages fetch, geography, score, kmz, and reports.
+It skips the derived outputs when no fire or evacuation data changed, unless
+`--unconditional` is supplied; `--only`, `--from`, and `--to` select one stage or a
+range of stages, and `--list-stages` prints the stage descriptions. `validate-sources`
+is a separate diagnostic workflow that performs a complete fetch and compares it with
+the incremental snapshots.
 
 ## Data handling
 
@@ -47,6 +48,9 @@ Derived data is written below `data/<year>/derived/`:
 - `fire_scores.json` contains one score and explanation per fire.
 - `fire_scores_ccdf.png` plots the score distribution.
 
+The KMZ is written to `data/<year>/maps/PeriScribe Fires <year>.kmz` and the fire
+reports to `data/<year>/reports/PeriScribe Fires <year>.md`.
+
 ## Data validation and cleansing
 
 Source coordinate reference systems are interpreted from feed metadata, with checks for
@@ -68,4 +72,4 @@ visualization.
 
 ## Future work
 
-A reporting command and notifications are not implemented yet.
+Notifications are not implemented yet.

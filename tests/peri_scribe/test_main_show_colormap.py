@@ -1,4 +1,4 @@
-"""Show-turbo-colormap command tests for peri_scribe.main."""
+"""Show-colormap command tests for peri_scribe.main."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def test_show_turbo_colormap_prints_inline_image(
         return png
 
     monkeypatch.setattr(peri_scribe.kml.colormap, "turbo_colormap_png", render)
-    result = runner.invoke(peri_scribe.main.cli, ["show-turbo-colormap"])
+    result = runner.invoke(peri_scribe.main.cli, ["show-colormap"])
     assert result.exit_code == 0
     assert calls == [(0, 0)]
     encoded = base64.b64encode(png).decode("ascii")
@@ -48,7 +48,7 @@ def test_show_turbo_colormap_passes_trim_options(
     monkeypatch.setattr(peri_scribe.kml.colormap, "turbo_colormap_png", render)
     result = runner.invoke(
         peri_scribe.main.cli,
-        ["show-turbo-colormap", "--trim-start", "16", "--trim-end", "8"],
+        ["show-colormap", "--trim-start", "16", "--trim-end", "8"],
     )
     assert result.exit_code == 0
     assert calls == [(16, 8)]
@@ -70,7 +70,7 @@ def test_show_turbo_colormap_writes_png_file(
     output_path = tmp_path / "nested" / "colormap.png"
     result = runner.invoke(
         peri_scribe.main.cli,
-        ["show-turbo-colormap", "--output", str(output_path)],
+        ["show-colormap", "--output", str(output_path)],
     )
     assert result.exit_code == 0
     assert calls == [(0, 0)]

@@ -31,7 +31,7 @@ def test_cli_requires_subcommand(runner: click.testing.CliRunner) -> None:
     result = runner.invoke(peri_scribe.main.cli, [])
     assert result.exit_code == CLICK_USAGE_ERROR_EXIT_CODE
     assert "Commands:" in result.output
-    assert "update-kmz" in result.output
+    assert "run" in result.output
 
 
 def test_version_prints_installed_version(
