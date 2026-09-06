@@ -45,6 +45,7 @@ import peri_scribe.geo.reading
 import peri_scribe.output
 import peri_scribe.sources.buildings
 import peri_scribe.sources.external_sources
+from peri_scribe.units import units
 
 
 if typing.TYPE_CHECKING:
@@ -229,17 +230,20 @@ def perimeter_metrics_for(
     """
     if key not in metrics.index:
         return peri_scribe.fires.scoring.PerimeterMetrics(
-            area_acres=None,
-            growth_acres=None,
-            first_mapping_acres=None,
+            area=None,
+            growth=None,
+            first_mapping=None,
             geometry=None,
         )
     row = metrics.loc[key]
+    first_mapping_value = peri_scribe.geo.parsing.numeric_value(
+        first_mapping.get(key),
+    )
     return peri_scribe.fires.scoring.PerimeterMetrics(
-        area_acres=None if pd.isna(row.max_area) else row.max_area,
-        growth_acres=None if pd.isna(row.max_growth) else row.max_growth,
-        first_mapping_acres=peri_scribe.geo.parsing.numeric_value(
-            first_mapping.get(key),
+        area=None if pd.isna(row.max_area) else row.max_area * units.acres,
+        growth=None if pd.isna(row.max_growth) else row.max_growth * units.acres,
+        first_mapping=(
+            None if first_mapping_value is None else first_mapping_value * units.acres
         ),
         geometry=None,
     )
@@ -279,30 +283,27 @@ def read_history(
     return perimeters, points, full_perimeters
 
 
-def presented_acreage_series(
-    reported_in_acres: pd.Series,
-    calculated_in_acres: pd.Series,
-) -> pd.Series:
+def presented_acreage_series(reported: pd.Series, calculated: pd.Series) -> pd.Series:
     """Return the presented acreage for each pair of reported and measured acres.
 
     Args:
-        reported_in_acres: Each row's reported acreage.
-        calculated_in_acres: Each row's geometry-measured acreage.
+        reported: Each row's reported acreage.
+        calculated: Each row's geometry-measured acreage.
 
     Returns:
         One presented acreage per row, aligned with the inputs.
     """
-    return pd.to_numeric(
-        pd.Series(
-            map(
-                peri_scribe.areas.presented_area_in_acres,
-                reported_in_acres,
-                calculated_in_acres,
-                strict=True,
-            ),
-            index=reported_in_acres.index,
-        ),
-        errors="coerce",
+    presented = [
+        peri_scribe.areas.presented_area(
+            None if pd.isna(reported_value) else reported_value * units.acres,
+            (None if pd.isna(calculated_value) else calculated_value * units.acres),
+        )
+        for reported_value, calculated_value in zip(reported, calculated, strict=True)
+    ]
+    return pd.Series(
+        [None if value is None else value.m_as("acres") for value in presented],
+        index=reported.index,
+        dtype="float64",
     )
 
 

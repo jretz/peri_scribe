@@ -28,11 +28,12 @@ import pyproj
 import shapely
 import shapely.ops
 
-import peri_scribe.units
+from peri_scribe.units import units
 
 
 if typing.TYPE_CHECKING:
     import geopandas
+    import pint
 
 
 # The 16 points of the compass in clockwise order from north, each spanning the 22.5
@@ -58,7 +59,7 @@ COMPASS_POINT_NAMES: tuple[str, ...] = (
 )
 
 # The width of one 16-wind compass point in degrees.
-DEGREES_PER_COMPASS_POINT = 360.0 / len(COMPASS_POINT_NAMES)
+COMPASS_POINT_SPAN = 360.0 * units.degrees / len(COMPASS_POINT_NAMES)
 
 # How far past the mapped area's measured extent a nearest city may lie. The candidate
 # search keeps every city whose distance from the area's centroid is within twice this
@@ -67,7 +68,7 @@ DEGREES_PER_COMPASS_POINT = 360.0 / len(COMPASS_POINT_NAMES)
 # midpoint can reach beyond its vertices and the numerical noise of the measurements.
 # The margin is far smaller than the spacing between cities, so it adds only cities that
 # were plausible candidates anyway.
-CENTROID_DISTANCE_MARGIN_IN_METERS = 1000.0
+CENTROID_DISTANCE_MARGIN = 1_000.0 * units.meters
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -83,38 +84,39 @@ class NearestCity:
 
     name: str
     state_abbreviation: str
-    distance_in_miles: float
-    bearing_in_degrees: float | None = None
+    distance: pint.Quantity[float]
+    bearing: pint.Quantity[float] | None = None
 
 
-def compass_point(bearing_in_degrees: float) -> str:
-    """Return the 16-wind compass point nearest to *bearing_in_degrees*.
+def compass_point(bearing: pint.Quantity[float]) -> str:
+    """Return the 16-wind compass point nearest to *bearing*.
 
-    A bearing is measured in degrees clockwise from north, so 0 and 360 are north, 90
-    is east, 180 is south, and 270 is west. Each compass point spans the 22.5 degrees
+    A bearing is measured in degrees clockwise from north, so 0 and 360 are north, 90 is
+    east, 180 is south, and 270 is west. Each compass point spans the 22.5 degrees
     centered on its named bearing, and the naming wraps around past north.
 
     Args:
-        bearing_in_degrees: The bearing to name.
+        bearing: The bearing to name.
 
     Returns:
         The nearest compass point, like ``ESE``.
 
     Examples:
-        >>> compass_point(0.0)
+        >>> compass_point(0 * units.degrees)
         'N'
 
-        >>> compass_point(90.0)
+        >>> compass_point(90 * units.degrees)
         'E'
 
-        >>> compass_point(112.5)
+        >>> compass_point(112.5 * units.degrees)
         'ESE'
 
-        >>> compass_point(359.0)
+        >>> compass_point(359 * units.degrees)
         'N'
     """
+    degrees = bearing.m_as("degrees")
     return COMPASS_POINT_NAMES[
-        round(bearing_in_degrees / DEGREES_PER_COMPASS_POINT) % len(COMPASS_POINT_NAMES)
+        round(degrees / COMPASS_POINT_SPAN.m_as("degrees")) % len(COMPASS_POINT_NAMES)
     ]
 
 
@@ -137,8 +139,8 @@ def location_text(city: NearestCity) -> str:
         ...     NearestCity(
         ...         name="Portland",
         ...         state_abbreviation="OR",
-        ...         distance_in_miles=14.6,
-        ...         bearing_in_degrees=112.5,
+        ...         distance=14.6 * units.miles,
+        ...         bearing=112.5 * units.degrees,
         ...     ),
         ... )
         '15 mi ESE of Portland, OR'
@@ -147,16 +149,16 @@ def location_text(city: NearestCity) -> str:
         ...     NearestCity(
         ...         name="Portland",
         ...         state_abbreviation="OR",
-        ...         distance_in_miles=0.0,
+        ...         distance=0 * units.miles,
         ...     ),
         ... )
         '0 mi of Portland, OR'
     """
     place = f"{city.name}, {city.state_abbreviation}"
-    if city.bearing_in_degrees is None:
+    if city.bearing is None:
         return f"0 mi of {place}"
-    distance_in_miles = round(city.distance_in_miles)
-    return f"{distance_in_miles} mi {compass_point(city.bearing_in_degrees)} of {place}"
+    miles = round(city.distance.m_as("miles"))
+    return f"{miles} mi {compass_point(city.bearing)} of {place}"
 
 
 def azimuthal_equidistant_projection(
@@ -188,7 +190,7 @@ def distance_and_bearing_from_point(
     geometry: shapely.Geometry,
     longitude: float,
     latitude: float,
-) -> tuple[float, float | None]:
+) -> tuple[pint.Quantity[float], pint.Quantity[float] | None]:
     """Return the geometry's geodesic distance and bearing from one point.
 
     The distance is measured to the geometry itself — a fire's interior or its point
@@ -203,9 +205,9 @@ def distance_and_bearing_from_point(
         latitude: The point's latitude, in degrees.
 
     Returns:
-        The geodesic distance in miles from the point to the geometry, zero when the
-        point lies inside or on it, and the bearing in degrees clockwise from north
-        toward the nearest part of the geometry, or None when the point lies inside.
+        The geodesic distance from the point to the geometry, zero when the point lies
+        inside or on it, and the bearing clockwise from north toward the nearest part of
+        the geometry, or None when the point lies inside.
     """
     projection = azimuthal_equidistant_projection(longitude, latitude)
     transformer = pyproj.Transformer.from_crs(
@@ -228,19 +230,19 @@ def distance_and_bearing_from_point(
     )
     projected_point = shapely.Point(projected_longitude, projected_latitude)
     if shapely.intersects(projected_point, projected_interior):
-        return 0.0, None
-    distance_in_miles = (
-        shapely.distance(projected_point, projected_interior)
-        / peri_scribe.units.METERS_PER_MILE
-    )
+        return 0 * units.meters, None
+    distance = shapely.distance(projected_point, projected_interior) * units.meters
     nearest = shapely.ops.nearest_points(projected_point, projected_interior)[1]
-    bearing_in_degrees = math.degrees(
-        math.atan2(
-            nearest.x - projected_longitude,
-            nearest.y - projected_latitude,
-        ),
+    bearing = (
+        math.degrees(
+            math.atan2(
+                nearest.x - projected_longitude,
+                nearest.y - projected_latitude,
+            ),
+        )
+        * units.degrees
     )
-    return distance_in_miles, bearing_in_degrees % 360.0
+    return distance, bearing % (360 * units.degrees)
 
 
 def plausible_city_indices(
@@ -276,26 +278,24 @@ def plausible_city_indices(
     centroid = geometry.centroid
     vertex_coordinates = shapely.get_coordinates(geometry.boundary)
     if len(vertex_coordinates) == 0:
-        interior_radius_in_meters = 0.0
+        interior_radius = 0 * units.meters
     else:
-        _, _, vertex_distances_in_meters = geod.inv(
+        _, _, vertex_distances = geod.inv(
             np.full(len(vertex_coordinates), centroid.x),
             np.full(len(vertex_coordinates), centroid.y),
             vertex_coordinates[:, 0],
             vertex_coordinates[:, 1],
         )
-        interior_radius_in_meters = float(vertex_distances_in_meters.max())
-    _, _, centroid_distances_in_meters = geod.inv(
+        interior_radius = float(vertex_distances.max()) * units.meters
+    _, _, centroid_distances = geod.inv(
         np.full(len(city_longitudes), centroid.x),
         np.full(len(city_latitudes), centroid.y),
         city_longitudes,
         city_latitudes,
     )
-    plausible_radius_in_meters = (
-        interior_radius_in_meters + CENTROID_DISTANCE_MARGIN_IN_METERS
-    )
-    candidate_mask = centroid_distances_in_meters <= (
-        centroid_distances_in_meters.min() + 2.0 * plausible_radius_in_meters
+    plausible_radius = interior_radius + CENTROID_DISTANCE_MARGIN
+    candidate_mask = centroid_distances <= (
+        centroid_distances.min() + 2.0 * plausible_radius.m_as("meters")
     )
     return sorted(
         np.nonzero(candidate_mask)[0],
@@ -350,19 +350,19 @@ def nearest_city(
     )
 
     nearest: NearestCity | None = None
-    nearest_distance_in_miles = math.inf
+    nearest_distance = math.inf * units.meters
     for index in candidate_indices:
-        distance_in_miles, bearing_in_degrees = distance_and_bearing_from_point(
+        distance, bearing = distance_and_bearing_from_point(
             geometry,
             city_longitudes[index],
             city_latitudes[index],
         )
-        if distance_in_miles < nearest_distance_in_miles:
-            nearest_distance_in_miles = distance_in_miles
+        if distance < nearest_distance:
+            nearest_distance = distance
             nearest = NearestCity(
                 name=city_names[index],
                 state_abbreviation=state_abbreviations[index],
-                distance_in_miles=distance_in_miles,
-                bearing_in_degrees=bearing_in_degrees,
+                distance=distance,
+                bearing=bearing,
             )
     return nearest

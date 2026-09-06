@@ -100,12 +100,12 @@ def projected_maximum_magnitude_in_crs_units(crs: pyproj.CRS) -> float:
 
     Returns:
         The largest coordinate magnitude the CRS plausibly produces, or the
-        ``PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK_IN_METERS`` constant when the CRS has no
-        area of use.
+        ``PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK`` constant when the CRS has no area of
+        use.
     """
     area = crs.area_of_use
     if area is None:
-        return peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK_IN_METERS
+        return peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK.m_as("meters")
     transformer = pyproj.Transformer.from_crs("EPSG:4326", crs, always_xy=True)
     maximum_magnitude_in_crs_units = 0.0
     for longitude, latitude in (
@@ -125,7 +125,7 @@ def projected_maximum_magnitude_in_crs_units(crs: pyproj.CRS) -> float:
                 abs(y_coordinate),
             )
     if not maximum_magnitude_in_crs_units:
-        return peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK_IN_METERS
+        return peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK.m_as("meters")
     return maximum_magnitude_in_crs_units
 
 
@@ -155,9 +155,9 @@ def spatial_reference_domain(
     return peri_scribe.models.SpatialReferenceDomain(
         crs,
         (
-            peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE_IN_METERS,
+            peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE.m_as("meters"),
             maximum_magnitude_in_crs_units,
-            peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE_IN_METERS,
+            peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE.m_as("meters"),
             maximum_magnitude_in_crs_units,
         ),
         f"projected ({unit})",

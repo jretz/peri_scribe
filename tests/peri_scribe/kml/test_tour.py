@@ -48,72 +48,72 @@ def test_interior_ring_id_names_folder_and_index() -> None:
     )
 
 
-def test_tour_wait_in_seconds_scales_days_by_playback_rate() -> None:
+def test_tour_wait_scales_days_by_playback_rate() -> None:
     earlier = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
     later = datetime.datetime(2026, 8, 8, 20, 0, tzinfo=datetime.UTC)
-    assert peri_scribe.kml.tour.tour_wait_in_seconds(
+    assert peri_scribe.kml.tour.tour_wait(
         earlier,
         later,
-        peri_scribe.kml.tour.TOUR_PLAYBACK_SECONDS_PER_DAY,
-    ) == pytest.approx(3.0)
-    assert peri_scribe.kml.tour.tour_wait_in_seconds(
+        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
+    ).m_as("seconds") == pytest.approx(3.0)
+    assert peri_scribe.kml.tour.tour_wait(
         earlier,
         later,
         0.5,
-    ) == pytest.approx(1.5)
+    ).m_as("seconds") == pytest.approx(1.5)
 
 
-def test_tour_wait_in_seconds_with_missing_observation_time() -> None:
+def test_tour_wait_with_missing_observation_time() -> None:
     observation_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
-    assert peri_scribe.kml.tour.tour_wait_in_seconds(
+    assert peri_scribe.kml.tour.tour_wait(
         None,
         observation_time,
-        peri_scribe.kml.tour.TOUR_PLAYBACK_SECONDS_PER_DAY,
-    ) == pytest.approx(0.0)
-    assert peri_scribe.kml.tour.tour_wait_in_seconds(
+        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
+    ).m_as("seconds") == pytest.approx(0.0)
+    assert peri_scribe.kml.tour.tour_wait(
         observation_time,
         None,
-        peri_scribe.kml.tour.TOUR_PLAYBACK_SECONDS_PER_DAY,
-    ) == pytest.approx(0.0)
+        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
+    ).m_as("seconds") == pytest.approx(0.0)
 
 
-def test_tour_seconds_per_day_for_short_fire() -> None:
+def test_tour_playback_rate_for_short_fire() -> None:
     first = datetime.datetime(2026, 8, 1, 0, 0, tzinfo=datetime.UTC)
     second = datetime.datetime(2026, 8, 6, 0, 0, tzinfo=datetime.UTC)
-    assert peri_scribe.kml.tour.tour_seconds_per_day([first, second]) == pytest.approx(
-        peri_scribe.kml.tour.TOUR_PLAYBACK_SECONDS_PER_DAY,
+    assert peri_scribe.kml.tour.tour_playback_rate([first, second]) == pytest.approx(
+        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
     )
 
 
-def test_tour_seconds_per_day_for_five_day_fire() -> None:
+def test_tour_playback_rate_for_five_day_fire() -> None:
     first = datetime.datetime(2026, 8, 1, 0, 0, tzinfo=datetime.UTC)
     second = datetime.datetime(2026, 8, 6, 0, 0, tzinfo=datetime.UTC)
-    assert peri_scribe.kml.tour.tour_seconds_per_day([first, second]) == pytest.approx(
-        peri_scribe.kml.tour.TOUR_PLAYBACK_SECONDS_PER_DAY,
+    assert peri_scribe.kml.tour.tour_playback_rate([first, second]) == pytest.approx(
+        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
     )
 
 
-def test_tour_seconds_per_day_for_long_fire() -> None:
+def test_tour_playback_rate_for_long_fire() -> None:
     first = datetime.datetime(2026, 8, 1, 0, 0, tzinfo=datetime.UTC)
     second = datetime.datetime(2026, 8, 26, 0, 0, tzinfo=datetime.UTC)
-    rate = peri_scribe.kml.tour.tour_seconds_per_day([first, second])
+    rate = peri_scribe.kml.tour.tour_playback_rate([first, second])
     assert rate == pytest.approx(0.2)
     total_in_days = (second - first).total_seconds() / 86_400
     assert total_in_days * rate == pytest.approx(
-        peri_scribe.kml.tour.MAX_TOUR_PLAYBACK_IN_SECONDS,
+        peri_scribe.kml.tour.MAX_TOUR_PLAYBACK.m_as("seconds"),
     )
 
 
-def test_tour_seconds_per_day_without_two_observations() -> None:
+def test_tour_playback_rate_without_two_observations() -> None:
     observation_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
-    assert peri_scribe.kml.tour.tour_seconds_per_day(
+    assert peri_scribe.kml.tour.tour_playback_rate(
         [observation_time],
-    ) == pytest.approx(peri_scribe.kml.tour.TOUR_PLAYBACK_SECONDS_PER_DAY)
-    assert peri_scribe.kml.tour.tour_seconds_per_day([None]) == pytest.approx(
-        peri_scribe.kml.tour.TOUR_PLAYBACK_SECONDS_PER_DAY,
+    ) == pytest.approx(peri_scribe.kml.tour.TOUR_PLAYBACK_RATE)
+    assert peri_scribe.kml.tour.tour_playback_rate([None]) == pytest.approx(
+        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
     )
-    assert peri_scribe.kml.tour.tour_seconds_per_day([]) == pytest.approx(
-        peri_scribe.kml.tour.TOUR_PLAYBACK_SECONDS_PER_DAY,
+    assert peri_scribe.kml.tour.tour_playback_rate([]) == pytest.approx(
+        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
     )
 
 

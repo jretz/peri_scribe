@@ -39,9 +39,9 @@ def exterior_length(geometry: shapely.Geometry) -> float:
     Returns:
         The exterior perimeter length in miles.
     """
-    length = peri_scribe.units.exterior_perimeter_in_miles(geometry)
+    length = peri_scribe.units.exterior_perimeter(geometry)
     assert length is not None
-    return length
+    return length.m_as("miles")
 
 
 def observation_time(day: int, hour: int = 0) -> datetime.datetime:

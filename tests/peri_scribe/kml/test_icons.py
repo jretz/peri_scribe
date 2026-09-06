@@ -22,7 +22,7 @@ def test_perimeters_icon_draws_two_full_width_lines() -> None:
     rows = tests.peri_scribe.kml.kml_helpers.png_pixel_rows(
         peri_scribe.kml.icons.perimeters_icon(),
     )
-    side = peri_scribe.kml.icons.PROGRESSION_ICON_SIDE_LENGTH_IN_PIXELS
+    side = int(peri_scribe.kml.icons.PROGRESSION_ICON_SIDE_LENGTH.magnitude)
     assert len(rows) == side
     top_line_row = side // 3
     bottom_line_row = side - 1 - side // 3
@@ -57,7 +57,7 @@ def test_interior_progression_icon_draws_the_turbo_gradient() -> None:
     rows = tests.peri_scribe.kml.kml_helpers.png_pixel_rows(
         peri_scribe.kml.icons.interior_progression_icon(),
     )
-    side = peri_scribe.kml.icons.PROGRESSION_ICON_SIDE_LENGTH_IN_PIXELS
+    side = int(peri_scribe.kml.icons.PROGRESSION_ICON_SIDE_LENGTH.magnitude)
     colors = peri_scribe.kml.colormap.sample_turbo(side)[::-1]
     assert len(rows) == side
     for row, rgb in zip(rows, colors, strict=True):

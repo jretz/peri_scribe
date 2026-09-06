@@ -400,12 +400,12 @@ def differential_rows_for_fire(
                     for earlier in reversed(survivors[:position])
                 ],
             )
-        row["area_acres_from_geometry"] = peri_scribe.units.area_in_acres(
+        row["area_acres_from_geometry"] = peri_scribe.units.area(
             cumulative_geometry,
-        )
-        row["area_acres_from_geometry_differential"] = peri_scribe.units.area_in_acres(
+        ).m_as("acres")
+        row["area_acres_from_geometry_differential"] = peri_scribe.units.area(
             differential_geometry,
-        )
+        ).m_as("acres")
         rows.append(row)
     return rows
 

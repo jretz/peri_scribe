@@ -345,9 +345,9 @@ def test_union_geometry_keeps_identical_geometries_from_different_sources(
 
 def test_classify_crosses_border() -> None:
     geometry = tests.peri_scribe.perimeters.border_helpers.geometry_signal(
-        distance_to_boundary_in_meters=0.0,
+        distance_to_boundary=0.0,
         outside_area_fraction=0.5,
-        outside_area_in_acres=100.0,
+        outside_area=100.0,
         inside_area_fraction=0.5,
         crosses=True,
         near=True,
@@ -367,7 +367,7 @@ def test_classify_crosses_border() -> None:
 
 def test_classify_inside_near_border_from_geometry() -> None:
     geometry = tests.peri_scribe.perimeters.border_helpers.geometry_signal(
-        distance_to_boundary_in_meters=5.0,
+        distance_to_boundary=5.0,
         near=True,
     )
     extent = tests.peri_scribe.perimeters.border_helpers.extent_signal()
@@ -401,9 +401,9 @@ def test_classify_inside_near_border_from_extent_disagreement() -> None:
 
 def test_classify_outside_near_border_from_geometry() -> None:
     geometry = tests.peri_scribe.perimeters.border_helpers.geometry_signal(
-        distance_to_boundary_in_meters=2.0,
+        distance_to_boundary=2.0,
         outside_area_fraction=1.0,
-        outside_area_in_acres=5000.0,
+        outside_area=5_000.0,
         inside_area_fraction=0.0,
         near=True,
         inside=False,
@@ -436,7 +436,7 @@ def test_classify_inside_california() -> None:
 
 def test_classify_outside_california() -> None:
     geometry = tests.peri_scribe.perimeters.border_helpers.geometry_signal(
-        distance_to_boundary_in_meters=2000.0,
+        distance_to_boundary=2_000.0,
         inside_area_fraction=0.0,
         inside=False,
     )

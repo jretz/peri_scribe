@@ -8,6 +8,7 @@ import math
 import pytest
 
 import peri_scribe.kml.descriptions
+from peri_scribe.units import units
 
 
 def full_description() -> peri_scribe.kml.descriptions.FireDescription:
@@ -20,12 +21,12 @@ def full_description() -> peri_scribe.kml.descriptions.FireDescription:
         identifier="2026-cabug-000001",
         source="FIRIS / NIFC",
         mission="CA-BUG-000001",
-        area_in_acres=102003.46,
-        exterior_perimeter_in_miles=33.1,
+        area=102003.46 * units.acres,
+        exterior_perimeter=33.1 * units.miles,
         percent_contained=77.0,
-        estimated_cost_to_date_in_dollars=104600000.0,
-        estimated_final_cost_in_dollars=120000000.0,
-        total_personnel=1234.0,
+        estimated_cost_to_date=104_600_000.0 * units.dollars,
+        estimated_final_cost=120_000_000.0 * units.dollars,
+        total_personnel=1_234.0,
         protecting_unit="CALMU",
         discovery_time=datetime.datetime(2026, 6, 29, 12, 4, 46, tzinfo=datetime.UTC),
         observation_time=datetime.datetime(2026, 8, 2, 5, 30, tzinfo=datetime.UTC),
@@ -62,44 +63,47 @@ def test_format_number_drops_trailing_zeros() -> None:
     assert peri_scribe.kml.descriptions.format_number(6.0, 1) == "6"
 
 
-def test_format_in_acres_returns_none_for_none() -> None:
-    assert peri_scribe.kml.descriptions.format_in_acres(None) is None
+def test_format_area_returns_none_for_none() -> None:
+    assert peri_scribe.kml.descriptions.format_area(None) is None
 
 
-def test_format_in_acres_uses_whole_acres_for_large_fires() -> None:
-    assert peri_scribe.kml.descriptions.format_in_acres(102003.46) == "102,003 acres"
+def test_format_area_uses_whole_acres_for_large_fires() -> None:
+    assert (
+        peri_scribe.kml.descriptions.format_area(102003.46 * units.acres)
+        == "102,003 acres"
+    )
 
 
-def test_format_in_acres_uses_one_decimal_for_small_fires() -> None:
-    assert peri_scribe.kml.descriptions.format_in_acres(6.5) == "6.5 acres"
+def test_format_area_uses_one_decimal_for_small_fires() -> None:
+    assert peri_scribe.kml.descriptions.format_area(6.5 * units.acres) == "6.5 acres"
 
 
-def test_format_in_acres_uses_two_decimals_for_fractional_acres() -> None:
-    assert peri_scribe.kml.descriptions.format_in_acres(0.017) == "0.02 acres"
+def test_format_area_uses_two_decimals_for_fractional_acres() -> None:
+    assert peri_scribe.kml.descriptions.format_area(0.017 * units.acres) == "0.02 acres"
 
 
-def test_format_in_percent_returns_none_for_none() -> None:
-    assert peri_scribe.kml.descriptions.format_in_percent(None) is None
+def test_format_percent_returns_none_for_none() -> None:
+    assert peri_scribe.kml.descriptions.format_percent(None) is None
 
 
-def test_format_in_percent_uses_whole_percent() -> None:
-    assert peri_scribe.kml.descriptions.format_in_percent(77.0) == "77%"
+def test_format_percent_uses_whole_percent() -> None:
+    assert peri_scribe.kml.descriptions.format_percent(77.0) == "77%"
 
 
-def test_format_in_percent_uses_one_decimal_for_fractional_percent() -> None:
-    assert peri_scribe.kml.descriptions.format_in_percent(0.5) == "0.5%"
+def test_format_percent_uses_one_decimal_for_fractional_percent() -> None:
+    assert peri_scribe.kml.descriptions.format_percent(0.5) == "0.5%"
 
 
-def test_format_in_miles_returns_none_for_none() -> None:
-    assert peri_scribe.kml.descriptions.format_in_miles(None) is None
+def test_format_miles_returns_none_for_none() -> None:
+    assert peri_scribe.kml.descriptions.format_miles(None) is None
 
 
-def test_format_in_miles_adds_unit_and_one_decimal() -> None:
-    assert peri_scribe.kml.descriptions.format_in_miles(33.1) == "33.1 miles"
+def test_format_miles_adds_unit_and_one_decimal() -> None:
+    assert peri_scribe.kml.descriptions.format_miles(33.1 * units.miles) == "33.1 miles"
 
 
-def test_format_in_miles_drops_trailing_zero() -> None:
-    assert peri_scribe.kml.descriptions.format_in_miles(33.0) == "33 miles"
+def test_format_miles_drops_trailing_zero() -> None:
+    assert peri_scribe.kml.descriptions.format_miles(33.0 * units.miles) == "33 miles"
 
 
 def test_format_perimeter_length_returns_none_for_none() -> None:
@@ -121,27 +125,49 @@ def test_round_to_significant_digits_rounds_to_requested_digits() -> None:
 
 
 def test_format_perimeter_length_keeps_one_decimal_for_small_lengths() -> None:
-    assert peri_scribe.kml.descriptions.format_perimeter_length(0.1499) == "0.1"
-    assert peri_scribe.kml.descriptions.format_perimeter_length(math.pi) == "3.1"
+    assert (
+        peri_scribe.kml.descriptions.format_perimeter_length(0.1499 * units.miles)
+        == "0.1"
+    )
+    assert (
+        peri_scribe.kml.descriptions.format_perimeter_length(math.pi * units.miles)
+        == "3.1"
+    )
 
 
 def test_format_perimeter_length_caps_significant_digits() -> None:
-    assert peri_scribe.kml.descriptions.format_perimeter_length(123.6) == "124"
-    assert peri_scribe.kml.descriptions.format_perimeter_length(5678.123) == "5,680"
+    assert (
+        peri_scribe.kml.descriptions.format_perimeter_length(123.6 * units.miles)
+        == "124"
+    )
+    assert (
+        peri_scribe.kml.descriptions.format_perimeter_length(5678.123 * units.miles)
+        == "5,680"
+    )
 
 
-def test_format_in_miles_caps_large_lengths_to_three_significant_digits() -> None:
-    assert peri_scribe.kml.descriptions.format_in_miles(123.6) == "124 miles"
-    assert peri_scribe.kml.descriptions.format_in_miles(5678.123) == "5,680 miles"
+def test_format_miles_caps_large_lengths_to_three_significant_digits() -> None:
+    assert peri_scribe.kml.descriptions.format_miles(123.6 * units.miles) == "124 miles"
+    assert (
+        peri_scribe.kml.descriptions.format_miles(5678.123 * units.miles)
+        == "5,680 miles"
+    )
 
 
-def test_format_in_miles_keeps_small_lengths_at_one_decimal() -> None:
-    assert peri_scribe.kml.descriptions.format_in_miles(0.1499) == "0.1 miles"
-    assert peri_scribe.kml.descriptions.format_in_miles(math.pi) == "3.1 miles"
+def test_format_miles_keeps_small_lengths_at_one_decimal() -> None:
+    assert (
+        peri_scribe.kml.descriptions.format_miles(0.1499 * units.miles) == "0.1 miles"
+    )
+    assert (
+        peri_scribe.kml.descriptions.format_miles(math.pi * units.miles) == "3.1 miles"
+    )
 
 
 def test_format_containment_returns_none_without_percent() -> None:
-    assert peri_scribe.kml.descriptions.format_containment(None, 33.1) is None
+    assert (
+        peri_scribe.kml.descriptions.format_containment(None, 33.1 * units.miles)
+        is None
+    )
 
 
 def test_format_containment_uses_bare_percent_without_length() -> None:
@@ -150,22 +176,25 @@ def test_format_containment_uses_bare_percent_without_length() -> None:
 
 def test_format_containment_annotates_contained_length() -> None:
     assert (
-        peri_scribe.kml.descriptions.format_containment(68.0, 33.1)
+        peri_scribe.kml.descriptions.format_containment(68.0, 33.1 * units.miles)
         == "68% (22.5 of 33.1 miles)"
     )
 
 
 def test_format_containment_drops_annotation_at_full_containment() -> None:
-    assert peri_scribe.kml.descriptions.format_containment(100.0, 33.1) == "100%"
+    assert (
+        peri_scribe.kml.descriptions.format_containment(100.0, 33.1 * units.miles)
+        == "100%"
+    )
 
 
 def test_format_cost_returns_none_for_none() -> None:
-    assert peri_scribe.kml.descriptions.format_cost_in_dollars(None) is None
+    assert peri_scribe.kml.descriptions.format_cost(None) is None
 
 
 def test_format_cost_adds_dollar_sign_and_separators() -> None:
     assert (
-        peri_scribe.kml.descriptions.format_cost_in_dollars(104600000.0)
+        peri_scribe.kml.descriptions.format_cost(104_600_000.0 * units.dollars)
         == "$104,600,000"
     )
 
@@ -261,7 +290,7 @@ def test_description_html_wraps_table_in_cdata() -> None:
 
 def test_description_html_sizes_the_text() -> None:
     html = peri_scribe.kml.descriptions.description_html(full_description())
-    body_size = peri_scribe.kml.descriptions.BODY_FONT_SIZE_IN_PIXELS
+    body_size = peri_scribe.kml.descriptions.BODY_FONT_SIZE.magnitude
     assert (
         f'<table cellspacing="0" cellpadding="4" '
         f'style="font-size:{body_size}px;">' in html

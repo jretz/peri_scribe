@@ -20,7 +20,7 @@ import peri_scribe.perimeters.border_classification
 import peri_scribe.perimeters.history_attributes
 import peri_scribe.sources.changes
 import peri_scribe.sources.snapshots
-import peri_scribe.units
+from peri_scribe.units import units
 
 
 if typing.TYPE_CHECKING:
@@ -83,7 +83,7 @@ def last_edit_time_from(path: pathlib.Path) -> datetime.datetime | None:
     except ValueError:
         return None
     return datetime.datetime.fromtimestamp(
-        last_edit_timestamp / peri_scribe.units.MILLISECONDS_PER_SECOND,
+        (last_edit_timestamp * units.milliseconds).m_as("seconds"),
         tz=datetime.UTC,
     )
 

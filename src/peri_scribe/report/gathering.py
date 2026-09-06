@@ -29,6 +29,10 @@ import peri_scribe.report.locations
 import peri_scribe.sources.external_sources
 
 
+if typing.TYPE_CHECKING:
+    import pint
+
+
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class FireReportEntry:
     """One fire's facts as the report renders them.
@@ -43,8 +47,8 @@ class FireReportEntry:
     identifier: str | None = None
     status: peri_scribe.models.FireStatus
     description: peri_scribe.kml.descriptions.FireDescription | None = None
-    growth_in_acres: float | None = None
-    growth_in_percent: float | None = None
+    growth: pint.Quantity[float] | None = None
+    growth_percent: pint.Quantity[float] | None = None
     score: int | None = None
     location: str | None = None
 
@@ -184,7 +188,7 @@ def report_entry(
     Returns:
         The fire's report facts.
     """
-    growth_in_acres, growth_in_percent = peri_scribe.kml.folders.fire_growth(
+    growth, growth_percent = peri_scribe.kml.folders.fire_growth(
         fire,
         reference_time,
     )
@@ -193,8 +197,8 @@ def report_entry(
         identifier=peri_scribe.models.canonical_fire_identifier(fire.identifiers),
         status=fire.status,
         description=fire.description,
-        growth_in_acres=growth_in_acres,
-        growth_in_percent=growth_in_percent,
+        growth=growth,
+        growth_percent=growth_percent,
         score=peri_scribe.kml.folders.score_value_for_fire(
             fire,
             scores_by_identifier,

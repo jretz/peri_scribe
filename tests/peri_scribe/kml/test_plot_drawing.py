@@ -142,12 +142,16 @@ def test_draw_plot_returns_palette_png_for_one_series() -> None:
         assert image.mode == "P"
         assert image.size == (
             round(
-                peri_scribe.kml.plot_drawing.FIGURE_WIDTH_IN_INCHES
-                * peri_scribe.kml.plot_drawing.IMAGE_DPI,
+                (
+                    peri_scribe.kml.plot_drawing.FIGURE_WIDTH
+                    * peri_scribe.kml.plot_drawing.IMAGE_RESOLUTION
+                ).magnitude,
             ),
             round(
-                peri_scribe.kml.plot_drawing.FIGURE_HEIGHT_IN_INCHES
-                * peri_scribe.kml.plot_drawing.IMAGE_DPI,
+                (
+                    peri_scribe.kml.plot_drawing.FIGURE_HEIGHT
+                    * peri_scribe.kml.plot_drawing.IMAGE_RESOLUTION
+                ).magnitude,
             ),
         )
 

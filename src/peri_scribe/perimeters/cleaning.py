@@ -16,6 +16,12 @@ import typing
 import pyproj
 import shapely
 
+from peri_scribe.units import units
+
+
+if typing.TYPE_CHECKING:
+    import pint
+
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class PerimeterCleaningConfig:
@@ -25,9 +31,9 @@ class PerimeterCleaningConfig:
     the smallest settings that remove the artifacts rather than aesthetic choices.
     """
 
-    minimum_part_area_in_square_degrees: float = 1e-6
-    collinear_epsilon_in_degrees: float = 1e-7
-    maximum_deviation_in_meters: float = 22.0
+    minimum_part_area: pint.Quantity[float] = 1e-6 * units.degrees**2
+    collinear_epsilon: pint.Quantity[float] = 1e-7 * units.degrees
+    maximum_deviation: pint.Quantity[float] = 22.0 * units.meters
 
 
 DEFAULT_CLEANING_CONFIG = PerimeterCleaningConfig()
@@ -58,26 +64,26 @@ def polygonal_parts(geometry: shapely.Geometry) -> list[shapely.Polygon]:
     return parts
 
 
-def meters_per_degree_latitude(latitude: float) -> float:
-    """Return the north-south distance of one degree, in meters, at *latitude*.
+def meridional_degree_length(latitude: float) -> pint.Quantity[float]:
+    """Return the north-south length of one degree of latitude at *latitude*.
 
     Args:
         latitude: The latitude to measure at, in degrees.
 
     Returns:
-        The meridional length of one degree, in meters.
+        The meridional length of one degree, in meters per degree.
     """
     _forward_azimuth, _backward_azimuth, distance = pyproj.Geod(
         ellps="WGS84",
     ).inv(0.0, latitude, 0.0, latitude + 1.0)
-    return distance
+    return distance * units.meters / units.degrees
 
 
-def simplify_tolerance_in_degrees(
+def simplify_tolerance(
     geometry: shapely.Geometry,
     config: PerimeterCleaningConfig,
-) -> float:
-    """Return the ring simplification tolerance, in degrees, for *geometry*.
+) -> pint.Quantity[float]:
+    """Return the ring simplification tolerance for *geometry*.
 
     The maximum deviation is converted to degrees at the geometry's latitude, then
     floored at the collinear epsilon so redundant collinear points are always removed.
@@ -87,16 +93,12 @@ def simplify_tolerance_in_degrees(
         config: The cleaning thresholds.
 
     Returns:
-        The simplification tolerance in degrees.
+        The simplification tolerance, in degrees.
     """
-    maximum_deviation_in_degrees = (
-        config.maximum_deviation_in_meters
-        / meters_per_degree_latitude(geometry.representative_point().y)
+    maximum_deviation = config.maximum_deviation / meridional_degree_length(
+        geometry.representative_point().y,
     )
-    return max(
-        config.collinear_epsilon_in_degrees,
-        maximum_deviation_in_degrees,
-    )
+    return max(config.collinear_epsilon, maximum_deviation)
 
 
 def without_degenerate_holes(
@@ -119,7 +121,7 @@ def without_degenerate_holes(
         [
             ring
             for ring in part.interiors
-            if shapely.Polygon(ring).area > config.minimum_part_area_in_square_degrees
+            if shapely.Polygon(ring).area * units.degrees**2 > config.minimum_part_area
         ],
     )
 
@@ -155,14 +157,14 @@ def clean_perimeter(
     kept = [
         without_degenerate_holes(part, config)
         for part in parts
-        if part.area > config.minimum_part_area_in_square_degrees
+        if part.area * units.degrees**2 > config.minimum_part_area
     ]
     if not kept:
         return geometry
     assembled = kept[0] if len(kept) == 1 else shapely.MultiPolygon(kept)
     simplified = shapely.simplify(
         assembled,
-        simplify_tolerance_in_degrees(geometry, config),
+        simplify_tolerance(geometry, config).m_as("degrees"),
     )
     if simplified.is_valid:
         return simplified

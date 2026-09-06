@@ -11,6 +11,7 @@ import shapely.geometry
 
 import peri_scribe.kml.colormap
 import peri_scribe.perimeters.progression
+from peri_scribe.units import units
 
 
 def ring(
@@ -33,7 +34,7 @@ def ring(
     return peri_scribe.perimeters.progression.Ring(
         geometry=shapely.geometry.box(-half, -half, half, half),
         observation_time=observation_time,
-        area=area,
+        area=area * units.meters**2,
     )
 
 
@@ -103,7 +104,7 @@ def test_turbo_at_clamps_at_the_ends() -> None:
         == (peri_scribe.kml.colormap.TURBO_RAMP[0])
     )
     assert (
-        peri_scribe.kml.colormap.turbo_at(1000)
+        peri_scribe.kml.colormap.turbo_at(1_000)
         == (peri_scribe.kml.colormap.TURBO_RAMP[-1])
     )
 
@@ -144,21 +145,35 @@ def test_cool_fraction_anchors_short_fires_partway() -> None:
 
 
 def test_active_ring_window_keeps_the_single_qualifying_ring() -> None:
-    assert peri_scribe.kml.colormap.active_ring_window([5.0, 1.0], 4.0) == (0, 0)
+    assert peri_scribe.kml.colormap.active_ring_window(
+        [
+            5.0 * units.meters**2,
+            1.0 * units.meters**2,
+        ],
+        4.0 * units.meters**2,
+    ) == (0, 0)
 
 
 def test_active_ring_window_drops_trivial_edges() -> None:
-    assert peri_scribe.kml.colormap.active_ring_window([0.1, 10.0, 0.1], 9.9) == (
-        1,
-        1,
-    )
+    assert peri_scribe.kml.colormap.active_ring_window(
+        [
+            0.1 * units.meters**2,
+            10.0 * units.meters**2,
+            0.1 * units.meters**2,
+        ],
+        9.9 * units.meters**2,
+    ) == (1, 1)
 
 
 def test_active_ring_window_keeps_the_larger_boundary_ring_on_a_tie() -> None:
-    assert peri_scribe.kml.colormap.active_ring_window([1.0, 100.0, 5.0], 101.0) == (
-        1,
-        2,
-    )
+    assert peri_scribe.kml.colormap.active_ring_window(
+        [
+            1.0 * units.meters**2,
+            100.0 * units.meters**2,
+            5.0 * units.meters**2,
+        ],
+        101.0 * units.meters**2,
+    ) == (1, 2)
 
 
 def test_progression_ring_colors_single_ring_is_hottest() -> None:

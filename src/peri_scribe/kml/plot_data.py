@@ -16,10 +16,12 @@ import pandas as pd
 import peri_scribe.geo.parsing
 import peri_scribe.kml.row_values
 import peri_scribe.units
+from peri_scribe.units import units
 
 
 if typing.TYPE_CHECKING:
     import geopandas
+    import pint
 
 
 # A line is skipped unless its measurement exists on at least this many distinct
@@ -33,7 +35,7 @@ DOLLARS_PER_MILLION = 1_000_000.0
 
 # Containment percentages are reported in whole percent (0-100), so the contained
 # perimeter is that fraction of the exterior perimeter length.
-CONTAINMENT_IN_PERCENT = 100.0
+CONTAINMENT_PERCENT = 100.0 * units.percent
 
 # Column names in the tidy frame handed to seaborn.
 LABEL_COLUMN = "label"
@@ -77,10 +79,10 @@ class SeriesPoint:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class ExteriorMeasurement:
-    """One perimeter row's observation time and exterior length in miles."""
+    """One perimeter row's observation time and exterior length."""
 
     observation_time: datetime.datetime | None
-    length_in_miles: float | None
+    length: pint.Quantity[float] | None
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -161,9 +163,7 @@ def exterior_perimeter_measurements(
                 observation_time=peri_scribe.geo.parsing.observation_time_from(
                     observation_time,
                 ),
-                length_in_miles=peri_scribe.units.exterior_perimeter_in_miles(
-                    geometry,
-                ),
+                length=peri_scribe.units.exterior_perimeter(geometry),
             ),
         )
     return tuple(measurements)
@@ -190,12 +190,12 @@ def exterior_perimeter_points(
     points: list[SeriesPoint] = []
     for measurement in exterior_measurements:
         observation_time = measurement.observation_time
-        length_in_miles = measurement.length_in_miles
-        if observation_time is not None and length_in_miles is not None:
+        length = measurement.length
+        if observation_time is not None and length is not None:
             points.append(
                 SeriesPoint(
                     observation_time=observation_time,
-                    value=length_in_miles,
+                    value=length.m_as("miles"),
                 ),
             )
     return tuple(points)
@@ -232,17 +232,21 @@ def contained_perimeter_points(
         strict=True,
     ):
         observation_time = measurement.observation_time
-        length_in_miles = measurement.length_in_miles
+        length = measurement.length
         in_percent = peri_scribe.geo.parsing.numeric_value(percent_contained)
         if (
             observation_time is not None
-            and length_in_miles is not None
+            and length is not None
             and in_percent is not None
         ):
             points.append(
                 SeriesPoint(
                     observation_time=observation_time,
-                    value=length_in_miles * in_percent / CONTAINMENT_IN_PERCENT,
+                    value=(
+                        length.m_as("miles")
+                        * in_percent
+                        / CONTAINMENT_PERCENT.m_as("percent")
+                    ),
                 ),
             )
     return tuple(points)

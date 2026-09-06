@@ -11,6 +11,8 @@ import numpy as np
 import seaborn as sns
 import structlog
 
+from peri_scribe.units import units
+
 
 if TYPE_CHECKING:
     import peri_scribe.models
@@ -22,7 +24,7 @@ logger = structlog.get_logger()
 DATA_DIRECTORY = pathlib.Path("data")
 
 # The figure size of the fire-scores chart, in inches at the default resolution.
-FIRE_SCORES_CHART_SIZE_IN_INCHES = (10.24, 7.68)
+FIRE_SCORES_CHART_SIZE = (10.24 * units.inches, 7.68 * units.inches)
 
 
 def curve_knees(scores: list[int]) -> list[tuple[int, float]]:
@@ -154,7 +156,10 @@ def write_fire_scores_ccdf(
         document: The validated fire scores to plot.
     """
     figure = matplotlib.figure.Figure(
-        figsize=FIRE_SCORES_CHART_SIZE_IN_INCHES,
+        figsize=(
+            FIRE_SCORES_CHART_SIZE[0].m_as("inches"),
+            FIRE_SCORES_CHART_SIZE[1].m_as("inches"),
+        ),
     )
     matplotlib.backends.backend_agg.FigureCanvasAgg(figure)
     axes = figure.subplots()

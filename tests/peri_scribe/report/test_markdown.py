@@ -9,6 +9,7 @@ import peri_scribe.kml.descriptions
 import peri_scribe.models
 import peri_scribe.report.gathering
 import peri_scribe.report.markdown
+from peri_scribe.units import units
 
 
 REPORT_SECTION_COUNT = 5
@@ -24,12 +25,12 @@ def make_entry(
     *,
     identifier: str | None = None,
     description: peri_scribe.kml.descriptions.FireDescription | None = None,
-    area_in_acres: float | None = None,
+    area: float | None = None,
     percent_contained: float | None = None,
     discovery_time: datetime.datetime | None = None,
     score: int | None = None,
-    growth_in_acres: float | None = None,
-    growth_in_percent: float | None = None,
+    growth: float | None = None,
+    growth_percent: float | None = None,
     location: str | None = None,
 ) -> peri_scribe.report.gathering.FireReportEntry:
     """Return a report entry carrying only the requested facts.
@@ -42,12 +43,12 @@ def make_entry(
         name: The fire's name.
         identifier: The fire's identifier, or None.
         description: The fire's balloon description, or None to build one.
-        area_in_acres: The fire's latest area, or None.
+        area: The fire's latest area, or None.
         percent_contained: The fire's containment percentage, or None.
         discovery_time: The fire's discovery time, or None.
         score: The fire's score, or None.
-        growth_in_acres: The fire's acreage growth, or None.
-        growth_in_percent: The fire's percent growth, or None.
+        growth: The fire's acreage growth, or None.
+        growth_percent: The fire's percent growth, or None.
         location: The fire's nearest-city location phrase, or None.
 
     Returns:
@@ -56,7 +57,7 @@ def make_entry(
     if description is None:
         description = peri_scribe.kml.descriptions.FireDescription(
             identifier=identifier,
-            area_in_acres=area_in_acres,
+            area=None if area is None else area * units.acres,
             percent_contained=percent_contained,
             discovery_time=discovery_time,
         )
@@ -65,8 +66,10 @@ def make_entry(
         identifier=identifier,
         status=peri_scribe.models.FireStatus.ACTIVE,
         description=description,
-        growth_in_acres=growth_in_acres,
-        growth_in_percent=growth_in_percent,
+        growth=None if growth is None else growth * units.acres,
+        growth_percent=(
+            None if growth_percent is None else growth_percent * units.percent
+        ),
         score=score,
         location=location,
     )
@@ -90,26 +93,26 @@ def test_discovery_cell_returns_none_without_discovery_time() -> None:
     assert peri_scribe.report.markdown.discovery_cell(make_entry("Bug")) is None
 
 
-def test_growth_in_acres_cell_returns_signed_growth() -> None:
-    entry = make_entry("Bug", growth_in_acres=3394.0)
-    assert peri_scribe.report.markdown.growth_in_acres_cell(entry) == "+3,394 acres"
+def test_growth_cell_returns_signed_growth() -> None:
+    entry = make_entry("Bug", growth=3394.0)
+    assert peri_scribe.report.markdown.growth_cell(entry) == "+3,394 acres"
 
 
-def test_growth_in_acres_cell_returns_none_without_growth() -> None:
-    assert peri_scribe.report.markdown.growth_in_acres_cell(make_entry("Bug")) is None
+def test_growth_cell_returns_none_without_growth() -> None:
+    assert peri_scribe.report.markdown.growth_cell(make_entry("Bug")) is None
 
 
-def test_growth_in_percent_cell_returns_signed_growth() -> None:
-    entry = make_entry("Bug", growth_in_percent=50.0)
-    assert peri_scribe.report.markdown.growth_in_percent_cell(entry) == "+50%"
+def test_growth_percent_cell_returns_signed_growth() -> None:
+    entry = make_entry("Bug", growth_percent=50.0)
+    assert peri_scribe.report.markdown.growth_percent_cell(entry) == "+50%"
 
 
-def test_growth_in_percent_cell_returns_none_without_growth() -> None:
-    assert peri_scribe.report.markdown.growth_in_percent_cell(make_entry("Bug")) is None
+def test_growth_percent_cell_returns_none_without_growth() -> None:
+    assert peri_scribe.report.markdown.growth_percent_cell(make_entry("Bug")) is None
 
 
 def test_area_fact_formats_area() -> None:
-    entry = make_entry("Bug", area_in_acres=100.0)
+    entry = make_entry("Bug", area=100.0)
     assert peri_scribe.report.markdown.area_fact(entry) == "100 acres"
 
 
@@ -200,12 +203,12 @@ def test_fire_table_section_renders_linked_rows_with_blank_missing_cells() -> No
     bug = make_entry(
         "Bug",
         identifier="id-bug",
-        area_in_acres=100.0,
+        area=100.0,
     )
     fire = make_entry(
         "Fire",
         identifier="id-fire",
-        growth_in_acres=5000.0,
+        growth=5_000.0,
     )
     lines = peri_scribe.report.markdown.fire_table_section(
         "Fastest Growing Fires (acres)",
@@ -213,7 +216,7 @@ def test_fire_table_section_renders_linked_rows_with_blank_missing_cells() -> No
         columns=(
             (
                 peri_scribe.report.markdown.GROWTH_LABEL,
-                peri_scribe.report.markdown.growth_in_acres_cell,
+                peri_scribe.report.markdown.growth_cell,
                 True,
             ),
             (
@@ -237,7 +240,7 @@ def test_fire_table_section_renders_linked_rows_with_blank_missing_cells() -> No
 
 
 def test_fire_table_section_renders_name_without_anchor() -> None:
-    entry = make_entry("Bug", area_in_acres=100.0)
+    entry = make_entry("Bug", area=100.0)
     lines = peri_scribe.report.markdown.fire_table_section(
         "Top Fires",
         (entry,),
@@ -276,10 +279,10 @@ def test_fire_detail_rows_show_the_balloon_facts() -> None:
         identifier="2026-idipf-000347",
         source="WFIGS",
         mission="B-1",
-        area_in_acres=4797.0,
-        exterior_perimeter_in_miles=27.3,
+        area=4797.0 * units.acres,
+        exterior_perimeter=27.3 * units.miles,
         percent_contained=42.0,
-        estimated_cost_to_date_in_dollars=32168278.0,
+        estimated_cost_to_date=32168278.0 * units.dollars,
         total_personnel=147.0,
         protecting_unit="IDIPF",
         discovery_time=datetime.datetime(2026, 7, 8, 15, 29, tzinfo=datetime.UTC),
@@ -318,9 +321,9 @@ def test_fire_detail_rows_append_growth_after_balloon_facts() -> None:
     entry = make_entry(
         "Bug",
         identifier="id-bug",
-        area_in_acres=100.0,
-        growth_in_acres=5000.0,
-        growth_in_percent=10.0,
+        area=100.0,
+        growth=5_000.0,
+        growth_percent=10.0,
     )
     assert peri_scribe.report.markdown.fire_detail_rows(entry) == (
         ("Area", "100 acres"),
@@ -336,7 +339,7 @@ def test_fire_detail_rows_show_growth_without_description() -> None:
         identifier="id-bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
         description=None,
-        growth_in_acres=5000.0,
+        growth=5_000.0 * units.acres,
     )
     assert peri_scribe.report.markdown.fire_detail_rows(entry) == (
         ("48-Hour Growth (acres)", "+5,000 acres"),
@@ -347,11 +350,11 @@ def test_fire_detail_lines_render_mini_section() -> None:
     entry = make_entry(
         "Bug",
         identifier="id-bug",
-        area_in_acres=100.0,
+        area=100.0,
         percent_contained=50.0,
         discovery_time=datetime.datetime(2026, 8, 1, tzinfo=datetime.UTC),
-        growth_in_acres=5000.0,
-        growth_in_percent=10.0,
+        growth=5_000.0,
+        growth_percent=10.0,
     )
     assert peri_scribe.report.markdown.fire_detail_lines(entry) == [
         "### Bug",
@@ -377,9 +380,9 @@ def test_fire_detail_lines_omit_zero_growth() -> None:
     entry = make_entry(
         "Bug",
         identifier="id-bug",
-        area_in_acres=100.0,
-        growth_in_acres=0.0,
-        growth_in_percent=0.0,
+        area=100.0,
+        growth=0.0,
+        growth_percent=0.0,
     )
     assert peri_scribe.report.markdown.fire_detail_lines(entry) == [
         "### Bug",
@@ -395,9 +398,9 @@ def test_fire_detail_lines_omit_shrinkage_and_tiny_percent_growth() -> None:
     entry = make_entry(
         "Bug",
         identifier="id-bug",
-        area_in_acres=100.0,
-        growth_in_acres=-5.0,
-        growth_in_percent=0.05,
+        area=100.0,
+        growth=-5.0,
+        growth_percent=0.05,
     )
     assert peri_scribe.report.markdown.fire_detail_lines(entry) == [
         "### Bug",
@@ -413,23 +416,23 @@ def test_markdown_text_renders_title_sections_and_details() -> None:
     bug = make_entry(
         "Bug",
         identifier="id-bug",
-        area_in_acres=100.0,
+        area=100.0,
         discovery_time=datetime.datetime(2026, 8, 1, tzinfo=datetime.UTC),
     )
     fire = make_entry(
         "Fire",
         identifier="id-fire",
-        growth_in_acres=5000.0,
+        growth=5_000.0,
     )
     percent = make_entry(
         "Percent",
         identifier="id-percent",
-        growth_in_percent=50.0,
+        growth_percent=50.0,
     )
     big = make_entry(
         "Big",
         identifier="id-big",
-        area_in_acres=100000.0,
+        area=100_000.0,
     )
     report = peri_scribe.report.gathering.FireReport(
         new_notable_fires=(bug,),
@@ -524,7 +527,7 @@ def test_fire_detail_rows_lead_with_location() -> None:
     entry = make_entry(
         "Bug",
         identifier="id-bug",
-        area_in_acres=100.0,
+        area=100.0,
         location="15 mi ESE of Portland, OR",
     )
 
@@ -539,7 +542,7 @@ def test_fire_detail_lines_show_location_row() -> None:
     entry = make_entry(
         "Bug",
         identifier="id-bug",
-        area_in_acres=100.0,
+        area=100.0,
         location="15 mi ESE of Portland, OR",
     )
 
@@ -558,13 +561,13 @@ def test_fire_table_section_renders_location_column() -> None:
     bug = make_entry(
         "Bug",
         identifier="id-bug",
-        area_in_acres=100.0,
+        area=100.0,
         location="15 mi ESE of Portland, OR",
     )
     fire = make_entry(
         "Fire",
         identifier="id-fire",
-        growth_in_acres=5000.0,
+        growth=5_000.0,
     )
     lines = peri_scribe.report.markdown.fire_table_section(
         "Fastest Growing Fires (acres)",
@@ -577,7 +580,7 @@ def test_fire_table_section_renders_location_column() -> None:
             ),
             (
                 peri_scribe.report.markdown.GROWTH_LABEL,
-                peri_scribe.report.markdown.growth_in_acres_cell,
+                peri_scribe.report.markdown.growth_cell,
                 True,
             ),
             (
@@ -607,7 +610,7 @@ def test_markdown_text_shows_location_in_sections_and_details() -> None:
     bug = make_entry(
         "Bug",
         identifier="id-bug",
-        area_in_acres=100.0,
+        area=100.0,
         discovery_time=datetime.datetime(2026, 8, 1, tzinfo=datetime.UTC),
         location="15 mi ESE of Portland, OR",
     )

@@ -22,10 +22,12 @@ import peri_scribe.kml.text
 import peri_scribe.models
 import peri_scribe.perimeters.progression
 import peri_scribe.units
+from peri_scribe.units import units
 
 
 if typing.TYPE_CHECKING:
     import geopandas
+    import pint
 
 
 # The smallest computed or reported area that keeps a fire in the KMZ output. Fires
@@ -57,7 +59,7 @@ class FireGeometry:
 
 # A differential ring smaller than this adds nothing visible to the map, so it is
 # dropped rather than carried into the KMZ.
-MINIMUM_RING_AREA_IN_SQUARE_METERS = 1.0
+MINIMUM_RING_AREA = 1.0 * units.meters**2
 
 
 def progression_ring(
@@ -75,20 +77,20 @@ def progression_ring(
     Returns:
         The ring, or None when its area is at most one square meter.
     """
-    area_in_square_meters = peri_scribe.units.area_in_square_meters(perimeter.geometry)
-    if area_in_square_meters <= MINIMUM_RING_AREA_IN_SQUARE_METERS:
+    area = peri_scribe.units.area(perimeter.geometry)
+    if area <= MINIMUM_RING_AREA:
         return None
     return peri_scribe.perimeters.progression.Ring(
         geometry=perimeter.geometry,
         observation_time=perimeter.observation_time,
-        area=area_in_square_meters,
+        area=area,
     )
 
 
-def ring_added_areas_in_acres(
+def ring_added_areas(
     rings: typing.Sequence[peri_scribe.perimeters.progression.Ring],
-) -> tuple[float, ...]:
-    """Return each ring's added area in acres, in chronological order.
+) -> tuple[pint.Quantity[float], ...]:
+    """Return each ring's added area, in chronological order.
 
     A ring's added area is the area of the fire once that ring is included minus the
     area of the fire with only the earlier rings, measured from the ring geometries as
@@ -101,9 +103,9 @@ def ring_added_areas_in_acres(
         rings: The fire's growth rings in chronological order.
 
     Returns:
-        Each ring's added area in acres, in the input order.
+        Each ring's added area, in the input order.
     """
-    cumulative_areas_in_acres: list[float] = []
+    cumulative: list[pint.Quantity[float]] = []
     combined_geometry: shapely.Geometry | None = None
     for ring in rings:
         combined_geometry = (
@@ -111,19 +113,15 @@ def ring_added_areas_in_acres(
             if combined_geometry is None
             else shapely.union(combined_geometry, ring.geometry)
         )
-        cumulative_areas_in_acres.append(
-            peri_scribe.units.area_in_acres(combined_geometry),
-        )
-    added_areas_in_acres: list[float] = []
-    previous_area_in_acres = 0.0
-    for cumulative_area_in_acres in cumulative_areas_in_acres:
+        cumulative.append(peri_scribe.units.area(combined_geometry))
+    added: list[pint.Quantity[float]] = []
+    previous = 0 * units.meters**2
+    for cumulative_area in cumulative:
         # A later ring never removes ground from the fire it joins, so a tiny negative
         # difference is measurement noise, not shrinkage.
-        added_areas_in_acres.append(
-            max(0.0, cumulative_area_in_acres - previous_area_in_acres),
-        )
-        previous_area_in_acres = cumulative_area_in_acres
-    return tuple(added_areas_in_acres)
+        added.append(max(0 * units.meters**2, cumulative_area - previous))
+        previous = cumulative_area
+    return tuple(added)
 
 
 def fire_perimeters(

@@ -10,6 +10,11 @@ import shapely
 import structlog
 
 import peri_scribe.models
+from peri_scribe.units import units
+
+
+if typing.TYPE_CHECKING:
+    import pint
 
 
 logger = structlog.get_logger()
@@ -17,12 +22,12 @@ logger = structlog.get_logger()
 
 # Two fire geometries are treated as the same fire when they overlap or the gap between
 # them is within this tolerance. It is expressed in degrees, which is roughly 5.5 km.
-FIRE_PROXIMITY_TOLERANCE_IN_DEGREES = 0.05
+FIRE_PROXIMITY_TOLERANCE = 0.05 * units.degrees
 
 # A fire whose records are farther apart than this is reported as possibly two fires
 # that were merged. It is far looser than the proximity tolerance so that a point
 # location moving between snapshots does not raise a warning.
-FIRE_OUTLIER_TOLERANCE_IN_DEGREES = 1.0
+FIRE_OUTLIER_TOLERANCE = 1.0 * units.degrees
 
 # A fire whose records span longer than this across observation times is reported as
 # possibly two fires that were merged.
@@ -39,19 +44,19 @@ MINIMUM_SPATIAL_GEOMETRIES = 2
 def nearby_pairs(
     geometries: list[shapely.Geometry],
     *,
-    tolerance_in_degrees: float,
+    tolerance: pint.Quantity[float],
 ) -> typing.Iterator[tuple[int, int]]:
-    """Yield the index pairs of *geometries* within *tolerance_in_degrees*.
+    """Yield the index pairs of *geometries* within *tolerance*.
 
-    A spatial index limits the comparisons to geometries that are actually close, so
-    the number of pairs grows with the number of nearby geometries rather than with
-    the square of the list length. Each geometry is paired with itself, and each
-    distinct pair appears in both directions, so callers can treat the result as the
-    adjacency of a directed graph and skip self-pairs.
+    A spatial index limits the comparisons to geometries that are actually close, so the
+    number of pairs grows with the number of nearby geometries rather than with the
+    square of the list length. Each geometry is paired with itself, and each distinct
+    pair appears in both directions, so callers can treat the result as the adjacency of
+    a directed graph and skip self-pairs.
 
     Args:
         geometries: The geometries to compare.
-        tolerance_in_degrees: The maximum distance, in degrees, that counts as nearby.
+        tolerance: The maximum distance, in degrees, that counts as nearby.
 
     Yields:
         Pairs of indices whose geometries are within the tolerance.
@@ -60,7 +65,7 @@ def nearby_pairs(
     pairs = tree.query(
         geometries,
         predicate="dwithin",
-        distance=tolerance_in_degrees,
+        distance=tolerance.m_as("degrees"),
     )
     for left, right in zip(pairs[0], pairs[1], strict=True):
         yield int(left), int(right)
@@ -145,7 +150,7 @@ def matched_within_outlier_tolerance(
             if shapely.dwithin(
                 geometry,
                 other_geometry,
-                FIRE_OUTLIER_TOLERANCE_IN_DEGREES,
+                FIRE_OUTLIER_TOLERANCE.m_as("degrees"),
             ):
                 matched_indices.add(index)
                 matched_indices.add(other_index)
@@ -289,7 +294,7 @@ def merge_records_by_name(
         if len(representatives) >= MINIMUM_SPATIAL_GEOMETRIES:
             for left, right in nearby_pairs(
                 [geometry for _index, geometry in representatives],
-                tolerance_in_degrees=FIRE_PROXIMITY_TOLERANCE_IN_DEGREES,
+                tolerance=FIRE_PROXIMITY_TOLERANCE,
             ):
                 if left != right:
                     union(representatives[left][0], representatives[right][0])

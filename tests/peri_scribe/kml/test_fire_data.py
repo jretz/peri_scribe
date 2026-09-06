@@ -236,13 +236,13 @@ def test_fires_with_qualifying_area_keeps_fire_at_minimum() -> None:
     perimeters = area_frame(
         "area_acres",
         [("id-bug", "Bug")],
-        [peri_scribe.kml.selection.MINIMUM_FIRE_AREA_IN_ACRES],
+        [peri_scribe.kml.selection.MINIMUM_FIRE_AREA.m_as("acres")],
     )
     points = area_frame("incident_size", [("id-bug", "Bug")], [None])
     assert peri_scribe.kml.selection.fires_with_qualifying_area(
         perimeters,
         points,
-        peri_scribe.kml.selection.MINIMUM_FIRE_AREA_IN_ACRES,
+        peri_scribe.kml.selection.MINIMUM_FIRE_AREA,
     ) == {("id", "id-bug")}
 
 
@@ -256,7 +256,7 @@ def test_fires_with_qualifying_area_keeps_fire_with_reported_area() -> None:
     assert peri_scribe.kml.selection.fires_with_qualifying_area(
         perimeters,
         points,
-        peri_scribe.kml.selection.MINIMUM_FIRE_AREA_IN_ACRES,
+        peri_scribe.kml.selection.MINIMUM_FIRE_AREA,
     ) == {("id", "id-bug")}
 
 
@@ -274,7 +274,7 @@ def test_fires_with_qualifying_area_keeps_fire_with_any_qualifying_indication() 
     assert peri_scribe.kml.selection.fires_with_qualifying_area(
         perimeters,
         points,
-        peri_scribe.kml.selection.MINIMUM_FIRE_AREA_IN_ACRES,
+        peri_scribe.kml.selection.MINIMUM_FIRE_AREA,
     ) == {("id", "id-bug")}
 
 
@@ -293,7 +293,7 @@ def test_fires_with_qualifying_area_excludes_fire_below_minimum() -> None:
         peri_scribe.kml.selection.fires_with_qualifying_area(
             perimeters,
             points,
-            peri_scribe.kml.selection.MINIMUM_FIRE_AREA_IN_ACRES,
+            peri_scribe.kml.selection.MINIMUM_FIRE_AREA,
         )
         == frozenset()
     )
@@ -314,7 +314,7 @@ def test_fires_with_qualifying_area_excludes_fire_with_missing_areas() -> None:
         peri_scribe.kml.selection.fires_with_qualifying_area(
             perimeters,
             points,
-            peri_scribe.kml.selection.MINIMUM_FIRE_AREA_IN_ACRES,
+            peri_scribe.kml.selection.MINIMUM_FIRE_AREA,
         )
         == frozenset()
     )
@@ -329,7 +329,7 @@ def test_fires_with_qualifying_area_excludes_fire_without_area_columns() -> None
         peri_scribe.kml.selection.fires_with_qualifying_area(
             perimeters,
             points,
-            peri_scribe.kml.selection.MINIMUM_FIRE_AREA_IN_ACRES,
+            peri_scribe.kml.selection.MINIMUM_FIRE_AREA,
         )
         == frozenset()
     )
@@ -569,10 +569,10 @@ def test_fire_geometries_matches_identifier_less_fire_by_name(
     ])
     # The fire has no identifier, yet its history rows carry one; the name match must
     # still include those rows for the plots and description.
-    first_area_in_acres = peri_scribe.units.area_in_acres(
+    first_area = peri_scribe.units.area(
         tests.peri_scribe.kml.kml_helpers.square(1.0),
     )
-    second_area_in_acres = peri_scribe.units.area_in_acres(
+    second_area = peri_scribe.units.area(
         tests.peri_scribe.kml.kml_helpers.square(2.0),
     )
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
@@ -584,7 +584,10 @@ def test_fire_geometries_matches_identifier_less_fire_by_name(
             datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC),
             datetime.datetime(2026, 8, 6, 20, 0, tzinfo=datetime.UTC),
         ],
-        area_acres=[first_area_in_acres, second_area_in_acres],
+        area_acres=[
+            first_area.m_as("acres"),
+            second_area.m_as("acres"),
+        ],
     )
     (fire,) = peri_scribe.kml.fire_data.fire_geometries(
         index,
@@ -595,7 +598,10 @@ def test_fire_geometries_matches_identifier_less_fire_by_name(
     assert fire.name == "Bug"
     assert fire.images
     assert fire.description is not None
-    assert fire.description.area_in_acres == pytest.approx(second_area_in_acres)
+    assert fire.description.area is not None
+    assert fire.description.area.m_as("acres") == pytest.approx(
+        second_area.m_as("acres"),
+    )
 
 
 def test_score_explanation_for_prefers_identifier() -> None:
@@ -816,8 +822,7 @@ def test_fire_geometries_includes_progression_rings() -> None:
         (tests.peri_scribe.kml.kml_helpers.square(2.0), second_time),
     ]
     assert [ring.area for ring in fire.progression_rings] == [
-        peri_scribe.units.area_in_square_meters(ring.geometry)
-        for ring in fire.progression_rings
+        peri_scribe.units.area(ring.geometry) for ring in fire.progression_rings
     ]
 
 
@@ -852,7 +857,7 @@ def test_fire_geometries_drops_tiny_rings() -> None:
 def test_ring_added_areas_measure_disjoint_rings_own_areas() -> None:
     first_geometry = tests.peri_scribe.kml.kml_helpers.square(1.0)
     second_geometry = shapely.geometry.box(2.0, -0.5, 3.0, 0.5)
-    added_areas_in_acres = peri_scribe.kml.fire_data.ring_added_areas_in_acres(
+    added_areas_in_acres = peri_scribe.kml.fire_data.ring_added_areas(
         (
             peri_scribe.perimeters.progression.Ring(
                 geometry=first_geometry,
@@ -864,19 +869,18 @@ def test_ring_added_areas_measure_disjoint_rings_own_areas() -> None:
             ),
         ),
     )
-    assert added_areas_in_acres == pytest.approx(
-        (
-            peri_scribe.units.area_in_acres(first_geometry),
-            peri_scribe.units.area_in_acres(second_geometry),
-        ),
-    )
+    magnitudes = [area.m_as("meters ** 2") for area in added_areas_in_acres]
+    assert magnitudes == pytest.approx([
+        peri_scribe.units.area(first_geometry).m_as("meters ** 2"),
+        peri_scribe.units.area(second_geometry).m_as("meters ** 2"),
+    ])
 
 
 def test_ring_added_areas_measure_net_of_earlier_fire_when_overlapping() -> None:
     inner_geometry = tests.peri_scribe.kml.kml_helpers.square(1.0)
     outer_geometry = tests.peri_scribe.kml.kml_helpers.square(2.0)
-    inner_area_in_acres = peri_scribe.units.area_in_acres(inner_geometry)
-    added_areas_in_acres = peri_scribe.kml.fire_data.ring_added_areas_in_acres(
+    inner_area = peri_scribe.units.area(inner_geometry)
+    added_areas_in_acres = peri_scribe.kml.fire_data.ring_added_areas(
         (
             peri_scribe.perimeters.progression.Ring(
                 geometry=inner_geometry,
@@ -890,21 +894,20 @@ def test_ring_added_areas_measure_net_of_earlier_fire_when_overlapping() -> None
     )
     # The outer ring redraws the ground the inner ring already claimed, so it adds
     # only the area beyond the earlier fire rather than its whole geometry.
-    assert added_areas_in_acres == pytest.approx(
-        (
-            inner_area_in_acres,
-            peri_scribe.units.area_in_acres(outer_geometry) - inner_area_in_acres,
-        ),
-    )
+    magnitudes = [area.m_as("meters ** 2") for area in added_areas_in_acres]
+    assert magnitudes == pytest.approx([
+        inner_area.m_as("meters ** 2"),
+        (peri_scribe.units.area(outer_geometry) - inner_area).m_as("meters ** 2"),
+    ])
 
 
 def test_ring_added_areas_returns_nothing_without_rings() -> None:
-    assert peri_scribe.kml.fire_data.ring_added_areas_in_acres(()) == ()
+    assert peri_scribe.kml.fire_data.ring_added_areas(()) == ()
 
 
 def test_ring_added_areas_measure_zero_for_ground_already_claimed() -> None:
     geometry = tests.peri_scribe.kml.kml_helpers.square(1.0)
-    added_areas_in_acres = peri_scribe.kml.fire_data.ring_added_areas_in_acres(
+    added_areas_in_acres = peri_scribe.kml.fire_data.ring_added_areas(
         (
             peri_scribe.perimeters.progression.Ring(
                 geometry=geometry,
@@ -916,8 +919,9 @@ def test_ring_added_areas_measure_zero_for_ground_already_claimed() -> None:
             ),
         ),
     )
-    assert added_areas_in_acres == pytest.approx(
-        (peri_scribe.units.area_in_acres(geometry), 0.0),
+    magnitudes = [area.m_as("meters ** 2") for area in added_areas_in_acres]
+    assert magnitudes == pytest.approx(
+        [peri_scribe.units.area(geometry).m_as("meters ** 2"), 0.0],
         abs=1e-6,
     )
 
@@ -928,10 +932,10 @@ def description_perimeter_frame() -> geopandas.GeoDataFrame:
     Returns:
         The frame.
     """
-    first_area_in_acres = peri_scribe.units.area_in_acres(
+    first_area = peri_scribe.units.area(
         tests.peri_scribe.kml.kml_helpers.square(1.0),
     )
-    second_area_in_acres = peri_scribe.units.area_in_acres(
+    second_area = peri_scribe.units.area(
         tests.peri_scribe.kml.kml_helpers.square(2.0),
     )
     return geopandas.GeoDataFrame(
@@ -940,10 +944,13 @@ def description_perimeter_frame() -> geopandas.GeoDataFrame:
             "fire_name": ["Bug", "Bug"],
             "source": ["firis_perimeter", "firis_perimeter"],
             "mission": ["CA-BUG-1", "CA-BUG-2"],
-            "area_acres": [first_area_in_acres, second_area_in_acres],
+            "area_acres": [
+                first_area.m_as("acres"),
+                second_area.m_as("acres"),
+            ],
             "percent_contained": [10.0, 20.0],
-            "estimated_cost_to_date": [1000.0, 2000.0],
-            "estimated_final_cost": [1500.0, 2500.0],
+            "estimated_cost_to_date": [1_000.0, 2_000.0],
+            "estimated_final_cost": [1_500.0, 2_500.0],
             "discovery_time": [
                 datetime.datetime(2026, 6, 29, 12, 4, 46, tzinfo=datetime.UTC),
                 datetime.datetime(2026, 6, 29, 12, 4, 46, tzinfo=datetime.UTC),
@@ -1001,8 +1008,8 @@ def description_point_frame() -> geopandas.GeoDataFrame:
             "fire_name": ["Bug"],
             "incident_size": [30.0],
             "percent_contained": [30.0],
-            "estimated_cost_to_date": [3000.0],
-            "estimated_final_cost": [3500.0],
+            "estimated_cost_to_date": [3_000.0],
+            "estimated_final_cost": [3_500.0],
             "discovery_time": [
                 datetime.datetime(2026, 6, 29, 12, 4, 46, tzinfo=datetime.UTC),
             ],
@@ -1047,14 +1054,17 @@ def test_fire_description_prefers_latest_perimeter_values() -> None:
         description_point_frame(),
         of_note="Over 100,000 acres, and a Type 1 Incident.",
     )
-    assert description.area_in_acres == pytest.approx(
-        peri_scribe.units.area_in_acres(
+    assert description.area is not None
+    assert description.area.m_as("acres") == pytest.approx(
+        peri_scribe.units.area(
             tests.peri_scribe.kml.kml_helpers.square(2.0),
-        ),
+        ).m_as("acres"),
     )
     assert description.percent_contained == pytest.approx(20.0)
-    assert description.estimated_cost_to_date_in_dollars == pytest.approx(2000.0)
-    assert description.estimated_final_cost_in_dollars == pytest.approx(2500.0)
+    assert description.estimated_cost_to_date is not None
+    assert description.estimated_cost_to_date.m_as("dollars") == pytest.approx(2_000.0)
+    assert description.estimated_final_cost is not None
+    assert description.estimated_final_cost.m_as("dollars") == pytest.approx(2_500.0)
     # Personnel comes from the sources' attributes, where the point feed's value wins
     # when both feeds carry it.
     assert description.total_personnel == pytest.approx(500.0)
@@ -1078,7 +1088,11 @@ def test_fire_description_prefers_latest_perimeter_values() -> None:
         tzinfo=datetime.UTC,
     )
     assert description.protecting_unit == "CANOD"
-    assert description.exterior_perimeter_in_miles == pytest.approx(551.47, rel=0.01)
+    assert description.exterior_perimeter is not None
+    assert description.exterior_perimeter.m_as("miles") == pytest.approx(
+        551.47,
+        rel=0.01,
+    )
     assert description.incident_type == "WF"
     assert (
         description.incident_complexity == "Type 4 Incident; Type 5 Incident; Type 3 IC"
@@ -1109,10 +1123,12 @@ def test_fire_description_presents_geometry_when_reported_understates() -> None:
         perimeters,
         tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
     )
-    assert description.area_in_acres == pytest.approx(
-        peri_scribe.units.area_in_acres(geometry),
+    assert description.area is not None
+    assert description.area.m_as("acres") == pytest.approx(
+        peri_scribe.units.area(geometry).m_as("acres"),
     )
-    assert description.area_in_acres != pytest.approx(reported_in_acres)
+    assert description.area is not None
+    assert description.area.m_as("acres") != pytest.approx(reported_in_acres)
 
 
 def test_fire_description_keeps_reported_area_within_agreement() -> None:
@@ -1121,7 +1137,7 @@ def test_fire_description_keeps_reported_area_within_agreement() -> None:
         "active",
         identifier="id-bug",
     )
-    reported_in_acres = 1000.0
+    reported_in_acres = 1_000.0
     geometry = tests.peri_scribe.kml.kml_helpers.square(0.02)
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
         [("id-bug", "Bug", geometry)],
@@ -1132,7 +1148,8 @@ def test_fire_description_keeps_reported_area_within_agreement() -> None:
         perimeters,
         tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
     )
-    assert description.area_in_acres == pytest.approx(reported_in_acres)
+    assert description.area is not None
+    assert description.area.m_as("acres") == pytest.approx(reported_in_acres)
 
 
 def test_fire_description_falls_back_to_point_when_perimeter_missing() -> None:
@@ -1166,10 +1183,13 @@ def test_fire_description_falls_back_to_point_when_perimeter_missing() -> None:
         empty_perimeters,
         description_point_frame(),
     )
-    assert description.area_in_acres == pytest.approx(30.0)
+    assert description.area is not None
+    assert description.area.m_as("acres") == pytest.approx(30.0)
     assert description.percent_contained == pytest.approx(30.0)
-    assert description.estimated_cost_to_date_in_dollars == pytest.approx(3000.0)
-    assert description.estimated_final_cost_in_dollars == pytest.approx(3500.0)
+    assert description.estimated_cost_to_date is not None
+    assert description.estimated_cost_to_date.m_as("dollars") == pytest.approx(3_000.0)
+    assert description.estimated_final_cost is not None
+    assert description.estimated_final_cost.m_as("dollars") == pytest.approx(3_500.0)
     assert description.total_personnel == pytest.approx(500.0)
     assert description.observation_time == datetime.datetime(
         2026,
@@ -1188,10 +1208,13 @@ def test_fire_description_falls_back_to_point_when_perimeter_missing() -> None:
         tzinfo=datetime.UTC,
     )
     # The exterior perimeter follows the small agreement-scale geometry.
-    assert description.exterior_perimeter_in_miles == pytest.approx(
-        peri_scribe.units.exterior_perimeter_in_miles(
-            tests.peri_scribe.kml.kml_helpers.square(0.0032),
-        ),
+    measured_perimeter = peri_scribe.units.exterior_perimeter(
+        tests.peri_scribe.kml.kml_helpers.square(0.0032),
+    )
+    assert description.exterior_perimeter is not None
+    assert measured_perimeter is not None
+    assert description.exterior_perimeter.m_as("meters") == pytest.approx(
+        measured_perimeter.m_as("meters"),
         rel=0.01,
     )
     assert description.incident_type == "WF"
@@ -1224,7 +1247,7 @@ def test_fire_description_falls_back_to_protecting_agency() -> None:
         point_frame,
     )
     assert description.protecting_unit == "BLM"
-    assert description.exterior_perimeter_in_miles is None
+    assert description.exterior_perimeter is None
 
 
 def test_fire_description_falls_back_to_perimeter_personnel() -> None:
@@ -1259,3 +1282,28 @@ def test_fire_description_falls_back_to_perimeter_personnel() -> None:
         point_frame,
     )
     assert description.total_personnel == pytest.approx(400.0)
+
+
+def test_fire_description_keeps_reported_area_without_mappable_geometry() -> None:
+    entry = tests.peri_scribe.kml.kml_helpers.fire_index_entry(
+        "Bug",
+        "active",
+        identifier="id-bug",
+    )
+    empty_perimeter_frame = geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-bug"],
+            "fire_name": ["Bug"],
+            "area_acres": [30.0],
+        },
+        geometry=[shapely.geometry.Polygon()],
+        crs="EPSG:4326",
+    )
+    description = peri_scribe.kml.text.fire_description(
+        entry,
+        empty_perimeter_frame,
+        tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
+    )
+    assert description is not None
+    assert description.area is not None
+    assert description.area.m_as("acres") == pytest.approx(30.0)

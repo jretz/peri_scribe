@@ -42,9 +42,16 @@ abbreviations (e.g., KML, ID, URL) and conventional single-letter loop variables
 minimum, and maximum are written out in full, rather than abbreviated to `lon`, `lat`,
 `min`, and `max`.
 
+## Real World Units
+
 When the value for a variable or parameter, or the return value for a function has
-real-world units, encode the units in the name. For example, `distance_in_meters` and
-`time_in_seconds`.
+real-world units, it should be a `pint` quantity so that it is unit agnostic. Everything
+should used the shared unit registry. When a DataFrame or numpy array is loaded from a
+data source, it's fine to work with it in it's native form. But when deriving in-memory
+DataFrames or arrays, they should use `pint` units as well.
+
+An exception to the ban on `from <module> import <name>` is the units registry. Use
+`from peri_scribe.units import units` everywhere.
 
 ## Calling Functions and Methods
 

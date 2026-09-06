@@ -380,7 +380,7 @@ def area_qualified_index(
     qualifying_keys = peri_scribe.kml.selection.fires_with_qualifying_area(
         perimeters,
         points,
-        peri_scribe.kml.selection.MINIMUM_FIRE_AREA_IN_ACRES,
+        peri_scribe.kml.selection.MINIMUM_FIRE_AREA,
     )
     return peri_scribe.models.FireIndex(
         version=index.version,
@@ -470,7 +470,7 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
         "Excluded fires without a qualifying area",
         fires=len(index.fires),
         excluded_fires=fire_count - len(index.fires),
-        minimum_area_in_acres=peri_scribe.kml.selection.MINIMUM_FIRE_AREA_IN_ACRES,
+        minimum_area=peri_scribe.kml.selection.MINIMUM_FIRE_AREA,
     )
     geometries = peri_scribe.kml.fire_data.fire_geometries(
         index,

@@ -8,7 +8,7 @@ import pytest
 import shapely
 
 import peri_scribe.report.locations
-import peri_scribe.units
+from peri_scribe.units import units
 
 
 GEOD = pyproj.Geod(ellps="WGS84")
@@ -47,25 +47,25 @@ def city_frame(
 def geodesic_quad(
     longitude: float,
     latitude: float,
-    bearing_in_degrees: float,
-    distance_in_miles: float,
+    bearing: float,
+    distance: float,
     *,
-    length_in_miles: float,
+    length: float,
     width_in_miles: float,
 ) -> shapely.Geometry:
     """Return a quad whose nearest corner sits at a known geodesic distance and bearing.
 
-    The quad's first corner lies exactly *distance_in_miles* miles from the point at
-    *bearing_in_degrees*, and the quad extends away along that bearing and
+    The quad's first corner lies exactly *distance* miles from the point at
+    *bearing*, and the quad extends away along that bearing and
     perpendicular to it, so the corner is the point of the quad nearest to the given
     point.
 
     Args:
         longitude: The point's longitude, in degrees.
         latitude: The point's latitude, in degrees.
-        bearing_in_degrees: The bearing toward the quad's nearest corner.
-        distance_in_miles: The distance to the quad's nearest corner.
-        length_in_miles: How far the quad extends along the bearing.
+        bearing: The bearing toward the quad's nearest corner.
+        distance: The distance to the quad's nearest corner.
+        length: How far the quad extends along the bearing.
         width_in_miles: How far the quad extends to the right of the bearing.
 
     Returns:
@@ -74,50 +74,50 @@ def geodesic_quad(
     corner_longitude, corner_latitude, _ = GEOD.fwd(
         longitude,
         latitude,
-        bearing_in_degrees,
-        distance_in_miles * peri_scribe.units.METERS_PER_MILE,
+        bearing,
+        (distance * units.miles).m_as("meters"),
     )
     first = (corner_longitude, corner_latitude)
     second = GEOD.fwd(
         first[0],
         first[1],
-        bearing_in_degrees,
-        length_in_miles * peri_scribe.units.METERS_PER_MILE,
+        bearing,
+        (length * units.miles).m_as("meters"),
     )[:2]
     third = GEOD.fwd(
         second[0],
         second[1],
-        bearing_in_degrees + 90.0,
-        width_in_miles * peri_scribe.units.METERS_PER_MILE,
+        bearing + 90.0,
+        (width_in_miles * units.miles).m_as("meters"),
     )[:2]
     fourth = GEOD.fwd(
         first[0],
         first[1],
-        bearing_in_degrees + 90.0,
-        width_in_miles * peri_scribe.units.METERS_PER_MILE,
+        bearing + 90.0,
+        (width_in_miles * units.miles).m_as("meters"),
     )[:2]
     return shapely.Polygon([first, second, third, fourth])
 
 
 def test_compass_point_names_each_wind() -> None:
     names = peri_scribe.report.locations.COMPASS_POINT_NAMES
-    step = peri_scribe.report.locations.DEGREES_PER_COMPASS_POINT
+    step = peri_scribe.report.locations.COMPASS_POINT_SPAN
 
     for index, name in enumerate(names):
         assert peri_scribe.report.locations.compass_point(index * step) == name
 
 
 def test_compass_point_wraps_past_north() -> None:
-    assert peri_scribe.report.locations.compass_point(359.0) == "N"
-    assert peri_scribe.report.locations.compass_point(360.0) == "N"
+    assert peri_scribe.report.locations.compass_point(359.0 * units.degrees) == "N"
+    assert peri_scribe.report.locations.compass_point(360.0 * units.degrees) == "N"
 
 
 def test_location_text_formats_distance_and_direction() -> None:
     city = peri_scribe.report.locations.NearestCity(
         name="Portland",
         state_abbreviation="OR",
-        distance_in_miles=14.6,
-        bearing_in_degrees=112.5,
+        distance=14.6 * units.miles,
+        bearing=112.5 * units.degrees,
     )
 
     assert (
@@ -129,8 +129,8 @@ def test_location_text_rounds_distance_to_whole_miles() -> None:
     city = peri_scribe.report.locations.NearestCity(
         name="Portland",
         state_abbreviation="OR",
-        distance_in_miles=15.6,
-        bearing_in_degrees=90.0,
+        distance=15.6 * units.miles,
+        bearing=90.0 * units.degrees,
     )
 
     assert peri_scribe.report.locations.location_text(city) == "16 mi E of Portland, OR"
@@ -140,7 +140,7 @@ def test_location_text_without_bearing_names_zero_distance_city() -> None:
     city = peri_scribe.report.locations.NearestCity(
         name="Portland",
         state_abbreviation="OR",
-        distance_in_miles=0.0,
+        distance=0.0 * units.miles,
     )
 
     assert peri_scribe.report.locations.location_text(city) == "0 mi of Portland, OR"
@@ -172,35 +172,33 @@ def test_distance_and_bearing_from_point_measure_geodesically() -> None:
         PORTLAND_LATITUDE,
         112.5,
         15.0,
-        length_in_miles=10.0,
+        length=10.0,
         width_in_miles=5.0,
     )
 
-    distance_in_miles, bearing_in_degrees = (
-        peri_scribe.report.locations.distance_and_bearing_from_point(
-            interior,
-            PORTLAND_LONGITUDE,
-            PORTLAND_LATITUDE,
-        )
+    distance, bearing = peri_scribe.report.locations.distance_and_bearing_from_point(
+        interior,
+        PORTLAND_LONGITUDE,
+        PORTLAND_LATITUDE,
     )
 
-    assert distance_in_miles == pytest.approx(15.0, rel=1e-6)
-    assert bearing_in_degrees == pytest.approx(112.5, abs=1e-6)
+    assert distance is not None
+    assert distance.m_as("miles") == pytest.approx(15.0, rel=1e-6)
+    assert bearing is not None
+    assert bearing.m_as("degrees") == pytest.approx(112.5, abs=1e-6)
 
 
 def test_distance_and_bearing_from_point_zero_inside_interior() -> None:
     interior = shapely.Point(PORTLAND_LONGITUDE, PORTLAND_LATITUDE).buffer(0.5)
 
-    distance_in_miles, bearing_in_degrees = (
-        peri_scribe.report.locations.distance_and_bearing_from_point(
-            interior,
-            PORTLAND_LONGITUDE,
-            PORTLAND_LATITUDE,
-        )
+    distance, bearing = peri_scribe.report.locations.distance_and_bearing_from_point(
+        interior,
+        PORTLAND_LONGITUDE,
+        PORTLAND_LATITUDE,
     )
 
-    assert distance_in_miles == pytest.approx(0.0, abs=1e-9)
-    assert bearing_in_degrees is None
+    assert distance.m_as("meters") == pytest.approx(0.0, abs=1e-9)
+    assert bearing is None
 
 
 def test_nearest_city_picks_closest_city() -> None:
@@ -209,14 +207,14 @@ def test_nearest_city_picks_closest_city() -> None:
         PORTLAND_LATITUDE,
         112.5,
         15.0,
-        length_in_miles=10.0,
+        length=10.0,
         width_in_miles=5.0,
     )
     far_longitude, far_latitude, _ = GEOD.fwd(
         PORTLAND_LONGITUDE,
         PORTLAND_LATITUDE,
         0.0,
-        80.0 * peri_scribe.units.METERS_PER_MILE,
+        (80.0 * units.miles).m_as("meters"),
     )
     cities = city_frame(
         [
@@ -230,8 +228,10 @@ def test_nearest_city_picks_closest_city() -> None:
     assert nearest is not None
     assert nearest.name == "Portland"
     assert nearest.state_abbreviation == "OR"
-    assert nearest.distance_in_miles == pytest.approx(15.0, rel=1e-6)
-    assert nearest.bearing_in_degrees == pytest.approx(112.5, abs=1e-6)
+    assert nearest.distance is not None
+    assert nearest.distance.m_as("miles") == pytest.approx(15.0, rel=1e-6)
+    assert nearest.bearing is not None
+    assert nearest.bearing.m_as("degrees") == pytest.approx(112.5, abs=1e-6)
     assert (
         peri_scribe.report.locations.location_text(nearest)
         == "15 mi ESE of Portland, OR"
@@ -251,8 +251,8 @@ def test_nearest_city_names_city_inside_the_interior() -> None:
 
     assert nearest is not None
     assert nearest.name == "Portland"
-    assert nearest.distance_in_miles == pytest.approx(0.0, abs=1e-9)
-    assert nearest.bearing_in_degrees is None
+    assert nearest.distance.m_as("meters") == pytest.approx(0.0, abs=1e-9)
+    assert nearest.bearing is None
     assert peri_scribe.report.locations.location_text(nearest) == "0 mi of Portland, OR"
 
 
@@ -329,7 +329,7 @@ def test_nearest_city_keeps_usable_rows_among_unusable() -> None:
         PORTLAND_LONGITUDE,
         PORTLAND_LATITUDE,
         0.0,
-        80.0 * peri_scribe.units.METERS_PER_MILE,
+        (80.0 * units.miles).m_as("meters"),
     )
     cities = city_frame(
         [
@@ -366,7 +366,7 @@ def test_nearest_city_measures_to_the_interior_not_the_point() -> None:
 
     assert nearest is not None
     assert nearest.name == "Ring"
-    assert nearest.distance_in_miles == pytest.approx(0.0, abs=1e-9)
+    assert nearest.distance.m_as("meters") == pytest.approx(0.0, abs=1e-9)
 
 
 def test_plausible_city_indices_orders_by_name() -> None:
@@ -419,13 +419,13 @@ def test_nearest_city_measures_to_a_point_location() -> None:
         PORTLAND_LONGITUDE,
         PORTLAND_LATITUDE,
         112.5,
-        15.0 * peri_scribe.units.METERS_PER_MILE,
+        (15.0 * units.miles).m_as("meters"),
     )
     far_longitude, far_latitude, _ = GEOD.fwd(
         PORTLAND_LONGITUDE,
         PORTLAND_LATITUDE,
         0.0,
-        80.0 * peri_scribe.units.METERS_PER_MILE,
+        (80.0 * units.miles).m_as("meters"),
     )
     cities = city_frame(
         [
@@ -441,8 +441,10 @@ def test_nearest_city_measures_to_a_point_location() -> None:
 
     assert nearest is not None
     assert nearest.name == "Portland"
-    assert nearest.distance_in_miles == pytest.approx(15.0, rel=1e-6)
-    assert nearest.bearing_in_degrees == pytest.approx(112.5, abs=1e-6)
+    assert nearest.distance is not None
+    assert nearest.distance.m_as("miles") == pytest.approx(15.0, rel=1e-6)
+    assert nearest.bearing is not None
+    assert nearest.bearing.m_as("degrees") == pytest.approx(112.5, abs=1e-6)
     assert (
         peri_scribe.report.locations.location_text(nearest)
         == "15 mi ESE of Portland, OR"

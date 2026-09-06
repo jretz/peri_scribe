@@ -56,7 +56,7 @@ def test_source_file_relative_path_buckets_by_thousands() -> None:
     assert source_file(serial_number=999).relative_path == pathlib.Path(
         "000___/000999,lastEdit=0.gpkg",
     )
-    assert source_file(serial_number=1000).relative_path == pathlib.Path(
+    assert source_file(serial_number=1_000).relative_path == pathlib.Path(
         "001___/001000,lastEdit=0.gpkg",
     )
 

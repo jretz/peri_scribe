@@ -22,8 +22,12 @@ import typing
 import matplotlib.backends.backend_agg
 import matplotlib.figure
 
+from peri_scribe.units import units
+
 
 if typing.TYPE_CHECKING:
+    import pint
+
     import peri_scribe.perimeters.progression
 
 
@@ -311,9 +315,9 @@ ACTIVE_GROWTH_FRACTION = 0.98
 FULL_RAMP_RING_COUNT = 10
 
 # The strip rendered by :func:`turbo_colormap_png`: its size in inches and dpi.
-COLORMAP_STRIP_WIDTH_IN_INCHES = 21.0
-COLORMAP_STRIP_HEIGHT_IN_INCHES = 3.0
-COLORMAP_STRIP_DPI = 100
+COLORMAP_STRIP_WIDTH = 21.0 * units.inches
+COLORMAP_STRIP_HEIGHT = 3.0 * units.inches
+COLORMAP_STRIP_RESOLUTION = 100 * units.count / units.inch
 
 # Tick labels and light guides appear at every group of this many cells.
 COLORMAP_CELLS_PER_GROUP = 16
@@ -342,10 +346,10 @@ def turbo_colormap_png(
     colors = turbo_colormap_256[trim_start : len(turbo_colormap_256) - trim_end]
     figure = matplotlib.figure.Figure(
         figsize=(
-            COLORMAP_STRIP_WIDTH_IN_INCHES,
-            COLORMAP_STRIP_HEIGHT_IN_INCHES,
+            COLORMAP_STRIP_WIDTH.m_as("inches"),
+            COLORMAP_STRIP_HEIGHT.m_as("inches"),
         ),
-        dpi=COLORMAP_STRIP_DPI,
+        dpi=COLORMAP_STRIP_RESOLUTION.m_as("1/inch"),
     )
     matplotlib.backends.backend_agg.FigureCanvasAgg(figure)
     axis = figure.subplots()
@@ -443,8 +447,8 @@ def sample_turbo(count: int) -> tuple[tuple[float, float, float], ...]:
 
 
 def active_ring_window(
-    areas: typing.Sequence[float],
-    threshold: float,
+    areas: typing.Sequence[pint.Quantity[float]],
+    threshold: pint.Quantity[float],
 ) -> tuple[int, int]:
     """Return the start and end ring indices of the shortest run covering *threshold*.
 
@@ -462,7 +466,7 @@ def active_ring_window(
     """
     best = (0, len(areas) - 1)
     left = 0
-    running = 0.0
+    running = 0 * units.meters**2
     for right, area in enumerate(areas):
         running += area
         while left < right and running - areas[left] >= threshold:
@@ -527,7 +531,7 @@ def progression_ring_colors(
     if not dated:
         return ()
     areas = [ring.area for ring in dated]
-    threshold = ACTIVE_GROWTH_FRACTION * sum(areas)
+    threshold = ACTIVE_GROWTH_FRACTION * sum(areas, 0 * units.meters**2)
     start, end = active_ring_window(areas, threshold)
     cool = cool_fraction(end - start + 1)
     first_timestamp = timestamps[start]

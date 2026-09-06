@@ -8,10 +8,12 @@ import peri_scribe.geo.parsing
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.plot_rendering
 import peri_scribe.models
+from peri_scribe.units import units
 
 
 if typing.TYPE_CHECKING:
     import geopandas
+    import pint
     import shapely
 
 
@@ -20,7 +22,7 @@ if typing.TYPE_CHECKING:
 # tiny incidents, which clutter Google Earth without adding information.
 
 
-MINIMUM_FIRE_AREA_IN_ACRES = 25.0
+MINIMUM_FIRE_AREA = 25.0 * units.acres
 
 
 PERIMETER_AREA_COLUMN = "area_acres"
@@ -102,7 +104,7 @@ def fire_area_key(identifier: object, name: str) -> AreaKey:
 def fires_with_qualifying_area(
     perimeters: geopandas.GeoDataFrame,
     points: geopandas.GeoDataFrame,
-    minimum_area_in_acres: float,
+    minimum_area: pint.Quantity[float],
 ) -> frozenset[AreaKey]:
     """Return the identity keys of fires with any area indication at least the minimum.
 
@@ -114,7 +116,7 @@ def fires_with_qualifying_area(
     Args:
         perimeters: The perimeter history layer.
         points: The point history layer.
-        minimum_area_in_acres: The smallest area that qualifies a fire.
+        minimum_area: The smallest area that qualifies a fire.
 
     Returns:
         The tagged identity keys of the qualifying fires.
@@ -129,7 +131,7 @@ def fires_with_qualifying_area(
             strict=True,
         ):
             acres = peri_scribe.geo.parsing.numeric_value(value)
-            if acres is not None and acres >= minimum_area_in_acres:
+            if acres is not None and acres * units.acres >= minimum_area:
                 qualifying.add(fire_area_key(identifier, name))
     for column in POINT_AREA_COLUMNS:
         if column not in points.columns:
@@ -141,7 +143,7 @@ def fires_with_qualifying_area(
             strict=True,
         ):
             acres = peri_scribe.geo.parsing.numeric_value(value)
-            if acres is not None and acres >= minimum_area_in_acres:
+            if acres is not None and acres * units.acres >= minimum_area:
                 qualifying.add(fire_area_key(identifier, name))
     return frozenset(qualifying)
 

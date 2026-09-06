@@ -10,7 +10,7 @@ import us.states
 
 import peri_scribe.models
 import peri_scribe.perimeters.border_classification
-import peri_scribe.units
+from peri_scribe.units import units
 
 
 CALIFORNIA_STATE_ABBREVIATION = us.states.CA.abbr.casefold()
@@ -48,9 +48,9 @@ def geometry_signal(
     """
     if union is None or union.is_empty:
         return peri_scribe.perimeters.border_classification.GeometrySignal(
-            distance_to_boundary_in_meters=float("inf"),
+            distance_to_boundary=float("inf") * units.meters,
             outside_area_fraction=0.0,
-            outside_area_in_acres=0.0,
+            outside_area=0.0 * units.meters**2,
             inside_area_fraction=0.0,
             crosses=False,
             near=False,
@@ -68,7 +68,9 @@ def geometry_signal(
         or all(not box.intersects(part) for part in union.geoms)
     ):
         parts = list(union.geoms)
-        distance_to_boundary_in_meters = min(part.distance(border) for part in parts)
+        distance_to_boundary = (
+            min(part.distance(border) for part in parts) * units.meters
+        )
         # The area fractions follow from which side the parts lie on. A part with no
         # area (a point or line) contributes none, so the union has positive area
         # exactly when some part does, and a one-sided union's fraction is the extreme
@@ -77,58 +79,43 @@ def geometry_signal(
         if all(box.contains(part) for part in parts):
             inside_area_fraction = 1.0 if has_area else 0.0
             outside_area_fraction = 0.0
-            outside_area_in_acres = 0.0
+            outside_area = 0.0 * units.meters**2
         else:
             inside_area_fraction = 0.0
             outside_area_fraction = 1.0 if has_area else 0.0
-            outside_area_in_acres = (
-                union.area / peri_scribe.units.SQUARE_METERS_PER_ACRE
-            )
+            outside_area = union.area * units.meters**2
         crosses = False
-        near = distance_to_boundary_in_meters <= config.near_border_buffer_in_meters
+        near = distance_to_boundary <= config.near_border_buffer
         inside = inside_area_fraction >= config.inside_area_fraction_threshold
         return peri_scribe.perimeters.border_classification.GeometrySignal(
-            distance_to_boundary_in_meters=distance_to_boundary_in_meters,
+            distance_to_boundary=distance_to_boundary,
             outside_area_fraction=outside_area_fraction,
-            outside_area_in_acres=outside_area_in_acres,
+            outside_area=outside_area,
             inside_area_fraction=inside_area_fraction,
             crosses=crosses,
             near=near,
             inside=inside,
         )
-    inside_area_in_square_meters = union.intersection(box).area
-    total_area_in_square_meters = union.area
-    outside_area_in_square_meters = max(
-        0.0,
-        total_area_in_square_meters - inside_area_in_square_meters,
-    )
-    inside_area_fraction = (
-        inside_area_in_square_meters / total_area_in_square_meters
-        if total_area_in_square_meters > 0
-        else 0.0
-    )
-    outside_area_fraction = (
-        outside_area_in_square_meters / total_area_in_square_meters
-        if total_area_in_square_meters > 0
-        else 0.0
-    )
-    outside_area_in_acres = (
-        outside_area_in_square_meters / peri_scribe.units.SQUARE_METERS_PER_ACRE
-    )
+    inside_area = union.intersection(box).area * units.meters**2
+    total_area = union.area * units.meters**2
+    outside_area = max(0.0 * units.meters**2, total_area - inside_area)
+    if total_area.magnitude > 0:
+        inside_area_fraction = inside_area.magnitude / total_area.magnitude
+        outside_area_fraction = outside_area.magnitude / total_area.magnitude
+    else:
+        inside_area_fraction = 0.0
+        outside_area_fraction = 0.0
     crosses = inside_area_fraction > 0 and (
         outside_area_fraction > config.outside_area_fraction_threshold
-        or outside_area_in_acres > config.outside_area_threshold_in_acres
+        or outside_area > config.outside_area_threshold
     )
-    distance_to_boundary_in_meters = union.distance(boundaries.border)
-    near = (
-        not crosses
-        and distance_to_boundary_in_meters <= config.near_border_buffer_in_meters
-    )
+    distance_to_boundary = union.distance(boundaries.border) * units.meters
+    near = not crosses and distance_to_boundary <= config.near_border_buffer
     inside = inside_area_fraction >= config.inside_area_fraction_threshold
     return peri_scribe.perimeters.border_classification.GeometrySignal(
-        distance_to_boundary_in_meters=distance_to_boundary_in_meters,
+        distance_to_boundary=distance_to_boundary,
         outside_area_fraction=outside_area_fraction,
-        outside_area_in_acres=outside_area_in_acres,
+        outside_area=outside_area,
         inside_area_fraction=inside_area_fraction,
         crosses=crosses,
         near=near,

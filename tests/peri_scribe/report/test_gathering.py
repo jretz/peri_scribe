@@ -22,6 +22,7 @@ import peri_scribe.report.gathering
 import peri_scribe.report.locations
 import peri_scribe.sources.external_sources
 import tests.peri_scribe.kml.kml_helpers
+from peri_scribe.units import units
 
 
 def make_fire(
@@ -46,7 +47,7 @@ def make_fire(
         identifiers=frozenset({identifier}),
         description=peri_scribe.kml.descriptions.FireDescription(
             identifier=identifier,
-            area_in_acres=100.0,
+            area=100.0 * units.acres,
             percent_contained=50.0,
             discovery_time=datetime.datetime(2026, 8, 1, tzinfo=datetime.UTC),
         ),
@@ -72,8 +73,8 @@ def make_entry(
         identifier=identifier,
         status=peri_scribe.models.FireStatus.ACTIVE,
         description=None,
-        growth_in_acres=None,
-        growth_in_percent=None,
+        growth=None,
+        growth_percent=None,
         score=None,
     )
 
@@ -85,7 +86,10 @@ def test_report_entry_captures_fire_facts(
     monkeypatch.setattr(
         peri_scribe.kml.folders,
         "fire_growth",
-        lambda _fire, _reference_time: (50.0, 10.0),
+        lambda _fire, _reference_time: (
+            50.0 * units.acres,
+            10.0 * units.percent,
+        ),
     )
     monkeypatch.setattr(
         peri_scribe.kml.folders,
@@ -102,10 +106,11 @@ def test_report_entry_captures_fire_facts(
 
     description = entry.description
     assert description is not None
+    assert description.area is not None
     assert entry.name == "Bug"
     assert entry.identifier == "2026-casnd-150541"
     assert entry.status is peri_scribe.models.FireStatus.ACTIVE
-    assert description.area_in_acres == pytest.approx(100.0)
+    assert description.area.m_as("acres") == pytest.approx(100.0)
     assert description.percent_contained == pytest.approx(50.0)
     assert description.discovery_time == datetime.datetime(
         2026,
@@ -113,8 +118,10 @@ def test_report_entry_captures_fire_facts(
         1,
         tzinfo=datetime.UTC,
     )
-    assert entry.growth_in_acres == pytest.approx(50.0)
-    assert entry.growth_in_percent == pytest.approx(10.0)
+    assert entry.growth is not None
+    assert entry.growth_percent is not None
+    assert entry.growth.m_as("acres") == pytest.approx(50.0)
+    assert entry.growth_percent.m_as("percent") == pytest.approx(10.0)
     assert entry.score == pytest.approx(400)
 
 
@@ -432,8 +439,8 @@ def test_fire_location_formats_nearest_city_phrase(
     nearest = peri_scribe.report.locations.NearestCity(
         name="Portland",
         state_abbreviation="OR",
-        distance_in_miles=14.6,
-        bearing_in_degrees=112.5,
+        distance=14.6 * units.miles,
+        bearing=112.5 * units.degrees,
     )
     monkeypatch.setattr(
         peri_scribe.report.locations,
@@ -516,8 +523,8 @@ def test_fire_location_measures_from_point_without_perimeter(
         return peri_scribe.report.locations.NearestCity(
             name="Portland",
             state_abbreviation="OR",
-            distance_in_miles=14.6,
-            bearing_in_degrees=112.5,
+            distance=14.6 * units.miles,
+            bearing=112.5 * units.degrees,
         )
 
     monkeypatch.setattr(
@@ -561,8 +568,8 @@ def test_fire_location_falls_back_to_point_for_empty_perimeter(
         return peri_scribe.report.locations.NearestCity(
             name="Portland",
             state_abbreviation="OR",
-            distance_in_miles=14.6,
-            bearing_in_degrees=112.5,
+            distance=14.6 * units.miles,
+            bearing=112.5 * units.degrees,
         )
 
     monkeypatch.setattr(
@@ -614,8 +621,8 @@ def test_fire_locations_maps_each_located_fire_once(
     nearest = peri_scribe.report.locations.NearestCity(
         name="Portland",
         state_abbreviation="OR",
-        distance_in_miles=14.6,
-        bearing_in_degrees=112.5,
+        distance=14.6 * units.miles,
+        bearing=112.5 * units.degrees,
     )
     monkeypatch.setattr(
         peri_scribe.report.locations,
@@ -638,8 +645,8 @@ def test_located_entries_attach_location_phrases(
     nearest = peri_scribe.report.locations.NearestCity(
         name="Portland",
         state_abbreviation="OR",
-        distance_in_miles=14.6,
-        bearing_in_degrees=112.5,
+        distance=14.6 * units.miles,
+        bearing=112.5 * units.degrees,
     )
     monkeypatch.setattr(
         peri_scribe.report.locations,

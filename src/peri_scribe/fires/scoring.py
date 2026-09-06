@@ -12,6 +12,7 @@ import peri_scribe.models
 
 if typing.TYPE_CHECKING:
     import geopandas
+    import pint
     import shapely
 
 
@@ -245,10 +246,27 @@ class PerimeterMetrics:
     fire.
     """
 
-    area_acres: float | None
-    growth_acres: float | None
-    first_mapping_acres: float | None
+    area: pint.Quantity[float] | None
+    growth: pint.Quantity[float] | None
+    first_mapping: pint.Quantity[float] | None
     geometry: shapely.Geometry | None
+
+
+def acre_magnitude(value: pint.Quantity[float] | None) -> float | None:
+    """Return *value*'s magnitude in acres, or None when it is None.
+
+    The scoring tiers compare plain acreage numbers, so a measured quantity is reduced
+    to its acre magnitude at the tier boundary.
+
+    Args:
+        value: The area to convert, or None.
+
+    Returns:
+        The area's magnitude in acres, or None.
+    """
+    if value is None:
+        return None
+    return value.m_as("acres")
 
 
 def fire_importance_points(points: geopandas.GeoDataFrame) -> int:
@@ -325,13 +343,12 @@ def fire_score_for(
     return FireScore(
         name=record.name,
         identifier=record.identifier,
-        size_points=SIZE_WEIGHT * tiered_points(metrics.area_acres, SIZE_TIERS),
-        growth_points=GROWTH_WEIGHT * tiered_points(metrics.growth_acres, GROWTH_TIERS),
+        size_points=SIZE_WEIGHT
+        * tiered_points(acre_magnitude(metrics.area), SIZE_TIERS),
+        growth_points=GROWTH_WEIGHT
+        * tiered_points(acre_magnitude(metrics.growth), GROWTH_TIERS),
         first_mapping_points=FIRST_MAPPING_WEIGHT
-        * tiered_points(
-            metrics.first_mapping_acres,
-            FIRST_MAPPING_TIERS,
-        ),
+        * tiered_points(acre_magnitude(metrics.first_mapping), FIRST_MAPPING_TIERS),
         building_points=BUILDINGS_WEIGHT
         * tiered_points(building_count, BUILDING_COUNT_TIERS),
         evacuation_points=EVACUATION_WEIGHT

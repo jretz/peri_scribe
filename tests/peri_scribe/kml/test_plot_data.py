@@ -14,6 +14,7 @@ import tests.peri_scribe.kml.kml_plot_helpers
 
 
 if typing.TYPE_CHECKING:
+    import pint
     import shapely
 
 
@@ -264,7 +265,7 @@ def test_scaled_points_divides_each_value() -> None:
             tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 10.0),
             tests.peri_scribe.kml.kml_plot_helpers.series_point(2, 20.0),
         ),
-        1000.0,
+        1_000.0,
     )
     assert [point.observation_time for point in scaled] == [
         tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
@@ -352,16 +353,16 @@ def test_fire_plots_builds_four_plots_with_labels() -> None:
                     tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
                     10.0,
                     50.0,
-                    1000.0,
-                    2000.0,
+                    1_000.0,
+                    2_000.0,
                 ),
                 (
                     tests.peri_scribe.kml.kml_plot_helpers.observation_time(2),
                     tests.peri_scribe.kml.kml_plot_helpers.square(2.0),
                     20.0,
                     50.0,
-                    2000.0,
-                    3000.0,
+                    2_000.0,
+                    3_000.0,
                 ),
             ],
         ),
@@ -398,8 +399,8 @@ def test_fire_plots_merges_area_and_cost_from_both_feeds() -> None:
                     tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
                     10.0,
                     None,
-                    1000.0,
-                    2000.0,
+                    1_000.0,
+                    2_000.0,
                 ),
             ],
         ),
@@ -498,7 +499,7 @@ def test_retained_series_drops_lines_with_too_few_times() -> None:
             peri_scribe.kml.plot_data.PlotSeries(
                 label="Cost to date",
                 points=(
-                    tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 1000.0),
+                    tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 1_000.0),
                 ),
             ),
         ),
@@ -516,14 +517,14 @@ def test_plot_frame_melts_series() -> None:
             peri_scribe.kml.plot_data.PlotSeries(
                 label="Cost to date",
                 points=(
-                    tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 1000.0),
+                    tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 1_000.0),
                 ),
             ),
         ),
     )
     assert list(frame.columns) == ["label", "observation_time", "value"]
     assert frame["label"].tolist() == ["Area", "Cost to date"]
-    assert frame["value"].tolist() == [10.0, 1000.0]
+    assert frame["value"].tolist() == [10.0, 1_000.0]
 
 
 def test_fire_plots_measures_each_exterior_perimeter_once(
@@ -551,16 +552,18 @@ def test_fire_plots_measures_each_exterior_perimeter_once(
     ]
     frame = tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame(observations)
     calls = 0
-    original = peri_scribe.units.exterior_perimeter_in_miles
+    original = peri_scribe.units.exterior_perimeter
 
-    def counting_measure(geometry: shapely.Geometry | None) -> float | None:
+    def counting_measure(
+        geometry: shapely.Geometry | None,
+    ) -> pint.Quantity[float] | None:
         nonlocal calls
         calls += 1
         return original(geometry)
 
     monkeypatch.setattr(
         peri_scribe.units,
-        "exterior_perimeter_in_miles",
+        "exterior_perimeter",
         counting_measure,
     )
     plots = peri_scribe.kml.plot_data.fire_plots(

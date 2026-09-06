@@ -2,8 +2,8 @@
 
 The building-footprint source stores only each footprint's centroid: no attributes, in a
 database built for fast spatial counting rather than general-purpose GIS. Each centroid
-is quantized to an integer coordinate pair (``round(longitude * 100000)``,
-``round(latitude * 100000)``) and written as an 8-byte little-endian record. The world
+is quantized to an integer coordinate pair (``round(longitude * 100_000)``,
+``round(latitude * 100_000)``) and written as an 8-byte little-endian record. The world
 is divided into 0.5° tiles, and every record belongs to the tile holding its encoded
 coordinate. A 16-way partition on the tile id spreads the records of one archive across
 sixteen temporary binary files that are retained across every state's archive, so all

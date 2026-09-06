@@ -9,9 +9,11 @@ import geopandas
 import shapely
 
 import peri_scribe.geo.spatial_reference
+from peri_scribe.units import units
 
 
-BUILDING_BUFFER_IN_METERS = 1609.34
+# The distance around each fire geometry within which nearby buildings are counted.
+BUILDING_BUFFER = 1.0 * units.miles
 
 
 def union_geometry(geometries: geopandas.GeoSeries) -> shapely.Geometry | None:
@@ -82,7 +84,7 @@ def buffer_geometry(geometry: shapely.Geometry) -> shapely.Geometry:
     Returns:
         The buffered geometry.
     """
-    return geometry.buffer(BUILDING_BUFFER_IN_METERS)
+    return geometry.buffer(BUILDING_BUFFER.m_as("meters"))
 
 
 def buffer_worker_count() -> int:

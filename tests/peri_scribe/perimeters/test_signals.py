@@ -10,12 +10,13 @@ import shapely.geometry
 import peri_scribe.perimeters.border_classification
 import peri_scribe.perimeters.signals
 import tests.peri_scribe.perimeters.border_helpers
+from peri_scribe.units import units
 
 
 CONFIG = peri_scribe.perimeters.border_classification.BorderClassificationConfig()
 
 PLANAR_CONFIG = peri_scribe.perimeters.border_classification.BorderClassificationConfig(
-    near_border_buffer_in_meters=10.0,
+    near_border_buffer=10.0 * units.meters,
 )
 
 
@@ -32,8 +33,8 @@ def test_geometry_signal_inside_california(
     assert not result.crosses
     assert not result.near
     assert result.outside_area_fraction == pytest.approx(0.0)
-    assert result.outside_area_in_acres == pytest.approx(0.0)
-    assert result.distance_to_boundary_in_meters == pytest.approx(50.0)
+    assert result.outside_area.m_as("meters ** 2") == pytest.approx(0.0)
+    assert result.distance_to_boundary.m_as("meters") == pytest.approx(50.0)
 
 
 def test_geometry_signal_inside_near_border(
@@ -47,7 +48,7 @@ def test_geometry_signal_inside_near_border(
     assert result.inside
     assert not result.crosses
     assert result.near
-    assert result.distance_to_boundary_in_meters == pytest.approx(1.0)
+    assert result.distance_to_boundary.m_as("meters") == pytest.approx(1.0)
 
 
 def test_geometry_signal_outside_california(
@@ -75,7 +76,7 @@ def test_geometry_signal_outside_near_border(
     assert not result.inside
     assert not result.crosses
     assert result.near
-    assert result.distance_to_boundary_in_meters == pytest.approx(1.0)
+    assert result.distance_to_boundary.m_as("meters") == pytest.approx(1.0)
 
 
 def test_geometry_signal_crosses_border_by_fraction(
@@ -89,7 +90,7 @@ def test_geometry_signal_crosses_border_by_fraction(
     assert result.crosses
     assert result.outside_area_fraction == pytest.approx(0.5)
     assert result.inside_area_fraction == pytest.approx(0.5)
-    assert result.outside_area_in_acres > 0.0
+    assert result.outside_area > 0.0
 
 
 def test_geometry_signal_crosses_border_by_absolute_area(
@@ -97,7 +98,7 @@ def test_geometry_signal_crosses_border_by_absolute_area(
 ) -> None:
     config = peri_scribe.perimeters.border_classification.BorderClassificationConfig(
         outside_area_fraction_threshold=1.0,
-        outside_area_threshold_in_acres=0.01,
+        outside_area_threshold=0.01 * units.acres,
     )
     result = peri_scribe.perimeters.signals.geometry_signal(
         shapely.geometry.box(90.0, 0.0, 110.0, 100.0),
@@ -129,7 +130,7 @@ def test_geometry_signal_handles_missing_union(
     assert not result.inside
     assert not result.crosses
     assert not result.near
-    assert result.distance_to_boundary_in_meters == float("inf")
+    assert result.distance_to_boundary.m_as("meters") == float("inf")
 
 
 def test_geometry_signal_one_sided_inside_collection(
@@ -148,9 +149,9 @@ def test_geometry_signal_one_sided_inside_collection(
     assert result.inside
     assert result.inside_area_fraction == pytest.approx(1.0)
     assert result.outside_area_fraction == pytest.approx(0.0)
-    assert result.outside_area_in_acres == pytest.approx(0.0)
+    assert result.outside_area.m_as("meters ** 2") == pytest.approx(0.0)
     assert not result.crosses
-    assert result.distance_to_boundary_in_meters == pytest.approx(95.0)
+    assert result.distance_to_boundary.m_as("meters") == pytest.approx(95.0)
 
 
 def test_geometry_signal_one_sided_outside_collection(
@@ -169,7 +170,7 @@ def test_geometry_signal_one_sided_outside_collection(
     assert result.inside_area_fraction == pytest.approx(0.0)
     assert result.outside_area_fraction == pytest.approx(1.0)
     assert not result.crosses
-    assert result.distance_to_boundary_in_meters == pytest.approx(50.0)
+    assert result.distance_to_boundary.m_as("meters") == pytest.approx(50.0)
 
 
 def test_geometry_signal_one_sided_inside_point_only(
@@ -220,7 +221,7 @@ def test_geometry_signal_one_sided_near_border(
     assert result.near
     assert not result.inside
     assert not result.crosses
-    assert result.distance_to_boundary_in_meters == pytest.approx(1.0)
+    assert result.distance_to_boundary.m_as("meters") == pytest.approx(1.0)
 
 
 def test_freshest_observation_prefers_later_observation_time() -> None:
@@ -567,3 +568,17 @@ def test_identifier_signal_detects_non_california_fips() -> None:
         ),
     ]
     assert peri_scribe.perimeters.signals.identifier_signal(observations)
+
+
+def test_geometry_signal_zero_area_union_has_no_fractions(
+    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+) -> None:
+    result = peri_scribe.perimeters.signals.geometry_signal(
+        shapely.geometry.Point(0.0, 0.0),
+        boundaries,
+        CONFIG,
+    )
+    assert not result.crosses
+    assert result.inside_area_fraction == pytest.approx(0.0)
+    assert result.outside_area_fraction == pytest.approx(0.0)
+    assert result.outside_area.m_as("meters ** 2") == pytest.approx(0.0)

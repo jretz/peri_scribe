@@ -10,7 +10,10 @@ import re
 import typing
 from typing import TYPE_CHECKING
 
+import pint
 import pydantic
+
+from peri_scribe.units import units
 
 
 if TYPE_CHECKING:
@@ -33,11 +36,11 @@ SHAPE_COLUMN_NAME = "SHAPE"
 
 # Minimum plausible coordinate magnitude, in meters, for a projected reference. Smaller
 # magnitudes are indistinguishable from degrees.
-MINIMUM_PROJECTED_MAGNITUDE_IN_METERS = 1_000.0
+MINIMUM_PROJECTED_MAGNITUDE = 1.0 * units.km
 
 # Fallback maximum coordinate magnitude, in meters, for a projected reference with no
 # known area of use; roughly the widest extent any Earth-based projection produces.
-PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK_IN_METERS = 25_000_000.0
+PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK = 25_000.0 * units.km
 
 # EPSG ids for the spatial references the project reads and writes.
 WGS84_SPATIAL_REFERENCE_ID = 4326
@@ -289,11 +292,58 @@ class FireIndexComplex(pydantic.BaseModel):
     identifier: str
 
 
+def distance_to_magnitude(distance: pint.Quantity) -> float:
+    """Return *distance*'s magnitude in meters.
+
+    Pydantic serializes the fire classification's distance as a plain JSON number, so
+    the magnitude is written in the field's canonical meters unit.
+
+    Args:
+        distance: The distance to serialize.
+
+    Returns:
+        The distance's magnitude in meters.
+    """
+    return distance.m_as("meters")
+
+
+def distance_from_value(value: float | pint.Quantity) -> pint.Quantity[float]:
+    """Return *value* as a distance, wrapping a plain number as meters.
+
+    A distance loaded from a serialized fire index arrives as a plain number of meters;
+    a distance built in code already carries units and is kept as it is.
+
+    Args:
+        value: The value to validate.
+
+    Returns:
+        The distance with its units.
+    """
+    if isinstance(value, pint.Quantity):
+        return value
+    return value * units.meters
+
+
+Distance = typing.Annotated[
+    pint.Quantity[float],
+    pydantic.PlainValidator(distance_from_value),
+    pydantic.PlainSerializer(
+        distance_to_magnitude,
+        return_type=float,
+        when_used="json",
+    ),
+]
+
+
 class FireClassification(pydantic.BaseModel):
-    """A fire's border classification and the evidence behind it."""
+    """A fire's border classification and the evidence behind it.
+
+    The distance field's JSON form is a bare magnitude in meters, so the field keeps the
+    unit in its name as the only indication of what is stored.
+    """
 
     classification: BorderClassification
-    distance_to_boundary_in_meters: float
+    distance_to_boundary_in_meters: Distance
     outside_area_fraction: float
     inside_area_fraction: float
     wfigs_to_firis_area_ratio: float | None = None

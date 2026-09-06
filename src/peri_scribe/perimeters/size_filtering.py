@@ -8,9 +8,11 @@ import typing
 import peri_scribe.perimeters.history_attributes
 import peri_scribe.perimeters.versions
 import peri_scribe.units
+from peri_scribe.units import units
 
 
 if typing.TYPE_CHECKING:
+    import pint
     import shapely
 
 
@@ -45,10 +47,8 @@ class PerimeterSizeFilterConfig:
 DEFAULT_SIZE_FILTER_CONFIG = PerimeterSizeFilterConfig()
 
 
-def geometry_area_in_acres(
-    geometry: shapely.Geometry | None,
-) -> float | None:
-    """Return *geometry*'s area in acres, or None when it has none.
+def geometry_area(geometry: shapely.Geometry | None) -> pint.Quantity[float] | None:
+    """Return *geometry*'s area, or None when it has none.
 
     The area is computed geodesically so it is accurate anywhere on Earth.
 
@@ -56,16 +56,14 @@ def geometry_area_in_acres(
         geometry: The perimeter geometry, in degree coordinates, or None.
 
     Returns:
-        The absolute area in acres, or None when *geometry* is missing or empty.
+        The absolute area, or None when *geometry* is missing or empty.
     """
     if geometry is None or geometry.is_empty:
         return None
-    return peri_scribe.units.area_in_acres(geometry)
+    return peri_scribe.units.area(geometry)
 
 
-def computed_area_in_acres(
-    attributes: dict[str, object],
-) -> float | None:
+def computed_area(attributes: dict[str, object]) -> pint.Quantity[float] | None:
     """Return the polygon's computed area for one row, in acres.
 
     The computed-area columns hold the source's own area for the polygon, so a healthy
@@ -83,13 +81,11 @@ def computed_area_in_acres(
             column,
         )
         if value is not None and value > 0:
-            return value
+            return value * units.acres
     return None
 
 
-def incident_size_in_acres(
-    attributes: dict[str, object],
-) -> float | None:
+def incident_size(attributes: dict[str, object]) -> pint.Quantity[float] | None:
     """Return the incident's reported size for one row, in acres.
 
     The incident size is a human report that can outrun the mapped perimeter, so it is
@@ -107,7 +103,7 @@ def incident_size_in_acres(
             column,
         )
         if value is not None and value > 0:
-            return value
+            return value * units.acres
     return None
 
 
@@ -130,19 +126,17 @@ def perimeter_is_implausibly_small(
         True when the geometry has area but is smaller than one of the configured
         fractions of the row's reported sizes.
     """
-    geometry_in_acres = geometry_area_in_acres(observation.geometry)
-    if geometry_in_acres is None:
+    measured = geometry_area(observation.geometry)
+    if measured is None:
         return False
-    computed_in_acres = computed_area_in_acres(observation.attributes)
-    incident_in_acres = incident_size_in_acres(observation.attributes)
+    computed = computed_area(observation.attributes)
+    incident = incident_size(observation.attributes)
     return (
-        computed_in_acres is not None
-        and geometry_in_acres
-        < config.minimum_computed_area_fraction * computed_in_acres
+        computed is not None
+        and measured < config.minimum_computed_area_fraction * computed
     ) or (
-        incident_in_acres is not None
-        and geometry_in_acres
-        < config.minimum_incident_area_fraction * incident_in_acres
+        incident is not None
+        and measured < config.minimum_incident_area_fraction * incident
     )
 
 

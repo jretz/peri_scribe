@@ -18,17 +18,23 @@ import dataclasses
 import datetime
 import html
 import math
+from typing import TYPE_CHECKING
 
 import peri_scribe.perimeters.progression
+from peri_scribe.units import units
 
 
-# Areas at or above this many acres are shown as whole acres; smaller areas keep one or
-# two decimal places so small fires do not read as zero.
-WHOLE_ACRE_THRESHOLD = 100.0
+if TYPE_CHECKING:
+    import pint
+
+
+# Areas at or above this size are shown as whole acres; smaller areas keep one or two
+# decimal places so small fires do not read as zero.
+WHOLE_AREA_THRESHOLD = 100.0 * units.acres
 
 # A fire at or above this containment percentage is fully contained and needs no
 # contained-length annotation.
-FULL_CONTAINMENT_IN_PERCENT = 100.0
+FULL_CONTAINMENT = 100.0 * units.percent
 
 # Perimeter lengths keep at most this many digits after the decimal point and at most
 # this many significant digits, so a large fire's perimeter keeps its scale without
@@ -38,7 +44,7 @@ MAX_PERIMETER_SIGNIFICANT_DIGITS = 3
 
 # At one decimal place, lengths at or above this carry more than three significant
 # digits and are re-rounded to three.
-PERIMETER_SIGNIFICANT_DIGIT_THRESHOLD = 100.0
+PERIMETER_SIGNIFICANT_DIGIT_THRESHOLD = 100.0 * units.miles
 
 # Rows alternate between white and this light background so the eye can follow each
 # label across the balloon.
@@ -46,7 +52,7 @@ ALT_ROW_BACKGROUND_COLOR = "#EEF3F8"
 
 # The balloon's body text is slightly larger than Google Earth's default, so the
 # description reads easily at a glance.
-BODY_FONT_SIZE_IN_PIXELS = 14
+BODY_FONT_SIZE = 14 * units.pixels
 
 # The label shown above a growth ring's balloon table for the area that ring added to
 # the fire, so the ring's own growth reads above the fire's latest state.
@@ -84,31 +90,31 @@ def format_number(value: float | None, decimal_places: int = 0) -> str | None:
     return f"{value:,.{decimal_places}f}".rstrip("0").rstrip(".")
 
 
-def format_in_acres(value: float | None) -> str | None:
+def format_area(value: pint.Quantity[float] | None) -> str | None:
     """Format an area in acres with a unit and size-appropriate precision.
 
     Args:
-        value: The area in acres, or None.
+        value: The area to format, or None.
 
     Returns:
         The formatted area, like ``102,003 acres`` or ``6.5 acres``, or None.
 
     Examples:
-        >>> format_in_acres(6.5)
+        >>> format_area(6.5 * units.acres)
         '6.5 acres'
     """
     if value is None:
         return None
-    if abs(value) >= WHOLE_ACRE_THRESHOLD:
-        number = format_number(value, 0)
-    elif abs(value) >= 1:
-        number = format_number(value, 1)
+    if abs(value) >= WHOLE_AREA_THRESHOLD:
+        number = format_number(value.m_as("acres"), 0)
+    elif abs(value) >= 1 * units.acres:
+        number = format_number(value.m_as("acres"), 1)
     else:
-        number = format_number(value, 2)
+        number = format_number(value.m_as("acres"), 2)
     return f"{number} acres"
 
 
-def format_in_percent(value: float | None) -> str | None:
+def format_percent(value: float | None) -> str | None:
     """Format a containment percentage with a percent sign.
 
     Args:
@@ -118,10 +124,10 @@ def format_in_percent(value: float | None) -> str | None:
         The formatted percentage, like ``77%``, or None.
 
     Examples:
-        >>> format_in_percent(77)
+        >>> format_percent(77)
         '77%'
 
-        >>> format_in_percent(0.5)
+        >>> format_percent(0.5)
         '0.5%'
     """
     if value is None:
@@ -153,7 +159,7 @@ def round_to_significant_digits(value: float, digits: int) -> float:
     return round(value, digits - 1 - exponent)
 
 
-def format_perimeter_length(value: float | None) -> str | None:
+def format_perimeter_length(value: pint.Quantity[float] | None) -> str | None:
     """Format a perimeter length in miles, with a capped precision.
 
     The length is rounded to at most one decimal place and to at most three significant
@@ -161,22 +167,22 @@ def format_perimeter_length(value: float | None) -> str | None:
     ``124``, and ``5678.123`` becomes ``5,680``.
 
     Args:
-        value: The length in miles, or None.
+        value: The length to format, or None.
 
     Returns:
         The formatted length, or None when *value* is None.
 
     Examples:
-        >>> format_perimeter_length(3.1415)
+        >>> format_perimeter_length(3.1415 * units.miles)
         '3.1'
 
-        >>> format_perimeter_length(5678.123)
+        >>> format_perimeter_length(5678.123 * units.miles)
         '5,680'
     """
     if value is None:
         return None
-    rounded = round(value, MAX_PERIMETER_DECIMAL_PLACES)
-    if abs(rounded) >= PERIMETER_SIGNIFICANT_DIGIT_THRESHOLD:
+    rounded = round(value.m_as("miles"), MAX_PERIMETER_DECIMAL_PLACES)
+    if abs(rounded) >= PERIMETER_SIGNIFICANT_DIGIT_THRESHOLD.m_as("miles"):
         rounded = round_to_significant_digits(
             rounded,
             MAX_PERIMETER_SIGNIFICANT_DIGITS,
@@ -184,17 +190,17 @@ def format_perimeter_length(value: float | None) -> str | None:
     return format_number(rounded, MAX_PERIMETER_DECIMAL_PLACES)
 
 
-def format_in_miles(value: float | None) -> str | None:
+def format_miles(value: pint.Quantity[float] | None) -> str | None:
     """Format a length in miles with a unit.
 
     Args:
-        value: The length in miles, or None.
+        value: The length to format, or None.
 
     Returns:
         The formatted length, like ``33.1 miles``, or None.
 
     Examples:
-        >>> format_in_miles(33.14)
+        >>> format_miles(33.14 * units.miles)
         '33.1 miles'
     """
     if value is None:
@@ -204,7 +210,7 @@ def format_in_miles(value: float | None) -> str | None:
 
 def format_containment(
     percent_contained: float | None,
-    exterior_perimeter_in_miles: float | None,
+    exterior_perimeter: pint.Quantity[float] | None,
 ) -> str | None:
     """Format a containment percentage, annotated with its contained length.
 
@@ -216,47 +222,45 @@ def format_containment(
 
     Args:
         percent_contained: The containment percentage, or None.
-        exterior_perimeter_in_miles: The exterior perimeter length in miles, or
-            None.
+        exterior_perimeter: The exterior perimeter length, or None.
 
     Returns:
         The formatted containment, or None.
 
     Examples:
-        >>> format_containment(68, 33.1)
+        >>> format_containment(68, 33.1 * units.miles)
         '68% (22.5 of 33.1 miles)'
     """
     if percent_contained is None:
         return None
-    percent_text = format_in_percent(percent_contained)
-    if exterior_perimeter_in_miles is None:
+    percent_text = format_percent(percent_contained)
+    if exterior_perimeter is None:
         return percent_text
-    if percent_contained >= FULL_CONTAINMENT_IN_PERCENT:
+    if percent_contained >= FULL_CONTAINMENT.m_as("percent"):
         return percent_text
-    contained_in_miles = percent_contained / 100.0 * exterior_perimeter_in_miles
+    contained = percent_contained / 100.0 * exterior_perimeter
     return (
-        f"{percent_text} "
-        f"({format_perimeter_length(contained_in_miles)} of "
-        f"{format_perimeter_length(exterior_perimeter_in_miles)} miles)"
+        f"{percent_text} ({format_perimeter_length(contained)} of "
+        f"{format_perimeter_length(exterior_perimeter)} miles)"
     )
 
 
-def format_cost_in_dollars(value: float | None) -> str | None:
+def format_cost(value: pint.Quantity[float] | None) -> str | None:
     """Format a cost in whole dollars with a dollar sign.
 
     Args:
-        value: The cost in dollars, or None.
+        value: The cost, or None.
 
     Returns:
         The formatted cost, like ``$104,600,000``, or None.
 
     Examples:
-        >>> format_cost_in_dollars(104600000)
+        >>> format_cost(104600000 * units.dollars)
         '$104,600,000'
     """
     if value is None:
         return None
-    return f"${format_number(value, 0)}"
+    return f"${format_number(value.m_as('dollars'), 0)}"
 
 
 def format_personnel_count(value: float | None) -> str | None:
@@ -309,11 +313,11 @@ class FireDescription:
     identifier: str | None = None
     source: str | None = None
     mission: str | None = None
-    area_in_acres: float | None = None
-    exterior_perimeter_in_miles: float | None = None
+    area: pint.Quantity[float] | None = None
+    exterior_perimeter: pint.Quantity[float] | None = None
     percent_contained: float | None = None
-    estimated_cost_to_date_in_dollars: float | None = None
-    estimated_final_cost_in_dollars: float | None = None
+    estimated_cost_to_date: pint.Quantity[float] | None = None
+    estimated_final_cost: pint.Quantity[float] | None = None
     total_personnel: float | None = None
     protecting_unit: str | None = None
     discovery_time: datetime.datetime | None = None
@@ -357,26 +361,20 @@ def description_rows(
         The display rows, in reading order, with None where a value is missing.
     """
     return [
-        (AREA_LABEL, format_in_acres(description.area_in_acres)),
+        (AREA_LABEL, format_area(description.area)),
         (
             "Exterior perimeter",
-            format_in_miles(description.exterior_perimeter_in_miles),
+            format_miles(description.exterior_perimeter),
         ),
         (
             "Containment",
             format_containment(
                 description.percent_contained,
-                description.exterior_perimeter_in_miles,
+                description.exterior_perimeter,
             ),
         ),
-        (
-            "Cost to date",
-            format_cost_in_dollars(description.estimated_cost_to_date_in_dollars),
-        ),
-        (
-            "Estimated final cost",
-            format_cost_in_dollars(description.estimated_final_cost_in_dollars),
-        ),
+        ("Cost to date", format_cost(description.estimated_cost_to_date)),
+        ("Estimated final cost", format_cost(description.estimated_final_cost)),
         ("Personnel", format_personnel_count(description.total_personnel)),
         ("Source", description.source),
         ("Identifier", description.identifier),
@@ -419,7 +417,7 @@ def description_html(
     Returns:
         The balloon's KML description text.
     """
-    body_style = f' style="font-size:{BODY_FONT_SIZE_IN_PIXELS}px;"'
+    body_style = f' style="font-size:{BODY_FONT_SIZE.magnitude}px;"'
     parts = [
         f'<table cellspacing="0" cellpadding="4"{body_style}>',
     ]

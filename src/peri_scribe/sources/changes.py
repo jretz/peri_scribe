@@ -8,7 +8,7 @@ import typing
 import peri_scribe.geo.parsing
 import peri_scribe.models
 import peri_scribe.sources.feed_types
-import peri_scribe.units
+from peri_scribe.units import units
 
 
 if typing.TYPE_CHECKING:
@@ -70,7 +70,7 @@ def modified_datetime_from(value: object) -> datetime.datetime | None:
         parsed = parse_iso_datetime(value)
     elif isinstance(value, (int, float)) and not isinstance(value, bool):
         parsed = datetime.datetime.fromtimestamp(
-            value / peri_scribe.units.MILLISECONDS_PER_SECOND,
+            (value * units.milliseconds).m_as("seconds"),
             tz=datetime.UTC,
         )
     else:

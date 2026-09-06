@@ -45,11 +45,11 @@ class SourceFile:
         Examples:
             >>> SourceFile(
             ...     serial_number=1234,
-            ...     last_edit_timestamp=1700000000000,
+            ...     last_edit_timestamp=1_700_000_000_000,
             ... ).relative_path
             PosixPath('001___/001234,lastEdit=1700000000000.gpkg')
         """
-        bucket = f"{(self.serial_number // 1000):03d}___"
+        bucket = f"{(self.serial_number // 1_000):03d}___"
         filename = (
             f"{self.serial_number:06d},"
             f"{LAST_EDIT_TIMESTAMP_PREFIX}{self.last_edit_timestamp}.gpkg"
@@ -112,7 +112,7 @@ def next_serial_number(
         The serial number for the new snapshot.
 
     Examples:
-        >>> next_serial_number([], 1700000000000)
+        >>> next_serial_number([], 1_700_000_000_000)
         0
 
         >>> next_serial_number([SourceFile(serial_number=2, last_edit_timestamp=1)], 2)
@@ -135,7 +135,7 @@ def existing_source_files(directory: pathlib.Path) -> list[SourceFile]:
     """Return the source files in *directory*, sorted by serial number.
 
     The directory tree is searched recursively, so snapshots stored under
-    ``sources/{feed}/{serial//1000:03d}___/{serial}.gpkg`` are all found.
+    ``sources/{feed}/{serial//1_000:03d}___/{serial}.gpkg`` are all found.
 
     Args:
         directory: The directory to list source files from.

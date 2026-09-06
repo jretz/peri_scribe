@@ -1,24 +1,22 @@
-"""Physical unit conversions and area measurement for peri_scribe."""
+"""Geodesic area and perimeter measurement for peri_scribe."""
 
 from __future__ import annotations
 
+import pint
 import pyproj
 import shapely
 
 
-SQUARE_METERS_PER_ACRE = 4046.8564224
+# The pint unit registry shared by every module that works with physical quantities.
+units = pint.UnitRegistry()
 
-MILLISECONDS_PER_SECOND = 1000.0
-
-METERS_PER_KILOMETER = 1000.0
-
-MILES_PER_KILOMETER = 0.621371192237334
-
-METERS_PER_MILE = 1609.344
+# Costs are reported in US dollars; pint has no built-in currency unit, so one is
+# defined with its common symbols and the ISO 4217 code.
+units.define("dollar = [currency] = $ = USD")
 
 
-def area_in_square_meters(geometry: shapely.Geometry) -> float:
-    """Return *geometry*'s area in square meters.
+def area(geometry: shapely.Geometry) -> pint.Quantity[float]:
+    """Return the absolute geodesic area of *geometry*.
 
     The area is computed geodesically so it is accurate anywhere on Earth.
 
@@ -26,38 +24,22 @@ def area_in_square_meters(geometry: shapely.Geometry) -> float:
         geometry: The geometry to measure, in WGS 84 degrees.
 
     Returns:
-        The absolute area in square meters.
+        The absolute area as a quantity in square meters.
 
     Examples:
-        >>> area_in_square_meters(shapely.Point(0, 0))
+        >>> area(shapely.Point(0, 0)).m_as("acres")
         0.0
     """
-    area_in_square_meters, _perimeter = pyproj.Geod(
+    measured_area, _perimeter = pyproj.Geod(
         ellps="WGS84",
     ).geometry_area_perimeter(geometry)
-    return abs(area_in_square_meters)
+    return abs(measured_area) * units.meters**2
 
 
-def area_in_acres(geometry: shapely.Geometry) -> float:
-    """Return *geometry*'s area in acres.
-
-    The area is computed geodesically so it is accurate anywhere on Earth.
-
-    Args:
-        geometry: The geometry to measure, in WGS 84 degrees.
-
-    Returns:
-        The absolute area in acres.
-
-    Examples:
-        >>> area_in_acres(shapely.Point(0, 0))
-        0.0
-    """
-    return area_in_square_meters(geometry) / SQUARE_METERS_PER_ACRE
-
-
-def exterior_perimeter_in_miles(geometry: shapely.Geometry | None) -> float | None:
-    """Return *geometry*'s exterior perimeter length in miles, or None.
+def exterior_perimeter(
+    geometry: shapely.Geometry | None,
+) -> pint.Quantity[float] | None:
+    """Return *geometry*'s exterior perimeter length, or None.
 
     The length is the sum of each polygon part's outer ring, measured geodesically
     so it is accurate anywhere on Earth. Interior rings (unburned islands inside a
@@ -68,11 +50,11 @@ def exterior_perimeter_in_miles(geometry: shapely.Geometry | None) -> float | No
         geometry: The perimeter geometry, in WGS 84 degrees.
 
     Returns:
-        The exterior perimeter length in miles, or None when there is no polygon
-        exterior to measure.
+        The exterior perimeter length as a quantity in meters, or None when there is no
+        polygon exterior to measure.
 
     Examples:
-        >>> exterior_perimeter_in_miles(None) is None
+        >>> exterior_perimeter(None) is None
         True
     """
     if geometry is None or geometry.is_empty:
@@ -85,5 +67,5 @@ def exterior_perimeter_in_miles(geometry: shapely.Geometry | None) -> float | No
     if not exteriors:
         return None
     geod = pyproj.Geod(ellps="WGS84")
-    length_in_meters = sum(geod.geometry_length(exterior) for exterior in exteriors)
-    return length_in_meters / METERS_PER_KILOMETER * MILES_PER_KILOMETER
+    length = sum(geod.geometry_length(exterior) for exterior in exteriors)
+    return length * units.meters

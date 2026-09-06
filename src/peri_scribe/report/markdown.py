@@ -10,23 +10,25 @@ import typing
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.folders
 import peri_scribe.report.gathering
+from peri_scribe.units import units
 
 
 REPORTS_DIRECTORY_NAME = "reports"
 
 # The fast-growth window, expressed in whole hours for the report's prose.
-FAST_GROWTH_WINDOW_IN_HOURS = int(
-    peri_scribe.kml.folders.FAST_GROWTH_LOOKBACK / datetime.timedelta(hours=1),
+FAST_GROWTH_WINDOW = (
+    int(peri_scribe.kml.folders.FAST_GROWTH_LOOKBACK / datetime.timedelta(hours=1))
+    * units.hours
 )
 
 # The smallest growth percentage the report's formatter shows without rounding to 0%,
 # so a fire's details claim it grew only when that growth is visible.
-MINIMUM_DISPLAYED_GROWTH_IN_PERCENT = 0.1
+MINIMUM_DISPLAYED_GROWTH_PERCENT = 0.1 * units.percent
 
 # The growth facts' labels, spelled once so the summary tables' column headings and the
 # details tables' row labels stay in step; they reuse the fast-growth window so the
 # hours they name cannot drift from the window the growth is measured over.
-GROWTH_LABEL = f"{FAST_GROWTH_WINDOW_IN_HOURS}-Hour Growth"
+GROWTH_LABEL = f"{FAST_GROWTH_WINDOW.m_as('hour')}-Hour Growth"
 GROWTH_IN_ACRES_LABEL = f"{GROWTH_LABEL} (acres)"
 GROWTH_IN_PERCENT_LABEL = f"{GROWTH_LABEL} (%)"
 
@@ -84,9 +86,7 @@ def discovery_cell(
     )
 
 
-def growth_in_acres_cell(
-    entry: peri_scribe.report.gathering.FireReportEntry,
-) -> str | None:
+def growth_cell(entry: peri_scribe.report.gathering.FireReportEntry) -> str | None:
     """Return *entry*'s signed acreage growth for a table cell, or None when unknown.
 
     Args:
@@ -95,12 +95,12 @@ def growth_in_acres_cell(
     Returns:
         The signed growth in acres, or None.
     """
-    if entry.growth_in_acres is None:
+    if entry.growth is None:
         return None
-    return f"+{peri_scribe.kml.descriptions.format_in_acres(entry.growth_in_acres)}"
+    return f"+{peri_scribe.kml.descriptions.format_area(entry.growth)}"
 
 
-def growth_in_percent_cell(
+def growth_percent_cell(
     entry: peri_scribe.report.gathering.FireReportEntry,
 ) -> str | None:
     """Return *entry*'s signed percent growth for a table cell, or None when unknown.
@@ -111,9 +111,13 @@ def growth_in_percent_cell(
     Returns:
         The signed growth in percent, or None.
     """
-    if entry.growth_in_percent is None:
+    growth_percent = entry.growth_percent
+    if growth_percent is None:
         return None
-    return f"+{peri_scribe.kml.descriptions.format_in_percent(entry.growth_in_percent)}"
+    formatted = peri_scribe.kml.descriptions.format_percent(
+        growth_percent.m_as("percent"),
+    )
+    return f"+{formatted}"
 
 
 def location_cell(
@@ -143,9 +147,7 @@ def area_fact(
     """
     if entry.description is None:
         return None
-    return peri_scribe.kml.descriptions.format_in_acres(
-        entry.description.area_in_acres,
-    )
+    return peri_scribe.kml.descriptions.format_area(entry.description.area)
 
 
 def fire_heading(
@@ -344,17 +346,17 @@ def fire_detail_rows(
         ):
             if value is not None:
                 rows.append((label, value))
-    if entry.growth_in_acres is not None and entry.growth_in_acres > 0:
-        growth_in_acres = growth_in_acres_cell(entry)
-        if growth_in_acres is not None:
-            rows.append((GROWTH_IN_ACRES_LABEL, growth_in_acres))
+    if entry.growth is not None and entry.growth > 0 * units.acres:
+        growth_cell_text = growth_cell(entry)
+        if growth_cell_text is not None:
+            rows.append((GROWTH_IN_ACRES_LABEL, growth_cell_text))
     if (
-        entry.growth_in_percent is not None
-        and entry.growth_in_percent >= MINIMUM_DISPLAYED_GROWTH_IN_PERCENT
+        entry.growth_percent is not None
+        and entry.growth_percent >= MINIMUM_DISPLAYED_GROWTH_PERCENT
     ):
-        growth_in_percent = growth_in_percent_cell(entry)
-        if growth_in_percent is not None:
-            rows.append((GROWTH_IN_PERCENT_LABEL, growth_in_percent))
+        growth_percent = growth_percent_cell(entry)
+        if growth_percent is not None:
+            rows.append((GROWTH_IN_PERCENT_LABEL, growth_percent))
     return tuple(rows)
 
 
@@ -440,7 +442,7 @@ def markdown_text(
             report.fastest_growing_by_acres,
             columns=(
                 (LOCATION_LABEL, location_cell, False),
-                (GROWTH_LABEL, growth_in_acres_cell, True),
+                (GROWTH_LABEL, growth_cell, True),
                 (AREA_LABEL, area_fact, True),
             ),
             anchors=anchors,
@@ -452,7 +454,7 @@ def markdown_text(
             report.fastest_growing_by_percent,
             columns=(
                 (LOCATION_LABEL, location_cell, False),
-                (GROWTH_LABEL, growth_in_percent_cell, True),
+                (GROWTH_LABEL, growth_percent_cell, True),
                 (AREA_LABEL, area_fact, True),
             ),
             anchors=anchors,

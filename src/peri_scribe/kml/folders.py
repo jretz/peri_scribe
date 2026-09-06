@@ -21,6 +21,11 @@ import peri_scribe.kml.tour
 import peri_scribe.models
 import peri_scribe.perimeters.progression
 import peri_scribe.units
+from peri_scribe.units import units
+
+
+if typing.TYPE_CHECKING:
+    import pint
 
 
 ACTIVE_FIRES_FOLDER_NAME = "Active Fires"
@@ -40,8 +45,8 @@ NEW_NOTABLE_DISCOVERY_LOOKBACK = datetime.timedelta(days=5)
 # The growth window for the fast-growing views, and the minimum growth a fire needs to
 # qualify for each.
 FAST_GROWTH_LOOKBACK = datetime.timedelta(hours=48)
-MINIMUM_FAST_GROWTH_IN_ACRES = 1000.0
-MINIMUM_FAST_GROWTH_IN_PERCENT = 10.0
+MINIMUM_FAST_GROWTH = 1_000.0 * units.acres
+MINIMUM_FAST_GROWTH_PERCENT = 10.0 * units.percent
 
 # A fire stays in the "Fires with Most Personnel" view only while it was updated this
 # recently.
@@ -60,21 +65,20 @@ INTERIOR_FOLDER_NAME = "Interior"
 
 def fire_balloon(
     fire: peri_scribe.kml.fire_data.FireGeometry,
-    added_area_in_acres: float | None = None,
+    added_area: pint.Quantity[float] | None = None,
 ) -> str | None:
     """Return the KML balloon text for *fire*'s placemarks.
 
     Every placemark showing the fire as a whole carries the same balloon describing the
     fire's latest state, so a reader sees the same facts whether they click the point,
-    an outline, or a ring. With *added_area_in_acres*, the text instead opens that
-    balloon's table with the area a growth ring added to the fire, so the ring's own
-    growth reads above the fire's shared state. A fire without a description has no
-    balloon.
+    an outline, or a ring. With *added_area*, the text instead opens that balloon's
+    table with the area a growth ring added to the fire, so the ring's own growth reads
+    above the fire's shared state. A fire without a description has no balloon.
 
     Args:
         fire: The fire to describe.
-        added_area_in_acres: The acres the placemark's growth ring added, or None for
-            the fire's own placemarks.
+        added_area: The area the placemark's growth ring added, or None for the fire's
+            own placemarks.
 
     Returns:
         The balloon's KML description text, or None when the fire has no description.
@@ -82,7 +86,7 @@ def fire_balloon(
     if fire.description is None:
         return None
     image_filenames = tuple(image.filename for image in fire.images)
-    if added_area_in_acres is None:
+    if added_area is None:
         return peri_scribe.kml.descriptions.description_html(
             fire.description,
             image_filenames,
@@ -93,7 +97,7 @@ def fire_balloon(
         leading_rows=(
             (
                 peri_scribe.kml.descriptions.ADDED_AREA_LABEL,
-                peri_scribe.kml.descriptions.format_in_acres(added_area_in_acres),
+                peri_scribe.kml.descriptions.format_area(added_area),
             ),
         ),
     )
@@ -245,7 +249,7 @@ def fire_folder(
                 description=description,
             )
         if rings:
-            added_areas_in_acres = peri_scribe.kml.fire_data.ring_added_areas_in_acres(
+            added_areas = peri_scribe.kml.fire_data.ring_added_areas(
                 tuple(ring for ring, _color in rings),
             )
             with writer.folder(
@@ -263,10 +267,7 @@ def fire_folder(
                         ring_style_urls[color],
                         ring.geometry,
                         index,
-                        description=fire_balloon(
-                            fire,
-                            added_areas_in_acres[index],
-                        ),
+                        description=fire_balloon(fire, added_areas[index]),
                         visible=visible,
                         placemark_id=peri_scribe.kml.tour.interior_ring_id(
                             folder_id,
@@ -526,13 +527,13 @@ def new_notable_fires(
 def fire_growth(
     fire: peri_scribe.kml.fire_data.FireGeometry,
     reference_time: datetime.datetime,
-) -> tuple[float | None, float | None]:
+) -> tuple[pint.Quantity[float] | None, pint.Quantity[float] | None]:
     """Return *fire*'s growth over the fast-growth window.
 
     The fire's latest known area is compared with its area at the start of the window,
-    measured from its perimeters. A fire first observed inside the window has no area
-    at the window's start, so it is treated as having grown from zero acres: its whole
-    latest area counts as growth, and its growth in percent is unknown because a zero
+    measured from its perimeters. A fire first observed inside the window has no area at
+    the window's start, so it is treated as having grown from zero acres: its whole
+    latest area counts as growth, and its growth percent is unknown because a zero
     baseline has no percentage.
 
     Args:
@@ -540,7 +541,7 @@ def fire_growth(
         reference_time: The wall-clock time of the KMZ generation.
 
     Returns:
-        The growth in acres and percent, or None for each when it cannot be measured.
+        The growth and growth percent, or None for each when it cannot be measured.
     """
     timed_perimeters: list[
         tuple[datetime.datetime, peri_scribe.kml.fire_data.Perimeter],
@@ -553,9 +554,7 @@ def fire_growth(
         return None, None
     timed_perimeters.sort(key=operator.itemgetter(0))
     latest_perimeter = timed_perimeters[-1][1]
-    latest_area_in_acres = peri_scribe.units.area_in_acres(
-        latest_perimeter.geometry,
-    )
+    latest_area = peri_scribe.units.area(latest_perimeter.geometry)
     cutoff = reference_time - FAST_GROWTH_LOOKBACK
     baseline_perimeter: peri_scribe.kml.fire_data.Perimeter | None = None
     for observation_time, perimeter in reversed(timed_perimeters):
@@ -563,29 +562,26 @@ def fire_growth(
             baseline_perimeter = perimeter
             break
     if baseline_perimeter is None:
-        return latest_area_in_acres, None
-    baseline_area_in_acres = peri_scribe.units.area_in_acres(
-        baseline_perimeter.geometry,
-    )
-    growth_in_acres = latest_area_in_acres - baseline_area_in_acres
-    growth_in_percent = (
-        growth_in_acres / baseline_area_in_acres * 100.0
-        if baseline_area_in_acres > 0
+        return latest_area, None
+    baseline_area = peri_scribe.units.area(baseline_perimeter.geometry)
+    growth = latest_area - baseline_area
+    growth_percent = (
+        (growth / baseline_area) * 100.0 * units.percent
+        if baseline_area.magnitude > 0
         else None
     )
-    return growth_in_acres, growth_in_percent
+    return growth, growth_percent
 
 
 def fast_growing_fires_by_acres(
     fires: list[peri_scribe.kml.fire_data.FireGeometry],
     reference_time: datetime.datetime | None,
 ) -> list[peri_scribe.kml.fire_data.FireGeometry]:
-    """Return the fires that grew most in acres over the fast-growth window.
+    """Return the fires that grew most in area over the fast-growth window.
 
-    A fire qualifies when it grew at least :data:`MINIMUM_FAST_GROWTH_IN_ACRES` acres;
-    a fire first observed inside the window is treated as having grown from zero acres,
-    so its whole latest area counts. The result is limited to :data:`TOP_FIRE_COUNT`
-    fires.
+    A fire qualifies when it grew at least :data:`MINIMUM_FAST_GROWTH`; a fire first
+    observed inside the window is treated as having grown from zero acres, so its whole
+    latest area counts. The result is limited to :data:`TOP_FIRE_COUNT` fires.
 
     Args:
         fires: The fires that can be shown in the KMZ.
@@ -597,16 +593,15 @@ def fast_growing_fires_by_acres(
     """
     if reference_time is None:
         return []
-    growing: list[tuple[peri_scribe.kml.fire_data.FireGeometry, float]] = []
+    growing: list[
+        tuple[peri_scribe.kml.fire_data.FireGeometry, pint.Quantity[float]]
+    ] = []
     for fire in fires:
-        growth_in_acres, _growth_in_percent = fire_growth(fire, reference_time)
-        if (
-            growth_in_acres is not None
-            and growth_in_acres >= MINIMUM_FAST_GROWTH_IN_ACRES
-        ):
-            growing.append((fire, growth_in_acres))
-    growing.sort(key=lambda pair: (-pair[1], pair[0].name.casefold()))
-    return [fire for fire, _growth_in_acres in growing][:TOP_FIRE_COUNT]
+        growth, _growth_percent = fire_growth(fire, reference_time)
+        if growth is not None and growth >= MINIMUM_FAST_GROWTH:
+            growing.append((fire, growth))
+    growing.sort(key=lambda pair: (-pair[1].m_as("acres"), pair[0].name.casefold()))
+    return [fire for fire, _growth in growing][:TOP_FIRE_COUNT]
 
 
 def fast_growing_fires_by_percent(
@@ -615,9 +610,9 @@ def fast_growing_fires_by_percent(
 ) -> list[peri_scribe.kml.fire_data.FireGeometry]:
     """Return the fires that grew most by percent over the fast-growth window.
 
-    A fire qualifies when it grew at least :data:`MINIMUM_FAST_GROWTH_IN_PERCENT`
-    percent; a fire without an area at the window's start has no growth percent and is
-    skipped. The result is limited to :data:`TOP_FIRE_COUNT` fires.
+    A fire qualifies when it grew at least :data:`MINIMUM_FAST_GROWTH_PERCENT` percent;
+    a fire without an area at the window's start has no growth percent and is skipped.
+    The result is limited to :data:`TOP_FIRE_COUNT` fires.
 
     Args:
         fires: The fires that can be shown in the KMZ.
@@ -631,14 +626,11 @@ def fast_growing_fires_by_percent(
         return []
     growing: list[tuple[peri_scribe.kml.fire_data.FireGeometry, float]] = []
     for fire in fires:
-        _growth_in_acres, growth_in_percent = fire_growth(fire, reference_time)
-        if (
-            growth_in_percent is not None
-            and growth_in_percent >= MINIMUM_FAST_GROWTH_IN_PERCENT
-        ):
-            growing.append((fire, growth_in_percent))
+        _, growth_percent = fire_growth(fire, reference_time)
+        if growth_percent is not None and growth_percent >= MINIMUM_FAST_GROWTH_PERCENT:
+            growing.append((fire, growth_percent.m_as("percent")))
     growing.sort(key=lambda pair: (-pair[1], pair[0].name.casefold()))
-    return [fire for fire, _growth_in_percent in growing][:TOP_FIRE_COUNT]
+    return [fire for fire, _ in growing][:TOP_FIRE_COUNT]
 
 
 def most_personnel_fires(

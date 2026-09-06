@@ -13,15 +13,19 @@ import typing
 import peri_scribe.kml.geometry
 import peri_scribe.kml.styles
 import peri_scribe.perimeters.progression
+from peri_scribe.units import units
+
+
+if typing.TYPE_CHECKING:
+    import pint
 
 
 # A tour advances through fire time at one second of playback per day, and holds the
-# final frame for two seconds. Fires spanning more than MAX_TOUR_PLAYBACK_IN_SECONDS
-# days play faster so the whole progression takes about that long instead of one second
-# per day.
-TOUR_PLAYBACK_SECONDS_PER_DAY = 1.0
-MAX_TOUR_PLAYBACK_IN_SECONDS = 5.0
-FINAL_TOUR_WAIT_IN_SECONDS = 1.0
+# final frame for two seconds. Fires spanning more than the base-rate span play faster
+# so the whole progression takes about MAX_TOUR_PLAYBACK instead of one second per day.
+TOUR_PLAYBACK_RATE = 1.0
+MAX_TOUR_PLAYBACK = 5.0 * units.seconds
+FINAL_TOUR_WAIT = 1.0 * units.seconds
 
 MAPPING_NAME = "Perimeter"
 UNKNOWN_MAPPING_NAME = "Unknown Mapping"
@@ -110,15 +114,13 @@ def interior_ring_id(folder_id: str, index: int) -> str:
     return f"progression-ring-{folder_id}-{index}"
 
 
-def tour_seconds_per_day(
-    ring_times: typing.Sequence[datetime.datetime | None],
-) -> float:
+def tour_playback_rate(ring_times: typing.Sequence[datetime.datetime | None]) -> float:
     """Return the tour's playback rate, in seconds per day of fire time.
 
-    Fires spanning at most MAX_TOUR_PLAYBACK_IN_SECONDS days play at
-    TOUR_PLAYBACK_SECONDS_PER_DAY so every day stays visible; longer fires play
-    proportionally faster so the whole progression takes about
-    MAX_TOUR_PLAYBACK_IN_SECONDS.
+    Fires spanning at most the base-rate span play at TOUR_PLAYBACK_RATE so every day
+    stays visible; longer fires play proportionally faster so the whole progression
+    takes about MAX_TOUR_PLAYBACK. The rate is a plain number because pint reduces a
+    seconds-per-day ratio to dimensionless.
 
     Args:
         ring_times: Each interior ring's observation time, oldest first.
@@ -127,24 +129,26 @@ def tour_seconds_per_day(
         The playback rate in seconds per day.
 
     Examples:
-        >>> tour_seconds_per_day([])
+        >>> tour_playback_rate([])
         1.0
     """
     observed_times = [time for time in ring_times if time is not None]
     if not observed_times:
-        return TOUR_PLAYBACK_SECONDS_PER_DAY
-    total_in_days = (observed_times[-1] - observed_times[0]).total_seconds() / 86_400
-    if total_in_days <= MAX_TOUR_PLAYBACK_IN_SECONDS:
-        return TOUR_PLAYBACK_SECONDS_PER_DAY
-    return MAX_TOUR_PLAYBACK_IN_SECONDS / total_in_days
+        return TOUR_PLAYBACK_RATE
+    span = observed_times[-1] - observed_times[0]
+    span_in_days = span / datetime.timedelta(days=1)
+    base_rate_span_in_days = MAX_TOUR_PLAYBACK.m_as("seconds") / TOUR_PLAYBACK_RATE
+    if span_in_days <= base_rate_span_in_days:
+        return TOUR_PLAYBACK_RATE
+    return MAX_TOUR_PLAYBACK.m_as("seconds") / span_in_days
 
 
-def tour_wait_in_seconds(
+def tour_wait(
     earlier: datetime.datetime | None,
     later: datetime.datetime | None,
-    seconds_per_day: float,
-) -> float:
-    """Return the tour wait, in seconds, between two ring observations.
+    playback_rate: float,
+) -> pint.Quantity[float]:
+    """Return the tour wait between two ring observations.
 
     The wait is the number of days that separate the two observations times the tour's
     playback rate. A missing observation time yields no wait, because there is no time
@@ -153,15 +157,16 @@ def tour_wait_in_seconds(
     Args:
         earlier: The earlier ring's observation time, or None.
         later: The later ring's observation time, or None.
-        seconds_per_day: The tour's playback rate in seconds per day.
+        playback_rate: The tour's playback rate in seconds per day.
 
     Returns:
-        The wait in seconds.
+        The wait.
     """
     if earlier is None or later is None:
-        return 0.0
-    in_days = (later - earlier).total_seconds() / 86_400
-    return seconds_per_day * in_days
+        return 0 * units.seconds
+    gap = later - earlier
+    gap_in_days = gap / datetime.timedelta(days=1)
+    return gap_in_days * playback_rate * units.seconds
 
 
 def visibility_change(
@@ -203,10 +208,10 @@ def progression_tour(
     The tour shows the innermost ring alone, then waits for the fire time between
     observations at the tour's playback rate before revealing each next ring, and holds
     the final frame for two seconds. The playback rate is one second per day for fires
-    spanning at most MAX_TOUR_PLAYBACK_IN_SECONDS days, and faster for longer fires so
-    the whole progression takes about MAX_TOUR_PLAYBACK_IN_SECONDS. Callers place it
-    where they want it in the folder; it targets the rings by their placemark ids, so
-    the rings' listing order does not affect it.
+    spanning at most the base-rate span, and faster for longer fires so the whole
+    progression takes about MAX_TOUR_PLAYBACK. Callers place it where they want it in
+    the folder; it targets the rings by their placemark ids, so the rings' listing order
+    does not affect it.
 
     Args:
         writer: The writer to append to.
@@ -215,7 +220,7 @@ def progression_tour(
         visible: Whether the tour is visible.
     """
     ring_ids = [interior_ring_id(folder_id, index) for index in range(len(ring_times))]
-    seconds_per_day = tour_seconds_per_day(ring_times)
+    playback_rate = tour_playback_rate(ring_times)
     parts = writer.parts
     parts.append("<gx:Tour>")
     if not visible:
@@ -228,14 +233,10 @@ def progression_tour(
         parts.append(visibility_change(ring_ids, index))
         parts.append("</Change></Update></gx:AnimatedUpdate>")
         if index + 1 < len(ring_times):
-            wait_in_seconds = tour_wait_in_seconds(
-                ring_time,
-                ring_times[index + 1],
-                seconds_per_day,
-            )
+            wait = tour_wait(ring_time, ring_times[index + 1], playback_rate)
         else:
-            wait_in_seconds = FINAL_TOUR_WAIT_IN_SECONDS
+            wait = FINAL_TOUR_WAIT
         parts.append(
-            f"<gx:Wait><gx:duration>{wait_in_seconds}</gx:duration></gx:Wait>",
+            f"<gx:Wait><gx:duration>{wait.m_as('second')}</gx:duration></gx:Wait>",
         )
     parts.append("</gx:Playlist></gx:Tour>")

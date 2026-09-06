@@ -1,6 +1,6 @@
 [project]
 name = "peri_scribe"
-version = "1.0.2"
+version = "1.1.0"
 requires-python = "==3.14.*"
 dependencies = [
     "arcgis",
@@ -9,6 +9,7 @@ dependencies = [
     "geopandas",
     "ijson",
     "pillow",
+    "pint",
     "pydantic",
     "pygments",  # For pytest code highlighting
     "pyproj",
@@ -18,7 +19,11 @@ dependencies = [
     "requests",
     "ruff",
     "seaborn",
-    "setuptools",  # For https://github.com/Esri/arcgis-python-api/issues/2428
+
+    # For https://github.com/Esri/arcgis-python-api/issues/2428,
+    # fix scheduled for v2.4.4
+    "setuptools",
+
     "simplekml",
     "stream-unzip",
     "structlog",

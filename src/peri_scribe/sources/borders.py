@@ -16,11 +16,12 @@ import us
 import peri_scribe.exceptions
 import peri_scribe.geo.data
 import peri_scribe.models
-import peri_scribe.units
+from peri_scribe.units import units
 
 
 if typing.TYPE_CHECKING:
     import arcgis.features
+    import pint
 
 
 logger = structlog.get_logger()
@@ -41,7 +42,7 @@ NEIGHBOR_ABBREVIATION_COLUMN_NAME = "NEIGHBOR_ABBR"
 LENGTH_COLUMN_NAME = "LENGTH_KM"
 
 
-INTERSECTION_TOLERANCE_DEGREES = 1e-5
+INTERSECTION_TOLERANCE = 1e-5 * units.degrees
 
 
 NEIGHBOR_STATES = [us.states.AZ, us.states.NV, us.states.OR]
@@ -94,16 +95,16 @@ def line_parts(geometry: shapely.Geometry) -> list[shapely.LineString]:
     return []
 
 
-def total_line_length_in_degrees(geometry: shapely.Geometry) -> float:
-    """Return the total planar length of the LineStrings in *geometry*, in degrees.
+def total_line_length(geometry: shapely.Geometry) -> pint.Quantity[float]:
+    """Return the total planar length of the LineStrings in *geometry*.
 
     Args:
         geometry: The geometry to measure.
 
     Returns:
-        The summed planar length of the contained LineStrings, in degrees.
+        The summed planar length of the contained LineStrings.
     """
-    return sum(part.length for part in line_parts(geometry))
+    return sum(part.length for part in line_parts(geometry)) * units.degrees
 
 
 def shared_border(
@@ -130,10 +131,10 @@ def shared_border(
     candidates = [
         california_boundary.intersection(neighbor_geometry),
         california_boundary.intersection(
-            neighbor_geometry.buffer(INTERSECTION_TOLERANCE_DEGREES),
+            neighbor_geometry.buffer(INTERSECTION_TOLERANCE.m_as("degrees")),
         ),
     ]
-    best = max(candidates, key=total_line_length_in_degrees)
+    best = max(candidates, key=total_line_length)
     parts = line_parts(best)
     if not parts:
         message = "California and its neighbor share no border"
@@ -143,20 +144,18 @@ def shared_border(
     return shapely.MultiLineString(parts)
 
 
-def border_length_in_kilometers(geometry: shapely.Geometry) -> float:
-    """Return the geodesic length of *geometry* in kilometers.
+def border_length(geometry: shapely.Geometry) -> pint.Quantity[float]:
+    """Return the geodesic length of *geometry*.
 
     Args:
         geometry: The border geometry to measure.
 
     Returns:
-        The geodesic length in kilometers.
+        The geodesic length.
     """
     geod = pyproj.Geod(ellps="WGS84")
-    return (
-        sum(geod.geometry_length(part) for part in line_parts(geometry))
-        / peri_scribe.units.METERS_PER_KILOMETER
-    )
+    length = sum(geod.geometry_length(part) for part in line_parts(geometry))
+    return length * units.meters
 
 
 def layer_dataframe(
@@ -285,7 +284,7 @@ def border_dataframe(
     """
     names: list[str] = []
     abbreviations: list[str] = []
-    lengths_in_kilometers: list[float] = []
+    lengths: list[float] = []
     borders: list[shapely.Geometry] = []
     for index in range(len(neighbors)):
         border = shared_border(
@@ -294,15 +293,13 @@ def border_dataframe(
         )
         names.append(str(neighbors["STATE_NAME"].iloc[index]))
         abbreviations.append(str(neighbors["STATE_ABBR"].iloc[index]))
-        lengths_in_kilometers.append(
-            round(border_length_in_kilometers(border), 2),
-        )
+        lengths.append(round(border_length(border).m_as("kilometers"), 2))
         borders.append(border)
     dataframe = geopandas.GeoDataFrame(
         {
             NEIGHBOR_COLUMN_NAME: names,
             NEIGHBOR_ABBREVIATION_COLUMN_NAME: abbreviations,
-            LENGTH_COLUMN_NAME: lengths_in_kilometers,
+            LENGTH_COLUMN_NAME: lengths,
         },
         geometry=borders,
         crs=pyproj.CRS.from_epsg(peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID),

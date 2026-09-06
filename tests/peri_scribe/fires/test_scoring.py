@@ -10,6 +10,7 @@ import pytest
 import peri_scribe.fires.scoring
 import peri_scribe.models
 import tests.peri_scribe.fires.fire_helpers
+from peri_scribe.units import units
 
 
 def test_tiered_points_returns_zero_for_missing() -> None:
@@ -178,9 +179,9 @@ def test_fire_score_for_combines_all_signals() -> None:
     score = peri_scribe.fires.scoring.fire_score_for(
         record,
         peri_scribe.fires.scoring.PerimeterMetrics(
-            area_acres=120_000.0,
-            growth_acres=60_000.0,
-            first_mapping_acres=120_000.0,
+            area=120_000.0 * units.acres,
+            growth=60_000.0 * units.acres,
+            first_mapping=120_000.0 * units.acres,
             geometry=None,
         ),
         building_count=5,
@@ -209,9 +210,9 @@ def test_fire_score_for_awards_no_overlap_points_without_overlaps() -> None:
     score = peri_scribe.fires.scoring.fire_score_for(
         record,
         peri_scribe.fires.scoring.PerimeterMetrics(
-            area_acres=None,
-            growth_acres=None,
-            first_mapping_acres=None,
+            area=None,
+            growth=None,
+            first_mapping=None,
             geometry=None,
         ),
         building_count=0,

@@ -10,11 +10,17 @@ import requests
 import structlog
 import tenacity
 
+from peri_scribe.units import units
+
+
+if typing.TYPE_CHECKING:
+    import pint
+
 
 logger = structlog.get_logger()
 
-# Matches the server-suggested retry-after seconds in an ArcGIS REST API rate-limit
-# error detail, e.g. "Retry after 8 sec".
+# Matches the server-suggested retry-after delay in an ArcGIS REST API rate-limit error
+# detail, e.g. "Retry after 8 sec".
 RETRY_AFTER_DETAIL_PATTERN = re.compile(r"Retry[ ]after[ ](\d+)[ ]sec")
 
 # Matches any ArcGIS REST API error body that carries a 429 code (loose fallback when
@@ -22,7 +28,7 @@ RETRY_AFTER_DETAIL_PATTERN = re.compile(r"Retry[ ]after[ ](\d+)[ ]sec")
 LOOSE_429_PATTERN = re.compile(r"""['\"]code['\"]\s*:\s*429""")
 
 # Matches an ArcGIS REST API error body that carries a 429 code followed by the
-# server-suggested retry-after seconds (string fallback).
+# server-suggested retry-after delay (string fallback).
 RATE_LIMIT_ERROR_PATTERN = re.compile(
     r"""(?x)
     ['\"]code['\"]\s*:\s*429
@@ -32,17 +38,17 @@ RATE_LIMIT_ERROR_PATTERN = re.compile(
 )
 
 DEFAULT_MAX_RETRIES = 4
-FALLBACK_RETRY_IN_SECONDS = 60
+FALLBACK_RETRY = 60 * units.seconds
 
 # Base and cap for exponential backoff on transient network errors.
-BACKOFF_BASE_IN_SECONDS = 2.0
-BACKOFF_MAXIMUM_IN_SECONDS = 30.0
+BACKOFF_BASE = 2.0 * units.seconds
+BACKOFF_MAXIMUM = 30.0 * units.seconds
 
 # Exponential backoff for transient network errors, so successive attempts wait
 # progressively longer and give the server time to recover.
 BACKOFF_WAIT = tenacity.wait_exponential(
-    multiplier=BACKOFF_BASE_IN_SECONDS,
-    max=BACKOFF_MAXIMUM_IN_SECONDS,
+    multiplier=BACKOFF_BASE.m_as("seconds"),
+    max=BACKOFF_MAXIMUM.m_as("seconds"),
 )
 
 # Exception types for transient network or protocol failures that are worth retrying:
@@ -56,7 +62,7 @@ TRANSIENT_EXCEPTIONS = (
 )
 
 
-def rate_limit_in_seconds_from_payload(payload: dict[str, object]) -> int | None:
+def rate_limit_from_payload(payload: dict[str, object]) -> pint.Quantity[float] | None:
     """Return the delay encoded in an ArcGIS rate-limit payload, or None.
 
     Args:
@@ -64,16 +70,16 @@ def rate_limit_in_seconds_from_payload(payload: dict[str, object]) -> int | None
             and, when present, a "Retry after N sec" detail.
 
     Returns:
-        The server-suggested retry-after seconds, the fallback delay when the payload
-        has no retry-after hint, or None when the payload is not a rate-limit error.
+        The server-suggested retry-after delay, the fallback delay when the payload has
+        no retry-after hint, or None when the payload is not a rate-limit error.
 
     Examples:
-        >>> rate_limit_in_seconds_from_payload(
+        >>> rate_limit_from_payload(
         ...     {"error": {"code": 429, "details": ["Retry after 8 sec"]}},
         ... )
-        8
+        <Quantity(8, 'second')>
 
-        >>> rate_limit_in_seconds_from_payload({}) is None
+        >>> rate_limit_from_payload({}) is None
         True
     """
     error_info = payload.get("error")
@@ -84,15 +90,15 @@ def rate_limit_in_seconds_from_payload(payload: dict[str, object]) -> int | None
         return None
     details = error_info.get("details", [])
     if not isinstance(details, list):
-        return FALLBACK_RETRY_IN_SECONDS
+        return FALLBACK_RETRY
     for detail in details:
         rate_limit_match = RETRY_AFTER_DETAIL_PATTERN.search(str(detail))
         if rate_limit_match is not None:
-            return int(rate_limit_match.group(1))
-    return FALLBACK_RETRY_IN_SECONDS
+            return int(rate_limit_match.group(1)) * units.seconds
+    return FALLBACK_RETRY
 
 
-def rate_limit_retry_in_seconds(error: BaseException) -> int | None:
+def rate_limit_retry(error: BaseException) -> pint.Quantity[float] | None:
     """Return the delay before retrying after a rate-limit error.
 
     Rate-limit responses arrive in two forms. ArcGIS query errors are ``ValueError``
@@ -105,13 +111,13 @@ def rate_limit_retry_in_seconds(error: BaseException) -> int | None:
         error: The exception raised by the failed attempt.
 
     Returns:
-        The server-suggested retry-after seconds, the fallback delay when the error is a
+        The server-suggested retry-after delay, the fallback delay when the error is a
         429 response without a retry-after hint, or None when the error is not a
         rate-limit response.
     """
     payload = error.args[0] if isinstance(error, ValueError) and error.args else None
     if isinstance(payload, dict):
-        return rate_limit_in_seconds_from_payload(payload)
+        return rate_limit_from_payload(payload)
     if isinstance(error, requests.exceptions.HTTPError):
         response = error.response
         if (
@@ -120,14 +126,14 @@ def rate_limit_retry_in_seconds(error: BaseException) -> int | None:
         ):
             retry_after = response.headers.get("Retry-After")
             if retry_after is not None and retry_after.isdigit():
-                return int(retry_after)
-            return FALLBACK_RETRY_IN_SECONDS
+                return int(retry_after) * units.seconds
+            return FALLBACK_RETRY
     error_string = str(error)
     rate_limit_match = RATE_LIMIT_ERROR_PATTERN.search(error_string)
     if rate_limit_match is not None:
-        return int(rate_limit_match.group(1))
+        return int(rate_limit_match.group(1)) * units.seconds
     if LOOSE_429_PATTERN.search(error_string) is not None:
-        return FALLBACK_RETRY_IN_SECONDS
+        return FALLBACK_RETRY
     return None
 
 
@@ -156,7 +162,7 @@ def is_retryable_error(error: BaseException) -> bool:
     Returns:
         True when the attempt should be retried.
     """
-    return rate_limit_retry_in_seconds(error) is not None or is_transient_error(error)
+    return rate_limit_retry(error) is not None or is_transient_error(error)
 
 
 def retry_reason(error: BaseException) -> str:
@@ -172,7 +178,7 @@ def retry_reason(error: BaseException) -> str:
         >>> retry_reason(ValueError({"error": {"code": 429}}))
         'Rate-limited; retrying after server-suggested delay'
     """
-    if rate_limit_retry_in_seconds(error) is not None:
+    if rate_limit_retry(error) is not None:
         return "Rate-limited; retrying after server-suggested delay"
     return "Transient network error; retrying after backoff"
 
@@ -196,23 +202,24 @@ def last_error(retry_state: tenacity.RetryCallState) -> BaseException:
     return typing.cast("BaseException", outcome.exception())
 
 
-def retry_wait_in_seconds(retry_state: tenacity.RetryCallState) -> float:
-    """Return the delay in seconds before the next attempt after a failed one.
+def retry_wait(retry_state: tenacity.RetryCallState) -> float:
+    """Return the delay before the next attempt after a failed one.
 
     Rate-limit errors use the server-suggested ``Retry after`` delay (or the fallback
     for a loose 429 response); other transient errors use exponential backoff from the
-    attempt number.
+    attempt number. The delay is returned in seconds because tenacity reads it as a
+    plain number of seconds.
 
     Args:
         retry_state: The tenacity retry state holding the failed attempt's
             exception and attempt number.
 
     Returns:
-        The delay in seconds before the next attempt.
+        The delay before the next attempt, in seconds.
     """
-    retry_in_seconds = rate_limit_retry_in_seconds(last_error(retry_state))
-    if retry_in_seconds is not None:
-        return retry_in_seconds
+    retry = rate_limit_retry(last_error(retry_state))
+    if retry is not None:
+        return retry.m_as("seconds")
     return BACKOFF_WAIT(retry_state)
 
 
@@ -226,9 +233,9 @@ def run_with_retry[Result](
 
     Rate-limit errors (HTTP 429 from the ArcGIS REST API) wait for the server-suggested
     ``Retry after`` delay (or the fallback for a loose 429 response). Other transient
-    network errors wait with exponential backoff starting at ``BACKOFF_BASE_IN_SECONDS``
-    and capped at ``BACKOFF_MAXIMUM_IN_SECONDS``. Up to *max_retries* retries are made
-    before the last error is re-raised.
+    network errors wait with exponential backoff starting at ``BACKOFF_BASE`` and capped
+    at ``BACKOFF_MAXIMUM``. Up to *max_retries* retries are made before the last error
+    is re-raised.
 
     Args:
         feed_name: Human-readable feed identifier for log messages.
@@ -248,7 +255,7 @@ def run_with_retry[Result](
             retry_reason(error),
             feed=feed_name,
             attempt=retry_state.attempt_number,
-            retry_in_seconds=retry_state.upcoming_sleep,
+            retry_delay=retry_state.upcoming_sleep * units.seconds,
         )
 
     def log_exhaustion(retry_state: tenacity.RetryCallState) -> typing.NoReturn:
@@ -264,7 +271,7 @@ def run_with_retry[Result](
 
     retrying = tenacity.Retrying(
         retry=tenacity.retry_if_exception(is_retryable_error),
-        wait=retry_wait_in_seconds,
+        wait=retry_wait,
         stop=tenacity.stop_after_attempt(max_retries + 1),
         before_sleep=log_before_sleep,
         retry_error_callback=log_exhaustion,

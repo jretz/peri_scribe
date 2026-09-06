@@ -13,7 +13,7 @@ from tests.conftest import (
     NAD83_WKID,
     NAVD88_HEIGHT_WKID,
     UNKNOWN_WKID,
-    WEB_MERCATOR_MAXIMUM_MAGNITUDE_IN_METERS,
+    WEB_MERCATOR_MAXIMUM_MAGNITUDE,
     WEB_MERCATOR_WKID,
 )
 from tests.factories import WGS84_WKID, FeatureSetStub, LayerStub, failing_from_crs
@@ -179,7 +179,7 @@ def test_projected_maximum_magnitude_in_crs_units_web_mercator() -> None:
     assert peri_scribe.geo.spatial_reference.projected_maximum_magnitude_in_crs_units(
         crs,
     ) == pytest.approx(
-        WEB_MERCATOR_MAXIMUM_MAGNITUDE_IN_METERS,
+        WEB_MERCATOR_MAXIMUM_MAGNITUDE,
     )
 
 
@@ -187,10 +187,9 @@ def test_projected_maximum_magnitude_in_crs_units_fallback_without_area_of_use()
     None
 ):
     crs = pyproj.CRS.from_proj4("+proj=aeqd +lat_0=0 +lon_0=0 +datum=WGS84 +units=m")
-    assert (
-        peri_scribe.geo.spatial_reference.projected_maximum_magnitude_in_crs_units(crs)
-        == peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK_IN_METERS
-    )
+    assert peri_scribe.geo.spatial_reference.projected_maximum_magnitude_in_crs_units(
+        crs,
+    ) == peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK.m_as("meters")
 
 
 def test_projected_maximum_magnitude_in_crs_units_uses_fallback_when_transforms_fail(
@@ -198,10 +197,9 @@ def test_projected_maximum_magnitude_in_crs_units_uses_fallback_when_transforms_
 ) -> None:
     monkeypatch.setattr(pyproj.Transformer, "from_crs", failing_from_crs)
     crs = pyproj.CRS.from_epsg(WEB_MERCATOR_WKID)
-    assert (
-        peri_scribe.geo.spatial_reference.projected_maximum_magnitude_in_crs_units(crs)
-        == peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK_IN_METERS
-    )
+    assert peri_scribe.geo.spatial_reference.projected_maximum_magnitude_in_crs_units(
+        crs,
+    ) == peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK.m_as("meters")
 
 
 def test_spatial_reference_domain_geographic() -> None:
@@ -219,10 +217,18 @@ def test_spatial_reference_domain_projected() -> None:
     assert domain is not None
     assert domain.crs.is_projected
     x_minimum_band, x_maximum_band, y_minimum_band, y_maximum_band = domain.bands
-    assert x_minimum_band == peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE_IN_METERS
-    assert x_maximum_band == pytest.approx(WEB_MERCATOR_MAXIMUM_MAGNITUDE_IN_METERS)
-    assert y_minimum_band == peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE_IN_METERS
-    assert y_maximum_band == pytest.approx(WEB_MERCATOR_MAXIMUM_MAGNITUDE_IN_METERS)
+    assert x_minimum_band == peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE.m_as(
+        "meter",
+    )
+    assert x_maximum_band == pytest.approx(
+        WEB_MERCATOR_MAXIMUM_MAGNITUDE.m_as("meters"),
+    )
+    assert y_minimum_band == peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE.m_as(
+        "meter",
+    )
+    assert y_maximum_band == pytest.approx(
+        WEB_MERCATOR_MAXIMUM_MAGNITUDE.m_as("meters"),
+    )
     assert domain.description == "projected (metre)"
 
 
@@ -264,14 +270,14 @@ def test_axis_fits_zero_crossing_allowed_when_minimum_is_zero() -> None:
 
 
 def test_coordinates_match_domain_when_all_axes_fit() -> None:
-    domain = (1000.0, 20000000.0, 1000.0, 20000000.0)
-    bounds = (2000000.0, 3000000.0, 4000000.0, 5000000.0)
+    domain = (1_000.0, 20_000_000.0, 1_000.0, 20_000_000.0)
+    bounds = (2_000_000.0, 3_000_000.0, 4_000_000.0, 5_000_000.0)
     assert peri_scribe.geo.spatial_reference.coordinates_match_domain(domain, bounds)
 
 
 def test_coordinates_match_domain_x_axis_too_small() -> None:
-    domain = (1000.0, 20000000.0, 1000.0, 20000000.0)
-    bounds = (100.0, 3000000.0, 4000000.0, 5000000.0)
+    domain = (1_000.0, 20_000_000.0, 1_000.0, 20_000_000.0)
+    bounds = (100.0, 3_000_000.0, 4_000_000.0, 5_000_000.0)
     assert not peri_scribe.geo.spatial_reference.coordinates_match_domain(
         domain,
         bounds,
@@ -279,8 +285,8 @@ def test_coordinates_match_domain_x_axis_too_small() -> None:
 
 
 def test_coordinates_match_domain_y_axis_too_large() -> None:
-    domain = (1000.0, 20000000.0, 1000.0, 20000000.0)
-    bounds = (2000000.0, 3000000.0, 4000000.0, 50000000.0)
+    domain = (1_000.0, 20_000_000.0, 1_000.0, 20_000_000.0)
+    bounds = (2_000_000.0, 3_000_000.0, 4_000_000.0, 50_000_000.0)
     assert not peri_scribe.geo.spatial_reference.coordinates_match_domain(
         domain,
         bounds,

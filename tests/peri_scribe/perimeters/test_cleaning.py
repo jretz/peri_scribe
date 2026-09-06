@@ -4,6 +4,7 @@ import pytest
 import shapely.geometry
 
 import peri_scribe.perimeters.cleaning
+from peri_scribe.units import units
 
 
 def noisy_top_edge_polygon() -> shapely.geometry.Polygon:
@@ -121,7 +122,7 @@ def test_clean_perimeter_removes_collinear_points() -> None:
 
 def test_clean_perimeter_removes_collinear_points_without_deviation() -> None:
     config = peri_scribe.perimeters.cleaning.PerimeterCleaningConfig(
-        maximum_deviation_in_meters=0.0,
+        maximum_deviation=0.0 * units.meters,
     )
     polygon = shapely.geometry.Polygon(
         [(0.0, 0.0), (0.5, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
@@ -161,7 +162,7 @@ def test_clean_perimeter_makes_invalid_polygon_valid() -> None:
 
 def test_clean_perimeter_keeps_geometry_when_everything_is_below_area_floor() -> None:
     config = peri_scribe.perimeters.cleaning.PerimeterCleaningConfig(
-        minimum_part_area_in_square_degrees=100.0,
+        minimum_part_area=100.0 * units.degrees**2,
     )
     box = shapely.geometry.box(0.0, 0.0, 1.0, 1.0)
     result = peri_scribe.perimeters.cleaning.clean_perimeter(box, config)
@@ -219,14 +220,14 @@ def test_polygonal_parts_returns_empty_for_line() -> None:
     assert peri_scribe.perimeters.cleaning.polygonal_parts(line) == []
 
 
-def test_simplify_tolerance_in_degrees_floors_at_collinear_epsilon() -> None:
+def test_simplify_tolerance_floors_at_collinear_epsilon() -> None:
     config = peri_scribe.perimeters.cleaning.PerimeterCleaningConfig(
-        collinear_epsilon_in_degrees=1e-6,
-        maximum_deviation_in_meters=0.0,
+        collinear_epsilon=1e-6 * units.degrees,
+        maximum_deviation=0.0 * units.meters,
     )
     geometry = shapely.geometry.box(0.0, 0.0, 1.0, 1.0)
-    tolerance = peri_scribe.perimeters.cleaning.simplify_tolerance_in_degrees(
+    tolerance = peri_scribe.perimeters.cleaning.simplify_tolerance(
         geometry,
         config,
     )
-    assert tolerance == pytest.approx(1e-6)
+    assert tolerance.m_as("degrees") == pytest.approx(1e-6)

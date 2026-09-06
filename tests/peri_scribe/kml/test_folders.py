@@ -18,6 +18,7 @@ import peri_scribe.models
 import peri_scribe.perimeters.progression
 import peri_scribe.units
 import tests.peri_scribe.kml.kml_helpers
+from peri_scribe.units import units
 
 
 @pytest.fixture
@@ -584,7 +585,7 @@ def test_fire_folder_holds_point_and_ring_folders(
                     0,
                     tzinfo=datetime.UTC,
                 ),
-                area=100.0,
+                area=100.0 * units.meters**2,
             ),
             peri_scribe.perimeters.progression.Ring(
                 geometry=tests.peri_scribe.kml.kml_helpers.square(2.0),
@@ -596,7 +597,7 @@ def test_fire_folder_holds_point_and_ring_folders(
                     0,
                     tzinfo=datetime.UTC,
                 ),
-                area=100.0,
+                area=100.0 * units.meters**2,
             ),
             peri_scribe.perimeters.progression.Ring(
                 geometry=tests.peri_scribe.kml.kml_helpers.square(3.0),
@@ -608,7 +609,7 @@ def test_fire_folder_holds_point_and_ring_folders(
                     0,
                     tzinfo=datetime.UTC,
                 ),
-                area=100.0,
+                area=100.0 * units.meters**2,
             ),
         ),
     )
@@ -1555,20 +1556,19 @@ def test_new_notable_fires_excludes_unscored_fire() -> None:
 
 def test_fire_growth_compares_latest_area_with_window_start() -> None:
     fire = growing_fire("Grower", 0.02, 0.03, REFERENCE_TIME)
-    baseline = peri_scribe.units.area_in_acres(
-        tests.peri_scribe.kml.kml_helpers.square(0.02),
-    )
-    latest = peri_scribe.units.area_in_acres(
-        tests.peri_scribe.kml.kml_helpers.square(0.03),
-    )
+    baseline = peri_scribe.units.area(tests.peri_scribe.kml.kml_helpers.square(0.02))
+    latest = peri_scribe.units.area(tests.peri_scribe.kml.kml_helpers.square(0.03))
 
-    growth_in_acres, growth_in_percent = peri_scribe.kml.folders.fire_growth(
-        fire,
-        REFERENCE_TIME,
-    )
+    growth, growth_percent = peri_scribe.kml.folders.fire_growth(fire, REFERENCE_TIME)
 
-    assert growth_in_acres == pytest.approx(latest - baseline)
-    assert growth_in_percent == pytest.approx((latest - baseline) / baseline * 100.0)
+    assert growth is not None
+    assert growth.m_as("meters ** 2") == pytest.approx(
+        (latest - baseline).m_as("meters ** 2"),
+    )
+    assert growth_percent is not None
+    assert growth_percent.m_as("percent") == pytest.approx(
+        ((latest - baseline) / baseline * 100.0).magnitude,
+    )
 
 
 def test_fire_growth_sorts_perimeters_chronologically() -> None:
@@ -1585,19 +1585,22 @@ def test_fire_growth_sorts_perimeters_chronologically() -> None:
             ),
         ),
     )
-    baseline = peri_scribe.units.area_in_acres(
+    baseline = peri_scribe.units.area(
         tests.peri_scribe.kml.kml_helpers.square(0.02),
     )
-    latest = peri_scribe.units.area_in_acres(
+    latest = peri_scribe.units.area(
         tests.peri_scribe.kml.kml_helpers.square(0.03),
     )
 
-    growth_in_acres, _growth_in_percent = peri_scribe.kml.folders.fire_growth(
+    growth, _growth_percent = peri_scribe.kml.folders.fire_growth(
         fire,
         REFERENCE_TIME,
     )
 
-    assert growth_in_acres == pytest.approx(latest - baseline)
+    assert growth is not None
+    assert growth.m_as("meters ** 2") == pytest.approx(
+        (latest - baseline).m_as("meters ** 2"),
+    )
 
 
 def test_fire_growth_without_timed_perimeters_is_unknown() -> None:
@@ -1629,17 +1632,18 @@ def test_fire_growth_without_window_start_counts_whole_area() -> None:
         ),
     )
 
-    growth_in_acres, growth_in_percent = peri_scribe.kml.folders.fire_growth(
+    growth, growth_percent = peri_scribe.kml.folders.fire_growth(
         fire,
         REFERENCE_TIME,
     )
 
-    assert growth_in_acres == pytest.approx(
-        peri_scribe.units.area_in_acres(
+    assert growth is not None
+    assert growth.m_as("meters ** 2") == pytest.approx(
+        peri_scribe.units.area(
             tests.peri_scribe.kml.kml_helpers.square(0.04),
-        ),
+        ).m_as("meters ** 2"),
     )
-    assert growth_in_percent is None
+    assert growth_percent is None
 
 
 def test_fire_growth_percent_is_unknown_without_baseline_area() -> None:
@@ -1657,16 +1661,17 @@ def test_fire_growth_percent_is_unknown_without_baseline_area() -> None:
         ),
     )
 
-    growth_in_acres, growth_in_percent = peri_scribe.kml.folders.fire_growth(
+    growth, growth_percent = peri_scribe.kml.folders.fire_growth(
         fire,
         REFERENCE_TIME,
     )
 
-    assert growth_in_percent is None
-    assert growth_in_acres == pytest.approx(
-        peri_scribe.units.area_in_acres(
+    assert growth_percent is None
+    assert growth is not None
+    assert growth.m_as("meters ** 2") == pytest.approx(
+        peri_scribe.units.area(
             tests.peri_scribe.kml.kml_helpers.square(0.03),
-        ),
+        ).m_as("meters ** 2"),
     )
 
 
@@ -2193,18 +2198,16 @@ def test_fire_folder_interior_ring_balloons_lead_with_added_area(
     ]
     # The second ring redraws the whole fire, so it adds only the ground beyond the
     # first ring rather than its entire geometry.
-    first_added_area_in_acres = peri_scribe.units.area_in_acres(first_ring)
-    second_added_area_in_acres = (
-        peri_scribe.units.area_in_acres(second_ring) - first_added_area_in_acres
-    )
+    first_added_area = peri_scribe.units.area(first_ring)
+    second_added_area = peri_scribe.units.area(second_ring) - first_added_area
     expected_balloons = {
         "08/05 13:00 Interior": balloon_text(
             description,
             leading_rows=(
                 (
                     peri_scribe.kml.descriptions.ADDED_AREA_LABEL,
-                    peri_scribe.kml.descriptions.format_in_acres(
-                        first_added_area_in_acres,
+                    peri_scribe.kml.descriptions.format_area(
+                        first_added_area,
                     ),
                 ),
             ),
@@ -2214,8 +2217,8 @@ def test_fire_folder_interior_ring_balloons_lead_with_added_area(
             leading_rows=(
                 (
                     peri_scribe.kml.descriptions.ADDED_AREA_LABEL,
-                    peri_scribe.kml.descriptions.format_in_acres(
-                        second_added_area_in_acres,
+                    peri_scribe.kml.descriptions.format_area(
+                        second_added_area,
                     ),
                 ),
             ),
@@ -2269,7 +2272,7 @@ def test_fire_folder_fallback_ring_balloon_leads_with_its_area(
     )
     # The fallback ring is the fire's whole latest perimeter, so it added that entire
     # area at its observation rather than a slice.
-    added_area_in_acres = peri_scribe.units.area_in_acres(
+    added_area = peri_scribe.units.area(
         tests.peri_scribe.kml.kml_helpers.square(1.0),
     )
     assert balloon == balloon_text(
@@ -2277,7 +2280,7 @@ def test_fire_folder_fallback_ring_balloon_leads_with_its_area(
         leading_rows=(
             (
                 peri_scribe.kml.descriptions.ADDED_AREA_LABEL,
-                peri_scribe.kml.descriptions.format_in_acres(added_area_in_acres),
+                peri_scribe.kml.descriptions.format_area(added_area),
             ),
         ),
     )

@@ -22,7 +22,7 @@ import peri_scribe.sources.feed_types
 from tests.conftest import (
     LOOSE_429_ERROR_PAYLOAD,
     RATE_LIMIT_ERROR_PAYLOAD,
-    RATE_LIMIT_RETRY_AFTER_IN_SECONDS,
+    RATE_LIMIT_RETRY_AFTER,
     SAMPLE_FEED_NAME,
 )
 from tests.factories import WGS84_WKID, LayerStub
@@ -202,7 +202,7 @@ def test_query_with_retry_retries_on_loose_429(
     )
     assert result is feature_set_with_geometry
     assert sleep_calls == [
-        float(peri_scribe.retry.FALLBACK_RETRY_IN_SECONDS),
+        float(peri_scribe.retry.FALLBACK_RETRY.m_as("seconds")),
     ]
 
 
@@ -262,7 +262,7 @@ def test_query_with_retry_retries_on_transient_error(
     )
     assert result is feature_set_with_geometry
     # First transient error on attempt 1 → backoff = 2.0s
-    assert sleep_calls == [peri_scribe.retry.BACKOFF_BASE_IN_SECONDS]
+    assert sleep_calls == [peri_scribe.retry.BACKOFF_BASE.m_as("seconds")]
 
 
 def test_query_with_retry_exhausts_transient_retries_and_raises(
@@ -286,7 +286,7 @@ def test_query_with_retry_exhausts_transient_retries_and_raises(
         )
     # Backoff for attempts 1, 2, 3 doubles from the base constant each time.
     assert sleep_calls == [
-        peri_scribe.retry.BACKOFF_BASE_IN_SECONDS * 2**attempt
+        peri_scribe.retry.BACKOFF_BASE.m_as("seconds") * 2**attempt
         for attempt in range(retries)
     ]
 
@@ -310,7 +310,7 @@ def test_query_with_retry_logs_rate_limit_reason(
         )
     assert captured[0]["event"] == "Rate-limited; retrying after server-suggested delay"
     assert captured[0]["attempt"] == 1
-    assert captured[0]["retry_in_seconds"] == RATE_LIMIT_RETRY_AFTER_IN_SECONDS
+    assert captured[0]["retry_delay"] == RATE_LIMIT_RETRY_AFTER
 
 
 def test_query_with_retry_logs_transient_reason(
@@ -334,7 +334,7 @@ def test_query_with_retry_logs_transient_reason(
         )
     assert captured[0]["event"] == "Transient network error; retrying after backoff"
     assert captured[0]["attempt"] == 1
-    assert captured[0]["retry_in_seconds"] == peri_scribe.retry.BACKOFF_BASE_IN_SECONDS
+    assert captured[0]["retry_delay"] == peri_scribe.retry.BACKOFF_BASE
 
 
 class IdQueryStub:

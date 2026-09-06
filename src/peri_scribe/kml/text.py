@@ -10,10 +10,12 @@ import peri_scribe.kml.plot_data
 import peri_scribe.kml.row_values
 import peri_scribe.models
 import peri_scribe.units
+from peri_scribe.units import units
 
 
 if typing.TYPE_CHECKING:
     import geopandas
+    import pint
 
 
 # The smallest computed or reported area that keeps a fire in the KMZ output. Fires
@@ -74,30 +76,33 @@ def fire_description(
     perimeter_row = perimeter_rows.iloc[-1] if not perimeter_rows.empty else None
     point_row = point_rows.iloc[-1] if not point_rows.empty else None
 
-    exterior_perimeter_in_miles = None
+    exterior_perimeter: pint.Quantity[float] | None = None
     if perimeter_row is not None:
-        exterior_perimeter_in_miles = peri_scribe.units.exterior_perimeter_in_miles(
+        exterior_perimeter = peri_scribe.units.exterior_perimeter(
             perimeter_row.geometry,
         )
 
-    area_in_acres = peri_scribe.kml.row_values.float_value(perimeter_row, "area_acres")
-    if area_in_acres is None:
-        area_in_acres = peri_scribe.kml.row_values.float_value(
+    reported_area = peri_scribe.kml.row_values.float_value(perimeter_row, "area_acres")
+    if reported_area is None:
+        reported_area = peri_scribe.kml.row_values.float_value(
             point_row,
             "incident_size",
         )
+    area: pint.Quantity[float] | None = None
     if (
-        area_in_acres is not None
+        reported_area is not None
         and perimeter_row is not None
         and perimeter_row.geometry is not None
         and not perimeter_row.geometry.is_empty
     ):
         # The reported acreage can trail the polygon the source published; when the
         # geometry is significantly larger the measured area is what users should see.
-        area_in_acres = peri_scribe.areas.presented_area_in_acres(
-            area_in_acres,
-            peri_scribe.units.area_in_acres(perimeter_row.geometry),
+        area = peri_scribe.areas.presented_area(
+            reported_area * units.acres,
+            peri_scribe.units.area(perimeter_row.geometry),
         )
+    elif reported_area is not None:
+        area = reported_area * units.acres
 
     percent_contained = peri_scribe.kml.row_values.float_value(
         perimeter_row,
@@ -109,25 +114,35 @@ def fire_description(
             "percent_contained",
         )
 
-    estimated_cost_to_date = peri_scribe.kml.row_values.float_value(
+    estimated_cost_to_date_value = peri_scribe.kml.row_values.float_value(
         perimeter_row,
         "estimated_cost_to_date",
     )
-    if estimated_cost_to_date is None:
-        estimated_cost_to_date = peri_scribe.kml.row_values.float_value(
+    if estimated_cost_to_date_value is None:
+        estimated_cost_to_date_value = peri_scribe.kml.row_values.float_value(
             point_row,
             "estimated_cost_to_date",
         )
+    estimated_cost_to_date = (
+        None
+        if estimated_cost_to_date_value is None
+        else estimated_cost_to_date_value * units.dollars
+    )
 
-    estimated_final_cost = peri_scribe.kml.row_values.float_value(
+    estimated_final_cost_value = peri_scribe.kml.row_values.float_value(
         perimeter_row,
         "estimated_final_cost",
     )
-    if estimated_final_cost is None:
-        estimated_final_cost = peri_scribe.kml.row_values.float_value(
+    if estimated_final_cost_value is None:
+        estimated_final_cost_value = peri_scribe.kml.row_values.float_value(
             point_row,
             "estimated_final_cost",
         )
+    estimated_final_cost = (
+        None
+        if estimated_final_cost_value is None
+        else estimated_final_cost_value * units.dollars
+    )
 
     total_personnel = peri_scribe.kml.row_values.first_source_number(
         perimeter_row,
@@ -191,11 +206,11 @@ def fire_description(
             peri_scribe.kml.row_values.column_value(perimeter_row, "source"),
         ),
         mission=peri_scribe.kml.row_values.text_value(perimeter_row, "mission"),
-        area_in_acres=area_in_acres,
-        exterior_perimeter_in_miles=exterior_perimeter_in_miles,
+        area=area,
+        exterior_perimeter=exterior_perimeter,
         percent_contained=percent_contained,
-        estimated_cost_to_date_in_dollars=estimated_cost_to_date,
-        estimated_final_cost_in_dollars=estimated_final_cost,
+        estimated_cost_to_date=estimated_cost_to_date,
+        estimated_final_cost=estimated_final_cost,
         total_personnel=total_personnel,
         protecting_unit=protecting_unit,
         discovery_time=discovery_time,

@@ -177,7 +177,7 @@ def test_plot_image_bundles_renders_each_fire_in_parallel() -> None:
             peri_scribe.kml.plot_data.PlotSeries(
                 label="Cost to date",
                 points=(
-                    tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 1000.0),
+                    tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 1_000.0),
                 ),
             ),
         ),

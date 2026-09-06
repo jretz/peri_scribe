@@ -6,6 +6,7 @@ import datetime
 import typing
 
 import peri_scribe.perimeters.border_classification
+from peri_scribe.units import units
 
 
 FIRIS = peri_scribe.perimeters.border_classification.FireSourceKind.FIRIS_PERIMETER
@@ -53,9 +54,9 @@ def observation(
 
 def geometry_signal(
     *,
-    distance_to_boundary_in_meters: float = 100.0,
+    distance_to_boundary: float = 100.0,
     outside_area_fraction: float = 0.0,
-    outside_area_in_acres: float = 0.0,
+    outside_area: float = 0.0,
     inside_area_fraction: float = 1.0,
     crosses: bool = False,
     near: bool = False,
@@ -67,9 +68,9 @@ def geometry_signal(
         The geometry signal.
     """
     return peri_scribe.perimeters.border_classification.GeometrySignal(
-        distance_to_boundary_in_meters=distance_to_boundary_in_meters,
+        distance_to_boundary=distance_to_boundary * units.meters,
         outside_area_fraction=outside_area_fraction,
-        outside_area_in_acres=outside_area_in_acres,
+        outside_area=outside_area * units.meters**2,
         inside_area_fraction=inside_area_fraction,
         crosses=crosses,
         near=near,

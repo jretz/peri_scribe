@@ -243,8 +243,8 @@ def test_shared_border_accepts_slightly_misaligned_neighbor() -> None:
         neighbor,
     )
     assert not border.is_empty
-    assert peri_scribe.sources.borders.total_line_length_in_degrees(
-        border,
+    assert peri_scribe.sources.borders.total_line_length(border).m_as(
+        "degree",
     ) == pytest.approx(10.0, abs=1e-3)
 
 
@@ -256,8 +256,8 @@ def test_shared_border_returns_multi_line_string_for_multiple_segments() -> None
     )
     assert border.geom_type == "MultiLineString"
     assert len(border.geoms) > 1
-    assert peri_scribe.sources.borders.total_line_length_in_degrees(
-        border,
+    assert peri_scribe.sources.borders.total_line_length(border).m_as(
+        "degree",
     ) == pytest.approx(20.0, abs=1e-2)
 
 
@@ -275,21 +275,21 @@ def test_shared_border_raises_when_geometries_share_no_border() -> None:
         peri_scribe.sources.borders.shared_border(CALIFORNIA, distant)
 
 
-def test_border_length_in_kilometers() -> None:
+def test_border_length() -> None:
     line = shapely.geometry.LineString([(0, 0), (1, 0)])
-    length_in_kilometers = peri_scribe.sources.borders.border_length_in_kilometers(line)
-    assert length_in_kilometers == pytest.approx(111.319, rel=1e-4)
+    length = peri_scribe.sources.borders.border_length(line)
+    assert length.m_as("kilometers") == pytest.approx(111.319, rel=1e-4)
 
 
-def test_border_length_in_kilometers_sums_line_parts() -> None:
+def test_border_length_sums_line_parts() -> None:
     multi_line = shapely.geometry.MultiLineString([
         shapely.geometry.LineString([(0, 0), (1, 0)]),
         shapely.geometry.LineString([(1, 0), (2, 0)]),
     ])
-    length_in_kilometers = peri_scribe.sources.borders.border_length_in_kilometers(
+    length = peri_scribe.sources.borders.border_length(
         multi_line,
     )
-    assert length_in_kilometers == pytest.approx(222.638, rel=1e-4)
+    assert length.m_as("kilometers") == pytest.approx(222.638, rel=1e-4)
 
 
 def test_border_dataframe_builds_neighbor_rows() -> None:

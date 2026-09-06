@@ -31,6 +31,11 @@ import peri_scribe.perimeters.signals
 import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.borders
 import peri_scribe.sources.snapshots
+from peri_scribe.units import units
+
+
+if typing.TYPE_CHECKING:
+    import pint
 
 
 class FireSourceKind(enum.Enum):
@@ -56,9 +61,9 @@ class BorderClassificationConfig:
     """
 
     outside_area_fraction_threshold: float = 0.01
-    outside_area_threshold_in_acres: float = 500.0
+    outside_area_threshold: pint.Quantity[float] = 500.0 * units.acres
     inside_area_fraction_threshold: float = 0.5
-    near_border_buffer_in_meters: float = 10_000.0
+    near_border_buffer: pint.Quantity[float] = 10.0 * units.km
     extent_ratio_threshold: float = 1.05
     symmetric_difference_fraction_threshold: float = 0.05
     contemporaneous_tolerance: datetime.timedelta = datetime.timedelta(hours=24)
@@ -90,9 +95,9 @@ class FireObservation:
 class GeometrySignal:
     """What the fire's geometry says about the state boundary."""
 
-    distance_to_boundary_in_meters: float
+    distance_to_boundary: pint.Quantity[float]
     outside_area_fraction: float
-    outside_area_in_acres: float
+    outside_area: pint.Quantity[float]
     inside_area_fraction: float
     crosses: bool
     near: bool
@@ -338,7 +343,7 @@ def classify(
 
     return peri_scribe.models.FireClassification(
         classification=classification,
-        distance_to_boundary_in_meters=geometry.distance_to_boundary_in_meters,
+        distance_to_boundary_in_meters=geometry.distance_to_boundary,
         outside_area_fraction=geometry.outside_area_fraction,
         inside_area_fraction=geometry.inside_area_fraction,
         wfigs_to_firis_area_ratio=extent.wfigs_to_firis_area_ratio,

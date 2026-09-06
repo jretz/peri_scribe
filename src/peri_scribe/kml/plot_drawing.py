@@ -20,10 +20,11 @@ import seaborn as sns
 from PIL import Image
 
 import peri_scribe.kml.plot_data
+from peri_scribe.units import units
 
 
 # Tick values at or above these magnitudes keep progressively fewer decimals.
-TICK_WHOLE_NUMBER_THRESHOLD = 1000.0
+TICK_WHOLE_NUMBER_THRESHOLD = 1_000.0
 TICK_ONE_DECIMAL_THRESHOLD = 10.0
 
 # X-axis tick labels sit only at midnight and are thinned so at most this many fit along
@@ -31,9 +32,9 @@ TICK_ONE_DECIMAL_THRESHOLD = 10.0
 MAX_X_AXIS_TICKS = 6
 
 # The rendered image dimensions, in inches and dots per inch.
-FIGURE_WIDTH_IN_INCHES = 4.8
-FIGURE_HEIGHT_IN_INCHES = 3.0
-IMAGE_DPI = 100
+FIGURE_WIDTH = 4.8 * units.inches
+FIGURE_HEIGHT = 3.0 * units.inches
+IMAGE_RESOLUTION = 100 * units.count / units.inch
 
 IMAGE_FORMAT = "png"
 
@@ -148,8 +149,8 @@ def create_plot_renderer() -> PlotRenderer:
         The shared rendering setup.
     """
     figure = matplotlib.figure.Figure(
-        figsize=(FIGURE_WIDTH_IN_INCHES, FIGURE_HEIGHT_IN_INCHES),
-        dpi=IMAGE_DPI,
+        figsize=(FIGURE_WIDTH.m_as("inches"), FIGURE_HEIGHT.m_as("inches")),
+        dpi=IMAGE_RESOLUTION.m_as("1/inch"),
     )
     matplotlib.backends.backend_agg.FigureCanvasAgg(figure)
     return PlotRenderer(

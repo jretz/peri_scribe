@@ -30,6 +30,7 @@ import peri_scribe.sources.snapshots
 import peri_scribe.sources.validation
 import tests.factories
 import tests.peri_scribe.kml.kml_helpers
+from peri_scribe.units import units
 from tests.factories import WGS84_WKID, GeoPackageStore, wgs84_feature_set
 from tests.main_stubs import (
     BASE_DIRECTORY,
@@ -51,12 +52,12 @@ NAD83_2011_WKID = 6318
 NAVD88_HEIGHT_WKID = 5703
 UNKNOWN_WKID = 999999
 
-WEB_MERCATOR_MAXIMUM_MAGNITUDE_IN_METERS = 20048966.104014598
+WEB_MERCATOR_MAXIMUM_MAGNITUDE = 20048966.104014598 * units.meters
 
 CLICK_USAGE_ERROR_EXIT_CODE = 2
 
 # Error messages matching the ArcGIS REST API 429 rate-limit response format.
-RATE_LIMIT_RETRY_AFTER_IN_SECONDS = 60
+RATE_LIMIT_RETRY_AFTER = 60 * units.seconds
 RATE_LIMIT_ERROR_PAYLOAD = {
     "error": {
         "code": http.HTTPStatus.TOO_MANY_REQUESTS,
@@ -65,7 +66,7 @@ RATE_LIMIT_ERROR_PAYLOAD = {
             (
                 "API calls quota exceeded (120975 request units)! maximum allowed "
                 "request units (115200) per Minute. "
-                f"Retry after {RATE_LIMIT_RETRY_AFTER_IN_SECONDS} sec."
+                f"Retry after {RATE_LIMIT_RETRY_AFTER.m_as('second')} sec."
             ),
         ],
     },

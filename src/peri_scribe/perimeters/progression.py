@@ -13,8 +13,11 @@ import datetime
 import typing
 import zoneinfo
 
+from peri_scribe.units import units
+
 
 if typing.TYPE_CHECKING:
+    import pint
     import shapely
 
 
@@ -29,14 +32,14 @@ PROGRESSION_MAPS_FOLDER_NAME = "Perimeter Progression Maps"
 class Ring:
     """One growth ring, the time it was observed, and the area it added.
 
-    ``area`` is the ring geometry's area in square meters, computed once when the ring
-    is built. Synthetic rings that only stand in for another geometry (such as a fire's
-    latest perimeter) leave it at the default 0.
+    ``area`` is the ring geometry's area, a quantity in square meters, computed once
+    when the ring is built. Synthetic rings that only stand in for another geometry
+    (such as a fire's latest perimeter) leave it at the default 0.
     """
 
     geometry: shapely.Geometry
     observation_time: datetime.datetime | None
-    area: float = 0.0
+    area: pint.Quantity[float] = 0.0 * units.meters**2
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)

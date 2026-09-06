@@ -87,15 +87,15 @@ def test_identity_fields_includes_complex_when_present() -> None:
 
 def test_perimeter_row_builds_fields_and_geometry() -> None:
     geometry = tests.factories.polygon((0, 0), (1, 0), (1, 1), (0, 0))
-    area_in_acres = 100
+    area = 100
     version = tests.factories.observation(
         geometry=geometry,
         observation_time=tests.factories.utc(2026, 8, 16, 0, 10),
-        attributes={"area_acres": area_in_acres, "GlobalID": "abc"},
+        attributes={"area_acres": area, "GlobalID": "abc"},
     )
     row = peri_scribe.fires.history.perimeter_row(tests.factories.fire(), None, version)
     assert row["geometry"] == geometry
-    assert row["area_acres"] == pytest.approx(area_in_acres)
+    assert row["area_acres"] == pytest.approx(area)
     assert row["source_globalid"] == "abc"
     assert row["source"] == "firis_perimeter"
 

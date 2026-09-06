@@ -10,10 +10,11 @@ import struct
 import zlib
 
 import peri_scribe.kml.colormap
+from peri_scribe.units import units
 
 
 # Each "Interior" folder's icon is a square of this many pixels on a side.
-PROGRESSION_ICON_SIDE_LENGTH_IN_PIXELS = 16
+PROGRESSION_ICON_SIDE_LENGTH = 16 * units.pixels
 
 # The "Perimeters" folder icon's background color.
 PERIMETERS_ICON_BACKGROUND_COLOR = (0x32, 0x4B, 0x32)
@@ -68,7 +69,7 @@ def interior_progression_icon() -> bytes:
     Returns:
         The icon's PNG bytes.
     """
-    side_in_pixels = PROGRESSION_ICON_SIDE_LENGTH_IN_PIXELS
+    side_in_pixels = int(PROGRESSION_ICON_SIDE_LENGTH.magnitude)
     colors = peri_scribe.kml.colormap.sample_turbo(side_in_pixels)[::-1]
     rows: list[bytes] = []
     for rgb in colors:
@@ -96,7 +97,7 @@ def perimeters_icon() -> bytes:
     Returns:
         The icon's PNG bytes.
     """
-    side_in_pixels = PROGRESSION_ICON_SIDE_LENGTH_IN_PIXELS
+    side_in_pixels = int(PROGRESSION_ICON_SIDE_LENGTH.magnitude)
     top_line_row = side_in_pixels // 3
     bottom_line_row = side_in_pixels - 1 - top_line_row
     background_pixel = bytes((*PERIMETERS_ICON_BACKGROUND_COLOR, 255))

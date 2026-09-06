@@ -2,7 +2,15 @@
 
 from __future__ import annotations
 
+import typing
+
 import simplekml
+
+from peri_scribe.units import units
+
+
+if typing.TYPE_CHECKING:
+    import pint
 
 
 class Style(simplekml.Style):
@@ -59,33 +67,33 @@ PLACEMARK_STYLE_URLS = {
 }
 
 
-FILL_OPACITY_PERCENT = 50
+FILL_OPACITY = 50 * units.percent
 
 
-OUTLINE_OPACITY_PERCENT = 80
+OUTLINE_OPACITY = 80 * units.percent
 
 
 OUTLINE_WIDTH = 1.5
 
 
-def kml_color(red_green_blue: str, opacity_in_percent: int) -> str:
+def kml_color(red_green_blue: str, opacity: pint.Quantity[float]) -> str:
     """Return the KML ``aabbggrr`` color for *red_green_blue* at an opacity.
 
     Args:
         red_green_blue: The color as ``#RRGGBB``.
-        opacity_in_percent: The opacity from 0 (transparent) to 100 (opaque).
+        opacity: The opacity from 0 (transparent) to 100 (opaque).
 
     Returns:
         The KML color string.
 
     Examples:
-        >>> kml_color("#FF0080", 50)
+        >>> kml_color("#FF0080", 50 * units.percent)
         '7f8000ff'
     """
     red = red_green_blue[1:3]
     green = red_green_blue[3:5]
     blue = red_green_blue[5:7]
-    alpha = opacity_in_percent * 255 // 100
+    alpha = int(opacity.m_as("percent") * 255 // 100)
     return f"{alpha:02x}{blue}{green}{red}".lower()
 
 
@@ -177,7 +185,7 @@ def filled_perimeter_style(style_id: str, color: str) -> Style:
         The style, with a filled polygon style.
     """
     style = Style(style_id)
-    style.polystyle.color = kml_color(color, FILL_OPACITY_PERCENT)
+    style.polystyle.color = kml_color(color, FILL_OPACITY)
     style.polystyle.fill = 1
     style.polystyle.outline = 0
     return style
@@ -198,9 +206,9 @@ def outlined_perimeter_style(style_id: str, color: str) -> Style:
         The style, with a line style and a transparently filled polygon style.
     """
     style = Style(style_id)
-    style.linestyle.color = kml_color(color, OUTLINE_OPACITY_PERCENT)
+    style.linestyle.color = kml_color(color, OUTLINE_OPACITY)
     style.linestyle.width = OUTLINE_WIDTH
-    style.polystyle.color = kml_color(color, 0)
+    style.polystyle.color = kml_color(color, 0 * units.percent)
     style.polystyle.fill = 1
     style.polystyle.outline = 1
     return style
@@ -253,7 +261,7 @@ def progression_ring_style(style_id: str, color: str) -> Style:
         The style, with a filled polygon style.
     """
     style = Style(style_id)
-    style.polystyle.color = kml_color(color, FILL_OPACITY_PERCENT)
+    style.polystyle.color = kml_color(color, FILL_OPACITY)
     style.polystyle.fill = 1
     style.polystyle.outline = 0
     return style
