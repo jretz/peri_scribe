@@ -11,7 +11,6 @@ import math
 import operator
 import typing
 
-import peri_scribe.kml.colormap
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.geometry
@@ -19,7 +18,6 @@ import peri_scribe.kml.icons
 import peri_scribe.kml.styles
 import peri_scribe.kml.tour
 import peri_scribe.models
-import peri_scribe.perimeters.progression
 import peri_scribe.units
 from peri_scribe.units import units
 
@@ -179,32 +177,13 @@ def fire_folder(
         len(fire.perimeters),
         len(peri_scribe.kml.styles.OUTLINED_PERIMETER_NAMES),
     )
-    colored_rings = peri_scribe.kml.colormap.progression_ring_colors(
-        fire.progression_rings,
+    rings = list(
+        peri_scribe.kml.fire_data.interior_ring_colors(
+            fire.progression_rings,
+            fire.perimeters,
+        ),
     )
-    if colored_rings:
-        rings = [
-            (ring, peri_scribe.kml.colormap.color_hex(rgb))
-            for ring, rgb in colored_rings
-        ]
-        ring_times = tuple(ring.observation_time for ring, _color in rings)
-    elif fire.perimeters:
-        latest_perimeter = fire.perimeters[-1]
-        rings = [
-            (
-                peri_scribe.perimeters.progression.Ring(
-                    geometry=latest_perimeter.geometry,
-                    observation_time=latest_perimeter.observation_time,
-                ),
-                peri_scribe.kml.colormap.color_hex(
-                    peri_scribe.kml.colormap.TURBO_RAMP[-1],
-                ),
-            ),
-        ]
-        ring_times = (latest_perimeter.observation_time,)
-    else:
-        rings = []
-        ring_times = ()
+    ring_times = tuple(ring.observation_time for ring, _color in rings)
     description = fire_balloon(fire)
     with writer.folder(fire.name, visible=visible) as folder_id:
         if fire.point is not None:

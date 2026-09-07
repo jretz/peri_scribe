@@ -170,14 +170,20 @@ def serial_plot_image_bundles(
         tuple[str, tuple[peri_scribe.kml.plot_data.FirePlot, ...]],
         ...,
     ],
+    *,
+    during_rendering: typing.Callable[[], None] | None = None,
 ) -> tuple[tuple[peri_scribe.kml.plot_rendering.PlotImage, ...], ...]:
     """Render each fire's surviving plots in-process, without a process pool.
 
     A stand-in for the pool-based ``plot_image_bundles`` for tests that exercise the
-    geometry and KML wiring around rendering rather than the pool itself.
+    geometry and KML wiring around rendering rather than the pool itself. When
+    *during_rendering* is given it runs before the images are returned, standing in
+    for the parent-side work the pool version runs while its workers render.
 
     Args:
         fire_bundles: Each fire's filename prefix and its plots, in fire order.
+        during_rendering: Work the pool-based function would run while rendering, or
+            None.
 
     Returns:
         Each fire's rendered images, in the input order.
@@ -203,6 +209,8 @@ def serial_plot_image_bundles(
                 ),
             )
         bundles.append(tuple(images))
+    if during_rendering is not None:
+        during_rendering()
     return tuple(bundles)
 
 

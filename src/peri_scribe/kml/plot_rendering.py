@@ -12,6 +12,7 @@ import dataclasses
 import multiprocessing
 import os
 import re
+import typing
 
 import peri_scribe.kml.plot_data
 import peri_scribe.kml.plot_drawing
@@ -126,15 +127,21 @@ def plot_image_bundles(
         tuple[str, tuple[peri_scribe.kml.plot_data.FirePlot, ...]],
         ...,
     ],
+    *,
+    during_rendering: typing.Callable[[], None] | None = None,
 ) -> tuple[tuple[PlotImage, ...], ...]:
     """Render every fire's plots in parallel with one shared pool.
 
     Every worker in the pool creates its figure, canvas, and output buffer once and
     clears the figure between plots, so the per-plot work is only drawing and encoding.
-    A fire's plot is skipped when none of its lines span enough observation times.
+    A fire's plot is skipped when none of its lines span enough observation times. When
+    *during_rendering* is given, the parent runs it after submitting the plots and
+    before collecting the results, so a caller can finish independent per-fire work
+    (such as preparing data the folders will need) while the workers render.
 
     Args:
         fire_bundles: Each fire's filename prefix and its plots, in fire order.
+        during_rendering: Work for the parent to run while the pool renders, or None.
 
     Returns:
         Each fire's rendered images, in the input fire order and in each fire's
@@ -162,8 +169,11 @@ def plot_image_bundles(
         worker_count_for(len(requests)),
         initializer=initialize_worker,
     ) as pool:
-        results = pool.map(render_plot_request, requests)
-    for request, image in zip(requests, results, strict=True):
+        results = pool.map_async(render_plot_request, requests)
+        if during_rendering is not None:
+            during_rendering()
+        rendered = results.get()
+    for request, image in zip(requests, rendered, strict=True):
         images_by_fire[request.fire_index].append(image)
     return tuple(tuple(images) for images in images_by_fire)
 

@@ -9,6 +9,7 @@ import geopandas
 import pytest
 import shapely.geometry
 
+import peri_scribe.kml.colormap
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.selection
 import peri_scribe.kml.text
@@ -1043,6 +1044,165 @@ def test_ring_added_areas_measure_zero_for_ground_already_claimed() -> None:
         [peri_scribe.units.area(geometry).m_as("meters ** 2"), 0.0],
         abs=1e-6,
     )
+
+
+def dated_progression_ring(
+    side: float,
+    observation_time: datetime.datetime,
+) -> peri_scribe.perimeters.progression.Ring:
+    """Return a dated growth ring over a square of *side*.
+
+    Args:
+        side: The square's side length in degrees.
+        observation_time: The ring's observation time.
+
+    Returns:
+        The growth ring.
+    """
+    return peri_scribe.perimeters.progression.Ring(
+        geometry=tests.peri_scribe.kml.kml_helpers.square(side),
+        observation_time=observation_time,
+    )
+
+
+def test_interior_ring_colors_draws_only_dated_rings() -> None:
+    first_time = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+    second_time = datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC)
+    first_ring = dated_progression_ring(1.0, first_time)
+    second_ring = dated_progression_ring(2.0, second_time)
+    undated_ring = peri_scribe.perimeters.progression.Ring(
+        geometry=tests.peri_scribe.kml.kml_helpers.square(3.0),
+        observation_time=None,
+    )
+    drawn = peri_scribe.kml.fire_data.interior_ring_colors(
+        (first_ring, undated_ring, second_ring),
+        (
+            tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
+                tests.peri_scribe.kml.kml_helpers.square(4.0),
+            ),
+        ),
+    )
+    assert [ring for ring, _color in drawn] == [first_ring, second_ring]
+    assert [color for _ring, color in drawn] == [
+        peri_scribe.kml.colormap.color_hex(rgb)
+        for _ring, rgb in peri_scribe.kml.colormap.progression_ring_colors(
+            (first_ring, second_ring),
+        )
+    ]
+
+
+def test_interior_ring_colors_falls_back_to_latest_perimeter_without_dated_rings() -> (
+    None
+):
+    first_time = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+    second_time = datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC)
+    first_geometry = tests.peri_scribe.kml.kml_helpers.square(1.0)
+    latest_geometry = tests.peri_scribe.kml.kml_helpers.square(2.0)
+    undated_ring = peri_scribe.perimeters.progression.Ring(
+        geometry=tests.peri_scribe.kml.kml_helpers.square(3.0),
+        observation_time=None,
+    )
+    ((ring, color),) = peri_scribe.kml.fire_data.interior_ring_colors(
+        (undated_ring,),
+        (
+            tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
+                first_geometry,
+                first_time,
+            ),
+            tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
+                latest_geometry,
+                second_time,
+            ),
+        ),
+    )
+    assert ring.geometry == latest_geometry
+    assert ring.observation_time == second_time
+    assert color == peri_scribe.kml.colormap.color_hex(
+        peri_scribe.kml.colormap.TURBO_RAMP[-1],
+    )
+
+
+def test_interior_ring_colors_returns_nothing_without_rings_or_perimeters() -> None:
+    assert peri_scribe.kml.fire_data.interior_ring_colors((), ()) == ()
+
+
+def test_precompute_interior_added_areas_warms_drawn_ring_sequences() -> None:
+    first_time = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+    second_time = datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC)
+    first_ring = dated_progression_ring(1.0, first_time)
+    second_ring = dated_progression_ring(2.0, second_time)
+    entry = tests.peri_scribe.kml.kml_helpers.fire_index_entry(
+        "Bug",
+        "active",
+        identifier="id-bug",
+    )
+    pending: list[peri_scribe.kml.fire_data.PendingFire] = [
+        (
+            entry,
+            frozenset({"id-bug"}),
+            (),
+            (first_ring, second_ring),
+            (),
+            (),
+        ),
+    ]
+    cache = peri_scribe.kml.fire_data.added_areas_for_rings
+    before = cache.cache_info().currsize
+    peri_scribe.kml.fire_data.precompute_interior_added_areas(pending)
+    assert cache.cache_info().currsize == before + 1
+    hits_before = cache.cache_info().hits
+    added_areas = peri_scribe.kml.fire_data.ring_added_areas(
+        (first_ring, second_ring),
+    )
+    assert cache.cache_info().hits == hits_before + 1
+    magnitudes = [area.m_as("meters ** 2") for area in added_areas]
+    first_added, second_added = magnitudes
+    assert 0 < first_added < second_added
+
+
+def test_precompute_interior_added_areas_warms_latest_perimeter_fallback() -> None:
+    observation_time = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
+    entry = tests.peri_scribe.kml.kml_helpers.fire_index_entry(
+        "Bug",
+        "active",
+        identifier="id-bug",
+    )
+    pending: list[peri_scribe.kml.fire_data.PendingFire] = [
+        (
+            entry,
+            frozenset({"id-bug"}),
+            (
+                tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
+                    tests.peri_scribe.kml.kml_helpers.square(2.0),
+                    observation_time,
+                ),
+            ),
+            (),
+            (),
+            (),
+        ),
+    ]
+    cache = peri_scribe.kml.fire_data.added_areas_for_rings
+    before = cache.cache_info().currsize
+    peri_scribe.kml.fire_data.precompute_interior_added_areas(pending)
+    assert cache.cache_info().currsize == before + 1
+
+
+def test_precompute_interior_added_areas_leaves_fire_without_drawn_rings_alone() -> (
+    None
+):
+    entry = tests.peri_scribe.kml.kml_helpers.fire_index_entry(
+        "Bug",
+        "active",
+        identifier="id-bug",
+    )
+    pending: list[peri_scribe.kml.fire_data.PendingFire] = [
+        (entry, frozenset({"id-bug"}), (), (), (), ()),
+    ]
+    cache = peri_scribe.kml.fire_data.added_areas_for_rings
+    before = cache.cache_info().currsize
+    peri_scribe.kml.fire_data.precompute_interior_added_areas(pending)
+    assert cache.cache_info().currsize == before
 
 
 def description_perimeter_frame() -> geopandas.GeoDataFrame:

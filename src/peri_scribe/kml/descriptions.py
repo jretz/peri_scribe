@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import functools
 import html
 import math
 from typing import TYPE_CHECKING
@@ -392,6 +393,7 @@ def description_rows(
     ]
 
 
+@functools.cache
 def description_html(
     description: FireDescription,
     image_filenames: tuple[str, ...] = (),
@@ -406,6 +408,11 @@ def description_html(
     so a growth ring's balloon can lead with the area that ring added to the fire before
     the fire's shared facts; a row whose value is missing shows two hyphens, like the
     fire's own rows.
+
+    The balloon is cached by its inputs: the same fire's balloon is embedded in every
+    placemark that draws the fire and is rebuilt for each folder view that shows it, and
+    a fire's description, image filenames, and added-area rows are identical across
+    those placemarks and views.
 
     Args:
         description: The fire's latest state.

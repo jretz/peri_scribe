@@ -201,6 +201,33 @@ def test_plot_image_bundles_renders_each_fire_in_parallel() -> None:
             )
 
 
+def test_plot_image_bundles_runs_during_rendering_in_the_parent() -> None:
+    plot = peri_scribe.kml.plot_data.FirePlot(
+        filename_suffix="area",
+        series=(
+            peri_scribe.kml.plot_data.PlotSeries(
+                label="Area",
+                points=(
+                    tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 10.0),
+                    tests.peri_scribe.kml.kml_plot_helpers.series_point(2, 20.0),
+                ),
+            ),
+        ),
+        y_axis_label="Thousands of acres",
+    )
+    calls: list[str] = []
+
+    def record() -> None:
+        calls.append("during")
+
+    bundles = peri_scribe.kml.plot_rendering.plot_image_bundles(
+        (("id-one", (plot,)),),
+        during_rendering=record,
+    )
+    assert calls == ["during"]
+    assert [image.filename for image in bundles[0]] == ["id-one-area.png"]
+
+
 def test_plot_image_bundles_returns_empty_bundles_without_requests() -> None:
     single_observation_plot = peri_scribe.kml.plot_data.FirePlot(
         filename_suffix="area",
