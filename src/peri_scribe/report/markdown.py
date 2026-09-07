@@ -438,6 +438,17 @@ def markdown_text(
     )
     lines.extend(
         fire_table_section(
+            "Type 1 Fires",
+            report.type_one_fires,
+            columns=(
+                (LOCATION_LABEL, location_cell, False),
+                (AREA_LABEL, area_fact, True),
+            ),
+            anchors=anchors,
+        ),
+    )
+    lines.extend(
+        fire_table_section(
             "Fastest Growing Fires (acres)",
             report.fastest_growing_by_acres,
             columns=(

@@ -57,11 +57,13 @@ class FireReportEntry:
 class FireReport:
     """The report's fire lists and its per-fire details.
 
-    Each fire list is ordered most-to-least interesting; the detail entries, one per
-    distinct fire across the lists, are ordered by name.
+    Each fire list is ordered most-to-least interesting except the Type 1 fires, which
+    are ordered by name; the detail entries, one per distinct fire across the lists, are
+    ordered by name.
     """
 
     new_notable_fires: tuple[FireReportEntry, ...]
+    type_one_fires: tuple[FireReportEntry, ...]
     fastest_growing_by_acres: tuple[FireReportEntry, ...]
     fastest_growing_by_percent: tuple[FireReportEntry, ...]
     top_fires: tuple[FireReportEntry, ...]
@@ -320,17 +322,17 @@ def gather_report(year_directory: pathlib.Path) -> FireReport:
     """Gather the fire report for *year_directory* from its derived outputs.
 
     The same index, scores, and history layers that feed the KMZ are read here, so the
-    report's lists match the map's top-level views: new and notable fires, the fastest
-    growing fires by acres and by percent, and the top fires by score.
+    report's lists match the map's top-level views: new and notable fires, Type 1 fires,
+    the fastest growing fires by acres and by percent, and the top fires by score.
 
     Args:
         year_directory: The year directory that holds the ``derived`` directory.
 
     Returns:
-        The gathered report, with each list ordered most-to-least interesting.
+        The gathered report, with each list ordered most-to-least interesting and the
+        Type 1 fires ordered by name.
     """
     index = peri_scribe.fires.index.load_fire_index(year_directory)
-    scores = peri_scribe.fires.score_files.load_fire_scores(year_directory)
     history_path = peri_scribe.fires.files.history_geopackage_path(year_directory)
     perimeters = peri_scribe.geo.reading.read_layer(
         history_path,
@@ -344,7 +346,9 @@ def gather_report(year_directory: pathlib.Path) -> FireReport:
         year_directory,
     )
     index = peri_scribe.kml.builder.area_qualified_index(index, perimeters, points)
-    fire_scores = scores or peri_scribe.models.FireScores(version="", fires=[])
+    fire_scores = peri_scribe.fires.score_files.load_fire_scores(
+        year_directory,
+    ) or peri_scribe.models.FireScores(version="", fires=[])
     fires = peri_scribe.kml.fire_data.fire_geometries(
         index,
         perimeters,
@@ -366,6 +370,13 @@ def gather_report(year_directory: pathlib.Path) -> FireReport:
             fire_scores,
             reference_time,
         ),
+        scores_by_identifier,
+        scores_by_name,
+        reference_time,
+        year_directory,
+    )
+    type_one_entries = located_entries(
+        peri_scribe.kml.folders.type_one_fires(fires),
         scores_by_identifier,
         scores_by_name,
         reference_time,
@@ -400,11 +411,13 @@ def gather_report(year_directory: pathlib.Path) -> FireReport:
     )
     return FireReport(
         new_notable_fires=new_notable_entries,
+        type_one_fires=type_one_entries,
         fastest_growing_by_acres=fast_growing_by_acres_entries,
         fastest_growing_by_percent=fast_growing_by_percent_entries,
         top_fires=top_fire_entries,
         fire_details=report_details(
             new_notable_entries,
+            type_one_entries,
             fast_growing_by_acres_entries,
             fast_growing_by_percent_entries,
             top_fire_entries,

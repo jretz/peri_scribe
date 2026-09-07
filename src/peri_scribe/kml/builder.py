@@ -107,10 +107,10 @@ def fire_view_folders(
 ) -> None:
     """Append every top-level fire view folder that holds fires, given scores.
 
-    The newly discovered, fast-growing, and most-personnel views come first, each
-    loading unchecked with its whole tree hidden; the top-fire views follow, with the
-    top fires by name loading checked. The status folders load checked only when there
-    are no top fires, so a folder is always checked as long as any fire exists.
+    The newly discovered, Type 1, fast-growing, and most-personnel views come first,
+    each loading unchecked with its whole tree hidden; the top-fire views follow, with
+    the top fires by name loading checked. The status folders load checked only when
+    there are no top fires, so a folder is always checked as long as any fire exists.
 
     Args:
         writer: The writer to append to.
@@ -126,6 +126,7 @@ def fire_view_folders(
         scores,
         wall_clock_time,
     )
+    type_one = peri_scribe.kml.folders.type_one_fires(fires)
     fast_growing_by_acres = peri_scribe.kml.folders.fast_growing_fires_by_acres(
         fires,
         wall_clock_time,
@@ -148,6 +149,15 @@ def fire_view_folders(
             writer,
             new_notable,
             peri_scribe.kml.folders.NEW_NOTABLE_FIRES_FOLDER_NAME,
+            style_urls,
+            ring_style_urls,
+            visible=False,
+        )
+    if type_one:
+        peri_scribe.kml.folders.top_fires_folder(
+            writer,
+            type_one,
+            peri_scribe.kml.folders.TYPE_1_FIRES_FOLDER_NAME,
             style_urls,
             ring_style_urls,
             visible=False,
@@ -264,9 +274,9 @@ def fire_kml(
     The document is named *name* and holds the symbolization styles, the
     progression-ring styles, and a top-level folder, also named *name*. The top-level
     folder holds the fire views as radio options, each created only when it holds fires.
-    When scores are supplied the folder begins with the newly discovered, fast growing,
-    and most-personnel views, followed by the top-fire views and the active and inactive
-    fire folders; without scores it holds the active and inactive fire folders.
+    When scores are supplied the folder begins with the newly discovered, Type 1, fast
+    growing, and most-personnel views, followed by the top-fire views and the active and
+    inactive fire folders; without scores it holds the active and inactive fire folders.
 
     Args:
         fires: The fires to symbolize.

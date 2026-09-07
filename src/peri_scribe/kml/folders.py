@@ -35,6 +35,7 @@ TOP_FIRES_BY_SCORE_FOLDER_NAME = "Top Fires by Score"
 TOP_FIRE_COUNT = 50
 
 NEW_NOTABLE_FIRES_FOLDER_NAME = "New, Notable Fires"
+TYPE_1_FIRES_FOLDER_NAME = "Type 1 Fires"
 FAST_GROWING_FIRES_BY_ACRES_FOLDER_NAME = "Fast Growing Fires (acres)"
 FAST_GROWING_FIRES_BY_PERCENT_FOLDER_NAME = "Fast Growing Fires (%)"
 MOST_PERSONNEL_FIRES_FOLDER_NAME = "Fires with Most Personnel"
@@ -522,6 +523,30 @@ def new_notable_fires(
         scored.append((fire, score))
     scored.sort(key=lambda pair: (-pair[1], pair[0].name.casefold()))
     return [fire for fire, _score in scored]
+
+
+def type_one_fires(
+    fires: list[peri_scribe.kml.fire_data.FireGeometry],
+) -> list[peri_scribe.kml.fire_data.FireGeometry]:
+    """Return the active fires marked as Type 1 Incidents, sorted by name.
+
+    A fire qualifies when it is active and its latest point-history row marks it a Type
+    1 Incident, the concept scoring uses, so a fire downgraded from Type 1 leaves the
+    view. The fires are ordered by their case-folded names, like the top fires by name.
+
+    Args:
+        fires: The fires that can be shown in the KMZ.
+
+    Returns:
+        The qualifying fires in name order.
+    """
+    qualifying = [
+        fire
+        for fire in fires
+        if fire.status is peri_scribe.models.FireStatus.ACTIVE and fire.type_one
+    ]
+    qualifying.sort(key=lambda fire: fire.name.casefold())
+    return qualifying
 
 
 def fire_growth(

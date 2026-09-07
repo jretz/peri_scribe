@@ -1554,6 +1554,52 @@ def test_new_notable_fires_excludes_unscored_fire() -> None:
     )
 
 
+def type_one_fire(
+    name: str,
+    *,
+    active: bool = True,
+) -> peri_scribe.kml.fire_data.FireGeometry:
+    """Return a fire carrying the given name and Type 1 marker.
+
+    Args:
+        name: The fire's name.
+        active: Whether the fire is active.
+
+    Returns:
+        The fire.
+    """
+    return peri_scribe.kml.fire_data.FireGeometry(
+        name=name,
+        status=(
+            peri_scribe.models.FireStatus.ACTIVE
+            if active
+            else peri_scribe.models.FireStatus.INACTIVE
+        ),
+        point=None,
+        perimeters=(),
+        type_one=True,
+    )
+
+
+def test_type_one_fires_includes_active_type_one_fires_sorted_by_name() -> None:
+    zulu = type_one_fire("Zulu")
+    alpha = type_one_fire("alpha")
+
+    assert peri_scribe.kml.folders.type_one_fires([zulu, alpha]) == [alpha, zulu]
+
+
+def test_type_one_fires_excludes_inactive_fire() -> None:
+    done = type_one_fire("Done", active=False)
+
+    assert peri_scribe.kml.folders.type_one_fires([done]) == []
+
+
+def test_type_one_fires_excludes_unmarked_active_fire() -> None:
+    plain = active_fire("Plain")
+
+    assert peri_scribe.kml.folders.type_one_fires([plain]) == []
+
+
 def test_fire_growth_compares_latest_area_with_window_start() -> None:
     fire = growing_fire("Grower", 0.02, 0.03, REFERENCE_TIME)
     baseline = peri_scribe.units.area(tests.peri_scribe.kml.kml_helpers.square(0.02))

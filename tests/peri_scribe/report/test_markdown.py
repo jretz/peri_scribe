@@ -12,7 +12,7 @@ import peri_scribe.report.markdown
 from peri_scribe.units import units
 
 
-REPORT_SECTION_COUNT = 5
+REPORT_SECTION_COUNT = 6
 GROWTH_SECTION_COUNT = 2
 
 # The summary sections whose location column headings appear when the report holds a
@@ -436,6 +436,7 @@ def test_markdown_text_renders_title_sections_and_details() -> None:
     )
     report = peri_scribe.report.gathering.FireReport(
         new_notable_fires=(bug,),
+        type_one_fires=(),
         fastest_growing_by_acres=(fire,),
         fastest_growing_by_percent=(percent,),
         top_fires=(big,),
@@ -445,11 +446,16 @@ def test_markdown_text_renders_title_sections_and_details() -> None:
 
     assert "# PeriScribe Fires 2026" in text
     assert "## New, Notable Fires" in text
+    assert "## Type 1 Fires" in text
     assert "## Fastest Growing Fires (acres)" in text
     assert "## Fastest Growing Fires (%)" in text
     assert "## Top Fires" in text
     assert "## Fire Details" in text
     assert text.index("## Fire Details") > text.index("## Top Fires")
+    assert text.index("## Type 1 Fires") > text.index("## New, Notable Fires")
+    assert text.index("## Fastest Growing Fires (acres)") > text.index(
+        "## Type 1 Fires",
+    )
     summary_lines = text.split("## Fire Details")[0].splitlines()
     assert (
         sum(
@@ -481,6 +487,7 @@ def test_markdown_text_renders_title_sections_and_details() -> None:
 def test_markdown_text_marks_empty_section() -> None:
     report = peri_scribe.report.gathering.FireReport(
         new_notable_fires=(),
+        type_one_fires=(),
         fastest_growing_by_acres=(),
         fastest_growing_by_percent=(),
         top_fires=(),
@@ -491,11 +498,48 @@ def test_markdown_text_marks_empty_section() -> None:
     assert text.count("_No fires._") == REPORT_SECTION_COUNT
 
 
+def test_markdown_text_renders_type_one_section_between_new_and_fastest() -> None:
+    bug = make_entry(
+        "Bug",
+        identifier="id-bug",
+        area=100.0,
+        location="15 mi ESE of Portland, OR",
+    )
+    report = peri_scribe.report.gathering.FireReport(
+        new_notable_fires=(),
+        type_one_fires=(bug,),
+        fastest_growing_by_acres=(),
+        fastest_growing_by_percent=(),
+        top_fires=(),
+        fire_details=(bug,),
+    )
+
+    text = peri_scribe.report.markdown.markdown_text(report, 2026)
+    summary_lines = text.split("## Fire Details")[0].splitlines()
+    type_one_heading = summary_lines.index("## Type 1 Fires")
+
+    assert "## New, Notable Fires" in summary_lines[:type_one_heading]
+    assert any(
+        line.startswith("| Fire") and "Location" in line
+        for line in summary_lines[type_one_heading:]
+    )
+    assert any("[**Bug**](#bug)" in line for line in summary_lines[type_one_heading:])
+    assert any(
+        "15 mi ESE of Portland, OR" in line for line in summary_lines[type_one_heading:]
+    )
+    assert any("100 acres" in line for line in summary_lines[type_one_heading:])
+    assert "### Bug" in text
+    assert text.index("## Fastest Growing Fires (acres)") > text.index(
+        "## Type 1 Fires",
+    )
+
+
 def test_render_markdown_report_writes_file(tmp_path: pathlib.Path) -> None:
     year_directory = tmp_path / "2026"
     year_directory.mkdir()
     report = peri_scribe.report.gathering.FireReport(
         new_notable_fires=(),
+        type_one_fires=(),
         fastest_growing_by_acres=(),
         fastest_growing_by_percent=(),
         top_fires=(),
@@ -616,6 +660,7 @@ def test_markdown_text_shows_location_in_sections_and_details() -> None:
     )
     report = peri_scribe.report.gathering.FireReport(
         new_notable_fires=(bug,),
+        type_one_fires=(),
         fastest_growing_by_acres=(),
         fastest_growing_by_percent=(),
         top_fires=(bug,),

@@ -202,6 +202,7 @@ def new_folder_scenario() -> tuple[
             observation_time=SCENARIO_TIME,
             total_personnel=50.0,
         ),
+        type_one=True,
     )
     components = peri_scribe.models.FireScoreComponents(
         size=0,
@@ -228,6 +229,7 @@ def new_folder_scenario() -> tuple[
 
 NEW_FOLDER_NAMES = [
     "New, Notable Fires",
+    "Type 1 Fires",
     "Fast Growing Fires (acres)",
     "Fast Growing Fires (%)",
     "Fires with Most Personnel",
@@ -244,6 +246,7 @@ def test_fire_kml_puts_new_folders_before_top_fires() -> None:
     top_level = tests.peri_scribe.kml.kml_helpers.folder_named(document, "test")
     assert tests.peri_scribe.kml.kml_helpers.folder_names(top_level) == [
         "New, Notable Fires",
+        "Type 1 Fires",
         "Fast Growing Fires (acres)",
         "Fast Growing Fires (%)",
         "Fires with Most Personnel",
@@ -281,6 +284,34 @@ def test_fire_kml_loads_new_folders_unchecked() -> None:
     tests.peri_scribe.kml.kml_helpers.assert_tree_visible(by_name)
     assert tests.peri_scribe.kml.kml_helpers.visibility(active) == 0
     tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(active)
+
+
+def test_fire_kml_lists_type_one_fires_by_name() -> None:
+    fires = [
+        peri_scribe.kml.fire_data.FireGeometry(
+            name=name,
+            status=peri_scribe.models.FireStatus.ACTIVE,
+            point=None,
+            perimeters=(),
+            type_one=True,
+        )
+        for name in ("Zulu", "Alpha")
+    ]
+    empty_scores = peri_scribe.models.FireScores(version="test", fires=[])
+    document = tests.peri_scribe.kml.kml_helpers.document_from(
+        peri_scribe.kml.builder.fire_kml(fires, "test", empty_scores),
+    )
+
+    top_level = tests.peri_scribe.kml.kml_helpers.folder_named(document, "test")
+    type_one = tests.peri_scribe.kml.kml_helpers.folder_named(
+        top_level,
+        "Type 1 Fires",
+    )
+    assert tests.peri_scribe.kml.kml_helpers.folder_names(type_one) == [
+        "Alpha",
+        "Zulu",
+    ]
+    tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(type_one)
 
 
 def test_fire_kml_loads_top_fires_by_name_checked() -> None:
@@ -364,6 +395,7 @@ def test_fire_kml_checks_active_fires_without_top_fires() -> None:
 
     top_level = tests.peri_scribe.kml.kml_helpers.folder_named(document, "test")
     assert tests.peri_scribe.kml.kml_helpers.folder_names(top_level) == [
+        "Type 1 Fires",
         "Fast Growing Fires (acres)",
         "Fast Growing Fires (%)",
         "Fires with Most Personnel",

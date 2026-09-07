@@ -208,6 +208,11 @@ def test_gather_report_assembles_each_fire_list(
     )
     monkeypatch.setattr(
         peri_scribe.kml.folders,
+        "type_one_fires",
+        lambda _fires: [fire],
+    )
+    monkeypatch.setattr(
+        peri_scribe.kml.folders,
         "fast_growing_fires_by_acres",
         lambda _fires, _reference_time: [fire],
     )
@@ -225,6 +230,7 @@ def test_gather_report_assembles_each_fire_list(
     report = peri_scribe.report.gathering.gather_report(year_directory)
 
     assert [entry.name for entry in report.new_notable_fires] == ["Bug"]
+    assert [entry.name for entry in report.type_one_fires] == ["Bug"]
     assert [entry.name for entry in report.fastest_growing_by_acres] == ["Bug"]
     assert [entry.name for entry in report.fastest_growing_by_percent] == ["Bug"]
     assert [entry.name for entry in report.top_fires] == ["Bug"]

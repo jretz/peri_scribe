@@ -703,6 +703,125 @@ def test_fire_geometries_puts_score_explanation_in_balloon() -> None:
     assert without_scores.description.of_note is None
 
 
+def type_one_point_frame(
+    complexity_level: str | None,
+) -> geopandas.GeoDataFrame:
+    """Return a point history frame marking one fire with a complexity level.
+
+    Args:
+        complexity_level: The incident complexity level to preserve, or None to leave
+            the attribute absent.
+
+    Returns:
+        The frame holding one point row for the fire.
+    """
+    attributes = (
+        {}
+        if complexity_level is None
+        else {"IncidentComplexityLevel": complexity_level}
+    )
+    return geopandas.GeoDataFrame(
+        {
+            "fire_identifier": ["id-bug"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps(attributes)],
+        },
+        geometry=[shapely.geometry.Point(1.0, 1.0)],
+        crs="EPSG:4326",
+    )
+
+
+def test_fire_geometries_marks_type_one_incident_from_point_rows() -> None:
+    index = tests.peri_scribe.kml.kml_helpers.fire_index([
+        tests.peri_scribe.kml.kml_helpers.fire_index_entry(
+            "Bug",
+            "active",
+            identifier="id-bug",
+        ),
+    ])
+    perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame([
+        ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+    ])
+
+    (fire,) = peri_scribe.kml.fire_data.fire_geometries(
+        index,
+        perimeters,
+        type_one_point_frame("Type 1 Incident"),
+        tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
+    )
+
+    assert fire.type_one
+
+
+def test_fire_geometries_leaves_lower_complexity_fire_unmarked() -> None:
+    index = tests.peri_scribe.kml.kml_helpers.fire_index([
+        tests.peri_scribe.kml.kml_helpers.fire_index_entry(
+            "Bug",
+            "active",
+            identifier="id-bug",
+        ),
+    ])
+    perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame([
+        ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+    ])
+
+    (fire,) = peri_scribe.kml.fire_data.fire_geometries(
+        index,
+        perimeters,
+        type_one_point_frame("Type 2 Incident"),
+        tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
+    )
+
+    assert not fire.type_one
+
+
+def test_fire_geometries_leaves_fire_unmarked_without_complexity_level() -> None:
+    index = tests.peri_scribe.kml.kml_helpers.fire_index([
+        tests.peri_scribe.kml.kml_helpers.fire_index_entry(
+            "Bug",
+            "active",
+            identifier="id-bug",
+        ),
+    ])
+    perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame([
+        ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+    ])
+
+    (fire,) = peri_scribe.kml.fire_data.fire_geometries(
+        index,
+        perimeters,
+        type_one_point_frame(None),
+        tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
+    )
+
+    assert not fire.type_one
+
+
+def test_fire_geometries_leaves_fire_unmarked_without_point_attributes() -> None:
+    index = tests.peri_scribe.kml.kml_helpers.fire_index([
+        tests.peri_scribe.kml.kml_helpers.fire_index_entry(
+            "Bug",
+            "active",
+            identifier="id-bug",
+        ),
+    ])
+    perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame([
+        ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+    ])
+    points = tests.peri_scribe.kml.kml_helpers.geometry_frame([
+        ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
+    ])
+
+    (fire,) = peri_scribe.kml.fire_data.fire_geometries(
+        index,
+        perimeters,
+        points,
+        tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
+    )
+
+    assert not fire.type_one
+
+
 def test_fire_geometries_matches_score_explanation_by_identifier() -> None:
     index = tests.peri_scribe.kml.kml_helpers.fire_index([
         tests.peri_scribe.kml.kml_helpers.fire_index_entry(

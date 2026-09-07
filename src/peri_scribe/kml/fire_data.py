@@ -13,6 +13,7 @@ import typing
 
 import shapely
 
+import peri_scribe.fires.scoring
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.history_index
 import peri_scribe.kml.plot_data
@@ -45,7 +46,12 @@ class Perimeter:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class FireGeometry:
-    """One fire's point, perimeters, growth rings, and plots, ready to symbolize."""
+    """One fire's point, perimeters, growth rings, and plots, ready to symbolize.
+
+    ``type_one`` records whether the fire's latest point-history row marks it a Type 1
+    Incident, the concept scoring uses, so the map's Type 1 view carries each active
+    fire that is currently designated Type 1.
+    """
 
     name: str
     status: peri_scribe.models.FireStatus
@@ -55,6 +61,7 @@ class FireGeometry:
     description: peri_scribe.kml.descriptions.FireDescription | None = None
     images: tuple[peri_scribe.kml.plot_rendering.PlotImage, ...] = ()
     identifiers: frozenset[str] = frozenset()
+    type_one: bool = False
 
 
 # A differential ring smaller than this adds nothing visible to the map, so it is
@@ -346,6 +353,14 @@ def fire_geometries(
         perimeter_positions,
         point_positions,
     ), images in zip(pending, image_bundles, strict=True):
+        perimeter_rows = peri_scribe.kml.history_index.select_rows(
+            perimeters,
+            perimeter_positions,
+        )
+        point_rows = peri_scribe.kml.history_index.select_rows(
+            points,
+            point_positions,
+        )
         fires.append(
             FireGeometry(
                 name=entry.name,
@@ -362,20 +377,17 @@ def fire_geometries(
                 identifiers=fire_identifiers,
                 description=peri_scribe.kml.text.fire_description(
                     entry,
-                    peri_scribe.kml.history_index.select_rows(
-                        perimeters,
-                        perimeter_positions,
-                    ),
-                    peri_scribe.kml.history_index.select_rows(
-                        points,
-                        point_positions,
-                    ),
+                    perimeter_rows,
+                    point_rows,
                     of_note=peri_scribe.kml.text.score_explanation_for(
                         notes_by_identifier,
                         notes_by_name,
                         fire_identifiers,
                         entry.name,
                     ),
+                ),
+                type_one=peri_scribe.fires.scoring.fire_is_type_one_incident(
+                    point_rows,
                 ),
                 images=images,
             ),

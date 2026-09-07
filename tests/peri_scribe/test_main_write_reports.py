@@ -18,6 +18,7 @@ def test_write_reports_gathers_and_renders(monkeypatch: pytest.MonkeyPatch) -> N
     year_directory = pathlib.Path("data/2026")
     report = peri_scribe.report.gathering.FireReport(
         new_notable_fires=(),
+        type_one_fires=(),
         fastest_growing_by_acres=(),
         fastest_growing_by_percent=(),
         top_fires=(),

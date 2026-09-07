@@ -270,20 +270,43 @@ def acre_magnitude(value: pint.Quantity[float] | None) -> float | None:
 
 
 def fire_importance_points(points: geopandas.GeoDataFrame) -> int:
-    """Return the highest official-importance points among a fire's observations.
+    """Return the official-importance points for a fire's latest observation.
+
+    The fire's importance follows its most recent point-history row, so a fire
+    downgraded below an earlier level stops earning that level's points, and an
+    observation that does not state a level resets the importance to zero.
 
     Args:
-        points: The fire's point-history rows.
+        points: The fire's point-history rows, oldest first.
 
     Returns:
-        The highest importance points across the rows, or 0 when there are none.
+        The points for the latest row's level, or 0 when that row has none.
     """
     if points.empty:
         return 0
-    levels = (
-        complexity_level(attributes) for attributes in points["source_attributes"]
+    return importance_points(complexity_level(points["source_attributes"].iloc[-1]))
+
+
+def fire_is_type_one_incident(points: geopandas.GeoDataFrame) -> bool:
+    """Return whether *points*' fire is currently marked a Type 1 Incident.
+
+    The fire is a Type 1 Incident when its latest point-history row carries the Type 1
+    complexity level, the highest level the scoring model recognizes, so a fire
+    downgraded from Type 1 stops counting as one. A frame without the preserved
+    source-attributes column has no complexity level to read, so it is not a Type 1
+    Incident.
+
+    Args:
+        points: The fire's point-history rows, oldest first.
+
+    Returns:
+        Whether the fire's latest row marks it a Type 1 Incident.
+    """
+    if "source_attributes" not in points.columns:
+        return False
+    return (
+        fire_importance_points(points) == IMPORTANCE_POINTS_BY_LEVEL["Type 1 Incident"]
     )
-    return max((importance_points(level) for level in levels), default=0)
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
