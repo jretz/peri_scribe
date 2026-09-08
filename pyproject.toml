@@ -15,6 +15,7 @@ dependencies = [
     "pyproj",
     "pytest-cov",
     "pytest",
+    "pytest-xdist",
     "requests-mock",
     "requests",
     "ruff",
@@ -58,6 +59,10 @@ addopts = [
     "--cov-report=html",
     "--cov=src",
     "--no-cov-on-fail",
+
+    # pytest-xdist
+    "--numprocesses=4",
+    "--dist=worksteal",
 ]
 filterwarnings = [
     # Deprecation warnings raised at import time by third-party dependencies (arcgis,
