@@ -82,7 +82,7 @@ def test_run_fetches_external_sources_but_skips_later_stages_when_nothing_change
         (source, year_directory)
         for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES
     ]
-    assert stubs.ensure_boundary_calls == []
+    assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == []
     assert stubs.scores_calls == []
     assert stubs.kmz_calls == []
@@ -180,7 +180,7 @@ def test_run_full_fetch_interval_zero_hours_fetches_in_full_and_records_state(
             datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         ),
     ]
-    assert stubs.ensure_boundary_calls == []
+    assert stubs.ensure_boundary_calls == [year_directory]
 
 
 @pytest.mark.usefixtures("current_year")
@@ -533,7 +533,7 @@ def test_run_only_runs_a_single_stage(
     year_directory = BASE_DIRECTORY / "data" / "2026"
     assert stubs.fetch_calls == []
     assert stubs.external_calls == []
-    assert stubs.ensure_boundary_calls == [year_directory]
+    assert stubs.ensure_boundary_calls == []
     assert stubs.history_calls == [year_directory]
     assert stubs.scores_calls == []
     assert stubs.kmz_calls == []
@@ -554,7 +554,7 @@ def test_run_only_fetch_runs_no_later_stages(
         (source, year_directory)
         for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES
     ]
-    assert stubs.ensure_boundary_calls == []
+    assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == []
     assert stubs.scores_calls == []
     assert stubs.kmz_calls == []
@@ -575,7 +575,7 @@ def test_run_from_geography_to_kmz(
     year_directory = BASE_DIRECTORY / "data" / "2026"
     assert stubs.fetch_calls == []
     assert stubs.external_calls == []
-    assert stubs.ensure_boundary_calls == [year_directory]
+    assert stubs.ensure_boundary_calls == []
     assert stubs.history_calls == [year_directory]
     assert stubs.scores_calls == [year_directory]
     assert stubs.kmz_calls == [year_directory]
@@ -635,7 +635,7 @@ def test_run_to_fetch_short_circuits_without_later_stages(
         (source, year_directory)
         for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES
     ]
-    assert stubs.ensure_boundary_calls == []
+    assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == []
     assert stubs.scores_calls == []
     assert stubs.kmz_calls == []

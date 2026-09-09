@@ -243,14 +243,15 @@ def run_fetch_stage(
 ) -> bool:
     """Fetch fire feeds and external sources; return whether to keep going.
 
-    The fetch stage always fetches every configured fire feed and the external sources
-    (buildings, evacuations, and major cities). A full fire-feed fetch is run when
-    *full_fetch_interval* is given and the last recorded full fetch, stored at
-    ``YEAR_DIRECTORY/sources/fetch_state.json``, is at least that old; without an
-    interval every fire-feed fetch is incremental. A completed full fetch records its
-    completion time in the state file. The stage returns True when the fetch wrote a new
-    fire snapshot or replaced the stored evacuations, or when *unconditional* is set,
-    signalling that the remaining stages should run.
+    The fetch stage always fetches every configured fire feed, the external sources
+    (buildings, evacuations, and major cities), and the administrative-boundary
+    GeoPackage, which is downloaded only when it is missing or unusable. A full
+    fire-feed fetch is run when *full_fetch_interval* is given and the last recorded
+    full fetch, stored at ``YEAR_DIRECTORY/sources/fetch_state.json``, is at least that
+    old; without an interval every fire-feed fetch is incremental. A completed full
+    fetch records its completion time in the state file. The stage returns True when the
+    fetch wrote a new fire snapshot or replaced the stored evacuations, or when
+    *unconditional* is set, signalling that the remaining stages should run.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
@@ -292,6 +293,9 @@ def run_fetch_stage(
     evacuations_digest_before = stored_evacuations_digest(year_directory)
     for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES:
         fetch_external_source(source, year_directory)
+    peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries(
+        year_directory,
+    )
     evacuations_changed = (
         stored_evacuations_digest(year_directory) != evacuations_digest_before
     )
@@ -299,10 +303,7 @@ def run_fetch_stage(
 
 
 def run_geography_stage(year_directory: pathlib.Path) -> None:
-    """Ensure administrative boundaries and derive fire geography histories."""
-    peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries(
-        year_directory,
-    )
+    """Derive fire geography histories from the fetched sources."""
     peri_scribe.fires.differential.write_history_of_differential_geography(
         year_directory,
     )
@@ -335,15 +336,13 @@ PIPELINE_STAGES: tuple[PipelineStage, ...] = (
     PipelineStage(
         name="fetch",
         description=(
-            "Fetch fire feeds and external sources (buildings, evacuations, and "
-            "major cities)."
+            "Fetch fire feeds, external sources (buildings, evacuations, and "
+            "major cities), and the administrative-boundary GeoPackage."
         ),
     ),
     PipelineStage(
         name="geography",
-        description=(
-            "Ensure administrative boundaries and derive fire geography histories."
-        ),
+        description="Derive fire geography histories from the fetched sources.",
     ),
     PipelineStage(
         name="score",
@@ -446,17 +445,18 @@ def selected_stage_range(
         Run the PeriScribe pipeline.
 
         The pipeline is fetch, geography, score, kmz, reports, run in order. By default
-        the full pipeline runs. The fetch stage fetches every configured fire feed and
-        the external sources (buildings, evacuations, and major cities). When the fetch
-        wrote a new fire snapshot or replaced the stored evacuations, the remaining
-        stages run; otherwise the pipeline ends after fetch. --full-fetch-interval
-        schedules a full fetch of every fire feed (storing only new or changed
-        features), catching source edits the incremental fetch would miss: the first run
-        with the option fetches in full, and a later run fetches in full whenever the
-        last successful full fetch is at least that long ago. Without the option every
-        fire-feed fetch is incremental. --unconditional runs the remaining stages even
-        when nothing changed; static feeds such as buildings are downloaded only when
-        missing, whether or not --unconditional is given.
+        the full pipeline runs. The fetch stage fetches every configured fire feed, the
+        external sources (buildings, evacuations, and major cities), and the
+        administrative-boundary GeoPackage, which is downloaded only when it is missing
+        or unusable. When the fetch wrote a new fire snapshot or replaced the stored
+        evacuations, the remaining stages run; otherwise the pipeline ends after fetch.
+        --full-fetch-interval schedules a full fetch of every fire feed (storing only
+        new or changed features), catching source edits the incremental fetch would
+        miss: the first run with the option fetches in full, and a later run fetches in
+        full whenever the last successful full fetch is at least that long ago. Without
+        the option every fire-feed fetch is incremental. --unconditional runs the
+        remaining stages even when nothing changed; static feeds such as buildings are
+        downloaded only when missing, whether or not --unconditional is given.
 
         Select a single stage with --only, a range with --from and --to, or list the
         stages with --list-stages. An error in any step stops the pipeline.

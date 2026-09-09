@@ -22,16 +22,16 @@ SQLite database at `sources/buildings.sqlite`.
 
 `run` performs the following operations:
 
-1. Fetch fire feeds incrementally, plus the external sources (buildings, evacuations,
-   and major cities).
-2. Ensure the administrative-boundary GeoPackage exists at
-   `sources/CA_border_with_AZ_NV_and_OR.gpkg`.
-3. Write `derived/history_of_full_geography.gpkg` with `perimeter_history` and
+1. Fetch fire feeds incrementally, the external sources (buildings, evacuations, and
+   major cities), and the administrative-boundary GeoPackage at
+   `sources/CA_border_with_AZ_NV_and_OR.gpkg`, which is downloaded only when missing
+   or unusable.
+2. Write `derived/history_of_full_geography.gpkg` with `perimeter_history` and
    `point_history` layers.
-4. Write `derived/history_of_differential_geography.gpkg` containing growth rings.
-5. Write `derived/fire_scores.json` and `derived/fire_scores_ccdf.png`.
-6. Write `maps/PeriScribe Fires <year>.kmz`.
-7. Write `reports/PeriScribe Fires <year>.md`.
+3. Write `derived/history_of_differential_geography.gpkg` containing growth rings.
+4. Write `derived/fire_scores.json` and `derived/fire_scores_ccdf.png`.
+5. Write `maps/PeriScribe Fires <year>.kmz`.
+6. Write `reports/PeriScribe Fires <year>.md`.
 
 These operations form the stages fetch, geography, score, kmz, and reports. The later
 stages run when fire data or evacuation data changed, or when `--unconditional` is

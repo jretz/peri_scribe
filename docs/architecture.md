@@ -9,7 +9,7 @@ processing, fire scoring, and KML modules.
 The primary workflow is:
 
 ```text
-fetch fire feeds and external sources
+fetch fire feeds, external sources, and administrative boundaries
     ↓
 derive geography history
     ↓
@@ -39,7 +39,10 @@ The fire index is stored at `sources/fires.json`. External datasets are stored b
 the fire snapshots: the latest evacuation layer is `sources/evacuations.gpkg`, and
 building locations are in `sources/buildings.sqlite`. The buildings converter streams
 the Microsoft USBuildingFootprints state archives into quantized centroid tiles and does
-not retain the downloaded archives.
+not retain the downloaded archives. The administrative-boundary GeoPackage at
+`sources/CA_border_with_AZ_NV_and_OR.gpkg` holds the California border with Arizona,
+Nevada, and Oregon; the fetch stage ensures it exists, downloading and computing it only
+when it is missing or unusable.
 
 Derived data is written below `data/<year>/derived/`:
 

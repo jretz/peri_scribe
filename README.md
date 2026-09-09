@@ -10,12 +10,13 @@ Run `peri_scribe --help` for command help. Pipeline commands that accept an opti
 year-directory argument default to `data/<current year>`.
 
 - `run` runs the pipeline fetch → geography → score → kmz → reports. The fetch stage
-  fetches all fire and external sources, and the later stages rebuild derived geography,
-  fire scores, the year's KMZ, and the fire reports; when nothing changed the pipeline
-  ends after fetch. Use `--full-fetch-interval` to fetch incremental feeds in full. Use
-  `--unconditional` to run all specified stages regardless of data changes. `--only
-  STAGE`, `--from STAGE`, and `--to STAGE` run one stage or a range, and `--list-stages`
-  prints the stages with descriptions.
+  fetches all fire and external sources and the administrative-boundary GeoPackage, and
+  the later stages rebuild derived geography, fire scores, the year's KMZ, and the fire
+  reports; when nothing changed the pipeline ends after fetch. Use
+  `--full-fetch-interval` to fetch incremental feeds in full. Use `--unconditional` to
+  run all specified stages regardless of data changes. `--only STAGE`, `--from STAGE`,
+  and `--to STAGE` run one stage or a range, and `--list-stages` prints the stages with
+  descriptions.
 - `show-colormap` previews the progression-ring colormap in a compatible terminal or
   writes it to a PNG file.
 - `validate-sources` compares incremental feed snapshots with complete fresh downloads
