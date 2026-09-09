@@ -40,6 +40,89 @@ MAPS_DIRECTORY_NAME = "maps"
 
 KMZ_DOCUMENT_FILENAME = "doc.kml"
 
+FIRIS_SOURCE_URL = (
+    "https://services1.arcgis.com/jUJYIo9tSA7EHvfZ/ArcGIS/rest/services/"
+    "CA_Perimeters_NIFC_FIRIS_public_view/FeatureServer"
+)
+WFIGS_PERIMETERS_SOURCE_URL = (
+    "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/"
+    "WFIGS_Interagency_Perimeters_Current/FeatureServer"
+)
+WFIGS_LOCATIONS_SOURCE_URL = (
+    "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/"
+    "WFIGS_Incident_Locations_Current/FeatureServer"
+)
+EVACUATIONS_SOURCE_URL = (
+    "https://services.arcgis.com/BLN4oKB0N1YSgvY8/arcgis/rest/services/"
+    "CA_EVACUATIONS_CalOESHosted_view/FeatureServer"
+)
+MAJOR_CITIES_SOURCE_URL = (
+    "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/"
+    "USA_Major_Cities_/FeatureServer"
+)
+STATE_BOUNDARIES_SOURCE_URL = (
+    "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/"
+    "USA_States_Generalized_Boundaries/FeatureServer"
+)
+BUILDINGS_SOURCE_URL = "https://github.com/microsoft/USBuildingFootprints"
+ODBL_URL = "https://opendatacommons.org/licenses/odbl/"
+
+ROOT_DOCUMENT_ATTRIBUTION = f"""<![CDATA[
+    <h3>Data Sources</h3>
+    <ul>
+        <li>
+            <a href="{FIRIS_SOURCE_URL}">
+                CAL FIRE/NIFC FIRIS
+            </a>
+        </li>
+        <li>
+            <a href="{WFIGS_LOCATIONS_SOURCE_URL}">
+                NIFC WFIGS incident locations
+            </a>
+        </li>
+        <li>
+            <a href="{WFIGS_PERIMETERS_SOURCE_URL}">
+                NIFC WFIGS perimeters
+            </a>
+        </li>
+        <li>
+            <a href="{EVACUATIONS_SOURCE_URL}">
+                California Governor's Office of Emergency Services evacuation zones
+            </a>
+        </li>
+        <li>
+            <a href="{MAJOR_CITIES_SOURCE_URL}">
+                Esri / U.S. Census Bureau USA Major Cities
+            </a>
+        </li>
+        <li>
+            <a href="{STATE_BOUNDARIES_SOURCE_URL}">
+                Esri generalized state boundaries
+            </a>
+        </li>
+        <li>
+            <a href="{BUILDINGS_SOURCE_URL}">
+                Microsoft USBuildingFootprints
+            </a>
+        </li>
+    </ul>
+    <p>
+        Microsoft USBuildingFootprints is licensed under the
+        <a href="{ODBL_URL}">
+            Open Data Commons Open Database License (ODbL)
+        </a>.
+    </p>
+    <p>
+        PeriScribe transforms source data, including geometry cleaning, derived
+        perimeter histories, and conversion of building footprints to centroids.
+    </p>
+    <p>
+        This data is provided with no warranty. It is intended for educational purposes
+        only and not for operational use. Consult the original sources for authoritative
+        information.
+    </p>
+]]>"""
+
 # DEFLATE is the compression Google Earth expects inside a KMZ. Level 6 is used instead
 # of the maximum 9: the output is within 1% of level 9's size but compresses several
 # times faster, and the plot PNGs are already compressed (so they are stored without
@@ -310,6 +393,9 @@ def fire_kml(
         )
     writer.parts.append(
         f"<name>{peri_scribe.kml.geometry.escape_text(name)}</name>",
+    )
+    writer.parts.append(
+        f"<description>{ROOT_DOCUMENT_ATTRIBUTION}</description>",
     )
 
     # The top-level folder holds the fire views as radio options, each created only when

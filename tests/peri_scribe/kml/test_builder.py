@@ -99,6 +99,12 @@ def test_fire_kml_names_the_document() -> None:
         document.findtext(tests.peri_scribe.kml.kml_helpers.kml_tag("name"))
         == "PeriScribe Fires 2026"
     )
+    attribution = document.findtext(
+        tests.peri_scribe.kml.kml_helpers.kml_tag("description"),
+    )
+    assert attribution is not None
+    assert "CAL FIRE/NIFC FIRIS" in attribution
+    assert "Open Data Commons Open Database License (ODbL)" in attribution
     top_level = tests.peri_scribe.kml.kml_helpers.top_level_folder(document)
     assert (
         tests.peri_scribe.kml.kml_helpers.folder_list_item_type(top_level)
