@@ -129,7 +129,7 @@ run = [
 _.python.venv = { path = ".venv" }
 
 [settings]
-task.output = "quiet"
+task.quiet = true
 
 [tools]
 "cargo:gitnr" = "latest"
