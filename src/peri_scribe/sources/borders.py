@@ -27,10 +27,7 @@ if typing.TYPE_CHECKING:
 logger = structlog.get_logger()
 
 
-CALIFORNIA_WHERE_CLAUSE = "STATE_ABBR='CA'"
-
-
-NEIGHBOR_WHERE_CLAUSE = "STATE_ABBR IN ('AZ','NV','OR')"
+BOUNDARY_STATES_WHERE_CLAUSE = "STATE_ABBR IN ('CA','AZ','NV','OR')"
 
 
 NEIGHBOR_COLUMN_NAME = "NEIGHBOR"
@@ -49,6 +46,9 @@ NEIGHBOR_STATES = [us.states.AZ, us.states.NV, us.states.OR]
 
 
 EXPECTED_FEATURE_COUNT = len(NEIGHBOR_STATES)
+
+
+EXPECTED_BOUNDARY_FEATURE_COUNT = len(NEIGHBOR_STATES) + 1
 
 
 CALIFORNIA_BOX_SOUTHERN_LATITUDE = 31.0
@@ -204,64 +204,72 @@ def layer_dataframe(
     )
 
 
-def california_geometry(layer: arcgis.features.FeatureLayer) -> shapely.Geometry:
-    """Return California's boundary polygon from *layer*.
-
-    Args:
-        layer: The layer holding the California feature.
-
-    Returns:
-        California's polygon.
-
-    Raises:
-        AdministrativeBoundariesError: If the layer does not hold exactly one
-            California feature with a geometry.
-    """
-    dataframe = layer_dataframe(
-        layer,
-        "California",
-        where=CALIFORNIA_WHERE_CLAUSE,
-    )
-    if len(dataframe) != 1:
-        message = f"Expected one California feature, got {len(dataframe)}"
-        raise peri_scribe.exceptions.AdministrativeBoundariesError(message)
-    geometry = dataframe.geometry.iloc[0]
-    if geometry is None:
-        message = "The California feature has no geometry"
-        raise peri_scribe.exceptions.AdministrativeBoundariesError(message)
-    return typing.cast("shapely.Geometry", geometry)
-
-
-def neighbor_geometries(
+def boundary_geometries(
     layer: arcgis.features.FeatureLayer,
 ) -> geopandas.GeoDataFrame:
-    """Return the neighboring states' polygons from *layer*.
+    """Return California and its neighboring states from the state layer.
+
+    The generalized state-boundary layer contains California as well as Arizona, Nevada,
+    and Oregon, so one query supplies every polygon needed to compute the California
+    interstate border.
 
     Args:
         layer: The layer holding the state polygons.
 
     Returns:
-        The Arizona, Nevada, and Oregon polygons as a GeoDataFrame in WGS84.
+        The four required state polygons as a GeoDataFrame in WGS84.
 
     Raises:
-        AdministrativeBoundariesError: If the layer does not hold every expected
-            neighbor, or a neighbor has no geometry.
+        AdministrativeBoundariesError: If a required state is missing or has no
+            geometry.
     """
     dataframe = layer_dataframe(
         layer,
-        "Neighboring states",
-        where=NEIGHBOR_WHERE_CLAUSE,
+        "California border states",
+        where=BOUNDARY_STATES_WHERE_CLAUSE,
     )
-    if len(dataframe) != EXPECTED_FEATURE_COUNT:
+    expected = {"CA", "AZ", "NV", "OR"}
+    actual = set(dataframe["STATE_ABBR"])
+    if len(dataframe) != EXPECTED_BOUNDARY_FEATURE_COUNT or actual != expected:
         message = (
-            f"Expected {EXPECTED_FEATURE_COUNT} neighboring states, "
+            f"Expected California and {EXPECTED_FEATURE_COUNT} neighboring states, "
             f"got {len(dataframe)}"
         )
         raise peri_scribe.exceptions.AdministrativeBoundariesError(message)
     if dataframe.geometry.isna().any():
-        message = "A neighboring state feature has no geometry"
+        message = "A California border state feature has no geometry"
         raise peri_scribe.exceptions.AdministrativeBoundariesError(message)
     return dataframe
+
+
+def california_geometry_from_states(
+    states: geopandas.GeoDataFrame,
+) -> shapely.Geometry:
+    """Return California's polygon from a combined state-boundary dataframe.
+
+    Returns:
+        California's polygon.
+
+    Raises:
+        AdministrativeBoundariesError: If the dataframe does not contain exactly one
+            California feature.
+    """
+    california = states.geometry[states["STATE_ABBR"] == "CA"]
+    if len(california) != 1:
+        message = f"Expected one California feature, got {len(california)}"
+        raise peri_scribe.exceptions.AdministrativeBoundariesError(message)
+    return typing.cast("shapely.Geometry", california.iloc[0])
+
+
+def neighbor_geometries_from_states(
+    states: geopandas.GeoDataFrame,
+) -> geopandas.GeoDataFrame:
+    """Return the neighboring states from a combined state-boundary dataframe.
+
+    Returns:
+        The non-California rows with a reset index.
+    """
+    return states.loc[states["STATE_ABBR"] != "CA"].reset_index(drop=True)
 
 
 def border_dataframe(

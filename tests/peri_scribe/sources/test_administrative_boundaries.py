@@ -362,92 +362,78 @@ def test_layer_dataframe_logs_warning_when_geometry_missing() -> None:
     )
 
 
-def test_california_geometry_returns_polygon() -> None:
-    layer = FeatureLayerStub(
-        polygon_feature_set([CALIFORNIA], ["California"], ["CA"]),
-    )
-    geometry = peri_scribe.sources.borders.california_geometry(
-        as_feature_layer(layer),
-    )
-    assert geometry.equals(CALIFORNIA)
-    assert layer.queries == [{"where": "STATE_ABBR='CA'", "out_sr": 4326}]
-
-
-def test_california_geometry_raises_when_not_exactly_one_feature() -> None:
+def test_boundary_geometries_queries_california_and_neighbors_once() -> None:
     layer = FeatureLayerStub(
         polygon_feature_set(
-            [CALIFORNIA, CALIFORNIA],
-            ["California", "California"],
-            ["CA", "CA"],
+            [CALIFORNIA, ARIZONA, NEVADA, OREGON],
+            ["California", "Arizona", "Nevada", "Oregon"],
+            ["CA", "AZ", "NV", "OR"],
         ),
     )
-    with pytest.raises(
-        peri_scribe.exceptions.AdministrativeBoundariesError,
-        match="Expected one California feature, got 2",
-    ):
-        peri_scribe.sources.borders.california_geometry(
-            as_feature_layer(layer),
-        )
-
-
-def test_california_geometry_raises_when_feature_has_no_geometry() -> None:
-    layer = FeatureLayerStub(GeometrylessFeatureSetStub(1))
-    with pytest.raises(
-        peri_scribe.exceptions.AdministrativeBoundariesError,
-        match="has no geometry",
-    ):
-        peri_scribe.sources.borders.california_geometry(
-            as_feature_layer(layer),
-        )
-
-
-def test_neighbor_geometries_returns_expected_states() -> None:
-    layer = FeatureLayerStub(
-        polygon_feature_set(
-            [ARIZONA, NEVADA, OREGON],
-            ["Arizona", "Nevada", "Oregon"],
-            ["AZ", "NV", "OR"],
-        ),
-    )
-    neighbors = peri_scribe.sources.borders.neighbor_geometries(
+    states = peri_scribe.sources.borders.boundary_geometries(
         as_feature_layer(layer),
     )
-    assert len(neighbors) == (peri_scribe.sources.borders.EXPECTED_FEATURE_COUNT)
-    assert list(neighbors["STATE_ABBR"]) == ["AZ", "NV", "OR"]
+    assert list(states["STATE_ABBR"]) == ["CA", "AZ", "NV", "OR"]
     assert layer.queries == [
         {
-            "where": "STATE_ABBR IN ('AZ','NV','OR')",
+            "where": "STATE_ABBR IN ('CA','AZ','NV','OR')",
             "out_sr": 4326,
         },
     ]
 
 
-def test_neighbor_geometries_raises_when_count_wrong() -> None:
+def test_boundary_geometries_raises_when_state_missing() -> None:
     layer = FeatureLayerStub(
         polygon_feature_set(
-            [ARIZONA, NEVADA],
-            ["Arizona", "Nevada"],
-            ["AZ", "NV"],
+            [CALIFORNIA, ARIZONA, NEVADA],
+            ["California", "Arizona", "Nevada"],
+            ["CA", "AZ", "NV"],
         ),
     )
     with pytest.raises(
         peri_scribe.exceptions.AdministrativeBoundariesError,
-        match="Expected 3 neighboring states, got 2",
+        match="Expected California and 3 neighboring states, got 3",
     ):
-        peri_scribe.sources.borders.neighbor_geometries(
-            as_feature_layer(layer),
-        )
+        peri_scribe.sources.borders.boundary_geometries(as_feature_layer(layer))
 
 
-def test_neighbor_geometries_raises_when_geometry_missing() -> None:
-    layer = FeatureLayerStub(GeometrylessFeatureSetStub(3))
+def test_boundary_geometries_raises_when_geometry_missing(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    states = geopandas.GeoDataFrame(
+        {
+            "STATE_ABBR": ["CA", "AZ", "NV", "OR"],
+        },
+        geometry=[CALIFORNIA, ARIZONA, NEVADA, None],
+        crs=pyproj.CRS.from_epsg(4326),
+    )
+    monkeypatch.setattr(
+        peri_scribe.sources.borders,
+        "layer_dataframe",
+        lambda *_args, **_kwargs: states,
+    )
     with pytest.raises(
         peri_scribe.exceptions.AdministrativeBoundariesError,
-        match="has no geometry",
+        match="border state feature has no geometry",
     ):
-        peri_scribe.sources.borders.neighbor_geometries(
-            as_feature_layer(layer),
+        peri_scribe.sources.borders.boundary_geometries(
+            as_feature_layer(object()),
         )
+
+
+def test_california_geometry_from_states_raises_when_missing() -> None:
+    states = geopandas.GeoDataFrame(
+        {
+            "STATE_ABBR": ["AZ", "NV", "OR"],
+        },
+        geometry=[ARIZONA, NEVADA, OREGON],
+        crs=pyproj.CRS.from_epsg(4326),
+    )
+    with pytest.raises(
+        peri_scribe.exceptions.AdministrativeBoundariesError,
+        match="Expected one California feature, got 0",
+    ):
+        peri_scribe.sources.borders.california_geometry_from_states(states)
 
 
 def test_is_usable_false_when_file_missing() -> None:
@@ -637,18 +623,15 @@ def test_ensure_administrative_boundaries_builds_when_file_unusable(
         "GIS",
         object,
     )
-    california_set = polygon_feature_set([CALIFORNIA], ["California"], ["CA"])
-    neighbor_set = polygon_feature_set(
-        [ARIZONA, NEVADA, OREGON],
-        ["Arizona", "Nevada", "Oregon"],
-        ["AZ", "NV", "OR"],
+    state_set = polygon_feature_set(
+        [CALIFORNIA, ARIZONA, NEVADA, OREGON],
+        ["California", "Arizona", "Nevada", "Oregon"],
+        ["CA", "AZ", "NV", "OR"],
     )
 
     def layer_factory(url: str, gis: object) -> FeatureLayerStub:
-        if url == peri_scribe.sources.administrative_boundaries.CALIFORNIA_LAYER_URL:
-            return FeatureLayerStub(california_set)
         if url == peri_scribe.sources.administrative_boundaries.NEIGHBOR_LAYER_URL:
-            return FeatureLayerStub(neighbor_set)
+            return FeatureLayerStub(state_set)
         raise AssertionError(url)
 
     monkeypatch.setattr(

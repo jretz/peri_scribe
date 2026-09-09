@@ -22,12 +22,6 @@ import peri_scribe.sources.snapshots
 logger = structlog.get_logger()
 
 
-CALIFORNIA_LAYER_URL = (
-    "https://services3.arcgis.com/0OPQIK59PJJqLK0A/ArcGIS/rest/services/"
-    "California/FeatureServer/3"
-)
-
-
 NEIGHBOR_LAYER_URL = (
     "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/"
     "USA_States_Generalized_Boundaries/FeatureServer/0"
@@ -103,10 +97,10 @@ def ensure_administrative_boundaries(
     """Ensure the California border GeoPackage exists and is usable.
 
     When the GeoPackage is present and appears to be in good shape it is reused as is.
-    Otherwise the border is rebuilt: California's polygon is fetched from the California
-    service, the neighboring states' polygons are fetched from the same-source
-    generalized states layer, the shared border portions are computed, and the result is
-    written to ``sources/administrative_boundaries/`` under *year_directory*.
+    Otherwise the border is rebuilt: California and its neighboring states are fetched
+    together from the generalized states layer, the shared border portions are computed,
+    and the result is written to ``sources/administrative_boundaries/`` under
+    *year_directory*.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
@@ -131,11 +125,12 @@ def ensure_administrative_boundaries(
     logger.debug("Building administrative boundaries", path=output_path)
     try:
         gis = arcgis.gis.GIS()
-        california = peri_scribe.sources.borders.california_geometry(
-            arcgis.features.FeatureLayer(CALIFORNIA_LAYER_URL, gis),
-        )
-        neighbors = peri_scribe.sources.borders.neighbor_geometries(
+        states = peri_scribe.sources.borders.boundary_geometries(
             arcgis.features.FeatureLayer(NEIGHBOR_LAYER_URL, gis),
+        )
+        california = peri_scribe.sources.borders.california_geometry_from_states(states)
+        neighbors = peri_scribe.sources.borders.neighbor_geometries_from_states(
+            states,
         )
     except Exception as error:
         message = f"Failed to build administrative boundaries: {error}"
