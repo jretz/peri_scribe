@@ -236,7 +236,6 @@ def test_fire_sources_document_includes_classification() -> None:
     )
     classification = peri_scribe.models.FireClassification(
         classification=peri_scribe.models.BorderClassification.INSIDE_CALIFORNIA_NEAR_BORDER,
-        distance_to_boundary_in_meters=4.0,
         outside_area_fraction=0.0,
         inside_area_fraction=1.0,
         signals=[peri_scribe.models.BorderSignal.GEOMETRY_NEAR],

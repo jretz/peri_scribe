@@ -343,7 +343,6 @@ def classify(
 
     return peri_scribe.models.FireClassification(
         classification=classification,
-        distance_to_boundary_in_meters=geometry.distance_to_boundary,
         outside_area_fraction=geometry.outside_area_fraction,
         inside_area_fraction=geometry.inside_area_fraction,
         wfigs_to_firis_area_ratio=extent.wfigs_to_firis_area_ratio,

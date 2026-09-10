@@ -561,39 +561,6 @@ def top_level_folder(document: ET.Element) -> ET.Element:
     return folder_named(document, "PeriScribe Fires 2026")
 
 
-def png_color(content: bytes) -> tuple[int, int, int]:
-    """Return the RGB color of every pixel in the solid-color PNG *content*.
-
-    Args:
-        content: The PNG bytes.
-
-    Returns:
-        The (red, green, blue) color.
-    """
-    assert content[:8] == b"\x89PNG\r\n\x1a\n"
-    width, height, bit_depth, color_type, _compression, _filter, _interlace = (
-        struct.unpack(">IIBBBBB", content[16:29])
-    )
-    assert (bit_depth, color_type) == (8, 2)
-    offset = 8
-    idat = b""
-    while offset < len(content):
-        length = struct.unpack(">I", content[offset : offset + 4])[0]
-        chunk_type = content[offset + 4 : offset + 8]
-        if chunk_type == b"IDAT":
-            idat += content[offset + 8 : offset + 8 + length]
-        offset += 12 + length
-    raw = zlib.decompress(idat)
-    row_size = 1 + width * 3
-    assert len(raw) == row_size * height
-    color = (raw[1], raw[2], raw[3])
-    for row_start in range(0, len(raw), row_size):
-        assert raw[row_start] == 0
-        for pixel_start in range(row_start + 1, row_start + row_size, 3):
-            assert tuple(raw[pixel_start : pixel_start + 3]) == color
-    return color
-
-
 def png_pixel_rows(content: bytes) -> list[list[tuple[int, int, int, int]]]:
     """Return each row's RGBA pixels of the PNG *content*.
 

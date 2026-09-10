@@ -122,28 +122,18 @@ def test_fire_kml_puts_top_fires_before_status_folders() -> None:
         )
         for name in ("Zulu", "Alpha")
     ]
-    components = peri_scribe.models.FireScoreComponents(
-        size=0,
-        growth=0,
-        first_mapping=0,
-        buildings=0,
-        evacuation=0,
-        importance=0,
-    )
     scores = peri_scribe.models.FireScores(
         version="test",
         fires=[
             peri_scribe.models.FireScoreEntry(
                 name="Zulu",
                 score=3,
-                components=components,
                 explanation="No notable size, growth, threat, or "
                 "official-importance signals.",
             ),
             peri_scribe.models.FireScoreEntry(
                 name="Alpha",
                 score=2,
-                components=components,
                 explanation="No notable size, growth, threat, or "
                 "official-importance signals.",
             ),
@@ -210,21 +200,12 @@ def new_folder_scenario() -> tuple[
         ),
         type_one=True,
     )
-    components = peri_scribe.models.FireScoreComponents(
-        size=0,
-        growth=0,
-        first_mapping=0,
-        buildings=0,
-        evacuation=0,
-        importance=0,
-    )
     scores = peri_scribe.models.FireScores(
         version="test",
         fires=[
             peri_scribe.models.FireScoreEntry(
                 name="Alpha",
                 score=10,
-                components=components,
                 explanation="No notable size, growth, threat, or "
                 "official-importance signals.",
             ),
@@ -330,28 +311,18 @@ def test_fire_kml_loads_top_fires_by_name_checked() -> None:
         )
         for name in ("Zulu", "Alpha")
     ]
-    components = peri_scribe.models.FireScoreComponents(
-        size=0,
-        growth=0,
-        first_mapping=0,
-        buildings=0,
-        evacuation=0,
-        importance=0,
-    )
     scores = peri_scribe.models.FireScores(
         version="test",
         fires=[
             peri_scribe.models.FireScoreEntry(
                 name="Zulu",
                 score=3,
-                components=components,
                 explanation="No notable size, growth, threat, or "
                 "official-importance signals.",
             ),
             peri_scribe.models.FireScoreEntry(
                 name="Alpha",
                 score=2,
-                components=components,
                 explanation="No notable size, growth, threat, or "
                 "official-importance signals.",
             ),

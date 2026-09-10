@@ -1028,14 +1028,6 @@ def score_entry(
         name=name,
         identifier=identifier,
         score=score,
-        components=peri_scribe.models.FireScoreComponents(
-            size=0,
-            growth=0,
-            first_mapping=0,
-            buildings=0,
-            evacuation=0,
-            importance=0,
-        ),
         explanation=explanation,
     )
 

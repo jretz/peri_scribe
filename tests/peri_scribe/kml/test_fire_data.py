@@ -671,14 +671,6 @@ def test_fire_geometries_puts_score_explanation_in_balloon() -> None:
                 name="Bug",
                 identifier="id-bug",
                 score=389,
-                components=peri_scribe.models.FireScoreComponents(
-                    size=135,
-                    growth=60,
-                    first_mapping=33,
-                    buildings=8,
-                    evacuation=33,
-                    importance=120,
-                ),
                 explanation="Over 100,000 acres, and a Type 1 Incident.",
             ),
         ],
@@ -847,28 +839,12 @@ def test_fire_geometries_matches_score_explanation_by_identifier() -> None:
                 name="Timber",
                 identifier="id-small",
                 score=4,
-                components=peri_scribe.models.FireScoreComponents(
-                    size=0,
-                    growth=0,
-                    first_mapping=0,
-                    buildings=4,
-                    evacuation=0,
-                    importance=0,
-                ),
                 explanation="Over 5 structures within a mile.",
             ),
             peri_scribe.models.FireScoreEntry(
                 name="Timber",
                 identifier="id-big",
                 score=470,
-                components=peri_scribe.models.FireScoreComponents(
-                    size=54,
-                    growth=0,
-                    first_mapping=11,
-                    buildings=12,
-                    evacuation=33,
-                    importance=360,
-                ),
                 explanation=(
                     "Over 250 structures within a mile, and a Type 1 Incident."
                 ),

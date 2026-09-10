@@ -365,7 +365,7 @@ def test_fire_score_for_awards_no_overlap_points_without_overlaps() -> None:
     assert score.importance_points == 0
 
 
-def test_score_entry_maps_components_and_total() -> None:
+def test_score_entry_maps_total() -> None:
     fire_score = peri_scribe.fires.scoring.FireScore(
         name="Bug",
         identifier="2026-a",
@@ -380,14 +380,6 @@ def test_score_entry_maps_components_and_total() -> None:
     assert entry.name == "Bug"
     assert entry.identifier == "2026-a"
     assert entry.score == pytest.approx(389)
-    assert entry.components.model_dump() == {
-        "size": 135,
-        "growth": 60,
-        "first_mapping": 33,
-        "buildings": 8,
-        "evacuation": 33,
-        "importance": 120,
-    }
     assert entry.explanation == (
         "Over 100,000 acres, a single growth step over "
         "50,000 acres, already over 5,000 acres when first mapped, over "
@@ -527,14 +519,6 @@ def test_fire_scores_document_wraps_entries_with_version() -> None:
         name="Bug",
         identifier=None,
         score=5,
-        components=peri_scribe.models.FireScoreComponents(
-            size=5,
-            growth=0,
-            first_mapping=0,
-            buildings=0,
-            evacuation=0,
-            importance=0,
-        ),
         explanation="Over 1,000 acres.",
     )
     document = peri_scribe.fires.scoring.fire_scores_document([entry])

@@ -231,7 +231,6 @@ def classification(
     """
     return peri_scribe.models.FireClassification(
         classification=kind,
-        distance_to_boundary_in_meters=0.0,
         outside_area_fraction=0.0,
         inside_area_fraction=0.0,
     )

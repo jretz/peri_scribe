@@ -428,21 +428,12 @@ def score_entry(
         fire_score: The fire's current score.
 
     Returns:
-        The entry holding the fire's score, current components, and an explanation of
-        the score.
+        The entry holding the fire's score and an explanation of the score.
     """
     return peri_scribe.models.FireScoreEntry(
         name=fire_score.name,
         identifier=fire_score.identifier,
         score=fire_score.total,
-        components=peri_scribe.models.FireScoreComponents(
-            size=fire_score.size_points,
-            growth=fire_score.growth_points,
-            first_mapping=fire_score.first_mapping_points,
-            buildings=fire_score.building_points,
-            evacuation=fire_score.evacuation_points,
-            importance=fire_score.importance_points,
-        ),
         explanation=score_explanation(fire_score),
     )
 

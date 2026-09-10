@@ -180,7 +180,6 @@ def test_score_fires_writes_current_scores(
     _path, document = writes[0]
     assert document.fires[0].name == "Bug"
     assert document.fires[0].score == pytest.approx(168)
-    assert document.fires[0].components.size == pytest.approx(135)
     assert ccdf_writes == [
         (
             pathlib.Path("data/2026/derived/fire_scores_ccdf.png"),
@@ -293,9 +292,6 @@ def test_score_fires_streams_external_signals(
     entry = writes[0][1].fires[0]
     assert entry.name == "Bug"
     assert entry.score == pytest.approx(445)
-    assert entry.components.buildings == pytest.approx(4)
-    assert entry.components.evacuation == pytest.approx(33)
-    assert entry.components.importance == pytest.approx(240)
 
 
 def test_score_fires_sorts_entries_by_score_descending(

@@ -10,7 +10,6 @@ import re
 import typing
 from typing import TYPE_CHECKING
 
-import pint
 import pydantic
 
 from peri_scribe.units import units
@@ -292,58 +291,10 @@ class FireIndexComplex(pydantic.BaseModel):
     identifier: str
 
 
-def distance_to_magnitude(distance: pint.Quantity) -> float:
-    """Return *distance*'s magnitude in meters.
-
-    Pydantic serializes the fire classification's distance as a plain JSON number, so
-    the magnitude is written in the field's canonical meters unit.
-
-    Args:
-        distance: The distance to serialize.
-
-    Returns:
-        The distance's magnitude in meters.
-    """
-    return distance.m_as("meters")
-
-
-def distance_from_value(value: float | pint.Quantity) -> pint.Quantity[float]:
-    """Return *value* as a distance, wrapping a plain number as meters.
-
-    A distance loaded from a serialized fire index arrives as a plain number of meters;
-    a distance built in code already carries units and is kept as it is.
-
-    Args:
-        value: The value to validate.
-
-    Returns:
-        The distance with its units.
-    """
-    if isinstance(value, pint.Quantity):
-        return value
-    return value * units.meters
-
-
-Distance = typing.Annotated[
-    pint.Quantity[float],
-    pydantic.PlainValidator(distance_from_value),
-    pydantic.PlainSerializer(
-        distance_to_magnitude,
-        return_type=float,
-        when_used="json",
-    ),
-]
-
-
 class FireClassification(pydantic.BaseModel):
-    """A fire's border classification and the evidence behind it.
-
-    The distance field's JSON form is a bare magnitude in meters, so the field keeps the
-    unit in its name as the only indication of what is stored.
-    """
+    """A fire's border classification and the evidence behind it."""
 
     classification: BorderClassification
-    distance_to_boundary_in_meters: Distance
     outside_area_fraction: float
     inside_area_fraction: float
     wfigs_to_firis_area_ratio: float | None = None
@@ -369,24 +320,12 @@ class FireIndex(pydantic.BaseModel):
     fires: list[FireIndexEntry]
 
 
-class FireScoreComponents(pydantic.BaseModel):
-    """The per-signal point contributions to a fire's score."""
-
-    size: int
-    growth: int
-    first_mapping: int
-    buildings: int
-    evacuation: int
-    importance: int
-
-
 class FireScoreEntry(pydantic.BaseModel):
-    """One fire's score, the current components, and why it has that score."""
+    """One fire's score and why it has that score."""
 
     name: str
     identifier: str | None = None
     score: int
-    components: FireScoreComponents
     explanation: str
 
 
