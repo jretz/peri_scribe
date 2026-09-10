@@ -82,18 +82,6 @@ def escape_text(text: str) -> str:
         start = cdata_end + 3
 
 
-def ring_coordinates(ring: shapely.LinearRing) -> list[tuple[float, float]]:
-    """Return the KML coordinates of *ring*.
-
-    Args:
-        ring: The shapely ring to convert.
-
-    Returns:
-        The ring's (longitude, latitude) coordinates.
-    """
-    return [(float(x), float(y)) for x, y in ring.coords]
-
-
 def ring_coordinates_text(ring: shapely.LinearRing) -> str:
     """Return the KML coordinate text of *ring*.
 

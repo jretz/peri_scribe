@@ -225,20 +225,3 @@ def fire_sources_from_groups(
         The non-complex fires in group order.
     """
     return [source for source, _group in non_complex_fire_sources(record_groups)]
-
-
-def fire_sources(directory: pathlib.Path) -> list[peri_scribe.models.FireSources]:
-    """Collect the distinct fires and their source files under *directory*.
-
-    Each result records the GeoPackage files whose rows mention the fire, so the same
-    fire can be traced back to every snapshot it appears in. Complex parents are
-    represented by a FireComplex instead of being listed as fires.
-
-    Args:
-        directory: The directory tree holding GeoPackage files with fire data.
-
-    Returns:
-        The fires, in the order first encountered, each with the paths of the GeoPackage
-        files that mention it.
-    """
-    return fire_sources_from_groups(fire_record_groups(directory))

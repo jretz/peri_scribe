@@ -95,26 +95,6 @@ def latest_snapshot_layer(
     return path, source.layer_name
 
 
-def read_latest_snapshot(
-    year_directory: pathlib.Path,
-    source: peri_scribe.sources.external_sources.ExternalSource,
-) -> geopandas.GeoDataFrame:
-    """Read the latest version of a live external source.
-
-    Args:
-        year_directory: The year directory that holds the ``sources`` directory.
-        source: The live external source.
-
-    Returns:
-        The source's latest features, or an empty GeoDataFrame when there are none.
-    """
-    layer = latest_snapshot_layer(year_directory, source)
-    if layer is None:
-        return geopandas.GeoDataFrame()
-    path, layer_name = layer
-    return peri_scribe.geo.reading.read_layer(path, layer_name)
-
-
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class ExternalSignals:
     """The external spatial signals for every fire, aligned with the records."""

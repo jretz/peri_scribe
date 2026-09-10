@@ -32,7 +32,6 @@ import collections
 import compression.zstd
 import pathlib
 import sqlite3
-import struct
 import tempfile
 import typing
 
@@ -166,27 +165,6 @@ def quantize_centroids(centroids: np.ndarray) -> np.ndarray:
     return np.round(centroids * COORDINATE_SCALE).astype("<i4")
 
 
-def encode_record(longitude: float, latitude: float) -> bytes:
-    """Return the 8-byte little-endian record for the coordinate pair.
-
-    Args:
-        longitude: The longitude in degrees.
-        latitude: The latitude in degrees.
-
-    Returns:
-        The record's eight bytes.
-
-    Examples:
-        >>> encode_record(-122.5, 37.75)
-        b'p\\x14E\\xff\\x18\\x9a9\\x00'
-    """
-    return struct.pack(
-        "<ii",
-        encode_longitude(longitude),
-        encode_latitude(latitude),
-    )
-
-
 def tile_id(encoded_longitude: int, encoded_latitude: int) -> int:
     """Return the 0.5° tile id containing the encoded coordinates.
 
@@ -221,22 +199,6 @@ def tile_ids(encoded: np.ndarray) -> np.ndarray:
     columns = (encoded[:, 0] + np.int32(LONGITUDE_OFFSET)) // TILE_STEPS
     rows = (encoded[:, 1] + np.int32(LATITUDE_OFFSET)) // TILE_STEPS
     return rows * np.int32(TILE_COLUMNS) + columns
-
-
-def partition_id(tile_id: int) -> int:
-    """Return the partition file holding a record of *tile_id*.
-
-    Args:
-        tile_id: The tile id.
-
-    Returns:
-        The partition number, from 0 to ``PARTITION_COUNT - 1``.
-
-    Examples:
-        >>> partition_id(37)
-        5
-    """
-    return tile_id % PARTITION_COUNT
 
 
 def partition_ids(identifiers: np.ndarray) -> np.ndarray:

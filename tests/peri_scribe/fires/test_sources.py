@@ -38,7 +38,11 @@ def listed_fires(
     Returns:
         The fires, in the order first encountered.
     """
-    return [source.fire for source in peri_scribe.fires.sources.fire_sources(directory)]
+    record_groups = peri_scribe.fires.sources.fire_record_groups(directory)
+    return [
+        source.fire
+        for source in peri_scribe.fires.sources.fire_sources_from_groups(record_groups)
+    ]
 
 
 def complex_parent_and_child_fires(
@@ -564,7 +568,10 @@ def test_fire_sources_collects_paths_for_each_fire(
         one: [fire_record("Park Fire", ACTIVE, geometry=location)],
         two: [fire_record("Park Fire", ACTIVE, geometry=location)],
     })
-    sources = peri_scribe.fires.sources.fire_sources(pathlib.Path("sources"))
+    record_groups = peri_scribe.fires.sources.fire_record_groups(
+        pathlib.Path("sources"),
+    )
+    sources = peri_scribe.fires.sources.fire_sources_from_groups(record_groups)
     assert sources == [
         peri_scribe.models.FireSources(
             fire=peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
@@ -584,7 +591,10 @@ def test_fire_sources_deduplicates_paths_for_a_fire(
             fire_record("Park Fire", ACTIVE, geometry=location),
         ],
     })
-    sources = peri_scribe.fires.sources.fire_sources(pathlib.Path("sources"))
+    record_groups = peri_scribe.fires.sources.fire_record_groups(
+        pathlib.Path("sources"),
+    )
+    sources = peri_scribe.fires.sources.fire_sources_from_groups(record_groups)
     assert sources == [
         peri_scribe.models.FireSources(
             fire=peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),

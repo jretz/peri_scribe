@@ -97,26 +97,6 @@ def kml_color(red_green_blue: str, opacity: pint.Quantity[float]) -> str:
     return f"{alpha:02x}{blue}{green}{red}".lower()
 
 
-def set_draw_order(
-    geometry: simplekml.Point | simplekml.Polygon,
-    draw_order: int,
-) -> None:
-    """Set the gx:drawOrder of *geometry* to *draw_order*.
-
-    simplekml exposes gx:drawOrder only on LineString, but every geometry serializes
-    from the same internal element map, so the tag is set there for points and polygons
-    alike. The application's perimeters are all single polygons, so no multi-geometry
-    handling is needed here.
-
-    Args:
-        geometry: The geometry to order.
-        draw_order: Lower values draw first, underneath later features.
-    """
-    # The tag map is a plain instance attribute, reached through vars() because
-    # simplekml keeps it private (``_kml``).
-    vars(geometry)["_kml"]["gx:drawOrder"] = draw_order
-
-
 def outline_draw_order(outline_count: int, newest_first_index: int) -> int:
     """Return the draw order of the outline at *newest_first_index*.
 
@@ -132,23 +112,6 @@ def outline_draw_order(outline_count: int, newest_first_index: int) -> int:
         The draw order, from 1 for the oldest outline to outline_count for the newest.
     """
     return outline_count - newest_first_index
-
-
-def band_draw_order(band_count: int, newest_first_index: int) -> int:
-    """Return the draw order of the growth band at *newest_first_index*.
-
-    Bands draw from oldest to newest, so the oldest band draws first, at the bottom of
-    the stack, and the newest draws last, above the others.
-
-    Args:
-        band_count: The number of bands drawn in the progression map.
-        newest_first_index: The band's position counting from the newest band first,
-            where 0 is the newest.
-
-    Returns:
-        The draw order, from 0 for the oldest band to band_count - 1 for the newest.
-    """
-    return band_count - 1 - newest_first_index
 
 
 def point_draw_order(outline_count: int) -> int:

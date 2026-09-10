@@ -104,64 +104,6 @@ def test_latest_snapshot_layer_names_source_geopackage(
     ) == (path, "evacuations")
 
 
-def test_read_latest_snapshot_returns_empty_without_snapshot(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        peri_scribe.sources.external_sources,
-        "output_path",
-        lambda _year_directory, _source: pathlib.Path(
-            "/sources/evacuations.gpkg",
-        ),
-    )
-    assert peri_scribe.fires.scores.read_latest_snapshot(
-        pathlib.Path("data/2026"),
-        peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
-    ).empty
-
-
-def test_read_latest_snapshot_returns_empty_without_layer_name(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    source = peri_scribe.sources.external_sources.ExternalSource(
-        name="none",
-        kind=peri_scribe.sources.external_sources.ExternalSourceKind.ARCGIS,
-        url="https://example.test/FeatureServer/0",
-    )
-    assert peri_scribe.fires.scores.read_latest_snapshot(
-        pathlib.Path("data/2026"),
-        source,
-    ).empty
-
-
-def test_read_latest_snapshot_reads_source_geopackage(
-    tmp_path: pathlib.Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    frame = geopandas.GeoDataFrame(
-        {"name": ["zone"]},
-        geometry=[tests.peri_scribe.fires.fire_helpers.square(1.0)],
-        crs="EPSG:4326",
-    )
-    path = tmp_path / "evacuations.gpkg"
-    path.write_bytes(b"data")
-    monkeypatch.setattr(
-        peri_scribe.sources.external_sources,
-        "output_path",
-        lambda _year_directory, _source: path,
-    )
-    monkeypatch.setattr(
-        peri_scribe.geo.reading,
-        "read_layer",
-        lambda _path, _layer_name: frame,
-    )
-    result = peri_scribe.fires.scores.read_latest_snapshot(
-        pathlib.Path("data/2026"),
-        peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
-    )
-    assert result is frame
-
-
 def test_score_fires_writes_current_scores(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

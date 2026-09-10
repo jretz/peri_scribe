@@ -17,18 +17,6 @@ import peri_scribe.kml.styles
 import tests.peri_scribe.kml.kml_helpers
 
 
-def test_ring_coordinates_converts_coordinates() -> None:
-    ring = shapely.geometry.LinearRing(
-        [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 0.0)],
-    )
-    assert peri_scribe.kml.geometry.ring_coordinates(ring) == [
-        (0.0, 0.0),
-        (1.0, 0.0),
-        (1.0, 1.0),
-        (0.0, 0.0),
-    ]
-
-
 def test_ring_coordinates_text_rounds_and_omits_altitude() -> None:
     ring = shapely.geometry.LinearRing([
         (-120.540340932131, 44.05275449364),

@@ -208,26 +208,6 @@ def test_tile_id_puts_boundary_points_in_upper_tile() -> None:
     )
 
 
-def test_encode_record_is_eight_little_endian_bytes() -> None:
-    record = peri_scribe.sources.buildings.encode_record(1.5, -2.5)
-    assert record == struct.pack("<ii", 150_000, -250_000)
-    assert len(record) == peri_scribe.sources.buildings.RECORD_SIZE_BYTES
-
-
-def test_partition_id_is_tile_id_modulo_partition_count() -> None:
-    identifier = peri_scribe.sources.buildings.tile_id(0, 0)
-    assert peri_scribe.sources.buildings.partition_id(identifier) == identifier % 16
-
-
-def test_partition_ids_matches_scalar_partition_id() -> None:
-    identifiers = np.asarray([129_960, 187_761], dtype="<i4")
-    partitions = peri_scribe.sources.buildings.partition_ids(identifiers)
-    assert partitions.tolist() == [
-        peri_scribe.sources.buildings.partition_id(identifier)
-        for identifier in identifiers
-    ]
-
-
 def test_append_centroids_to_partitions_routes_by_partition(
     tmp_path: pathlib.Path,
 ) -> None:
@@ -256,12 +236,8 @@ def test_append_centroids_to_partitions_separates_partitions(
             points,
             partition_files,
         )
-    first_partition = peri_scribe.sources.buildings.partition_id(
-        peri_scribe.sources.buildings.tile_id(20_000, 20_000),
-    )
-    second_partition = peri_scribe.sources.buildings.partition_id(
-        peri_scribe.sources.buildings.tile_id(10_050_000, 4_025_000),
-    )
+    first_partition = peri_scribe.sources.buildings.tile_id(20_000, 20_000) % 16
+    second_partition = peri_scribe.sources.buildings.tile_id(10_050_000, 4_025_000) % 16
     assert first_partition != second_partition
     assert (tmp_path / f"partition-{first_partition:02d}.bin").read_bytes() == (
         struct.pack("<ii", 20_000, 20_000)
