@@ -12,6 +12,7 @@ import structlog
 
 import peri_scribe.exceptions
 import peri_scribe.geo.reading
+import peri_scribe.geo.spatial_reference
 import peri_scribe.models
 import peri_scribe.sources.downloading
 
@@ -211,7 +212,9 @@ def centroid_dataframe(dataframe: geopandas.GeoDataFrame) -> geopandas.GeoDataFr
     """
     crs = dataframe.crs
     if crs is not None and crs.is_geographic:
-        projected = dataframe.to_crs(3857)
+        projected = dataframe.to_crs(
+            peri_scribe.geo.spatial_reference.WEB_MERCATOR_SPATIAL_REFERENCE,
+        )
         projected.geometry = projected.geometry.centroid
         return projected.to_crs(crs)
     dataframe.geometry = dataframe.geometry.centroid

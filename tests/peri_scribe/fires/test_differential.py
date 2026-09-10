@@ -13,19 +13,7 @@ import peri_scribe.fires.files
 import peri_scribe.geo.reading
 import peri_scribe.models
 import peri_scribe.output
-
-
-def square(side: float) -> shapely.geometry.Polygon:
-    """Return a square of the given side, centered at the origin.
-
-    Args:
-        side: The length of each side.
-
-    Returns:
-        The square.
-    """
-    half = side / 2
-    return shapely.geometry.box(-half, -half, half, half)
+import tests.factories
 
 
 def full_perimeter_frame(
@@ -77,7 +65,7 @@ def multiple_fire_perimeter_frame() -> tuple[geopandas.GeoDataFrame, list[str]]:
         for fire_identifier, side in zip(fire_identifiers, sides, strict=True)
     ]
     return (
-        full_perimeter_frame(records, [square(side) for side in sides]),
+        full_perimeter_frame(records, [tests.factories.square(side) for side in sides]),
         fire_identifiers,
     )
 
@@ -89,7 +77,7 @@ def test_differential_geopackage_path_names_output() -> None:
 
 
 def test_polygonal_area_keeps_polygon() -> None:
-    geometry = square(1.0)
+    geometry = tests.factories.square(1.0)
     assert peri_scribe.fires.differential.polygonal_area(geometry) is geometry
 
 
@@ -104,14 +92,11 @@ def test_polygonal_area_returns_none_for_non_polygonal() -> None:
 
 def test_polygonal_area_extracts_polygons_from_geometry_collection() -> None:
     collection = shapely.geometry.GeometryCollection(
-        [
-            square(1.0),
-            shapely.geometry.LineString([(0, 0), (1, 1)]),
-        ],
+        [tests.factories.square(1.0), shapely.geometry.LineString([(0, 0), (1, 1)])],
     )
     result = peri_scribe.fires.differential.polygonal_area(collection)
     assert result is not None
-    assert result.equals(square(1.0))
+    assert result.equals(tests.factories.square(1.0))
 
 
 def test_polygonal_area_returns_none_for_line_only_collection() -> None:
@@ -123,7 +108,7 @@ def test_polygonal_area_returns_none_for_line_only_collection() -> None:
 
 def test_polygonal_area_unions_multiple_polygons() -> None:
     collection = shapely.geometry.GeometryCollection(
-        [square(1.0), shapely.geometry.box(2.0, 2.0, 3.0, 3.0)],
+        [tests.factories.square(1.0), shapely.geometry.box(2.0, 2.0, 3.0, 3.0)],
     )
     result = peri_scribe.fires.differential.polygonal_area(collection)
     assert result is not None
@@ -131,7 +116,7 @@ def test_polygonal_area_unions_multiple_polygons() -> None:
 
 
 def test_geometry_difference_returns_current_without_previous() -> None:
-    geometry = square(1.0)
+    geometry = tests.factories.square(1.0)
     result = peri_scribe.fires.differential.geometry_difference(
         geometry,
         None,
@@ -141,47 +126,71 @@ def test_geometry_difference_returns_current_without_previous() -> None:
 
 
 def test_geometry_difference_returns_none_for_missing_current() -> None:
-    assert peri_scribe.fires.differential.geometry_difference(None, square(1.0)) is None
+    assert (
+        peri_scribe.fires.differential.geometry_difference(
+            None,
+            tests.factories.square(1.0),
+        )
+        is None
+    )
 
 
 def test_geometry_difference_subtracts_overlap() -> None:
     result = peri_scribe.fires.differential.geometry_difference(
-        square(2.0),
-        square(1.0),
+        tests.factories.square(2.0),
+        tests.factories.square(1.0),
     )
     assert result is not None
-    assert result.equals(square(2.0).difference(square(1.0)))
+    assert result.equals(
+        tests.factories.square(2.0).difference(tests.factories.square(1.0)),
+    )
 
 
 def test_geometry_intersection_returns_none_for_missing() -> None:
     assert (
-        peri_scribe.fires.differential.geometry_intersection(None, square(1.0)) is None
+        peri_scribe.fires.differential.geometry_intersection(
+            None,
+            tests.factories.square(1.0),
+        )
+        is None
     )
     assert (
-        peri_scribe.fires.differential.geometry_intersection(square(1.0), None) is None
+        peri_scribe.fires.differential.geometry_intersection(
+            tests.factories.square(1.0),
+            None,
+        )
+        is None
     )
 
 
 def test_geometry_intersection_keeps_shared_area() -> None:
     result = peri_scribe.fires.differential.geometry_intersection(
-        square(2.0),
-        square(1.5),
+        tests.factories.square(2.0),
+        tests.factories.square(1.5),
     )
     assert result is not None
-    assert result.equals(square(1.5))
+    assert result.equals(tests.factories.square(1.5))
 
 
 def test_corrected_geometries_removes_later_reductions() -> None:
-    geometries = [square(3.0), square(2.0), square(1.0)]
+    geometries = [
+        tests.factories.square(3.0),
+        tests.factories.square(2.0),
+        tests.factories.square(1.0),
+    ]
     corrected = peri_scribe.fires.differential.corrected_geometries(geometries)
-    expected = square(1.0)
+    expected = tests.factories.square(1.0)
     assert all(
         geometry is not None and geometry.equals(expected) for geometry in corrected
     )
 
 
 def test_corrected_geometries_keeps_growth_area() -> None:
-    geometries = [square(1.0), square(2.0), square(3.0)]
+    geometries = [
+        tests.factories.square(1.0),
+        tests.factories.square(2.0),
+        tests.factories.square(3.0),
+    ]
     corrected = peri_scribe.fires.differential.corrected_geometries(geometries)
     assert all(
         geometry is not None and geometry.equals(expected)
@@ -194,36 +203,43 @@ def test_corrected_geometries_handles_empty() -> None:
 
 
 def test_growth_indices_keeps_only_growth() -> None:
-    corrected = [square(1.0), square(2.0), square(1.5)]
+    corrected = [
+        tests.factories.square(1.0),
+        tests.factories.square(2.0),
+        tests.factories.square(1.5),
+    ]
     assert peri_scribe.fires.differential.growth_indices(corrected) == [0, 1]
 
 
 def test_geometry_grows_beyond_returns_false_for_missing_current() -> None:
     assert not peri_scribe.fires.differential.geometry_grows_beyond(
         None,
-        square(1.0),
+        tests.factories.square(1.0),
     )
 
 
 def test_geometry_grows_beyond_returns_false_for_empty_current() -> None:
     assert not peri_scribe.fires.differential.geometry_grows_beyond(
         shapely.geometry.Polygon(),
-        square(1.0),
+        tests.factories.square(1.0),
     )
 
 
 def test_geometry_grows_beyond_returns_true_without_previous() -> None:
-    assert peri_scribe.fires.differential.geometry_grows_beyond(square(1.0), None)
+    assert peri_scribe.fires.differential.geometry_grows_beyond(
+        tests.factories.square(1.0),
+        None,
+    )
 
 
 def test_geometry_grows_beyond_compares_to_previous() -> None:
     assert peri_scribe.fires.differential.geometry_grows_beyond(
-        square(2.0),
-        square(1.0),
+        tests.factories.square(2.0),
+        tests.factories.square(1.0),
     )
     assert not peri_scribe.fires.differential.geometry_grows_beyond(
-        square(1.0),
-        square(2.0),
+        tests.factories.square(1.0),
+        tests.factories.square(2.0),
     )
 
 
@@ -255,9 +271,9 @@ def test_growth_difference_falls_back_to_zero() -> None:
     ) == pytest.approx(150.0)
 
 
-def test_identity_key_normalizes_missing() -> None:
+def test_row_identity_normalizes_missing() -> None:
     row = pd.Series({"fire_name": "Bug", "fire_identifier": float("nan")})
-    assert peri_scribe.fires.differential.identity_key(
+    assert peri_scribe.fires.differential.row_identity(
         row,
         ["fire_name", "fire_identifier"],
     ) == ("Bug", None)
@@ -324,7 +340,11 @@ def test_differential_perimeter_dataframe_builds_growth_rows() -> None:
     ]
     frame = full_perimeter_frame(
         records,
-        [square(1.0), square(2.0), square(1.5)],
+        [
+            tests.factories.square(1.0),
+            tests.factories.square(2.0),
+            tests.factories.square(1.5),
+        ],
     )
     output = peri_scribe.fires.differential.differential_perimeter_dataframe(frame)
     assert (
@@ -341,8 +361,10 @@ def test_differential_perimeter_dataframe_builds_growth_rows() -> None:
     )
     assert output["percent_contained"].tolist() == pytest.approx([10.0, 30.0])
     assert output["type"].tolist() == ["a", "c"]
-    assert output.geometry.iloc[0].equals(square(1.0))
-    assert output.geometry.iloc[1].equals(square(1.5).difference(square(1.0)))
+    assert output.geometry.iloc[0].equals(tests.factories.square(1.0))
+    assert output.geometry.iloc[1].equals(
+        tests.factories.square(1.5).difference(tests.factories.square(1.0)),
+    )
     cumulative = output["area_acres_from_geometry"]
     differential = output["area_acres_from_geometry_differential"]
     assert not cumulative.isna().any()
@@ -376,7 +398,11 @@ def test_differential_perimeter_dataframe_back_propagates_null_values() -> None:
     ]
     frame = full_perimeter_frame(
         records,
-        [square(1.0), square(0.5), square(1.5)],
+        [
+            tests.factories.square(1.0),
+            tests.factories.square(0.5),
+            tests.factories.square(1.5),
+        ],
     )
     output = peri_scribe.fires.differential.differential_perimeter_dataframe(frame)
     assert output["area_acres_differential"].isna().tolist() == [True, False]
@@ -408,7 +434,11 @@ def test_differential_perimeter_dataframe_skips_collapsed_growth(
     ]
     frame = full_perimeter_frame(
         records,
-        [square(1.0), square(2.0), square(1.5)],
+        [
+            tests.factories.square(1.0),
+            tests.factories.square(2.0),
+            tests.factories.square(1.5),
+        ],
     )
     real_difference = peri_scribe.fires.differential.geometry_difference
 
@@ -418,7 +448,7 @@ def test_differential_perimeter_dataframe_skips_collapsed_growth(
     ) -> shapely.geometry.base.BaseGeometry | None:
         # A numerically degenerate sliver makes the covers-based growth check report
         # growth whose constructed difference collapses to nothing.
-        if previous is not None and previous.equals(square(1.0)):
+        if previous is not None and previous.equals(tests.factories.square(1.0)):
             return None
         return real_difference(current, previous)
 
@@ -431,7 +461,7 @@ def test_differential_perimeter_dataframe_skips_collapsed_growth(
     # The second growth step collapses, so it contributes no ring and the area of its
     # empty difference is never measured.
     assert len(output) == 1
-    assert output.geometry.iloc[0].equals(square(1.0))
+    assert output.geometry.iloc[0].equals(tests.factories.square(1.0))
 
 
 def test_differential_perimeter_dataframe_parallel_matches_single_worker(
@@ -466,10 +496,9 @@ def test_write_history_of_differential_geography_writes_two_layers(
         lambda _directory: full_path,
     )
     perimeters = full_perimeter_frame([], [])
-    points = geopandas.GeoDataFrame(
+    points = tests.factories.geo_frame(
         {"fire_name": ["Bug"]},
-        geometry=[shapely.geometry.Point(0, 0)],
-        crs="EPSG:4326",
+        [shapely.geometry.Point(0, 0)],
     )
     monkeypatch.setattr(
         peri_scribe.geo.reading,

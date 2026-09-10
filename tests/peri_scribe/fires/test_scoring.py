@@ -5,11 +5,11 @@ from __future__ import annotations
 import datetime
 import json
 
-import geopandas
 import pytest
 
 import peri_scribe.fires.scoring
 import peri_scribe.models
+import tests.factories
 import tests.peri_scribe.fires.fire_helpers
 from peri_scribe.units import units
 
@@ -102,7 +102,7 @@ def test_complexity_level_returns_none_for_missing() -> None:
 def test_fire_importance_points_returns_zero_for_empty() -> None:
     assert (
         peri_scribe.fires.scoring.fire_importance_points(
-            tests.peri_scribe.fires.fire_helpers.empty_frame(),
+            tests.factories.empty_frame(),
         )
         == 0
     )
@@ -122,10 +122,7 @@ def test_fire_importance_points_uses_latest_level() -> None:
                 ),
             },
         ],
-        [
-            tests.peri_scribe.fires.fire_helpers.point(0, 0),
-            tests.peri_scribe.fires.fire_helpers.point(1, 1),
-        ],
+        [tests.factories.point(0, 0), tests.factories.point(1, 1)],
     )
     assert peri_scribe.fires.scoring.fire_importance_points(
         frame,
@@ -146,10 +143,7 @@ def test_fire_importance_points_returns_zero_when_latest_row_has_no_level() -> N
                 ),
             },
         ],
-        [
-            tests.peri_scribe.fires.fire_helpers.point(0, 0),
-            tests.peri_scribe.fires.fire_helpers.point(1, 1),
-        ],
+        [tests.factories.point(0, 0), tests.factories.point(1, 1)],
     )
     assert peri_scribe.fires.scoring.fire_importance_points(frame) == 0
 
@@ -160,10 +154,7 @@ def test_fire_importance_points_returns_zero_without_any_level() -> None:
             {"source_attributes": json.dumps({})},
             {"source_attributes": json.dumps({})},
         ],
-        [
-            tests.peri_scribe.fires.fire_helpers.point(0, 0),
-            tests.peri_scribe.fires.fire_helpers.point(1, 1),
-        ],
+        [tests.factories.point(0, 0), tests.factories.point(1, 1)],
     )
     assert peri_scribe.fires.scoring.fire_importance_points(frame) == 0
 
@@ -182,10 +173,7 @@ def test_fire_is_type_one_incident_marks_latest_type_one_level() -> None:
                 ),
             },
         ],
-        [
-            tests.peri_scribe.fires.fire_helpers.point(0, 0),
-            tests.peri_scribe.fires.fire_helpers.point(1, 1),
-        ],
+        [tests.factories.point(0, 0), tests.factories.point(1, 1)],
     )
     assert peri_scribe.fires.scoring.fire_is_type_one_incident(frame)
 
@@ -204,10 +192,7 @@ def test_fire_is_type_one_incident_excludes_downgraded_fire() -> None:
                 ),
             },
         ],
-        [
-            tests.peri_scribe.fires.fire_helpers.point(0, 0),
-            tests.peri_scribe.fires.fire_helpers.point(1, 1),
-        ],
+        [tests.factories.point(0, 0), tests.factories.point(1, 1)],
     )
     assert not peri_scribe.fires.scoring.fire_is_type_one_incident(frame)
 
@@ -226,10 +211,7 @@ def test_fire_is_type_one_incident_excludes_fire_without_latest_level() -> None:
                 ),
             },
         ],
-        [
-            tests.peri_scribe.fires.fire_helpers.point(0, 0),
-            tests.peri_scribe.fires.fire_helpers.point(1, 1),
-        ],
+        [tests.factories.point(0, 0), tests.factories.point(1, 1)],
     )
     assert not peri_scribe.fires.scoring.fire_is_type_one_incident(frame)
 
@@ -248,26 +230,22 @@ def test_fire_is_type_one_incident_rejects_lower_levels() -> None:
                 ),
             },
         ],
-        [
-            tests.peri_scribe.fires.fire_helpers.point(0, 0),
-            tests.peri_scribe.fires.fire_helpers.point(1, 1),
-        ],
+        [tests.factories.point(0, 0), tests.factories.point(1, 1)],
     )
     assert not peri_scribe.fires.scoring.fire_is_type_one_incident(frame)
 
 
 def test_fire_is_type_one_incident_returns_false_without_attributes() -> None:
-    frame = geopandas.GeoDataFrame(
+    frame = tests.factories.geo_frame(
         {"fire_name": ["Bug"]},
-        geometry=[tests.peri_scribe.fires.fire_helpers.point(0, 0)],
-        crs="EPSG:4326",
+        [tests.factories.point(0, 0)],
     )
     assert not peri_scribe.fires.scoring.fire_is_type_one_incident(frame)
 
 
 def test_fire_is_type_one_incident_returns_false_for_empty() -> None:
     assert not peri_scribe.fires.scoring.fire_is_type_one_incident(
-        tests.peri_scribe.fires.fire_helpers.empty_frame(),
+        tests.factories.empty_frame(),
     )
 
 
@@ -296,7 +274,7 @@ def test_fire_score_for_combines_all_signals() -> None:
                 "observation_time": datetime.datetime(2026, 8, 1),
             },
         ],
-        [tests.peri_scribe.fires.fire_helpers.square(0.01)],
+        [tests.factories.square(0.01)],
     )
     points = tests.peri_scribe.fires.fire_helpers.point_frame(
         [
@@ -308,7 +286,7 @@ def test_fire_score_for_combines_all_signals() -> None:
                 ),
             },
         ],
-        [tests.peri_scribe.fires.fire_helpers.point(0, 0)],
+        [tests.factories.point(0, 0)],
     )
     record = peri_scribe.fires.scoring.FireRecords(
         name="Bug",
@@ -339,7 +317,7 @@ def test_fire_score_for_combines_all_signals() -> None:
 def test_fire_score_for_awards_no_overlap_points_without_overlaps() -> None:
     points = tests.peri_scribe.fires.fire_helpers.point_frame(
         [{"fire_name": "Point Only", "fire_identifier": None}],
-        [tests.peri_scribe.fires.fire_helpers.point(0, 0)],
+        [tests.factories.point(0, 0)],
     )
     record = peri_scribe.fires.scoring.FireRecords(
         name="Point Only",

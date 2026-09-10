@@ -11,6 +11,7 @@ import shapely.geometry
 import peri_scribe.geo.package
 import peri_scribe.geo.reading
 import peri_scribe.sources.feed_types
+import tests.factories
 from tests.conftest import SAMPLE_FEED_NAME
 
 
@@ -21,10 +22,9 @@ if typing.TYPE_CHECKING:
 def test_read_layer_reads_named_layer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    frame = geopandas.GeoDataFrame(
+    frame = tests.factories.geo_frame(
         {"fire_name": ["Bug"]},
-        geometry=[shapely.geometry.Point(0, 0)],
-        crs="EPSG:4326",
+        [shapely.geometry.Point(0, 0)],
     )
     calls: list[tuple[pathlib.Path, str]] = []
 
@@ -45,10 +45,9 @@ def test_read_layer_reads_named_layer(
 def test_read_layer_chunks_yields_bounded_chunks(
     tmp_path: pathlib.Path,
 ) -> None:
-    dataframe = geopandas.GeoDataFrame(
+    dataframe = tests.factories.geo_frame(
         {"a": [1, 2, 3, 4, 5]},
-        geometry=[shapely.geometry.Point(index, 0) for index in range(5)],
-        crs="EPSG:4326",
+        [shapely.geometry.Point(index, 0) for index in range(5)],
     )
     path = tmp_path / "layer.gpkg"
     dataframe.to_file(path, layer="features")
@@ -68,10 +67,9 @@ def test_read_layer_chunks_yields_bounded_chunks(
 def test_read_layer_chunks_reads_default_layer_without_name(
     tmp_path: pathlib.Path,
 ) -> None:
-    dataframe = geopandas.GeoDataFrame(
+    dataframe = tests.factories.geo_frame(
         {"a": [1, 2, 3]},
-        geometry=[shapely.geometry.Point(index, 0) for index in range(3)],
-        crs="EPSG:4326",
+        [shapely.geometry.Point(index, 0) for index in range(3)],
     )
     path = tmp_path / "layer.gpkg"
     dataframe.to_file(path, layer="features")

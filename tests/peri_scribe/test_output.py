@@ -157,7 +157,7 @@ def test_configure_logging_debug_level_enables_every_level() -> None:
         assert logger.is_enabled_for(logging.CRITICAL)
 
 
-def test_write_fire_index_writes_pretty_printed_json(
+def test_write_document_writes_pretty_printed_json(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     path = pathlib.Path("/fires.json")
@@ -186,53 +186,13 @@ def test_write_fire_index_writes_pretty_printed_json(
 
     monkeypatch.setattr(pathlib.Path, "open", fake_open)
     with structlog.testing.capture_logs() as captured:
-        peri_scribe.output.write_fire_index(path, document)
+        peri_scribe.output.write_document(path, document)
     written = files[0].getvalue()
     assert json.loads(written) == document.model_dump()
     assert list(json.loads(written)) == ["version", "fires"]
     assert "\n    " in written
-    assert captured[0]["event"] == "Wrote fire index"
+    assert captured[0]["event"] == "Wrote document"
     assert captured[0]["path"] == "fires.json"
-    assert captured[0]["fires"] == 1
-
-
-def test_write_fire_scores_writes_pretty_printed_json(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    path = pathlib.Path("/fire_scores.json")
-    document = peri_scribe.models.FireScores.model_validate({
-        "version": "2026-08-28",
-        "fires": [
-            {
-                "name": "Park Fire",
-                "identifier": "2026-x",
-                "score": 12,
-                "explanation": "Overlap with an evacuation zone.",
-            },
-        ],
-    })
-    files: list[RecordingFile] = []
-
-    def fake_open(
-        _self: pathlib.Path,
-        mode: str,
-        encoding: str,
-    ) -> RecordingFile:
-        assert mode == "w"
-        assert encoding == "utf-8"
-        file = RecordingFile()
-        files.append(file)
-        return file
-
-    monkeypatch.setattr(pathlib.Path, "open", fake_open)
-    with structlog.testing.capture_logs() as captured:
-        peri_scribe.output.write_fire_scores(path, document)
-    written = files[0].getvalue()
-    assert json.loads(written) == document.model_dump()
-    assert list(json.loads(written)) == ["version", "fires"]
-    assert "\n    " in written
-    assert captured[0]["event"] == "Wrote fire scores"
-    assert captured[0]["path"] == "fire_scores.json"
     assert captured[0]["fires"] == 1
 
 

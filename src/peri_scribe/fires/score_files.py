@@ -6,6 +6,7 @@ import pathlib
 
 import peri_scribe.fires.files
 import peri_scribe.models
+import peri_scribe.output
 
 
 SCORE_OUTPUT_FILENAME = "fire_scores.json"
@@ -48,8 +49,9 @@ def load_fire_scores(
     path = fire_scores_path(year_directory)
     if not path.is_file():
         return None
-    return peri_scribe.models.FireScores.model_validate_json(
-        path.read_text(encoding="utf-8"),
+    return peri_scribe.output.read_document(
+        path,
+        peri_scribe.models.FireScores,
     )
 
 

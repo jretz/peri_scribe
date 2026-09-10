@@ -132,6 +132,54 @@ def change_dataframe(
     )
 
 
+def empty_frame() -> geopandas.GeoDataFrame:
+    """Return an empty WGS84 GeoDataFrame.
+
+    Returns:
+        The empty frame.
+    """
+    return geopandas.GeoDataFrame(geometry=[], crs="EPSG:4326")
+
+
+def raising_stub(error: BaseException) -> typing.Callable[..., typing.Never]:
+    """Return a stand-in that raises *error* however it is called.
+
+    A monkeypatched step that must fail does not care about the shape of the call, so
+    one stand-in serves every signature.
+
+    Args:
+        error: The error the stand-in raises.
+
+    Returns:
+        The stand-in.
+    """
+
+    def raise_error(*_arguments: object, **_keywords: object) -> typing.Never:
+        raise error
+
+    return raise_error
+
+
+def geo_frame(
+    columns: typing.Mapping[str, typing.Any],
+    geometry: typing.Sequence[shapely.Geometry],
+) -> geopandas.GeoDataFrame:
+    """Build a WGS84 GeoDataFrame from *columns* and *geometry*.
+
+    Args:
+        columns: Each column name and its row values.
+        geometry: The geometry of each row.
+
+    Returns:
+        The frame.
+    """
+    return geopandas.GeoDataFrame(
+        columns,
+        geometry=geometry,
+        crs="EPSG:4326",
+    )
+
+
 def polygon(*points: tuple[float, float]) -> shapely.geometry.Polygon:
     """Return a polygon from *points*.
 
@@ -142,6 +190,19 @@ def polygon(*points: tuple[float, float]) -> shapely.geometry.Polygon:
         The polygon.
     """
     return shapely.geometry.Polygon(points)
+
+
+def square(side: float) -> shapely.geometry.Polygon:
+    """Return a square of *side* degrees centered at the origin.
+
+    Args:
+        side: The length of each side.
+
+    Returns:
+        The square.
+    """
+    half = side / 2
+    return shapely.geometry.box(-half, -half, half, half)
 
 
 def point(x: float, y: float) -> shapely.geometry.Point:

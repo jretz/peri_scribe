@@ -332,7 +332,7 @@ class FireDescription:
     of_note: str | None = None
 
 
-def escape_text(value: str) -> str:
+def escape_html_text(value: str) -> str:
     """Escape *value* for safe display inside the balloon's HTML.
 
     Args:
@@ -436,8 +436,8 @@ def description_html(
             else ""
         )
         parts.append(
-            f"<tr{background}><td><b>{escape_text(label)}</b></td>"
-            f"<td>{escape_text('--' if value is None else value)}</td></tr>",
+            f"<tr{background}><td><b>{escape_html_text(label)}</b></td>"
+            f"<td>{escape_html_text('--' if value is None else value)}</td></tr>",
         )
     parts.append("</table>")
     parts.extend(

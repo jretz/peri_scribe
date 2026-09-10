@@ -22,10 +22,10 @@ import functools
 import pathlib
 import typing
 
-import numpy as np
 import pyproj
 import shapely
 
+import peri_scribe.geo.geometry
 import peri_scribe.models
 import peri_scribe.perimeters.signals
 import peri_scribe.sources.administrative_boundaries
@@ -190,27 +190,7 @@ def reproject_to_california_albers(
         The geometry in California Albers.
     """
     transformer = transformer_for_spatial_reference_id(source_spatial_reference_id)
-    if shapely.has_z(geometry):
-        return shapely.transform(
-            geometry,
-            lambda coordinates: np.column_stack(
-                transformer.transform(
-                    coordinates[:, 0],
-                    coordinates[:, 1],
-                    coordinates[:, 2],
-                ),
-            ),
-            include_z=True,
-        )
-    return shapely.transform(
-        geometry,
-        lambda coordinates: np.column_stack(
-            transformer.transform(
-                coordinates[:, 0],
-                coordinates[:, 1],
-            ),
-        ),
-    )
+    return peri_scribe.geo.geometry.transform_coordinates(geometry, transformer)
 
 
 def load_boundaries(year_directory: pathlib.Path) -> Boundaries:
@@ -227,12 +207,18 @@ def load_boundaries(year_directory: pathlib.Path) -> Boundaries:
     )
     box = peri_scribe.sources.borders.california_box_polygon(border)
     return Boundaries(
-        box=reproject_to_california_albers(box, 4326),
-        border=reproject_to_california_albers(border, 4326),
+        box=reproject_to_california_albers(
+            box,
+            peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+        ),
+        border=reproject_to_california_albers(
+            border,
+            peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+        ),
     )
 
 
-def union_geometry(
+def unioned_observation_geometry(
     observations: typing.Iterable[FireObservation],
     boundaries: Boundaries,
 ) -> shapely.Geometry | None:
@@ -387,7 +373,7 @@ def classify_fire(
     ]
     return classify(
         geometry=peri_scribe.perimeters.signals.geometry_signal(
-            union_geometry(observations, boundaries),
+            unioned_observation_geometry(observations, boundaries),
             boundaries,
             config,
         ),

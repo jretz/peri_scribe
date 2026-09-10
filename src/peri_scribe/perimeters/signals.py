@@ -172,12 +172,11 @@ def are_contemporaneous(
     Returns:
         True when the two perimeters are close enough in time to compare.
     """
-    if left.observed_at is None and right.observed_at is None:
-        return True
-    if left.observed_at is None or right.observed_at is None:
-        return False
-    difference = abs(left.observed_at - right.observed_at)
-    return difference <= config.contemporaneous_tolerance
+    return peri_scribe.models.times_are_contemporaneous(
+        left.observed_at,
+        right.observed_at,
+        config.contemporaneous_tolerance,
+    )
 
 
 def extent_signal(

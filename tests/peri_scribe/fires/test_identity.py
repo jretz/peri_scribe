@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import peri_scribe.fires.identity
+import tests.factories
 import tests.peri_scribe.fires.fire_helpers
 
 
@@ -22,9 +23,9 @@ def test_group_keys_aligns_with_rows() -> None:
             {"fire_name": "Other", "fire_identifier": None},
         ],
         [
-            tests.peri_scribe.fires.fire_helpers.square(1.0),
-            tests.peri_scribe.fires.fire_helpers.square(2.0),
-            tests.peri_scribe.fires.fire_helpers.square(3.0),
+            tests.factories.square(1.0),
+            tests.factories.square(2.0),
+            tests.factories.square(3.0),
         ],
     )
     assert peri_scribe.fires.identity.group_keys(frame).tolist() == [

@@ -14,7 +14,6 @@ import pathlib
 import sqlite3
 import struct
 import tempfile
-import typing
 import zipfile
 
 import numpy as np
@@ -23,7 +22,9 @@ import shapely.geometry
 
 import peri_scribe.exceptions
 import peri_scribe.sources.buildings
+import peri_scribe.sources.downloading
 import peri_scribe.sources.external_sources
+import tests.factories
 import tests.peri_scribe.sources.external_source_helpers
 
 
@@ -305,9 +306,7 @@ def test_is_valid_database_rejects_unopenable_path(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fail(_path: object) -> typing.Never:
-        message = "boom"
-        raise OSError(message)
+    fail = tests.factories.raising_stub(OSError("boom"))
 
     path = tmp_path / "buildings.sqlite"
     path.write_bytes(b"")
@@ -558,7 +557,7 @@ def test_fetch_buildings_database_streams_states_into_database(
         )
 
     monkeypatch.setattr(
-        peri_scribe.sources.buildings.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         get,
     )
@@ -608,7 +607,7 @@ def test_fetch_buildings_database_skips_valid_existing_database(
     write_database(np.asarray([[0.2, 0.2]], dtype=float), output)
     original = output.read_bytes()
     monkeypatch.setattr(
-        peri_scribe.sources.buildings.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         lambda *_arguments, **_keywords: pytest.fail("no downloads expected"),
     )
@@ -630,7 +629,7 @@ def test_fetch_buildings_database_preserves_existing_file_when_download_fails(
     output.parent.mkdir(parents=True)
     output.write_bytes(b"existing contents")
     monkeypatch.setattr(
-        peri_scribe.sources.buildings.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(
@@ -660,14 +659,12 @@ def test_fetch_buildings_database_preserves_existing_file_when_archive_fails(
     output.parent.mkdir(parents=True)
     output.write_bytes(b"existing contents")
 
-    def fail(_url: str, **_kwargs: object) -> typing.Never:
-        message = "boom"
-        raise peri_scribe.sources.buildings.requests.exceptions.RequestException(
-            message,
-        )
+    fail = tests.factories.raising_stub(
+        peri_scribe.sources.downloading.requests.exceptions.RequestException("boom"),
+    )
 
     monkeypatch.setattr(
-        peri_scribe.sources.buildings.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         fail,
     )
@@ -698,7 +695,7 @@ def test_fetch_buildings_database_raises_when_archive_is_not_a_zip(
         url="https://example.com/legacy/{state}.geojson.zip",
     )
     monkeypatch.setattr(
-        peri_scribe.sources.buildings.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(b"not a zip")
@@ -724,7 +721,7 @@ def test_fetch_buildings_database_raises_when_geojson_is_unreadable(
     )
     archive = zip_bytes({"California.geojson": b"not valid geojson {{{ "})
     monkeypatch.setattr(
-        peri_scribe.sources.buildings.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(archive)
@@ -756,7 +753,7 @@ def test_fetch_buildings_database_raises_when_generated_database_is_invalid(
         },
     )
     monkeypatch.setattr(
-        peri_scribe.sources.buildings.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(archive)
@@ -787,7 +784,7 @@ def test_fetch_buildings_database_raises_when_archive_has_no_geojson(
     )
     archive = zip_bytes({"readme.txt": b"hi"})
     monkeypatch.setattr(
-        peri_scribe.sources.buildings.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(archive)

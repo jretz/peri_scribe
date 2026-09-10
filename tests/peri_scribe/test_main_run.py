@@ -19,6 +19,7 @@ import peri_scribe.sources.digests
 import peri_scribe.sources.external_sources
 import peri_scribe.sources.fetching
 import peri_scribe.sources.full_fetch_state
+import tests.factories
 from tests.conftest import CLICK_USAGE_ERROR_EXIT_CODE
 from tests.main_stubs import (
     BASE_DIRECTORY,
@@ -319,14 +320,7 @@ def test_run_full_fetch_interval_does_not_record_state_when_fetch_fails(
     runner: click.testing.CliRunner,
     run_stubs: typing.Callable[..., RunStubs],
 ) -> None:
-    def fail(
-        _base_directory: pathlib.Path,
-        *,
-        year: int,
-        full: bool = False,
-    ) -> typing.Never:
-        message = "boom"
-        raise SystemExit(message)
+    fail = tests.factories.raising_stub(SystemExit("boom"))
 
     stubs = run_stubs(changed=True)
     monkeypatch.setattr(peri_scribe.sources.fetching, "fetch_all_feeds", fail)
@@ -424,14 +418,7 @@ def test_run_stops_when_fetch_fails(
     runner: click.testing.CliRunner,
     run_stubs: typing.Callable[..., RunStubs],
 ) -> None:
-    def fail(
-        _base_directory: pathlib.Path,
-        *,
-        year: int,
-        full: bool = False,
-    ) -> typing.Never:
-        message = "boom"
-        raise SystemExit(message)
+    fail = tests.factories.raising_stub(SystemExit("boom"))
 
     stubs = run_stubs(changed=True)
     monkeypatch.setattr(peri_scribe.sources.fetching, "fetch_all_feeds", fail)
@@ -455,12 +442,9 @@ def test_run_stops_when_external_source_fetch_fails(
     runner: click.testing.CliRunner,
     run_stubs: typing.Callable[..., RunStubs],
 ) -> None:
-    def fail(
-        _source: object,
-        _year_directory: pathlib.Path,
-    ) -> typing.Never:
-        message = "boom"
-        raise peri_scribe.exceptions.ExternalDataError(message)
+    fail = tests.factories.raising_stub(
+        peri_scribe.exceptions.ExternalDataError("boom"),
+    )
 
     stubs = run_stubs(changed=True)
     monkeypatch.setattr(peri_scribe.main, "fetch_external_source", fail)
@@ -480,9 +464,7 @@ def test_run_stops_when_a_stage_fails(
     runner: click.testing.CliRunner,
     run_stubs: typing.Callable[..., RunStubs],
 ) -> None:
-    def fail(_year_directory: pathlib.Path) -> typing.Never:
-        message = "boom"
-        raise ValueError(message)
+    fail = tests.factories.raising_stub(ValueError("boom"))
 
     stubs = run_stubs(changed=True)
     monkeypatch.setattr(
@@ -506,9 +488,7 @@ def test_run_stops_when_scoring_fails(
     runner: click.testing.CliRunner,
     run_stubs: typing.Callable[..., RunStubs],
 ) -> None:
-    def fail(_year_directory: pathlib.Path) -> typing.Never:
-        message = "boom"
-        raise ValueError(message)
+    fail = tests.factories.raising_stub(ValueError("boom"))
 
     stubs = run_stubs(changed=True)
     monkeypatch.setattr(peri_scribe.fires.scores, "score_fires", fail)

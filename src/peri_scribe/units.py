@@ -6,6 +6,8 @@ import pint
 import pyproj
 import shapely
 
+import peri_scribe.geo.geometry
+
 
 # The pint unit registry shared by every module that works with physical quantities.
 units = pint.UnitRegistry()
@@ -61,8 +63,7 @@ def exterior_perimeter(
         return None
     exteriors = [
         shapely.LineString(part.exterior)
-        for part in shapely.get_parts(geometry)
-        if part.geom_type == "Polygon" and not part.is_empty
+        for part in peri_scribe.geo.geometry.polygonal_parts(geometry)
     ]
     if not exteriors:
         return None

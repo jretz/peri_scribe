@@ -6,6 +6,7 @@ import dataclasses
 import pathlib
 import typing
 
+import peri_scribe.geo.parsing
 import peri_scribe.geo.reading
 import peri_scribe.models
 import peri_scribe.sources.changes
@@ -46,24 +47,6 @@ class FeedValidationResult:
         )
 
 
-def attribute_columns_of(dataframe: geopandas.GeoDataFrame) -> frozenset[str]:
-    """Return the names of *dataframe*'s attribute columns.
-
-    The geometry column and the OBJECTID key column are excluded, so the result is
-    the columns whose values can be compared between two snapshots.
-
-    Args:
-        dataframe: The features whose attribute columns are returned.
-
-    Returns:
-        The attribute column names.
-    """
-    return frozenset(str(column) for column in dataframe.columns) - {
-        str(dataframe.geometry.name),
-        peri_scribe.models.OBJECT_ID_COLUMN_NAME,
-    }
-
-
 def feature_contents(
     dataframe: geopandas.GeoDataFrame,
     columns: list[str],
@@ -97,28 +80,6 @@ def feature_contents(
     return contents
 
 
-def geometries_equal(left: object, right: object) -> bool:
-    """Return True when two feature geometries cover the same point set.
-
-    The source may wrap identical coordinates in a different geometry type from one
-    query to the next, so comparing raw well-known binaries would flag identical
-    features. Topological equality treats those wrappers as the same content while
-    still catching real changes to the geometry.
-
-    Args:
-        left: One feature geometry, or None when the feature has none.
-        right: The other feature geometry, or None when the feature has none.
-
-    Returns:
-        True when both geometries are missing or cover the same point set.
-    """
-    if left is None or right is None:
-        return left is None and right is None
-    return typing.cast("shapely.Geometry", left).equals(
-        typing.cast("shapely.Geometry", right),
-    )
-
-
 def feature_contents_equal(
     complete: tuple[tuple[object, ...], object],
     stored: tuple[tuple[object, ...], object],
@@ -136,7 +97,12 @@ def feature_contents_equal(
     Returns:
         True when the contents match.
     """
-    return complete[0] == stored[0] and geometries_equal(complete[1], stored[1])
+    return complete[0] == stored[0] and (
+        peri_scribe.geo.parsing.geometries_describe_same_shape(
+            typing.cast("shapely.Geometry | None", complete[1]),
+            typing.cast("shapely.Geometry | None", stored[1]),
+        )
+    )
 
 
 def validate_feed(
@@ -165,7 +131,9 @@ def validate_feed(
         int(object_id)
         for object_id in complete_dataframe[peri_scribe.models.OBJECT_ID_COLUMN_NAME]
     )
-    complete_columns = attribute_columns_of(complete_dataframe)
+    complete_columns = peri_scribe.sources.changes.attribute_columns_of(
+        complete_dataframe,
+    )
     if (
         stored_dataframe is None
         or peri_scribe.models.OBJECT_ID_COLUMN_NAME not in stored_dataframe
@@ -177,8 +145,9 @@ def validate_feed(
             mismatched_object_ids=frozenset(),
             columns_missing_from_stored=complete_columns,
         )
-    columns_missing_from_stored = complete_columns - attribute_columns_of(
-        stored_dataframe,
+    columns_missing_from_stored = (
+        complete_columns
+        - peri_scribe.sources.changes.attribute_columns_of(stored_dataframe)
     )
     columns = peri_scribe.sources.changes.attribute_columns(
         complete_dataframe,

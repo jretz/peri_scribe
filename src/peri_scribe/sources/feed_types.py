@@ -11,11 +11,12 @@ import requests
 import structlog
 
 import peri_scribe.retry
+import peri_scribe.sources.network
 
 
 logger = structlog.get_logger()
 
-REQUEST_TIMEOUT_SECONDS = 30
+
 PERI_SCRIBE_VERSION = "0.1"
 USER_AGENT = f"peri_scribe-watcher/{PERI_SCRIBE_VERSION}"
 
@@ -34,7 +35,7 @@ def fetch_layer_metadata(url: str) -> object:
         url,
         params=parameters,
         headers={"User-Agent": USER_AGENT},
-        timeout=REQUEST_TIMEOUT_SECONDS,
+        timeout=peri_scribe.sources.network.REQUEST_TIMEOUT_SECONDS,
     )
     response.raise_for_status()
     return response.json()

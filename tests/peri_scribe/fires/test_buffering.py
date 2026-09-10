@@ -6,11 +6,11 @@ import geopandas
 import shapely.geometry
 
 import peri_scribe.fires.buffering
-import tests.peri_scribe.fires.fire_helpers
+import tests.factories
 
 
 def test_union_geometry_returns_single_geometry_unchanged() -> None:
-    geometry = tests.peri_scribe.fires.fire_helpers.square(1.0)
+    geometry = tests.factories.square(1.0)
     result = peri_scribe.fires.buffering.union_geometry(
         geopandas.GeoSeries([geometry], crs="EPSG:4326"),
     )
@@ -21,10 +21,7 @@ def test_union_geometry_returns_single_geometry_unchanged() -> None:
 def test_union_geometry_unions_multiple_geometries() -> None:
     result = peri_scribe.fires.buffering.union_geometry(
         geopandas.GeoSeries(
-            [
-                tests.peri_scribe.fires.fire_helpers.square(1.0),
-                shapely.geometry.box(2.0, 2.0, 3.0, 3.0),
-            ],
+            [tests.factories.square(1.0), shapely.geometry.box(2.0, 2.0, 3.0, 3.0)],
             crs="EPSG:4326",
         ),
     )
@@ -44,11 +41,11 @@ def test_union_geometry_returns_none_for_all_empty() -> None:
 
 def test_buffered_fire_geometries_buffers_each_geometry() -> None:
     buffered = peri_scribe.fires.buffering.buffered_fire_geometries(
-        [tests.peri_scribe.fires.fire_helpers.point(0, 0), None],
+        [tests.factories.point(0, 0), None],
     )
     assert buffered[0] is not None
     assert buffered[0].geom_type == "Polygon"
-    assert buffered[0].contains(tests.peri_scribe.fires.fire_helpers.point(0, 0))
+    assert buffered[0].contains(tests.factories.point(0, 0))
     assert buffered[1] is None
 
 

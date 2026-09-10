@@ -4,24 +4,12 @@ import pytest
 import shapely.geometry
 
 import peri_scribe.units
-
-
-def square(side: float) -> shapely.geometry.Polygon:
-    """Return a square of the given side, centered at the origin.
-
-    Args:
-        side: The length of each side.
-
-    Returns:
-        The square.
-    """
-    half = side / 2
-    return shapely.geometry.box(-half, -half, half, half)
+import tests.factories
 
 
 def test_area_measures_geometry() -> None:
-    larger = peri_scribe.units.area(square(2.0))
-    smaller = peri_scribe.units.area(square(1.0))
+    larger = peri_scribe.units.area(tests.factories.square(2.0))
+    smaller = peri_scribe.units.area(tests.factories.square(1.0))
     assert larger > smaller > 0.0
 
 
@@ -38,8 +26,8 @@ def test_area_measures_geodesically_across_latitudes() -> None:
 
 
 def test_exterior_perimeter_measures_geometry() -> None:
-    larger = peri_scribe.units.exterior_perimeter(square(2.0))
-    smaller = peri_scribe.units.exterior_perimeter(square(1.0))
+    larger = peri_scribe.units.exterior_perimeter(tests.factories.square(2.0))
+    smaller = peri_scribe.units.exterior_perimeter(tests.factories.square(1.0))
     assert larger is not None
     assert smaller is not None
     assert larger > smaller > 0.0

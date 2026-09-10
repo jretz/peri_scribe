@@ -226,13 +226,11 @@ def observations_are_contemporaneous(
     Returns:
         True when the observations' effective times are within the tolerance.
     """
-    left_time = effective_time(left)
-    right_time = effective_time(right)
-    if left_time is None and right_time is None:
-        return True
-    if left_time is None or right_time is None:
-        return False
-    return abs(left_time - right_time) <= CONTEMPORANEOUS_TOLERANCE
+    return peri_scribe.models.times_are_contemporaneous(
+        effective_time(left),
+        effective_time(right),
+        CONTEMPORANEOUS_TOLERANCE,
+    )
 
 
 def preferred_perimeter_source(

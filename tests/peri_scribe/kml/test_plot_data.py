@@ -10,6 +10,7 @@ import pytest
 
 import peri_scribe.kml.plot_data
 import peri_scribe.units
+import tests.factories
 import tests.peri_scribe.kml.kml_plot_helpers
 
 
@@ -19,7 +20,7 @@ if typing.TYPE_CHECKING:
 
 
 def test_series_points_reads_values_and_times() -> None:
-    frame = tests.peri_scribe.kml.kml_plot_helpers.geo_frame(
+    frame = tests.factories.geo_frame(
         {
             "observation_time": [
                 tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
@@ -27,10 +28,7 @@ def test_series_points_reads_values_and_times() -> None:
             ],
             "area_acres": [10.0, 20.0],
         },
-        [
-            tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
-            tests.peri_scribe.kml.kml_plot_helpers.square(2.0),
-        ],
+        [tests.factories.square(1.0), tests.factories.square(2.0)],
     )
     assert peri_scribe.kml.plot_data.series_points(
         frame,
@@ -43,7 +41,7 @@ def test_series_points_reads_values_and_times() -> None:
 
 
 def test_series_points_skips_missing_values() -> None:
-    frame = tests.peri_scribe.kml.kml_plot_helpers.geo_frame(
+    frame = tests.factories.geo_frame(
         {
             "observation_time": [
                 tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
@@ -53,9 +51,9 @@ def test_series_points_skips_missing_values() -> None:
             "area_acres": [10.0, 20.0, None],
         },
         [
-            tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
-            tests.peri_scribe.kml.kml_plot_helpers.square(2.0),
-            tests.peri_scribe.kml.kml_plot_helpers.square(3.0),
+            tests.factories.square(1.0),
+            tests.factories.square(2.0),
+            tests.factories.square(3.0),
         ],
     )
     assert peri_scribe.kml.plot_data.series_points(
@@ -66,13 +64,13 @@ def test_series_points_skips_missing_values() -> None:
 
 
 def test_series_points_returns_empty_for_missing_columns() -> None:
-    frame = tests.peri_scribe.kml.kml_plot_helpers.geo_frame(
+    frame = tests.factories.geo_frame(
         {
             "observation_time": [
                 tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
             ],
         },
-        [tests.peri_scribe.kml.kml_plot_helpers.square(1.0)],
+        [tests.factories.square(1.0)],
     )
     assert (
         peri_scribe.kml.plot_data.series_points(
@@ -85,11 +83,11 @@ def test_series_points_returns_empty_for_missing_columns() -> None:
 
 
 def test_exterior_perimeter_points_computes_lengths() -> None:
-    frame = tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame(
+    frame = tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame_from_observations(
         [
             (
                 tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
-                tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
+                tests.factories.square(1.0),
                 None,
                 None,
                 None,
@@ -97,7 +95,7 @@ def test_exterior_perimeter_points_computes_lengths() -> None:
             ),
             (
                 tests.peri_scribe.kml.kml_plot_helpers.observation_time(2),
-                tests.peri_scribe.kml.kml_plot_helpers.square(2.0),
+                tests.factories.square(2.0),
                 None,
                 None,
                 None,
@@ -112,22 +110,22 @@ def test_exterior_perimeter_points_computes_lengths() -> None:
     ]
     assert points[0].value == pytest.approx(
         tests.peri_scribe.kml.kml_plot_helpers.exterior_length(
-            tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
+            tests.factories.square(1.0),
         ),
     )
     assert points[1].value == pytest.approx(
         tests.peri_scribe.kml.kml_plot_helpers.exterior_length(
-            tests.peri_scribe.kml.kml_plot_helpers.square(2.0),
+            tests.factories.square(2.0),
         ),
     )
 
 
 def test_exterior_perimeter_points_skips_missing_time() -> None:
-    frame = tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame(
+    frame = tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame_from_observations(
         [
             (
                 tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
-                tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
+                tests.factories.square(1.0),
                 None,
                 None,
                 None,
@@ -135,7 +133,7 @@ def test_exterior_perimeter_points_skips_missing_time() -> None:
             ),
             (
                 None,
-                tests.peri_scribe.kml.kml_plot_helpers.square(2.0),
+                tests.factories.square(2.0),
                 None,
                 None,
                 None,
@@ -150,11 +148,11 @@ def test_exterior_perimeter_points_skips_missing_time() -> None:
 
 
 def test_contained_perimeter_points_multiplies_by_percent() -> None:
-    frame = tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame(
+    frame = tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame_from_observations(
         [
             (
                 tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
-                tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
+                tests.factories.square(1.0),
                 None,
                 50.0,
                 None,
@@ -162,7 +160,7 @@ def test_contained_perimeter_points_multiplies_by_percent() -> None:
             ),
             (
                 tests.peri_scribe.kml.kml_plot_helpers.observation_time(2),
-                tests.peri_scribe.kml.kml_plot_helpers.square(2.0),
+                tests.factories.square(2.0),
                 None,
                 25.0,
                 None,
@@ -173,24 +171,24 @@ def test_contained_perimeter_points_multiplies_by_percent() -> None:
     points = peri_scribe.kml.plot_data.contained_perimeter_points(frame)
     assert points[0].value == pytest.approx(
         tests.peri_scribe.kml.kml_plot_helpers.exterior_length(
-            tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
+            tests.factories.square(1.0),
         )
         * 0.5,
     )
     assert points[1].value == pytest.approx(
         tests.peri_scribe.kml.kml_plot_helpers.exterior_length(
-            tests.peri_scribe.kml.kml_plot_helpers.square(2.0),
+            tests.factories.square(2.0),
         )
         * 0.25,
     )
 
 
 def test_contained_perimeter_points_skips_missing_percent_or_time() -> None:
-    frame = tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame(
+    frame = tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame_from_observations(
         [
             (
                 tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
-                tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
+                tests.factories.square(1.0),
                 None,
                 50.0,
                 None,
@@ -198,7 +196,7 @@ def test_contained_perimeter_points_skips_missing_percent_or_time() -> None:
             ),
             (
                 tests.peri_scribe.kml.kml_plot_helpers.observation_time(2),
-                tests.peri_scribe.kml.kml_plot_helpers.square(2.0),
+                tests.factories.square(2.0),
                 None,
                 None,
                 None,
@@ -206,7 +204,7 @@ def test_contained_perimeter_points_skips_missing_percent_or_time() -> None:
             ),
             (
                 None,
-                tests.peri_scribe.kml.kml_plot_helpers.square(3.0),
+                tests.factories.square(3.0),
                 None,
                 50.0,
                 None,
@@ -221,29 +219,29 @@ def test_contained_perimeter_points_skips_missing_percent_or_time() -> None:
 
 
 def test_exterior_perimeter_points_returns_empty_without_observation_time() -> None:
-    frame = tests.peri_scribe.kml.kml_plot_helpers.geo_frame(
+    frame = tests.factories.geo_frame(
         {"area_acres": [1.0]},
-        [tests.peri_scribe.kml.kml_plot_helpers.square(1.0)],
+        [tests.factories.square(1.0)],
     )
     assert peri_scribe.kml.plot_data.exterior_perimeter_points(frame) == ()
 
 
 def test_contained_perimeter_points_returns_empty_without_observation_time() -> None:
-    frame = tests.peri_scribe.kml.kml_plot_helpers.geo_frame(
+    frame = tests.factories.geo_frame(
         {"percent_contained": [50.0]},
-        [tests.peri_scribe.kml.kml_plot_helpers.square(1.0)],
+        [tests.factories.square(1.0)],
     )
     assert peri_scribe.kml.plot_data.contained_perimeter_points(frame) == ()
 
 
 def test_contained_perimeter_points_returns_empty_without_percent() -> None:
-    frame = tests.peri_scribe.kml.kml_plot_helpers.geo_frame(
+    frame = tests.factories.geo_frame(
         {
             "observation_time": [
                 tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
             ],
         },
-        [tests.peri_scribe.kml.kml_plot_helpers.square(1.0)],
+        [tests.factories.square(1.0)],
     )
     assert peri_scribe.kml.plot_data.contained_perimeter_points(frame) == ()
 
@@ -275,7 +273,7 @@ def test_scaled_points_divides_each_value() -> None:
 
 
 def test_source_attribute_points_reads_values_and_times() -> None:
-    frame = tests.peri_scribe.kml.kml_plot_helpers.geo_frame(
+    frame = tests.factories.geo_frame(
         {
             "observation_time": [
                 tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
@@ -286,10 +284,7 @@ def test_source_attribute_points_reads_values_and_times() -> None:
                 json.dumps({"TotalIncidentPersonnel": 200}),
             ],
         },
-        [
-            tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
-            tests.peri_scribe.kml.kml_plot_helpers.square(2.0),
-        ],
+        [tests.factories.square(1.0), tests.factories.square(2.0)],
     )
     assert peri_scribe.kml.plot_data.source_attribute_points(
         frame,
@@ -301,7 +296,7 @@ def test_source_attribute_points_reads_values_and_times() -> None:
 
 
 def test_source_attribute_points_skips_missing_values() -> None:
-    frame = tests.peri_scribe.kml.kml_plot_helpers.geo_frame(
+    frame = tests.factories.geo_frame(
         {
             "observation_time": [
                 tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
@@ -315,9 +310,9 @@ def test_source_attribute_points_skips_missing_values() -> None:
             ],
         },
         [
-            tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
-            tests.peri_scribe.kml.kml_plot_helpers.square(2.0),
-            tests.peri_scribe.kml.kml_plot_helpers.square(3.0),
+            tests.factories.square(1.0),
+            tests.factories.square(2.0),
+            tests.factories.square(3.0),
         ],
     )
     assert peri_scribe.kml.plot_data.source_attribute_points(
@@ -327,13 +322,13 @@ def test_source_attribute_points_skips_missing_values() -> None:
 
 
 def test_source_attribute_points_returns_empty_for_missing_columns() -> None:
-    frame = tests.peri_scribe.kml.kml_plot_helpers.geo_frame(
+    frame = tests.factories.geo_frame(
         {
             "observation_time": [
                 tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
             ],
         },
-        [tests.peri_scribe.kml.kml_plot_helpers.square(1.0)],
+        [tests.factories.square(1.0)],
     )
     assert (
         peri_scribe.kml.plot_data.source_attribute_points(
@@ -346,11 +341,11 @@ def test_source_attribute_points_returns_empty_for_missing_columns() -> None:
 
 def test_fire_plots_builds_four_plots_with_labels() -> None:
     plots = peri_scribe.kml.plot_data.fire_plots(
-        tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame(
+        tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame_from_observations(
             [
                 (
                     tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
-                    tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
+                    tests.factories.square(1.0),
                     10.0,
                     50.0,
                     1_000.0,
@@ -358,7 +353,7 @@ def test_fire_plots_builds_four_plots_with_labels() -> None:
                 ),
                 (
                     tests.peri_scribe.kml.kml_plot_helpers.observation_time(2),
-                    tests.peri_scribe.kml.kml_plot_helpers.square(2.0),
+                    tests.factories.square(2.0),
                     20.0,
                     50.0,
                     2_000.0,
@@ -366,7 +361,7 @@ def test_fire_plots_builds_four_plots_with_labels() -> None:
                 ),
             ],
         ),
-        tests.peri_scribe.kml.kml_plot_helpers.point_frame([]),
+        tests.peri_scribe.kml.kml_plot_helpers.point_frame_from_observations([]),
     )
     assert [plot.filename_suffix for plot in plots] == [
         "area",
@@ -392,11 +387,11 @@ def test_fire_plots_builds_four_plots_with_labels() -> None:
 
 def test_fire_plots_merges_area_and_cost_from_both_feeds() -> None:
     plots = peri_scribe.kml.plot_data.fire_plots(
-        tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame(
+        tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame_from_observations(
             [
                 (
                     tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
-                    tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
+                    tests.factories.square(1.0),
                     10.0,
                     None,
                     1_000.0,
@@ -404,7 +399,7 @@ def test_fire_plots_merges_area_and_cost_from_both_feeds() -> None:
                 ),
             ],
         ),
-        tests.peri_scribe.kml.kml_plot_helpers.point_frame(
+        tests.peri_scribe.kml.kml_plot_helpers.point_frame_from_observations(
             [
                 (
                     tests.peri_scribe.kml.kml_plot_helpers.observation_time(2),
@@ -426,7 +421,7 @@ def test_fire_plots_merges_area_and_cost_from_both_feeds() -> None:
 
 
 def test_fire_plots_merges_personnel_from_both_feeds() -> None:
-    perimeter = tests.peri_scribe.kml.kml_plot_helpers.geo_frame(
+    perimeter = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-bug", "id-bug"],
             "fire_name": ["Bug", "Bug"],
@@ -439,12 +434,9 @@ def test_fire_plots_merges_personnel_from_both_feeds() -> None:
                 json.dumps({"attr_TotalIncidentPersonnel": 300}),
             ],
         },
-        [
-            tests.peri_scribe.kml.kml_plot_helpers.square(1.0),
-            tests.peri_scribe.kml.kml_plot_helpers.square(2.0),
-        ],
+        [tests.factories.square(1.0), tests.factories.square(2.0)],
     )
-    point = tests.peri_scribe.kml.kml_plot_helpers.geo_frame(
+    point = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-bug"],
             "fire_name": ["Bug"],
@@ -455,7 +447,7 @@ def test_fire_plots_merges_personnel_from_both_feeds() -> None:
                 json.dumps({"TotalIncidentPersonnel": 200}),
             ],
         },
-        [tests.peri_scribe.kml.kml_plot_helpers.square(3.0)],
+        [tests.factories.square(3.0)],
     )
     plots = peri_scribe.kml.plot_data.fire_plots(
         perimeter,
@@ -542,7 +534,7 @@ def test_fire_plots_measures_each_exterior_perimeter_once(
     ] = [
         (
             tests.peri_scribe.kml.kml_plot_helpers.observation_time(day),
-            tests.peri_scribe.kml.kml_plot_helpers.square(float(day)),
+            tests.factories.square(float(day)),
             None,
             50.0,
             None,
@@ -550,7 +542,9 @@ def test_fire_plots_measures_each_exterior_perimeter_once(
         )
         for day in (1, 2, 3)
     ]
-    frame = tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame(observations)
+    frame = tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame_from_observations(
+        observations,
+    )
     calls = 0
     original = peri_scribe.units.exterior_perimeter
 
@@ -568,7 +562,7 @@ def test_fire_plots_measures_each_exterior_perimeter_once(
     )
     plots = peri_scribe.kml.plot_data.fire_plots(
         frame,
-        tests.peri_scribe.kml.kml_plot_helpers.point_frame([]),
+        tests.peri_scribe.kml.kml_plot_helpers.point_frame_from_observations([]),
     )
     assert calls == len(observations)
     perimeter_lines = plots[1].series

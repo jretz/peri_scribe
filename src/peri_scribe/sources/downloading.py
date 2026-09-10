@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import pathlib
 import tempfile
 import typing
@@ -17,6 +18,7 @@ import peri_scribe.geo.spatial_reference
 import peri_scribe.sources.archives
 import peri_scribe.sources.conversion
 import peri_scribe.sources.external_sources
+import peri_scribe.sources.network
 
 
 logger = structlog.get_logger()
@@ -25,10 +27,39 @@ logger = structlog.get_logger()
 if typing.TYPE_CHECKING:
     import geopandas
 
-REQUEST_TIMEOUT_SECONDS = 60
 
+@contextlib.contextmanager
+def downloaded_response(
+    url: str,
+    *,
+    stream: bool,
+) -> typing.Iterator[requests.Response]:
+    """Yield the open response for *url*, translating download failures.
 
-DOWNLOAD_CHUNK_SIZE = 1024 * 1024
+    The response is yielded inside the guard, so a transfer that fails part-way through
+    its body is reported the same way as one that never connected.
+
+    Args:
+        url: The URL to download.
+        stream: Whether to stream the body rather than reading it eagerly.
+
+    Yields:
+        The open response.
+
+    Raises:
+        ExternalDataError: If the download fails.
+    """
+    try:
+        response = requests.get(
+            url,
+            stream=stream,
+            timeout=peri_scribe.sources.network.REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        yield response
+    except requests.exceptions.RequestException as error:
+        message = f"Failed to download {url}: {error}"
+        raise peri_scribe.exceptions.ExternalDataError(message) from error
 
 
 def state_download_url(
@@ -78,7 +109,7 @@ def download_source(
     Returns:
         The paths of the written GeoPackages.
     """
-    directory = peri_scribe.sources.external_sources.source_directory_path(
+    directory = peri_scribe.sources.external_sources.external_source_directory_path(
         year_directory,
         source,
     )
@@ -191,26 +222,16 @@ def stream_download_and_convert(
 
     Returns:
         The number of features converted.
-
-    Raises:
-        ExternalDataError: If the download fails.
     """
-    try:
-        response = requests.get(
-            url,
-            stream=True,
-            timeout=REQUEST_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
+    with downloaded_response(url, stream=True) as response:
         return peri_scribe.fires.centroid_streaming.convert_zip_stream(
-            response.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE),
+            response.iter_content(
+                chunk_size=peri_scribe.sources.network.DOWNLOAD_CHUNK_SIZE,
+            ),
             output,
             layer_name,
             first=not append,
         )
-    except requests.exceptions.RequestException as error:
-        message = f"Failed to download {url}: {error}"
-        raise peri_scribe.exceptions.ExternalDataError(message) from error
 
 
 def combine_downloaded_source(

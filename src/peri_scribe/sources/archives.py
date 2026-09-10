@@ -6,10 +6,9 @@ import pathlib
 import zipfile
 from html.parser import HTMLParser
 
-import requests
-
 import peri_scribe.exceptions
 import peri_scribe.sources.downloading
+import peri_scribe.sources.network
 
 
 def fetch_page_text(url: str) -> str:
@@ -20,20 +19,12 @@ def fetch_page_text(url: str) -> str:
 
     Returns:
         The page's text.
-
-    Raises:
-        ExternalDataError: If the page cannot be downloaded.
     """
-    try:
-        response = requests.get(
-            url,
-            timeout=peri_scribe.sources.downloading.REQUEST_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-    except requests.exceptions.RequestException as error:
-        message = f"Failed to download {url}: {error}"
-        raise peri_scribe.exceptions.ExternalDataError(message) from error
-    return response.text
+    with peri_scribe.sources.downloading.downloaded_response(
+        url,
+        stream=False,
+    ) as response:
+        return response.text
 
 
 class DownloadLinksParser(HTMLParser):
@@ -125,25 +116,18 @@ def download_archive(url: str, archive_path: pathlib.Path) -> None:
     Args:
         url: The archive's URL.
         archive_path: Where to store the downloaded archive.
-
-    Raises:
-        ExternalDataError: If the download fails.
     """
-    try:
-        response = requests.get(
+    with (
+        peri_scribe.sources.downloading.downloaded_response(
             url,
             stream=True,
-            timeout=peri_scribe.sources.downloading.REQUEST_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-        with archive_path.open("wb") as file:
-            for chunk in response.iter_content(
-                chunk_size=peri_scribe.sources.downloading.DOWNLOAD_CHUNK_SIZE,
-            ):
-                file.write(chunk)
-    except requests.exceptions.RequestException as error:
-        message = f"Failed to download {url}: {error}"
-        raise peri_scribe.exceptions.ExternalDataError(message) from error
+        ) as response,
+        archive_path.open("wb") as file,
+    ):
+        for chunk in response.iter_content(
+            chunk_size=peri_scribe.sources.network.DOWNLOAD_CHUNK_SIZE,
+        ):
+            file.write(chunk)
 
 
 def extract_archive(

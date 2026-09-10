@@ -7,6 +7,7 @@ coordinate bounds.
 
 from __future__ import annotations
 
+import functools
 import math
 from typing import TYPE_CHECKING
 
@@ -26,19 +27,32 @@ if TYPE_CHECKING:
 logger = structlog.get_logger()
 
 
+@functools.cache
+def spatial_reference_for_id(spatial_reference_id: int) -> pyproj.CRS:
+    """Return the coordinate reference system for *spatial_reference_id*.
+
+    Building a reference system parses the PROJ database, and the pipeline asks for the
+    same few systems many times, so the result is cached.
+
+    Args:
+        spatial_reference_id: The EPSG id of the spatial reference.
+
+    Returns:
+        The coordinate reference system.
+    """
+    return pyproj.CRS.from_epsg(spatial_reference_id)
+
+
 # The CRS most fire data is published in; shared so modules comparing or reprojecting
 # geometries reference the same object.
-WGS84_SPATIAL_REFERENCE = pyproj.CRS.from_epsg(
+WGS84_SPATIAL_REFERENCE = spatial_reference_for_id(
     peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
 )
 
 
-WEB_MERCATOR_SPATIAL_REFERENCE_ID = 3857
-
-
 # The CRS used for distance-preserving buffering and overlap work.
-WEB_MERCATOR_SPATIAL_REFERENCE = pyproj.CRS.from_epsg(
-    WEB_MERCATOR_SPATIAL_REFERENCE_ID,
+WEB_MERCATOR_SPATIAL_REFERENCE = spatial_reference_for_id(
+    peri_scribe.models.WEB_MERCATOR_SPATIAL_REFERENCE_ID,
 )
 
 
@@ -139,7 +153,7 @@ def spatial_reference_domain(
         projected CRS.
     """
     try:
-        crs = pyproj.CRS.from_epsg(wkid)
+        crs = spatial_reference_for_id(wkid)
     except pyproj.exceptions.CRSError:
         return None
     if crs.is_geographic:

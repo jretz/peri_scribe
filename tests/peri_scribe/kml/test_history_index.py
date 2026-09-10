@@ -7,7 +7,7 @@ import typing
 import pandas as pd
 
 import peri_scribe.kml.history_index
-import tests.peri_scribe.kml.kml_plot_helpers
+import tests.factories
 
 
 if typing.TYPE_CHECKING:
@@ -25,15 +25,12 @@ def history_frame(rows: list[tuple[object, object]]) -> geopandas.GeoDataFrame:
     Returns:
         The rows as a GeoDataFrame.
     """
-    return tests.peri_scribe.kml.kml_plot_helpers.geo_frame(
+    return tests.factories.geo_frame(
         {
             "fire_identifier": [identifier for identifier, _name in rows],
             "fire_name": [name for _identifier, name in rows],
         },
-        [
-            tests.peri_scribe.kml.kml_plot_helpers.square(float(index + 1))
-            for index in range(len(rows))
-        ],
+        [tests.factories.square(float(index + 1)) for index in range(len(rows))],
     )
 
 

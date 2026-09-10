@@ -24,7 +24,7 @@ import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.snapshots
-import tests.peri_scribe.geo.geo_helpers
+import tests.factories
 
 
 def stub_single_layer(
@@ -108,9 +108,9 @@ def test_read_geopackage_reads_records_from_every_layer(
         "Creek Fire",
     ]
     assert [record.status for record in records] == [
-        tests.peri_scribe.geo.geo_helpers.ACTIVE,
-        tests.peri_scribe.geo.geo_helpers.INACTIVE,
-        tests.peri_scribe.geo.geo_helpers.ACTIVE,
+        tests.factories.ACTIVE,
+        tests.factories.INACTIVE,
+        tests.factories.ACTIVE,
     ]
     assert [record.names for record in records] == [
         frozenset({"park fire"}),

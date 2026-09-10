@@ -37,7 +37,6 @@ import typing
 
 import ijson
 import numpy as np
-import requests
 import shapely
 import stream_unzip
 import structlog
@@ -47,6 +46,7 @@ import peri_scribe.fires.centroid_math
 import peri_scribe.fires.centroid_streaming
 import peri_scribe.sources.downloading
 import peri_scribe.sources.external_sources
+import peri_scribe.sources.network
 
 
 logger = structlog.get_logger()
@@ -78,10 +78,6 @@ PARTITION_COUNT = 16
 
 # The database format version, recorded in the metadata and checked on read.
 BUILDINGS_VERSION = "2026-09-03"
-
-REQUEST_TIMEOUT_SECONDS = 60
-
-DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 
 
 TILES_TABLE_SCHEMA = (
@@ -478,20 +474,16 @@ def stream_state_archive(
         ExternalDataError: If the download fails, the stream is not a zip archive, or
             the archive holds no GeoJSON member with any features.
     """
-    try:
-        response = requests.get(
-            url,
-            stream=True,
-            timeout=REQUEST_TIMEOUT_SECONDS,
+    with peri_scribe.sources.downloading.downloaded_response(
+        url,
+        stream=True,
+    ) as response:
+        feature_count, wrote_any = convert_stream_to_partitions(
+            response.iter_content(
+                chunk_size=peri_scribe.sources.network.DOWNLOAD_CHUNK_SIZE,
+            ),
+            partition_files,
         )
-        response.raise_for_status()
-    except requests.exceptions.RequestException as error:
-        message = f"Failed to download {url}: {error}"
-        raise peri_scribe.exceptions.ExternalDataError(message) from error
-    feature_count, wrote_any = convert_stream_to_partitions(
-        response.iter_content(chunk_size=DOWNLOAD_CHUNK_SIZE),
-        partition_files,
-    )
     if not wrote_any:
         message = "No GeoJSON data found in the streamed archive"
         raise peri_scribe.exceptions.ExternalDataError(message)

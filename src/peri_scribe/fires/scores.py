@@ -29,19 +29,16 @@ import dataclasses
 import pathlib
 import typing
 
-import geopandas
 import pandas as pd
 
 import peri_scribe.areas
 import peri_scribe.fires.buffering
-import peri_scribe.fires.differential
-import peri_scribe.fires.files
+import peri_scribe.fires.derived_layers
 import peri_scribe.fires.identity
 import peri_scribe.fires.overlaps
 import peri_scribe.fires.score_files
 import peri_scribe.fires.scoring
 import peri_scribe.geo.parsing
-import peri_scribe.geo.reading
 import peri_scribe.output
 import peri_scribe.sources.buildings
 import peri_scribe.sources.external_sources
@@ -49,25 +46,8 @@ from peri_scribe.units import units
 
 
 if typing.TYPE_CHECKING:
+    import geopandas
     import shapely
-
-
-def read_layer_if_present(
-    path: pathlib.Path,
-    layer_name: str,
-) -> geopandas.GeoDataFrame:
-    """Read a GeoPackage layer, returning an empty frame when the file is missing.
-
-    Args:
-        path: The GeoPackage file.
-        layer_name: The layer to read.
-
-    Returns:
-        The layer's features, or an empty GeoDataFrame when the file is absent.
-    """
-    if not path.is_file():
-        return geopandas.GeoDataFrame()
-    return peri_scribe.geo.reading.read_layer(path, layer_name)
 
 
 def latest_snapshot_layer(
@@ -156,7 +136,7 @@ def external_signals(
     )
 
 
-def fire_identity(
+def fire_names_and_identifiers(
     perimeters: geopandas.GeoDataFrame,
     points: geopandas.GeoDataFrame,
     perimeter_keys: pd.Series,
@@ -244,23 +224,11 @@ def read_history(
     Returns:
         The differential perimeter layer, point layer, and full perimeter layer.
     """
-    differential_path = peri_scribe.fires.differential.differential_geopackage_path(
+    layers = peri_scribe.fires.derived_layers.read_derived_layers(
         year_directory,
+        tolerate_missing=True,
     )
-    perimeters = read_layer_if_present(
-        differential_path,
-        peri_scribe.fires.files.PERIMETER_LAYER_NAME,
-    )
-    points = read_layer_if_present(
-        differential_path,
-        peri_scribe.fires.files.POINT_LAYER_NAME,
-    )
-    full_path = peri_scribe.fires.files.history_geopackage_path(year_directory)
-    full_perimeters = read_layer_if_present(
-        full_path,
-        peri_scribe.fires.files.PERIMETER_LAYER_NAME,
-    )
-    return perimeters, points, full_perimeters
+    return layers.differential_perimeters, layers.points, layers.perimeters
 
 
 def presented_acreage_series(reported: pd.Series, calculated: pd.Series) -> pd.Series:
@@ -344,7 +312,7 @@ def fire_metrics(
     return metrics, first_mapping
 
 
-def fire_geometries(
+def cumulative_fire_geometries(
     keys: list[str],
     full_perimeters: geopandas.GeoDataFrame,
     points: geopandas.GeoDataFrame,
@@ -432,13 +400,13 @@ def scoring_input(year_directory: pathlib.Path) -> ScoringInput:
     point_keys = peri_scribe.fires.identity.group_keys(points)
     keys = sorted(set(perimeter_keys) | set(point_keys))
     metrics, first_mapping = fire_metrics(perimeters, perimeter_keys)
-    names, identifiers = fire_identity(
+    names, identifiers = fire_names_and_identifiers(
         perimeters,
         points,
         perimeter_keys,
         point_keys,
     )
-    geometries = fire_geometries(keys, full_perimeters, points, point_keys)
+    geometries = cumulative_fire_geometries(keys, full_perimeters, points, point_keys)
     perimeter_records = record_metrics(keys, metrics, first_mapping)
     buffered = peri_scribe.fires.buffering.buffered_fire_geometries(geometries)
     signals = external_signals(year_directory, len(keys), geometries, buffered)
@@ -505,7 +473,7 @@ def score_fires(year_directory: pathlib.Path) -> pathlib.Path:
     document = peri_scribe.fires.scoring.fire_scores_document(entries)
     output_path = peri_scribe.fires.score_files.fire_scores_path(year_directory)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    peri_scribe.output.write_fire_scores(output_path, document)
+    peri_scribe.output.write_document(output_path, document)
     ccdf_path = peri_scribe.fires.score_files.fire_scores_ccdf_path(year_directory)
     peri_scribe.output.write_fire_scores_ccdf(ccdf_path, document)
     return output_path

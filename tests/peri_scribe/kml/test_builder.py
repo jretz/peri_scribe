@@ -18,6 +18,7 @@ import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.icons
 import peri_scribe.models
+import tests.factories
 import tests.peri_scribe.kml.kml_helpers
 
 
@@ -26,7 +27,27 @@ if typing.TYPE_CHECKING:
     import pytest
 
 
-YEAR = 2026
+def recording_archive_factory(
+    archives: list[FakeArchive],
+) -> typing.Callable[..., FakeArchive]:
+    """Return a zipfile stand-in that records every archive it opens.
+
+    Args:
+        archives: The list each opened archive is appended to.
+
+    Returns:
+        The stand-in for ``zipfile.ZipFile``.
+    """
+
+    def fake_zipfile(
+        *arguments: object,
+        **keywords: object,
+    ) -> FakeArchive:
+        archive = FakeArchive(*arguments, **keywords)
+        archives.append(archive)
+        return archive
+
+    return fake_zipfile
 
 
 class FakeArchive:
@@ -57,10 +78,6 @@ class FakeArchive:
         self.writes.append((name, data, compress_type))
 
 
-def test_year_from_reads_directory_name() -> None:
-    assert peri_scribe.kml.builder.year_from(pathlib.Path(f"data/{YEAR}")) == YEAR
-
-
 def test_kmz_filename_names_year() -> None:
     assert peri_scribe.kml.builder.kmz_filename(2026) == "PeriScribe Fires 2026.kmz"
 
@@ -80,7 +97,7 @@ def test_fire_kml_names_the_document() -> None:
         ),
     ])
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame([
-        ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+        ("id-bug", "Bug", tests.factories.square(1.0)),
     ])
     points = tests.peri_scribe.kml.kml_helpers.geometry_frame([
         ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
@@ -185,11 +202,11 @@ def new_folder_scenario() -> tuple[
         point=shapely.geometry.Point(0.0, 0.0),
         perimeters=(
             peri_scribe.kml.fire_data.Perimeter(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(0.02),
+                geometry=tests.factories.square(0.02),
                 observation_time=SCENARIO_TIME - datetime.timedelta(hours=48),
             ),
             peri_scribe.kml.fire_data.Perimeter(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(0.03),
+                geometry=tests.factories.square(0.03),
                 observation_time=SCENARIO_TIME,
             ),
         ),
@@ -444,8 +461,8 @@ def test_fire_kml_holds_fires_directly_under_status_folders() -> None:
     observation_time = datetime.datetime(2026, 8, 15, 20, 0, tzinfo=datetime.UTC)
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
         [
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
-            ("id-alta", "ALTA", tests.peri_scribe.kml.kml_helpers.square(2.0)),
+            ("id-bug", "Bug", tests.factories.square(1.0)),
+            ("id-alta", "ALTA", tests.factories.square(2.0)),
         ],
         observation_times=[observation_time, observation_time],
     )
@@ -507,9 +524,9 @@ def test_fire_kml_builds_active_and_inactive_folders(
     ])
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
         [
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(2.0)),
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(3.0)),
+            ("id-bug", "Bug", tests.factories.square(1.0)),
+            ("id-bug", "Bug", tests.factories.square(2.0)),
+            ("id-bug", "Bug", tests.factories.square(3.0)),
         ],
         observation_times=[
             datetime.datetime(2026, 8, 3, 23, 0, tzinfo=datetime.UTC),
@@ -594,8 +611,8 @@ def test_fire_kml_hides_inactive_fires_tree(
     observation_time = datetime.datetime(2026, 8, 15, 20, 0, tzinfo=datetime.UTC)
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
         [
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
-            ("id-alta", "ALTA", tests.peri_scribe.kml.kml_helpers.square(2.0)),
+            ("id-bug", "Bug", tests.factories.square(1.0)),
+            ("id-alta", "ALTA", tests.factories.square(2.0)),
         ],
         observation_times=[observation_time, observation_time],
     )
@@ -647,7 +664,7 @@ def test_fire_kml_shows_derived_point_for_inactive_fire_without_location() -> No
     fires = peri_scribe.kml.fire_data.fire_geometries(
         index,
         tests.peri_scribe.kml.kml_helpers.geometry_frame([
-            ("id-alta", "ALTA", tests.peri_scribe.kml.kml_helpers.square(2.0)),
+            ("id-alta", "ALTA", tests.factories.square(2.0)),
         ]),
         tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
         tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
@@ -682,20 +699,12 @@ def test_write_kmz_writes_compressed_document(
     made_directories: list[pathlib.Path] = []
     archives: list[FakeArchive] = []
 
-    def fake_zipfile(
-        *arguments: object,
-        **keywords: object,
-    ) -> FakeArchive:
-        archive = FakeArchive(*arguments, **keywords)
-        archives.append(archive)
-        return archive
-
     monkeypatch.setattr(
         pathlib.Path,
         "mkdir",
         lambda _self, **_keywords: made_directories.append(_self),
     )
-    monkeypatch.setattr(zipfile, "ZipFile", fake_zipfile)
+    monkeypatch.setattr(zipfile, "ZipFile", recording_archive_factory(archives))
 
     peri_scribe.kml.builder.write_kmz(path, "<kml/>")
 
@@ -717,20 +726,12 @@ def test_write_kmz_writes_images(
     path = pathlib.Path("/maps/PeriScribe Fires 2026.kmz")
     archives: list[FakeArchive] = []
 
-    def fake_zipfile(
-        *arguments: object,
-        **keywords: object,
-    ) -> FakeArchive:
-        archive = FakeArchive(*arguments, **keywords)
-        archives.append(archive)
-        return archive
-
     monkeypatch.setattr(
         pathlib.Path,
         "mkdir",
         lambda _self, **_keywords: None,
     )
-    monkeypatch.setattr(zipfile, "ZipFile", fake_zipfile)
+    monkeypatch.setattr(zipfile, "ZipFile", recording_archive_factory(archives))
 
     image_content = b"\x89PNG\r\n\x1a\n"
     peri_scribe.kml.builder.write_kmz(
@@ -768,7 +769,7 @@ def test_create_kmz_reads_history_and_writes_kmz(
         lambda _directory: pathlib.Path("/derived/full.gpkg"),
     )
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
-        [("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0))],
+        [("id-bug", "Bug", tests.factories.square(1.0))],
         area_acres=[100.0],
     )
     points = tests.peri_scribe.kml.kml_helpers.geometry_frame([
@@ -832,8 +833,8 @@ def test_create_kmz_excludes_fires_without_qualifying_area(
     )
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
         [
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
-            ("id-tiny", "Tiny", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+            ("id-bug", "Bug", tests.factories.square(1.0)),
+            ("id-tiny", "Tiny", tests.factories.square(1.0)),
         ],
         area_acres=[100.0, 10.0],
     )

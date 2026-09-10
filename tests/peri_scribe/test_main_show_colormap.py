@@ -15,6 +15,27 @@ if typing.TYPE_CHECKING:
     import pytest
 
 
+def recording_renderer(
+    calls: list[tuple[int, int]],
+    png: bytes,
+) -> typing.Callable[..., bytes]:
+    """Return a colormap renderer that records each call's trim window.
+
+    Args:
+        calls: The list the renderer appends each (trim_start, trim_end) to.
+        png: The bytes the renderer returns.
+
+    Returns:
+        The stand-in renderer.
+    """
+
+    def render(*, trim_start: int, trim_end: int) -> bytes:
+        calls.append((trim_start, trim_end))
+        return png
+
+    return render
+
+
 def test_show_turbo_colormap_prints_inline_image(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
@@ -22,11 +43,11 @@ def test_show_turbo_colormap_prints_inline_image(
     calls: list[tuple[int, int]] = []
     png = b"fake-png-bytes"
 
-    def render(*, trim_start: int, trim_end: int) -> bytes:
-        calls.append((trim_start, trim_end))
-        return png
-
-    monkeypatch.setattr(peri_scribe.kml.colormap, "turbo_colormap_png", render)
+    monkeypatch.setattr(
+        peri_scribe.kml.colormap,
+        "turbo_colormap_png",
+        recording_renderer(calls, png),
+    )
     result = runner.invoke(peri_scribe.main.cli, ["show-colormap"])
     assert result.exit_code == 0
     assert calls == [(0, 0)]
@@ -41,11 +62,11 @@ def test_show_turbo_colormap_passes_trim_options(
     calls: list[tuple[int, int]] = []
     png = b"fake-png-bytes"
 
-    def render(*, trim_start: int, trim_end: int) -> bytes:
-        calls.append((trim_start, trim_end))
-        return png
-
-    monkeypatch.setattr(peri_scribe.kml.colormap, "turbo_colormap_png", render)
+    monkeypatch.setattr(
+        peri_scribe.kml.colormap,
+        "turbo_colormap_png",
+        recording_renderer(calls, png),
+    )
     result = runner.invoke(
         peri_scribe.main.cli,
         ["show-colormap", "--trim-start", "16", "--trim-end", "8"],
@@ -62,11 +83,11 @@ def test_show_turbo_colormap_writes_png_file(
     calls: list[tuple[int, int]] = []
     png = b"fake-png-bytes"
 
-    def render(*, trim_start: int, trim_end: int) -> bytes:
-        calls.append((trim_start, trim_end))
-        return png
-
-    monkeypatch.setattr(peri_scribe.kml.colormap, "turbo_colormap_png", render)
+    monkeypatch.setattr(
+        peri_scribe.kml.colormap,
+        "turbo_colormap_png",
+        recording_renderer(calls, png),
+    )
     output_path = tmp_path / "nested" / "colormap.png"
     result = runner.invoke(
         peri_scribe.main.cli,

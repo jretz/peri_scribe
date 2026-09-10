@@ -7,7 +7,6 @@ import json
 import pathlib
 
 import geopandas
-import numpy as np
 import pytest
 
 import peri_scribe.fires.classification
@@ -53,18 +52,6 @@ def test_attributes_json_serializes_missing_and_dates() -> None:
     assert parsed["missing"] is None
     assert parsed["when"] == "2026-08-16T00:10:45+00:00"
     assert parsed["count"] == count
-
-
-def test_json_safe_value_converts_nested_and_numpy_values() -> None:
-    assert peri_scribe.fires.history.json_safe_value({"nested": [1, 2]}) == {
-        "nested": [1, 2],
-    }
-    assert (
-        peri_scribe.fires.history.json_safe_value(
-            np.int64(ITEM_VALUE),
-        )
-        == ITEM_VALUE
-    )
 
 
 def test_identity_fields_includes_complex_when_present() -> None:

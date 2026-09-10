@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import datetime
-import pathlib
 import typing
 
 import pytest
@@ -14,6 +13,7 @@ import peri_scribe.output
 import peri_scribe.sources.fetching
 import peri_scribe.sources.snapshots
 import peri_scribe.sources.validation
+import tests.factories
 from tests.conftest import CLICK_USAGE_ERROR_EXIT_CODE
 from tests.main_stubs import (
     BASE_DIRECTORY,
@@ -91,9 +91,7 @@ def test_validate_sources_stops_when_complete_fetch_fails(
 ) -> None:
     stubs = validate_sources_stubs(())
 
-    def fail(_base_directory: pathlib.Path, *, year: int) -> typing.Never:
-        message = "boom"
-        raise SystemExit(message)
+    fail = tests.factories.raising_stub(SystemExit("boom"))
 
     monkeypatch.setattr(
         peri_scribe.sources.fetching,
@@ -120,9 +118,7 @@ def test_validate_sources_stops_when_incremental_fetch_fails(
 ) -> None:
     stubs = validate_sources_stubs(())
 
-    def fail(_base_directory: pathlib.Path, *, year: int) -> typing.Never:
-        message = "boom"
-        raise SystemExit(message)
+    fail = tests.factories.raising_stub(SystemExit("boom"))
 
     monkeypatch.setattr(
         peri_scribe.sources.fetching,

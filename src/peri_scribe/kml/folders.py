@@ -15,6 +15,7 @@ import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.geometry
 import peri_scribe.kml.icons
+import peri_scribe.kml.selection
 import peri_scribe.kml.styles
 import peri_scribe.kml.tour
 import peri_scribe.models
@@ -366,7 +367,10 @@ def top_fires(
         score_fire(entry, fires_by_identifier, fires_by_name)
         for entry in sorted(
             scores.fires,
-            key=lambda entry: (-entry.score, entry.name.casefold()),
+            key=lambda entry: (
+                -entry.score,
+                peri_scribe.kml.fire_data.fire_name_key(entry),
+            ),
         )
     ]
     return [fire for fire in matched if fire is not None][:TOP_FIRE_COUNT]
@@ -420,11 +424,12 @@ def score_value_for_fire(
     Returns:
         The fire's score, or None when no entry matches.
     """
-    for identifier in sorted(fire.identifiers):
-        entry = scores_by_identifier.get(identifier)
-        if entry is not None:
-            return entry.score
-    entry = scores_by_name.get(fire.name)
+    entry = peri_scribe.kml.selection.first_identifier_match(
+        fire.identifiers,
+        scores_by_identifier,
+    )
+    if entry is None:
+        entry = scores_by_name.get(fire.name)
     return None if entry is None else entry.score
 
 
@@ -500,7 +505,7 @@ def new_notable_fires(
         if score is None or score < threshold:
             continue
         scored.append((fire, score))
-    scored.sort(key=lambda pair: (-pair[1], pair[0].name.casefold()))
+    scored.sort(key=peri_scribe.kml.fire_data.descending_value_name_key)
     return [fire for fire, _score in scored]
 
 
@@ -524,7 +529,7 @@ def type_one_fires(
         for fire in fires
         if fire.status is peri_scribe.models.FireStatus.ACTIVE and fire.type_one
     ]
-    qualifying.sort(key=lambda fire: fire.name.casefold())
+    qualifying.sort(key=peri_scribe.kml.fire_data.fire_name_key)
     return qualifying
 
 
@@ -597,14 +602,12 @@ def fast_growing_fires_by_acres(
     """
     if reference_time is None:
         return []
-    growing: list[
-        tuple[peri_scribe.kml.fire_data.FireGeometry, pint.Quantity[float]]
-    ] = []
+    growing: list[tuple[peri_scribe.kml.fire_data.FireGeometry, float]] = []
     for fire in fires:
         growth, _growth_percent = fire_growth(fire, reference_time)
         if growth is not None and growth >= MINIMUM_FAST_GROWTH:
-            growing.append((fire, growth))
-    growing.sort(key=lambda pair: (-pair[1].m_as("acres"), pair[0].name.casefold()))
+            growing.append((fire, growth.m_as("acres")))
+    growing.sort(key=peri_scribe.kml.fire_data.descending_value_name_key)
     return [fire for fire, _growth in growing][:TOP_FIRE_COUNT]
 
 
@@ -633,7 +636,7 @@ def fast_growing_fires_by_percent(
         _, growth_percent = fire_growth(fire, reference_time)
         if growth_percent is not None and growth_percent >= MINIMUM_FAST_GROWTH_PERCENT:
             growing.append((fire, growth_percent.m_as("percent")))
-    growing.sort(key=lambda pair: (-pair[1], pair[0].name.casefold()))
+    growing.sort(key=peri_scribe.kml.fire_data.descending_value_name_key)
     return [fire for fire, _ in growing][:TOP_FIRE_COUNT]
 
 
@@ -671,7 +674,7 @@ def most_personnel_fires(
         if observation_time < cutoff or observation_time > reference_time:
             continue
         staffed.append((fire, total_personnel))
-    staffed.sort(key=lambda pair: (-pair[1], pair[0].name.casefold()))
+    staffed.sort(key=peri_scribe.kml.fire_data.descending_value_name_key)
     return [fire for fire, _total_personnel in staffed][:TOP_FIRE_COUNT]
 
 

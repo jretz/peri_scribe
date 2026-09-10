@@ -503,24 +503,32 @@ def row_attributes(
     }
 
 
-def json_cache_value(value: object) -> object:
-    """Return *value* in a JSON-serializable form for the record cache.
+def json_native_value(value: object) -> object:
+    """Return *value* in a JSON-native form, recursing through containers.
 
-    Missing values become None, numpy scalars become their Python equivalents, and
-    datetimes become ISO-8601 text, so the attribute bag stores cleanly in JSON.
+    Missing values become None, numpy and pandas scalars become their Python
+    counterparts, dates and times become ISO-8601 text, and containers keep their shape
+    with string keys. A value with no JSON counterpart is returned as text, so every
+    attribute bag serializes. Both the record cache and the derived history store
+    attribute bags, so they normalize them the one way.
 
     Args:
-        value: An attribute value from a fire row.
+        value: Any attribute value.
 
     Returns:
-        The JSON-serializable form of *value*.
+        The JSON-native form of *value*.
     """
     if is_missing(value):
         return None
+    if hasattr(value, "item"):
+        # numpy and pandas scalars carry their Python counterpart here.
+        value = typing.cast("typing.Any", value).item()
     if isinstance(value, (str, bool, int, float)):
         return value
-    if hasattr(value, "item"):
-        return typing.cast("typing.Any", value).item()
+    if isinstance(value, dict):
+        return {str(key): json_native_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [json_native_value(item) for item in value]
     if hasattr(value, "isoformat"):
         return typing.cast("typing.Any", value).isoformat()
     return str(value)

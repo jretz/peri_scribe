@@ -33,6 +33,7 @@ import stream_unzip
 
 import peri_scribe.exceptions
 import peri_scribe.fires.centroid_math
+import peri_scribe.geo.spatial_reference
 
 
 # The maximum number of features per conversion chunk.
@@ -202,7 +203,7 @@ def convert_geometry_chunks(
             field_data=np.empty(0),
             fields=np.array([], dtype=object),
             geometry_type="Point",
-            crs="EPSG:4326",
+            crs=str(peri_scribe.geo.spatial_reference.WGS84_SPATIAL_REFERENCE),
             driver="GPKG",
             layer=layer_name,
             append=(not first) or wrote_any,

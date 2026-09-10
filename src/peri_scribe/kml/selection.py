@@ -242,6 +242,33 @@ def point_locations(
     return by_identifier, by_name
 
 
+def first_identifier_match[Value](
+    fire_identifiers: frozenset[str],
+    by_identifier: typing.Mapping[str, Value],
+) -> Value | None:
+    """Return the value *by_identifier* holds for the fire's first matching identifier.
+
+    A fire may carry several identifiers, so they are scanned in sorted order: the value
+    a fire resolves to is then the same on every run, rather than depending on the order
+    a set happens to iterate in.
+
+    Args:
+        fire_identifiers: The fire's identifiers.
+        by_identifier: Values keyed by identifier.
+
+    Returns:
+        The first matching value, or None when no identifier matches.
+
+    Examples:
+        >>> first_identifier_match(frozenset({"b", "a"}), {"a": 1, "b": 2})
+        1
+    """
+    for identifier in sorted(fire_identifiers):
+        if identifier in by_identifier:
+            return by_identifier[identifier]
+    return None
+
+
 def fire_point(
     fire_identifiers: frozenset[str],
     entry_name: str,
@@ -259,12 +286,10 @@ def fire_point(
     Returns:
         The fire's point location, or None when it has none.
     """
-    for identifier in sorted(fire_identifiers):
-        if identifier in point_by_identifier:
-            return point_by_identifier[identifier]
-    if not fire_identifiers:
+    point = first_identifier_match(fire_identifiers, point_by_identifier)
+    if point is None and not fire_identifiers:
         return point_by_name.get(entry_name)
-    return None
+    return point
 
 
 def fire_point_location(

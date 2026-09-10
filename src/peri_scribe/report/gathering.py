@@ -15,8 +15,7 @@ import typing
 
 import geopandas
 
-import peri_scribe.fires.differential
-import peri_scribe.fires.files
+import peri_scribe.fires.derived_layers
 import peri_scribe.fires.index
 import peri_scribe.fires.score_files
 import peri_scribe.geo.reading
@@ -333,18 +332,12 @@ def gather_report(year_directory: pathlib.Path) -> FireReport:
         Type 1 fires ordered by name.
     """
     index = peri_scribe.fires.index.load_fire_index(year_directory)
-    history_path = peri_scribe.fires.files.history_geopackage_path(year_directory)
-    perimeters = peri_scribe.geo.reading.read_layer(
-        history_path,
-        peri_scribe.fires.files.PERIMETER_LAYER_NAME,
-    )
-    points = peri_scribe.geo.reading.read_layer(
-        history_path,
-        peri_scribe.fires.files.POINT_LAYER_NAME,
-    )
-    differential_path = peri_scribe.fires.differential.differential_geopackage_path(
+    layers = peri_scribe.fires.derived_layers.read_derived_layers(
         year_directory,
+        tolerate_missing=False,
     )
+    perimeters = layers.perimeters
+    points = layers.points
     index = peri_scribe.kml.builder.area_qualified_index(index, perimeters, points)
     fire_scores = peri_scribe.fires.score_files.load_fire_scores(
         year_directory,
@@ -353,10 +346,7 @@ def gather_report(year_directory: pathlib.Path) -> FireReport:
         index,
         perimeters,
         points,
-        peri_scribe.geo.reading.read_layer(
-            differential_path,
-            peri_scribe.fires.files.PERIMETER_LAYER_NAME,
-        ),
+        layers.differential_perimeters,
         scores=fire_scores,
         render_plots=False,
     )

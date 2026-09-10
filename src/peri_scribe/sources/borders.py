@@ -10,11 +10,11 @@ import typing
 import geopandas
 import pyproj
 import shapely
-import structlog
 import us
 
 import peri_scribe.exceptions
 import peri_scribe.geo.data
+import peri_scribe.geo.spatial_reference
 import peri_scribe.models
 from peri_scribe.units import units
 
@@ -22,9 +22,6 @@ from peri_scribe.units import units
 if typing.TYPE_CHECKING:
     import arcgis.features
     import pint
-
-
-logger = structlog.get_logger()
 
 
 BOUNDARY_STATES_WHERE_CLAUSE = "STATE_ABBR IN ('CA','AZ','NV','OR')"
@@ -184,24 +181,12 @@ def layer_dataframe(
     feature_set = peri_scribe.geo.data.query_with_retry(
         layer_name,
         layer,
-        parameters={
-            "where": where,
-            "out_sr": peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
-        },
+        parameters=peri_scribe.geo.data.wgs84_query_parameters(where),
     )
     if not feature_set.features:
         message = f"Layer {layer_name} returned no features; no border was computed"
         raise peri_scribe.exceptions.AdministrativeBoundariesError(message)
-    dataframe, geometries, geometry_warning = peri_scribe.geo.data.extract_geometries(
-        feature_set.sdf,
-    )
-    if geometry_warning is not None:
-        logger.warning(geometry_warning)
-    return peri_scribe.geo.data.geo_data_frame_from(
-        dataframe,
-        geometries,
-        peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
-    )
+    return peri_scribe.geo.data.geo_data_frame_from_feature_set(feature_set)
 
 
 def boundary_geometries(
@@ -310,7 +295,7 @@ def border_dataframe(
             LENGTH_COLUMN_NAME: lengths,
         },
         geometry=borders,
-        crs=pyproj.CRS.from_epsg(peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID),
+        crs=peri_scribe.geo.spatial_reference.WGS84_SPATIAL_REFERENCE,
     )
     return typing.cast(
         "geopandas.GeoDataFrame",

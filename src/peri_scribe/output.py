@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 import matplotlib.backends.backend_agg
 import matplotlib.figure
 import numpy as np
+import pydantic
 import seaborn as sns
 import structlog
 
@@ -110,34 +111,38 @@ def remove_directory_tree(path: pathlib.Path) -> None:
         shutil.rmtree(path)
 
 
-def write_fire_index(
+def write_document(
     path: pathlib.Path,
-    document: peri_scribe.models.FireIndex,
+    document: peri_scribe.models.FireIndex | peri_scribe.models.FireScores,
 ) -> None:
     """Write *document* to *path* as pretty-printed JSON.
 
+    The fire index and the fire scores are both versioned documents holding the season's
+    fires, so they share one on-disk shape and one writer.
+
     Args:
         path: The JSON file to write.
-        document: The validated fire index to serialize.
+        document: The validated document to serialize.
     """
     with path.open("w", encoding="utf-8") as file:
         json.dump(document.model_dump(mode="json"), file, indent=4)
-    logger.debug("Wrote fire index", path=path.name, fires=len(document.fires))
+    logger.debug("Wrote document", path=path.name, fires=len(document.fires))
 
 
-def write_fire_scores(
+def read_document[Document: pydantic.BaseModel](
     path: pathlib.Path,
-    document: peri_scribe.models.FireScores,
-) -> None:
-    """Write *document* to *path* as pretty-printed JSON.
+    model: type[Document],
+) -> Document:
+    """Return the document *path* holds, validated by *model*.
 
     Args:
-        path: The JSON file to write.
-        document: The validated fire scores to serialize.
+        path: The JSON file to read.
+        model: The model that validates the file's contents.
+
+    Returns:
+        The validated document.
     """
-    with path.open("w", encoding="utf-8") as file:
-        json.dump(document.model_dump(mode="json"), file, indent=4)
-    logger.debug("Wrote fire scores", path=path.name, fires=len(document.fires))
+    return model.model_validate_json(path.read_text(encoding="utf-8"))
 
 
 def write_fire_scores_ccdf(

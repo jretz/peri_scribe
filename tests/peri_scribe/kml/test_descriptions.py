@@ -225,8 +225,10 @@ def test_format_pacific_time_marks_pacific_standard_time() -> None:
     )
 
 
-def test_escape_text_escapes_html_characters() -> None:
-    assert peri_scribe.kml.descriptions.escape_text("A & B < C") == "A &amp; B &lt; C"
+def test_escape_html_text_escapes_html_characters() -> None:
+    assert (
+        peri_scribe.kml.descriptions.escape_html_text("A & B < C") == "A &amp; B &lt; C"
+    )
 
 
 def test_description_rows_includes_every_present_value() -> None:

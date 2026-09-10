@@ -1,4 +1,4 @@
-"""Tests for peri_scribe.perimeters.border_classification."""
+"""Shared helpers for the perimeter classification test modules."""
 
 from __future__ import annotations
 

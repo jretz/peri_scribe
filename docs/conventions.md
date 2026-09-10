@@ -91,3 +91,9 @@ Where migration code is desirable, make it a standalone script in a folder calle
 `migrations` in the root of the project. The script should be idempotent and tested on a
 copy of the production data. Nothing in `src` or `tests` should reference the migration
 code.
+
+## Reuse
+
+Do not copy/paste code, even if changing constants or a small minority of behavior.
+Extract and abstract. After extracting, use existing tests to ensure origin site has no
+behavioral changes before making further test changes.

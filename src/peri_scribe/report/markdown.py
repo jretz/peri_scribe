@@ -10,6 +10,7 @@ import typing
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.folders
 import peri_scribe.report.gathering
+import peri_scribe.sources.snapshots
 from peri_scribe.units import units
 
 
@@ -64,7 +65,7 @@ def markdown_report_path(year_directory: pathlib.Path) -> pathlib.Path:
         >>> markdown_report_path(pathlib.Path("data/2026"))
         PosixPath('data/2026/reports/PeriScribe Fires 2026.md')
     """
-    year = int(year_directory.name)
+    year = peri_scribe.sources.snapshots.year_for_year_directory(year_directory)
     return year_directory / REPORTS_DIRECTORY_NAME / f"PeriScribe Fires {year}.md"
 
 
@@ -504,5 +505,11 @@ def render_markdown_report(
     """
     path = markdown_report_path(year_directory)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(markdown_text(report, int(year_directory.name)), encoding="utf-8")
+    path.write_text(
+        markdown_text(
+            report,
+            peri_scribe.sources.snapshots.year_for_year_directory(year_directory),
+        ),
+        encoding="utf-8",
+    )
     return path

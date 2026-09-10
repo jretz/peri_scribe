@@ -12,15 +12,15 @@ import shapely.geometry
 
 import peri_scribe.models
 import peri_scribe.sources.conversion
+import tests.factories
 
 
 def test_geojson_feature_chunks_streams_features_in_chunks(
     tmp_path: pathlib.Path,
 ) -> None:
-    dataframe = geopandas.GeoDataFrame(
+    dataframe = tests.factories.geo_frame(
         {"OBJECTID": [1, 2, 3, 4, 5]},
-        geometry=[shapely.geometry.Point(index, 0) for index in range(5)],
-        crs="EPSG:4326",
+        [shapely.geometry.Point(index, 0) for index in range(5)],
     )
     path = tmp_path / "features.geojson"
     dataframe.to_file(path, driver="GeoJSON")
@@ -87,10 +87,9 @@ def test_geojson_chunk_dataframe_unions_property_columns() -> None:
 def test_geodata_chunks_reads_non_geojson_in_chunks(
     tmp_path: pathlib.Path,
 ) -> None:
-    dataframe = geopandas.GeoDataFrame(
+    dataframe = tests.factories.geo_frame(
         {"a": [1, 2, 3]},
-        geometry=[shapely.geometry.Point(index, 0) for index in range(3)],
-        crs="EPSG:4326",
+        [shapely.geometry.Point(index, 0) for index in range(3)],
     )
     path = tmp_path / "features.gpkg"
     dataframe.to_file(path, layer="features")
@@ -115,13 +114,12 @@ def test_convert_to_geopackage_streams_centroids_in_chunks(
         "CONVERSION_CHUNK_SIZE",
         2,
     )
-    dataframe = geopandas.GeoDataFrame(
+    dataframe = tests.factories.geo_frame(
         {"OBJECTID": [1, 2, 3, 4, 5]},
-        geometry=[
+        [
             shapely.geometry.box(index, index, index + 1, index + 1)
             for index in range(5)
         ],
-        crs="EPSG:4326",
     )
     geodata_path = tmp_path / "California.geojson"
     dataframe.to_file(geodata_path, driver="GeoJSON")
@@ -152,13 +150,12 @@ def test_convert_to_geopackage_keeps_attributes_across_chunks(
         "CONVERSION_CHUNK_SIZE",
         2,
     )
-    dataframe = geopandas.GeoDataFrame(
+    dataframe = tests.factories.geo_frame(
         {"OBJECTID": [1, 2, 3]},
-        geometry=[
+        [
             shapely.geometry.box(index, index, index + 1, index + 1)
             for index in range(3)
         ],
-        crs="EPSG:4326",
     )
     geodata_path = tmp_path / "California.geojson"
     dataframe.to_file(geodata_path, driver="GeoJSON")

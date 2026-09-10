@@ -134,7 +134,7 @@ class FireRowRecord:
             record.point_of_origin_fips,
             json.dumps(
                 {
-                    key: peri_scribe.geo.parsing.json_cache_value(value)
+                    key: peri_scribe.geo.parsing.json_native_value(value)
                     for key, value in self.attributes.items()
                 },
             ),

@@ -28,6 +28,8 @@ import pyproj
 import shapely
 import shapely.ops
 
+import peri_scribe.geo.geometry
+import peri_scribe.geo.spatial_reference
 from peri_scribe.units import units
 
 
@@ -211,18 +213,13 @@ def distance_and_bearing_from_point(
     """
     projection = azimuthal_equidistant_projection(longitude, latitude)
     transformer = pyproj.Transformer.from_crs(
-        "EPSG:4326",
+        peri_scribe.geo.spatial_reference.WGS84_SPATIAL_REFERENCE,
         projection,
         always_xy=True,
     )
-    projected_interior = shapely.transform(
+    projected_interior = peri_scribe.geo.geometry.transform_coordinates(
         geometry,
-        lambda coordinates: np.column_stack(
-            transformer.transform(
-                coordinates[:, 0],
-                coordinates[:, 1],
-            ),
-        ),
+        transformer,
     )
     projected_longitude, projected_latitude = transformer.transform(
         longitude,

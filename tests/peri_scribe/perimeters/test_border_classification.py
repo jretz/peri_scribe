@@ -15,10 +15,6 @@ import peri_scribe.sources.borders
 import tests.peri_scribe.perimeters.border_helpers
 
 
-CALIFORNIA_BOX = shapely.geometry.box(0.0, 0.0, 100.0, 100.0)
-
-BORDER = shapely.geometry.LineString([(100.0, 0.0), (100.0, 100.0)])
-
 CALIFORNIA_BOX_WGS84 = shapely.geometry.box(-126.0, 31.0, -119.0, 40.0)
 
 CA_BORDER_WGS84 = shapely.geometry.LineString([(-119.0, 38.0), (-119.0, 40.0)])
@@ -156,11 +152,11 @@ def test_load_boundaries_builds_box_and_reprojects(
     assert isinstance(loaded.border, shapely.geometry.LineString)
 
 
-def test_union_geometry_returns_none_without_geometries(
+def test_unioned_observation_geometry_returns_none_without_geometries(
     boundaries: peri_scribe.perimeters.border_classification.Boundaries,
 ) -> None:
     assert (
-        peri_scribe.perimeters.border_classification.union_geometry(
+        peri_scribe.perimeters.border_classification.unioned_observation_geometry(
             [],
             boundaries,
         )
@@ -168,7 +164,7 @@ def test_union_geometry_returns_none_without_geometries(
     )
 
 
-def test_union_geometry_skips_missing_and_empty_geometries(
+def test_unioned_observation_geometry_skips_missing_and_empty_geometries(
     boundaries: peri_scribe.perimeters.border_classification.Boundaries,
 ) -> None:
     observations = [
@@ -185,14 +181,14 @@ def test_union_geometry_skips_missing_and_empty_geometries(
             shapely.geometry.Polygon(),
         ),
     ]
-    union = peri_scribe.perimeters.border_classification.union_geometry(
+    union = peri_scribe.perimeters.border_classification.unioned_observation_geometry(
         observations,
         boundaries,
     )
     assert isinstance(union, shapely.geometry.Point)
 
 
-def test_union_geometry_returns_single_geometry_directly(
+def test_unioned_observation_geometry_returns_single_geometry_directly(
     boundaries: peri_scribe.perimeters.border_classification.Boundaries,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -202,7 +198,7 @@ def test_union_geometry_returns_single_geometry_directly(
         "union_all",
         lambda _geometries: pytest.fail("union_all must not be called"),
     )
-    union = peri_scribe.perimeters.border_classification.union_geometry(
+    union = peri_scribe.perimeters.border_classification.unioned_observation_geometry(
         [
             tests.peri_scribe.perimeters.border_helpers.observation(
                 tests.peri_scribe.perimeters.border_helpers.FIRIS,
@@ -219,7 +215,7 @@ def test_union_geometry_returns_single_geometry_directly(
     )
 
 
-def test_union_geometry_dedupes_identical_observations(
+def test_unioned_observation_geometry_dedupes_identical_observations(
     boundaries: peri_scribe.perimeters.border_classification.Boundaries,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -241,7 +237,7 @@ def test_union_geometry_dedupes_identical_observations(
         "reproject_to_california_albers",
         lambda geometry, _wkid: geometry,
     )
-    union = peri_scribe.perimeters.border_classification.union_geometry(
+    union = peri_scribe.perimeters.border_classification.unioned_observation_geometry(
         [
             tests.peri_scribe.perimeters.border_helpers.observation(
                 tests.peri_scribe.perimeters.border_helpers.FIRIS,
@@ -263,7 +259,7 @@ def test_union_geometry_dedupes_identical_observations(
     assert [len(inputs) for inputs in union_inputs] == [distinct_geometry_count]
 
 
-def test_union_geometry_skips_union_for_one_sided_fire(
+def test_unioned_observation_geometry_skips_union_for_one_sided_fire(
     boundaries: peri_scribe.perimeters.border_classification.Boundaries,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -277,7 +273,7 @@ def test_union_geometry_skips_union_for_one_sided_fire(
         "union_all",
         lambda _geometries: pytest.fail("union_all must not be called"),
     )
-    union = peri_scribe.perimeters.border_classification.union_geometry(
+    union = peri_scribe.perimeters.border_classification.unioned_observation_geometry(
         [
             tests.peri_scribe.perimeters.border_helpers.observation(
                 tests.peri_scribe.perimeters.border_helpers.FIRIS,
@@ -303,7 +299,7 @@ def test_union_geometry_skips_union_for_one_sided_fire(
     assert len(union.geoms) == distinct_geometry_count
 
 
-def test_union_geometry_keeps_identical_geometries_from_different_sources(
+def test_unioned_observation_geometry_keeps_identical_geometries_from_different_sources(
     boundaries: peri_scribe.perimeters.border_classification.Boundaries,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -322,7 +318,7 @@ def test_union_geometry_keeps_identical_geometries_from_different_sources(
         "reproject_to_california_albers",
         recording_reproject,
     )
-    union = peri_scribe.perimeters.border_classification.union_geometry(
+    union = peri_scribe.perimeters.border_classification.unioned_observation_geometry(
         [
             tests.peri_scribe.perimeters.border_helpers.observation(
                 tests.peri_scribe.perimeters.border_helpers.FIRIS,

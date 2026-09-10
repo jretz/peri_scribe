@@ -12,6 +12,7 @@ import peri_scribe.fires.classification
 import peri_scribe.fires.sources
 import peri_scribe.models
 import peri_scribe.perimeters.border_classification
+import tests.factories
 from tests.factories import ACTIVE, fire_record
 
 
@@ -68,9 +69,7 @@ def test_classify_fire_sources_returns_empty_when_boundaries_missing(
 ) -> None:
     fire = peri_scribe.models.Fire(name="Park Fire", status=ACTIVE)
 
-    def fail(_base_dir: pathlib.Path) -> object:
-        message = "missing"
-        raise FileNotFoundError(message)
+    fail = tests.factories.raising_stub(FileNotFoundError("missing"))
 
     monkeypatch.setattr(
         peri_scribe.perimeters.border_classification,

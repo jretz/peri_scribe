@@ -26,6 +26,10 @@ LATEST_PERIMETER_COLOR = (0xFF, 0x00, 0x00)
 PENULTIMATE_PERIMETER_COLOR = (0xFF, 0xFF, 0x00)
 
 
+# The eight bytes every PNG file starts with.
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
 def interior_progression_icon_filename() -> str:
     """Return the filename of the "Interior" folder's icon.
 
@@ -58,6 +62,25 @@ def png_chunk(chunk_type: bytes, data: bytes) -> bytes:
     return struct.pack(">I", len(data)) + chunk_type + data + struct.pack(">I", crc)
 
 
+def png_from_rows(rows: list[bytes], side_in_pixels: int) -> bytes:
+    """Return an eight-bit RGBA PNG holding *rows* as its scanlines.
+
+    Args:
+        rows: One scanline per row, each a filter byte followed by the row's pixels.
+        side_in_pixels: The icon's width and height in pixels.
+
+    Returns:
+        The icon's PNG bytes.
+    """
+    header = struct.pack(">IIBBBBB", side_in_pixels, side_in_pixels, 8, 6, 0, 0, 0)
+    return (
+        PNG_SIGNATURE
+        + png_chunk(b"IHDR", header)
+        + png_chunk(b"IDAT", zlib.compress(b"".join(rows), zlib.Z_BEST_COMPRESSION))
+        + png_chunk(b"IEND", b"")
+    )
+
+
 def interior_progression_icon() -> bytes:
     """Return the "Interior" folder icon as a PNG.
 
@@ -75,14 +98,7 @@ def interior_progression_icon() -> bytes:
     for rgb in colors:
         pixel = bytes((*[round(component * 255) for component in rgb], 255))
         rows.append(b"\x00" + pixel * side_in_pixels)
-    signature = b"\x89PNG\r\n\x1a\n"
-    header = struct.pack(">IIBBBBB", side_in_pixels, side_in_pixels, 8, 6, 0, 0, 0)
-    return (
-        signature
-        + png_chunk(b"IHDR", header)
-        + png_chunk(b"IDAT", zlib.compress(b"".join(rows), zlib.Z_BEST_COMPRESSION))
-        + png_chunk(b"IEND", b"")
-    )
+    return png_from_rows(rows, side_in_pixels)
 
 
 def perimeters_icon() -> bytes:
@@ -110,11 +126,4 @@ def perimeters_icon() -> bytes:
         else:
             row = b"\x00" + background_pixel * side_in_pixels
         rows.append(row)
-    signature = b"\x89PNG\r\n\x1a\n"
-    header = struct.pack(">IIBBBBB", side_in_pixels, side_in_pixels, 8, 6, 0, 0, 0)
-    return (
-        signature
-        + png_chunk(b"IHDR", header)
-        + png_chunk(b"IDAT", zlib.compress(b"".join(rows), zlib.Z_BEST_COMPRESSION))
-        + png_chunk(b"IEND", b"")
-    )
+    return png_from_rows(rows, side_in_pixels)

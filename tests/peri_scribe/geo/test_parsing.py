@@ -6,6 +6,7 @@ import datetime
 import json
 import typing
 
+import numpy as np
 import pandas as pd
 import pytest
 import shapely.geometry
@@ -13,34 +14,36 @@ import shapely.geometry
 import peri_scribe.geo.package
 import peri_scribe.geo.parsing
 import peri_scribe.models
-import tests.peri_scribe.geo.geo_helpers
+import tests.factories
+
+
+ITEM_VALUE = 7
+
+
+def test_json_native_value_normalizes_nested_numpy_and_date_values() -> None:
+    assert peri_scribe.geo.parsing.json_native_value({"nested": [1, 2]}) == {
+        "nested": [1, 2],
+    }
+    assert peri_scribe.geo.parsing.json_native_value(np.int64(ITEM_VALUE)) == ITEM_VALUE
+    assert (
+        peri_scribe.geo.parsing.json_native_value(datetime.date(2026, 5, 4))
+        == "2026-05-04"
+    )
+
+
+def test_json_native_value_returns_unknown_values_as_text() -> None:
+    assert peri_scribe.geo.parsing.json_native_value(frozenset({1})) == "frozenset({1})"
 
 
 def test_fire_status_from_classifies_active_and_inactive() -> None:
+    assert peri_scribe.geo.parsing.fire_status_from("Active") is tests.factories.ACTIVE
     assert (
-        peri_scribe.geo.parsing.fire_status_from("Active")
-        is tests.peri_scribe.geo.geo_helpers.ACTIVE
+        peri_scribe.geo.parsing.fire_status_from("inactive") is tests.factories.INACTIVE
     )
-    assert (
-        peri_scribe.geo.parsing.fire_status_from("inactive")
-        is tests.peri_scribe.geo.geo_helpers.INACTIVE
-    )
-    assert (
-        peri_scribe.geo.parsing.fire_status_from(1)
-        is tests.peri_scribe.geo.geo_helpers.ACTIVE
-    )
-    assert (
-        peri_scribe.geo.parsing.fire_status_from(0)
-        is tests.peri_scribe.geo.geo_helpers.INACTIVE
-    )
-    assert (
-        peri_scribe.geo.parsing.fire_status_from("TRUE")
-        is tests.peri_scribe.geo.geo_helpers.ACTIVE
-    )
-    assert (
-        peri_scribe.geo.parsing.fire_status_from("false")
-        is tests.peri_scribe.geo.geo_helpers.INACTIVE
-    )
+    assert peri_scribe.geo.parsing.fire_status_from(1) is tests.factories.ACTIVE
+    assert peri_scribe.geo.parsing.fire_status_from(0) is tests.factories.INACTIVE
+    assert peri_scribe.geo.parsing.fire_status_from("TRUE") is tests.factories.ACTIVE
+    assert peri_scribe.geo.parsing.fire_status_from("false") is tests.factories.INACTIVE
 
 
 def test_fire_status_from_returns_none_for_blank_values() -> None:
@@ -270,7 +273,7 @@ def test_record_cache_row_values_are_json_safe() -> None:
     row = peri_scribe.geo.package.FireRowRecord(
         record=peri_scribe.models.FireRecord(
             name="Park Fire",
-            status=tests.peri_scribe.geo.geo_helpers.ACTIVE,
+            status=tests.factories.ACTIVE,
         ),
         object_id=None,
         source_name="sources",

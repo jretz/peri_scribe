@@ -14,6 +14,7 @@ import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.sources.digests
 import peri_scribe.sources.external_sources
+import tests.factories
 import tests.peri_scribe.sources.external_source_helpers
 
 
@@ -36,13 +37,9 @@ def test_dataframe_digest_differs_for_different_geometry() -> None:
 
 def test_dataframe_digest_treats_missing_values_equally() -> None:
     def frame(missing: object) -> geopandas.GeoDataFrame:
-        return geopandas.GeoDataFrame(
+        return tests.factories.geo_frame(
             {"value": pd.array([1, missing], dtype=object)},
-            geometry=[
-                shapely.geometry.Point(0.0, 0.0),
-                shapely.geometry.Point(1.0, 1.0),
-            ],
-            crs="EPSG:4326",
+            [shapely.geometry.Point(0.0, 0.0), shapely.geometry.Point(1.0, 1.0)],
         )
 
     digest = peri_scribe.sources.digests.dataframe_digest
@@ -53,7 +50,7 @@ def test_dataframe_digest_treats_missing_values_equally() -> None:
 
 
 def test_dataframe_digest_covers_every_attribute_kind() -> None:
-    dataframe = geopandas.GeoDataFrame(
+    dataframe = tests.factories.geo_frame(
         {
             "a": ["x", "y"],
             "b": [True, False],
@@ -70,11 +67,10 @@ def test_dataframe_digest_covers_every_attribute_kind() -> None:
             ],
             "h": [{"k": 1}, {"k": 2}],
         },
-        geometry=[
+        [
             shapely.geometry.Point(0.0, 0.0),
             shapely.geometry.Point(1.0, 1.0),
         ],
-        crs="EPSG:4326",
     )
     digest = peri_scribe.sources.digests.dataframe_digest(dataframe)
     assert isinstance(digest, str)

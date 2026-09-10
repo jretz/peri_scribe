@@ -45,10 +45,36 @@ PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK = 25_000.0 * units.km
 WGS84_SPATIAL_REFERENCE_ID = 4326
 NAD83_SPATIAL_REFERENCE_ID = 4269
 CALIFORNIA_ALBERS_SPATIAL_REFERENCE_ID = 3310
+WEB_MERCATOR_SPATIAL_REFERENCE_ID = 3857
 
 # The earliest representable aware UTC datetime, used as an ordering floor when a fire
 # observation has no timestamp.
 EARLIEST_DATETIME = datetime.datetime.min.replace(tzinfo=datetime.UTC)
+
+
+def times_are_contemporaneous(
+    left: datetime.datetime | None,
+    right: datetime.datetime | None,
+    tolerance: datetime.timedelta,
+) -> bool:
+    """Return whether two observation times are close enough to compare.
+
+    Two observations with no time at all can only be compared against each other; one
+    with a time and one without cannot be compared at all.
+
+    Args:
+        left: One observation time, or None when it has none.
+        right: The other observation time, or None when it has none.
+        tolerance: How far apart the two may be and still compare.
+
+    Returns:
+        True when the two times are within the tolerance.
+    """
+    if left is None and right is None:
+        return True
+    if left is None or right is None:
+        return False
+    return abs(left - right) <= tolerance
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)

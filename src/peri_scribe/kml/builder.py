@@ -14,11 +14,9 @@ import zipfile
 
 import structlog
 
-import peri_scribe.fires.differential
-import peri_scribe.fires.files
+import peri_scribe.fires.derived_layers
 import peri_scribe.fires.index
 import peri_scribe.fires.score_files
-import peri_scribe.geo.reading
 import peri_scribe.kml.colormap
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
@@ -27,6 +25,7 @@ import peri_scribe.kml.icons
 import peri_scribe.kml.selection
 import peri_scribe.kml.styles
 import peri_scribe.models
+import peri_scribe.sources.snapshots
 
 
 if typing.TYPE_CHECKING:
@@ -131,22 +130,6 @@ KMZ_COMPRESSION = zipfile.ZIP_DEFLATED
 KMZ_COMPRESSION_LEVEL = 6
 
 
-def year_from(year_directory: pathlib.Path) -> int:
-    """Return the year named by *year_directory*.
-
-    Args:
-        year_directory: The year directory, whose name is the year.
-
-    Returns:
-        The year as an integer.
-
-    Examples:
-        >>> year_from(pathlib.Path("data/2025"))
-        2025
-    """
-    return int(year_directory.name)
-
-
 def kmz_filename(year: int) -> str:
     """Return the KMZ filename for *year*.
 
@@ -176,9 +159,8 @@ def kmz_path(year_directory: pathlib.Path) -> pathlib.Path:
         >>> kmz_path(pathlib.Path("data/2025"))
         PosixPath('data/2025/maps/PeriScribe Fires 2025.kmz')
     """
-    return (
-        year_directory / MAPS_DIRECTORY_NAME / kmz_filename(year_from(year_directory))
-    )
+    year = peri_scribe.sources.snapshots.year_for_year_directory(year_directory)
+    return year_directory / MAPS_DIRECTORY_NAME / kmz_filename(year)
 
 
 def fire_view_folders(
@@ -225,7 +207,7 @@ def fire_view_folders(
     score_sorted_fires = peri_scribe.kml.folders.top_fires(fires, scores)
     top_by_name_fires = sorted(
         score_sorted_fires,
-        key=lambda fire: fire.name.casefold(),
+        key=peri_scribe.kml.fire_data.fire_name_key,
     )
     if new_notable:
         peri_scribe.kml.folders.top_fires_folder(
@@ -382,11 +364,11 @@ def fire_kml(
     )
     for style in peri_scribe.kml.styles.symbolization_styles():
         writer.parts.append(str(style))
-    for color, style_url in ring_style_urls.items():
+    for color in ring_style_urls:
         writer.parts.append(
             str(
-                peri_scribe.kml.styles.progression_ring_style(
-                    style_url.lstrip("#"),
+                peri_scribe.kml.styles.filled_polygon_style(
+                    peri_scribe.kml.styles.progression_ring_style_id(color),
                     color,
                 ),
             ),
@@ -544,22 +526,13 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
     """
     index = peri_scribe.fires.index.load_fire_index(year_directory)
     scores = peri_scribe.fires.score_files.load_fire_scores(year_directory)
-    history_path = peri_scribe.fires.files.history_geopackage_path(year_directory)
-    perimeters = peri_scribe.geo.reading.read_layer(
-        history_path,
-        peri_scribe.fires.files.PERIMETER_LAYER_NAME,
-    )
-    points = peri_scribe.geo.reading.read_layer(
-        history_path,
-        peri_scribe.fires.files.POINT_LAYER_NAME,
-    )
-    differential_path = peri_scribe.fires.differential.differential_geopackage_path(
+    layers = peri_scribe.fires.derived_layers.read_derived_layers(
         year_directory,
+        tolerate_missing=False,
     )
-    differential_perimeters = peri_scribe.geo.reading.read_layer(
-        differential_path,
-        peri_scribe.fires.files.PERIMETER_LAYER_NAME,
-    )
+    perimeters = layers.perimeters
+    points = layers.points
+    differential_perimeters = layers.differential_perimeters
     fire_count = len(index.fires)
     index = area_qualified_index(index, perimeters, points)
     logger.debug(

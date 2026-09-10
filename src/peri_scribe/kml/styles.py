@@ -137,8 +137,11 @@ def point_style() -> Style:
     return style
 
 
-def filled_perimeter_style(style_id: str, color: str) -> Style:
-    """Return the filled polygon style with *style_id* and *color*.
+def filled_polygon_style(style_id: str, color: str) -> Style:
+    """Return the polygon fill style with *style_id* and *color*.
+
+    The polygon fills at :data:`FILL_OPACITY` with no outline, so wherever fills
+    overlap each one shows through the next and the newest reads hottest.
 
     Args:
         style_id: The style's identifier.
@@ -185,7 +188,7 @@ def symbolization_styles() -> tuple[Style, ...]:
     """
     return (
         point_style(),
-        filled_perimeter_style(FILLED_PERIMETER_STYLE_ID, FILLED_PERIMETER_COLOR),
+        filled_polygon_style(FILLED_PERIMETER_STYLE_ID, FILLED_PERIMETER_COLOR),
         *map(
             outlined_perimeter_style,
             OUTLINED_PERIMETER_STYLE_IDS,
@@ -208,23 +211,3 @@ def progression_ring_style_id(color: str) -> str:
         The style id.
     """
     return f"ring-fill-{color[1:]}"
-
-
-def progression_ring_style(style_id: str, color: str) -> Style:
-    """Return the fill style for one progression-ring color.
-
-    The progression rings fill at 50% opacity with no outline, so the newest ring reads
-    hottest while the older rings beneath it stay visible.
-
-    Args:
-        style_id: The style's id.
-        color: The color as ``#RRGGBB``.
-
-    Returns:
-        The style, with a filled polygon style.
-    """
-    style = Style(style_id)
-    style.polystyle.color = kml_color(color, FILL_OPACITY)
-    style.polystyle.fill = 1
-    style.polystyle.outline = 0
-    return style

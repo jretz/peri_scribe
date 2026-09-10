@@ -9,10 +9,14 @@ import tempfile
 import typing
 import zipfile
 
-import geopandas
 import shapely.geometry
 
 import peri_scribe.sources.external_sources
+import tests.factories
+
+
+if typing.TYPE_CHECKING:
+    import geopandas
 
 
 class FakeResponse:
@@ -100,13 +104,12 @@ def sample_arcgis_dataframe() -> geopandas.GeoDataFrame:
     Returns:
         Two point features with OBJECTID attributes in WGS84.
     """
-    return geopandas.GeoDataFrame(
+    return tests.factories.geo_frame(
         {"OBJECTID": [1, 2]},
-        geometry=[
+        [
             shapely.geometry.Point(1.0, 2.0),
             shapely.geometry.Point(3.0, 4.0),
         ],
-        crs="EPSG:4326",
     )
 
 
@@ -145,13 +148,12 @@ def building_dataframe() -> geopandas.GeoDataFrame:
     Returns:
         Two building footprint polygons with OBJECTID attributes.
     """
-    return geopandas.GeoDataFrame(
+    return tests.factories.geo_frame(
         {"OBJECTID": [1, 2]},
-        geometry=[
+        [
             shapely.geometry.box(0.0, 0.0, 2.0, 2.0),
             shapely.geometry.box(10.0, 10.0, 12.0, 12.0),
         ],
-        crs="EPSG:4326",
     )
 
 

@@ -17,9 +17,10 @@ import peri_scribe.exceptions
 import peri_scribe.geo.data
 import peri_scribe.models
 import peri_scribe.output
-import peri_scribe.sources.archives
+import peri_scribe.sources.downloading
 import peri_scribe.sources.external_sources
 import peri_scribe.sources.snapshots
+import tests.factories
 import tests.peri_scribe.sources.external_source_helpers
 
 
@@ -342,9 +343,7 @@ def test_fetch_arcgis_source_raises_when_fetch_fails(
 ) -> None:
     source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
 
-    def fail(_url: str, _gis: object) -> typing.Never:
-        message = "boom"
-        raise RuntimeError(message)
+    fail = tests.factories.raising_stub(RuntimeError("boom"))
 
     monkeypatch.setattr(
         peri_scribe.sources.external_sources.arcgis.gis,
@@ -413,7 +412,7 @@ def test_fetch_arcgis_source_logs_geometry_warning(
     )
     warnings: list[str] = []
     monkeypatch.setattr(
-        peri_scribe.sources.external_sources.logger,
+        peri_scribe.geo.data.logger,
         "warning",
         warnings.append,
     )
@@ -517,9 +516,7 @@ def test_fetch_arcgis_source_keeps_current_version_when_fetch_fails(
     )[0]
     assert first.name == "evacuations.gpkg"
 
-    def fail(_url: str, _gis: object) -> typing.Never:
-        message = "boom"
-        raise RuntimeError(message)
+    fail = tests.factories.raising_stub(RuntimeError("boom"))
 
     monkeypatch.setattr(
         peri_scribe.sources.external_sources.arcgis.features,
@@ -553,7 +550,7 @@ def test_buildings_state_urls_reads_repo_page_every_fetch(
     }
     urls: list[str] = []
     monkeypatch.setattr(
-        peri_scribe.sources.archives.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         lambda url, **_kwargs: (
             urls.append(url)
@@ -575,7 +572,7 @@ def test_buildings_state_urls_raises_when_page_has_nodownload_links(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        peri_scribe.sources.archives.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(
@@ -597,7 +594,7 @@ def test_buildings_state_urls_raises_when_a_state_is_missing(
         {"California": "https://example.com/California.geojson.zip"},
     )
     monkeypatch.setattr(
-        peri_scribe.sources.archives.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(
@@ -615,14 +612,12 @@ def test_buildings_state_urls_raises_when_a_state_is_missing(
 def test_buildings_state_urls_raises_when_page_cannot_be_downloaded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def fail(_url: str, **_kwargs: object) -> typing.Never:
-        message = "boom"
-        raise peri_scribe.sources.archives.requests.exceptions.RequestException(
-            message,
-        )
+    fail = tests.factories.raising_stub(
+        peri_scribe.sources.downloading.requests.exceptions.RequestException("boom"),
+    )
 
     monkeypatch.setattr(
-        peri_scribe.sources.archives.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         fail,
     )
@@ -676,7 +671,7 @@ def test_fetch_buildings_combines_state_centroids_into_single_geopackage(
         return tests.peri_scribe.sources.external_source_helpers.FakeResponse(archive)
 
     monkeypatch.setattr(
-        peri_scribe.sources.archives.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         get,
     )
@@ -759,7 +754,7 @@ def test_fetch_buildings_skips_page_when_combined_output_present(
         return tests.peri_scribe.sources.external_source_helpers.FakeResponse(archive)
 
     monkeypatch.setattr(
-        peri_scribe.sources.archives.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         get,
     )
@@ -803,7 +798,7 @@ def test_fetch_buildings_combines_projected_centroids_into_wgs84(
         driver="ESRI Shapefile",
     )
     monkeypatch.setattr(
-        peri_scribe.sources.archives.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(archive)

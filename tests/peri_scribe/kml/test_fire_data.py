@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import datetime
 import json
+import typing
 
-import geopandas
 import pytest
 import shapely.geometry
 
@@ -16,7 +16,12 @@ import peri_scribe.kml.text
 import peri_scribe.models
 import peri_scribe.perimeters.progression
 import peri_scribe.units
+import tests.factories
 import tests.peri_scribe.kml.kml_helpers
+
+
+if typing.TYPE_CHECKING:
+    import geopandas
 
 
 def test_identifiers_includes_identifier_and_aliases() -> None:
@@ -73,9 +78,9 @@ def test_unique_filename_prefix_avoids_collisions() -> None:
 
 
 def test_perimeter_groups_keys_by_identifier_and_preserves_order() -> None:
-    first = tests.peri_scribe.kml.kml_helpers.square(1.0)
-    second = tests.peri_scribe.kml.kml_helpers.square(2.0)
-    nameless = tests.peri_scribe.kml.kml_helpers.square(3.0)
+    first = tests.factories.square(1.0)
+    second = tests.factories.square(2.0)
+    nameless = tests.factories.square(3.0)
     first_time = datetime.datetime(2026, 8, 5, tzinfo=datetime.UTC)
     second_time = datetime.datetime(2026, 8, 6, tzinfo=datetime.UTC)
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
@@ -154,10 +159,10 @@ def test_fire_point_returns_none_when_identifier_missing() -> None:
 def test_fire_perimeters_matches_identifier() -> None:
     perimeters = (
         tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-            tests.peri_scribe.kml.kml_helpers.square(1.0),
+            tests.factories.square(1.0),
         ),
         tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-            tests.peri_scribe.kml.kml_helpers.square(2.0),
+            tests.factories.square(2.0),
         ),
     )
     result = peri_scribe.kml.fire_data.fire_perimeters(
@@ -172,7 +177,7 @@ def test_fire_perimeters_matches_identifier() -> None:
 def test_fire_perimeters_falls_back_to_name() -> None:
     perimeters = (
         tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-            tests.peri_scribe.kml.kml_helpers.square(1.0),
+            tests.factories.square(1.0),
         ),
     )
     result = peri_scribe.kml.fire_data.fire_perimeters(
@@ -211,14 +216,13 @@ def area_frame(
     Returns:
         The rows as a GeoDataFrame with *column* populated.
     """
-    return geopandas.GeoDataFrame(
+    return tests.factories.geo_frame(
         {
             "fire_identifier": [identifier for identifier, _name in rows],
             "fire_name": [name for _identifier, name in rows],
             column: values,
         },
-        geometry=[shapely.geometry.Point(0.0, 0.0) for _row in rows],
-        crs="EPSG:4326",
+        [shapely.geometry.Point(0.0, 0.0) for _row in rows],
     )
 
 
@@ -374,10 +378,10 @@ def test_fire_geometries_matches_aliases_and_sorts_by_name() -> None:
             identifier="id-bug",
         ),
     ])
-    sorrento_perimeter = tests.peri_scribe.kml.kml_helpers.square(3.0)
+    sorrento_perimeter = tests.factories.square(3.0)
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame([
         ("2026-casnd-26150541", "Sorrento", sorrento_perimeter),
-        ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+        ("id-bug", "Bug", tests.factories.square(1.0)),
     ])
     bug_point = shapely.geometry.Point(1.0, 1.0)
     points = tests.peri_scribe.kml.kml_helpers.geometry_frame([
@@ -395,7 +399,7 @@ def test_fire_geometries_matches_aliases_and_sorts_by_name() -> None:
     assert bug.point is bug_point
     assert bug.perimeters == (
         tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-            tests.peri_scribe.kml.kml_helpers.square(1.0),
+            tests.factories.square(1.0),
         ),
     )
     assert sorrento.status is peri_scribe.models.FireStatus.ACTIVE
@@ -414,7 +418,7 @@ def test_fire_point_location_uses_known_point() -> None:
         {},
         (
             tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-                tests.peri_scribe.kml.kml_helpers.square(2.0),
+                tests.factories.square(2.0),
             ),
         ),
     )
@@ -422,8 +426,8 @@ def test_fire_point_location_uses_known_point() -> None:
 
 
 def test_fire_point_location_derives_point_from_latest_perimeter() -> None:
-    earlier = tests.peri_scribe.kml.kml_helpers.square(1.0)
-    latest = tests.peri_scribe.kml.kml_helpers.square(2.0)
+    earlier = tests.factories.square(1.0)
+    latest = tests.factories.square(2.0)
     result = peri_scribe.kml.selection.fire_point_location(
         frozenset({"id-a"}),
         "Bug",
@@ -458,7 +462,7 @@ def test_fire_geometries_derives_point_for_inactive_fire_without_location() -> N
             identifier="id-alta",
         ),
     ])
-    perimeter = tests.peri_scribe.kml.kml_helpers.square(2.0)
+    perimeter = tests.factories.square(2.0)
     fires = peri_scribe.kml.fire_data.fire_geometries(
         index,
         tests.peri_scribe.kml.kml_helpers.geometry_frame([
@@ -505,8 +509,8 @@ def test_fire_geometries_attaches_plot_images(
     ])
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
         [
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(2.0)),
+            ("id-bug", "Bug", tests.factories.square(1.0)),
+            ("id-bug", "Bug", tests.factories.square(2.0)),
         ],
         observation_times=[
             datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC),
@@ -538,8 +542,8 @@ def test_fire_geometries_skips_plot_images_when_render_plots_is_false(
     ])
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
         [
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(2.0)),
+            ("id-bug", "Bug", tests.factories.square(1.0)),
+            ("id-bug", "Bug", tests.factories.square(2.0)),
         ],
         observation_times=[
             datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC),
@@ -570,16 +574,12 @@ def test_fire_geometries_matches_identifier_less_fire_by_name(
     ])
     # The fire has no identifier, yet its history rows carry one; the name match must
     # still include those rows for the plots and description.
-    first_area = peri_scribe.units.area(
-        tests.peri_scribe.kml.kml_helpers.square(1.0),
-    )
-    second_area = peri_scribe.units.area(
-        tests.peri_scribe.kml.kml_helpers.square(2.0),
-    )
+    first_area = peri_scribe.units.area(tests.factories.square(1.0))
+    second_area = peri_scribe.units.area(tests.factories.square(2.0))
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
         [
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(2.0)),
+            ("id-bug", "Bug", tests.factories.square(1.0)),
+            ("id-bug", "Bug", tests.factories.square(2.0)),
         ],
         observation_times=[
             datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC),
@@ -662,7 +662,7 @@ def test_fire_geometries_puts_score_explanation_in_balloon() -> None:
         ),
     ])
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame([
-        ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+        ("id-bug", "Bug", tests.factories.square(1.0)),
     ])
     scores = peri_scribe.models.FireScores(
         version="test",
@@ -713,14 +713,13 @@ def type_one_point_frame(
         if complexity_level is None
         else {"IncidentComplexityLevel": complexity_level}
     )
-    return geopandas.GeoDataFrame(
+    return tests.factories.geo_frame(
         {
             "fire_identifier": ["id-bug"],
             "fire_name": ["Bug"],
             "source_attributes": [json.dumps(attributes)],
         },
-        geometry=[shapely.geometry.Point(1.0, 1.0)],
-        crs="EPSG:4326",
+        [shapely.geometry.Point(1.0, 1.0)],
     )
 
 
@@ -733,7 +732,7 @@ def test_fire_geometries_marks_type_one_incident_from_point_rows() -> None:
         ),
     ])
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame([
-        ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+        ("id-bug", "Bug", tests.factories.square(1.0)),
     ])
 
     (fire,) = peri_scribe.kml.fire_data.fire_geometries(
@@ -755,7 +754,7 @@ def test_fire_geometries_leaves_lower_complexity_fire_unmarked() -> None:
         ),
     ])
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame([
-        ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+        ("id-bug", "Bug", tests.factories.square(1.0)),
     ])
 
     (fire,) = peri_scribe.kml.fire_data.fire_geometries(
@@ -777,7 +776,7 @@ def test_fire_geometries_leaves_fire_unmarked_without_complexity_level() -> None
         ),
     ])
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame([
-        ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+        ("id-bug", "Bug", tests.factories.square(1.0)),
     ])
 
     (fire,) = peri_scribe.kml.fire_data.fire_geometries(
@@ -799,7 +798,7 @@ def test_fire_geometries_leaves_fire_unmarked_without_point_attributes() -> None
         ),
     ])
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame([
-        ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+        ("id-bug", "Bug", tests.factories.square(1.0)),
     ])
     points = tests.peri_scribe.kml.kml_helpers.geometry_frame([
         ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
@@ -829,8 +828,8 @@ def test_fire_geometries_matches_score_explanation_by_identifier() -> None:
         ),
     ])
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame([
-        ("id-big", "Timber", tests.peri_scribe.kml.kml_helpers.square(2.0)),
-        ("id-small", "Timber", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+        ("id-big", "Timber", tests.factories.square(2.0)),
+        ("id-small", "Timber", tests.factories.square(1.0)),
     ])
     scores = peri_scribe.models.FireScores(
         version="test",
@@ -878,7 +877,7 @@ def test_fire_geometries_skips_images_without_enough_dates() -> None:
     fires = peri_scribe.kml.fire_data.fire_geometries(
         index,
         tests.peri_scribe.kml.kml_helpers.geometry_frame([
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+            ("id-bug", "Bug", tests.factories.square(1.0)),
         ]),
         tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
         tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
@@ -899,8 +898,8 @@ def test_fire_geometries_includes_progression_rings() -> None:
     second_time = datetime.datetime(2026, 8, 7, 20, 0, tzinfo=datetime.UTC)
     rings = tests.peri_scribe.kml.kml_helpers.geometry_frame(
         [
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(2.0)),
+            ("id-bug", "Bug", tests.factories.square(1.0)),
+            ("id-bug", "Bug", tests.factories.square(2.0)),
         ],
         observation_times=[first_time, second_time],
     )
@@ -914,8 +913,8 @@ def test_fire_geometries_includes_progression_rings() -> None:
     assert [
         (ring.geometry, ring.observation_time) for ring in fire.progression_rings
     ] == [
-        (tests.peri_scribe.kml.kml_helpers.square(1.0), first_time),
-        (tests.peri_scribe.kml.kml_helpers.square(2.0), second_time),
+        (tests.factories.square(1.0), first_time),
+        (tests.factories.square(2.0), second_time),
     ]
     assert [ring.area for ring in fire.progression_rings] == [
         peri_scribe.units.area(ring.geometry) for ring in fire.progression_rings
@@ -933,7 +932,7 @@ def test_fire_geometries_drops_tiny_rings() -> None:
     observation_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
     rings = tests.peri_scribe.kml.kml_helpers.geometry_frame(
         [
-            ("id-bug", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+            ("id-bug", "Bug", tests.factories.square(1.0)),
             ("id-bug", "Bug", shapely.geometry.box(0.0, 0.0, 1e-6, 1e-6)),
         ],
         observation_times=[observation_time, observation_time],
@@ -946,12 +945,12 @@ def test_fire_geometries_drops_tiny_rings() -> None:
     )
     (fire,) = fires
     assert [ring.geometry for ring in fire.progression_rings] == [
-        tests.peri_scribe.kml.kml_helpers.square(1.0),
+        tests.factories.square(1.0),
     ]
 
 
 def test_ring_added_areas_measure_disjoint_rings_own_areas() -> None:
-    first_geometry = tests.peri_scribe.kml.kml_helpers.square(1.0)
+    first_geometry = tests.factories.square(1.0)
     second_geometry = shapely.geometry.box(2.0, -0.5, 3.0, 0.5)
     added_areas_in_acres = peri_scribe.kml.fire_data.ring_added_areas(
         (
@@ -973,8 +972,8 @@ def test_ring_added_areas_measure_disjoint_rings_own_areas() -> None:
 
 
 def test_ring_added_areas_measure_net_of_earlier_fire_when_overlapping() -> None:
-    inner_geometry = tests.peri_scribe.kml.kml_helpers.square(1.0)
-    outer_geometry = tests.peri_scribe.kml.kml_helpers.square(2.0)
+    inner_geometry = tests.factories.square(1.0)
+    outer_geometry = tests.factories.square(2.0)
     inner_area = peri_scribe.units.area(inner_geometry)
     added_areas_in_acres = peri_scribe.kml.fire_data.ring_added_areas(
         (
@@ -1002,7 +1001,7 @@ def test_ring_added_areas_returns_nothing_without_rings() -> None:
 
 
 def test_ring_added_areas_measure_zero_for_ground_already_claimed() -> None:
-    geometry = tests.peri_scribe.kml.kml_helpers.square(1.0)
+    geometry = tests.factories.square(1.0)
     added_areas_in_acres = peri_scribe.kml.fire_data.ring_added_areas(
         (
             peri_scribe.perimeters.progression.Ring(
@@ -1036,7 +1035,7 @@ def dated_progression_ring(
         The growth ring.
     """
     return peri_scribe.perimeters.progression.Ring(
-        geometry=tests.peri_scribe.kml.kml_helpers.square(side),
+        geometry=tests.factories.square(side),
         observation_time=observation_time,
     )
 
@@ -1047,14 +1046,14 @@ def test_interior_ring_colors_draws_only_dated_rings() -> None:
     first_ring = dated_progression_ring(1.0, first_time)
     second_ring = dated_progression_ring(2.0, second_time)
     undated_ring = peri_scribe.perimeters.progression.Ring(
-        geometry=tests.peri_scribe.kml.kml_helpers.square(3.0),
+        geometry=tests.factories.square(3.0),
         observation_time=None,
     )
     drawn = peri_scribe.kml.fire_data.interior_ring_colors(
         (first_ring, undated_ring, second_ring),
         (
             tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-                tests.peri_scribe.kml.kml_helpers.square(4.0),
+                tests.factories.square(4.0),
             ),
         ),
     )
@@ -1072,10 +1071,10 @@ def test_interior_ring_colors_falls_back_to_latest_perimeter_without_dated_rings
 ):
     first_time = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     second_time = datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC)
-    first_geometry = tests.peri_scribe.kml.kml_helpers.square(1.0)
-    latest_geometry = tests.peri_scribe.kml.kml_helpers.square(2.0)
+    first_geometry = tests.factories.square(1.0)
+    latest_geometry = tests.factories.square(2.0)
     undated_ring = peri_scribe.perimeters.progression.Ring(
-        geometry=tests.peri_scribe.kml.kml_helpers.square(3.0),
+        geometry=tests.factories.square(3.0),
         observation_time=None,
     )
     ((ring, color),) = peri_scribe.kml.fire_data.interior_ring_colors(
@@ -1149,7 +1148,7 @@ def test_precompute_interior_added_areas_warms_latest_perimeter_fallback() -> No
             frozenset({"id-bug"}),
             (
                 tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-                    tests.peri_scribe.kml.kml_helpers.square(2.0),
+                    tests.factories.square(2.0),
                     observation_time,
                 ),
             ),
@@ -1187,13 +1186,9 @@ def description_perimeter_frame() -> geopandas.GeoDataFrame:
     Returns:
         The frame.
     """
-    first_area = peri_scribe.units.area(
-        tests.peri_scribe.kml.kml_helpers.square(1.0),
-    )
-    second_area = peri_scribe.units.area(
-        tests.peri_scribe.kml.kml_helpers.square(2.0),
-    )
-    return geopandas.GeoDataFrame(
+    first_area = peri_scribe.units.area(tests.factories.square(1.0))
+    second_area = peri_scribe.units.area(tests.factories.square(2.0))
+    return tests.factories.geo_frame(
         {
             "fire_identifier": ["id-bug", "id-bug"],
             "fire_name": ["Bug", "Bug"],
@@ -1243,11 +1238,7 @@ def description_perimeter_frame() -> geopandas.GeoDataFrame:
                 ),
             ],
         },
-        geometry=[
-            tests.peri_scribe.kml.kml_helpers.square(1.0),
-            tests.peri_scribe.kml.kml_helpers.square(2.0),
-        ],
-        crs="EPSG:4326",
+        [tests.factories.square(1.0), tests.factories.square(2.0)],
     )
 
 
@@ -1257,7 +1248,7 @@ def description_point_frame() -> geopandas.GeoDataFrame:
     Returns:
         The frame.
     """
-    return geopandas.GeoDataFrame(
+    return tests.factories.geo_frame(
         {
             "fire_identifier": ["id-bug"],
             "fire_name": ["Bug"],
@@ -1292,8 +1283,7 @@ def description_point_frame() -> geopandas.GeoDataFrame:
                 ),
             ],
         },
-        geometry=[shapely.geometry.Point(1.0, 1.0)],
-        crs="EPSG:4326",
+        [shapely.geometry.Point(1.0, 1.0)],
     )
 
 
@@ -1311,9 +1301,7 @@ def test_fire_description_prefers_latest_perimeter_values() -> None:
     )
     assert description.area is not None
     assert description.area.m_as("acres") == pytest.approx(
-        peri_scribe.units.area(
-            tests.peri_scribe.kml.kml_helpers.square(2.0),
-        ).m_as("acres"),
+        peri_scribe.units.area(tests.factories.square(2.0)).m_as("acres"),
     )
     assert description.percent_contained == pytest.approx(20.0)
     assert description.estimated_cost_to_date is not None
@@ -1368,7 +1356,7 @@ def test_fire_description_presents_geometry_when_reported_understates() -> None:
         identifier="id-bug",
     )
     reported_in_acres = 100.0
-    geometry = tests.peri_scribe.kml.kml_helpers.square(0.02)
+    geometry = tests.factories.square(0.02)
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
         [("id-bug", "Bug", geometry)],
         area_acres=[reported_in_acres],
@@ -1393,7 +1381,7 @@ def test_fire_description_keeps_reported_area_within_agreement() -> None:
         identifier="id-bug",
     )
     reported_in_acres = 1_000.0
-    geometry = tests.peri_scribe.kml.kml_helpers.square(0.02)
+    geometry = tests.factories.square(0.02)
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
         [("id-bug", "Bug", geometry)],
         area_acres=[reported_in_acres],
@@ -1416,7 +1404,7 @@ def test_fire_description_falls_back_to_point_when_perimeter_missing() -> None:
     # The perimeter row carries no values of its own, so the point row supplies the
     # facts; its geometry is drawn at the point-reported 30-acre scale so the fallback
     # size is not treated as an understatement against a larger map.
-    empty_perimeters = geopandas.GeoDataFrame(
+    empty_perimeters = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-bug"],
             "fire_name": ["Bug"],
@@ -1430,8 +1418,7 @@ def test_fire_description_falls_back_to_point_when_perimeter_missing() -> None:
             "observation_time": [None],
             "source_attributes": [json.dumps({})],
         },
-        geometry=[tests.peri_scribe.kml.kml_helpers.square(0.0032)],
-        crs="EPSG:4326",
+        [tests.factories.square(0.0032)],
     )
     description = peri_scribe.kml.text.fire_description(
         entry,
@@ -1464,7 +1451,7 @@ def test_fire_description_falls_back_to_point_when_perimeter_missing() -> None:
     )
     # The exterior perimeter follows the small agreement-scale geometry.
     measured_perimeter = peri_scribe.units.exterior_perimeter(
-        tests.peri_scribe.kml.kml_helpers.square(0.0032),
+        tests.factories.square(0.0032),
     )
     assert description.exterior_perimeter is not None
     assert measured_perimeter is not None
@@ -1487,14 +1474,13 @@ def test_fire_description_falls_back_to_protecting_agency() -> None:
         "active",
         identifier="id-bug",
     )
-    point_frame = geopandas.GeoDataFrame(
+    point_frame = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-bug"],
             "fire_name": ["Bug"],
             "source_attributes": [json.dumps({"POOJurisdictionalAgency": "BLM"})],
         },
-        geometry=[shapely.geometry.Point(1.0, 1.0)],
-        crs="EPSG:4326",
+        [shapely.geometry.Point(1.0, 1.0)],
     )
     description = peri_scribe.kml.text.fire_description(
         entry,
@@ -1511,7 +1497,7 @@ def test_fire_description_falls_back_to_perimeter_personnel() -> None:
         "active",
         identifier="id-bug",
     )
-    perimeter_frame = geopandas.GeoDataFrame(
+    perimeter_frame = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-bug"],
             "fire_name": ["Bug"],
@@ -1519,17 +1505,15 @@ def test_fire_description_falls_back_to_perimeter_personnel() -> None:
                 json.dumps({"attr_TotalIncidentPersonnel": 400}),
             ],
         },
-        geometry=[tests.peri_scribe.kml.kml_helpers.square(1.0)],
-        crs="EPSG:4326",
+        [tests.factories.square(1.0)],
     )
-    point_frame = geopandas.GeoDataFrame(
+    point_frame = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-bug"],
             "fire_name": ["Bug"],
             "source_attributes": [json.dumps({})],
         },
-        geometry=[shapely.geometry.Point(1.0, 1.0)],
-        crs="EPSG:4326",
+        [shapely.geometry.Point(1.0, 1.0)],
     )
     description = peri_scribe.kml.text.fire_description(
         entry,
@@ -1545,14 +1529,13 @@ def test_fire_description_keeps_reported_area_without_mappable_geometry() -> Non
         "active",
         identifier="id-bug",
     )
-    empty_perimeter_frame = geopandas.GeoDataFrame(
+    empty_perimeter_frame = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-bug"],
             "fire_name": ["Bug"],
             "area_acres": [30.0],
         },
-        geometry=[shapely.geometry.Polygon()],
-        crs="EPSG:4326",
+        [shapely.geometry.Polygon()],
     )
     description = peri_scribe.kml.text.fire_description(
         entry,

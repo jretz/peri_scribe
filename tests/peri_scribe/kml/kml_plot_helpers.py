@@ -6,28 +6,20 @@ These helpers build the series points and history frames the plot functions read
 from __future__ import annotations
 
 import datetime
+import typing
 
-import geopandas
 import shapely.geometry
 
 import peri_scribe.kml.plot_data
 import peri_scribe.units
+import tests.factories
+
+
+if typing.TYPE_CHECKING:
+    import geopandas
 
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
-
-
-def square(side: float) -> shapely.geometry.Polygon:
-    """Return a square of *side* degrees centered at the origin.
-
-    Args:
-        side: The length of each side.
-
-    Returns:
-        The square.
-    """
-    half = side / 2
-    return shapely.geometry.box(-half, -half, half, half)
 
 
 def exterior_length(geometry: shapely.Geometry) -> float:
@@ -78,27 +70,7 @@ def series_point(
     )
 
 
-def geo_frame(
-    columns: dict[str, list[object]],
-    geometry: list[shapely.Geometry],
-) -> geopandas.GeoDataFrame:
-    """Build a WGS84 GeoDataFrame from *columns* and *geometry*.
-
-    Args:
-        columns: Each column name and its row values.
-        geometry: The geometry of each row.
-
-    Returns:
-        The frame.
-    """
-    return geopandas.GeoDataFrame(
-        columns,
-        geometry=geometry,
-        crs="EPSG:4326",
-    )
-
-
-def perimeter_frame(
+def perimeter_frame_from_observations(
     observations: list[
         tuple[
             datetime.datetime | None,
@@ -121,7 +93,7 @@ def perimeter_frame(
     Returns:
         The perimeter history frame.
     """
-    return geo_frame(
+    return tests.factories.geo_frame(
         {
             "fire_identifier": ["id-bug"] * len(observations),
             "fire_name": ["Bug"] * len(observations),
@@ -135,7 +107,7 @@ def perimeter_frame(
     )
 
 
-def point_frame(
+def point_frame_from_observations(
     observations: list[
         tuple[
             datetime.datetime | None,
@@ -156,7 +128,7 @@ def point_frame(
     Returns:
         The point history frame.
     """
-    return geo_frame(
+    return tests.factories.geo_frame(
         {
             "fire_identifier": ["id-bug"] * len(observations),
             "fire_name": ["Bug"] * len(observations),

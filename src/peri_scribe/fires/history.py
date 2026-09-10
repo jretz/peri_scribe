@@ -11,18 +11,16 @@ never creates a version.
 from __future__ import annotations
 
 import concurrent.futures
-import datetime
 import json
 import os
 import pathlib
 
 import geopandas
-import numpy as np
-import pyproj
 
 import peri_scribe.fires.sources
 import peri_scribe.geo.package
 import peri_scribe.geo.parsing
+import peri_scribe.geo.spatial_reference
 import peri_scribe.models
 import peri_scribe.perimeters.cleaning
 import peri_scribe.perimeters.history_attributes
@@ -61,35 +59,6 @@ def classification_text(
     return classification.classification.value
 
 
-def json_safe_value(value: object) -> object:
-    """Return *value* in a JSON-serializable form.
-
-    Args:
-        value: Any attribute value.
-
-    Returns:
-        The value converted to JSON-native types where possible.
-
-    Examples:
-        >>> json_safe_value(datetime.date(2025, 1, 2))
-        '2025-01-02'
-
-        >>> json_safe_value((1, datetime.date(2025, 1, 2)))
-        [1, '2025-01-02']
-    """
-    if peri_scribe.geo.parsing.is_missing(value):
-        return None
-    if isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
-        return value.isoformat()
-    if isinstance(value, dict):
-        return {str(key): json_safe_value(item) for key, item in value.items()}
-    if isinstance(value, (list, tuple)):
-        return [json_safe_value(item) for item in value]
-    if isinstance(value, np.generic):
-        return json_safe_value(value.item())
-    return value
-
-
 def attributes_json(attributes: dict[str, object]) -> str:
     """Return the row's attributes serialized as JSON.
 
@@ -104,7 +73,10 @@ def attributes_json(attributes: dict[str, object]) -> str:
         '{"acres": 12, "fire_name": "Example"}'
     """
     return json.dumps(
-        {str(key): json_safe_value(value) for key, value in attributes.items()},
+        {
+            str(key): peri_scribe.geo.parsing.json_native_value(value)
+            for key, value in attributes.items()
+        },
         sort_keys=True,
         default=str,
     )
@@ -397,7 +369,7 @@ def build_dataframe(
     return geopandas.GeoDataFrame(
         attribute_rows,
         geometry=geometries,
-        crs=pyproj.CRS.from_epsg(peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID),
+        crs=peri_scribe.geo.spatial_reference.WGS84_SPATIAL_REFERENCE,
     )
 
 

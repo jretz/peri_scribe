@@ -198,7 +198,7 @@ EXTERNAL_SOURCES = (
 )
 
 
-def source_directory_path(
+def external_source_directory_path(
     year_directory: pathlib.Path,
     source: ExternalSource,
 ) -> pathlib.Path:
@@ -247,7 +247,9 @@ def output_path(
         raise ValueError(message)
     suffix = ".sqlite" if source.compact_database else ".gpkg"
     if state is not None:
-        return source_directory_path(year_directory, source) / f"{state}{suffix}"
+        return (
+            external_source_directory_path(year_directory, source) / f"{state}{suffix}"
+        )
     return (
         peri_scribe.sources.snapshots.sources_directory_path(year_directory)
         / f"{source.name}{suffix}"
@@ -382,15 +384,9 @@ def query_arcgis_source(source: ExternalSource) -> geopandas.GeoDataFrame:
         feature_set = peri_scribe.geo.data.query_with_retry(
             source.name,
             layer,
-            parameters={
-                "where": source.where or "1=1",
-                "out_sr": peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
-                # Ordering by the object id sends the ArcGIS client's paging down a
-                # single-threaded path. Its concurrent paging races on the shared SSL
-                # context and, although the connection is verified, reports it
-                # unverified, spamming a misleading InsecureRequestWarning per page.
-                "order_by_fields": "OBJECTID",
-            },
+            parameters=peri_scribe.geo.data.wgs84_query_parameters(
+                source.where or "1=1",
+            ),
         )
     except Exception as error:
         message = f"Failed to fetch external source {source.name}: {error}"
@@ -398,13 +394,4 @@ def query_arcgis_source(source: ExternalSource) -> geopandas.GeoDataFrame:
     if not feature_set.features:
         message = f"External source {source.name} returned no features"
         raise peri_scribe.exceptions.ExternalDataError(message)
-    dataframe, geometries, geometry_warning = peri_scribe.geo.data.extract_geometries(
-        feature_set.sdf,
-    )
-    if geometry_warning is not None:
-        logger.warning(geometry_warning)
-    return peri_scribe.geo.data.geo_data_frame_from(
-        dataframe,
-        geometries,
-        peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
-    )
+    return peri_scribe.geo.data.geo_data_frame_from_feature_set(feature_set)

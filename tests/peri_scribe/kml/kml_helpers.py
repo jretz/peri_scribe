@@ -14,11 +14,6 @@ import zlib
 import defusedxml.ElementTree as DefusedElementTree
 import geopandas
 import pytest
-import shapely.geometry
-
-
-if typing.TYPE_CHECKING:
-    import xml.etree.ElementTree as ET
 
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.geometry
@@ -26,6 +21,12 @@ import peri_scribe.kml.plot_data
 import peri_scribe.kml.plot_drawing
 import peri_scribe.kml.plot_rendering
 import peri_scribe.models
+
+
+if typing.TYPE_CHECKING:
+    import xml.etree.ElementTree as ET
+
+    import shapely.geometry
 
 
 KML_NAMESPACE = "http://www.opengis.net/kml/2.2"
@@ -55,19 +56,6 @@ def gx_tag(name: str) -> str:
         The tag ElementTree uses for the element.
     """
     return f"{{{GX_NAMESPACE}}}{name}"
-
-
-def square(side: float) -> shapely.geometry.Polygon:
-    """Return a square of the given side, centered at the origin.
-
-    Args:
-        side: The length of each side.
-
-    Returns:
-        The square.
-    """
-    half = side / 2
-    return shapely.geometry.box(-half, -half, half, half)
 
 
 def perimeter_with_time(

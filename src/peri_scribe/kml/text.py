@@ -8,6 +8,7 @@ import peri_scribe.areas
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.plot_data
 import peri_scribe.kml.row_values
+import peri_scribe.kml.selection
 import peri_scribe.models
 import peri_scribe.units
 from peri_scribe.units import units
@@ -269,11 +270,10 @@ def score_explanation_for(
     Returns:
         The explanation, or None when neither the identifiers nor the name match.
     """
-    return next(
-        (
-            notes_by_identifier[identifier]
-            for identifier in fire_identifiers
-            if identifier in notes_by_identifier
-        ),
-        notes_by_name.get(name),
+    explanation = peri_scribe.kml.selection.first_identifier_match(
+        fire_identifiers,
+        notes_by_identifier,
     )
+    if explanation is not None:
+        return explanation
+    return notes_by_name.get(name)

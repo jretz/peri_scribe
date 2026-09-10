@@ -290,7 +290,7 @@ def growth_difference(
     return current_value - subtrahend
 
 
-def identity_key(
+def row_identity(
     row: pd.Series,
     identity_columns: list[str],
 ) -> tuple[object, ...]:
@@ -323,7 +323,7 @@ def fire_positions(frame: geopandas.GeoDataFrame) -> list[list[int]]:
     current: list[int] = []
     identity_columns = peri_scribe.fires.history.IDENTITY_COLUMNS
     for position in range(len(frame)):
-        key = identity_key(frame.iloc[position], identity_columns)
+        key = row_identity(frame.iloc[position], identity_columns)
         if current and key != current_key:
             groups.append(current)
             current = []

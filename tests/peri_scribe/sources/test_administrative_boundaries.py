@@ -330,6 +330,7 @@ def test_layer_dataframe_queries_features_in_wgs84() -> None:
         {
             "where": "STATE_ABBR IN ('AZ','NV','OR')",
             "out_sr": 4326,
+            "order_by_fields": "OBJECTID",
         },
     ]
 
@@ -378,6 +379,7 @@ def test_boundary_geometries_queries_california_and_neighbors_once() -> None:
         {
             "where": "STATE_ABBR IN ('CA','AZ','NV','OR')",
             "out_sr": 4326,
+            "order_by_fields": "OBJECTID",
         },
     ]
 

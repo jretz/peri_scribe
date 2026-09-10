@@ -14,6 +14,7 @@ if typing.TYPE_CHECKING:
 
 import peri_scribe.kml.geometry
 import peri_scribe.kml.styles
+import tests.factories
 import tests.peri_scribe.kml.kml_helpers
 
 
@@ -132,7 +133,7 @@ def test_perimeter_geometry_converts_polygon() -> None:
         writer,
         "Bug",
         "#perimeter-fill",
-        tests.peri_scribe.kml.kml_helpers.square(1.0),
+        tests.factories.square(1.0),
         0,
         description=None,
     )
@@ -148,8 +149,8 @@ def test_perimeter_geometry_converts_polygon() -> None:
 
 def test_perimeter_geometry_converts_multi_polygon() -> None:
     multi_polygon = shapely.geometry.MultiPolygon([
-        tests.peri_scribe.kml.kml_helpers.square(1.0),
-        tests.peri_scribe.kml.kml_helpers.square(2.0),
+        tests.factories.square(1.0),
+        tests.factories.square(2.0),
     ])
     expected_draw_order = 5
     writer = peri_scribe.kml.geometry.KmlWriter()
@@ -234,7 +235,7 @@ def test_perimeter_placemark_names_and_styles_polygon() -> None:
         writer,
         "Interior",
         "#perimeter-fill",
-        tests.peri_scribe.kml.kml_helpers.square(1.0),
+        tests.factories.square(1.0),
         0,
         description=None,
     )
@@ -258,7 +259,7 @@ def test_polygon_geometry_sets_description() -> None:
         writer,
         "Bug",
         "#perimeter-fill",
-        tests.peri_scribe.kml.kml_helpers.square(1.0),
+        tests.factories.square(1.0),
         0,
         description="description text",
     )
@@ -275,8 +276,8 @@ def test_polygon_geometry_sets_description() -> None:
 def test_multi_polygon_geometry_sets_description() -> None:
     writer = peri_scribe.kml.geometry.KmlWriter()
     multi_polygon = shapely.geometry.MultiPolygon([
-        tests.peri_scribe.kml.kml_helpers.square(1.0),
-        tests.peri_scribe.kml.kml_helpers.square(2.0),
+        tests.factories.square(1.0),
+        tests.factories.square(2.0),
     ])
     peri_scribe.kml.geometry.multi_polygon_geometry(
         writer,

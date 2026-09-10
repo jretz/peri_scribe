@@ -17,6 +17,7 @@ import peri_scribe.kml.styles
 import peri_scribe.models
 import peri_scribe.perimeters.progression
 import peri_scribe.units
+import tests.factories
 import tests.peri_scribe.kml.kml_helpers
 from peri_scribe.units import units
 
@@ -56,15 +57,15 @@ def test_fire_folder_includes_point_perimeters_and_interior(
         point=point,
         perimeters=(
             tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-                tests.peri_scribe.kml.kml_helpers.square(1.0),
+                tests.factories.square(1.0),
                 antepenultimate_time,
             ),
             tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-                tests.peri_scribe.kml.kml_helpers.square(2.0),
+                tests.factories.square(2.0),
                 penultimate_time,
             ),
             tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-                tests.peri_scribe.kml.kml_helpers.square(3.0),
+                tests.factories.square(3.0),
                 latest_time,
             ),
         ),
@@ -154,7 +155,7 @@ def test_fire_folder_shows_only_available_perimeters(
         point=shapely.geometry.Point(1.0, 1.0),
         perimeters=(
             tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-                tests.peri_scribe.kml.kml_helpers.square(1.0),
+                tests.factories.square(1.0),
             ),
         ),
     )
@@ -205,21 +206,21 @@ def test_fire_folder_draws_interior_from_difference_rings(
         point=shapely.geometry.Point(1.0, 1.0),
         perimeters=(
             tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-                tests.peri_scribe.kml.kml_helpers.square(2.0),
+                tests.factories.square(2.0),
                 first_time,
             ),
             tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-                tests.peri_scribe.kml.kml_helpers.square(4.0),
+                tests.factories.square(4.0),
                 second_time,
             ),
         ),
         progression_rings=(
             peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(1.0),
+                geometry=tests.factories.square(1.0),
                 observation_time=first_time,
             ),
             peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(2.0),
+                geometry=tests.factories.square(2.0),
                 observation_time=second_time,
             ),
         ),
@@ -320,12 +321,12 @@ def test_fire_folder_falls_back_to_complete_perimeter_without_dated_rings(
         point=shapely.geometry.Point(1.0, 1.0),
         perimeters=(
             tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-                tests.peri_scribe.kml.kml_helpers.square(1.0),
+                tests.factories.square(1.0),
             ),
         ),
         progression_rings=(
             peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(1.0),
+                geometry=tests.factories.square(1.0),
                 observation_time=None,
             ),
         ),
@@ -386,11 +387,11 @@ def test_fire_folder_lists_point_tour_and_interior_in_order(
         perimeters=(),
         progression_rings=(
             peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(1.0),
+                geometry=tests.factories.square(1.0),
                 observation_time=first_time,
             ),
             peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(2.0),
+                geometry=tests.factories.square(2.0),
                 observation_time=second_time,
             ),
         ),
@@ -474,7 +475,7 @@ def test_fire_folder_adds_tour_for_fallback_polygon(
         point=shapely.geometry.Point(1.0, 1.0),
         perimeters=(
             tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-                tests.peri_scribe.kml.kml_helpers.square(1.0),
+                tests.factories.square(1.0),
             ),
         ),
     )
@@ -576,7 +577,7 @@ def test_fire_folder_holds_point_and_ring_folders(
         perimeters=(),
         progression_rings=(
             peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(1.0),
+                geometry=tests.factories.square(1.0),
                 observation_time=datetime.datetime(
                     2026,
                     8,
@@ -588,7 +589,7 @@ def test_fire_folder_holds_point_and_ring_folders(
                 area=100.0 * units.meters**2,
             ),
             peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(2.0),
+                geometry=tests.factories.square(2.0),
                 observation_time=datetime.datetime(
                     2026,
                     8,
@@ -600,7 +601,7 @@ def test_fire_folder_holds_point_and_ring_folders(
                 area=100.0 * units.meters**2,
             ),
             peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(3.0),
+                geometry=tests.factories.square(3.0),
                 observation_time=datetime.datetime(
                     2026,
                     8,
@@ -746,7 +747,7 @@ def test_fire_folder_falls_back_to_latest_perimeter(
         point=point,
         perimeters=(
             tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-                tests.peri_scribe.kml.kml_helpers.square(3.0),
+                tests.factories.square(3.0),
                 latest_time,
             ),
         ),
@@ -806,7 +807,7 @@ def test_fire_folder_lists_point_tour_and_rings_in_order(
         perimeters=(),
         progression_rings=(
             peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(1.0),
+                geometry=tests.factories.square(1.0),
                 observation_time=datetime.datetime(
                     2026,
                     8,
@@ -817,7 +818,7 @@ def test_fire_folder_lists_point_tour_and_rings_in_order(
                 ),
             ),
             peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(2.0),
+                geometry=tests.factories.square(2.0),
                 observation_time=datetime.datetime(
                     2026,
                     8,
@@ -828,7 +829,7 @@ def test_fire_folder_lists_point_tour_and_rings_in_order(
                 ),
             ),
             peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(3.0),
+                geometry=tests.factories.square(3.0),
                 observation_time=datetime.datetime(
                     2026,
                     8,
@@ -935,7 +936,7 @@ def test_fire_folder_hides_its_tree(style_urls: dict[str, str]) -> None:
         perimeters=(),
         progression_rings=(
             peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(1.0),
+                geometry=tests.factories.square(1.0),
                 observation_time=datetime.datetime(
                     2026,
                     8,
@@ -971,7 +972,7 @@ def test_fire_folder_can_load_visible(style_urls: dict[str, str]) -> None:
         perimeters=(),
         progression_rings=(
             peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(1.0),
+                geometry=tests.factories.square(1.0),
                 observation_time=datetime.datetime(
                     2026,
                     8,
@@ -1173,11 +1174,11 @@ def growing_fire(
         name,
         perimeters=(
             peri_scribe.kml.fire_data.Perimeter(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(baseline_side),
+                geometry=tests.factories.square(baseline_side),
                 observation_time=reference_time - datetime.timedelta(hours=48),
             ),
             peri_scribe.kml.fire_data.Perimeter(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(latest_side),
+                geometry=tests.factories.square(latest_side),
                 observation_time=reference_time,
             ),
         ),
@@ -1594,8 +1595,8 @@ def test_type_one_fires_excludes_unmarked_active_fire() -> None:
 
 def test_fire_growth_compares_latest_area_with_window_start() -> None:
     fire = growing_fire("Grower", 0.02, 0.03, REFERENCE_TIME)
-    baseline = peri_scribe.units.area(tests.peri_scribe.kml.kml_helpers.square(0.02))
-    latest = peri_scribe.units.area(tests.peri_scribe.kml.kml_helpers.square(0.03))
+    baseline = peri_scribe.units.area(tests.factories.square(0.02))
+    latest = peri_scribe.units.area(tests.factories.square(0.03))
 
     growth, growth_percent = peri_scribe.kml.folders.fire_growth(fire, REFERENCE_TIME)
 
@@ -1614,21 +1615,17 @@ def test_fire_growth_sorts_perimeters_chronologically() -> None:
         "Scrambled",
         perimeters=(
             peri_scribe.kml.fire_data.Perimeter(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(0.03),
+                geometry=tests.factories.square(0.03),
                 observation_time=REFERENCE_TIME,
             ),
             peri_scribe.kml.fire_data.Perimeter(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(0.02),
+                geometry=tests.factories.square(0.02),
                 observation_time=REFERENCE_TIME - datetime.timedelta(hours=48),
             ),
         ),
     )
-    baseline = peri_scribe.units.area(
-        tests.peri_scribe.kml.kml_helpers.square(0.02),
-    )
-    latest = peri_scribe.units.area(
-        tests.peri_scribe.kml.kml_helpers.square(0.03),
-    )
+    baseline = peri_scribe.units.area(tests.factories.square(0.02))
+    latest = peri_scribe.units.area(tests.factories.square(0.03))
 
     growth, _growth_percent = peri_scribe.kml.folders.fire_growth(
         fire,
@@ -1646,7 +1643,7 @@ def test_fire_growth_without_timed_perimeters_is_unknown() -> None:
         "Timeless",
         perimeters=(
             peri_scribe.kml.fire_data.Perimeter(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(0.02),
+                geometry=tests.factories.square(0.02),
                 observation_time=None,
             ),
         ),
@@ -1660,11 +1657,11 @@ def test_fire_growth_without_window_start_counts_whole_area() -> None:
         "Newborn",
         perimeters=(
             peri_scribe.kml.fire_data.Perimeter(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(0.03),
+                geometry=tests.factories.square(0.03),
                 observation_time=REFERENCE_TIME - datetime.timedelta(hours=24),
             ),
             peri_scribe.kml.fire_data.Perimeter(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(0.04),
+                geometry=tests.factories.square(0.04),
                 observation_time=REFERENCE_TIME,
             ),
         ),
@@ -1677,9 +1674,7 @@ def test_fire_growth_without_window_start_counts_whole_area() -> None:
 
     assert growth is not None
     assert growth.m_as("meters ** 2") == pytest.approx(
-        peri_scribe.units.area(
-            tests.peri_scribe.kml.kml_helpers.square(0.04),
-        ).m_as("meters ** 2"),
+        peri_scribe.units.area(tests.factories.square(0.04)).m_as("meters ** 2"),
     )
     assert growth_percent is None
 
@@ -1693,7 +1688,7 @@ def test_fire_growth_percent_is_unknown_without_baseline_area() -> None:
                 observation_time=REFERENCE_TIME - datetime.timedelta(hours=48),
             ),
             peri_scribe.kml.fire_data.Perimeter(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(0.03),
+                geometry=tests.factories.square(0.03),
                 observation_time=REFERENCE_TIME,
             ),
         ),
@@ -1707,9 +1702,7 @@ def test_fire_growth_percent_is_unknown_without_baseline_area() -> None:
     assert growth_percent is None
     assert growth is not None
     assert growth.m_as("meters ** 2") == pytest.approx(
-        peri_scribe.units.area(
-            tests.peri_scribe.kml.kml_helpers.square(0.03),
-        ).m_as("meters ** 2"),
+        peri_scribe.units.area(tests.factories.square(0.03)).m_as("meters ** 2"),
     )
 
 
@@ -1740,7 +1733,7 @@ def test_fast_growing_fires_by_acres_includes_zero_baseline_growth() -> None:
         "Newborn",
         perimeters=(
             peri_scribe.kml.fire_data.Perimeter(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(0.03),
+                geometry=tests.factories.square(0.03),
                 observation_time=REFERENCE_TIME,
             ),
         ),
@@ -1796,7 +1789,7 @@ def test_fast_growing_fires_by_percent_excludes_zero_baseline_growth() -> None:
         "Newborn",
         perimeters=(
             peri_scribe.kml.fire_data.Perimeter(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(0.03),
+                geometry=tests.factories.square(0.03),
                 observation_time=REFERENCE_TIME,
             ),
         ),
@@ -2076,11 +2069,11 @@ def test_status_folder_holds_every_fire(
         perimeters=(),
         progression_rings=(
             peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(1.0),
+                geometry=tests.factories.square(1.0),
                 observation_time=first_time,
             ),
             peri_scribe.perimeters.progression.Ring(
-                geometry=tests.peri_scribe.kml.kml_helpers.square(2.0),
+                geometry=tests.factories.square(2.0),
                 observation_time=second_time,
             ),
         ),
@@ -2151,7 +2144,7 @@ def test_fire_folder_applies_fire_balloon_to_point_and_outline_placemarks(
         point=shapely.geometry.Point(1.0, 1.0),
         perimeters=(
             tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-                tests.peri_scribe.kml.kml_helpers.square(1.0),
+                tests.factories.square(1.0),
             ),
         ),
         description=description,
@@ -2194,8 +2187,8 @@ def test_fire_folder_interior_ring_balloons_lead_with_added_area(
     )
     first_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
     second_time = datetime.datetime(2026, 8, 7, 20, 0, tzinfo=datetime.UTC)
-    first_ring = tests.peri_scribe.kml.kml_helpers.square(1.0)
-    second_ring = tests.peri_scribe.kml.kml_helpers.square(2.0)
+    first_ring = tests.factories.square(1.0)
+    second_ring = tests.factories.square(2.0)
     fire = peri_scribe.kml.fire_data.FireGeometry(
         name="Bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
@@ -2285,7 +2278,7 @@ def test_fire_folder_fallback_ring_balloon_leads_with_its_area(
         point=shapely.geometry.Point(1.0, 1.0),
         perimeters=(
             tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
-                tests.peri_scribe.kml.kml_helpers.square(1.0),
+                tests.factories.square(1.0),
             ),
         ),
         description=description,
@@ -2310,9 +2303,7 @@ def test_fire_folder_fallback_ring_balloon_leads_with_its_area(
     )
     # The fallback ring is the fire's whole latest perimeter, so it added that entire
     # area at its observation rather than a slice.
-    added_area = peri_scribe.units.area(
-        tests.peri_scribe.kml.kml_helpers.square(1.0),
-    )
+    added_area = peri_scribe.units.area(tests.factories.square(1.0))
     assert balloon == balloon_text(
         description,
         leading_rows=(

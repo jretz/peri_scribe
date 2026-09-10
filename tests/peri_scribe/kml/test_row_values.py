@@ -5,19 +5,19 @@ from __future__ import annotations
 import datetime
 import json
 
-import geopandas
 import pandas as pd
 import pytest
 import shapely.geometry
 
 import peri_scribe.kml.row_values
 import peri_scribe.kml.text
+import tests.factories
 import tests.peri_scribe.kml.kml_helpers
 
 
 def test_column_value_returns_none_for_missing_row_or_column() -> None:
     frame = tests.peri_scribe.kml.kml_helpers.geometry_frame([
-        ("id-a", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0)),
+        ("id-a", "Bug", tests.factories.square(1.0)),
     ])
     row = frame.iloc[0]
     assert peri_scribe.kml.row_values.column_value(row, "fire_name") == "Bug"
@@ -26,14 +26,13 @@ def test_column_value_returns_none_for_missing_row_or_column() -> None:
 
 
 def test_text_value_returns_none_for_blank() -> None:
-    frame = geopandas.GeoDataFrame(
+    frame = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
             "mission": ["  "],
         },
-        geometry=[tests.peri_scribe.kml.kml_helpers.square(1.0)],
-        crs="EPSG:4326",
+        [tests.factories.square(1.0)],
     )
     row = frame.iloc[0]
     assert peri_scribe.kml.row_values.text_value(row, "mission") is None
@@ -42,15 +41,14 @@ def test_text_value_returns_none_for_blank() -> None:
 
 
 def test_float_value_reads_numbers_and_rejects_non_numeric() -> None:
-    frame = geopandas.GeoDataFrame(
+    frame = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
             "area_acres": [12.5],
             "mission": ["x"],
         },
-        geometry=[tests.peri_scribe.kml.kml_helpers.square(1.0)],
-        crs="EPSG:4326",
+        [tests.factories.square(1.0)],
     )
     row = frame.iloc[0]
     assert peri_scribe.kml.row_values.float_value(row, "area_acres") == pytest.approx(
@@ -74,7 +72,7 @@ def test_as_datetime_parses_strings_and_timestamps() -> None:
 def test_datetime_value_reads_a_column() -> None:
     expected = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
     frame = tests.peri_scribe.kml.kml_helpers.geometry_frame(
-        [("id-a", "Bug", tests.peri_scribe.kml.kml_helpers.square(1.0))],
+        [("id-a", "Bug", tests.factories.square(1.0))],
         observation_times=[expected],
     )
     assert (
@@ -85,14 +83,13 @@ def test_datetime_value_reads_a_column() -> None:
 
 
 def test_source_attribute_value_reads_json() -> None:
-    frame = geopandas.GeoDataFrame(
+    frame = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
             "source_attributes": [json.dumps({"POOJurisdictionalUnit": "CANOD"})],
         },
-        geometry=[tests.peri_scribe.kml.kml_helpers.square(1.0)],
-        crs="EPSG:4326",
+        [tests.factories.square(1.0)],
     )
     assert (
         peri_scribe.kml.row_values.source_attribute_value(
@@ -112,27 +109,25 @@ def test_source_attribute_value_reads_json() -> None:
 
 
 def test_source_attribute_value_rejects_invalid_json() -> None:
-    frame = geopandas.GeoDataFrame(
+    frame = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
             "source_attributes": ["not json"],
         },
-        geometry=[tests.peri_scribe.kml.kml_helpers.square(1.0)],
-        crs="EPSG:4326",
+        [tests.factories.square(1.0)],
     )
     assert peri_scribe.kml.row_values.source_attribute_value(frame.iloc[0], "X") is None
 
 
 def test_source_attribute_value_accepts_decoded_dict() -> None:
-    frame = geopandas.GeoDataFrame(
+    frame = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
             "source_attributes": [{"POOJurisdictionalUnit": "CANOD"}],
         },
-        geometry=[tests.peri_scribe.kml.kml_helpers.square(1.0)],
-        crs="EPSG:4326",
+        [tests.factories.square(1.0)],
     )
     assert (
         peri_scribe.kml.row_values.source_attribute_value(
@@ -144,27 +139,25 @@ def test_source_attribute_value_accepts_decoded_dict() -> None:
 
 
 def test_source_attribute_value_rejects_non_dict_json() -> None:
-    frame = geopandas.GeoDataFrame(
+    frame = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
             "source_attributes": [json.dumps(["a", "b"])],
         },
-        geometry=[tests.peri_scribe.kml.kml_helpers.square(1.0)],
-        crs="EPSG:4326",
+        geometry=[tests.factories.square(1.0)],
     )
     assert peri_scribe.kml.row_values.source_attribute_value(frame.iloc[0], "X") is None
 
 
 def test_source_text_value_returns_none_for_blank() -> None:
-    frame = geopandas.GeoDataFrame(
+    frame = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
             "source_attributes": [json.dumps({"Unit": "  "})],
         },
-        geometry=[tests.peri_scribe.kml.kml_helpers.square(1.0)],
-        crs="EPSG:4326",
+        [tests.factories.square(1.0)],
     )
     assert peri_scribe.kml.row_values.source_text_value(frame.iloc[0], "Unit") is None
     assert (
@@ -173,7 +166,7 @@ def test_source_text_value_returns_none_for_blank() -> None:
 
 
 def test_numbered_source_text_orders_by_slot_number_and_dedupes() -> None:
-    perimeter = geopandas.GeoDataFrame(
+    perimeter = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
@@ -186,10 +179,9 @@ def test_numbered_source_text_orders_by_slot_number_and_dedupes() -> None:
                 ),
             ],
         },
-        geometry=[tests.peri_scribe.kml.kml_helpers.square(1.0)],
-        crs="EPSG:4326",
+        [tests.factories.square(1.0)],
     )
-    point = geopandas.GeoDataFrame(
+    point = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
@@ -202,8 +194,7 @@ def test_numbered_source_text_orders_by_slot_number_and_dedupes() -> None:
                 ),
             ],
         },
-        geometry=[shapely.geometry.Point(1.0, 1.0)],
-        crs="EPSG:4326",
+        [shapely.geometry.Point(1.0, 1.0)],
     )
     assert (
         peri_scribe.kml.row_values.numbered_source_text(
@@ -213,14 +204,13 @@ def test_numbered_source_text_orders_by_slot_number_and_dedupes() -> None:
         )
         == "Active; Running; Smoldering"
     )
-    empty = geopandas.GeoDataFrame(
+    empty = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
             "source_attributes": [json.dumps({})],
         },
-        geometry=[shapely.geometry.Point(1.0, 1.0)],
-        crs="EPSG:4326",
+        [shapely.geometry.Point(1.0, 1.0)],
     )
     assert (
         peri_scribe.kml.row_values.numbered_source_text(
@@ -261,7 +251,7 @@ def test_source_attributes_dictionary_rejects_missing_or_invalid_values() -> Non
 
 
 def test_source_attribute_number_reads_numeric_attributes() -> None:
-    frame = geopandas.GeoDataFrame(
+    frame = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
@@ -269,8 +259,7 @@ def test_source_attribute_number_reads_numeric_attributes() -> None:
                 json.dumps({"TotalIncidentPersonnel": 400, "Unit": "CANOD"}),
             ],
         },
-        geometry=[tests.peri_scribe.kml.kml_helpers.square(1.0)],
-        crs="EPSG:4326",
+        [tests.factories.square(1.0)],
     )
     row = frame.iloc[0]
     assert peri_scribe.kml.row_values.source_attribute_number(
@@ -283,23 +272,21 @@ def test_source_attribute_number_reads_numeric_attributes() -> None:
 
 
 def test_first_source_number_prefers_point_feed() -> None:
-    perimeter = geopandas.GeoDataFrame(
+    perimeter = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
             "source_attributes": [json.dumps({"attr_TotalIncidentPersonnel": 400})],
         },
-        geometry=[tests.peri_scribe.kml.kml_helpers.square(1.0)],
-        crs="EPSG:4326",
+        [tests.factories.square(1.0)],
     )
-    point = geopandas.GeoDataFrame(
+    point = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
             "source_attributes": [json.dumps({"TotalIncidentPersonnel": 500})],
         },
-        geometry=[shapely.geometry.Point(1.0, 1.0)],
-        crs="EPSG:4326",
+        [shapely.geometry.Point(1.0, 1.0)],
     )
     assert peri_scribe.kml.row_values.first_source_number(
         perimeter.iloc[0],
@@ -310,23 +297,21 @@ def test_first_source_number_prefers_point_feed() -> None:
 
 
 def test_first_source_number_falls_back_to_perimeter_feed() -> None:
-    perimeter = geopandas.GeoDataFrame(
+    perimeter = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
             "source_attributes": [json.dumps({"attr_TotalIncidentPersonnel": 400})],
         },
-        geometry=[tests.peri_scribe.kml.kml_helpers.square(1.0)],
-        crs="EPSG:4326",
+        [tests.factories.square(1.0)],
     )
-    point = geopandas.GeoDataFrame(
+    point = tests.factories.geo_frame(
         {
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
             "source_attributes": [json.dumps({})],
         },
-        geometry=[shapely.geometry.Point(1.0, 1.0)],
-        crs="EPSG:4326",
+        [shapely.geometry.Point(1.0, 1.0)],
     )
     assert peri_scribe.kml.row_values.first_source_number(
         perimeter.iloc[0],

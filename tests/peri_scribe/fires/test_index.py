@@ -105,7 +105,7 @@ def test_index_fire_sources_writes_index_file(
     writes: list[tuple[pathlib.Path, peri_scribe.models.FireIndex]] = []
     monkeypatch.setattr(
         peri_scribe.output,
-        "write_fire_index",
+        "write_document",
         lambda path, document: writes.append((path, document)),
     )
     monkeypatch.setattr(

@@ -16,6 +16,7 @@ import typing
 import pyproj
 import shapely
 
+import peri_scribe.geo.geometry
 from peri_scribe.units import units
 
 
@@ -37,31 +38,6 @@ class PerimeterCleaningConfig:
 
 
 DEFAULT_CLEANING_CONFIG = PerimeterCleaningConfig()
-
-
-def polygonal_parts(geometry: shapely.Geometry) -> list[shapely.Polygon]:
-    """Return *geometry*'s polygon parts, ignoring non-polygonal members.
-
-    Args:
-        geometry: The geometry to flatten.
-
-    Returns:
-        Every non-empty polygon part, in order, or an empty list when the geometry has
-        none.
-    """
-    parts: list[shapely.Polygon] = []
-    for part in shapely.get_parts(geometry):
-        if part.is_empty:
-            continue
-        if part.geom_type == "Polygon":
-            parts.append(typing.cast("shapely.Polygon", part))
-        elif part.geom_type == "MultiPolygon":
-            parts.extend(
-                typing.cast("shapely.Polygon", member)
-                for member in part.geoms
-                if not member.is_empty
-            )
-    return parts
 
 
 def meridional_degree_length(latitude: float) -> pint.Quantity[float]:
@@ -151,7 +127,7 @@ def clean_perimeter(
     """
     if geometry is None or geometry.is_empty:
         return geometry
-    parts = polygonal_parts(geometry)
+    parts = peri_scribe.geo.geometry.polygonal_parts(geometry)
     if not parts:
         return geometry
     kept = [

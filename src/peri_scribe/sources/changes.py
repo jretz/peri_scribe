@@ -158,6 +158,24 @@ def normalized_attribute_value(value: object) -> object:
     return value
 
 
+def attribute_columns_of(dataframe: geopandas.GeoDataFrame) -> frozenset[str]:
+    """Return the names of *dataframe*'s attribute columns.
+
+    The geometry column and the OBJECTID key column are excluded, so the result is the
+    columns whose values can be compared between two snapshots.
+
+    Args:
+        dataframe: The features whose attribute columns are returned.
+
+    Returns:
+        The attribute column names.
+    """
+    return frozenset(str(column) for column in dataframe.columns) - {
+        str(dataframe.geometry.name),
+        peri_scribe.models.OBJECT_ID_COLUMN_NAME,
+    }
+
+
 def attribute_columns(
     new_dataframe: geopandas.GeoDataFrame,
     existing_dataframe: geopandas.GeoDataFrame,

@@ -5,15 +5,14 @@ from __future__ import annotations
 import dataclasses
 import io
 import pathlib
-import typing
 import zipfile
 
 import pytest
 
 import peri_scribe.exceptions
-import peri_scribe.sources.archives
 import peri_scribe.sources.downloading
 import peri_scribe.sources.external_sources
+import tests.factories
 import tests.peri_scribe.sources.external_source_helpers
 
 
@@ -28,7 +27,7 @@ def test_download_source_raises_when_geodata_cannot_be_read(
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("California.geojson", "not valid geojson {{{ ")
     monkeypatch.setattr(
-        peri_scribe.sources.archives.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(
@@ -51,14 +50,12 @@ def test_download_source_raises_when_download_fails(
         tests.peri_scribe.sources.external_source_helpers.per_state_template_source()
     )
 
-    def fail(_url: str, **_kwargs: object) -> typing.Never:
-        message = "boom"
-        raise peri_scribe.sources.archives.requests.exceptions.RequestException(
-            message,
-        )
+    fail = tests.factories.raising_stub(
+        peri_scribe.sources.downloading.requests.exceptions.RequestException("boom"),
+    )
 
     monkeypatch.setattr(
-        peri_scribe.sources.archives.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         fail,
     )
@@ -77,7 +74,7 @@ def test_download_source_raises_when_not_a_zip(
         tests.peri_scribe.sources.external_source_helpers.per_state_template_source()
     )
     monkeypatch.setattr(
-        peri_scribe.sources.archives.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(b"not a zip")
@@ -101,7 +98,7 @@ def test_download_source_raises_when_archive_has_no_geodata(
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("readme.txt", "hi")
     monkeypatch.setattr(
-        peri_scribe.sources.archives.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(
@@ -130,7 +127,7 @@ def test_download_source_skips_when_output_present(
     )
     calls: list[str] = []
     monkeypatch.setattr(
-        peri_scribe.sources.archives.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         lambda url, **_kwargs: (
             calls.append(url)
@@ -160,7 +157,7 @@ def test_download_source_skips_when_single_archive_output_present(
     )
     calls: list[str] = []
     monkeypatch.setattr(
-        peri_scribe.sources.archives.requests,
+        peri_scribe.sources.downloading.requests,
         "get",
         lambda url, **_kwargs: (
             calls.append(url)

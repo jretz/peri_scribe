@@ -9,7 +9,6 @@ from __future__ import annotations
 import typing
 
 import geopandas
-import pyproj
 import structlog
 
 import peri_scribe.exceptions
@@ -77,11 +76,61 @@ def geo_data_frame_from(
     geo_data_frame = geopandas.GeoDataFrame(
         dataframe,
         geometry=shapely_geometries,
-        crs=pyproj.CRS.from_epsg(spatial_reference_id),
+        crs=peri_scribe.geo.spatial_reference.spatial_reference_for_id(
+            spatial_reference_id,
+        ),
     )
     return typing.cast(
         "geopandas.GeoDataFrame",
         geo_data_frame.rename_geometry(peri_scribe.models.GEOMETRY_COLUMN_NAME),
+    )
+
+
+def wgs84_query_parameters(where: str) -> dict[str, typing.Any]:
+    """Return the standard query parameters for a layer stored in WGS 84.
+
+    The query asks for WGS 84 so every stored layer shares one spatial reference.
+    Ordering by the object id sends the ArcGIS client's paging down a single-threaded
+    path: its concurrent paging races on the shared SSL context and, although the
+    connection is verified, reports it unverified, spamming a misleading
+    InsecureRequestWarning per page.
+
+    Args:
+        where: The SQL where clause selecting the features.
+
+    Returns:
+        The keyword arguments to pass to :func:`query_with_retry`.
+    """
+    return {
+        "where": where,
+        "out_sr": peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+        "order_by_fields": "OBJECTID",
+    }
+
+
+def geo_data_frame_from_feature_set(
+    feature_set: arcgis.features.FeatureSet,
+) -> geopandas.GeoDataFrame:
+    """Return a WGS 84 query result's features as a GeoDataFrame.
+
+    A result whose features carry no geometry is returned with null geometry after
+    logging why.
+
+    Args:
+        feature_set: The WGS 84 query result to convert.
+
+    Returns:
+        The features as a GeoDataFrame in WGS 84.
+    """
+    dataframe, shapely_geometries, geometry_warning = extract_geometries(
+        feature_set.sdf,
+    )
+    if geometry_warning is not None:
+        logger.warning(geometry_warning)
+    return geo_data_frame_from(
+        dataframe,
+        shapely_geometries,
+        peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
     )
 
 

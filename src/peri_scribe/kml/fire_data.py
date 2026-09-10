@@ -66,6 +66,47 @@ class FireGeometry:
     type_one: bool = False
 
 
+class NamedFire(typing.Protocol):
+    """Anything the fire views order by name."""
+
+    @property
+    def name(self) -> str:
+        """The fire's name."""
+        ...
+
+
+def fire_name_key(named: NamedFire) -> str:
+    """Return the ordering key that sorts fires by name, ignoring case.
+
+    Folding case keeps the order stable when two names differ only in case, so every
+    view lists the same fires in the same order.
+
+    Args:
+        named: The fire to key.
+
+    Returns:
+        The fire's case-folded name.
+    """
+    return named.name.casefold()
+
+
+def descending_value_name_key(
+    ranked: tuple[FireGeometry, float],
+) -> tuple[float, str]:
+    """Return the ordering key that ranks fires by value, then by name.
+
+    The largest value comes first, and fires whose values tie keep one stable order.
+
+    Args:
+        ranked: A fire and the value it is ranked by.
+
+    Returns:
+        The key: the negated value followed by the case-folded name.
+    """
+    fire, value = ranked
+    return (-value, fire_name_key(fire))
+
+
 # A differential ring smaller than this adds nothing visible to the map, so it is
 # dropped rather than carried into the KMZ.
 MINIMUM_RING_AREA = 1.0 * units.meters**2
@@ -487,4 +528,4 @@ def fire_geometries(
                 images=images,
             ),
         )
-    return sorted(fires, key=lambda fire: fire.name.casefold())
+    return sorted(fires, key=fire_name_key)

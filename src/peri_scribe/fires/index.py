@@ -155,7 +155,7 @@ def index_fire_sources(year_directory: pathlib.Path) -> None:
     )
     output_path = peri_scribe.sources.snapshots.fire_index_path(year_directory)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    peri_scribe.output.write_fire_index(output_path, index)
+    peri_scribe.output.write_document(output_path, index)
 
 
 def load_fire_index(year_directory: pathlib.Path) -> peri_scribe.models.FireIndex:
@@ -174,6 +174,7 @@ def load_fire_index(year_directory: pathlib.Path) -> peri_scribe.models.FireInde
     index_path = peri_scribe.sources.snapshots.fire_index_path(year_directory)
     if not index_path.is_file():
         index_fire_sources(year_directory)
-    return peri_scribe.models.FireIndex.model_validate_json(
-        index_path.read_text(encoding="utf-8"),
+    return peri_scribe.output.read_document(
+        index_path,
+        peri_scribe.models.FireIndex,
     )
