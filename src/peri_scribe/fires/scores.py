@@ -47,6 +47,7 @@ from peri_scribe.units import units
 
 if typing.TYPE_CHECKING:
     import geopandas
+    import pint
     import shapely
 
 
@@ -177,20 +178,26 @@ def perimeter_metrics_for(
     key: str,
     metrics: pd.DataFrame,
     first_mapping: pd.Series,
+    area: pint.Quantity[float] | None,
 ) -> peri_scribe.fires.scoring.PerimeterMetrics:
-    """Return the perimeter metrics for a fire, or all-None when it has none.
+    """Return the perimeter metrics for a fire.
+
+    The presented area comes from the fire's latest perimeter or point row, so the size
+    signal matches the area the fire displays; growth and first-mapping size still come
+    from the differential perimeter history.
 
     Args:
         key: The fire's identity key.
-        metrics: The per-fire maximum area and growth, keyed by fire identity.
+        metrics: The per-fire maximum growth, keyed by fire identity.
         first_mapping: The per-fire first-mapping area, keyed by fire identity.
+        area: The fire's presented area, or None when no row reports one.
 
     Returns:
         The fire's perimeter metrics.
     """
     if key not in metrics.index:
         return peri_scribe.fires.scoring.PerimeterMetrics(
-            area=None,
+            area=area,
             growth=None,
             first_mapping=None,
             geometry=None,
@@ -200,7 +207,7 @@ def perimeter_metrics_for(
         first_mapping.get(key),
     )
     return peri_scribe.fires.scoring.PerimeterMetrics(
-        area=None if pd.isna(row.max_area) else row.max_area * units.acres,
+        area=area,
         growth=None if pd.isna(row.max_growth) else row.max_growth * units.acres,
         first_mapping=(
             None if first_mapping_value is None else first_mapping_value * units.acres
@@ -255,11 +262,69 @@ def presented_acreage_series(reported: pd.Series, calculated: pd.Series) -> pd.S
     )
 
 
+def _latest_rows(
+    frame: geopandas.GeoDataFrame,
+    keys: pd.Series,
+) -> dict[str, pd.Series]:
+    """Return each fire's last history row in frame order, keyed by identity.
+
+    The last row in frame order is the fire's most recent observation, matching how the
+    display reads a fire's latest state.
+
+    Args:
+        frame: A history layer.
+        keys: Each row's fire identity key.
+
+    Returns:
+        One last row per fire, keyed by identity.
+    """
+    if frame.empty:
+        return {}
+    keyed = frame.assign(key=keys)
+    return {str(key): rows.iloc[-1] for key, rows in keyed.groupby("key", sort=False)}
+
+
+def displayed_areas(
+    keys: list[str],
+    full_perimeters: geopandas.GeoDataFrame,
+    points: geopandas.GeoDataFrame,
+    point_keys: pd.Series,
+) -> list[pint.Quantity[float] | None]:
+    """Return each fire's presented area from its latest perimeter or point row.
+
+    The presented area is the value the fire displays and the size signal scoring uses.
+    It comes from the latest full-perimeter row, falling back to the latest point row,
+    so a fire with only a point record still presents its reported size.
+
+    Args:
+        keys: The fires' identity keys, in score order.
+        full_perimeters: The full perimeter history layer.
+        points: The point history layer.
+        point_keys: Each point row's fire identity key.
+
+    Returns:
+        One presented area per fire, aligned with *keys*, or None when no row reports
+        one.
+    """
+    latest_perimeter = _latest_rows(
+        full_perimeters,
+        peri_scribe.fires.identity.group_keys(full_perimeters),
+    )
+    latest_point = _latest_rows(points, point_keys)
+    return [
+        peri_scribe.areas.presented_area_for_latest(
+            latest_perimeter.get(key),
+            latest_point.get(key),
+        )
+        for key in keys
+    ]
+
+
 def fire_metrics(
     perimeters: geopandas.GeoDataFrame,
     perimeter_keys: pd.Series,
 ) -> tuple[pd.DataFrame, pd.Series]:
-    """Return per-fire size, growth, and first-mapping metrics.
+    """Return per-fire growth and first-mapping metrics.
 
     Each growth row's reported acreage is compared against the same row's
     geometry-measured acreage, and the presented value is the reported acreage unless
@@ -268,13 +333,16 @@ def fire_metrics(
     geometry-measured columns (for example one written before they existed) is scored
     from its reported acreages alone.
 
+    The size signal is not computed here: a fire's presented size comes from its latest
+    perimeter or point row via :func:`displayed_areas`, so scoring and display agree.
+
     Args:
         perimeters: The differential perimeter layer.
         perimeter_keys: Each perimeter row's fire identity key.
 
     Returns:
-        The per-fire maximum area and growth as a dataframe, and the first-mapping area
-        as a series, both keyed by fire identity.
+        The per-fire maximum growth as a dataframe, and the first-mapping area as a
+        series, both keyed by fire identity.
     """
     if perimeters.empty:
         return pd.DataFrame(), pd.Series(dtype=object)
@@ -299,7 +367,6 @@ def fire_metrics(
         area_column = "area_acres"
         growth_column = "area_acres_differential"
     metrics = keyed.groupby("key", sort=False).agg(
-        max_area=(area_column, "max"),
         max_growth=(growth_column, "max"),
     )
     first_mapping = (
@@ -356,18 +423,23 @@ def record_metrics(
     keys: list[str],
     metrics: pd.DataFrame,
     first_mapping: pd.Series,
+    areas: list[pint.Quantity[float] | None],
 ) -> list[peri_scribe.fires.scoring.PerimeterMetrics]:
     """Return one perimeter-metrics record per fire.
 
     Args:
         keys: The fires' identity keys, in score order.
-        metrics: The per-fire maximum area and growth, keyed by fire identity.
+        metrics: The per-fire maximum growth, keyed by fire identity.
         first_mapping: The per-fire first-mapping area, keyed by fire identity.
+        areas: Each fire's presented area, aligned with *keys*.
 
     Returns:
         One perimeter metrics record per fire, aligned with *keys*.
     """
-    return [perimeter_metrics_for(key, metrics, first_mapping) for key in keys]
+    return [
+        perimeter_metrics_for(key, metrics, first_mapping, areas[index])
+        for index, key in enumerate(keys)
+    ]
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -400,6 +472,7 @@ def scoring_input(year_directory: pathlib.Path) -> ScoringInput:
     point_keys = peri_scribe.fires.identity.group_keys(points)
     keys = sorted(set(perimeter_keys) | set(point_keys))
     metrics, first_mapping = fire_metrics(perimeters, perimeter_keys)
+    areas = displayed_areas(keys, full_perimeters, points, point_keys)
     names, identifiers = fire_names_and_identifiers(
         perimeters,
         points,
@@ -407,7 +480,7 @@ def scoring_input(year_directory: pathlib.Path) -> ScoringInput:
         point_keys,
     )
     geometries = cumulative_fire_geometries(keys, full_perimeters, points, point_keys)
-    perimeter_records = record_metrics(keys, metrics, first_mapping)
+    perimeter_records = record_metrics(keys, metrics, first_mapping, areas)
     buffered = peri_scribe.fires.buffering.buffered_fire_geometries(geometries)
     signals = external_signals(year_directory, len(keys), geometries, buffered)
     return ScoringInput(
@@ -466,6 +539,9 @@ def score_fires(year_directory: pathlib.Path) -> pathlib.Path:
                 building_count=scoring.signals.building_counts[index],
                 evacuation_overlap=index in scoring.signals.evacuation_indices,
             ),
+            area=scoring.metrics[index].area,
+            building_count=scoring.signals.building_counts[index],
+            evacuation_overlap=index in scoring.signals.evacuation_indices,
         )
         for index in range(len(scoring.keys))
     ]

@@ -15,6 +15,7 @@ import peri_scribe.fires.identity
 import peri_scribe.fires.scores
 import peri_scribe.sources.buildings
 import peri_scribe.sources.external_sources
+import peri_scribe.units
 import tests.factories
 import tests.peri_scribe.fires.fire_helpers
 
@@ -247,7 +248,7 @@ def test_score_fires_scores_point_only_fire(
     assert [entry.name for entry in stubs.writes[0][1].fires] == ["Smoke"]
 
 
-def test_fire_metrics_prefers_geometry_when_reported_understates() -> None:
+def test_fire_metrics_prefers_geometry_for_growth_and_first_mapping() -> None:
     perimeters = tests.factories.geo_frame(
         {
             "fire_name": ["Snow", "Snow"],
@@ -268,7 +269,6 @@ def test_fire_metrics_prefers_geometry_when_reported_understates() -> None:
         perimeters,
         perimeter_keys,
     )
-    assert metrics.loc["2026-a", "max_area"] == pytest.approx(3039.0)
     assert metrics.loc["2026-a", "max_growth"] == pytest.approx(2939.0)
     assert first_mapping["2026-a"] == pytest.approx(2939.0)
 
@@ -291,6 +291,55 @@ def test_fire_metrics_keeps_reported_when_geometry_agrees() -> None:
         perimeters,
         perimeter_keys,
     )
-    assert metrics.loc["2026-a", "max_area"] == pytest.approx(1100.0)
     assert metrics.loc["2026-a", "max_growth"] == pytest.approx(1100.0)
     assert first_mapping["2026-a"] == pytest.approx(1100.0)
+
+
+def test_displayed_areas_prefers_latest_perimeter_measured_area() -> None:
+    perimeters = tests.factories.geo_frame(
+        {
+            "fire_name": ["Snow", "Snow"],
+            "fire_identifier": ["2026-a", "2026-a"],
+            "area_acres": [100.0, 100.0],
+            "observation_time": [
+                datetime.datetime(2026, 9, 3, 1, 0),
+                datetime.datetime(2026, 9, 4, 1, 0),
+            ],
+        },
+        [tests.factories.square(0.01), tests.factories.square(0.02)],
+    )
+    points = tests.factories.geo_frame(
+        {"fire_name": ["Snow"], "fire_identifier": ["2026-a"]},
+        [tests.factories.point(0, 0)],
+    )
+    point_keys = peri_scribe.fires.identity.group_keys(points)
+    areas = peri_scribe.fires.scores.displayed_areas(
+        ["2026-a"],
+        perimeters,
+        points,
+        point_keys,
+    )
+    # The latest perimeter's geometry is far larger than its 100-acre report, so the
+    # measured area is what scoring presents.
+    area = areas[0]
+    assert area is not None
+    assert area.m_as("acres") == pytest.approx(
+        peri_scribe.units.area(tests.factories.square(0.02)).m_as("acres"),
+    )
+
+
+def test_displayed_areas_falls_back_to_point_size_without_perimeter() -> None:
+    points = tests.factories.geo_frame(
+        {"fire_name": ["Smoke"], "fire_identifier": [None], "incident_size": [500.0]},
+        [tests.factories.point(0, 0)],
+    )
+    point_keys = peri_scribe.fires.identity.group_keys(points)
+    areas = peri_scribe.fires.scores.displayed_areas(
+        ["name:Smoke"],
+        tests.factories.empty_frame(),
+        points,
+        point_keys,
+    )
+    area = areas[0]
+    assert area is not None
+    assert area.m_as("acres") == pytest.approx(500.0)

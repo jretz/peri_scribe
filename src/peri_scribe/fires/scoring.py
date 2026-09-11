@@ -421,11 +421,22 @@ def score_explanation(fire_score: FireScore) -> str:
 
 def score_entry(
     fire_score: FireScore,
+    *,
+    area: pint.Quantity[float] | None = None,
+    building_count: int | None = None,
+    evacuation_overlap: bool | None = None,
 ) -> peri_scribe.models.FireScoreEntry:
     """Return the persisted score entry for a fire.
 
+    The fire's presented area, the buildings within a mile, and whether it overlaps an
+    evacuation zone are recorded alongside the score, so the new-and-notable view can
+    gate on the same signals the score was built from.
+
     Args:
         fire_score: The fire's current score.
+        area: The fire's presented area, or None when unknown.
+        building_count: The buildings within a mile, or None when unknown.
+        evacuation_overlap: Whether the fire overlaps an evacuation zone.
 
     Returns:
         The entry holding the fire's score and an explanation of the score.
@@ -435,6 +446,9 @@ def score_entry(
         identifier=fire_score.identifier,
         score=fire_score.total,
         explanation=score_explanation(fire_score),
+        area=acre_magnitude(area),
+        building_count=building_count,
+        evacuation_overlap=evacuation_overlap,
     )
 
 

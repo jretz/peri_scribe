@@ -42,6 +42,13 @@ MOST_PERSONNEL_FIRES_FOLDER_NAME = "Fires with Most Personnel"
 # A newly discovered fire stays in the "New, Notable Fires" view for this long.
 NEW_NOTABLE_DISCOVERY_LOOKBACK = datetime.timedelta(days=5)
 
+# The presented-area gates a newly discovered fire must clear to be notable without a
+# qualifying score: at least 100 acres first, then at least 1,000 acres, an evacuation
+# zone overlap, or 100 buildings within a mile.
+NEW_NOTABLE_MINIMUM_AREA_ACRES = 100.0
+NEW_NOTABLE_SIZE_AREA_ACRES = 1_000.0
+NEW_NOTABLE_MINIMUM_BUILDINGS = 100
+
 # The growth window for the fast-growing views, and the minimum growth a fire needs to
 # qualify for each.
 FAST_GROWTH_LOOKBACK = datetime.timedelta(hours=48)
@@ -405,16 +412,40 @@ def score_maps(
     return scores_by_identifier, scores_by_name
 
 
+def score_entry_for_fire(
+    fire: peri_scribe.kml.fire_data.FireGeometry,
+    scores_by_identifier: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
+    scores_by_name: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
+) -> peri_scribe.models.FireScoreEntry | None:
+    """Return *fire*'s score entry, or None when no entry matches it.
+
+    A fire's identifiers are checked first, so fires that share a name but not an
+    identity each resolve to their own entry; a fire whose identifier matches nothing
+    falls back to its name.
+
+    Args:
+        fire: The fire to resolve.
+        scores_by_identifier: Score entries keyed by identifier.
+        scores_by_name: Score entries keyed by name.
+
+    Returns:
+        The fire's score entry, or None when no entry matches.
+    """
+    entry = peri_scribe.kml.selection.first_identifier_match(
+        fire.identifiers,
+        scores_by_identifier,
+    )
+    if entry is None:
+        entry = scores_by_name.get(fire.name)
+    return entry
+
+
 def score_value_for_fire(
     fire: peri_scribe.kml.fire_data.FireGeometry,
     scores_by_identifier: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
     scores_by_name: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
 ) -> int | None:
     """Return *fire*'s score, or None when no entry matches it.
-
-    A fire's identifiers are checked first, so fires that share a name but not an
-    identity each resolve to their own score; a fire whose identifier matches nothing
-    falls back to its name.
 
     Args:
         fire: The fire to score.
@@ -424,12 +455,7 @@ def score_value_for_fire(
     Returns:
         The fire's score, or None when no entry matches.
     """
-    entry = peri_scribe.kml.selection.first_identifier_match(
-        fire.identifiers,
-        scores_by_identifier,
-    )
-    if entry is None:
-        entry = scores_by_name.get(fire.name)
+    entry = score_entry_for_fire(fire, scores_by_identifier, scores_by_name)
     return None if entry is None else entry.score
 
 
@@ -465,16 +491,47 @@ def notable_score_threshold(
     return active_scores[top_count - 1]
 
 
+def new_notable_signals_qualify(
+    entry: peri_scribe.models.FireScoreEntry,
+) -> bool:
+    """Return whether a newly discovered fire's signals make it notable.
+
+    A fire qualifies by signals only once it presents at least
+    :data:`NEW_NOTABLE_MINIMUM_AREA_ACRES`, and then by size, evacuation overlap, or
+    nearby buildings. Below that minimum nothing but the score qualifies it.
+
+    Args:
+        entry: The fire's score entry, carrying its area and external signals.
+
+    Returns:
+        Whether the fire's signals qualify it for the view.
+    """
+    area = entry.area
+    if area is None or area < NEW_NOTABLE_MINIMUM_AREA_ACRES:
+        return False
+    if area >= NEW_NOTABLE_SIZE_AREA_ACRES:
+        return True
+    if entry.evacuation_overlap:
+        return True
+    return (
+        entry.building_count is not None
+        and entry.building_count >= NEW_NOTABLE_MINIMUM_BUILDINGS
+    )
+
+
 def new_notable_fires(
     fires: list[peri_scribe.kml.fire_data.FireGeometry],
     scores: peri_scribe.models.FireScores,
     reference_time: datetime.datetime | None,
 ) -> list[peri_scribe.kml.fire_data.FireGeometry]:
-    """Return the newly discovered fires that score among the top active fires.
+    """Return the newly discovered fires that are notable.
 
     A fire qualifies when it was discovered within
-    :data:`NEW_NOTABLE_DISCOVERY_LOOKBACK` of *reference_time* and its score meets the
-    active-fire threshold.
+    :data:`NEW_NOTABLE_DISCOVERY_LOOKBACK` of *reference_time* and either scores among
+    the top active fires, or presents at least :data:`NEW_NOTABLE_MINIMUM_AREA_ACRES`
+    and clears one of the notable-signal gates: at least
+    :data:`NEW_NOTABLE_SIZE_AREA_ACRES`, an evacuation-zone overlap, or at least
+    :data:`NEW_NOTABLE_MINIMUM_BUILDINGS` within a mile.
 
     Args:
         fires: The fires that can be shown in the KMZ.
@@ -501,10 +558,11 @@ def new_notable_fires(
             continue
         if discovery_time < cutoff or discovery_time > reference_time:
             continue
-        score = score_value_for_fire(fire, scores_by_identifier, scores_by_name)
-        if score is None or score < threshold:
+        entry = score_entry_for_fire(fire, scores_by_identifier, scores_by_name)
+        if entry is None:
             continue
-        scored.append((fire, score))
+        if entry.score >= threshold or new_notable_signals_qualify(entry):
+            scored.append((fire, entry.score))
     scored.sort(key=peri_scribe.kml.fire_data.descending_value_name_key)
     return [fire for fire, _score in scored]
 

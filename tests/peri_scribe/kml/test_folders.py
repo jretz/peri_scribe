@@ -1013,6 +1013,10 @@ def score_entry(
     identifier: str | None,
     score: int,
     explanation: str,
+    *,
+    area: float | None = None,
+    building_count: int | None = None,
+    evacuation_overlap: bool | None = None,
 ) -> peri_scribe.models.FireScoreEntry:
     """Return a saved score for a fire.
 
@@ -1021,6 +1025,9 @@ def score_entry(
         identifier: The fire's identifier, or None.
         score: The fire's score.
         explanation: Why the fire has the score.
+        area: The fire's presented area in acres, or None.
+        building_count: The buildings within a mile, or None.
+        evacuation_overlap: Whether the fire overlaps an evacuation zone.
 
     Returns:
         The score entry.
@@ -1030,6 +1037,9 @@ def score_entry(
         identifier=identifier,
         score=score,
         explanation=explanation,
+        area=area,
+        building_count=building_count,
+        evacuation_overlap=evacuation_overlap,
     )
 
 
@@ -1533,6 +1543,130 @@ def test_new_notable_fires_excludes_unscored_fire() -> None:
         "Unscored",
         description=peri_scribe.kml.descriptions.FireDescription(
             discovery_time=recent,
+        ),
+    )
+    fires.append(candidate)
+
+    assert (
+        peri_scribe.kml.folders.new_notable_fires(
+            fires,
+            scores,
+            REFERENCE_TIME,
+        )
+        == []
+    )
+
+
+def test_new_notable_signals_qualify_by_size() -> None:
+    entry = score_entry(
+        "Big",
+        None,
+        5,
+        "Over 1,000 acres.",
+        area=1_500.0,
+    )
+    assert peri_scribe.kml.folders.new_notable_signals_qualify(entry)
+
+
+def test_new_notable_signals_qualify_by_evacuation() -> None:
+    entry = score_entry(
+        "Zone",
+        None,
+        5,
+        "Overlap with an evacuation zone.",
+        area=150.0,
+        evacuation_overlap=True,
+    )
+    assert peri_scribe.kml.folders.new_notable_signals_qualify(entry)
+
+
+def test_new_notable_signals_qualify_by_buildings() -> None:
+    entry = score_entry(
+        "Near",
+        None,
+        5,
+        "Over 100 structures within a mile.",
+        area=150.0,
+        building_count=100,
+    )
+    assert peri_scribe.kml.folders.new_notable_signals_qualify(entry)
+
+
+def test_new_notable_signals_qualify_requires_minimum_area() -> None:
+    entry = score_entry(
+        "Small",
+        None,
+        5,
+        "Over 100 structures within a mile.",
+        area=99.0,
+        building_count=100,
+    )
+    assert not peri_scribe.kml.folders.new_notable_signals_qualify(entry)
+
+
+def test_new_notable_signals_qualify_requires_known_area() -> None:
+    entry = score_entry(
+        "Unknown",
+        None,
+        5,
+        "Over 100 structures within a mile.",
+        building_count=100,
+    )
+    assert not peri_scribe.kml.folders.new_notable_signals_qualify(entry)
+
+
+def test_new_notable_fires_includes_fire_qualifying_by_signals() -> None:
+    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            for index in range(10)
+        ],
+    )
+    recent = REFERENCE_TIME - datetime.timedelta(days=1)
+    candidate = active_fire(
+        "Big",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            discovery_time=recent,
+        ),
+    )
+    scores.fires.append(
+        score_entry("Big", None, 5, "Over 1,000 acres.", area=1_500.0),
+    )
+    fires.append(candidate)
+
+    assert peri_scribe.kml.folders.new_notable_fires(
+        fires,
+        scores,
+        REFERENCE_TIME,
+    ) == [candidate]
+
+
+def test_new_notable_fires_excludes_below_minimum_area_by_signals() -> None:
+    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            for index in range(10)
+        ],
+    )
+    recent = REFERENCE_TIME - datetime.timedelta(days=1)
+    candidate = active_fire(
+        "Tiny",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            discovery_time=recent,
+        ),
+    )
+    scores.fires.append(
+        score_entry(
+            "Tiny",
+            None,
+            5,
+            "Over 100 structures within a mile.",
+            area=50.0,
+            building_count=300,
         ),
     )
     fires.append(candidate)

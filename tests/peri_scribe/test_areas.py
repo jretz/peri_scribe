@@ -5,6 +5,8 @@ from __future__ import annotations
 import pytest
 
 import peri_scribe.areas
+import peri_scribe.units
+import tests.factories
 from peri_scribe.units import units
 
 
@@ -74,3 +76,48 @@ def test_presented_area_keeps_zero_when_calculated_is_zero() -> None:
     )
     assert result is not None
     assert result.m_as("acres") == pytest.approx(0.0)
+
+
+def test_presented_area_for_latest_uses_perimeter_reported_area() -> None:
+    perimeter_row = tests.factories.geo_frame(
+        {"area_acres": [1100.0]},
+        [tests.factories.square(0.01)],
+    ).iloc[0]
+    result = peri_scribe.areas.presented_area_for_latest(perimeter_row, None)
+    assert result is not None
+    assert result.m_as("acres") == pytest.approx(1100.0)
+
+
+def test_presented_area_for_latest_prefers_measured_area() -> None:
+    geometry = tests.factories.square(0.02)
+    perimeter_row = tests.factories.geo_frame(
+        {"area_acres": [100.0]},
+        [geometry],
+    ).iloc[0]
+    result = peri_scribe.areas.presented_area_for_latest(perimeter_row, None)
+    assert result is not None
+    assert result.m_as("acres") == pytest.approx(
+        peri_scribe.units.area(geometry).m_as("acres"),
+    )
+
+
+def test_presented_area_for_latest_falls_back_to_point_size() -> None:
+    point_row = tests.factories.geo_frame(
+        {"incident_size": [500.0]},
+        [tests.factories.point(0, 0)],
+    ).iloc[0]
+    result = peri_scribe.areas.presented_area_for_latest(None, point_row)
+    assert result is not None
+    assert result.m_as("acres") == pytest.approx(500.0)
+
+
+def test_presented_area_for_latest_returns_none_without_area() -> None:
+    perimeter_row = tests.factories.geo_frame(
+        {"area_acres": [None]},
+        [tests.factories.square(0.01)],
+    ).iloc[0]
+    point_row = tests.factories.geo_frame(
+        {"fire_name": ["Smoke"]},
+        [tests.factories.point(0, 0)],
+    ).iloc[0]
+    assert peri_scribe.areas.presented_area_for_latest(perimeter_row, point_row) is None

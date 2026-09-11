@@ -13,8 +13,13 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import peri_scribe.geo.parsing
+import peri_scribe.units
+from peri_scribe.units import units
+
 
 if TYPE_CHECKING:
+    import pandas as pd
     import pint
 
 
@@ -72,3 +77,60 @@ def presented_area(
     if calculated >= reported * SIGNIFICANTLY_LARGER_AREA_RATIO:
         return calculated
     return reported
+
+
+PERIMETER_AREA_COLUMN = "area_acres"
+POINT_AREA_COLUMN = "incident_size"
+
+
+def _row_number(row: pd.Series | None, column: str) -> float | None:
+    """Return *row*'s numeric value in *column*, or None when it is missing.
+
+    Args:
+        row: A history row, or None.
+        column: The column to read.
+
+    Returns:
+        The column's numeric value, or None when the row or value is missing.
+    """
+    if row is None or column not in row.index:
+        return None
+    value = row[column]
+    if peri_scribe.geo.parsing.is_missing(value):
+        return None
+    return peri_scribe.geo.parsing.numeric_value(value)
+
+
+def presented_area_for_latest(
+    perimeter_row: pd.Series | None,
+    point_row: pd.Series | None,
+) -> pint.Quantity[float] | None:
+    """Return the area presented for a fire's latest perimeter, else its point.
+
+    The latest perimeter supplies the reported acreage, falling back to the latest
+    point's incident size when the perimeter has none. When the perimeter's geometry
+    measures significantly larger than the reported acreage, the measured area is
+    presented instead, matching :func:`presented_area`. This is the single source of
+    truth for the area a fire displays, scores, and is gated on.
+
+    Args:
+        perimeter_row: The fire's latest perimeter history row, or None.
+        point_row: The fire's latest point history row, or None.
+
+    Returns:
+        The presented area, or None when neither row reports one.
+    """
+    reported = _row_number(perimeter_row, PERIMETER_AREA_COLUMN)
+    if reported is None:
+        reported = _row_number(point_row, POINT_AREA_COLUMN)
+    geometry = (
+        getattr(perimeter_row, "geometry", None) if perimeter_row is not None else None
+    )
+    if reported is not None and geometry is not None and not geometry.is_empty:
+        return presented_area(
+            reported * units.acres,
+            peri_scribe.units.area(geometry),
+        )
+    if reported is not None:
+        return reported * units.acres
+    return None

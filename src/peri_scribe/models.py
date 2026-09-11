@@ -353,6 +353,9 @@ class FireScoreEntry(pydantic.BaseModel):
     identifier: str | None = None
     score: int
     explanation: str
+    area: float | None = None
+    building_count: int | None = None
+    evacuation_overlap: bool | None = None
 
 
 class FireScores(pydantic.BaseModel):

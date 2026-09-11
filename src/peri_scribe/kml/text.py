@@ -83,27 +83,7 @@ def fire_description(
             perimeter_row.geometry,
         )
 
-    reported_area = peri_scribe.kml.row_values.float_value(perimeter_row, "area_acres")
-    if reported_area is None:
-        reported_area = peri_scribe.kml.row_values.float_value(
-            point_row,
-            "incident_size",
-        )
-    area: pint.Quantity[float] | None = None
-    if (
-        reported_area is not None
-        and perimeter_row is not None
-        and perimeter_row.geometry is not None
-        and not perimeter_row.geometry.is_empty
-    ):
-        # The reported acreage can trail the polygon the source published; when the
-        # geometry is significantly larger the measured area is what users should see.
-        area = peri_scribe.areas.presented_area(
-            reported_area * units.acres,
-            peri_scribe.units.area(perimeter_row.geometry),
-        )
-    elif reported_area is not None:
-        area = reported_area * units.acres
+    area = peri_scribe.areas.presented_area_for_latest(perimeter_row, point_row)
 
     percent_contained = peri_scribe.kml.row_values.float_value(
         perimeter_row,

@@ -366,6 +366,28 @@ def test_score_entry_maps_total() -> None:
     )
 
 
+def test_score_entry_records_area_and_external_signals() -> None:
+    fire_score = peri_scribe.fires.scoring.FireScore(
+        name="Bug",
+        identifier="2026-a",
+        size_points=27,
+        growth_points=0,
+        first_mapping_points=0,
+        building_points=0,
+        evacuation_points=0,
+        importance_points=0,
+    )
+    entry = peri_scribe.fires.scoring.score_entry(
+        fire_score,
+        area=1_099.2 * units.acres,
+        building_count=24,
+        evacuation_overlap=True,
+    )
+    assert entry.area == pytest.approx(1_099.2)
+    assert entry.building_count == pytest.approx(24)
+    assert entry.evacuation_overlap is True
+
+
 def test_score_explanation_describes_each_contributing_signal() -> None:
     fire_score = peri_scribe.fires.scoring.FireScore(
         name="Bug",
