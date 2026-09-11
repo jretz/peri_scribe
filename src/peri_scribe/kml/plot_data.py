@@ -11,8 +11,6 @@ import dataclasses
 import datetime
 import typing
 
-import pandas as pd
-
 import peri_scribe.geo.parsing
 import peri_scribe.kml.row_values
 import peri_scribe.units
@@ -36,11 +34,6 @@ DOLLARS_PER_MILLION = 1_000_000.0
 # Containment percentages are reported in whole percent (0-100), so the contained
 # perimeter is that fraction of the exterior perimeter length.
 CONTAINMENT_PERCENT = 100.0 * units.percent
-
-# Column names in the tidy frame handed to seaborn.
-LABEL_COLUMN = "label"
-OBSERVATION_TIME_COLUMN = "observation_time"
-VALUE_COLUMN = "value"
 
 # The filename suffix for each plot, used to build its image filename.
 AREA_PLOT_SUFFIX = "area"
@@ -474,24 +467,4 @@ def retained_series(
         series
         for series in series_list
         if has_multiple_observation_times(series.points)
-    )
-
-
-def plot_frame(series_list: tuple[PlotSeries, ...]) -> pd.DataFrame:
-    """Return *series_list* as the tidy frame seaborn plots.
-
-    Args:
-        series_list: The lines to draw.
-
-    Returns:
-        The lines melted into one row per measurement.
-    """
-    rows = [
-        (series.label, point.observation_time, point.value)
-        for series in series_list
-        for point in series.points
-    ]
-    return pd.DataFrame(
-        rows,
-        columns=[LABEL_COLUMN, OBSERVATION_TIME_COLUMN, VALUE_COLUMN],
     )

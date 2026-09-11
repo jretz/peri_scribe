@@ -8,7 +8,6 @@ dependencies = [
     "defusedxml",
     "geopandas",
     "ijson",
-    "pillow",
     "pint",
     "pydantic",
     "pygments",  # For pytest code highlighting
@@ -19,7 +18,6 @@ dependencies = [
     "requests-mock",
     "requests",
     "ruff",
-    "seaborn",
 
     # For https://github.com/Esri/arcgis-python-api/issues/2428,
     # fix scheduled for v2.4.4

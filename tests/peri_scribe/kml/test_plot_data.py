@@ -499,26 +499,6 @@ def test_retained_series_drops_lines_with_too_few_times() -> None:
     assert [series.label for series in retained] == ["Area"]
 
 
-def test_plot_frame_melts_series() -> None:
-    frame = peri_scribe.kml.plot_data.plot_frame(
-        (
-            peri_scribe.kml.plot_data.PlotSeries(
-                label="Area",
-                points=(tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 10.0),),
-            ),
-            peri_scribe.kml.plot_data.PlotSeries(
-                label="Cost to date",
-                points=(
-                    tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 1_000.0),
-                ),
-            ),
-        ),
-    )
-    assert list(frame.columns) == ["label", "observation_time", "value"]
-    assert frame["label"].tolist() == ["Area", "Cost to date"]
-    assert frame["value"].tolist() == [10.0, 1_000.0]
-
-
 def test_fire_plots_measures_each_exterior_perimeter_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

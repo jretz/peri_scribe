@@ -16,11 +16,7 @@ longer fires sampling more of it.
 
 from __future__ import annotations
 
-import io
 import typing
-
-import matplotlib.backends.backend_agg
-import matplotlib.figure
 
 from peri_scribe.units import units
 
@@ -314,72 +310,94 @@ ACTIVE_GROWTH_FRACTION = 0.98
 # anchors its coolest color closer to the hot end, so a short fire reads as short.
 FULL_RAMP_RING_COUNT = 10
 
-# The strip rendered by :func:`turbo_colormap_png`: its size in inches and dpi.
-COLORMAP_STRIP_WIDTH = 21.0 * units.inches
-COLORMAP_STRIP_HEIGHT = 3.0 * units.inches
-COLORMAP_STRIP_RESOLUTION = 100 * units.count / units.inch
+# How many colors apart the strip's tick labels are.
+COLORMAP_TICK_INTERVAL = 16
 
-# Tick labels and light guides appear at every group of this many cells.
-COLORMAP_CELLS_PER_GROUP = 16
+# The original Turbo indices whose rows carry a tick label: every tick interval, then
+# the table's last index, so a row can be placed on the full map from the labels alone.
+COLORMAP_TICK_INDICES = (
+    *range(0, len(turbo_colormap_256) - 1, COLORMAP_TICK_INTERVAL),
+    len(turbo_colormap_256) - 1,
+)
+
+# How wide the tick labels' column is, in character cells.
+COLORMAP_TICK_LABEL_WIDTH = len(str(len(turbo_colormap_256) - 1))
+
+# How wide each row's color bar is, in character cells.
+COLORMAP_BAR_WIDTH = 6
+
+# The character drawn beside every color the progression rings sample, so the used range
+# reads off the strip itself.
+USED_RANGE_MARKER = "│"
+
+# The sequence that ends a colored run and returns the terminal to its own colors.
+ANSI_RESET = "\x1b[0m"
 
 
-def turbo_colormap_png(
-    trim_start: int = 0,
-    trim_end: int = 0,
-) -> bytes:
-    """Return a Turbo colormap strip PNG with colors removed from each end.
-
-    The strip shows one cell per remaining color, left to right, with tick labels and
-    light guides every :data:`COLORMAP_CELLS_PER_GROUP` cells. Labels show the original
-    Turbo-table indices, so the strip lines up with the full 256-color map. With no
-    trims the strip is the full table; *trim_start* and *trim_end* slice colors off the
-    corresponding ends to preview how a trim would look. The PNG is rendered in memory,
-    ready to print to a terminal.
+def ansi_background(rgb: tuple[float, float, float]) -> str:
+    """Return the ANSI truecolor background sequence that fills a cell with *rgb*.
 
     Args:
-        trim_start: The number of colors to remove from the start.
-        trim_end: The number of colors to remove from the end.
+        rgb: The color as (red, green, blue) components from 0 to 1.
 
     Returns:
-        The PNG bytes.
+        The escape sequence.
+
+    Examples:
+        >>> ansi_background((0.0, 0.0, 0.0)) == chr(27) + "[48;2;0;0;0m"
+        True
+        >>> ansi_background((1.0, 0.5, 0.0)) == chr(27) + "[48;2;255;128;0m"
+        True
     """
-    colors = turbo_colormap_256[trim_start : len(turbo_colormap_256) - trim_end]
-    figure = matplotlib.figure.Figure(
-        figsize=(
-            COLORMAP_STRIP_WIDTH.m_as("inches"),
-            COLORMAP_STRIP_HEIGHT.m_as("inches"),
-        ),
-        dpi=COLORMAP_STRIP_RESOLUTION.m_as("1/inch"),
-    )
-    matplotlib.backends.backend_agg.FigureCanvasAgg(figure)
-    axis = figure.subplots()
-    axis.imshow([colors], aspect="auto", interpolation="nearest")
-    axis.set_yticks([])
-    start = trim_start
-    end = start + len(colors) - 1
-    labels = [*range(start, end, COLORMAP_CELLS_PER_GROUP), end]
-    axis.set_xticks([label - start for label in labels])
-    axis.set_xticklabels([str(label) for label in labels], fontsize=9)
-    axis.tick_params(axis="x", length=6)
-    for boundary in range(
-        COLORMAP_CELLS_PER_GROUP,
-        len(colors),
-        COLORMAP_CELLS_PER_GROUP,
-    ):
-        axis.axvline(boundary - 0.5, color="white", linewidth=0.5, alpha=0.7)
-    if trim_start == 0 and trim_end == 0:
-        removed = ""
-    else:
-        removed = f" ({trim_start} removed from the start, {trim_end} from the end)"
-    axis.set_title(
-        f"Turbo colormap: original indices {start}-{end}{removed}, "
-        f"ticks and guides every {COLORMAP_CELLS_PER_GROUP}",
-        fontsize=11,
-    )
-    figure.tight_layout()
-    buffer = io.BytesIO()
-    figure.savefig(buffer, format="png")
-    return buffer.getvalue()
+    components = (round(component * 255) for component in rgb)
+    return "\x1b[48;2;" + ";".join(str(value) for value in components) + "m"
+
+
+def turbo_colormap_ansi(
+    trim_start: int = TURBO_TRIM_FROM_START,
+    trim_end: int = TURBO_TRIM_FROM_END,
+) -> str:
+    """Return the full Turbo colormap as ANSI truecolor with the used range marked.
+
+    Rows run top to bottom, one per color in the full 256-color table. To the left of
+    the color bar, a tick label names the original Turbo index every
+    :data:`COLORMAP_TICK_INTERVAL` colors, and to the right of
+    :data:`USED_RANGE_MARKER`, a label names the first and last color of the range the
+    progression rings sample; the marker itself is drawn beside every color in that
+    range, so the whole map and the range in use read together. That range defaults to
+    the one :data:`TURBO_RAMP` covers; *trim_start* and *trim_end* move it to preview a
+    ramp with different endpoints. The text is built in memory, ready to print to a
+    terminal.
+
+    A terminal that cannot show truecolor renders the rows in whatever approximation it
+    has, so the strip degrades but the labels and the marker stay readable.
+
+    Args:
+        trim_start: The number of colors to exclude from the start of the used range.
+        trim_end: The number of colors to exclude from the end of the used range.
+
+    Returns:
+        The strip as one line per color.
+    """
+    last_index = len(turbo_colormap_256) - 1
+    first_used = max(trim_start, 0)
+    last_used = min(last_index - trim_end, last_index)
+    used = range(first_used, last_used + 1)
+    bar = " " * COLORMAP_BAR_WIDTH
+    rows: list[str] = []
+    for index, color in enumerate(turbo_colormap_256):
+        tick = str(index) if index in COLORMAP_TICK_INDICES else ""
+        marker = " "
+        range_label = ""
+        if index in used:
+            marker = USED_RANGE_MARKER
+            if index in {first_used, last_used}:
+                range_label = f" {index}"
+        rows.append(
+            f"{tick:>{COLORMAP_TICK_LABEL_WIDTH}} "
+            f"{ansi_background(color)}{bar}{ANSI_RESET} {marker}{range_label}",
+        )
+    return "\n".join(line.rstrip() for line in rows) + "\n"
 
 
 def color_hex(rgb: tuple[float, float, float]) -> str:

@@ -1,16 +1,13 @@
-"""Rendering every fire's plots in one shared process pool.
+"""Rendering every fire's plots.
 
-Each pool worker builds its renderer once and clears the figure between plots, so the
-per-plot work is only drawing and encoding. A fire's plot is skipped when none of its
-lines span enough observation times.
+A fire's plot is skipped when none of its lines span enough observation times. Rendering
+is pure string assembly, so the plots are drawn inline: the whole season renders in well
+under a second.
 """
 
 from __future__ import annotations
 
-import contextlib
 import dataclasses
-import multiprocessing
-import os
 import re
 import typing
 
@@ -18,19 +15,9 @@ import peri_scribe.kml.plot_data
 import peri_scribe.kml.plot_drawing
 
 
-# Pool workers lower their scheduling priority by this niceness increment, as the
-# ``nice`` command does, so the batch rendering yields the machine to other work while
-# it runs.
-WORKER_NICENESS_INCREMENT = 10
-
-# The most concurrent processes the plot pool may start. A batch render is capped at
-# this many workers even on machines with more cores.
-PLOT_WORKER_LIMIT = 6
-
-
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class PlotImage:
-    """One rendered plot: its filename and PNG bytes."""
+    """One rendered plot: its filename and its SVG bytes."""
 
     filename: str
     content: bytes
@@ -41,8 +28,7 @@ class PlotRequest:
     """One plot ready to render: which fire it belongs to and its lines.
 
     A plot is only requested after its lines survived the minimum-observation filter, so
-    every request produces exactly one image. The y-axis label is per-plot data; the
-    shared setup a worker reuses holds no per-type state.
+    every request produces exactly one image.
     """
 
     fire_index: int
@@ -52,74 +38,53 @@ class PlotRequest:
     series: tuple[peri_scribe.kml.plot_data.PlotSeries, ...]
 
 
-# The rendering setup each pool worker reuses for every plot it draws. The pool
-# initializer appends one renderer per worker; the workers share it across the pool's
-# plots by clearing the figure between them. The parent process never renders, so its
-# list stays empty.
-worker_renderers: list[peri_scribe.kml.plot_drawing.PlotRenderer] = []
-
-
-def initialize_worker() -> None:
-    """Create the renderer a plot pool worker reuses for every plot it draws.
-
-    This runs once per worker process when the pool starts. The renderer holds the
-    figure, canvas, and buffer the worker clears between plots; the y-axis label is
-    per-plot data and travels with each request instead.
-    """
-    # Set niceness when possible to keep the machine responsive while the pool works.
-    # Some platforms (e.g., Windows) do not have os.nice at all (AttributeError) and
-    # sometimes sandboxes (e.g., used with coding agents) prevent changing niceness
-    # (OSError), so ignore those errors as they don't change functionality.
-    with contextlib.suppress(AttributeError, OSError):
-        os.nice(WORKER_NICENESS_INCREMENT)
-    worker_renderers.append(peri_scribe.kml.plot_drawing.create_plot_renderer())
-
-
 def render_plot_request(request: PlotRequest) -> PlotImage:
-    """Render *request* on this worker's shared renderer.
-
-    A pool worker calls this once per plot; the worker's renderer was created by the
-    pool initializer.
+    """Render *request*.
 
     Args:
         request: The plot to render.
 
     Returns:
         The rendered image.
-
-    Raises:
-        RuntimeError: When the worker's renderer has not been created.
     """
-    renderer = worker_renderers[0] if worker_renderers else None
-    if renderer is None:
-        message = "a plot pool worker must create its renderer before rendering"
-        raise RuntimeError(message)
     return PlotImage(
         filename=plot_filename(
             request.filename_prefix,
             request.filename_suffix,
         ),
         content=peri_scribe.kml.plot_drawing.draw_plot(
-            renderer,
             request.series,
             y_axis_label=request.y_axis_label,
         ),
     )
 
 
-def worker_count_for(task_count: int) -> int:
-    """Return the number of workers the plot pool should use.
-
-    A pool never needs more workers than it has plots to render, and never more than the
-    machine has cores or ``PLOT_WORKER_LIMIT``, whichever is lower.
+def plot_requests(
+    fire_bundles: tuple[
+        tuple[str, tuple[peri_scribe.kml.plot_data.FirePlot, ...]],
+        ...,
+    ],
+) -> list[PlotRequest]:
+    """Return one request per fire plot that survived the observation filter.
 
     Args:
-        task_count: The number of plots the pool will render.
+        fire_bundles: Each fire's filename prefix and its plots, in fire order.
 
     Returns:
-        The number of workers, at least one.
+        The requests, in fire order and in each fire's plot order.
     """
-    return max(1, min(task_count, PLOT_WORKER_LIMIT, os.cpu_count() or 1))
+    return [
+        PlotRequest(
+            fire_index=fire_index,
+            filename_prefix=filename_prefix,
+            filename_suffix=plot.filename_suffix,
+            y_axis_label=plot.y_axis_label,
+            series=series,
+        )
+        for fire_index, (filename_prefix, plots) in enumerate(fire_bundles)
+        for plot in plots
+        if (series := peri_scribe.kml.plot_data.retained_series(plot.series))
+    ]
 
 
 def plot_image_bundles(
@@ -128,52 +93,33 @@ def plot_image_bundles(
         ...,
     ],
     *,
-    during_rendering: typing.Callable[[], None] | None = None,
+    before_rendering: typing.Callable[[], None] | None = None,
 ) -> tuple[tuple[PlotImage, ...], ...]:
-    """Render every fire's plots in parallel with one shared pool.
+    """Render every fire's plots.
 
-    Every worker in the pool creates its figure, canvas, and output buffer once and
-    clears the figure between plots, so the per-plot work is only drawing and encoding.
     A fire's plot is skipped when none of its lines span enough observation times. When
-    *during_rendering* is given, the parent runs it after submitting the plots and
-    before collecting the results, so a caller can finish independent per-fire work
-    (such as preparing data the folders will need) while the workers render.
+    *before_rendering* is given the caller's work runs before the plots are drawn, so a
+    caller can prepare data the folders will need.
 
     Args:
         fire_bundles: Each fire's filename prefix and its plots, in fire order.
-        during_rendering: Work for the parent to run while the pool renders, or None.
+        before_rendering: Work for the caller to run before rendering, or None.
 
     Returns:
         Each fire's rendered images, in the input fire order and in each fire's
         plot order.
     """
-    requests: list[PlotRequest] = []
-    for fire_index, (filename_prefix, plots) in enumerate(fire_bundles):
-        for plot in plots:
-            series = peri_scribe.kml.plot_data.retained_series(plot.series)
-            if not series:
-                continue
-            requests.append(
-                PlotRequest(
-                    fire_index=fire_index,
-                    filename_prefix=filename_prefix,
-                    filename_suffix=plot.filename_suffix,
-                    y_axis_label=plot.y_axis_label,
-                    series=series,
-                ),
-            )
+    requests = plot_requests(fire_bundles)
     images_by_fire: list[list[PlotImage]] = [[] for _fire in fire_bundles]
     if not requests:
         return tuple(tuple(images) for images in images_by_fire)
-    with multiprocessing.Pool(
-        worker_count_for(len(requests)),
-        initializer=initialize_worker,
-    ) as pool:
-        results = pool.map_async(render_plot_request, requests)
-        if during_rendering is not None:
-            during_rendering()
-        rendered = results.get()
-    for request, image in zip(requests, rendered, strict=True):
+    if before_rendering is not None:
+        before_rendering()
+    for request, image in zip(
+        requests,
+        (render_plot_request(request) for request in requests),
+        strict=True,
+    ):
         images_by_fire[request.fire_index].append(image)
     return tuple(tuple(images) for images in images_by_fire)
 
@@ -186,7 +132,7 @@ def plot_filename(filename_prefix: str, filename_suffix: str) -> str:
         filename_suffix: The plot's suffix, like ``area``.
 
     Returns:
-        The filename, like ``2026-cabug-000001-area.png``.
+        The filename, like ``2026-cabug-000001-area.svg``.
     """
     image_format = peri_scribe.kml.plot_drawing.IMAGE_FORMAT
     return f"{filename_prefix}-{filename_suffix}.{image_format}"

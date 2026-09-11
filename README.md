@@ -17,8 +17,7 @@ year-directory argument default to `data/<current year>`.
   run all specified stages regardless of data changes. `--only STAGE`, `--from STAGE`,
   and `--to STAGE` run one stage or a range, and `--list-stages` prints the stages with
   descriptions.
-- `show-colormap` previews the progression-ring colormap in a compatible terminal or
-  writes it to a PNG file.
+- `show-colormap` previews the progression-ring colormap in a compatible terminal.
 - `validate-sources` compares incremental feed snapshots with complete fresh downloads
   and leaves validation data for inspection when problems are found.
 
@@ -34,7 +33,7 @@ The `run` pipeline writes these outputs:
 - `derived/history_of_full_geography.gpkg` — full perimeter and point histories.
 - `derived/history_of_differential_geography.gpkg` — corrected growth rings.
 - `derived/fire_scores.json` — score and explanation for each qualifying fire.
-- `derived/fire_scores_ccdf.png` — score-distribution chart.
+- `derived/fire_scores_ccdf.html` — score-distribution chart.
 - `maps/PeriScribe Fires <year>.kmz` — the Google Earth output.
 - `reports/PeriScribe Fires <year>.md` — the fire reports.
 

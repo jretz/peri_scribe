@@ -497,9 +497,7 @@ def test_fire_geometries_sorts_by_case_folded_name() -> None:
     assert [fire.name for fire in fires] == ["aB", "Ac", "AD", "ae"]
 
 
-def test_fire_geometries_attaches_plot_images(
-    in_process_plot_image_bundles: None,
-) -> None:
+def test_fire_geometries_attaches_plot_images() -> None:
     index = tests.peri_scribe.kml.kml_helpers.fire_index([
         tests.peri_scribe.kml.kml_helpers.fire_index_entry(
             "Bug",
@@ -524,15 +522,13 @@ def test_fire_geometries_attaches_plot_images(
         tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
     )
     (fire,) = fires
-    assert [image.filename for image in fire.images] == ["id-bug-perimeter.png"]
+    assert [image.filename for image in fire.images] == ["id-bug-perimeter.svg"]
     assert fire.images[0].content
     assert fire.description is not None
     assert fire.description.identifier == "id-bug"
 
 
-def test_fire_geometries_skips_plot_images_when_render_plots_is_false(
-    in_process_plot_image_bundles: None,
-) -> None:
+def test_fire_geometries_skips_plot_images_when_render_plots_is_false() -> None:
     index = tests.peri_scribe.kml.kml_helpers.fire_index([
         tests.peri_scribe.kml.kml_helpers.fire_index_entry(
             "Bug",
@@ -563,9 +559,7 @@ def test_fire_geometries_skips_plot_images_when_render_plots_is_false(
     assert fire.description.identifier == "id-bug"
 
 
-def test_fire_geometries_matches_identifier_less_fire_by_name(
-    in_process_plot_image_bundles: None,
-) -> None:
+def test_fire_geometries_matches_identifier_less_fire_by_name() -> None:
     index = tests.peri_scribe.kml.kml_helpers.fire_index([
         tests.peri_scribe.kml.kml_helpers.fire_index_entry(
             "Bug",

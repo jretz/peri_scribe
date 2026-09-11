@@ -377,9 +377,9 @@ def precompute_interior_added_areas(pending: list[PendingFire]) -> None:
     """Warm the added-area cache for every pending fire's drawn rings.
 
     The folder-writing phase asks each fire for the same added areas, and computing them
-    there lengthens that single-threaded phase, so this runs in the parent while the
-    plot pool renders instead: by the time the folders are written every fire's
-    cumulative union work is done and the folder's requests hit the cache.
+    there lengthens that single-threaded phase, so this runs before the plots are drawn
+    instead: by the time the folders are written every fire's cumulative union work is
+    done and the folder's requests hit the cache.
     """
     for (
         _entry,
@@ -415,11 +415,10 @@ def fire_geometries(
     latest perimeter when no location is known. The full perimeters feed the latest
     perimeters folder, the differential growth rings feed the progression maps, and the
     point and perimeter histories feed the line plots embedded in each fire's balloon.
-    When *render_plots* is True the fires' plots are rendered together, in parallel, in
-    one shared process pool; while the pool renders, the parent finishes each fire's
-    interior added areas so the folder-writing phase finds them already cached. When
-    scores are supplied, each fire's score explanation is shown as the final row of its
-    balloon, matched by identifier and falling back to name.
+    When *render_plots* is True the fires' plots are rendered, precomputing each fire's
+    interior added areas first so the folder-writing phase finds them already cached.
+    When scores are supplied, each fire's score explanation is shown as the final row of
+    its balloon, matched by identifier and falling back to name.
 
     Args:
         index: The fire index that names each fire and its status.
@@ -473,7 +472,7 @@ def fire_geometries(
     if render_plots:
         image_bundles = peri_scribe.kml.plot_rendering.plot_image_bundles(
             tuple(plot_bundles),
-            during_rendering=functools.partial(
+            before_rendering=functools.partial(
                 precompute_interior_added_areas,
                 pending,
             ),

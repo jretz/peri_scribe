@@ -29,7 +29,7 @@ SQLite database at `sources/buildings.sqlite`.
 2. Write `derived/history_of_full_geography.gpkg` with `perimeter_history` and
    `point_history` layers.
 3. Write `derived/history_of_differential_geography.gpkg` containing growth rings.
-4. Write `derived/fire_scores.json` and `derived/fire_scores_ccdf.png`.
+4. Write `derived/fire_scores.json` and `derived/fire_scores_ccdf.html`.
 5. Write `maps/PeriScribe Fires <year>.kmz`.
 6. Write `reports/PeriScribe Fires <year>.md`.
 
@@ -49,8 +49,7 @@ Run `peri_scribe --help` for the available commands:
 - `show-colormap` previews or writes the colormap used for progression rings.
 
 The `run` command accepts an optional year-directory argument; when omitted it defaults
-to `data/<current year>`. `show-colormap` instead accepts colormap trim options and an
-optional PNG output path.
+to `data/<current year>`.
 
 ## Future work
 

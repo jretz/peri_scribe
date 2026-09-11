@@ -2,12 +2,9 @@
 
 from __future__ import annotations
 
-import os
-
-import pytest
+import datetime
 
 import peri_scribe.kml.plot_data
-import peri_scribe.kml.plot_drawing
 import peri_scribe.kml.plot_rendering
 import tests.peri_scribe.kml.kml_plot_helpers
 
@@ -15,7 +12,7 @@ import tests.peri_scribe.kml.kml_plot_helpers
 def test_plot_filename_joins_prefix_and_suffix() -> None:
     assert (
         peri_scribe.kml.plot_rendering.plot_filename("id-bug", "area")
-        == "id-bug-area.png"
+        == "id-bug-area.svg"
     )
 
 
@@ -37,107 +34,7 @@ def test_filename_prefix_falls_back_to_fire_for_empty_name() -> None:
     assert peri_scribe.kml.plot_rendering.filename_prefix(None, "!!!") == "fire"
 
 
-def test_initialize_worker_creates_shared_renderer(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(peri_scribe.kml.plot_rendering, "worker_renderers", [])
-    monkeypatch.setattr(
-        peri_scribe.kml.plot_rendering.os,
-        "nice",
-        lambda increment: increment,
-    )
-    peri_scribe.kml.plot_rendering.initialize_worker()
-    image = peri_scribe.kml.plot_rendering.render_plot_request(
-        peri_scribe.kml.plot_rendering.PlotRequest(
-            fire_index=0,
-            filename_prefix="id-bug",
-            filename_suffix="area",
-            y_axis_label="Thousands of acres",
-            series=(
-                peri_scribe.kml.plot_data.PlotSeries(
-                    label="Area",
-                    points=(
-                        tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 10.0),
-                        tests.peri_scribe.kml.kml_plot_helpers.series_point(2, 20.0),
-                    ),
-                ),
-            ),
-        ),
-    )
-    assert image.filename == "id-bug-area.png"
-    assert image.content.startswith(
-        tests.peri_scribe.kml.kml_plot_helpers.PNG_SIGNATURE,
-    )
-
-
-def test_initialize_worker_nices_the_worker_process(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    niceness_calls: list[int] = []
-    monkeypatch.setattr(
-        peri_scribe.kml.plot_rendering.os,
-        "nice",
-        lambda increment: niceness_calls.append(increment) or increment,
-    )
-    peri_scribe.kml.plot_rendering.initialize_worker()
-    assert niceness_calls == [
-        peri_scribe.kml.plot_rendering.WORKER_NICENESS_INCREMENT,
-    ]
-
-
-def test_initialize_worker_continues_when_niceness_is_denied(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    def deny_niceness(_increment: int) -> int:
-        message = "Operation not permitted"
-        raise PermissionError(message)
-
-    monkeypatch.setattr(peri_scribe.kml.plot_rendering, "worker_renderers", [])
-    monkeypatch.setattr(peri_scribe.kml.plot_rendering.os, "nice", deny_niceness)
-    peri_scribe.kml.plot_rendering.initialize_worker()
-    assert len(peri_scribe.kml.plot_rendering.worker_renderers) == 1
-    assert isinstance(
-        peri_scribe.kml.plot_rendering.worker_renderers[0],
-        peri_scribe.kml.plot_drawing.PlotRenderer,
-    )
-
-
-def test_render_plot_request_raises_without_initialized_renderer(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(peri_scribe.kml.plot_rendering, "worker_renderers", [])
-    with pytest.raises(RuntimeError):
-        peri_scribe.kml.plot_rendering.render_plot_request(
-            peri_scribe.kml.plot_rendering.PlotRequest(
-                fire_index=0,
-                filename_prefix="id-bug",
-                filename_suffix="area",
-                y_axis_label="Thousands of acres",
-                series=(),
-            ),
-        )
-
-
-def test_worker_count_for_caps_at_worker_limit_cores_and_tasks(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    limit = peri_scribe.kml.plot_rendering.PLOT_WORKER_LIMIT
-    # Fewer plots than the other caps win: one worker per plot.
-    task_count = 2
-    monkeypatch.setattr(os, "cpu_count", lambda: limit + 6)
-    assert peri_scribe.kml.plot_rendering.worker_count_for(task_count) == task_count
-    # A machine with more cores than the limit still caps the pool at the limit.
-    assert peri_scribe.kml.plot_rendering.worker_count_for(100) == limit
-    # A machine with fewer cores than the limit caps the pool at its cores.
-    cpu_count = 4
-    monkeypatch.setattr(os, "cpu_count", lambda: cpu_count)
-    assert peri_scribe.kml.plot_rendering.worker_count_for(100) == cpu_count
-    # A single-core machine gets one worker.
-    monkeypatch.setattr(os, "cpu_count", lambda: 1)
-    assert peri_scribe.kml.plot_rendering.worker_count_for(5) == 1
-
-
-def test_plot_image_bundles_renders_each_fire_in_parallel() -> None:
+def test_plot_image_bundles_renders_each_fire_in_order() -> None:
     area_plot = peri_scribe.kml.plot_data.FirePlot(
         filename_suffix="area",
         series=(
@@ -190,18 +87,16 @@ def test_plot_image_bundles_renders_each_fire_in_parallel() -> None:
         ),
     )
     assert [image.filename for image in bundles[0]] == [
-        "id-bug-area.png",
-        "id-bug-perimeter.png",
+        "id-bug-area.svg",
+        "id-bug-perimeter.svg",
     ]
-    assert [image.filename for image in bundles[1]] == ["id-alta-area.png"]
+    assert [image.filename for image in bundles[1]] == ["id-alta-area.svg"]
     for bundle in bundles:
         for image in bundle:
-            assert image.content.startswith(
-                tests.peri_scribe.kml.kml_plot_helpers.PNG_SIGNATURE,
-            )
+            assert image.content.startswith(b"<svg")
 
 
-def test_plot_image_bundles_runs_during_rendering_in_the_parent() -> None:
+def test_plot_image_bundles_runs_before_rendering() -> None:
     plot = peri_scribe.kml.plot_data.FirePlot(
         filename_suffix="area",
         series=(
@@ -218,14 +113,14 @@ def test_plot_image_bundles_runs_during_rendering_in_the_parent() -> None:
     calls: list[str] = []
 
     def record() -> None:
-        calls.append("during")
+        calls.append("before")
 
     bundles = peri_scribe.kml.plot_rendering.plot_image_bundles(
         (("id-one", (plot,)),),
-        during_rendering=record,
+        before_rendering=record,
     )
-    assert calls == ["during"]
-    assert [image.filename for image in bundles[0]] == ["id-one-area.png"]
+    assert calls == ["before"]
+    assert [image.filename for image in bundles[0]] == ["id-one-area.svg"]
 
 
 def test_plot_image_bundles_returns_empty_bundles_without_requests() -> None:
@@ -246,3 +141,68 @@ def test_plot_image_bundles_returns_empty_bundles_without_requests() -> None:
 
 def test_plot_image_bundles_returns_empty_for_no_fires() -> None:
     assert peri_scribe.kml.plot_rendering.plot_image_bundles(()) == ()
+
+
+def two_point_series() -> peri_scribe.kml.plot_data.PlotSeries:
+    return peri_scribe.kml.plot_data.PlotSeries(
+        label="Area",
+        points=(
+            peri_scribe.kml.plot_data.SeriesPoint(
+                observation_time=datetime.datetime(2026, 7, 8, tzinfo=datetime.UTC),
+                value=1.0,
+            ),
+            peri_scribe.kml.plot_data.SeriesPoint(
+                observation_time=datetime.datetime(2026, 7, 10, tzinfo=datetime.UTC),
+                value=2.0,
+            ),
+        ),
+    )
+
+
+def test_render_plot_request_returns_the_rendered_svg() -> None:
+    image = peri_scribe.kml.plot_rendering.render_plot_request(
+        peri_scribe.kml.plot_rendering.PlotRequest(
+            fire_index=0,
+            filename_prefix="id-bug",
+            filename_suffix="area",
+            y_axis_label="Thousands of acres",
+            series=(two_point_series(),),
+        ),
+    )
+    assert image.filename == "id-bug-area.svg"
+    assert image.content.startswith(b"<svg")
+
+
+def test_plot_requests_indexes_each_plot_by_its_fire() -> None:
+    plot = peri_scribe.kml.plot_data.FirePlot(
+        filename_suffix="area",
+        y_axis_label="Thousands of acres",
+        series=(two_point_series(),),
+    )
+    requests = peri_scribe.kml.plot_rendering.plot_requests(
+        (("id-one", (plot,)), ("id-two", (plot, plot))),
+    )
+    assert [request.fire_index for request in requests] == [0, 1, 1]
+    assert [request.filename_prefix for request in requests] == [
+        "id-one",
+        "id-two",
+        "id-two",
+    ]
+
+
+def test_plot_requests_skips_plots_without_enough_observations() -> None:
+    one_point = peri_scribe.kml.plot_data.PlotSeries(
+        label="Area",
+        points=(
+            peri_scribe.kml.plot_data.SeriesPoint(
+                observation_time=datetime.datetime(2026, 7, 8, tzinfo=datetime.UTC),
+                value=1.0,
+            ),
+        ),
+    )
+    plot = peri_scribe.kml.plot_data.FirePlot(
+        filename_suffix="area",
+        y_axis_label="Thousands of acres",
+        series=(one_point,),
+    )
+    assert peri_scribe.kml.plot_rendering.plot_requests((("id-one", (plot,)),)) == []
