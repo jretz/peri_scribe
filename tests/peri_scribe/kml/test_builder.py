@@ -507,9 +507,7 @@ def test_fire_kml_holds_fires_directly_under_status_folders() -> None:
     assert tests.peri_scribe.kml.kml_helpers.folder_names(alta_folder) == ["Interior"]
 
 
-def test_fire_kml_builds_active_and_inactive_folders(
-    in_process_plot_image_bundles: None,
-) -> None:
+def test_fire_kml_builds_active_and_inactive_folders() -> None:
     index = tests.peri_scribe.kml.kml_helpers.fire_index([
         tests.peri_scribe.kml.kml_helpers.fire_index_entry(
             "Bug",
@@ -593,9 +591,7 @@ def test_fire_kml_builds_active_and_inactive_folders(
     assert "perimeter-outline-1" in style_ids
 
 
-def test_fire_kml_hides_inactive_fires_tree(
-    in_process_plot_image_bundles: None,
-) -> None:
+def test_fire_kml_hides_inactive_fires_tree() -> None:
     index = tests.peri_scribe.kml.kml_helpers.fire_index([
         tests.peri_scribe.kml.kml_helpers.fire_index_entry(
             "Bug",
@@ -734,16 +730,19 @@ def test_write_kmz_writes_images(
     monkeypatch.setattr(zipfile, "ZipFile", recording_archive_factory(archives))
 
     image_content = b"\x89PNG\r\n\x1a\n"
+    svg_content = b"<svg/>"
     peri_scribe.kml.builder.write_kmz(
         path,
         "<kml/>",
-        {"id-bug-area.png": image_content},
+        {"id-bug-area.png": image_content, "id-bug-area.svg": svg_content},
     )
 
     (archive,) = archives
     assert archive.writes == [
         ("doc.kml", "<kml/>", None),
+        # A raster that is already compressed is stored; a text plot is deflated.
         ("id-bug-area.png", image_content, zipfile.ZIP_STORED),
+        ("id-bug-area.svg", svg_content, zipfile.ZIP_DEFLATED),
     ]
 
 

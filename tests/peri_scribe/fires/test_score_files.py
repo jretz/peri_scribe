@@ -16,7 +16,7 @@ def test_fire_scores_path_names_output() -> None:
 def test_fire_scores_ccdf_path_names_output() -> None:
     assert peri_scribe.fires.score_files.fire_scores_ccdf_path(
         pathlib.Path("data/2026"),
-    ) == pathlib.Path("data/2026/derived/fire_scores_ccdf.png")
+    ) == pathlib.Path("data/2026/derived/fire_scores_ccdf.html")
 
 
 def test_load_fire_scores_returns_none_when_scores_are_missing(

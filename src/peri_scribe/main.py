@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import base64
 import dataclasses
 import datetime
 import importlib.metadata
@@ -148,54 +147,36 @@ def fetch_external_source(
 @click.option(
     "--trim-start",
     type=int,
-    default=0,
+    default=peri_scribe.kml.colormap.TURBO_TRIM_FROM_START,
     show_default=True,
-    help="Colors to exclude from the start of the colormap.",
+    help="Colors to exclude from the start of the used range.",
 )
 @click.option(
     "--trim-end",
     type=int,
-    default=0,
+    default=peri_scribe.kml.colormap.TURBO_TRIM_FROM_END,
     show_default=True,
-    help="Colors to exclude from the end of the colormap.",
-)
-@click.option(
-    "--output",
-    type=click.Path(
-        path_type=pathlib.Path,
-        dir_okay=False,
-        writable=True,
-    ),
-    help="Write the strip to this PNG file instead of printing it to the terminal.",
+    help="Colors to exclude from the end of the used range.",
 )
 def show_colormap(
     *,
     trim_start: int,
     trim_end: int,
-    output: pathlib.Path | None,
 ) -> None:
-    """Print a Turbo colormap strip to the terminal as an inline image.
+    """Print a Turbo colormap strip to the terminal as ANSI truecolor.
 
-    The strip renders in memory and prints as an iTerm2 inline-image escape sequence
-    (OSC 1337), which terminals including iTerm2 and WezTerm display directly in the
-    terminal. The full 256-color colormap is shown unless --trim-start or --trim-end
-    remove colors from the corresponding ends. With --output the strip is written to
-    that file as a plain PNG instead.
+    The strip is one colored cell per color of the full 256-color colormap. A tick label
+    left of the color bar names the original Turbo index every 16 colors, and a label
+    right of the marker line names the first and last color the progression rings use;
+    the marker itself is drawn beside every color in that range. The marked range
+    defaults to the ramp the rings sample, so --trim-start and --trim-end preview a ramp
+    with different endpoints.
     """
-    png = peri_scribe.kml.colormap.turbo_colormap_png(
+    strip = peri_scribe.kml.colormap.turbo_colormap_ansi(
         trim_start=trim_start,
         trim_end=trim_end,
     )
-    if output is None:
-        encoded = base64.b64encode(png).decode("ascii")
-        # The width parameter scales the inline image to the full terminal width;
-        # without it iTerm2 sizes the image from its DPI metadata, which renders the
-        # strip narrower than the window.
-        click.echo(f"\x1b]1337;File=inline=1;width=100%:{encoded}\a")
-    else:
-        output.parent.mkdir(parents=True, exist_ok=True)
-        output.write_bytes(png)
-        logger.info("Wrote Turbo colormap strip", path=output)
+    click.echo(strip)
 
 
 def stored_evacuations_digest(year_directory: pathlib.Path) -> str | None:

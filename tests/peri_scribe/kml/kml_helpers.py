@@ -17,9 +17,6 @@ import pytest
 
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.geometry
-import peri_scribe.kml.plot_data
-import peri_scribe.kml.plot_drawing
-import peri_scribe.kml.plot_rendering
 import peri_scribe.models
 
 
@@ -151,55 +148,6 @@ def fire_index(
         version="2026-08-18",
         fires=entries,
     )
-
-
-def serial_plot_image_bundles(
-    fire_bundles: tuple[
-        tuple[str, tuple[peri_scribe.kml.plot_data.FirePlot, ...]],
-        ...,
-    ],
-    *,
-    during_rendering: typing.Callable[[], None] | None = None,
-) -> tuple[tuple[peri_scribe.kml.plot_rendering.PlotImage, ...], ...]:
-    """Render each fire's surviving plots in-process, without a process pool.
-
-    A stand-in for the pool-based ``plot_image_bundles`` for tests that exercise the
-    geometry and KML wiring around rendering rather than the pool itself. When
-    *during_rendering* is given it runs before the images are returned, standing in
-    for the parent-side work the pool version runs while its workers render.
-
-    Args:
-        fire_bundles: Each fire's filename prefix and its plots, in fire order.
-        during_rendering: Work the pool-based function would run while rendering, or
-            None.
-
-    Returns:
-        Each fire's rendered images, in the input order.
-    """
-    bundles = []
-    for filename_prefix, plots in fire_bundles:
-        images = []
-        for plot in plots:
-            series = peri_scribe.kml.plot_data.retained_series(plot.series)
-            if not series:
-                continue
-            images.append(
-                peri_scribe.kml.plot_rendering.PlotImage(
-                    filename=peri_scribe.kml.plot_rendering.plot_filename(
-                        filename_prefix,
-                        plot.filename_suffix,
-                    ),
-                    content=peri_scribe.kml.plot_drawing.draw_plot(
-                        peri_scribe.kml.plot_drawing.create_plot_renderer(),
-                        series,
-                        y_axis_label=plot.y_axis_label,
-                    ),
-                ),
-            )
-        bundles.append(tuple(images))
-    if during_rendering is not None:
-        during_rendering()
-    return tuple(bundles)
 
 
 def document_from(kml_text: str) -> ET.Element:

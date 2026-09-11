@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import datetime
-import io
 
-import PIL.Image
 import pytest
 import shapely.geometry
 
@@ -254,11 +252,6 @@ def test_progression_ring_colors_returns_nothing_without_rings() -> None:
     assert peri_scribe.kml.colormap.progression_ring_colors(()) == ()
 
 
-# A pixel is treated as the strip's white background when its channels span at most
-# this much, and a strip-end pixel may differ from its color by at most this much
-# per channel (the cell at each end renders a fraction of a pixel narrower than the
-# rest).
-MAX_NEUTRAL_CHANNEL_SPREAD = 8
 MAX_COLOR_CHANNEL_ERROR = 6
 
 
@@ -278,80 +271,125 @@ def expected_rgb(rgb: tuple[float, float, float]) -> tuple[int, int, int]:
     )
 
 
-def strip_end_colors(
-    content: bytes,
-) -> tuple[tuple[int, int, int], tuple[int, int, int]]:
-    """Return the colors at the ends of the colormap strip in *content*.
+def tick_labels(strip: str) -> dict[int, int]:
+    """Return each row's index and the tick label printed to its left.
 
     Args:
-        content: The strip PNG bytes.
+        strip: The colormap strip.
 
     Returns:
-        The (first, last) pixel colors from the strip's middle row.
+        The labelled rows' indices mapped to the values printed on them.
     """
-    with PIL.Image.open(io.BytesIO(content)) as image:
-        width, height = image.size
-        pixels = image.convert("RGB").tobytes()
-    middle_row = pixels[height // 2 * width * 3 : (height // 2 + 1) * width * 3]
-
-    def neutral(pixel_index: int) -> bool:
-        pixel = middle_row[pixel_index * 3 : pixel_index * 3 + 3]
-        return max(pixel) - min(pixel) < MAX_NEUTRAL_CHANNEL_SPREAD
-
-    colored = [index for index in range(width) if not neutral(index)]
-    first = middle_row[(colored[0] + 2) * 3 : (colored[0] + 2) * 3 + 3]
-    last = middle_row[(colored[-1] - 2) * 3 : (colored[-1] - 2) * 3 + 3]
-    return (first[0], first[1], first[2]), (last[0], last[1], last[2])
+    labels = {}
+    for index, line in enumerate(strip.splitlines()):
+        text = line.split("\x1b", 1)[0].strip()
+        if text:
+            labels[index] = int(text)
+    return labels
 
 
-def assert_ends_match(
-    ends: tuple[tuple[int, int, int], tuple[int, int, int]],
-    first: tuple[float, float, float],
-    last: tuple[float, float, float],
-) -> None:
-    """Assert *ends* match the 8-bit forms of *first* and *last* closely.
+def range_labels(strip: str) -> dict[int, int]:
+    """Return each row's index and the used-range label printed to its right.
 
     Args:
-        ends: The (first, last) pixel colors from the strip.
-        first: The expected first color on a 0 to 1 scale.
-        last: The expected last color on a 0 to 1 scale.
+        strip: The colormap strip.
+
+    Returns:
+        The labelled rows' indices mapped to the values printed on them.
     """
-    for actual, expected in zip(
-        ends,
-        (expected_rgb(first), expected_rgb(last)),
+    labels = {}
+    for index, line in enumerate(strip.splitlines()):
+        suffix = line.rsplit(peri_scribe.kml.colormap.ANSI_RESET, 1)[-1]
+        text = suffix.replace(peri_scribe.kml.colormap.USED_RANGE_MARKER, "").strip()
+        if text:
+            labels[index] = int(text)
+    return labels
+
+
+def test_turbo_colormap_ansi_marks_the_used_ramp_by_default() -> None:
+    start = peri_scribe.kml.colormap.TURBO_TRIM_FROM_START
+    end = start + len(peri_scribe.kml.colormap.TURBO_RAMP) - 1
+    lines = peri_scribe.kml.colormap.turbo_colormap_ansi().splitlines()
+    assert len(lines) == len(peri_scribe.kml.colormap.turbo_colormap_256)
+    marker = peri_scribe.kml.colormap.USED_RANGE_MARKER
+    for index, line in enumerate(lines):
+        assert (marker in line) == (start <= index <= end)
+
+
+def test_turbo_colormap_ansi_draws_the_full_table() -> None:
+    lines = peri_scribe.kml.colormap.turbo_colormap_ansi(
+        trim_start=0,
+        trim_end=0,
+    ).splitlines()
+    assert len(lines) == len(peri_scribe.kml.colormap.turbo_colormap_256)
+    for line, color in zip(
+        lines,
+        peri_scribe.kml.colormap.turbo_colormap_256,
         strict=True,
     ):
-        assert all(
-            abs(actual_channel - expected_channel) <= MAX_COLOR_CHANNEL_ERROR
-            for actual_channel, expected_channel in zip(
-                actual,
-                expected,
-                strict=True,
-            )
-        )
+        assert peri_scribe.kml.colormap.ansi_background(color) in line
+    assert all(peri_scribe.kml.colormap.USED_RANGE_MARKER in line for line in lines)
 
 
-def test_turbo_colormap_png_draws_the_full_table_by_default() -> None:
-    content = peri_scribe.kml.colormap.turbo_colormap_png()
-    assert content[:8] == b"\x89PNG\r\n\x1a\n"
-    with PIL.Image.open(io.BytesIO(content)) as image:
-        width, height = image.size
-    assert width > height
-    assert_ends_match(
-        strip_end_colors(content),
-        peri_scribe.kml.colormap.turbo_colormap_256[0],
-        peri_scribe.kml.colormap.turbo_colormap_256[-1],
+def test_turbo_colormap_ansi_previews_a_trim() -> None:
+    lines = peri_scribe.kml.colormap.turbo_colormap_ansi(
+        trim_start=32,
+        trim_end=8,
+    ).splitlines()
+    assert len(lines) == len(peri_scribe.kml.colormap.turbo_colormap_256)
+    marked = [
+        index
+        for index, line in enumerate(lines)
+        if peri_scribe.kml.colormap.USED_RANGE_MARKER in line
+    ]
+    assert marked == list(range(32, 248))
+
+
+def test_turbo_colormap_ansi_labels_the_tick_indices() -> None:
+    assert tick_labels(peri_scribe.kml.colormap.turbo_colormap_ansi()) == {
+        index: index for index in peri_scribe.kml.colormap.COLORMAP_TICK_INDICES
+    }
+
+
+def test_turbo_colormap_ansi_labels_the_ends_of_the_used_range() -> None:
+    first_used = 20
+    last_used = 242
+    strip = peri_scribe.kml.colormap.turbo_colormap_ansi(
+        trim_start=first_used,
+        trim_end=len(peri_scribe.kml.colormap.turbo_colormap_256) - 1 - last_used,
+    )
+    assert range_labels(strip) == {first_used: first_used, last_used: last_used}
+
+
+def test_turbo_colormap_ansi_clamps_the_used_range_to_the_table() -> None:
+    trim_start = -1
+    last_used = (
+        len(peri_scribe.kml.colormap.turbo_colormap_256)
+        - 1
+        - peri_scribe.kml.colormap.TURBO_TRIM_FROM_END
+    )
+    strip = peri_scribe.kml.colormap.turbo_colormap_ansi(trim_start=trim_start)
+    assert range_labels(strip) == {0: 0, last_used: last_used}
+
+
+def test_turbo_colormap_ansi_labels_no_used_range_when_the_trims_overlap() -> None:
+    first_used = 245
+    last_used = 239
+    strip = peri_scribe.kml.colormap.turbo_colormap_ansi(
+        trim_start=first_used,
+        trim_end=len(peri_scribe.kml.colormap.turbo_colormap_256) - 1 - last_used,
+    )
+    assert range_labels(strip) == {}
+    assert peri_scribe.kml.colormap.USED_RANGE_MARKER not in strip
+
+
+def test_colormap_tick_indices_are_the_tick_intervals() -> None:
+    assert peri_scribe.kml.colormap.COLORMAP_TICK_INDICES[:-1] == tuple(
+        range(0, 255, peri_scribe.kml.colormap.COLORMAP_TICK_INTERVAL),
     )
 
 
-def test_turbo_colormap_png_previews_a_trim() -> None:
-    content = peri_scribe.kml.colormap.turbo_colormap_png(
-        trim_start=16,
-        trim_end=16,
-    )
-    assert content[:8] == b"\x89PNG\r\n\x1a\n"
-    assert_ends_match(
-        strip_end_colors(content),
-        peri_scribe.kml.colormap.TURBO_RAMP[0],
-        peri_scribe.kml.colormap.TURBO_RAMP[-1],
+def test_colormap_tick_indices_end_with_the_last_color() -> None:
+    assert peri_scribe.kml.colormap.COLORMAP_TICK_INDICES[-1] == (
+        len(peri_scribe.kml.colormap.turbo_colormap_256) - 1
     )

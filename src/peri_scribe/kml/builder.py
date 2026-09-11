@@ -124,10 +124,14 @@ ROOT_DOCUMENT_ATTRIBUTION = f"""<![CDATA[
 
 # DEFLATE is the compression Google Earth expects inside a KMZ. Level 6 is used instead
 # of the maximum 9: the output is within 1% of level 9's size but compresses several
-# times faster, and the plot PNGs are already compressed (so they are stored without
-# recompressing rather than passed through DEFLATE a second time).
+# times faster.
 KMZ_COMPRESSION = zipfile.ZIP_DEFLATED
 KMZ_COMPRESSION_LEVEL = 6
+
+# Raster formats that are already compressed, so passing them through DEFLATE again
+# costs time for no size benefit. Everything else the archive carries -- the KML
+# document and the SVG plots -- is text, which DEFLATE shrinks by roughly two thirds.
+ALREADY_COMPRESSED_IMAGE_SUFFIXES = (".gif", ".jpeg", ".jpg", ".png")
 
 
 def kmz_filename(year: int) -> str:
@@ -415,7 +419,7 @@ def write_kmz(
     Args:
         path: The KMZ file to write.
         kml_text: The KML document to compress.
-        images: Each plot image's filename and PNG bytes, or None for none.
+        images: Each plot image's filename and its bytes, or None for none.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(
@@ -427,12 +431,16 @@ def write_kmz(
         archive.writestr(KMZ_DOCUMENT_FILENAME, kml_text)
         if images:
             for filename, content in images.items():
-                # PNG bytes are already DEFLATE-compressed, so recompressing them is
-                # pure waste of time with no size benefit.
                 archive.writestr(
                     filename,
                     content,
-                    compress_type=zipfile.ZIP_STORED,
+                    compress_type=(
+                        zipfile.ZIP_STORED
+                        if filename.casefold().endswith(
+                            ALREADY_COMPRESSED_IMAGE_SUFFIXES,
+                        )
+                        else KMZ_COMPRESSION
+                    ),
                 )
 
 

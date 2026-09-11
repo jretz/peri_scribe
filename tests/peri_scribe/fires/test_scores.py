@@ -110,7 +110,7 @@ def test_score_fires_writes_current_scores(
     assert document.fires[0].score == pytest.approx(168)
     assert stubs.ccdf_writes == [
         (
-            pathlib.Path("data/2026/derived/fire_scores_ccdf.png"),
+            pathlib.Path("data/2026/derived/fire_scores_ccdf.html"),
             document,
         ),
     ]

@@ -12,7 +12,7 @@ import peri_scribe.output
 SCORE_OUTPUT_FILENAME = "fire_scores.json"
 
 
-CCDF_OUTPUT_FILENAME = "fire_scores_ccdf.png"
+CCDF_OUTPUT_FILENAME = "fire_scores_ccdf.html"
 
 
 def fire_scores_path(year_directory: pathlib.Path) -> pathlib.Path:
@@ -66,7 +66,7 @@ def fire_scores_ccdf_path(year_directory: pathlib.Path) -> pathlib.Path:
 
     Examples:
         >>> fire_scores_ccdf_path(pathlib.Path("data/2025"))
-        PosixPath('data/2025/derived/fire_scores_ccdf.png')
+        PosixPath('data/2025/derived/fire_scores_ccdf.html')
     """
     return (
         year_directory

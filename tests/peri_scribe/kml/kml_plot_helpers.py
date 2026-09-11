@@ -19,9 +19,6 @@ if typing.TYPE_CHECKING:
     import geopandas
 
 
-PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
-
-
 def exterior_length(geometry: shapely.Geometry) -> float:
     """Return *geometry*'s exterior perimeter length, which is always known.
 

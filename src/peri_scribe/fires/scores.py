@@ -20,7 +20,7 @@ whose payloads are filtered in NumPy; the evacuation GeoPackage is queried throu
 R-Tree index. Either way, only the features near a fire are ever read.
 
 The results are written to ``{year}/derived/fire_scores.json``, along with a
-``{year}/derived/fire_scores_ccdf.png`` complementary CDF of the scores.
+``{year}/derived/fire_scores_ccdf.html`` complementary CDF of the scores.
 """
 
 from __future__ import annotations
@@ -514,7 +514,7 @@ def score_fires(year_directory: pathlib.Path) -> pathlib.Path:
     queried through their R-Tree indexes, so neither the history nor the external layers
     are ever processed one feature at a time. The results are written to
     ``{year_directory}/derived/fire_scores.json``, along with a complementary CDF to
-    ``{year_directory}/derived/fire_scores_ccdf.png``.
+    ``{year_directory}/derived/fire_scores_ccdf.html``.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.

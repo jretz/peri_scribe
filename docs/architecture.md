@@ -49,7 +49,7 @@ Derived data is written below `data/<year>/derived/`:
 - `history_of_full_geography.gpkg` contains perimeter and point histories.
 - `history_of_differential_geography.gpkg` contains corrected growth rings.
 - `fire_scores.json` contains one score and explanation per fire.
-- `fire_scores_ccdf.png` plots the score distribution.
+- `fire_scores_ccdf.html` plots the score distribution.
 
 The KMZ is written to `data/<year>/maps/PeriScribe Fires <year>.kmz` and the fire
 reports to `data/<year>/reports/PeriScribe Fires <year>.md`.
@@ -70,8 +70,7 @@ progression-map views.
 
 ArcGIS is used for FeatureServer access; GeoPandas, Shapely, pyproj, and pyogrio support
 geospatial processing and GeoPackages; Pydantic validates serialized documents; Click
-implements the CLI; and Pillow/matplotlib support generated KML imagery and score
-visualization.
+implements the CLI.
 
 ## Future work
 

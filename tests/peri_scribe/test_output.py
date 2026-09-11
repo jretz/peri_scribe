@@ -8,11 +8,7 @@ import shutil
 import typing
 
 import geopandas
-import matplotlib.axes
-import matplotlib.figure
-import matplotlib.image
 import pytest
-import seaborn as sns
 import structlog
 
 import peri_scribe.models
@@ -196,92 +192,6 @@ def test_write_document_writes_pretty_printed_json(
     assert captured[0]["fires"] == 1
 
 
-def test_write_fire_scores_ccdf_plots_complementary(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    path = pathlib.Path("/fire_scores_ccdf.png")
-    document = peri_scribe.models.FireScores.model_validate({
-        "version": "2026-08-28",
-        "fires": [
-            {
-                "name": "Park Fire",
-                "identifier": "2026-x",
-                "score": 12,
-                "explanation": "Overlap with an evacuation zone.",
-            },
-        ],
-    })
-    ecdfplot_calls: list[tuple[list[int], object, dict[str, object]]] = []
-    monkeypatch.setattr(
-        sns,
-        "ecdfplot",
-        lambda data, ax, **keywords: ecdfplot_calls.append(
-            (list(data), ax, keywords),
-        ),
-    )
-    yscale_calls: list[str] = []
-    monkeypatch.setattr(
-        matplotlib.axes.Axes,
-        "set_yscale",
-        lambda _self, value: yscale_calls.append(value),
-    )
-    saved: list[pathlib.Path] = []
-    monkeypatch.setattr(
-        matplotlib.figure.Figure,
-        "savefig",
-        lambda _self, figure_path: saved.append(figure_path),
-    )
-    with structlog.testing.capture_logs() as captured:
-        peri_scribe.output.write_fire_scores_ccdf(path, document)
-    assert len(ecdfplot_calls) == 1
-    data, _axes, keywords = ecdfplot_calls[0]
-    assert data == [12]
-    assert keywords == {"complementary": True}
-    assert yscale_calls == ["log"]
-    assert saved == [path]
-    assert captured[0]["event"] == "Wrote fire scores ccdf"
-    assert captured[0]["path"] == "fire_scores_ccdf.png"
-
-
-def test_write_fire_scores_ccdf_renders_at_requested_size(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    path = pathlib.Path("/fire_scores_ccdf.png")
-    document = peri_scribe.models.FireScores.model_validate({
-        "version": "2026-08-28",
-        "fires": [
-            {
-                "name": "Park Fire",
-                "identifier": "2026-x",
-                "score": 12,
-                "explanation": "Overlap with an evacuation zone.",
-            },
-        ],
-    })
-    monkeypatch.setattr(
-        sns,
-        "ecdfplot",
-        lambda *arguments, **_keywords: arguments,
-    )
-    buffers: list[io.BytesIO] = []
-    real_savefig = matplotlib.figure.Figure.savefig
-
-    def save_to_buffer(
-        figure: matplotlib.figure.Figure,
-        _path: pathlib.Path,
-    ) -> None:
-        buffer = io.BytesIO()
-        buffers.append(buffer)
-        real_savefig(figure, buffer)
-
-    monkeypatch.setattr(matplotlib.figure.Figure, "savefig", save_to_buffer)
-    peri_scribe.output.write_fire_scores_ccdf(path, document)
-    assert len(buffers) == 1
-    buffers[0].seek(0)
-    rendered = matplotlib.image.imread(buffers[0])
-    assert rendered.shape[:2] == (768, 1024)
-
-
 def test_curve_knees_finds_two_breakpoints() -> None:
     assert peri_scribe.output.curve_knees(
         [10] * 4 + [50] * 2 + [100, 200, 300, 500],
@@ -300,12 +210,8 @@ def test_curve_knees_returns_empty_without_a_bend() -> None:
     )
 
 
-def test_write_fire_scores_ccdf_labels_knees(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    path = pathlib.Path("/fire_scores_ccdf.png")
-    scores = [10] * 4 + [50] * 2 + [100, 200, 300, 500]
-    document = peri_scribe.models.FireScores.model_validate({
+def fire_scores_document(scores: list[int]) -> peri_scribe.models.FireScores:
+    return peri_scribe.models.FireScores.model_validate({
         "version": "2026-08-28",
         "fires": [
             {
@@ -317,64 +223,69 @@ def test_write_fire_scores_ccdf_labels_knees(
             for index, score in enumerate(scores)
         ],
     })
-    monkeypatch.setattr(
-        sns,
-        "ecdfplot",
-        lambda *arguments, **_keywords: arguments,
-    )
-    monkeypatch.setattr(
-        matplotlib.figure.Figure,
-        "savefig",
-        lambda _self, _figure_path: None,
-    )
-    annotations: list[tuple[float, float, str]] = []
-    monkeypatch.setattr(
-        matplotlib.axes.Axes,
-        "annotate",
-        lambda _self, text, xy, **_keywords: annotations.append(
-            (xy[0], xy[1], text),
-        ),
-    )
-    peri_scribe.output.write_fire_scores_ccdf(path, document)
-    assert annotations == [
-        (100, pytest.approx(0.3), "score 100\npercentile 70.0"),
-        (300, pytest.approx(0.1), "score 300\npercentile 90.0"),
-    ]
 
 
-def test_write_fire_scores_ccdf_draws_plot_when_knees_fail(
+def test_write_fire_scores_ccdf_writes_an_html_page(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "fire_scores_ccdf.html"
+    with structlog.testing.capture_logs() as captured:
+        peri_scribe.output.write_fire_scores_ccdf(
+            path,
+            fire_scores_document([12]),
+        )
+    written = path.read_text(encoding="utf-8")
+    assert written.startswith("<!DOCTYPE html>")
+    assert "<svg" in written
+    assert "src=" not in written
+    assert captured[0]["event"] == "Wrote fire scores ccdf"
+    assert captured[0]["path"] == "fire_scores_ccdf.html"
+
+
+def test_ccdf_svg_uses_the_configured_chart_size() -> None:
+    svg = peri_scribe.output.ccdf_svg(fire_scores_document([12]))
+    width = int(peri_scribe.output.CCDF_CHART_WIDTH.magnitude)
+    height = int(peri_scribe.output.CCDF_CHART_HEIGHT.magnitude)
+    assert f'width="{width}"' in svg
+    assert f'height="{height}"' in svg
+
+
+def test_ccdf_svg_plots_the_complementary_share() -> None:
+    svg = peri_scribe.output.ccdf_svg(fire_scores_document([12, 12, 40]))
+    assert "<path" in svg
+    assert "Complementary CDF" in svg
+    assert ">Score<" in svg
+
+
+def test_ccdf_svg_labels_the_curve_knees() -> None:
+    svg = peri_scribe.output.ccdf_svg(
+        fire_scores_document([10] * 4 + [50] * 2 + [100, 200, 300, 500]),
+    )
+    assert "score 100" in svg
+    assert "percentile 70.0" in svg
+    assert "score 300" in svg
+    assert "percentile 90.0" in svg
+
+
+def test_ccdf_svg_still_draws_when_knees_fail(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    path = pathlib.Path("/fire_scores_ccdf.png")
-    document = peri_scribe.models.FireScores.model_validate({
-        "version": "2026-08-28",
-        "fires": [
-            {
-                "name": "Park Fire",
-                "identifier": "2026-x",
-                "score": 12,
-                "explanation": "Overlap with an evacuation zone.",
-            },
-        ],
-    })
-
     def failing_knees(_scores: list[int]) -> list[tuple[int, float]]:
         message = "knee failure"
         raise RuntimeError(message)
 
     monkeypatch.setattr(peri_scribe.output, "curve_knees", failing_knees)
-    monkeypatch.setattr(
-        sns,
-        "ecdfplot",
-        lambda *arguments, **_keywords: arguments,
-    )
-    saved: list[pathlib.Path] = []
-    monkeypatch.setattr(
-        matplotlib.figure.Figure,
-        "savefig",
-        lambda _self, figure_path: saved.append(figure_path),
-    )
     with structlog.testing.capture_logs() as captured:
-        peri_scribe.output.write_fire_scores_ccdf(path, document)
-    assert saved == [path]
+        svg = peri_scribe.output.ccdf_svg(fire_scores_document([12]))
+    assert "<svg" in svg
     assert captured[0]["event"] == "Skipped fire scores knee labels"
+
+
+def test_ccdf_svg_draws_an_empty_chart_without_scores() -> None:
+    svg = peri_scribe.output.ccdf_svg(fire_scores_document([]))
+    assert "<svg" in svg
+    assert "<path" not in svg
+
+
+def test_nice_step_handles_an_empty_span() -> None:
+    assert peri_scribe.output.nice_step(0.0, 8) == pytest.approx(1.0)

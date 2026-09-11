@@ -18,7 +18,6 @@ import peri_scribe.fires.scores
 import peri_scribe.geo.package
 import peri_scribe.geo.reading
 import peri_scribe.kml.builder
-import peri_scribe.kml.plot_rendering
 import peri_scribe.main
 import peri_scribe.models
 import peri_scribe.output
@@ -29,8 +28,6 @@ import peri_scribe.sources.fetching
 import peri_scribe.sources.full_fetch_state
 import peri_scribe.sources.snapshots
 import peri_scribe.sources.validation
-import tests.factories
-import tests.peri_scribe.kml.kml_helpers
 from peri_scribe.units import units
 from tests.factories import WGS84_WKID, GeoPackageStore, wgs84_feature_set
 from tests.main_stubs import (
@@ -44,6 +41,8 @@ from tests.main_stubs import (
 if typing.TYPE_CHECKING:
     import arcgis.features
     import pandas as pd
+
+    import tests.factories
 
 
 WEB_MERCATOR_WKID = 3857
@@ -474,18 +473,6 @@ def geo_package_store(
         lambda *_arguments, **_keywords: None,
     )
     return store
-
-
-@pytest.fixture
-def in_process_plot_image_bundles(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Render plots in-process instead of in a pool for one test."""
-    monkeypatch.setattr(
-        peri_scribe.kml.plot_rendering,
-        "plot_image_bundles",
-        tests.peri_scribe.kml.kml_helpers.serial_plot_image_bundles,
-    )
 
 
 def snapshot_path(
