@@ -30,14 +30,16 @@ from tests.main_stubs import (
 def test_run_runs_all_stages_when_fetch_changed(
     runner: click.testing.CliRunner,
     run_stubs: typing.Callable[..., RunStubs],
+    tmp_path: pathlib.Path,
 ) -> None:
     stubs = run_stubs(changed=True)
+    year_directory = tmp_path / "data" / "2026"
+    year_directory.mkdir(parents=True)
     result = runner.invoke(
         peri_scribe.main.cli,
-        ["run", "data/2026"],
+        ["run", str(year_directory)],
     )
     assert result.exit_code == 0
-    year_directory = pathlib.Path("data/2026")
     assert stubs.external_calls == [
         (source, year_directory)
         for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES

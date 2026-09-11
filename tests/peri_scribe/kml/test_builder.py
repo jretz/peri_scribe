@@ -12,6 +12,7 @@ import time_machine
 
 import peri_scribe.fires.files
 import peri_scribe.fires.index
+import peri_scribe.fires.score_files
 import peri_scribe.geo.reading
 import peri_scribe.kml.builder
 import peri_scribe.kml.descriptions
@@ -763,6 +764,11 @@ def test_create_kmz_reads_history_and_writes_kmz(
         lambda _directory: index,
     )
     monkeypatch.setattr(
+        peri_scribe.fires.score_files,
+        "load_fire_scores",
+        lambda _directory: None,
+    )
+    monkeypatch.setattr(
         peri_scribe.fires.files,
         "history_geopackage_path",
         lambda _directory: pathlib.Path("/derived/full.gpkg"),
@@ -824,6 +830,11 @@ def test_create_kmz_excludes_fires_without_qualifying_area(
         peri_scribe.fires.index,
         "load_fire_index",
         lambda _directory: index,
+    )
+    monkeypatch.setattr(
+        peri_scribe.fires.score_files,
+        "load_fire_scores",
+        lambda _directory: None,
     )
     monkeypatch.setattr(
         peri_scribe.fires.files,
