@@ -10,6 +10,7 @@ import geopandas
 import structlog
 
 import peri_scribe.geo.database
+import peri_scribe.geo.geometry_pool
 import peri_scribe.geo.package
 import peri_scribe.models
 import peri_scribe.sources.feed_types
@@ -22,12 +23,15 @@ logger = structlog.get_logger()
 def read_snapshot_contents(
     conn: sqlite3.Connection,
     serial: int,
+    *,
+    geometry_pool: peri_scribe.geo.geometry_pool.GeometryPool,
 ) -> peri_scribe.geo.package.GeopackageContents:
     """Return the parsed contents stored for snapshot *serial* in *conn*.
 
     Args:
         conn: The record cache database connection, reading rows by column name.
         serial: The snapshot's serial number.
+        geometry_pool: The source read's shared snapshot geometries.
 
     Returns:
         The snapshot's fire rows and complex memberships.
@@ -44,7 +48,13 @@ def read_snapshot_contents(
         (serial,),
     ).fetchall()
     return peri_scribe.geo.package.GeopackageContents(
-        rows=tuple(peri_scribe.geo.package.FireRowRecord.from_row(row) for row in rows),
+        rows=tuple(
+            peri_scribe.geo.package.FireRowRecord.from_row(
+                row,
+                geometry_pool=geometry_pool,
+            )
+            for row in rows
+        ),
         memberships=tuple(
             peri_scribe.models.ComplexMembership(
                 fire_identifier=row["fire_identifier"],
@@ -59,12 +69,15 @@ def read_snapshot_contents(
 def fetch_snapshot_rows(
     conn: sqlite3.Connection,
     serial: int,
+    *,
+    geometry_pool: peri_scribe.geo.geometry_pool.GeometryPool,
 ) -> peri_scribe.geo.package.GeopackageContents | None:
     """Return the contents stored for snapshot *serial*, or None when absent.
 
     Args:
         conn: The record cache database connection.
         serial: The snapshot's serial number.
+        geometry_pool: The source read's shared snapshot geometries.
 
     Returns:
         The snapshot's fire rows and complex memberships, or None when the database does
@@ -77,18 +90,21 @@ def fetch_snapshot_rows(
     ).fetchone()
     if present is None:
         return None
-    return read_snapshot_contents(conn, serial)
+    return read_snapshot_contents(conn, serial, geometry_pool=geometry_pool)
 
 
 def read_snapshot_rows(
     db_path: pathlib.Path,
     serial: int,
+    *,
+    geometry_pool: peri_scribe.geo.geometry_pool.GeometryPool,
 ) -> peri_scribe.geo.package.GeopackageContents | None:
     """Return the contents stored for snapshot *serial* at *db_path*.
 
     Args:
         db_path: The record cache database path.
         serial: The snapshot's serial number.
+        geometry_pool: The source read's shared snapshot geometries.
 
     Returns:
         The snapshot's fire rows and complex memberships, or None when the database does
@@ -96,7 +112,7 @@ def read_snapshot_rows(
     """
     conn = sqlite3.connect(db_path)
     try:
-        return fetch_snapshot_rows(conn, serial)
+        return fetch_snapshot_rows(conn, serial, geometry_pool=geometry_pool)
     finally:
         conn.close()
 
@@ -105,6 +121,8 @@ def read_cached_snapshot(
     db_path: pathlib.Path,
     serial: int,
     path: pathlib.Path,
+    *,
+    geometry_pool: peri_scribe.geo.geometry_pool.GeometryPool,
 ) -> peri_scribe.geo.package.GeopackageContents:
     """Return the cached contents stored for snapshot *serial*, or read the file.
 
@@ -116,12 +134,13 @@ def read_cached_snapshot(
         db_path: The record cache database path.
         serial: The snapshot's serial number.
         path: The snapshot GeoPackage file to read.
+        geometry_pool: The source read's shared snapshot geometries.
 
     Returns:
         The snapshot's fire rows and complex memberships.
     """
     try:
-        contents = read_snapshot_rows(db_path, serial)
+        contents = read_snapshot_rows(db_path, serial, geometry_pool=geometry_pool)
     except OSError, ValueError, sqlite3.Error:
         logger.debug("Failed to read record cache", path=str(path))
         return peri_scribe.geo.package.read_geopackage(path)
@@ -132,6 +151,8 @@ def read_cached_snapshot(
 
 def read_geopackage_cached(
     path: pathlib.Path,
+    *,
+    geometry_pool: peri_scribe.geo.geometry_pool.GeometryPool | None = None,
 ) -> peri_scribe.geo.package.GeopackageContents:
     """Return the contents of the GeoPackage at *path*, using its record cache.
 
@@ -147,6 +168,7 @@ def read_geopackage_cached(
 
     Args:
         path: The snapshot GeoPackage file to read.
+        geometry_pool: Shared geometries for a larger source read, if supplied.
 
     Returns:
         The fire rows and complex memberships of the file.
@@ -166,7 +188,9 @@ def read_geopackage_cached(
     except OSError, ValueError, sqlite3.Error:
         logger.debug("Failed to update record cache", path=str(path))
         return peri_scribe.geo.package.read_geopackage(path)
-    return read_cached_snapshot(db_path, serial, path)
+    if geometry_pool is None:
+        geometry_pool = peri_scribe.geo.geometry_pool.GeometryPool()
+    return read_cached_snapshot(db_path, serial, path, geometry_pool=geometry_pool)
 
 
 def read_layer(

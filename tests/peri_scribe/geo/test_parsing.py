@@ -203,6 +203,14 @@ def test_geometries_describe_same_shape_accepts_single_part_multi_polygon() -> N
     )
 
 
+def test_geometries_describe_same_shape_accepts_identical_nan_coordinates() -> None:
+    geometry = shapely.from_wkt("LINESTRING (0 0, NaN 1)")
+    assert peri_scribe.geo.parsing.geometries_describe_same_shape(
+        geometry,
+        shapely.from_wkb(geometry.wkb),
+    )
+
+
 def test_geometries_describe_same_shape_rejects_different_shapes() -> None:
     first = shapely.geometry.Polygon(
         [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],

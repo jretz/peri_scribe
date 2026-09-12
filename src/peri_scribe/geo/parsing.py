@@ -7,14 +7,11 @@ import re
 import typing
 
 import pandas as pd
+import shapely
 import us.states
 
 import peri_scribe.models
 import peri_scribe.sources.feed_types
-
-
-if typing.TYPE_CHECKING:
-    import shapely
 
 
 def fire_status_from(value: object) -> peri_scribe.models.FireStatus | None:
@@ -133,9 +130,8 @@ def geometries_describe_same_shape(
         return left is None and right is None
     if left.is_empty or right.is_empty:
         return left.is_empty and right.is_empty
-    if left.wkb == right.wkb:
-        # Byte-identical geometries are the same shape; short-circuit before the
-        # more expensive topological equality check.
+    if shapely.equals_identical(left, right):
+        # Matching coordinates establish equality without serializing the geometry.
         return True
     return left.equals(right)
 

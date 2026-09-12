@@ -14,10 +14,10 @@ import sqlite3
 import typing
 
 import geopandas
-import shapely
 import structlog
 
 import peri_scribe.exceptions
+import peri_scribe.geo.geometry_pool
 import peri_scribe.geo.parsing
 import peri_scribe.models
 import peri_scribe.sources.feed_types
@@ -65,7 +65,12 @@ class FireRowRecord:
     attributes: dict[str, object]
 
     @classmethod
-    def from_row(cls, row: sqlite3.Row) -> FireRowRecord:
+    def from_row(
+        cls,
+        row: sqlite3.Row,
+        *,
+        geometry_pool: peri_scribe.geo.geometry_pool.GeometryPool,
+    ) -> FireRowRecord:
         """Return the row described by one record cache database row.
 
         The record's fixed fields come from typed columns and the attribute bag comes
@@ -75,6 +80,7 @@ class FireRowRecord:
 
         Args:
             row: One ``rows`` table row, keyed by column name.
+            geometry_pool: The source read's shared snapshot geometries.
 
         Returns:
             The fire row.
@@ -86,7 +92,7 @@ class FireRowRecord:
                 identifiers=frozenset(json.loads(row["identifiers"])),
                 names=frozenset(json.loads(row["names"])),
                 geometry=(
-                    shapely.from_wkb(row["geometry_wkb"])
+                    geometry_pool.from_wkb(row["geometry_wkb"])
                     if row["geometry_wkb"] is not None
                     else None
                 ),

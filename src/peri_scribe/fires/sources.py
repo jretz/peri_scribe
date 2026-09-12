@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import concurrent.futures
 import dataclasses
+import functools
 import os
 import pathlib
 
 import peri_scribe.exceptions
 import peri_scribe.fires.grouping
+import peri_scribe.geo.geometry_pool
 import peri_scribe.geo.package
 import peri_scribe.geo.reading
 import peri_scribe.models
@@ -37,6 +39,8 @@ class ReadFireSources:
 
 def read_fire_geopackage(
     path: pathlib.Path,
+    *,
+    geometry_pool: peri_scribe.geo.geometry_pool.GeometryPool,
 ) -> peri_scribe.geo.package.GeopackageContents:
     """Read one GeoPackage, translating read failures into a readable message.
 
@@ -46,6 +50,7 @@ def read_fire_geopackage(
 
     Args:
         path: The GeoPackage file to read.
+        geometry_pool: Shared geometries for this source read.
 
     Returns:
         The file's fire rows and complex memberships.
@@ -55,7 +60,10 @@ def read_fire_geopackage(
         UnknownLayerError: If a layer does not correspond to a configured feed.
     """
     try:
-        return peri_scribe.geo.reading.read_geopackage_cached(path)
+        return peri_scribe.geo.reading.read_geopackage_cached(
+            path,
+            geometry_pool=geometry_pool,
+        )
     except peri_scribe.exceptions.UnknownLayerError:
         raise
     except Exception as error:
@@ -79,12 +87,16 @@ def read_fire_sources(directory: pathlib.Path) -> ReadFireSources:
         The fire rows, their source files, and the complex memberships.
     """
     files = list(peri_scribe.sources.snapshots.geo_package_files(directory))
+    read = functools.partial(
+        read_fire_geopackage,
+        geometry_pool=peri_scribe.geo.geometry_pool.GeometryPool(),
+    )
     # GeoPackage reads release the GIL, so the files are read in parallel and the
     # results are collected in file order to keep rows, paths, and memberships aligned.
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=os.cpu_count() or 1,
     ) as executor:
-        contents_by_file = list(executor.map(read_fire_geopackage, files))
+        contents_by_file = list(executor.map(read, files))
     rows: list[peri_scribe.geo.package.FireRowRecord] = []
     paths: list[pathlib.Path] = []
     memberships: list[peri_scribe.models.ComplexMembership] = []

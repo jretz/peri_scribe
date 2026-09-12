@@ -14,7 +14,9 @@ import peri_scribe.exceptions
 import peri_scribe.fires.sources
 import peri_scribe.geo.package
 import peri_scribe.models
+import peri_scribe.sources.feed_types
 import peri_scribe.sources.snapshots
+import tests.factories
 from tests.factories import ACTIVE, INACTIVE, fire_record
 
 
@@ -24,6 +26,57 @@ if typing.TYPE_CHECKING:
 
 CROSSWHITE_ID = "1b0219ee-5298-4fef-9927-c2666d9d53fc"
 ROWE_CREEK_COMPLEX_ID = "b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3"
+
+
+@pytest.fixture
+def repeated_geometry_sources(
+    tmp_path: pathlib.Path,
+    configured_feeds: list[peri_scribe.sources.feed_types.Feed],
+) -> pathlib.Path:
+    """Separate observations can retain the same fire footprint.
+
+    Returns:
+        The isolated source directory containing both observations.
+    """
+    directory = tmp_path / "sources"
+    feed = configured_feeds[0]
+    for serial, name in enumerate(["First", "Second"]):
+        path = directory / feed.name / "000___" / f"{serial:06d},lastEdit=0.gpkg"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        frame = tests.factories.geo_frame(
+            {
+                "incident_name": [name],
+                "displayStatus": ["Active"],
+                "revision": [serial],
+            },
+            [shapely.geometry.Point(1, 2)],
+        )
+        frame.to_file(path, layer=feed.name)
+    return directory
+
+
+def test_read_fire_sources_shares_snapshot_geometries(
+    repeated_geometry_sources: pathlib.Path,
+) -> None:
+    read = peri_scribe.fires.sources.read_fire_sources(repeated_geometry_sources)
+    assert read.rows[0].record.geometry is read.rows[1].record.geometry
+
+
+def test_read_fire_sources_preserves_observations_with_shared_geometry(
+    repeated_geometry_sources: pathlib.Path,
+) -> None:
+    read = peri_scribe.fires.sources.read_fire_sources(repeated_geometry_sources)
+    assert [row.record.name for row in read.rows] == ["First", "Second"]
+    assert [row.attributes["revision"] for row in read.rows] == [0, 1]
+    assert read.paths == tuple(sorted(repeated_geometry_sources.rglob("*.gpkg")))
+
+
+def test_read_fire_sources_scopes_geometry_sharing_to_each_read(
+    repeated_geometry_sources: pathlib.Path,
+) -> None:
+    first = peri_scribe.fires.sources.read_fire_sources(repeated_geometry_sources)
+    second = peri_scribe.fires.sources.read_fire_sources(repeated_geometry_sources)
+    assert first.rows[0].record.geometry is not second.rows[0].record.geometry
 
 
 def listed_fires(
