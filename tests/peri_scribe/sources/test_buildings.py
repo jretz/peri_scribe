@@ -489,6 +489,72 @@ def test_building_counts_within_returns_zero_without_geometry(
     assert counts == [0, 0]
 
 
+def test_building_counts_within_counts_duplicate_coordinates(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "buildings.sqlite"
+    write_database(np.asarray([[0.2, 0.2], [0.2, 0.2]]), path)
+    assert peri_scribe.sources.buildings.building_counts_within(
+        [shapely.geometry.box(0.1, 0.1, 0.3, 0.3)],
+        path,
+    ) == [2]
+
+
+def test_building_counts_within_respects_multipolygon_holes(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "buildings.sqlite"
+    write_database(
+        np.asarray([[0.1, 0.1], [0.2, 0.3], [0.3, 0.3], [0.7, 0.3], [0.9, 0.3]]),
+        path,
+    )
+    geometry = shapely.geometry.MultiPolygon([
+        shapely.geometry.Polygon(
+            shapely.geometry.box(0.0, 0.0, 0.5, 0.5).exterior,
+            [shapely.geometry.box(0.2, 0.2, 0.4, 0.4).exterior],
+        ),
+        shapely.geometry.box(0.6, 0.2, 0.8, 0.4),
+    ])
+    assert peri_scribe.sources.buildings.building_counts_within([geometry], path) == [2]
+
+
+def test_building_counts_within_reads_shared_tile_once(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "buildings.sqlite"
+    write_database(np.asarray([[0.2, 0.2]]), path)
+    identifiers: list[int] = []
+    read_tile_points = peri_scribe.sources.buildings.read_tile_points
+
+    def read(connection: sqlite3.Connection, tile_id: int) -> np.ndarray | None:
+        identifiers.append(tile_id)
+        return read_tile_points(connection, tile_id)
+
+    monkeypatch.setattr(peri_scribe.sources.buildings, "read_tile_points", read)
+    peri_scribe.sources.buildings.building_counts_within(
+        [
+            shapely.geometry.box(0.1, 0.1, 0.3, 0.3),
+            shapely.geometry.box(0.1, 0.1, 0.4, 0.4),
+        ],
+        path,
+    )
+    assert identifiers == peri_scribe.sources.buildings.tile_ids_for_box(
+        (0.1, 0.1, 0.4, 0.4),
+    )
+
+
+def test_building_counts_within_releases_prepared_geometry(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "buildings.sqlite"
+    write_database(np.asarray([[0.2, 0.2]]), path)
+    geometry = shapely.geometry.box(0.1, 0.1, 0.3, 0.3)
+    shapely.prepare(geometry)
+    peri_scribe.sources.buildings.building_counts_within([geometry], path)
+    assert not shapely.is_prepared(geometry)
+
+
 def test_building_counts_within_skips_geometries_without_candidates(
     tmp_path: pathlib.Path,
 ) -> None:
@@ -507,6 +573,18 @@ def test_building_counts_within_returns_zero_without_database(
     counts = peri_scribe.sources.buildings.building_counts_within(
         [shapely.geometry.box(0.0, 0.0, 1.0, 1.0)],
         tmp_path / "missing.sqlite",
+    )
+    assert counts == [0]
+
+
+def test_building_counts_within_excludes_points_outside_envelope_in_same_tile(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "buildings.sqlite"
+    write_database(np.asarray([[0.2, 0.2]]), path)
+    counts = peri_scribe.sources.buildings.building_counts_within(
+        [shapely.geometry.box(0.3, 0.3, 0.4, 0.4)],
+        path,
     )
     assert counts == [0]
 

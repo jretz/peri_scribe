@@ -751,15 +751,11 @@ def building_counts_within(
 ) -> list[int]:
     """Return how many building points lie within each buffered geometry.
 
-    Each buffered geometry's envelope selects the intersecting tiles from the compact
-    buildings database; those tiles' payloads are decompressed into NumPy arrays and
-    filtered to the envelope, and the remaining points are tested for exact containment
-    against that geometry. Every point inside a geometry is inside its envelope, so the
-    per-geometry candidate set is complete and the containment test is exact; testing
-    each geometry's candidates against itself also keeps genuinely duplicate points
-    (multiple buildings with identical quantized coordinates) counted separately. Each
-    fire's tiles are decoded only while that fire is counted, so the reader's memory
-    stays bounded by the largest single envelope rather than by the whole database.
+    Grouping queries by tile avoids repeated reads and decompression for nearby fires.
+    Only one tile's points and one query's candidates need to be retained at a time.
+    Envelope filtering preserves every possible match, and exact containment excludes
+    polygon boundaries while counting duplicate building coordinates separately.
+    Prepared geometry is released after each containment test to bound its memory.
 
     Args:
         buffered_geometries: One buffered geometry per fire, in WGS84, or None.
@@ -778,29 +774,37 @@ def building_counts_within(
         return counts
     if not path.is_file():
         return counts
+    queries: collections.defaultdict[
+        int,
+        list[tuple[int, shapely.Geometry, tuple[int, int, int, int]]],
+    ] = collections.defaultdict(list)
+    for index, geometry in valid:
+        bounds = geometry.bounds
+        encoded = encoded_box(bounds)
+        for identifier in tile_ids_for_box(bounds):
+            queries[identifier].append((index, geometry, encoded))
     connection = sqlite3.connect(path)
     try:
-        for index, geometry in valid:
-            bounds = geometry.bounds
-            encoded = encoded_box(bounds)
-            selected: list[np.ndarray] = []
-            for identifier in tile_ids_for_box(bounds):
-                tile_points = read_tile_points(connection, identifier)
-                if tile_points is None:
-                    continue
-                filtered = points_within_box(tile_points, encoded)
-                if filtered.size:
-                    selected.append(filtered)
-            if not selected:
+        for identifier, tile_queries in queries.items():
+            tile_points = read_tile_points(connection, identifier)
+            if tile_points is None:
                 continue
-            candidates = np.concatenate(selected)
-            point_geometries = shapely.points(
-                candidates[:, 0] / COORDINATE_SCALE,
-                candidates[:, 1] / COORDINATE_SCALE,
-            )
-            counts[index] = int(
-                np.count_nonzero(shapely.within(point_geometries, geometry)),
-            )
+            for index, geometry, encoded in tile_queries:
+                candidates = points_within_box(tile_points, encoded)
+                if not candidates.size:
+                    continue
+                try:
+                    counts[index] += int(
+                        np.count_nonzero(
+                            shapely.contains_xy(
+                                geometry,
+                                candidates[:, 0] / COORDINATE_SCALE,
+                                candidates[:, 1] / COORDINATE_SCALE,
+                            ),
+                        ),
+                    )
+                finally:
+                    shapely.destroy_prepared(geometry)
     finally:
         connection.close()
     return counts
