@@ -15,6 +15,7 @@ import peri_scribe.fires.differential
 import peri_scribe.fires.scores
 import peri_scribe.main
 import peri_scribe.output
+import peri_scribe.pipeline_state
 import peri_scribe.sources.digests
 import peri_scribe.sources.external_sources
 import peri_scribe.sources.fetching
@@ -314,6 +315,116 @@ def test_run_full_fetch_interval_with_unconditional_runs_all_stages(
     assert stubs.scores_calls == [year_directory]
     assert stubs.kmz_calls == [year_directory]
     assert stubs.report_calls == [year_directory]
+
+
+@pytest.mark.usefixtures("current_year")
+def test_run_full_fetch_forces_geography_without_source_changes(
+    runner: click.testing.CliRunner,
+    run_stubs: typing.Callable[..., RunStubs],
+) -> None:
+    stubs = run_stubs(changed=False)
+    result = runner.invoke(peri_scribe.main.cli, ["run", "--full-fetch-interval", "6h"])
+    assert result.exit_code == 0
+    assert stubs.unconditional_history_calls == stubs.history_calls
+    assert stubs.history_calls == [BASE_DIRECTORY / "data" / "2026"]
+    assert not peri_scribe.pipeline_state.read_state(
+        BASE_DIRECTORY / "data" / "2026",
+    ).remaining
+
+
+@pytest.mark.usefixtures("current_year")
+def test_run_retries_failed_full_rebuild_without_another_full_fetch(
+    runner: click.testing.CliRunner,
+    run_stubs: typing.Callable[..., RunStubs],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stubs = run_stubs(changed=False)
+    write_history = (
+        peri_scribe.fires.differential.write_history_of_differential_geography
+    )
+    monkeypatch.setattr(
+        peri_scribe.fires.differential,
+        "write_history_of_differential_geography",
+        tests.factories.raising_stub(ValueError("interrupted")),
+    )
+    failed = runner.invoke(peri_scribe.main.cli, ["run", "--full-fetch-interval", "6h"])
+    assert failed.exit_code != 0
+    monkeypatch.setattr(
+        peri_scribe.fires.differential,
+        "write_history_of_differential_geography",
+        write_history,
+    )
+    monkeypatch.setattr(
+        peri_scribe.sources.full_fetch_state,
+        "read_state",
+        lambda _path: peri_scribe.sources.full_fetch_state.FullFetchState(
+            last_full_fetch=datetime.datetime.now(datetime.UTC),
+        ),
+    )
+    retry = runner.invoke(peri_scribe.main.cli, ["run", "--full-fetch-interval", "6h"])
+    assert retry.exit_code == 0
+    assert [full for _base, _year, full in stubs.fetch_calls] == [True, False]
+    assert stubs.unconditional_history_calls == [BASE_DIRECTORY / "data" / "2026"]
+
+
+@pytest.mark.usefixtures("current_year")
+def test_run_retries_external_failure_after_full_fetch(
+    runner: click.testing.CliRunner,
+    run_stubs: typing.Callable[..., RunStubs],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stubs = run_stubs(changed=False)
+    refresh = peri_scribe.main.refresh_external_sources
+    monkeypatch.setattr(
+        peri_scribe.main,
+        "refresh_external_sources",
+        tests.factories.raising_stub(ValueError("interrupted")),
+    )
+    failed = runner.invoke(peri_scribe.main.cli, ["run", "--full-fetch-interval", "6h"])
+    assert failed.exit_code != 0
+    monkeypatch.setattr(peri_scribe.main, "refresh_external_sources", refresh)
+    retry = runner.invoke(peri_scribe.main.cli, ["run"])
+    assert retry.exit_code == 0
+    assert stubs.unconditional_history_calls == [BASE_DIRECTORY / "data" / "2026"]
+
+
+@pytest.mark.usefixtures("current_year")
+def test_run_partial_selection_keeps_full_rebuild_pending(
+    runner: click.testing.CliRunner,
+    run_stubs: typing.Callable[..., RunStubs],
+) -> None:
+    run_stubs(changed=False)
+    result = runner.invoke(
+        peri_scribe.main.cli,
+        ["run", "--only", "fetch", "--full-fetch-interval", "6h"],
+    )
+    assert result.exit_code == 0
+    year = BASE_DIRECTORY / "data" / "2026"
+    assert (
+        peri_scribe.pipeline_state.read_state(year).remaining
+        == peri_scribe.pipeline_state.DERIVED_STAGES
+    )
+    result = runner.invoke(peri_scribe.main.cli, ["run", "--only", "kmz"])
+    assert result.exit_code == 0
+    assert (
+        peri_scribe.pipeline_state.read_state(year).remaining
+        == peri_scribe.pipeline_state.DERIVED_STAGES
+    )
+
+
+@pytest.mark.usefixtures("current_year")
+def test_run_skips_an_overlapping_invocation(
+    runner: click.testing.CliRunner,
+    run_stubs: typing.Callable[..., RunStubs],
+) -> None:
+    stubs = run_stubs(changed=True)
+    with peri_scribe.pipeline_state.run_lock(
+        BASE_DIRECTORY / "data" / "2026",
+    ) as acquired:
+        assert acquired
+        result = runner.invoke(peri_scribe.main.cli, ["run"])
+    assert result.exit_code == 0
+    assert stubs.fetch_calls == []
 
 
 @pytest.mark.usefixtures("current_year")

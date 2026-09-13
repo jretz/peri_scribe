@@ -13,8 +13,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
+import peri_scribe.geo.measurements
 import peri_scribe.geo.parsing
-import peri_scribe.units
 from peri_scribe.units import units
 
 
@@ -129,7 +129,10 @@ def presented_area_for_latest(
     if reported is not None and geometry is not None and not geometry.is_empty:
         return presented_area(
             reported * units.acres,
-            peri_scribe.units.area(geometry),
+            peri_scribe.geo.measurements.area(
+                geometry,
+                _row_number(perimeter_row, peri_scribe.geo.measurements.AREA_COLUMN),
+            ),
         )
     if reported is not None:
         return reported * units.acres

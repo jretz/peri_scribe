@@ -11,9 +11,9 @@ import dataclasses
 import datetime
 import typing
 
+import peri_scribe.geo.measurements
 import peri_scribe.geo.parsing
 import peri_scribe.kml.row_values
-import peri_scribe.units
 from peri_scribe.units import units
 
 
@@ -146,9 +146,14 @@ def exterior_perimeter_measurements(
     if "observation_time" not in frame.columns:
         return ()
     measurements: list[ExteriorMeasurement] = []
-    for observation_time, geometry in zip(
+    stored_lengths = frame.get(
+        peri_scribe.geo.measurements.EXTERIOR_COLUMN,
+        [None] * len(frame),
+    )
+    for observation_time, geometry, stored in zip(
         frame["observation_time"],
         frame.geometry,
+        stored_lengths,
         strict=True,
     ):
         measurements.append(
@@ -156,7 +161,10 @@ def exterior_perimeter_measurements(
                 observation_time=peri_scribe.geo.parsing.observation_time_from(
                     observation_time,
                 ),
-                length=peri_scribe.units.exterior_perimeter(geometry),
+                length=peri_scribe.geo.measurements.exterior_perimeter(
+                    geometry,
+                    stored,
+                ),
             ),
         )
     return tuple(measurements)

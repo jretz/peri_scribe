@@ -146,6 +146,24 @@ def index_fire_sources(year_directory: pathlib.Path) -> None:
         record_groups,
         year_directory,
     )
+    write_fire_index(year_directory, record_groups, classifications)
+
+
+def write_fire_index(
+    year_directory: pathlib.Path,
+    record_groups: peri_scribe.fires.sources.FireRecordGroups,
+    classifications: dict[int, peri_scribe.models.FireClassification],
+) -> None:
+    """Share already classified source groups with a complete geography rebuild.
+
+    Args:
+        year_directory: The year directory whose source index should be written.
+        record_groups: The grouped fire records and their source paths.
+        classifications: Available border classifications keyed by fire identity.
+    """
+    sources_directory = peri_scribe.sources.snapshots.sources_directory_path(
+        year_directory,
+    )
     index = fire_index_document(
         fire_index_entries(
             peri_scribe.fires.sources.fire_sources_from_groups(record_groups),

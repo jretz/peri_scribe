@@ -229,7 +229,16 @@ def open_placemark(
     visible: bool,
     placemark_id: str | None,
 ) -> None:
-    """Append a placemark's opening tag and metadata to *writer*."""
+    """Append a placemark's opening tag and metadata to *writer*.
+
+    Args:
+        writer: The KML writer to append to.
+        name: The name to display for the placemark.
+        style_url: The style URL to apply.
+        description: The balloon description, or None to omit it.
+        visible: Whether the placemark is initially visible.
+        placemark_id: The placemark's XML identifier, or None to omit it.
+    """
     parts = writer.parts
     parts.append("<Placemark")
     if placemark_id is not None:

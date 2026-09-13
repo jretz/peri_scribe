@@ -21,11 +21,13 @@ write fire reports
 ```
 
 `run` organizes these steps into the stages fetch, geography, score, kmz, and reports.
-It skips the derived outputs when no fire or evacuation data changed, unless
-`--unconditional` is supplied; `--only`, `--from`, and `--to` select one stage or a
-range of stages, and `--list-stages` prints the stage descriptions. `validate-sources`
-is a separate diagnostic workflow that performs a complete fetch and compares it with
-the incremental snapshots.
+After fetch, it skips the derived outputs only when no fire or evacuation data changed
+and no rebuild is required. A scheduled full fetch requires an unconditional derived
+rebuild, even when it writes no new snapshot. `--unconditional` forces the selected
+stages to run and bypasses prior history reuse when geography is selected; `--only`,
+`--from`, and `--to` select one stage or a range of stages, and `--list-stages` prints
+the stage descriptions. `validate-sources` is a separate diagnostic workflow that
+performs a complete fetch and compares it with the incremental snapshots.
 
 ## Data handling
 
@@ -66,12 +68,70 @@ The original source snapshots are not modified by these cleansing steps. The out
 excludes fires without a qualifying area indication and includes latest-perimeter and
 progression-map views.
 
+## History reuse and shared measurements
+
+The geography stage reads and groups all source observations before deciding which fires
+can reuse previous results. Each fire's `derivation_key` covers its complete ordered
+source records, geometry, attributes and provenance, including observations discarded
+during reconciliation. It also covers fire identity and complex membership, package
+source code, relevant geospatial library versions, boundary data, and cleaning,
+size-filtering, and classification settings.
+
+Matching fires retain their full point and perimeter rows and differential history.
+Other fires are classified and reconciled in full, and their complete differential
+sequences are rebuilt. Appended observations, shrinking corrections, late observations,
+metadata edits, removed records, and grouping changes can affect earlier output, so
+reuse is decided for a whole fire rather than an appended ring suffix. Source reading
+and global grouping remain work on every geography run.
+
+Full perimeter rows store `geometry_area_square_meters` and `exterior_perimeter_meters`
+for the cleaned shape. Differential rows store ring area and `added_area_square_meters`,
+which measures newly covered ground in the cumulative union of dated, visible rings. A
+`ring_sequence_digest` identifies the exact ordered geometries used for that
+calculation. Downstream scoring, KML, and report consumers share these measurements.
+When a consumer uses a different ring sequence or receives rows without stored
+measurements, it computes the measurements it needs. Scores, rankings, and presentation
+are regenerated to reflect external inputs and current time.
+
+`fires/reuse.py` validates each prior GeoPackage against its sibling `.reuse.json` file,
+which contains a cache version and the completed file's checksum. Missing, incompatible,
+corrupt, or edited cache data causes a miss. Each replacement GeoPackage is generated in
+a temporary directory beside its destination, then atomically replaces the destination
+before its checksum metadata is published. An interrupted publication cannot validate
+mismatched geometry and metadata. Full and differential files are published separately;
+their per-fire derivation keys determine whether rows are reusable.
+
+An unconditional geography rebuild bypasses both prior history files and refreshes the
+fire index from the grouped sources. Existing parsed source-record caches retain their
+own validation rules. Static sources retain their existing download policy.
+
+## Recovery and scheduling
+
+`--full-fetch-interval` compares the last successful full-fetch time in
+`sources/fetch_state.json` with the requested interval. The first run with the option
+fetches in full. A full fetch refreshes `sources/fires.json` even if it writes no new
+snapshot.
+
+`pipeline_state.py` stores unfinished derived stages and their unconditional rebuild
+requirement in `data/<year>/run_state.json`. A scheduled full fetch records that
+requirement before fetching. Fetch failures, changed fire snapshots, and evacuation
+changes also leave downstream work pending. Completing the fetch updates its timestamp
+without clearing pending derived work, so a later incremental fetch with no changes
+still allows a failed rebuild to be retried.
+
+Successful stages clear pending work in prerequisite order; running a later stage alone
+cannot clear an unfinished prerequisite. Partial stage selections leave un-run
+requirements pending. Stage selection is respected even with `--unconditional`, so a run
+starting at KMZ consumes the existing geography. Recovery state is replaced atomically,
+and invalid state requires a full derived rebuild.
+
+The `run` command holds an operating-system lock on `data/<year>/.run.lock` for its
+selected stages. A competing invocation logs a skip and exits successfully. The lock is
+released when the owning process exits, including after failure; the persistent lock
+file itself does not indicate that a run is active.
+
 ## Libraries
 
 ArcGIS is used for FeatureServer access; GeoPandas, Shapely, pyproj, and pyogrio support
 geospatial processing and GeoPackages; Pydantic validates serialized documents; Click
 implements the CLI.
-
-## Future work
-
-Notifications are not implemented yet.

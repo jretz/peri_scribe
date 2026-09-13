@@ -9,6 +9,7 @@ import typing
 import pytest
 import shapely.geometry
 
+import peri_scribe.geo.measurements
 import peri_scribe.kml.colormap
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.selection
@@ -1539,3 +1540,66 @@ def test_fire_description_keeps_reported_area_without_mappable_geometry() -> Non
     assert description is not None
     assert description.area is not None
     assert description.area.m_as("acres") == pytest.approx(30.0)
+
+
+def test_added_areas_for_rings_reuses_only_the_exact_stored_sequence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    shapes = (tests.factories.square(1), tests.factories.square(2))
+    measured = peri_scribe.perimeters.progression.added_areas(shapes)
+    digest = peri_scribe.perimeters.progression.sequence_digest(shapes)
+    rings = tuple(
+        peri_scribe.perimeters.progression.Ring(
+            geometry=geometry,
+            observation_time=None,
+            added_area=area,
+            sequence_digest=digest,
+        )
+        for geometry, area in zip(shapes, measured, strict=True)
+    )
+    calls: list[tuple[shapely.geometry.base.BaseGeometry, ...]] = []
+    original = peri_scribe.perimeters.progression.added_areas
+
+    def tracked(
+        geometries: typing.Iterable[shapely.geometry.base.BaseGeometry],
+    ) -> tuple[object, ...]:
+        values = tuple(geometries)
+        calls.append(values)
+        return original(values)
+
+    monkeypatch.setattr(peri_scribe.perimeters.progression, "added_areas", tracked)
+    peri_scribe.kml.fire_data.added_areas_for_rings.cache_clear()
+    assert peri_scribe.kml.fire_data.added_areas_for_rings(rings) == measured
+    assert calls == []
+    assert peri_scribe.kml.fire_data.added_areas_for_rings(rings[1:]) == original(
+        shapes[1:],
+    )
+    assert calls == [shapes[1:]]
+
+
+def test_perimeter_groups_carries_shared_measurements() -> None:
+    shape = tests.factories.square(1)
+    expected_area = peri_scribe.units.area(shape)
+    digest = peri_scribe.perimeters.progression.sequence_digest((shape,))
+    frame = tests.factories.geo_frame(
+        {
+            "fire_identifier": ["id"],
+            "fire_name": ["Example"],
+            "observation_time": [tests.factories.utc(2026, 9, 1, 0)],
+            peri_scribe.geo.measurements.AREA_COLUMN: [
+                expected_area.m_as("meters ** 2"),
+            ],
+            peri_scribe.perimeters.progression.ADDED_AREA_COLUMN: [
+                expected_area.m_as("meters ** 2"),
+            ],
+            peri_scribe.perimeters.progression.SEQUENCE_COLUMN: [digest],
+        },
+        [shape],
+    )
+    by_identifier, _by_name = peri_scribe.kml.selection.perimeter_groups(frame)
+    perimeter = by_identifier["id"][0]
+    assert perimeter.measured_area == expected_area
+    ring = peri_scribe.kml.fire_data.progression_ring(perimeter)
+    assert ring is not None
+    assert ring.added_area == expected_area
+    assert ring.sequence_digest == digest

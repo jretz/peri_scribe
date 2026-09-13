@@ -12,10 +12,10 @@ import pytest
 import peri_scribe.fires.classification
 import peri_scribe.fires.files
 import peri_scribe.fires.history
+import peri_scribe.fires.reuse
 import peri_scribe.fires.sources
 import peri_scribe.geo.package
 import peri_scribe.models
-import peri_scribe.output
 import tests.factories
 
 
@@ -455,6 +455,7 @@ def test_history_geopackage_path_names_output() -> None:
 
 def test_write_history_of_full_geography_writes_two_layers(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
 ) -> None:
     record_groups = peri_scribe.fires.sources.FireRecordGroups(
         records=(),
@@ -483,21 +484,14 @@ def test_write_history_of_full_geography_writes_two_layers(
         "classify_fire_sources",
         lambda *_arguments: {},
     )
-    monkeypatch.setattr(
-        pathlib.Path,
-        "mkdir",
-        lambda *_arguments, **_keywords: None,
-    )
     written: list[tuple[pathlib.Path, list[peri_scribe.models.LayerData]]] = []
     monkeypatch.setattr(
-        peri_scribe.output,
-        "write_geopackage",
+        peri_scribe.fires.reuse,
+        "write_layers",
         lambda path, layers: written.append((path, layers)),
     )
-    result = peri_scribe.fires.files.write_history_of_full_geography(
-        pathlib.Path("data/2026"),
-    )
-    assert result == pathlib.Path("data/2026/derived/history_of_full_geography.gpkg")
+    result = peri_scribe.fires.files.write_history_of_full_geography(tmp_path)
+    assert result == tmp_path / "derived/history_of_full_geography.gpkg"
     assert len(written) == 1
     _path, layers = written[0]
     assert [layer.name for layer in layers] == [

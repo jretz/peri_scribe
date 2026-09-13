@@ -175,6 +175,15 @@ def curve_knees(scores: list[int]) -> list[tuple[int, float]]:
     points = np.column_stack((values, np.log10(shares)))
 
     def fit_error(first: int, second: int) -> float:
+        """Compare candidate knees by the error of their three-segment fit.
+
+        Args:
+            first: The point index of the first proposed breakpoint.
+            second: The point index of the second proposed breakpoint.
+
+        Returns:
+            The total squared error in logarithmic complementary share.
+        """
         error = 0.0
         for low, high in ((0, first), (first, second), (second, len(points))):
             segment = points[low : high + 1]
@@ -508,6 +517,12 @@ def write_geopackage(
     path: pathlib.Path,
     layers: list[peri_scribe.models.LayerData],
 ) -> None:
+    """Replace a GeoPackage with the supplied layers so obsolete layers cannot remain.
+
+    Args:
+        path: The destination GeoPackage, replacing any existing file.
+        layers: The named dataframes to write in order.
+    """
     if path.exists():
         path.unlink()
         logger.debug("Replaced existing", path=path.name)
@@ -586,7 +601,11 @@ def write_fire_scores_ccdf(
 
 
 def configure_logging(log_level: str) -> None:
-    """Configure structlog with the minimum log level."""
+    """Configure structlog with the minimum log level.
+
+    Args:
+        log_level: The minimum severity to emit, such as ``debug`` or ``info``.
+    """
     structlog.configure(
         processors=[
             structlog.processors.add_log_level,

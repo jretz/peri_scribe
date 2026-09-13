@@ -56,6 +56,11 @@ class ByteStream:
     """
 
     def __init__(self, chunks: typing.Iterable[bytes]) -> None:
+        """Expose decompressed chunks without materializing the complete stream.
+
+        Args:
+            chunks: The byte chunks to consume in stream order.
+        """
         self.chunks = iter(chunks)
         self.buffer = b""
 

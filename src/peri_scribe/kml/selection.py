@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import typing
 
+import peri_scribe.geo.measurements
 import peri_scribe.geo.parsing
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.plot_rendering
 import peri_scribe.models
+import peri_scribe.perimeters.progression
 from peri_scribe.units import units
 
 
@@ -193,18 +195,46 @@ def perimeter_groups(
     """
     by_identifier: dict[str, list[peri_scribe.kml.fire_data.Perimeter]] = {}
     by_name: dict[str, list[peri_scribe.kml.fire_data.Perimeter]] = {}
-    for identifier, name, observation_time, geometry in zip(
+    areas = perimeters.get(
+        peri_scribe.geo.measurements.AREA_COLUMN,
+        [None] * len(perimeters),
+    )
+    additions = perimeters.get(
+        peri_scribe.perimeters.progression.ADDED_AREA_COLUMN,
+        [None] * len(perimeters),
+    )
+    sequences = perimeters.get(
+        peri_scribe.perimeters.progression.SEQUENCE_COLUMN,
+        [None] * len(perimeters),
+    )
+    for (
+        identifier,
+        name,
+        observation_time,
+        geometry,
+        stored_area,
+        stored_added,
+        sequence,
+    ) in zip(
         perimeters["fire_identifier"],
         perimeters["fire_name"],
         perimeters["observation_time"],
         perimeters.geometry,
+        areas,
+        additions,
+        sequences,
         strict=True,
     ):
+        area = peri_scribe.geo.parsing.numeric_value(stored_area)
+        added = peri_scribe.geo.parsing.numeric_value(stored_added)
         perimeter = peri_scribe.kml.fire_data.Perimeter(
             geometry=geometry,
             observation_time=peri_scribe.geo.parsing.observation_time_from(
                 observation_time,
             ),
+            area=None if area is None else area * units.meters**2,
+            added_area=None if added is None else added * units.meters**2,
+            sequence_digest=sequence if isinstance(sequence, str) else None,
         )
         if peri_scribe.geo.parsing.is_missing(identifier):
             by_name.setdefault(str(name), []).append(perimeter)

@@ -17,7 +17,9 @@ import pathlib
 
 import geopandas
 
+import peri_scribe.fires.reuse
 import peri_scribe.fires.sources
+import peri_scribe.geo.measurements
 import peri_scribe.geo.package
 import peri_scribe.geo.parsing
 import peri_scribe.geo.spatial_reference
@@ -26,6 +28,7 @@ import peri_scribe.perimeters.cleaning
 import peri_scribe.perimeters.history_attributes
 import peri_scribe.perimeters.size_filtering
 import peri_scribe.perimeters.versions
+import peri_scribe.units
 
 
 IDENTITY_COLUMNS = [
@@ -122,6 +125,7 @@ def perimeter_row(
         The row's fields, including its geometry.
     """
     attributes = observation.attributes
+    geometry = peri_scribe.perimeters.cleaning.clean_perimeter(observation.geometry)
     row = identity_fields(fire, classification)
     row.update(
         {
@@ -228,13 +232,17 @@ def perimeter_row(
                 )
             ),
             "source_attributes": attributes_json(attributes),
-            "geometry": (
-                peri_scribe.perimeters.cleaning.clean_perimeter(
-                    observation.geometry,
-                )
-            ),
+            "geometry": geometry,
         },
     )
+    if geometry is not None:
+        row[peri_scribe.geo.measurements.AREA_COLUMN] = peri_scribe.units.area(
+            geometry,
+        ).m_as("meters ** 2")
+        exterior = peri_scribe.units.exterior_perimeter(geometry)
+        row[peri_scribe.geo.measurements.EXTERIOR_COLUMN] = (
+            None if exterior is None else exterior.m_as("meters")
+        )
     return row
 
 
@@ -456,12 +464,16 @@ def history_layer_rows(
     full_rows: list[peri_scribe.geo.package.FireRowRecord],
     full_paths: list[pathlib.Path],
     sources_directory: pathlib.Path,
+    *,
+    reused: dict[int, tuple[list[dict[str, object]], list[dict[str, object]]]]
+    | None = None,
+    derivation_keys: dict[int, str] | None = None,
 ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
     """Return the perimeter and point history rows for every non-complex fire.
 
     Each fire's rows are derived from only that fire's records, and the cleaning and
     geodesic area work releases the GIL, so the fires are built in parallel and their
-    rows are collected in fire order.
+    rows are collected in fire order alongside validated rows from unchanged fires.
 
     Args:
         record_groups: The grouped fire records.
@@ -469,6 +481,8 @@ def history_layer_rows(
         full_rows: Every fire row, aligned with *full_paths*.
         full_paths: The source path of each full row.
         sources_directory: The directory the source paths are relative to.
+        reused: Validated full histories keyed by in-memory fire identity.
+        derivation_keys: Input fingerprints to retain with each fire's output rows.
 
     Returns:
         All perimeter rows and all point rows.
@@ -484,13 +498,14 @@ def history_layer_rows(
     ]
     if not non_complex_fires:
         return [], []
+    reused = {} if reused is None else reused
     perimeter_rows: list[dict[str, object]] = []
     point_rows: list[dict[str, object]] = []
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=HISTORY_ROW_WORKER_COUNT,
     ) as executor:
-        futures = [
-            executor.submit(
+        futures = {
+            id(fire): executor.submit(
                 history_rows_for_fire,
                 fire,
                 group,
@@ -500,9 +515,15 @@ def history_layer_rows(
                 classification=classifications.get(id(fire)),
             )
             for fire, group in non_complex_fires
-        ]
-        for future in futures:
-            fire_perimeter_rows, fire_point_rows = future.result()
+            if id(fire) not in reused
+        }
+        for fire, _group in non_complex_fires:
+            fire_perimeter_rows, fire_point_rows = (
+                reused[id(fire)] if id(fire) in reused else futures[id(fire)].result()
+            )
+            if derivation_keys is not None:
+                for row in (*fire_perimeter_rows, *fire_point_rows):
+                    row[peri_scribe.fires.reuse.KEY_COLUMN] = derivation_keys[id(fire)]
             perimeter_rows.extend(fire_perimeter_rows)
             point_rows.extend(fire_point_rows)
     return perimeter_rows, point_rows

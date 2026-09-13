@@ -1,9 +1,9 @@
 """Building the differential point and perimeter history for a year's fires.
 
-The differential history is derived from the full history GeoPackage. The point layer
-is copied unchanged, while the perimeter layer shows the area each perimeter added
-over the previous one. Reductions in later perimeters are folded into the previous
-perimeter as corrections, so the differential layer shows only growth.
+The differential history is derived from the full history GeoPackage. The point layer is
+copied unchanged, while the perimeter layer shows the area each perimeter added over the
+previous one. Reductions in later perimeters are folded into the previous perimeter as
+corrections, so the differential layer shows only growth.
 """
 
 from __future__ import annotations
@@ -14,13 +14,16 @@ import pathlib
 import typing
 
 import shapely
+import structlog
 
 import peri_scribe.fires.files
 import peri_scribe.fires.history
+import peri_scribe.fires.reuse
+import peri_scribe.geo.measurements
 import peri_scribe.geo.parsing
 import peri_scribe.geo.reading
 import peri_scribe.models
-import peri_scribe.output
+import peri_scribe.perimeters.progression
 import peri_scribe.units
 
 
@@ -30,6 +33,7 @@ if typing.TYPE_CHECKING:
 
 
 DIFFERENTIAL_OUTPUT_FILENAME = "history_of_differential_geography.gpkg"
+logger = structlog.get_logger()
 
 # The per-fire work mixes geometry calls that release the GIL with Python-side attribute
 # work that does not, so more than a handful of workers only adds GIL contention, so cap
@@ -52,6 +56,7 @@ ATTRIBUTE_COLUMNS = [
 ]
 
 DIFFERENTIAL_PERIMETER_COLUMNS = [
+    peri_scribe.fires.reuse.KEY_COLUMN,
     *peri_scribe.fires.history.IDENTITY_COLUMNS,
     "source",
     "source_subsource",
@@ -67,6 +72,9 @@ DIFFERENTIAL_PERIMETER_COLUMNS = [
     "area_acres_differential",
     "area_acres_from_geometry",
     "area_acres_from_geometry_differential",
+    peri_scribe.geo.measurements.AREA_COLUMN,
+    peri_scribe.perimeters.progression.ADDED_AREA_COLUMN,
+    peri_scribe.perimeters.progression.SEQUENCE_COLUMN,
     "percent_contained",
     "percent_contained_differential",
     "containment_datetime",
@@ -403,15 +411,44 @@ def differential_rows_for_fire(
         row["area_acres_from_geometry"] = peri_scribe.units.area(
             cumulative_geometry,
         ).m_as("acres")
-        row["area_acres_from_geometry_differential"] = peri_scribe.units.area(
-            differential_geometry,
-        ).m_as("acres")
+        ring_area = peri_scribe.units.area(differential_geometry)
+        row["area_acres_from_geometry_differential"] = ring_area.m_as("acres")
+        row[peri_scribe.geo.measurements.AREA_COLUMN] = ring_area.m_as("meters ** 2")
         rows.append(row)
+    measure_drawn_rings(rows)
     return rows
+
+
+def measure_drawn_rings(rows: list[dict[str, object]]) -> None:
+    """Persist added ground for the same dated, visible rings the map displays.
+
+    Args:
+        rows: One fire's differential rows in progression order, including geometry,
+            observation time, and measured area; selected rows receive added-area
+            measurements and the sequence digest in place.
+    """
+    selected = [
+        row
+        for row in rows
+        if peri_scribe.geo.parsing.observation_time_from(row["observation_time"])
+        is not None
+        and typing.cast("float", row[peri_scribe.geo.measurements.AREA_COLUMN])
+        > peri_scribe.perimeters.progression.MINIMUM_RING_AREA.m_as("meters ** 2")
+    ]
+    geometries = [typing.cast("shapely.Geometry", row["geometry"]) for row in selected]
+    digest = peri_scribe.perimeters.progression.sequence_digest(geometries)
+    areas = peri_scribe.perimeters.progression.added_areas(geometries)
+    for row, area in zip(selected, areas, strict=True):
+        row[peri_scribe.perimeters.progression.ADDED_AREA_COLUMN] = area.m_as(
+            "meters ** 2",
+        )
+        row[peri_scribe.perimeters.progression.SEQUENCE_COLUMN] = digest
 
 
 def differential_perimeter_dataframe(
     full_perimeters: geopandas.GeoDataFrame,
+    *,
+    reused: dict[str, peri_scribe.fires.reuse.Rows] | None = None,
 ) -> geopandas.GeoDataFrame:
     """Build the differential perimeter history from the full history.
 
@@ -421,11 +458,14 @@ def differential_perimeter_dataframe(
 
     Args:
         full_perimeters: The full perimeter history layer.
+        reused: Validated differential rows keyed by their fire's derivation key, or
+            None when all fires must be derived.
 
     Returns:
         The differential perimeter rows as a GeoDataFrame in the output spatial
         reference.
     """
+    reused = {} if reused is None else reused
     fire_attributes: list[list[dict[str, object]]] = []
     fire_geometries: list[list[shapely.Geometry | None]] = []
     for positions in fire_positions(full_perimeters):
@@ -436,12 +476,25 @@ def differential_perimeter_dataframe(
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=DIFFERENTIAL_WORKER_COUNT,
     ) as executor:
-        for fire_rows in executor.map(
-            differential_rows_for_fire,
-            fire_attributes,
-            fire_geometries,
-        ):
+        keys = [
+            str(attributes[0].get(peri_scribe.fires.reuse.KEY_COLUMN))
+            for attributes in fire_attributes
+        ]
+        futures = {
+            index: executor.submit(differential_rows_for_fire, attributes, geometries)
+            for index, (attributes, geometries) in enumerate(
+                zip(fire_attributes, fire_geometries, strict=True),
+            )
+            if keys[index] not in reused
+        }
+        for index, key in enumerate(keys):
+            fire_rows = reused[key] if key in reused else futures[index].result()
             rows.extend(fire_rows)
+    logger.info(
+        "Differential history reuse",
+        reused=len(keys) - len(futures),
+        recomputed=len(futures),
+    )
     return peri_scribe.fires.history.build_dataframe(
         rows,
         DIFFERENTIAL_PERIMETER_COLUMNS,
@@ -450,21 +503,26 @@ def differential_perimeter_dataframe(
 
 def write_history_of_differential_geography(
     year_directory: pathlib.Path,
+    *,
+    unconditional: bool = False,
 ) -> pathlib.Path:
     """Build and write the differential point and perimeter history GeoPackage.
 
     The full history is built first so the differential always matches the current
     source data. The output holds a ``perimeter_history`` layer of per-perimeter growth
-    and a ``point_history`` layer copied from the full history.
+    and a ``point_history`` layer copied from the full history. Unchanged fires retain
+    their rings and measurements; changes rebuild the fire's complete sequence.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
+        unconditional: Bypass prior full and differential history results.
 
     Returns:
         The path of the written differential GeoPackage.
     """
     full_path = peri_scribe.fires.files.write_history_of_full_geography(
         year_directory,
+        unconditional=unconditional,
     )
     full_perimeters = peri_scribe.geo.reading.read_layer(
         full_path,
@@ -475,13 +533,20 @@ def write_history_of_differential_geography(
         peri_scribe.fires.files.POINT_LAYER_NAME,
     )
     output_path = differential_geopackage_path(year_directory)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    peri_scribe.output.write_geopackage(
+    cached = peri_scribe.fires.reuse.read_rows(
+        output_path,
+        (peri_scribe.fires.files.PERIMETER_LAYER_NAME,),
+        unconditional=unconditional,
+    )
+    peri_scribe.fires.reuse.write_layers(
         output_path,
         [
             peri_scribe.models.LayerData(
                 name=peri_scribe.fires.files.PERIMETER_LAYER_NAME,
-                dataframe=differential_perimeter_dataframe(full_perimeters),
+                dataframe=differential_perimeter_dataframe(
+                    full_perimeters,
+                    reused=cached.get(peri_scribe.fires.files.PERIMETER_LAYER_NAME, {}),
+                ),
             ),
             peri_scribe.models.LayerData(
                 name=peri_scribe.fires.files.POINT_LAYER_NAME,

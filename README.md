@@ -9,14 +9,15 @@ scores fires using geographic signals, and produces KMZ maps for Google Earth.
 Run `peri_scribe --help` for command help. Pipeline commands that accept an optional
 year-directory argument default to `data/<current year>`.
 
-- `run` runs the pipeline fetch → geography → score → kmz → reports. The fetch stage
+- `run` runs the pipeline (fetch → geography → score → kmz → reports). The fetch stage
   fetches all fire and external sources and the administrative-boundary GeoPackage, and
   the later stages rebuild derived geography, fire scores, the year's KMZ, and the fire
-  reports; when nothing changed the pipeline ends after fetch. Use
-  `--full-fetch-interval` to fetch incremental feeds in full. Use `--unconditional` to
-  run all specified stages regardless of data changes. `--only STAGE`, `--from STAGE`,
-  and `--to STAGE` run one stage or a range, and `--list-stages` prints the stages with
-  descriptions.
+  reports. The pipeline ends after fetch when nothing changed and no rebuild is pending.
+  `--full-fetch-interval` periodically fetches fire feeds in full and forces a
+  derived rebuild, even without new data. `--unconditional` rebuilds the selected stages
+  regardless of changes and bypasses history reuse when geography is selected. `--only
+  STAGE`, `--from STAGE`, and `--to STAGE` run one stage or a range, and `--list-stages`
+  prints the stages with descriptions.
 - `show-colormap` previews the progression-ring colormap in a compatible terminal.
 - `validate-sources` compares incremental feed snapshots with complete fresh downloads
   and leaves validation data for inspection when problems are found.
@@ -51,7 +52,7 @@ fetch:
         │
         v
 geography:
-    classify and index fires, derive full and differential history
+    reuse unchanged fires, derive changed histories and shared measurements
         │
         v
 score:
@@ -65,6 +66,17 @@ kmz:
 reports:
     fire reports in reports/
 ```
+
+Geography reuses complete full and differential histories for fires whose inputs and
+derivation settings match the previous run. A changed fire's entire history is rebuilt,
+including earlier rings that a correction may affect. Area and exterior-length
+measurements are stored with the geometry and shared by scoring, maps, and reports.
+Missing, incompatible, or damaged reuse data causes recomputation automatically.
+
+To recompute all geography from stored inputs, use `peri_scribe run --only geography
+--unconditional`. Starting at a later stage uses the existing geography. Neither
+`--unconditional` nor a scheduled full fetch forces static sources such as buildings to
+be downloaded again.
 
 ## Status
 

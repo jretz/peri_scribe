@@ -59,6 +59,10 @@ WEB_MERCATOR_SPATIAL_REFERENCE = spatial_reference_for_id(
 def spatial_reference_wkids(spatial_reference: object) -> set[int]:
     """Collect the integer wkid values an ArcGIS spatial reference reports.
 
+    Args:
+        spatial_reference: ArcGIS spatial-reference metadata, expected to be a
+            dictionary containing ``wkid`` or ``latestWkid``.
+
     Returns:
         The set of integer wkid values the spatial reference reports.
     """
@@ -76,6 +80,9 @@ def spatial_reference_wkids(spatial_reference: object) -> set[int]:
 
 def layer_wkids(layer: arcgis.features.FeatureLayer) -> set[int]:
     """Collect every wkid the layer's metadata reports, including extents.
+
+    Args:
+        layer: The ArcGIS feature layer whose spatial-reference metadata is needed.
 
     Returns:
         The set of wkid values the layer's metadata reports, including extents.
@@ -95,6 +102,10 @@ def bounds_of(
 ) -> tuple[float, float, float, float] | None:
     """Return (x_minimum, x_maximum, y_minimum, y_maximum) of the geometries.
 
+    Args:
+        geometries: The feature geometries in their source coordinate units, with None
+            for missing geometry.
+
     Returns:
         The bounds as (x_minimum, x_maximum, y_minimum, y_maximum), or None if every
         geometry is null.
@@ -111,6 +122,9 @@ def projected_maximum_magnitude_in_crs_units(crs: pyproj.CRS) -> float:
 
     Derived from the CRS's area of use: its corners are transformed into the CRS, giving
     the coordinate extent in the CRS's own units.
+
+    Args:
+        crs: The projected coordinate reference system whose extent is needed.
 
     Returns:
         The largest coordinate magnitude the CRS plausibly produces, or the
@@ -147,6 +161,9 @@ def spatial_reference_domain(
     wkid: int,
 ) -> peri_scribe.models.SpatialReferenceDomain | None:
     """Describe the plausible coordinate domain of a wkid, or None if unknown.
+
+    Args:
+        wkid: The spatial-reference identifier to resolve through the CRS database.
 
     Returns:
         The domain of the wkid's CRS, or None if the wkid has no known geographic or
@@ -186,6 +203,14 @@ def axis_fits(
 ) -> bool:
     """Return True if every value in [low, high] has magnitude in the band.
 
+    Args:
+        low: The lower coordinate bound in the candidate CRS's units.
+        high: The upper coordinate bound in the candidate CRS's units.
+        minimum_magnitude_in_crs_units: The smallest plausible absolute coordinate value
+            in the same units.
+        maximum_magnitude_in_crs_units: The largest plausible absolute coordinate value
+            in the same units.
+
     Returns:
         True if every value in [low, high] has magnitude in the band.
     """
@@ -201,6 +226,12 @@ def coordinates_match_domain(
     bounds: tuple[float, float, float, float],
 ) -> bool:
     """Return True if every coordinate magnitude in bounds fits the bands.
+
+    Args:
+        domain: The minimum and maximum absolute coordinate magnitudes for x, then y, in
+            the candidate CRS's units.
+        bounds: The observed (x_minimum, x_maximum, y_minimum, y_maximum) coordinates in
+            the source units.
 
     Returns:
         True if every coordinate magnitude in bounds fits the bands.
@@ -225,6 +256,12 @@ def longitudes_in_area(
 
     The area may wrap across the antimeridian, in which case west > east.
 
+    Args:
+        west: The area's western longitude boundary in degrees.
+        east: The area's eastern longitude boundary in degrees.
+        x_minimum: The minimum observed longitude in degrees.
+        x_maximum: The maximum observed longitude in degrees.
+
     Returns:
         True if the longitude extent lies within the area's bounds.
     """
@@ -240,6 +277,11 @@ def coordinates_in_area(
     """Return True if the bounds fall inside the CRS's area of use.
 
     An unknown area of use is treated as matching.
+
+    Args:
+        crs: The coordinate reference system whose geographic area of use is checked.
+        bounds: The observed (x_minimum, x_maximum, y_minimum, y_maximum) longitude and
+            latitude bounds in degrees.
 
     Returns:
         True if the bounds fall inside the CRS's area of use.
@@ -257,6 +299,9 @@ def coordinates_in_area(
 
 def area_of_use_text(crs: pyproj.CRS) -> str:
     """Describe a CRS's area of use for warnings.
+
+    Args:
+        crs: The coordinate reference system whose area of use should be described.
 
     Returns:
         A human-readable description of the CRS's area of use.
@@ -277,6 +322,11 @@ def classify_candidates_for_bounds(
     with a description of why. A geographic candidate whose expected range fits but
     whose area of use does not contain the coordinates is kept, but reported as
     outside its area of use.
+
+    Args:
+        candidates: The spatial-reference identifiers reported by the source.
+        bounds: The observed (x_minimum, x_maximum, y_minimum, y_maximum) coordinates in
+            the source units.
 
     Returns:
         A tuple of the wkids that fit the bounds and contain the coordinates in their
@@ -328,6 +378,11 @@ def select_spatial_reference_wkid(
     warning, because its coordinate range is plausible and no better candidate is
     reported. When no wkid can be chosen, the selection carries a failure message that
     explains why.
+
+    Args:
+        candidates: The spatial-reference identifiers reported by the source.
+        bounds: The observed (x_minimum, x_maximum, y_minimum, y_maximum) coordinates in
+            the source units, or None when no geometry is available.
 
     Returns:
         The selection describing the chosen wkid, or explaining why none could be
@@ -414,6 +469,12 @@ def choose_spatial_reference_id(
     returned features' coordinate bounds. If the selection carries a warning, it is
     logged; if no wkid can be chosen, NoSpatialReferenceError is raised so no output is
     written.
+
+    Args:
+        layer: The ArcGIS feature layer supplying metadata and extents.
+        feature_set: The query response supplying additional spatial-reference data.
+        bounds: The returned features' (x_minimum, x_maximum, y_minimum, y_maximum)
+            coordinates in the source units, or None when no geometry is available.
 
     Returns:
         The chosen spatial reference wkid.

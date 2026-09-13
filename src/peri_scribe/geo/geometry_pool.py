@@ -12,6 +12,9 @@ import shapely
 def geometry_digest(wkb: bytes) -> bytes:
     """Compact keys avoid retaining a second copy of every geometry's coordinates.
 
+    Args:
+        wkb: The serialized geometry bytes used to identify matching candidates.
+
     Returns:
         The digest used to select candidate geometries.
     """
@@ -34,6 +37,10 @@ class GeometryPool:
 
     def from_wkb(self, wkb: bytes) -> shapely.Geometry:
         """Reuse matching decoded geometry without retaining the source WKB bytes.
+
+        Args:
+            wkb: The serialized geometry, including its spatial-reference identifier
+                when present.
 
         Returns:
             A geometry with the supplied coordinates and spatial reference.

@@ -19,7 +19,6 @@ import peri_scribe.kml.selection
 import peri_scribe.kml.styles
 import peri_scribe.kml.tour
 import peri_scribe.models
-import peri_scribe.units
 from peri_scribe.units import units
 
 
@@ -621,7 +620,7 @@ def fire_growth(
         return None, None
     timed_perimeters.sort(key=operator.itemgetter(0))
     latest_perimeter = timed_perimeters[-1][1]
-    latest_area = peri_scribe.units.area(latest_perimeter.geometry)
+    latest_area = latest_perimeter.measured_area
     cutoff = reference_time - FAST_GROWTH_LOOKBACK
     baseline_perimeter: peri_scribe.kml.fire_data.Perimeter | None = None
     for observation_time, perimeter in reversed(timed_perimeters):
@@ -630,7 +629,7 @@ def fire_growth(
             break
     if baseline_perimeter is None:
         return latest_area, None
-    baseline_area = peri_scribe.units.area(baseline_perimeter.geometry)
+    baseline_area = baseline_perimeter.measured_area
     growth = latest_area - baseline_area
     growth_percent = (
         (growth / baseline_area) * 100.0 * units.percent

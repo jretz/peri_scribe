@@ -232,6 +232,9 @@ def california_geometry_from_states(
 ) -> shapely.Geometry:
     """Return California's polygon from a combined state-boundary dataframe.
 
+    Args:
+        states: The state polygons with state abbreviations in ``STATE_ABBR``.
+
     Returns:
         California's polygon.
 
@@ -250,6 +253,10 @@ def neighbor_geometries_from_states(
     states: geopandas.GeoDataFrame,
 ) -> geopandas.GeoDataFrame:
     """Return the neighboring states from a combined state-boundary dataframe.
+
+    Args:
+        states: The California and neighboring state polygons with abbreviations in
+            ``STATE_ABBR``.
 
     Returns:
         The non-California rows with a reset index.
@@ -334,6 +341,14 @@ def ordered_border_coordinates(
     # The stored borders are offset by roughly a meter at the corners, so this snaps
     # them together without merging the far-apart vertices that trace the border.
     def snapped(point: tuple[float, float]) -> tuple[float, float]:
+        """Treat slightly offset state-corner endpoints as the same graph vertex.
+
+        Args:
+            point: The endpoint's longitude and latitude in degrees.
+
+        Returns:
+            The coordinates rounded to four decimal places for vertex matching.
+        """
         return (round(point[0], 4), round(point[1], 4))
 
     adjacency: dict[

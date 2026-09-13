@@ -52,6 +52,13 @@ class DownloadLinksParser(HTMLParser):
         tag: str,
         attrs: list[tuple[str, str | None]],
     ) -> None:
+        """Track headings and links so downloads are collected from the right section.
+
+        Args:
+            tag: The opening HTML tag name supplied by the parser.
+            attrs: The tag's attribute names and values, with None for valueless
+                attributes.
+        """
         attribute_map = dict(attrs)
         if tag in {"h1", "h2", "h3"}:
             self.heading_level = tag
@@ -67,12 +74,22 @@ class DownloadLinksParser(HTMLParser):
             self.collecting = False
 
     def handle_data(self, data: str) -> None:
+        """Retain heading and link labels needed to recognize download entries.
+
+        Args:
+            data: The text content supplied by the HTML parser.
+        """
         if self.heading_level is not None:
             self.heading_text.append(data)
         elif self.anchor_href is not None:
             self.anchor_text.append(data)
 
     def handle_endtag(self, tag: str) -> None:
+        """Recognize completed download headings and archive links.
+
+        Args:
+            tag: The closing HTML tag name supplied by the parser.
+        """
         if tag in {"h1", "h2", "h3"} and tag == self.heading_level:
             heading = "".join(self.heading_text).strip().lower()
             if heading in {"download links", "downloads links"}:

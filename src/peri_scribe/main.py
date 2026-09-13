@@ -8,6 +8,7 @@ import importlib.metadata
 import pathlib
 import re
 import textwrap
+import typing
 
 import click
 import structlog
@@ -17,6 +18,7 @@ import peri_scribe.fires.scores
 import peri_scribe.kml.builder
 import peri_scribe.kml.colormap
 import peri_scribe.output
+import peri_scribe.pipeline_state
 import peri_scribe.report.gathering
 import peri_scribe.report.markdown
 import peri_scribe.sources.administrative_boundaries
@@ -230,9 +232,9 @@ def run_fetch_stage(
     fire-feed fetch is run when *full_fetch_interval* is given and the last recorded
     full fetch, stored at ``YEAR_DIRECTORY/sources/fetch_state.json``, is at least that
     old; without an interval every fire-feed fetch is incremental. A completed full
-    fetch records its completion time in the state file. The stage returns True when the
-    fetch wrote a new fire snapshot or replaced the stored evacuations, or when
-    *unconditional* is set, signalling that the remaining stages should run.
+    fetch records its completion time separately from its pending derived rebuild. New
+    snapshots, changed evacuations, and unfinished builds require downstream stages even
+    if a subsequent fetch finds no further changes.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
@@ -243,6 +245,9 @@ def run_fetch_stage(
 
     Returns:
         True when the remaining stages should run.
+
+    Raises:
+        SystemExit: When a fire feed fails; unfinished work remains pending.
     """
     base_directory = peri_scribe.sources.snapshots.base_directory_for_year_directory(
         year_directory,
@@ -261,32 +266,89 @@ def run_fetch_stage(
             current_time=current_time,
             last_full_fetch=last_full_fetch,
         )
-    result = peri_scribe.sources.fetching.fetch_all_feeds(
-        base_directory,
-        year=year,
-        full=full,
-    )
+    if full:
+        peri_scribe.pipeline_state.require_stages(
+            year_directory,
+            peri_scribe.pipeline_state.DERIVED_STAGES,
+            unconditional=True,
+        )
+    try:
+        result = peri_scribe.sources.fetching.fetch_all_feeds(
+            base_directory,
+            year=year,
+            full=full,
+        )
+    except Exception, SystemExit:
+        # A failed feed can follow successful snapshot writes from other feeds.
+        peri_scribe.pipeline_state.require_stages(
+            year_directory,
+            peri_scribe.pipeline_state.DERIVED_STAGES,
+        )
+        raise
+    if result.changed:
+        peri_scribe.pipeline_state.require_stages(
+            year_directory,
+            peri_scribe.pipeline_state.DERIVED_STAGES,
+        )
     if full:
         peri_scribe.sources.full_fetch_state.write_state(
             state_file,
             last_full_fetch=datetime.datetime.now(datetime.UTC),
         )
+    try:
+        evacuations_changed = refresh_external_sources(year_directory)
+    except Exception, SystemExit:
+        peri_scribe.pipeline_state.require_stages(
+            year_directory,
+            peri_scribe.pipeline_state.DERIVED_STAGES,
+        )
+        raise
+    if evacuations_changed:
+        peri_scribe.pipeline_state.require_stages(
+            year_directory,
+            peri_scribe.pipeline_state.DERIVED_STAGES,
+        )
+    return (
+        result.changed
+        or evacuations_changed
+        or unconditional
+        or bool(peri_scribe.pipeline_state.read_state(year_directory).remaining)
+    )
+
+
+def refresh_external_sources(year_directory: pathlib.Path) -> bool:
+    """Observe evacuation changes separately from fire-feed completion.
+
+    Args:
+        year_directory: The year directory holding the external source data.
+
+    Returns:
+        Whether evacuation geography changed.
+    """
     evacuations_digest_before = stored_evacuations_digest(year_directory)
     for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES:
         fetch_external_source(source, year_directory)
     peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries(
         year_directory,
     )
-    evacuations_changed = (
-        stored_evacuations_digest(year_directory) != evacuations_digest_before
-    )
-    return result.changed or evacuations_changed or unconditional
+    return stored_evacuations_digest(year_directory) != evacuations_digest_before
 
 
-def run_geography_stage(year_directory: pathlib.Path) -> None:
-    """Derive fire geography histories from the fetched sources."""
+def run_geography_stage(
+    year_directory: pathlib.Path,
+    *,
+    unconditional: bool = False,
+) -> None:
+    """Derive fire geography histories from the fetched sources.
+
+    Args:
+        year_directory: The year directory holding the source snapshots and outputs.
+        unconditional: Whether to bypass prior full and differential histories and
+            refresh the fire index.
+    """
     peri_scribe.fires.differential.write_history_of_differential_geography(
         year_directory,
+        unconditional=unconditional,
     )
 
 
@@ -357,8 +419,8 @@ def run_pipeline_stage(
         year_directory: The year directory that holds the pipeline data.
         full_fetch_interval: How often the fetch stage fetches every feed in full, or
             None to always fetch incrementally.
-        unconditional: Whether the fetch stage should run the later stages even when
-            nothing changed.
+        unconditional: Whether to continue after an unchanged fetch and bypass prior
+            history reuse in the geography stage.
 
     Returns:
         True when the next stage should run.
@@ -371,7 +433,7 @@ def run_pipeline_stage(
                 unconditional=unconditional,
             )
         case "geography":
-            run_geography_stage(year_directory)
+            run_geography_stage(year_directory, unconditional=unconditional)
         case "score":
             run_score_stage(year_directory)
         case "kmz":
@@ -435,9 +497,11 @@ def selected_stage_range(
         new or changed features), catching source edits the incremental fetch would
         miss: the first run with the option fetches in full, and a later run fetches in
         full whenever the last successful full fetch is at least that long ago. Without
-        the option every fire-feed fetch is incremental. --unconditional runs the
-        remaining stages even when nothing changed; static feeds such as buildings are
-        downloaded only when missing, whether or not --unconditional is given.
+        the option every fire-feed fetch is incremental. A scheduled full fetch forces a
+        complete derived rebuild even when no features changed. Failed builds resume on
+        subsequent runs. --unconditional rebuilds the selected stages without reusing
+        prior geography; static feeds such as buildings are downloaded only when
+        missing, whether or not --unconditional is given.
 
         Select a single stage with --only, a range with --from and --to, or list the
         stages with --list-stages. An error in any step stops the pipeline.
@@ -467,7 +531,12 @@ def selected_stage_range(
 @click.option(
     "--unconditional",
     is_flag=True,
-    help="Run the later stages even when the fetch changed nothing.",
+    help=textwrap.dedent(
+        """\
+        Rebuild selected stages without reusing prior geography, even when nothing
+        changed.
+        """,
+    ),
 )
 @click.option(
     "--only",
@@ -504,6 +573,18 @@ def run(
 ) -> None:
     """Run the selected pipeline stages.
 
+    Args:
+        year_directory: The year directory holding the pipeline data, or None to use the
+            current year's default directory.
+        full_fetch_interval: How often to fetch every fire feed in full, or None to
+            always fetch incrementally.
+        unconditional: Whether to run selected stages regardless of input changes and
+            bypass history reuse when geography is selected.
+        only_stage: A single stage to run, or None to use a stage range.
+        from_stage: The first stage in the range, or None to start at fetch.
+        to_stage: The last stage in the range, or None to finish at reports.
+        list_stages: Whether to print stage descriptions without running the pipeline.
+
     Raises:
         click.UsageError: When the stage selection is invalid.
     """
@@ -516,16 +597,67 @@ def run(
         message = "--only cannot be combined with --from or --to"
         raise click.UsageError(message)
     start, end = selected_stage_range(only_stage, from_stage, to_stage)
+    with peri_scribe.pipeline_state.run_lock(year_directory) as acquired:
+        if not acquired:
+            logger.info(
+                "Another run owns this year; skipping invocation",
+                year=str(year_directory),
+            )
+            return
+        run_selected_stages(
+            year_directory,
+            start,
+            end,
+            full_fetch_interval=full_fetch_interval,
+            unconditional=unconditional,
+        )
+
+
+def run_selected_stages(
+    year_directory: pathlib.Path,
+    start: int,
+    end: int,
+    *,
+    full_fetch_interval: datetime.timedelta | None,
+    unconditional: bool,
+) -> None:
+    """Keep recovery state until the required outputs have successfully completed.
+
+    Args:
+        year_directory: The year directory holding the pipeline data and run state.
+        start: The inclusive zero-based index of the first selected pipeline stage.
+        end: The inclusive zero-based index of the last selected pipeline stage.
+        full_fetch_interval: How often to fetch every fire feed in full, or None to
+            always fetch incrementally.
+        unconditional: Whether to force the selected stages to rebuild, in addition to
+            any unconditional requirement already recorded in recovery state.
+    """
+    selected = tuple(
+        typing.cast("peri_scribe.pipeline_state.DerivedStage", stage.name)
+        for stage in PIPELINE_STAGES[start : end + 1]
+        if stage.name != "fetch"
+    )
+    if selected and (unconditional or start > 0):
+        peri_scribe.pipeline_state.require_stages(
+            year_directory,
+            selected,
+            unconditional=unconditional,
+        )
     for stage in PIPELINE_STAGES[start : end + 1]:
+        pending = peri_scribe.pipeline_state.read_state(year_directory)
         should_continue = run_pipeline_stage(
             stage,
             year_directory,
             full_fetch_interval=full_fetch_interval,
-            unconditional=unconditional,
+            unconditional=(
+                unconditional
+                or (pending.unconditional and stage.name in pending.remaining)
+            ),
         )
         if not should_continue and stage is not PIPELINE_STAGES[end]:
             logger.debug("Nothing changed; skipping remaining pipeline steps")
             break
+        peri_scribe.pipeline_state.complete_stage(year_directory, stage.name)
 
 
 @cli.command(

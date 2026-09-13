@@ -1242,6 +1242,7 @@ def test_fetch_all_feeds_full_downloads_when_timestamp_present(
 def test_fetch_all_feeds_full_writes_no_new_file_when_nothing_changed(
     fetch_all_feeds_stubs: typing.Callable[..., None],
     geo_package_store: GeoPackageStore,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     full = wgs84_feature_set([
         (1, "a", 1.0, 2.0),
@@ -1257,12 +1258,19 @@ def test_fetch_all_feeds_full_writes_no_new_file_when_nothing_changed(
         peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026).changed
         is True
     )
+    index_calls: list[pathlib.Path] = []
+    monkeypatch.setattr(
+        peri_scribe.fires.index,
+        "index_fire_sources",
+        index_calls.append,
+    )
     full_result = peri_scribe.sources.fetching.fetch_all_feeds(
         BASE_DIRECTORY,
         year=2026,
         full=True,
     )
     assert full_result.changed is False
+    assert index_calls == [BASE_DIRECTORY / "data" / "2026"]
     assert geo_package_store.has(
         snapshot_path(
             serial_number=0,

@@ -23,6 +23,11 @@ class NoSpatialReferenceError(ValueError):
     """Raised when a layer's spatial reference cannot be determined."""
 
     def __init__(self, message: str = "no usable spatial reference wkid") -> None:
+        """Preserve the reason a spatial reference could not be selected.
+
+        Args:
+            message: The explanation to include in the error.
+        """
         super().__init__(message)
 
 
@@ -30,6 +35,12 @@ class UnknownLayerError(ValueError):
     """Raised when a GeoPackage layer does not correspond to a configured feed."""
 
     def __init__(self, layer_name: str, path: pathlib.Path) -> None:
+        """Identify the unrecognized layer and its source file in the error.
+
+        Args:
+            layer_name: The layer that does not match a configured feed.
+            path: The GeoPackage containing that layer.
+        """
         super().__init__(
             f"layer {layer_name} in {path} does not correspond to a configured feed",
         )

@@ -5,12 +5,12 @@ from __future__ import annotations
 import typing
 
 import peri_scribe.areas
+import peri_scribe.geo.measurements
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.plot_data
 import peri_scribe.kml.row_values
 import peri_scribe.kml.selection
 import peri_scribe.models
-import peri_scribe.units
 from peri_scribe.units import units
 
 
@@ -79,8 +79,9 @@ def fire_description(
 
     exterior_perimeter: pint.Quantity[float] | None = None
     if perimeter_row is not None:
-        exterior_perimeter = peri_scribe.units.exterior_perimeter(
+        exterior_perimeter = peri_scribe.geo.measurements.exterior_perimeter(
             perimeter_row.geometry,
+            perimeter_row.get(peri_scribe.geo.measurements.EXTERIOR_COLUMN),
         )
 
     area = peri_scribe.areas.presented_area_for_latest(perimeter_row, point_row)

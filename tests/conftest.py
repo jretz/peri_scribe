@@ -21,6 +21,7 @@ import peri_scribe.kml.builder
 import peri_scribe.main
 import peri_scribe.models
 import peri_scribe.output
+import peri_scribe.pipeline_state
 import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.feeds
@@ -516,8 +517,15 @@ def current_year(
 
 
 @pytest.fixture
-def run_stubs(monkeypatch: pytest.MonkeyPatch) -> typing.Callable[..., RunStubs]:
+def run_stubs(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> typing.Callable[..., RunStubs]:
     """Install step stubs for the run command.
+
+    Args:
+        monkeypatch: The fixture used to replace pipeline steps and state paths.
+        tmp_path: The isolated directory for recovery state and the run lock.
 
     Returns:
         A callable taking whether the fetch changed something, whether the evacuations
@@ -533,6 +541,16 @@ def run_stubs(monkeypatch: pytest.MonkeyPatch) -> typing.Callable[..., RunStubs]
             peri_scribe.sources.full_fetch_state.FullFetchState | None
         ) = None,
     ) -> RunStubs:
+        monkeypatch.setattr(
+            peri_scribe.pipeline_state,
+            "state_path",
+            lambda _year: tmp_path / "run_state.json",
+        )
+        monkeypatch.setattr(
+            peri_scribe.pipeline_state,
+            "lock_path",
+            lambda _year: tmp_path / ".run.lock",
+        )
         stubs = RunStubs(
             fetch_result=peri_scribe.sources.fetching.FetchResult(
                 snapshot_paths=(),
@@ -617,7 +635,12 @@ def run_stubs(monkeypatch: pytest.MonkeyPatch) -> typing.Callable[..., RunStubs]
         monkeypatch.setattr(
             peri_scribe.fires.differential,
             "write_history_of_differential_geography",
-            stubs.history_calls.append,
+            lambda year, *, unconditional=False: (
+                stubs.history_calls.append(year),
+                stubs.unconditional_history_calls.append(year)
+                if unconditional
+                else None,
+            ),
         )
         monkeypatch.setattr(
             peri_scribe.fires.scores,

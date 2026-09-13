@@ -368,7 +368,7 @@ def fetch_all_feeds(
             )
         snapshot_paths.append(output_path)
         wrote_snapshot = True
-    if wrote_snapshot:
+    if wrote_snapshot or full:
         peri_scribe.fires.index.index_fire_sources(
             peri_scribe.sources.snapshots.year_directory_path(base_dir, year),
         )

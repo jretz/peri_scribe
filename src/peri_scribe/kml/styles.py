@@ -21,6 +21,11 @@ class Style(simplekml.Style):
     """
 
     def __init__(self, style_id: str) -> None:
+        """Give placemarks a stable identifier for referencing this style.
+
+        Args:
+            style_id: The application-assigned identifier serialized with the style.
+        """
         super().__init__()
         # simplekml reads this attribute when serializing the style's id.
         self._id = style_id

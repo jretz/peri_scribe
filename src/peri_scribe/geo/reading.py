@@ -268,6 +268,11 @@ def read_skip_layer_chunks(
 ) -> typing.Iterator[geopandas.GeoDataFrame]:
     """Yield chunks using ``skip_features``, which rescans from the start each time.
 
+    Args:
+        path: The vector data file to read.
+        layer_name: The layer to read, or None for the file's default layer.
+        chunk_size: The maximum number of features per chunk.
+
     Yields:
         Each chunk of the layer's features, in row order.
     """
@@ -297,6 +302,11 @@ def read_gpkg_layer_chunks(
     rather than a rescan. Boundaries are taken at ``fid % chunk_size == 0``; for the
     dense fids this project writes, that yields chunks of exactly ``chunk_size`` rows in
     fid order, matching the skip-based contract.
+
+    Args:
+        path: The GeoPackage to read.
+        layer_name: The layer whose ``fid`` primary key supports pagination.
+        chunk_size: The number of ``fid`` values covered by each indexed range.
 
     Yields:
         Each chunk of the layer's features, in fid order.

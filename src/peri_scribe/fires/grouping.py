@@ -214,12 +214,26 @@ def group_fire_record_indices(
     parent = list(range(len(records)))
 
     def find(index: int) -> int:
+        """Resolve a record's shared representative for group membership checks.
+
+        Args:
+            index: The record index whose group representative is needed.
+
+        Returns:
+            The representative record index for the group.
+        """
         while parent[index] != index:
             parent[index] = parent[parent[index]]
             index = parent[index]
         return index
 
     def union(left: int, right: int) -> None:
+        """Keep records identified as the same fire in a shared group.
+
+        Args:
+            left: One record index whose group should be joined.
+            right: The other record index whose group should be joined.
+        """
         root_left = find(left)
         root_right = find(right)
         if root_left != root_right:

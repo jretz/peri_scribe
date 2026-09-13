@@ -1,0 +1,108 @@
+"""Recovery requirements survive failures and respect stage ordering."""
+
+import pathlib
+
+import pytest
+
+import peri_scribe.pipeline_state
+
+
+def test_read_state_starts_without_pending_work(tmp_path: pathlib.Path) -> None:
+    assert not peri_scribe.pipeline_state.read_state(tmp_path).remaining
+
+
+@pytest.mark.parametrize(
+    "content",
+    [
+        b"broken",
+        b"\xff",
+        b'{"version":2}',
+        b'{"unknown":true}',
+        b'{"remaining":["kmz","geography"]}',
+        b'{"remaining":["geography","geography"]}',
+        b'{"remaining":["unknown"]}',
+    ],
+)
+def test_read_state_recovers_invalid_markers(
+    tmp_path: pathlib.Path,
+    content: bytes,
+) -> None:
+    peri_scribe.pipeline_state.state_path(tmp_path).write_bytes(content)
+    state = peri_scribe.pipeline_state.read_state(tmp_path)
+    assert state.remaining == peri_scribe.pipeline_state.DERIVED_STAGES
+    assert state.unconditional
+
+
+def test_require_stages_preserves_force_and_reinvalidates_prerequisites(
+    tmp_path: pathlib.Path,
+) -> None:
+    peri_scribe.pipeline_state.require_stages(
+        tmp_path,
+        ("kmz", "reports"),
+        unconditional=True,
+    )
+    peri_scribe.pipeline_state.require_stages(tmp_path, ("geography", "score"))
+    state = peri_scribe.pipeline_state.read_state(tmp_path)
+    assert state.remaining == peri_scribe.pipeline_state.DERIVED_STAGES
+    assert state.unconditional
+
+
+def test_complete_stage_requires_prerequisites(tmp_path: pathlib.Path) -> None:
+    peri_scribe.pipeline_state.require_stages(
+        tmp_path,
+        ("geography", "kmz"),
+        unconditional=True,
+    )
+    peri_scribe.pipeline_state.complete_stage(tmp_path, "kmz")
+    assert peri_scribe.pipeline_state.read_state(tmp_path).remaining == (
+        "geography",
+        "kmz",
+    )
+    peri_scribe.pipeline_state.complete_stage(tmp_path, "geography")
+    assert peri_scribe.pipeline_state.read_state(tmp_path).unconditional
+    peri_scribe.pipeline_state.complete_stage(tmp_path, "kmz")
+    assert (
+        peri_scribe.pipeline_state.read_state(tmp_path)
+        == peri_scribe.pipeline_state.PendingRun()
+    )
+    peri_scribe.pipeline_state.complete_stage(tmp_path, "reports")
+
+
+def test_run_lock_excludes_another_writer_and_releases_on_failure(
+    tmp_path: pathlib.Path,
+) -> None:
+    def interrupted_run() -> None:
+        with peri_scribe.pipeline_state.run_lock(tmp_path) as first:
+            assert first
+            with peri_scribe.pipeline_state.run_lock(tmp_path) as second:
+                assert not second
+            message = "interrupted"
+            raise ValueError(message)
+
+    with pytest.raises(ValueError, match="interrupted"):
+        interrupted_run()
+    with peri_scribe.pipeline_state.run_lock(tmp_path) as retry:
+        assert retry
+
+
+def test_write_state_retains_previous_marker_when_publish_fails(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    original = peri_scribe.pipeline_state.PendingRun(
+        remaining=("geography",),
+        unconditional=True,
+    )
+    peri_scribe.pipeline_state.write_state(tmp_path, original)
+
+    def fail_replace(_self: pathlib.Path, _target: pathlib.Path) -> None:
+        message = "interrupted"
+        raise OSError(message)
+
+    monkeypatch.setattr(pathlib.Path, "replace", fail_replace)
+    with pytest.raises(OSError, match="interrupted"):
+        peri_scribe.pipeline_state.write_state(
+            tmp_path,
+            peri_scribe.pipeline_state.PendingRun(),
+        )
+    assert peri_scribe.pipeline_state.read_state(tmp_path) == original

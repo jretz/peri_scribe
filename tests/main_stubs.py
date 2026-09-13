@@ -32,6 +32,9 @@ class RunStubs:
     scores_calls: list[pathlib.Path]
     kmz_calls: list[pathlib.Path]
     report_calls: list[pathlib.Path]
+    unconditional_history_calls: list[pathlib.Path] = dataclasses.field(
+        default_factory=list,
+    )
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)

@@ -10,9 +10,9 @@ import shapely.geometry
 
 import peri_scribe.fires.differential
 import peri_scribe.fires.files
+import peri_scribe.fires.reuse
 import peri_scribe.geo.reading
 import peri_scribe.models
-import peri_scribe.output
 import tests.factories
 
 
@@ -488,12 +488,13 @@ def test_differential_perimeter_dataframe_parallel_matches_single_worker(
 
 def test_write_history_of_differential_geography_writes_two_layers(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
 ) -> None:
-    full_path = pathlib.Path("data/2026/derived/history_of_full_geography.gpkg")
+    full_path = tmp_path / "derived/history_of_full_geography.gpkg"
     monkeypatch.setattr(
         peri_scribe.fires.files,
         "write_history_of_full_geography",
-        lambda _directory: full_path,
+        lambda _directory, **_kwargs: full_path,
     )
     perimeters = full_perimeter_frame([], [])
     points = tests.factories.geo_frame(
@@ -507,23 +508,16 @@ def test_write_history_of_differential_geography_writes_two_layers(
             perimeters if layer_name == "perimeter_history" else points
         ),
     )
-    monkeypatch.setattr(
-        pathlib.Path,
-        "mkdir",
-        lambda *_arguments, **_keywords: None,
-    )
     written: list[tuple[pathlib.Path, list[peri_scribe.models.LayerData]]] = []
     monkeypatch.setattr(
-        peri_scribe.output,
-        "write_geopackage",
+        peri_scribe.fires.reuse,
+        "write_layers",
         lambda path, layers: written.append((path, layers)),
     )
     result = peri_scribe.fires.differential.write_history_of_differential_geography(
-        pathlib.Path("data/2026"),
+        tmp_path,
     )
-    assert result == pathlib.Path(
-        "data/2026/derived/history_of_differential_geography.gpkg",
-    )
+    assert result == tmp_path / "derived/history_of_differential_geography.gpkg"
     assert len(written) == 1
     _path, layers = written[0]
     assert [layer.name for layer in layers] == [

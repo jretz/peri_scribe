@@ -344,6 +344,11 @@ class PartitionFiles:
     """
 
     def __init__(self, directory: pathlib.Path) -> None:
+        """Prepare partition files for collecting centroid records across archives.
+
+        Args:
+            directory: The existing directory where partition files are accumulated.
+        """
         self._directory = directory
         for partition in range(PARTITION_COUNT):
             (directory / partition_filename(partition)).touch()
@@ -367,7 +372,14 @@ class PartitionFiles:
         return self
 
     def __exit__(self, _type: object, _value: object, _traceback: object) -> None:
-        """Release nothing; the files are appended and closed per write."""
+        """Release nothing; the files are appended and closed per write.
+
+        Args:
+            _type: The exception type supplied by the context manager, or None;
+                unused because no handles remain open.
+            _value: The exception instance, or None; unused and not suppressed.
+            _traceback: The exception traceback, or None; unused.
+        """
 
 
 def append_centroids_to_partitions(

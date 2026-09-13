@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import dataclasses
 import pathlib
+
+import structlog
 
 import peri_scribe.fires.classification
 import peri_scribe.fires.history
+import peri_scribe.fires.index
+import peri_scribe.fires.reuse
 import peri_scribe.fires.sources
+import peri_scribe.geo.measurements
 import peri_scribe.models
-import peri_scribe.output
 import peri_scribe.sources.snapshots
 
 
 PERIMETER_LAYER_NAME = "perimeter_history"
+logger = structlog.get_logger()
 
 
 POINT_LAYER_NAME = "point_history"
@@ -25,6 +31,7 @@ DERIVED_DIRECTORY_NAME = "derived"
 
 
 PERIMETER_COLUMNS = [
+    peri_scribe.fires.reuse.KEY_COLUMN,
     *peri_scribe.fires.history.IDENTITY_COLUMNS,
     "source",
     "source_subsource",
@@ -37,6 +44,8 @@ PERIMETER_COLUMNS = [
     "modified_time",
     "discovery_time",
     "area_acres",
+    peri_scribe.geo.measurements.AREA_COLUMN,
+    peri_scribe.geo.measurements.EXTERIOR_COLUMN,
     "percent_contained",
     "containment_datetime",
     "estimated_cost_to_date",
@@ -52,6 +61,7 @@ PERIMETER_COLUMNS = [
 
 
 POINT_COLUMNS = [
+    peri_scribe.fires.reuse.KEY_COLUMN,
     *peri_scribe.fires.history.IDENTITY_COLUMNS,
     "source",
     "source_objectid",
@@ -93,14 +103,18 @@ def history_geopackage_path(year_directory: pathlib.Path) -> pathlib.Path:
 
 def write_history_of_full_geography(
     year_directory: pathlib.Path,
+    *,
+    unconditional: bool = False,
 ) -> pathlib.Path:
     """Build and write the full point and perimeter history GeoPackage.
 
     The output holds two layers: ``perimeter_history`` and ``point_history``, both in
-    the output spatial reference.
+    the output spatial reference. Validated rows for unchanged fires are retained;
+    affected fires are reconciled in full so corrections can revise their history.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
+        unconditional: Recompute every fire and refresh its source index.
 
     Returns:
         The path of the written GeoPackage.
@@ -110,16 +124,52 @@ def write_history_of_full_geography(
     )
     read = peri_scribe.fires.sources.read_fire_sources(sources_directory)
     record_groups = peri_scribe.fires.sources.group_fire_sources(read)
-    classifications = peri_scribe.fires.classification.classify_fire_sources(
+    output_path = history_geopackage_path(year_directory)
+    cached = peri_scribe.fires.reuse.read_rows(
+        output_path,
+        (PERIMETER_LAYER_NAME, POINT_LAYER_NAME),
+        unconditional=unconditional,
+    )
+    keys = peri_scribe.fires.reuse.fire_keys(
+        read,
         record_groups,
+        sources_directory,
+        peri_scribe.fires.reuse.derivation_context(year_directory),
+    )
+    cached_perimeters = cached.get(PERIMETER_LAYER_NAME, {})
+    cached_points = cached.get(POINT_LAYER_NAME, {})
+    reused = {
+        identifier: (cached_perimeters.get(key, []), cached_points.get(key, []))
+        for identifier, key in keys.items()
+        if key in cached_perimeters or key in cached_points
+    }
+    missing = [
+        (fire, group)
+        for fire, group in zip(record_groups.fires, record_groups.groups, strict=True)
+        if id(fire) not in reused
+    ]
+    classifications = peri_scribe.fires.classification.classify_fire_sources(
+        dataclasses.replace(
+            record_groups,
+            fires=tuple(fire for fire, _group in missing),
+            groups=tuple(group for _fire, group in missing),
+        ),
         year_directory,
     )
+    if unconditional:
+        peri_scribe.fires.index.write_fire_index(
+            year_directory,
+            record_groups,
+            classifications,
+        )
     perimeter_rows, point_rows = peri_scribe.fires.history.history_layer_rows(
         record_groups,
         classifications,
         list(read.rows),
         list(read.paths),
         sources_directory,
+        reused=reused,
+        derivation_keys=keys,
     )
     perimeter_dataframe = peri_scribe.fires.history.build_dataframe(
         perimeter_rows,
@@ -129,9 +179,8 @@ def write_history_of_full_geography(
         point_rows,
         POINT_COLUMNS,
     )
-    output_path = history_geopackage_path(year_directory)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    peri_scribe.output.write_geopackage(
+    logger.info("Full history reuse", reused=len(reused), recomputed=len(missing))
+    peri_scribe.fires.reuse.write_layers(
         output_path,
         [
             peri_scribe.models.LayerData(

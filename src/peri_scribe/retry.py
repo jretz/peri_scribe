@@ -250,6 +250,12 @@ def run_with_retry[Result](
     """
 
     def log_before_sleep(retry_state: tenacity.RetryCallState) -> None:
+        """Explain a failed attempt's delay before another request is made.
+
+        Args:
+            retry_state: The failed attempt's exception, attempt number, and upcoming
+                sleep duration supplied by tenacity.
+        """
         error = last_error(retry_state)
         logger.info(
             retry_reason(error),
@@ -259,6 +265,15 @@ def run_with_retry[Result](
         )
 
     def log_exhaustion(retry_state: tenacity.RetryCallState) -> typing.NoReturn:
+        """Retain the final failure after the query's retry allowance is exhausted.
+
+        Args:
+            retry_state: The final failed attempt's exception and attempt number
+                supplied by tenacity.
+
+        Raises:
+            The exception raised by the final failed attempt.
+        """
         error = last_error(retry_state)
         logger.error(
             "Retries exhausted",

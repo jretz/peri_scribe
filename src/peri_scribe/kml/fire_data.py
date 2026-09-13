@@ -12,8 +12,6 @@ import datetime
 import functools
 import typing
 
-import shapely
-
 import peri_scribe.fires.scoring
 import peri_scribe.kml.colormap
 import peri_scribe.kml.descriptions
@@ -25,12 +23,12 @@ import peri_scribe.kml.text
 import peri_scribe.models
 import peri_scribe.perimeters.progression
 import peri_scribe.units
-from peri_scribe.units import units
 
 
 if typing.TYPE_CHECKING:
     import geopandas
     import pint
+    import shapely
 
 
 # The smallest computed or reported area that keeps a fire in the KMZ output. Fires
@@ -44,6 +42,14 @@ class Perimeter:
 
     geometry: shapely.Geometry
     observation_time: datetime.datetime | None
+    area: pint.Quantity[float] | None = None
+    added_area: pint.Quantity[float] | None = None
+    sequence_digest: str | None = None
+
+    @property
+    def measured_area(self) -> pint.Quantity[float]:
+        """Share stored measurements while supporting standalone history layers."""
+        return peri_scribe.units.area(self.geometry) if self.area is None else self.area
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -109,7 +115,7 @@ def descending_value_name_key(
 
 # A differential ring smaller than this adds nothing visible to the map, so it is
 # dropped rather than carried into the KMZ.
-MINIMUM_RING_AREA = 1.0 * units.meters**2
+MINIMUM_RING_AREA = peri_scribe.perimeters.progression.MINIMUM_RING_AREA
 
 
 def progression_ring(
@@ -127,13 +133,15 @@ def progression_ring(
     Returns:
         The ring, or None when its area is at most one square meter.
     """
-    area = peri_scribe.units.area(perimeter.geometry)
+    area = perimeter.measured_area
     if area <= MINIMUM_RING_AREA:
         return None
     return peri_scribe.perimeters.progression.Ring(
         geometry=perimeter.geometry,
         observation_time=perimeter.observation_time,
         area=area,
+        added_area=perimeter.added_area,
+        sequence_digest=perimeter.sequence_digest,
     )
 
 
@@ -153,23 +161,17 @@ def added_areas_for_rings(
     Returns:
         Each ring's added area, in the input order.
     """
-    cumulative: list[pint.Quantity[float]] = []
-    combined_geometry: shapely.Geometry | None = None
-    for ring in rings:
-        combined_geometry = (
-            ring.geometry
-            if combined_geometry is None
-            else shapely.union(combined_geometry, ring.geometry)
+    if rings and all(ring.added_area is not None for ring in rings):
+        digest = peri_scribe.perimeters.progression.sequence_digest(
+            ring.geometry for ring in rings
         )
-        cumulative.append(peri_scribe.units.area(combined_geometry))
-    added: list[pint.Quantity[float]] = []
-    previous = 0 * units.meters**2
-    for cumulative_area in cumulative:
-        # A later ring never removes ground from the fire it joins, so a tiny negative
-        # difference is measurement noise, not shrinkage.
-        added.append(max(0 * units.meters**2, cumulative_area - previous))
-        previous = cumulative_area
-    return tuple(added)
+        if all(ring.sequence_digest == digest for ring in rings):
+            return tuple(
+                typing.cast("pint.Quantity[float]", ring.added_area) for ring in rings
+            )
+    return peri_scribe.perimeters.progression.added_areas(
+        ring.geometry for ring in rings
+    )
 
 
 def ring_added_areas(
@@ -226,6 +228,11 @@ def interior_ring_colors(
                 peri_scribe.perimeters.progression.Ring(
                     geometry=latest_perimeter.geometry,
                     observation_time=latest_perimeter.observation_time,
+                    area=latest_perimeter.measured_area,
+                    added_area=latest_perimeter.measured_area,
+                    sequence_digest=peri_scribe.perimeters.progression.sequence_digest(
+                        (latest_perimeter.geometry,),
+                    ),
                 ),
                 peri_scribe.kml.colormap.color_hex(
                     peri_scribe.kml.colormap.TURBO_RAMP[-1],
@@ -380,6 +387,10 @@ def precompute_interior_added_areas(pending: list[PendingFire]) -> None:
     there lengthens that single-threaded phase, so this runs before the plots are drawn
     instead: by the time the folders are written every fire's cumulative union work is
     done and the folder's requests hit the cache.
+
+    Args:
+        pending: The prepared fires with their perimeter observations and progression
+            rings awaiting plot and folder generation.
     """
     for (
         _entry,

@@ -148,6 +148,15 @@ def freshest_observation(
     def recency_key(
         observation: peri_scribe.perimeters.border_classification.FireObservation,
     ) -> tuple[datetime.datetime, int]:
+        """Use snapshot order to break ties between equally timed observations.
+
+        Args:
+            observation: The perimeter observation whose recency is being compared.
+
+        Returns:
+            The observation time and serial number, with missing times treated as the
+            earliest supported datetime.
+        """
         observed_at = observation.observed_at or peri_scribe.models.EARLIEST_DATETIME
         return observed_at, observation.serial_number
 
