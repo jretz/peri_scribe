@@ -213,11 +213,15 @@ def test_geometries_describe_same_shape_accepts_single_part_multi_polygon() -> N
 
 
 def test_geometries_describe_same_shape_accepts_identical_nan_coordinates() -> None:
-    geometry = shapely.from_wkt("LINESTRING (0 0, NaN 1)")
-    assert peri_scribe.geo.parsing.geometries_describe_same_shape(
-        geometry,
-        shapely.from_wkb(geometry.wkb),
-    )
+    first = shapely.geometry.Point(float("nan"), 1.0)
+    second = shapely.geometry.Point(float("nan"), 1.0)
+    # A partially NaN point exercises coordinate equality without becoming empty.
+    assert first is not second
+    assert not first.is_empty
+    assert not second.is_empty
+    assert np.isnan(first.x)
+    assert np.isnan(second.x)
+    assert peri_scribe.geo.parsing.geometries_describe_same_shape(first, second)
 
 
 def test_geometries_describe_same_shape_rejects_different_shapes() -> None:
