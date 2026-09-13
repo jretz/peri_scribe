@@ -6,8 +6,8 @@ import typing
 
 import peri_scribe.areas
 import peri_scribe.geo.measurements
+import peri_scribe.incidents
 import peri_scribe.kml.descriptions
-import peri_scribe.kml.plot_data
 import peri_scribe.kml.row_values
 import peri_scribe.kml.selection
 import peri_scribe.models
@@ -52,24 +52,24 @@ def fire_description(
     perimeter_rows: geopandas.GeoDataFrame,
     point_rows: geopandas.GeoDataFrame,
     of_note: str | None = None,
+    *,
+    incident_rows: geopandas.GeoDataFrame | None = None,
+    history: peri_scribe.areas.PreparedHistory | None = None,
 ) -> peri_scribe.kml.descriptions.FireDescription:
     """Return *entry*'s latest state for its balloon description.
 
-    The latest perimeter supplies the fire's area, containment, cost, and timing; where
-    a perimeter has no value for a fact the latest point location is used instead. The
-    area shown is the reported acreage unless the perimeter's measured area is
-    significantly larger, in which case the measured area is shown because the reported
-    figure trails the polygon the source published. The protecting unit, initial
-    response time, incident type, complexity, fuels, fire behavior, landowner category,
-    and personnel count come only from the sources' original attributes, which the
-    history preserves verbatim.
+    Area follows the shared geometry/report policy. Incident measurements follow their
+    own update times, so a stationary polygon cannot hold back new costs or personnel.
+    Source attributes retain the other descriptive facts and their provenance.
 
     Args:
         entry: One fire index entry.
         perimeter_rows: The fire's perimeter history rows, already selected.
         point_rows: The fire's point history rows, already selected.
-        of_note: The fire's score explanation, shown as the balloon's final row, or
-            None when the fire has no saved score.
+        of_note: The fire's score explanation, shown as the balloon's final row, or None
+            when the fire has no saved score.
+        incident_rows: The optional independent reporting history for this fire.
+        history: Already prepared reporting and area evidence, or None to prepare it.
 
     Returns:
         The fire's latest state.
@@ -84,54 +84,30 @@ def fire_description(
             perimeter_row.get(peri_scribe.geo.measurements.EXTERIOR_COLUMN),
         )
 
-    area = peri_scribe.areas.presented_area_for_latest(perimeter_row, point_row)
-
-    percent_contained = peri_scribe.kml.row_values.float_value(
-        perimeter_row,
-        "percent_contained",
-    )
-    if percent_contained is None:
-        percent_contained = peri_scribe.kml.row_values.float_value(
-            point_row,
-            "percent_contained",
+    if history is None:
+        history = peri_scribe.areas.prepare_history(
+            perimeter_rows,
+            point_rows,
+            incident_rows,
         )
-
-    estimated_cost_to_date_value = peri_scribe.kml.row_values.float_value(
-        perimeter_row,
-        "estimated_cost_to_date",
+    area, area_basis = selected_area_description(
+        perimeter_rows,
+        point_rows,
+        incident_rows,
+        history=history,
     )
-    if estimated_cost_to_date_value is None:
-        estimated_cost_to_date_value = peri_scribe.kml.row_values.float_value(
+    updates = history.updates
+    percent_contained = peri_scribe.incidents.latest_value(updates, "percent_contained")
+    cost = peri_scribe.incidents.latest_value(updates, "estimated_cost_to_date")
+    final_cost = peri_scribe.incidents.latest_value(updates, "estimated_final_cost")
+    total_personnel = peri_scribe.incidents.latest_value(updates, "personnel")
+    if total_personnel is None:
+        total_personnel = peri_scribe.kml.row_values.first_source_number(
+            perimeter_row,
             point_row,
-            "estimated_cost_to_date",
+            "TotalIncidentPersonnel",
+            "attr_TotalIncidentPersonnel",
         )
-    estimated_cost_to_date = (
-        None
-        if estimated_cost_to_date_value is None
-        else estimated_cost_to_date_value * units.dollars
-    )
-
-    estimated_final_cost_value = peri_scribe.kml.row_values.float_value(
-        perimeter_row,
-        "estimated_final_cost",
-    )
-    if estimated_final_cost_value is None:
-        estimated_final_cost_value = peri_scribe.kml.row_values.float_value(
-            point_row,
-            "estimated_final_cost",
-        )
-    estimated_final_cost = (
-        None
-        if estimated_final_cost_value is None
-        else estimated_final_cost_value * units.dollars
-    )
-
-    total_personnel = peri_scribe.kml.row_values.first_source_number(
-        perimeter_row,
-        point_row,
-        peri_scribe.kml.plot_data.POINT_PERSONNEL_ATTRIBUTE_KEY,
-        peri_scribe.kml.plot_data.PERIMETER_PERSONNEL_ATTRIBUTE_KEY,
-    )
 
     discovery_time = peri_scribe.kml.row_values.datetime_value(
         perimeter_row,
@@ -143,15 +119,24 @@ def fire_description(
             "discovery_time",
         )
 
-    observation_time = peri_scribe.kml.row_values.datetime_value(
-        perimeter_row,
-        "observation_time",
+    observation_time = max(
+        (
+            time
+            for time in (
+                peri_scribe.kml.row_values.datetime_value(
+                    perimeter_row,
+                    "observation_time",
+                ),
+                peri_scribe.kml.row_values.datetime_value(
+                    point_row,
+                    "observation_time",
+                ),
+                updates[-1].observation_time if updates else None,
+            )
+            if time is not None
+        ),
+        default=None,
     )
-    if observation_time is None:
-        observation_time = peri_scribe.kml.row_values.datetime_value(
-            point_row,
-            "observation_time",
-        )
 
     initial_response_time = peri_scribe.kml.row_values.as_datetime(
         peri_scribe.kml.row_values.source_attribute_value(
@@ -189,10 +174,11 @@ def fire_description(
         ),
         mission=peri_scribe.kml.row_values.text_value(perimeter_row, "mission"),
         area=area,
+        area_basis=area_basis,
         exterior_perimeter=exterior_perimeter,
         percent_contained=percent_contained,
-        estimated_cost_to_date=estimated_cost_to_date,
-        estimated_final_cost=estimated_final_cost,
+        estimated_cost_to_date=None if cost is None else cost * units.dollars,
+        estimated_final_cost=None if final_cost is None else final_cost * units.dollars,
         total_personnel=total_personnel,
         protecting_unit=protecting_unit,
         discovery_time=discovery_time,
@@ -258,3 +244,34 @@ def score_explanation_for(
     if explanation is not None:
         return explanation
     return notes_by_name.get(name)
+
+
+def selected_area_description(
+    perimeters: geopandas.GeoDataFrame,
+    points: geopandas.GeoDataFrame,
+    incident_rows: geopandas.GeoDataFrame | None,
+    *,
+    history: peri_scribe.areas.PreparedHistory | None = None,
+) -> tuple[pint.Quantity[float] | None, str | None]:
+    """Explain the evidence behind the area shared by charts, scores, and descriptions.
+
+    The provenance date belongs to the underlying observation, which can precede the
+    policy deadline that made a report eligible to replace stagnant mapping.
+
+    Args:
+        perimeters: The fire's selected perimeter history.
+        points: Incident location rows used for fallback area reports.
+        incident_rows: The optional independent incident history.
+        history: Already prepared reporting and area evidence, or None to prepare it.
+
+    Returns:
+        The selected area and its source/date description. Undated fallbacks have no
+        provenance text; missing measurements also have no area.
+    """
+    if history is None:
+        history = peri_scribe.areas.prepare_history(perimeters, points, incident_rows)
+    if not history.estimates:
+        return history.latest_area, None
+    estimate = history.estimates[-1]
+    date = peri_scribe.kml.descriptions.format_pacific_time(estimate.observation_time)
+    return estimate.area, f"{estimate.source.value}; {date}"

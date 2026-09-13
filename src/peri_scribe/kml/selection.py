@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import typing
 
+import peri_scribe.areas
 import peri_scribe.geo.measurements
 import peri_scribe.geo.parsing
 import peri_scribe.kml.fire_data
@@ -25,12 +26,6 @@ if typing.TYPE_CHECKING:
 
 
 MINIMUM_FIRE_AREA = 25.0 * units.acres
-
-
-PERIMETER_AREA_COLUMN = "area_acres"
-
-
-POINT_AREA_COLUMNS = ("incident_size", "discovery_acres", "final_acres")
 
 
 IDENTIFIER_AREA_KEY = "id"
@@ -103,51 +98,104 @@ def fire_area_key(identifier: object, name: str) -> AreaKey:
     return IDENTIFIER_AREA_KEY, str(identifier)
 
 
+def area_groups(
+    frame: geopandas.GeoDataFrame,
+    aliases: typing.Mapping[str, str],
+) -> dict[AreaKey, geopandas.GeoDataFrame]:
+    """Keep each fire's complete evidence together across its identifier aliases.
+
+    Args:
+        frame: History rows carrying fire identity columns.
+        aliases: Known identifiers mapped to the fire's canonical identifier.
+
+    Returns:
+        History slices keyed by canonical identity, with unnamed identities separate.
+    """
+    positions: dict[AreaKey, list[int]] = {}
+    if not frame.empty:
+        for position, (identifier, name) in enumerate(
+            zip(frame["fire_identifier"], frame["fire_name"], strict=True),
+        ):
+            key = fire_area_key(identifier, name)
+            if key[0] == IDENTIFIER_AREA_KEY:
+                key = IDENTIFIER_AREA_KEY, aliases.get(key[1], key[1])
+            positions.setdefault(key, []).append(position)
+    return {key: frame.iloc[rows] for key, rows in positions.items()}
+
+
+def prepare_histories(
+    perimeters: geopandas.GeoDataFrame,
+    points: geopandas.GeoDataFrame,
+    incident_rows: geopandas.GeoDataFrame | None = None,
+    *,
+    aliases: typing.Mapping[str, str] | None = None,
+) -> dict[AreaKey, peri_scribe.areas.PreparedHistory]:
+    """Share complete fire histories across qualification and presentation.
+
+    Args:
+        perimeters: Full perimeter history with measured geometry.
+        points: Incident location history with fallback measurements.
+        incident_rows: The optional independent reporting history.
+        aliases: Known identifiers mapped to their canonical fire identifier.
+
+    Returns:
+        One prepared history per canonical fire identity.
+    """
+    frames = (
+        perimeters,
+        points,
+        perimeters.iloc[0:0] if incident_rows is None else incident_rows,
+    )
+    groups = tuple(area_groups(frame, aliases or {}) for frame in frames)
+    return {
+        key: peri_scribe.areas.prepare_history(
+            *(
+                group.get(key, frame.iloc[0:0])
+                for group, frame in zip(groups, frames, strict=True)
+            ),
+        )
+        for key in set().union(*groups)
+    }
+
+
 def fires_with_qualifying_area(
     perimeters: geopandas.GeoDataFrame,
     points: geopandas.GeoDataFrame,
     minimum_area: pint.Quantity[float],
+    incident_rows: geopandas.GeoDataFrame | None = None,
+    *,
+    aliases: typing.Mapping[str, str] | None = None,
+    histories: typing.Mapping[AreaKey, peri_scribe.areas.PreparedHistory] | None = None,
 ) -> frozenset[AreaKey]:
-    """Return the identity keys of fires with any area indication at least the minimum.
+    """Include fires whose selected area reached the minimum anywhere in history.
 
-    A fire's computed area is the perimeter history's acreage column; its reported areas
-    are the size, discovery, and final acreage columns of the point history. A fire
-    qualifies when any one of those values reaches the minimum, so fires whose every
-    indication is missing or smaller are absent from the result.
+    Fresh mapping, report takeovers, and sparse-record fallbacks follow the shared area
+    policy. A later downward correction does not erase historical qualification.
 
     Args:
         perimeters: The perimeter history layer.
         points: The point history layer.
-        minimum_area: The smallest area that qualifies a fire.
+        minimum_area: The smallest historical estimate that qualifies a fire.
+        incident_rows: The optional independent incident history.
+        aliases: Known identifiers mapped to their canonical fire identifier.
+        histories: Already prepared histories, or None to prepare them.
 
     Returns:
         The tagged identity keys of the qualifying fires.
     """
-    qualifying: set[AreaKey] = set()
-    perimeter_area = perimeters.get(PERIMETER_AREA_COLUMN)
-    if perimeter_area is not None:
-        for identifier, name, value in zip(
-            perimeters["fire_identifier"],
-            perimeters["fire_name"],
-            perimeter_area,
-            strict=True,
-        ):
-            acres = peri_scribe.geo.parsing.numeric_value(value)
-            if acres is not None and acres * units.acres >= minimum_area:
-                qualifying.add(fire_area_key(identifier, name))
-    for column in POINT_AREA_COLUMNS:
-        if column not in points.columns:
-            continue
-        for identifier, name, value in zip(
-            points["fire_identifier"],
-            points["fire_name"],
-            points[column],
-            strict=True,
-        ):
-            acres = peri_scribe.geo.parsing.numeric_value(value)
-            if acres is not None and acres * units.acres >= minimum_area:
-                qualifying.add(fire_area_key(identifier, name))
-    return frozenset(qualifying)
+    if histories is None:
+        histories = prepare_histories(
+            perimeters,
+            points,
+            incident_rows,
+            aliases=aliases,
+        )
+    return frozenset(
+        key
+        for key, history in histories.items()
+        if history.historical_area is not None
+        and history.historical_area >= minimum_area
+    )
 
 
 def fire_qualifies(

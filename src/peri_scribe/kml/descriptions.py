@@ -330,6 +330,7 @@ class FireDescription:
     fire_behavior: str | None = None
     landowner_category: str | None = None
     of_note: str | None = None
+    area_basis: str | None = None
 
 
 def escape_html_text(value: str) -> str:
@@ -363,6 +364,11 @@ def description_rows(
     """
     return [
         (AREA_LABEL, format_area(description.area)),
+        *(
+            [("Area basis", description.area_basis)]
+            if description.area_basis is not None
+            else []
+        ),
         (
             "Exterior perimeter",
             format_miles(description.exterior_perimeter),

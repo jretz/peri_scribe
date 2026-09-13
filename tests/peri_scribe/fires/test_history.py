@@ -453,7 +453,7 @@ def test_history_geopackage_path_names_output() -> None:
     ) == pathlib.Path("data/2026/derived/history_of_full_geography.gpkg")
 
 
-def test_write_history_of_full_geography_writes_two_layers(
+def test_write_history_of_full_geography_writes_geography_and_incidents(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: pathlib.Path,
 ) -> None:
@@ -497,4 +497,5 @@ def test_write_history_of_full_geography_writes_two_layers(
     assert [layer.name for layer in layers] == [
         peri_scribe.fires.files.PERIMETER_LAYER_NAME,
         peri_scribe.fires.files.POINT_LAYER_NAME,
+        "incident_history",
     ]

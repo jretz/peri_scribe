@@ -18,6 +18,7 @@ import peri_scribe.sources.external_sources
 import peri_scribe.units
 import tests.factories
 import tests.peri_scribe.fires.fire_helpers
+from peri_scribe.units import units
 
 
 def test_latest_snapshot_layer_returns_none_without_layer_name() -> None:
@@ -83,11 +84,19 @@ def test_score_fires_writes_current_scores(
                 "fire_name": "Bug",
                 "fire_identifier": "2026-a",
                 "area_acres": 120_000.0,
+                "geometry_area_square_meters": (
+                    120_000.0 * peri_scribe.units.units.acres
+                ).m_as("meters**2"),
                 "area_acres_differential": 0.0,
                 "observation_time": datetime.datetime(2026, 8, 1),
             },
         ],
         [tests.factories.square(0.01)],
+    )
+    perimeters = perimeters.assign(
+        geometry_area_square_meters=(120_000.0 * peri_scribe.units.units.acres).m_as(
+            "meters**2",
+        ),
     )
     points = tests.peri_scribe.fires.fire_helpers.point_frame(
         [
@@ -129,11 +138,19 @@ def test_score_fires_streams_external_signals(
                 "fire_name": "Bug",
                 "fire_identifier": "2026-a",
                 "area_acres": 120_000.0,
+                "geometry_area_square_meters": (
+                    120_000.0 * peri_scribe.units.units.acres
+                ).m_as("meters**2"),
                 "area_acres_differential": 0.0,
                 "observation_time": datetime.datetime(2026, 8, 1),
             },
         ],
         [tests.factories.square(0.01)],
+    )
+    perimeters = perimeters.assign(
+        geometry_area_square_meters=(120_000.0 * peri_scribe.units.units.acres).m_as(
+            "meters**2",
+        ),
     )
     points = tests.peri_scribe.fires.fire_helpers.point_frame(
         [
@@ -175,6 +192,16 @@ def test_score_fires_streams_external_signals(
         source: peri_scribe.sources.external_sources.ExternalSource,
         **_keywords: object,
     ) -> pathlib.Path:
+        """Keep external-source reads inside the test directory.
+
+        Args:
+            _year_directory: Unused production year directory.
+            source: The source whose storage format determines the suffix.
+            _keywords: Unused source path options.
+
+        Returns:
+            The isolated SQLite or GeoPackage source path.
+        """
         suffix = ".sqlite" if source.compact_database else ".gpkg"
         return tmp_path / "sources" / source.name / f"{source.name}{suffix}"
 
@@ -205,6 +232,9 @@ def test_score_fires_sorts_entries_by_score_descending(
                 "fire_name": "Big",
                 "fire_identifier": "2026-a",
                 "area_acres": 120_000.0,
+                "geometry_area_square_meters": (
+                    120_000.0 * peri_scribe.units.units.acres
+                ).m_as("meters**2"),
                 "area_acres_differential": 0.0,
                 "observation_time": datetime.datetime(2026, 8, 1),
             },
@@ -273,7 +303,7 @@ def test_fire_metrics_prefers_geometry_for_growth_and_first_mapping() -> None:
     assert first_mapping["2026-a"] == pytest.approx(2939.0)
 
 
-def test_fire_metrics_keeps_reported_when_geometry_agrees() -> None:
+def test_fire_metrics_uses_geometry_when_measurements_agree() -> None:
     perimeters = tests.factories.geo_frame(
         {
             "fire_name": ["Snow"],
@@ -291,8 +321,8 @@ def test_fire_metrics_keeps_reported_when_geometry_agrees() -> None:
         perimeters,
         perimeter_keys,
     )
-    assert metrics.loc["2026-a", "max_growth"] == pytest.approx(1100.0)
-    assert first_mapping["2026-a"] == pytest.approx(1100.0)
+    assert metrics.loc["2026-a", "max_growth"] == pytest.approx(1110.0)
+    assert first_mapping["2026-a"] == pytest.approx(1110.0)
 
 
 def test_displayed_areas_prefers_latest_perimeter_measured_area() -> None:
@@ -343,3 +373,34 @@ def test_displayed_areas_falls_back_to_point_size_without_perimeter() -> None:
     area = areas[0]
     assert area is not None
     assert area.m_as("acres") == pytest.approx(500.0)
+
+
+def test_displayed_areas_uses_populated_incident_history_for_stale_mapping() -> None:
+    perimeters = tests.factories.geo_frame(
+        {
+            "fire_name": ["Example"],
+            "fire_identifier": ["example"],
+            "observation_time": [tests.factories.utc(2026, 9, 1, 0)],
+            "geometry_area_square_meters": [(100 * units.acres).m_as("meters**2")],
+        },
+        [tests.factories.square(0.01)],
+    )
+    points = perimeters.iloc[0:0]
+    incidents = tests.factories.geo_frame(
+        {
+            "fire_name": ["Example"],
+            "fire_identifier": ["example"],
+            "observation_time": [tests.factories.utc(2026, 9, 5, 0)],
+            "report_confirmed": [False],
+            "incident_size": [200],
+        },
+        [None],
+    )
+    result = peri_scribe.fires.scores.displayed_areas(
+        ["example"],
+        perimeters,
+        points,
+        peri_scribe.fires.identity.group_keys(points),
+        incidents,
+    )
+    assert result == [200 * units.acres]

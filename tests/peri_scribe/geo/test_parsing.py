@@ -177,6 +177,15 @@ def test_numeric_value_returns_none_for_other_types() -> None:
     assert peri_scribe.geo.parsing.numeric_value({"a": 1}) is None
 
 
+@pytest.mark.parametrize("value", [np.int32(526), np.int64(526)])
+def test_numeric_value_accepts_numpy_integer_attributes(value: object) -> None:
+    assert peri_scribe.geo.parsing.numeric_value(value) == pytest.approx(526)
+
+
+def test_numeric_value_returns_none_for_unconvertible_real() -> None:
+    assert peri_scribe.geo.parsing.numeric_value(np.timedelta64(1, "D")) is None
+
+
 def test_geometries_describe_same_shape_accepts_re_serialized_geometry() -> None:
     ring = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)]
     reversed_ring = [(0.0, 0.0), (0.0, 1.0), (1.0, 1.0), (1.0, 0.0), (0.0, 0.0)]

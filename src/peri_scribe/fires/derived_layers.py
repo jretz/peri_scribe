@@ -7,14 +7,17 @@ files and layers those are, so the stages cannot drift apart about them.
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import pathlib
+import sqlite3
 
 import geopandas
 
 import peri_scribe.fires.differential
 import peri_scribe.fires.files
 import peri_scribe.geo.reading
+import peri_scribe.incidents
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -24,6 +27,9 @@ class DerivedLayers:
     perimeters: geopandas.GeoDataFrame
     points: geopandas.GeoDataFrame
     differential_perimeters: geopandas.GeoDataFrame
+    incidents: geopandas.GeoDataFrame = dataclasses.field(
+        default_factory=geopandas.GeoDataFrame,
+    )
 
 
 def read_layer_if_present(
@@ -62,7 +68,7 @@ def read_derived_layers(
             of a read failure.
 
     Returns:
-        The full-history perimeters and points and the differential perimeters.
+        The full perimeter, point, and incident histories and differential perimeters.
     """
     if tolerate_missing:
         read = read_layer_if_present
@@ -73,6 +79,7 @@ def read_derived_layers(
         year_directory,
     )
     return DerivedLayers(
+        incidents=read_incident_layer(history_path),
         perimeters=read(
             history_path,
             peri_scribe.fires.files.PERIMETER_LAYER_NAME,
@@ -86,3 +93,26 @@ def read_derived_layers(
             peri_scribe.fires.files.PERIMETER_LAYER_NAME,
         ),
     )
+
+
+def read_incident_layer(path: pathlib.Path) -> geopandas.GeoDataFrame:
+    """Support geography histories that have no independent reporting layer.
+
+    Args:
+        path: The full-history GeoPackage to read without modifying it.
+
+    Returns:
+        Incident-history rows, or an empty frame when the file or layer is absent.
+    """
+    if not path.is_file():
+        return geopandas.GeoDataFrame()
+    with contextlib.closing(
+        sqlite3.connect(f"file:{path}?mode=ro", uri=True),
+    ) as connection:
+        present = connection.execute(
+            "SELECT 1 FROM gpkg_contents WHERE table_name = ?",
+            (peri_scribe.incidents.LAYER_NAME,),
+        ).fetchone()
+    if present is None:
+        return geopandas.GeoDataFrame()
+    return peri_scribe.geo.reading.read_layer(path, peri_scribe.incidents.LAYER_NAME)

@@ -44,6 +44,15 @@ def recording_archive_factory(
         *arguments: object,
         **keywords: object,
     ) -> FakeArchive:
+        """Capture archive construction and writes without creating a KMZ.
+
+        Args:
+            arguments: Positional archive constructor arguments.
+            keywords: Named archive constructor options.
+
+        Returns:
+            The recorded in-memory archive.
+        """
         archive = FakeArchive(*arguments, **keywords)
         archives.append(archive)
         return archive
@@ -55,11 +64,22 @@ class FakeArchive:
     """In-memory zip archive stand-in that records its writes."""
 
     def __init__(self, *arguments: object, **keywords: object) -> None:
+        """Retain archive options so compression choices can be asserted.
+
+        Args:
+            arguments: Positional archive constructor arguments.
+            keywords: Named archive constructor options.
+        """
         self.arguments = arguments
         self.keywords = keywords
         self.writes: list[tuple[str, str | bytes, int | None]] = []
 
     def __enter__(self) -> typing.Self:
+        """Expose the in-memory archive to the writer context.
+
+        Returns:
+            This archive recorder.
+        """
         return self
 
     def __exit__(
@@ -68,7 +88,14 @@ class FakeArchive:
         _exc_value: object,
         _traceback: object,
     ) -> None:
-        return None
+        """Let writer exceptions propagate out of the archive context.
+
+        Args:
+            _exc_type: Unused exception type from the context.
+            _exc_value: Unused exception instance from the context.
+            _traceback: Unused traceback from the context.
+        """
+        return
 
     def writestr(
         self,
@@ -76,6 +103,13 @@ class FakeArchive:
         data: str | bytes,
         compress_type: int | None = None,
     ) -> None:
+        """Record archive contents and compression choices for assertions.
+
+        Args:
+            name: The member filename inside the KMZ.
+            data: The member content supplied by the writer.
+            compress_type: The optional per-member compression override.
+        """
         self.writes.append((name, data, compress_type))
 
 
@@ -785,6 +819,15 @@ def test_create_kmz_reads_history_and_writes_kmz(
         _path: pathlib.Path,
         layer_name: str,
     ) -> geopandas.GeoDataFrame:
+        """Isolate derived-layer reads from persistent geography.
+
+        Args:
+            _path: The requested path, without reading its contents.
+            layer_name: The requested history layer.
+
+        Returns:
+            The synthetic history frame used by this scenario.
+        """
         return perimeters if layer_name == "perimeter_history" else points
 
     monkeypatch.setattr(peri_scribe.geo.reading, "read_layer", read_layer)
@@ -843,8 +886,8 @@ def test_create_kmz_excludes_fires_without_qualifying_area(
     )
     perimeters = tests.peri_scribe.kml.kml_helpers.geometry_frame(
         [
-            ("id-bug", "Bug", tests.factories.square(1.0)),
-            ("id-tiny", "Tiny", tests.factories.square(1.0)),
+            ("id-bug", "Bug", tests.factories.square(0.01)),
+            ("id-tiny", "Tiny", tests.factories.square(0.001)),
         ],
         area_acres=[100.0, 10.0],
     )
@@ -854,6 +897,15 @@ def test_create_kmz_excludes_fires_without_qualifying_area(
         _path: pathlib.Path,
         layer_name: str,
     ) -> geopandas.GeoDataFrame:
+        """Isolate derived-layer reads from persistent geography.
+
+        Args:
+            _path: The requested path, without reading its contents.
+            layer_name: The requested history layer.
+
+        Returns:
+            The synthetic history frame used by this scenario.
+        """
         return perimeters if layer_name == "perimeter_history" else points
 
     monkeypatch.setattr(peri_scribe.geo.reading, "read_layer", read_layer)
@@ -870,3 +922,28 @@ def test_create_kmz_excludes_fires_without_qualifying_area(
     assert "Bug" in kml_text
     assert "Tiny" not in kml_text
     assert not any(filename.startswith("id-tiny") for filename in images)
+
+
+def test_area_qualified_index_includes_independent_incident_history() -> None:
+    index = tests.peri_scribe.kml.kml_helpers.fire_index([
+        tests.peri_scribe.kml.kml_helpers.fire_index_entry(
+            "Example",
+            "active",
+            identifier="example",
+        ),
+    ])
+    empty = tests.peri_scribe.kml.kml_helpers.geometry_frame([])
+    incidents = tests.factories.geo_frame(
+        {
+            "fire_identifier": ["example"],
+            "fire_name": ["Example"],
+            "observation_time": [tests.factories.utc(2026, 9, 1, 0)],
+            "incident_size": [100],
+            "report_confirmed": [False],
+        },
+        [None],
+    )
+    assert (
+        peri_scribe.kml.builder.area_qualified_index(index, empty, empty, incidents)
+        == index
+    )

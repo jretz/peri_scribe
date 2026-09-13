@@ -9,11 +9,13 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import enum
 import typing
 
+import peri_scribe.areas
 import peri_scribe.geo.measurements
 import peri_scribe.geo.parsing
-import peri_scribe.kml.row_values
+import peri_scribe.incidents
 from peri_scribe.units import units
 
 
@@ -43,7 +45,8 @@ PERSONNEL_PLOT_SUFFIX = "personnel"
 
 # The legend label for each line. Units are not part of the label; each plot's unit is
 # shown once at its y-axis instead.
-AREA_SERIES_LABEL = "Area"
+AREA_SERIES_LABEL = "Mapped area"
+REPORTED_AREA_SERIES_LABEL = "Reported Area"
 EXTERIOR_PERIMETER_SERIES_LABEL = "Exterior perimeter"
 CONTAINED_PERIMETER_SERIES_LABEL = "Contained perimeter"
 COST_TO_DATE_SERIES_LABEL = "Cost to date"
@@ -56,11 +59,6 @@ PERIMETER_AXIS_LABEL = "Miles"
 COST_AXIS_LABEL = "Millions of $"
 PERSONNEL_AXIS_LABEL = "Personnel"
 
-# The personnel count is preserved under each feed's own source-attribute key: the point
-# feed keeps the plain name and the perimeter feed prefixes it with ``attr_``.
-POINT_PERSONNEL_ATTRIBUTE_KEY = "TotalIncidentPersonnel"
-PERIMETER_PERSONNEL_ATTRIBUTE_KEY = "attr_TotalIncidentPersonnel"
-
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class SeriesPoint:
@@ -68,6 +66,7 @@ class SeriesPoint:
 
     observation_time: datetime.datetime
     value: float
+    reported: bool = False
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -78,12 +77,21 @@ class ExteriorMeasurement:
     length: pint.Quantity[float] | None
 
 
+class SeriesColor(enum.StrEnum):
+    """Keep measurement colors stable when other series are absent from a chart."""
+
+    BLUE = "#4c72b0"
+    ORANGE = "#dd8452"
+
+
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class PlotSeries:
     """One line to draw: a label and its measurements over time."""
 
     label: str
     points: tuple[SeriesPoint, ...]
+    reported_label: str | None = None
+    color: SeriesColor = SeriesColor.BLUE
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -93,39 +101,6 @@ class FirePlot:
     filename_suffix: str
     series: tuple[PlotSeries, ...]
     y_axis_label: str
-
-
-def series_points(
-    frame: geopandas.GeoDataFrame,
-    observation_column: str,
-    value_column: str,
-) -> tuple[SeriesPoint, ...]:
-    """Return the (time, value) points of *frame*'s two named columns.
-
-    Rows with a missing observation time or value are left out, since neither can be
-    plotted. When either column is absent the layer carries no measurement to plot.
-
-    Args:
-        frame: The history layer to read.
-        observation_column: The column holding observation times.
-        value_column: The column holding the measurement.
-
-    Returns:
-        The plotted points, in the layer's row order.
-    """
-    if observation_column not in frame.columns or value_column not in frame.columns:
-        return ()
-    points: list[SeriesPoint] = []
-    for observation_time, value in zip(
-        frame[observation_column],
-        frame[value_column],
-        strict=True,
-    ):
-        time = peri_scribe.geo.parsing.observation_time_from(observation_time)
-        number = peri_scribe.geo.parsing.numeric_value(value)
-        if time is not None and number is not None:
-            points.append(SeriesPoint(observation_time=time, value=number))
-    return tuple(points)
 
 
 def exterior_perimeter_measurements(
@@ -205,67 +180,85 @@ def exterior_perimeter_points(
 def contained_perimeter_points(
     frame: geopandas.GeoDataFrame,
     exterior_measurements: tuple[ExteriorMeasurement, ...] | None = None,
+    *,
+    point_rows: geopandas.GeoDataFrame | None = None,
+    incident_rows: geopandas.GeoDataFrame | None = None,
+    updates: tuple[peri_scribe.incidents.IncidentUpdate, ...] | None = None,
 ) -> tuple[SeriesPoint, ...]:
-    """Return each perimeter's contained length in miles over time.
+    """Estimate contained length from independently updated mapping and containment.
 
-    The contained length is the exterior perimeter length multiplied by the containment
-    percentage, so a perimeter without a percentage has no contained length. When
-    *exterior_measurements* is supplied it is used instead of measuring *frame* again,
-    so callers that build both perimeter lines can measure each geometry once.
+    Each event uses the latest available exterior length and containment percentage.
+    Holding the percentage until another report arrives preserves the reporting evidence
+    rather than implying continuous containment observations.
 
     Args:
-        frame: The perimeter history layer.
-        exterior_measurements: Each row's exterior length, or None to measure *frame*.
+        frame: The selected perimeter history.
+        exterior_measurements: Shared exterior measurements, if already computed.
+        point_rows: Incident location rows supplying fallback containment reports.
+        incident_rows: The optional independent incident history.
+        updates: Already reconciled incident updates, or None to read them.
 
     Returns:
-        The contained perimeter points, in the layer's row order.
+        Chronological contained-length estimates in miles, beginning when both a mapped
+        exterior and a reported containment percentage are available.
     """
-    if "observation_time" not in frame.columns:
-        return ()
-    if "percent_contained" not in frame.columns:
-        return ()
     if exterior_measurements is None:
         exterior_measurements = exterior_perimeter_measurements(frame)
+    if updates is None:
+        updates = peri_scribe.incidents.history(
+            frame,
+            frame.iloc[0:0] if point_rows is None else point_rows,
+            incident_rows,
+        )
+    lengths = {
+        measurement.observation_time: measurement.length
+        for measurement in exterior_measurements
+        if measurement.observation_time is not None and measurement.length is not None
+    }
+    percentages = {
+        update.observation_time: update.measurements["percent_contained"]
+        for update in updates
+        if "percent_contained" in update.measurements
+    }
+    length = None
+    percent = None
     points: list[SeriesPoint] = []
-    for measurement, percent_contained in zip(
-        exterior_measurements,
-        frame["percent_contained"],
-        strict=True,
-    ):
-        observation_time = measurement.observation_time
-        length = measurement.length
-        in_percent = peri_scribe.geo.parsing.numeric_value(percent_contained)
-        if (
-            observation_time is not None
-            and length is not None
-            and in_percent is not None
-        ):
+    for time in sorted(lengths.keys() | percentages.keys()):
+        length = lengths.get(time, length)
+        percent = percentages.get(time, percent)
+        if length is not None and percent is not None:
             points.append(
                 SeriesPoint(
-                    observation_time=observation_time,
-                    value=(
-                        length.m_as("miles")
-                        * in_percent
-                        / CONTAINMENT_PERCENT.m_as("percent")
-                    ),
+                    observation_time=time,
+                    value=length.m_as("miles")
+                    * percent
+                    / CONTAINMENT_PERCENT.m_as("percent"),
                 ),
             )
     return tuple(points)
 
 
-def merge_series_points(
-    *sequences: typing.Iterable[SeriesPoint],
+def incident_points(
+    updates: tuple[peri_scribe.incidents.IncidentUpdate, ...],
+    column: str,
 ) -> tuple[SeriesPoint, ...]:
-    """Return every point from *sequences* in chronological order.
+    """Preserve a metric's reporting times without inventing values for missing fields.
 
     Args:
-        sequences: Each sequence of points to combine.
+        updates: Reconciled incident updates in chronological order.
+        column: The normalized measurement field to plot.
 
     Returns:
-        The combined points, oldest first.
+        Points for updates that supply the field, retaining its source units.
     """
-    points = [point for sequence in sequences for point in sequence]
-    return tuple(sorted(points, key=lambda point: point.observation_time))
+    return tuple(
+        SeriesPoint(
+            observation_time=update.observation_time,
+            value=update.measurements[column],
+        )
+        for update in updates
+        if column in update.measurements
+    )
 
 
 def scaled_points(
@@ -290,102 +283,52 @@ def scaled_points(
     )
 
 
-def source_attribute_points(
-    frame: geopandas.GeoDataFrame,
-    key: str,
-) -> tuple[SeriesPoint, ...]:
-    """Return each row's *key* from its preserved source attributes over time.
-
-    The history layers keep each row's original source attributes as JSON, which is
-    where the personnel count lives under the feed's own key. Rows with a missing
-    observation time or attribute value are left out, since neither can be plotted. When
-    either column is absent the layer carries no measurement to plot.
-
-    Args:
-        frame: The history layer to read.
-        key: The attribute key to read from each row's preserved attributes.
-
-    Returns:
-        The plotted points, in the layer's row order.
-    """
-    if (
-        "observation_time" not in frame.columns
-        or "source_attributes" not in frame.columns
-    ):
-        return ()
-    points: list[SeriesPoint] = []
-    for observation_time, attributes_value in zip(
-        frame["observation_time"],
-        frame["source_attributes"],
-        strict=True,
-    ):
-        time = peri_scribe.geo.parsing.observation_time_from(observation_time)
-        attributes = peri_scribe.kml.row_values.source_attributes_dictionary(
-            attributes_value,
-        )
-        value = attributes.get(key) if attributes is not None else None
-        number = peri_scribe.geo.parsing.numeric_value(value)
-        if time is not None and number is not None:
-            points.append(SeriesPoint(observation_time=time, value=number))
-    return tuple(points)
-
-
 def fire_plots(
     perimeter_rows: geopandas.GeoDataFrame,
     point_rows: geopandas.GeoDataFrame,
+    incident_rows: geopandas.GeoDataFrame | None = None,
+    *,
+    history: peri_scribe.areas.PreparedHistory | None = None,
 ) -> tuple[FirePlot, ...]:
     """Return the four plots describing one fire's history.
 
-    The area plot has one line, the perimeter plot has exterior and contained perimeter
-    lines, and the cost plot has cost-to-date and estimated-final-cost lines. Area and
-    cost are read from both the perimeter and point histories, while the two perimeter
-    lengths come only from the perimeter history, whose geometry is the only source of a
-    length. The personnel plot's single line is read from both histories' preserved
-    source attributes, since the personnel count has no derived column.
+    The shared area selector supplies one line with source provenance. Costs and
+    personnel follow incident update times; containment combines the latest known
+    percentage with the latest known mapped exterior at each event.
 
     Args:
         perimeter_rows: The fire's perimeter history rows, already selected.
         point_rows: The fire's point history rows, already selected.
+        incident_rows: The optional independent reporting history for this fire.
+        history: Already prepared reporting and area evidence, or None to prepare it.
 
     Returns:
         The fire's plots, in area, perimeter, cost, then personnel order.
     """
-    area_points = scaled_points(
-        merge_series_points(
-            series_points(perimeter_rows, "observation_time", "area_acres"),
-            series_points(point_rows, "observation_time", "incident_size"),
-        ),
-        ACRES_PER_THOUSAND,
+    if history is None:
+        history = peri_scribe.areas.prepare_history(
+            perimeter_rows,
+            point_rows,
+            incident_rows,
+        )
+    area_points = tuple(
+        SeriesPoint(
+            observation_time=estimate.time,
+            value=estimate.area.m_as("acres") / ACRES_PER_THOUSAND,
+            reported=estimate.source is peri_scribe.areas.AreaSource.REPORTED,
+        )
+        for estimate in history.estimates
     )
+    updates = history.updates
     cost_to_date_points = scaled_points(
-        merge_series_points(
-            series_points(
-                perimeter_rows,
-                "observation_time",
-                "estimated_cost_to_date",
-            ),
-            series_points(point_rows, "observation_time", "estimated_cost_to_date"),
-        ),
+        incident_points(updates, "estimated_cost_to_date"),
         DOLLARS_PER_MILLION,
     )
     estimated_final_cost_points = scaled_points(
-        merge_series_points(
-            series_points(
-                perimeter_rows,
-                "observation_time",
-                "estimated_final_cost",
-            ),
-            series_points(point_rows, "observation_time", "estimated_final_cost"),
-        ),
+        incident_points(updates, "estimated_final_cost"),
         DOLLARS_PER_MILLION,
     )
-    personnel_points = merge_series_points(
-        source_attribute_points(
-            perimeter_rows,
-            PERIMETER_PERSONNEL_ATTRIBUTE_KEY,
-        ),
-        source_attribute_points(point_rows, POINT_PERSONNEL_ATTRIBUTE_KEY),
-    )
+    personnel_points = incident_points(updates, "personnel")
     exterior_measurements = exterior_perimeter_measurements(perimeter_rows)
 
     return (
@@ -395,6 +338,7 @@ def fire_plots(
                 PlotSeries(
                     label=AREA_SERIES_LABEL,
                     points=area_points,
+                    reported_label=REPORTED_AREA_SERIES_LABEL,
                 ),
             ),
             y_axis_label=AREA_AXIS_LABEL,
@@ -411,9 +355,13 @@ def fire_plots(
                 ),
                 PlotSeries(
                     label=CONTAINED_PERIMETER_SERIES_LABEL,
+                    color=SeriesColor.ORANGE,
                     points=contained_perimeter_points(
                         perimeter_rows,
                         exterior_measurements,
+                        point_rows=point_rows,
+                        incident_rows=incident_rows,
+                        updates=updates,
                     ),
                 ),
             ),
@@ -429,6 +377,7 @@ def fire_plots(
                 PlotSeries(
                     label=ESTIMATED_FINAL_COST_SERIES_LABEL,
                     points=estimated_final_cost_points,
+                    color=SeriesColor.ORANGE,
                 ),
             ),
             y_axis_label=COST_AXIS_LABEL,

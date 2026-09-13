@@ -21,6 +21,10 @@ Do not leave dead code in the codebase.
 
 ## Comments and Docstrings
 
+All classes, functions, methods, test fixtures, and test helpers should have docstrings
+with the exception of pure test functions in the tests directory. Where applicable, they
+should have "Args", "Returns", "Yields", and "Raises" sections.
+
 All English prose in code, whether in comments or docstrings, should be about "why", not
 "how". The code is the truth about how. Such prose should be about the current code, and
 should not contrast the current code with past code.

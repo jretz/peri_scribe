@@ -338,7 +338,19 @@ def gather_report(year_directory: pathlib.Path) -> FireReport:
     )
     perimeters = layers.perimeters
     points = layers.points
-    index = peri_scribe.kml.builder.area_qualified_index(index, perimeters, points)
+    histories = peri_scribe.kml.builder.prepare_histories(
+        index,
+        perimeters,
+        points,
+        layers.incidents,
+    )
+    index = peri_scribe.kml.builder.area_qualified_index(
+        index,
+        perimeters,
+        points,
+        layers.incidents,
+        histories=histories,
+    )
     fire_scores = peri_scribe.fires.score_files.load_fire_scores(
         year_directory,
     ) or peri_scribe.models.FireScores(version="", fires=[])
@@ -349,6 +361,8 @@ def gather_report(year_directory: pathlib.Path) -> FireReport:
         layers.differential_perimeters,
         scores=fire_scores,
         render_plots=False,
+        incident_rows=layers.incidents,
+        histories=histories,
     )
     scores_by_identifier, scores_by_name = peri_scribe.kml.folders.score_maps(
         fire_scores,

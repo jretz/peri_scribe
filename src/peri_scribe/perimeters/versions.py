@@ -27,6 +27,8 @@ if typing.TYPE_CHECKING:
     import shapely
 
 CONTEMPORANEOUS_TOLERANCE = datetime.timedelta(hours=4)
+MAXIMUM_CAPTURE_AGE = datetime.timedelta(days=2)
+SUPERSEDED_FOOTPRINT_OVERLAP = 0.95
 
 
 FIRIS_PERIMETER = (
@@ -65,6 +67,7 @@ class SourceObservation:
     object_id: int | None
     source_file: str
     attributes: dict[str, object]
+    superseded_sources: tuple[str, ...] = ()
 
 
 def last_edit_time_from(path: pathlib.Path) -> datetime.datetime | None:
@@ -203,11 +206,17 @@ def collapse_identical_consecutive_perimeters(
     ordered = sorted(observations, key=perimeter_sort_key)
     versions: list[SourceObservation] = []
     for observation in ordered:
-        if versions and geometries_are_equal(
-            versions[-1].geometry,
-            observation.geometry,
+        if (
+            versions
+            and geometries_are_equal(versions[-1].geometry, observation.geometry)
+            and not new_capture(versions[-1], observation)
         ):
-            versions[-1] = observation
+            previous = versions[-1]
+            versions[-1] = dataclasses.replace(
+                observation,
+                observation_time=effective_time(previous),
+                superseded_sources=previous.superseded_sources,
+            )
         else:
             versions.append(observation)
     return versions
@@ -351,65 +360,132 @@ def merge_identical_observations(
     return versions
 
 
-def keep_preferred_in_window(
-    window: list[SourceObservation],
-    preferred: peri_scribe.perimeters.border_classification.FireSourceKind,
-) -> list[SourceObservation]:
-    """Return the observations to keep from one time window.
-
-    When a window holds perimeters from both sources, only the preferred source's
-    observations are kept.
+def credible_capture_time(
+    observation: SourceObservation,
+) -> datetime.datetime | None:
+    """Old or malformed capture fields cannot establish a mapping's freshness.
 
     Args:
-        window: The observations in one time window.
-        preferred: The preferred source kind.
+        observation: The mapping and its publication and survey metadata.
 
     Returns:
-        The observations to keep.
+        A recent, plausible survey time, or None when the field is unreliable.
     """
-    kinds = {observation.source_kind for observation in window}
-    if FIRIS_PERIMETER in kinds and WFIGS_PERIMETER in kinds:
-        return [
-            observation
-            for observation in window
-            if observation.source_kind is preferred
-        ]
-    return window
+    published = effective_time(observation)
+    captured = peri_scribe.perimeters.history_attributes.datetime_attribute(
+        observation.attributes,
+        "poly_PolygonDateTime",
+    )
+    if (
+        published is not None
+        and captured is not None
+        and captured.year == published.year
+        and datetime.timedelta(0) <= published - captured <= MAXIMUM_CAPTURE_AGE
+    ):
+        return captured
+    return None
+
+
+def mapping_is_superseded(
+    observation: SourceObservation,
+    preferred: SourceObservation,
+) -> bool:
+    """A delayed copy of an older survey cannot displace a newer preferred mapping.
+
+    Similar footprints corroborate the capture dates. Substantial footprint changes
+    remain eligible because a capture field can stay unchanged during later edits.
+
+    Args:
+        observation: The potentially delayed mapping publication.
+        preferred: The preferred mapping against which to compare its evidence.
+
+    Returns:
+        Whether the preferred mapping supersedes this delayed observation.
+    """
+    captured = credible_capture_time(observation)
+    published = effective_time(observation)
+    preferred_time = effective_time(preferred)
+    if captured is None or published is None or preferred_time is None:
+        return False
+    preferred_capture = credible_capture_time(preferred) or preferred_time
+    return (
+        preferred_time <= published
+        and captured <= preferred_capture + CONTEMPORANEOUS_TOLERANCE
+        and overlapping_footprints(
+            observation,
+            preferred,
+            SUPERSEDED_FOOTPRINT_OVERLAP,
+        )
+    )
+
+
+def with_superseded_source(
+    winner: SourceObservation,
+    loser: SourceObservation,
+) -> SourceObservation:
+    """Source references keep reconciliation decisions traceable to saved inputs.
+
+    Args:
+        winner: The observation retained as the mapping evidence.
+        loser: The discarded observation whose provenance remains traceable.
+
+    Returns:
+        The winning observation with both observations' superseded source references.
+    """
+    return dataclasses.replace(
+        winner,
+        superseded_sources=tuple(
+            dict.fromkeys((
+                *winner.superseded_sources,
+                *loser.superseded_sources,
+                f"{loser.source_file}#{loser.object_id}",
+            )),
+        ),
+    )
 
 
 def drop_losing_source_versions(
     versions: list[SourceObservation],
     preferred: peri_scribe.perimeters.border_classification.FireSourceKind,
 ) -> list[SourceObservation]:
-    """Drop the non-preferred source within each time window.
+    """Each competing mapping is compared directly with preferred observations.
+
+    Publication times establish contemporaneous updates; credible survey times also
+    identify older mappings republished after a preferred observation.
 
     Args:
-        versions: The merged perimeter observations.
-        preferred: The preferred source kind.
+        versions: Competing observations for one fire.
+        preferred: The source kind preferred for contemporaneous mappings.
 
     Returns:
-        The observations with conflicting non-preferred versions removed.
+        Chronologically ordered observations with superseded source references.
     """
-    if not versions:
-        return []
-    ordered = sorted(versions, key=perimeter_sort_key)
-    result: list[SourceObservation] = []
-    window = [ordered[0]]
-    window_start = effective_time(ordered[0])
-    for observation in ordered[1:]:
-        time = effective_time(observation)
-        if (
-            window_start is not None
-            and time is not None
-            and (time - window_start) <= CONTEMPORANEOUS_TOLERANCE
-        ):
-            window.append(observation)
+    preferred_versions = sorted(
+        (item for item in versions if item.source_kind is preferred),
+        key=perimeter_sort_key,
+        reverse=True,
+    )
+    retained: list[SourceObservation] = []
+    for observation in versions:
+        if observation.source_kind is preferred:
+            continue
+        replacement = next(
+            (
+                index
+                for index, candidate in enumerate(preferred_versions)
+                if observations_are_contemporaneous(observation, candidate)
+                or mapping_is_superseded(observation, candidate)
+            ),
+            None,
+        )
+        if replacement is None:
+            retained.append(observation)
         else:
-            result.extend(keep_preferred_in_window(window, preferred))
-            window = [observation]
-            window_start = time
-    result.extend(keep_preferred_in_window(window, preferred))
-    return result
+            preferred_versions[replacement] = with_superseded_source(
+                preferred_versions[replacement],
+                observation,
+            )
+    return sorted(retained + preferred_versions, key=perimeter_sort_key)
 
 
 def reconcile_perimeter_versions(
@@ -436,7 +512,7 @@ def reconcile_perimeter_versions(
         key=perimeter_sort_key,
     )
     versions = merge_identical_observations(observations, preferred)
-    return drop_losing_source_versions(versions, preferred)
+    return collapse_mapping_revisions(drop_losing_source_versions(versions, preferred))
 
 
 def attributes_are_equal(
@@ -493,3 +569,152 @@ def point_versions(
         else:
             versions.append(observation)
     return versions
+
+
+REVISION_WINDOW = datetime.timedelta(minutes=5)
+REVISION_OVERLAP = 0.99
+
+
+def revision_pair(left: SourceObservation, right: SourceObservation) -> bool:
+    """Require corroborating evidence before treating two mappings as revisions.
+
+    Close observation times alone are insufficient: the feed, source, feature type, and
+    footprint must also agree closely enough to describe the same mapping.
+
+    Args:
+        left: The earlier candidate observation.
+        right: The later candidate observation.
+
+    Returns:
+        Whether the pair satisfies the revision window and identity/overlap checks.
+    """
+    left_time, right_time = effective_time(left), effective_time(right)
+    if (
+        left_time is None
+        or right_time is None
+        or not datetime.timedelta(0) <= right_time - left_time <= REVISION_WINDOW
+    ):
+        return False
+    if left.source_kind is not right.source_kind:
+        return False
+    for keys in (("source", "poly_Source"), ("type", "poly_FeatureCategory")):
+        first = peri_scribe.perimeters.history_attributes.text_attribute(
+            left.attributes,
+            *keys,
+        )
+        second = peri_scribe.perimeters.history_attributes.text_attribute(
+            right.attributes,
+            *keys,
+        )
+        if first is None or first != second:
+            return False
+    return overlapping_footprints(left, right, REVISION_OVERLAP)
+
+
+def overlapping_footprints(
+    left: SourceObservation,
+    right: SourceObservation,
+    minimum_fraction: float,
+) -> bool:
+    """Use shared footprint coverage to corroborate duplicate mapping evidence.
+
+    Args:
+        left: One observation, with geometry in the same coordinate system as right.
+        right: The observation whose footprint is being compared.
+        minimum_fraction: Required intersection area divided by combined union area.
+
+    Returns:
+        Whether valid footprints with a positive union area meet the overlap threshold.
+        Missing or invalid geometry cannot establish equivalence.
+    """
+    if (
+        left.geometry is None
+        or right.geometry is None
+        or not left.geometry.is_valid
+        or not right.geometry.is_valid
+    ):
+        return False
+    union = left.geometry.union(right.geometry).area
+    return (
+        union > 0
+        and left.geometry.intersection(right.geometry).area / union >= minimum_fraction
+    )
+
+
+def collapse_mapping_revisions(
+    observations: list[SourceObservation],
+) -> list[SourceObservation]:
+    """Keep a mapping's latest publication without chaining separate surveys together.
+
+    Each revision must agree with both the group's first observation and its retained
+    version. This bounds the revision window even when successive edits are close.
+    Superseded source references keep the choice traceable.
+
+    Args:
+        observations: Candidate mappings in chronological observation order.
+
+    Returns:
+        Retained mappings, with each revision group represented by its latest
+        publication and the provenance of the versions it replaced.
+    """
+    result: list[SourceObservation] = []
+    window_start: SourceObservation | None = None
+    for observation in observations:
+        if (
+            result
+            and window_start is not None
+            and revision_pair(window_start, observation)
+            and revision_pair(result[-1], observation)
+        ):
+            previous = result.pop()
+            winner = max(
+                (previous, observation),
+                key=lambda item: (
+                    item.snapshot_time or peri_scribe.models.EARLIEST_DATETIME,
+                    item.serial_number,
+                    item.object_id or -1,
+                ),
+            )
+            loser = observation if winner is previous else previous
+            result.append(with_superseded_source(winner, loser))
+        else:
+            result.append(observation)
+            window_start = observation
+    return result
+
+
+def new_capture(previous: SourceObservation, observation: SourceObservation) -> bool:
+    """Preserve a later survey even when its mapped boundary is unchanged.
+
+    A separate flight record or an advancing, plausible capture date establishes new
+    survey evidence; a later publication timestamp by itself does not.
+
+    Args:
+        previous: The preceding retained perimeter observation.
+        observation: The candidate observation with the same boundary.
+
+    Returns:
+        Whether the later observation contains evidence of a new capture.
+    """
+    time = effective_time(observation)
+    previous_time = effective_time(previous)
+    if time is None or previous_time is None or time <= previous_time:
+        return False
+    source = peri_scribe.perimeters.history_attributes.text_attribute(
+        observation.attributes,
+        "source",
+    )
+    if (
+        source in {"FIRIS", "CAL FIRE INTEL FLIGHT DATA"}
+        and observation.object_id != previous.object_id
+    ):
+        return True
+    capture = peri_scribe.perimeters.history_attributes.datetime_attribute(
+        observation.attributes,
+        "poly_PolygonDateTime",
+    )
+    return (
+        capture is not None
+        and capture.year == time.year
+        and previous_time < capture <= time
+    )

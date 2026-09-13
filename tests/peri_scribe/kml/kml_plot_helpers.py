@@ -95,6 +95,7 @@ def perimeter_frame_from_observations(
             "fire_identifier": ["id-bug"] * len(observations),
             "fire_name": ["Bug"] * len(observations),
             "observation_time": [row[0] for row in observations],
+            "modified_time": [row[0] for row in observations],
             "area_acres": [row[2] for row in observations],
             "percent_contained": [row[3] for row in observations],
             "estimated_cost_to_date": [row[4] for row in observations],

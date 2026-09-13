@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import datetime
 import pathlib
+import typing
 
 import geopandas
 import pytest
 import shapely.geometry
 
+import peri_scribe.areas
 import peri_scribe.fires.differential
 import peri_scribe.fires.files
 import peri_scribe.fires.index
@@ -17,6 +19,7 @@ import peri_scribe.geo.reading
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
+import peri_scribe.kml.selection
 import peri_scribe.models
 import peri_scribe.report.gathering
 import peri_scribe.report.locations
@@ -312,7 +315,25 @@ def test_gather_report_skips_plot_rendering(
         *_arguments: object,
         scores: peri_scribe.models.FireScores,
         render_plots: bool,
+        incident_rows: geopandas.GeoDataFrame | None = None,
+        histories: typing.Mapping[
+            peri_scribe.kml.selection.AreaKey,
+            peri_scribe.areas.PreparedHistory,
+        ]
+        | None = None,
     ) -> list[peri_scribe.kml.fire_data.FireGeometry]:
+        """Capture report-stage options without constructing fire geometry.
+
+        Args:
+            _arguments: Unused positional geometry inputs.
+            render_plots: Whether the report stage requested image rendering.
+            incident_rows: Optional independent incident rows supplied by the stage.
+            histories: Prepared area and reporting evidence passed through the stage.
+            scores: Saved scores supplied by the report stage.
+
+        Returns:
+            An empty fire list for the isolated report-stage assertion.
+        """
         render_plots_values.append(render_plots)
         return []
 
@@ -363,7 +384,25 @@ def test_gather_report_uses_empty_scores_when_missing(
         *_arguments: object,
         scores: peri_scribe.models.FireScores,
         render_plots: bool,
+        incident_rows: geopandas.GeoDataFrame | None = None,
+        histories: typing.Mapping[
+            peri_scribe.kml.selection.AreaKey,
+            peri_scribe.areas.PreparedHistory,
+        ]
+        | None = None,
     ) -> list[peri_scribe.kml.fire_data.FireGeometry]:
+        """Capture report-stage options without constructing fire geometry.
+
+        Args:
+            _arguments: Unused positional geometry inputs.
+            render_plots: Whether the report stage requested image rendering.
+            incident_rows: Optional independent incident rows supplied by the stage.
+            histories: Prepared area and reporting evidence passed through the stage.
+            scores: Saved scores supplied by the report stage.
+
+        Returns:
+            An empty fire list for the isolated report-stage assertion.
+        """
         scores_values.append(scores)
         return []
 
@@ -525,6 +564,15 @@ def test_fire_location_measures_from_point_without_perimeter(
         geometry: shapely.Geometry,
         _cities: geopandas.GeoDataFrame,
     ) -> peri_scribe.report.locations.NearestCity:
+        """Observe which geometry is used without consulting a city dataset.
+
+        Args:
+            geometry: The fire geometry recorded for the assertion.
+            _cities: Unused city data supplied by the caller.
+
+        Returns:
+            A fixed city location for the report assertions.
+        """
         measured.append(geometry)
         return peri_scribe.report.locations.NearestCity(
             name="Portland",
@@ -570,6 +618,15 @@ def test_fire_location_falls_back_to_point_for_empty_perimeter(
         geometry: shapely.Geometry,
         _cities: geopandas.GeoDataFrame,
     ) -> peri_scribe.report.locations.NearestCity:
+        """Observe which geometry is used without consulting a city dataset.
+
+        Args:
+            geometry: The fire geometry recorded for the assertion.
+            _cities: Unused city data supplied by the caller.
+
+        Returns:
+            A fixed city location for the report assertions.
+        """
         measured.append(geometry)
         return peri_scribe.report.locations.NearestCity(
             name="Portland",
@@ -693,6 +750,15 @@ def test_read_cities_layer_reads_stored_layer(
         path: pathlib.Path,
         layer_name: str,
     ) -> geopandas.GeoDataFrame:
+        """Isolate derived-layer reads from persistent geography.
+
+        Args:
+            path: The requested path, without reading its contents.
+            layer_name: The requested history layer.
+
+        Returns:
+            The synthetic history frame used by this scenario.
+        """
         calls.append((path, layer_name))
         return geopandas.GeoDataFrame()
 

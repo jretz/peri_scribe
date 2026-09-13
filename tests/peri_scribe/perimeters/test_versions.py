@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import pathlib
 
@@ -10,6 +11,7 @@ import pytest
 import shapely.geometry
 
 import peri_scribe.models
+import peri_scribe.perimeters.border_classification
 import peri_scribe.perimeters.size_filtering
 import peri_scribe.perimeters.versions
 import tests.factories
@@ -329,25 +331,6 @@ def test_merge_identical_observations_merges_matching_geometry() -> None:
     )
 
 
-def test_keep_preferred_in_window_drops_loser_when_both_sources_present() -> None:
-    firis = tests.factories.observation(source_kind=tests.factories.FIRIS_PERIMETER)
-    wfigs = tests.factories.observation(source_kind=tests.factories.WFIGS_PERIMETER)
-    kept = peri_scribe.perimeters.versions.keep_preferred_in_window(
-        [firis, wfigs],
-        tests.factories.WFIGS_PERIMETER,
-    )
-    assert kept == [wfigs]
-
-
-def test_keep_preferred_in_window_keeps_single_source_window() -> None:
-    firis = tests.factories.observation(source_kind=tests.factories.FIRIS_PERIMETER)
-    kept = peri_scribe.perimeters.versions.keep_preferred_in_window(
-        [firis],
-        tests.factories.WFIGS_PERIMETER,
-    )
-    assert kept == [firis]
-
-
 def test_drop_losing_source_versions_drops_loser_in_window() -> None:
     firis = tests.factories.observation(
         source_kind=tests.factories.FIRIS_PERIMETER,
@@ -361,7 +344,8 @@ def test_drop_losing_source_versions_drops_loser_in_window() -> None:
         [firis, wfigs],
         tests.factories.FIRIS_PERIMETER,
     )
-    assert kept == [firis]
+    assert [item.geometry for item in kept] == [firis.geometry]
+    assert kept[0].superseded_sources == (f"{wfigs.source_file}#{wfigs.object_id}",)
 
 
 def test_reconcile_perimeter_versions_merges_identical_and_prefers_wfigs() -> None:
@@ -628,3 +612,335 @@ def test_point_versions_creates_version_on_attribute_change() -> None:
     )
     versions = peri_scribe.perimeters.versions.point_versions([first, second])
     assert versions == [first, second]
+
+
+@pytest.fixture
+def revision_observations() -> list[peri_scribe.perimeters.versions.SourceObservation]:
+    """Provide a close mapping pair whose metadata corroborates a minor revision.
+
+    Returns:
+        Consecutive flight-source observations with nearly identical footprints and
+        separate source references for checking retained provenance.
+    """
+    return [
+        tests.factories.observation(
+            geometry=shapely.geometry.box(0, 0, 1 + minute / 1000, 1),
+            observation_time=tests.factories.utc(2026, 9, 7, 20, minute),
+            serial_number=minute,
+            source_file=f"{minute}.gpkg",
+            attributes={
+                "source": "CAL FIRE INTEL FLIGHT DATA",
+                "type": "Heat Perimeter",
+            },
+        )
+        for minute in (24, 25)
+    ]
+
+
+def test_collapse_mapping_revisions_keeps_latest_publication_with_provenance(
+    revision_observations: list[peri_scribe.perimeters.versions.SourceObservation],
+) -> None:
+    result = peri_scribe.perimeters.versions.collapse_mapping_revisions(
+        revision_observations,
+    )
+    assert [row.serial_number for row in result] == [25]
+    assert result[0].superseded_sources == ("24.gpkg#1",)
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        "time",
+        "source",
+        "type",
+        "missing_type",
+        "geometry",
+        "missing_geometry",
+        "empty_geometry",
+        "invalid_geometry",
+        "undated",
+    ],
+)
+def test_revision_pair_preserves_distinct_or_unverifiable_observations(
+    revision_observations: list[peri_scribe.perimeters.versions.SourceObservation],
+    change: str,
+) -> None:
+    first, second = revision_observations
+    changes = {
+        "time": {"observation_time": tests.factories.utc(2026, 9, 7, 22)},
+        "source": {"source_kind": peri_scribe.perimeters.versions.WFIGS_PERIMETER},
+        "type": {
+            "attributes": {"source": "CAL FIRE INTEL FLIGHT DATA", "type": "Other"},
+        },
+        "missing_type": {"attributes": {}},
+        "geometry": {"geometry": tests.factories.square(3)},
+        "missing_geometry": {"geometry": None},
+        "empty_geometry": {"geometry": shapely.Polygon()},
+        "invalid_geometry": {
+            "geometry": shapely.Polygon([(0, 0), (1, 1), (0, 1), (1, 0), (0, 0)]),
+        },
+        "undated": {"observation_time": None},
+    }
+    second = dataclasses.replace(second, **changes[change])
+    assert not peri_scribe.perimeters.versions.revision_pair(first, second)
+
+
+def test_collapse_mapping_revisions_does_not_chain_beyond_window(
+    revision_observations: list[peri_scribe.perimeters.versions.SourceObservation],
+) -> None:
+    first, second = revision_observations
+    last = dataclasses.replace(
+        second,
+        observation_time=tests.factories.utc(2026, 9, 7, 20, 30),
+        serial_number=30,
+    )
+    result = peri_scribe.perimeters.versions.collapse_mapping_revisions([
+        first,
+        second,
+        last,
+    ])
+    assert [row.serial_number for row in result] == [25, 30]
+
+
+def test_collapse_mapping_revisions_respects_late_published_correction(
+    revision_observations: list[peri_scribe.perimeters.versions.SourceObservation],
+) -> None:
+    first, second = revision_observations
+    first = dataclasses.replace(first, serial_number=30)
+    result = peri_scribe.perimeters.versions.collapse_mapping_revisions([first, second])
+    assert result[0].geometry == first.geometry
+    assert result[0].superseded_sources == ("25.gpkg#1",)
+
+
+def test_collapse_identical_consecutive_perimeters_preserves_first_mapping_time(
+    revision_observations: list[peri_scribe.perimeters.versions.SourceObservation],
+) -> None:
+    first, second = revision_observations
+    second = dataclasses.replace(second, geometry=first.geometry)
+    result = peri_scribe.perimeters.versions.collapse_identical_consecutive_perimeters([
+        first,
+        second,
+    ])
+    assert result[0].observation_time == first.observation_time
+    assert result[0].source_file == second.source_file
+
+
+def test_collapse_identical_consecutive_perimeters_keeps_new_capture(
+    revision_observations: list[peri_scribe.perimeters.versions.SourceObservation],
+) -> None:
+    first, second = revision_observations
+    second = dataclasses.replace(
+        second,
+        geometry=first.geometry,
+        attributes={"poly_PolygonDateTime": second.observation_time},
+    )
+    assert peri_scribe.perimeters.versions.collapse_identical_consecutive_perimeters([
+        first,
+        second,
+    ]) == [first, second]
+
+
+def test_new_capture_recognizes_separate_flight_record(
+    revision_observations: list[peri_scribe.perimeters.versions.SourceObservation],
+) -> None:
+    first, second = revision_observations
+    assert peri_scribe.perimeters.versions.new_capture(
+        first,
+        dataclasses.replace(second, object_id=2),
+    )
+
+
+@pytest.mark.parametrize(
+    "preferred",
+    [tests.factories.FIRIS_PERIMETER, tests.factories.WFIGS_PERIMETER],
+)
+def test_drop_losing_source_versions_compares_across_window_boundaries(
+    preferred: peri_scribe.perimeters.border_classification.FireSourceKind,
+) -> None:
+    other = (
+        tests.factories.WFIGS_PERIMETER
+        if preferred is tests.factories.FIRIS_PERIMETER
+        else tests.factories.FIRIS_PERIMETER
+    )
+    preferred_hour = 3
+    records = [
+        tests.factories.observation(
+            source_kind=preferred if hour == preferred_hour else other,
+            observation_time=tests.factories.utc(2026, 9, 1, hour, 0),
+            object_id=hour,
+            source_file="mapping.gpkg",
+        )
+        for hour in [0, 3, 5, 8]
+    ]
+    result = peri_scribe.perimeters.versions.drop_losing_source_versions(
+        records,
+        preferred,
+    )
+    assert [item.object_id for item in result] == [3, 8]
+    assert result[0].superseded_sources == ("mapping.gpkg#0", "mapping.gpkg#5")
+
+
+def test_drop_losing_source_versions_preserves_undated_and_single_source_records() -> (
+    None
+):
+    records = [tests.factories.observation(source_kind=tests.factories.WFIGS_PERIMETER)]
+    assert (
+        peri_scribe.perimeters.versions.drop_losing_source_versions(
+            records,
+            tests.factories.FIRIS_PERIMETER,
+        )
+        == records
+    )
+    assert (
+        peri_scribe.perimeters.versions.drop_losing_source_versions(
+            [],
+            tests.factories.FIRIS_PERIMETER,
+        )
+        == []
+    )
+
+
+@pytest.fixture
+def delayed_mapping_pair() -> tuple[
+    peri_scribe.perimeters.versions.SourceObservation,
+    peri_scribe.perimeters.versions.SourceObservation,
+]:
+    """Expose a length spike caused by delayed publication of an older survey.
+
+    Returns:
+        A preferred flight mapping and a later-published, earlier-captured WFIGS
+        footprint with a narrow notch that adds length without much area change.
+    """
+    flight = tests.factories.observation(
+        source_kind=tests.factories.FIRIS_PERIMETER,
+        geometry=shapely.geometry.box(0, 0, 1, 1),
+        observation_time=tests.factories.utc(2026, 9, 1, 21, 32),
+        source_file="flight.gpkg",
+        object_id=1,
+    )
+    delayed = tests.factories.observation(
+        source_kind=tests.factories.WFIGS_PERIMETER,
+        geometry=shapely.geometry.Polygon([
+            (0, 0),
+            (1, 0),
+            (1, 1),
+            (0.51, 1),
+            (0.51, 0.1),
+            (0.49, 0.1),
+            (0.49, 1),
+            (0, 1),
+        ]),
+        observation_time=tests.factories.utc(2026, 9, 2, 13, 25),
+        source_file="delayed.gpkg",
+        object_id=2,
+        attributes={"poly_PolygonDateTime": tests.factories.utc(2026, 9, 1, 16, 48)},
+    )
+    return flight, delayed
+
+
+def test_reconcile_perimeter_versions_rejects_delayed_older_survey_spike(
+    delayed_mapping_pair: tuple[
+        peri_scribe.perimeters.versions.SourceObservation,
+        peri_scribe.perimeters.versions.SourceObservation,
+    ],
+) -> None:
+    flight, delayed = delayed_mapping_pair
+    result = peri_scribe.perimeters.versions.reconcile_perimeter_versions(
+        [flight],
+        [delayed],
+        None,
+    )
+    assert [item.geometry for item in result] == [flight.geometry]
+    assert result[0].superseded_sources == ("delayed.gpkg#2",)
+
+
+@pytest.mark.parametrize(
+    "capture",
+    [
+        None,
+        "invalid",
+        "2002-09-01T16:48:00",
+        "2026-09-03T00:00:00",
+        "2026-08-01T00:00:00",
+    ],
+)
+def test_credible_capture_time_rejects_unreliable_dates(
+    capture: str | None,
+) -> None:
+    observation = tests.factories.observation(
+        observation_time=tests.factories.utc(2026, 9, 2, 13, 25),
+        attributes={"poly_PolygonDateTime": capture},
+    )
+    assert peri_scribe.perimeters.versions.credible_capture_time(observation) is None
+
+
+@pytest.mark.parametrize(
+    ("capture", "geometry", "superseded"),
+    [
+        (
+            tests.factories.utc(2026, 9, 1, 21, 33),
+            shapely.geometry.box(0, 0, 1, 1),
+            True,
+        ),
+        (
+            tests.factories.utc(2026, 9, 2, 6, 0),
+            shapely.geometry.box(0, 0, 1, 1),
+            False,
+        ),
+        (
+            tests.factories.utc(2026, 9, 1, 16, 48),
+            shapely.geometry.box(0, 0, 2, 1),
+            False,
+        ),
+    ],
+)
+def test_mapping_is_superseded_respects_new_surveys_and_changed_footprints(
+    delayed_mapping_pair: tuple[
+        peri_scribe.perimeters.versions.SourceObservation,
+        peri_scribe.perimeters.versions.SourceObservation,
+    ],
+    capture: datetime.datetime,
+    geometry: shapely.geometry.Polygon,
+    *,
+    superseded: bool,
+) -> None:
+    flight, delayed = delayed_mapping_pair
+    observation = dataclasses.replace(
+        delayed,
+        geometry=geometry,
+        attributes={"poly_PolygonDateTime": capture},
+    )
+    assert (
+        peri_scribe.perimeters.versions.mapping_is_superseded(
+            observation,
+            flight,
+        )
+        is superseded
+    )
+
+
+def test_mapping_is_superseded_requires_dated_preferred_observation(
+    delayed_mapping_pair: tuple[
+        peri_scribe.perimeters.versions.SourceObservation,
+        peri_scribe.perimeters.versions.SourceObservation,
+    ],
+) -> None:
+    flight, delayed = delayed_mapping_pair
+    assert not peri_scribe.perimeters.versions.mapping_is_superseded(
+        delayed,
+        dataclasses.replace(flight, observation_time=None),
+    )
+
+
+def test_mapping_is_superseded_uses_preferred_survey_time(
+    delayed_mapping_pair: tuple[
+        peri_scribe.perimeters.versions.SourceObservation,
+        peri_scribe.perimeters.versions.SourceObservation,
+    ],
+) -> None:
+    flight, delayed = delayed_mapping_pair
+    preferred = dataclasses.replace(
+        flight,
+        attributes={"poly_PolygonDateTime": tests.factories.utc(2026, 9, 1, 10, 0)},
+    )
+    assert not peri_scribe.perimeters.versions.mapping_is_superseded(delayed, preferred)

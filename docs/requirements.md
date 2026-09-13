@@ -26,8 +26,8 @@ SQLite database at `sources/buildings.sqlite`.
    major cities), and the administrative-boundary GeoPackage at
    `sources/CA_border_with_AZ_NV_and_OR.gpkg`, which is downloaded only when missing or
    unusable.
-2. Write `derived/history_of_full_geography.gpkg` with `perimeter_history` and
-   `point_history` layers.
+2. Write `derived/history_of_full_geography.gpkg` with `perimeter_history`,
+   `point_history`, and `incident_history` layers.
 3. Write `derived/history_of_differential_geography.gpkg` containing growth rings.
 4. Write `derived/fire_scores.json` and `derived/fire_scores_ccdf.html`.
 5. Write `maps/PeriScribe Fires <year>.kmz`.
@@ -53,6 +53,25 @@ freshly generated, including effects of external inputs and time.
 
 The KMZ includes active and inactive fire folders, latest perimeters, progression rings,
 fire information, and score-based top fire views.
+
+Current area in scores, charts, balloons, and reports follows one shared policy. Recent
+mapping supplies measured geometry area, including downward corrections. Without usable
+mapping, incident reports supply area. Reports can replace stagnant mapping when later
+growth meets the freshness and corroboration thresholds. The area basis identifies the
+supporting observation and its date, even when a policy deadline makes it effective
+later. Growth remains a geometry measurement, so it can lag reported current size.
+
+KMZ and report inclusion require a selected historical area of at least 25 acres. A
+later downward correction does not remove a fire that qualified earlier. Fires without a
+usable dated estimate can qualify from undated geometry or supplied incident, discovery,
+or final acreage. Fresh mapping takes precedence over conflicting reports.
+
+Incident history preserves reported size, costs, personnel, and containment
+independently of polygon dates and reconciliation. Simultaneous feed conflicts prefer
+direct incident fields. Each measurement retains its supporting source and formal-report
+confirmation; confirmation for a different value cannot be transferred to it. Chart
+legends include only rendered line styles, with stable colors and distinct
+mapped/reported area strokes.
 
 ## Configuration and operation
 

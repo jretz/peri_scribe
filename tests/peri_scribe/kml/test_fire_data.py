@@ -523,7 +523,10 @@ def test_fire_geometries_attaches_plot_images() -> None:
         tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
     )
     (fire,) = fires
-    assert [image.filename for image in fire.images] == ["id-bug-perimeter.svg"]
+    assert [image.filename for image in fire.images] == [
+        "id-bug-area.svg",
+        "id-bug-perimeter.svg",
+    ]
     assert fire.images[0].content
     assert fire.description is not None
     assert fire.description.identifier == "id-bug"
@@ -1107,13 +1110,13 @@ def test_precompute_interior_added_areas_warms_drawn_ring_sequences() -> None:
         identifier="id-bug",
     )
     pending: list[peri_scribe.kml.fire_data.PendingFire] = [
-        (
-            entry,
-            frozenset({"id-bug"}),
-            (),
-            (first_ring, second_ring),
-            (),
-            (),
+        peri_scribe.kml.fire_data.PendingFire(
+            entry=entry,
+            identifiers=frozenset({"id-bug"}),
+            perimeters=(),
+            progression_rings=(first_ring, second_ring),
+            perimeter_positions=(),
+            point_positions=(),
         ),
     ]
     cache = peri_scribe.kml.fire_data.added_areas_for_rings
@@ -1138,18 +1141,18 @@ def test_precompute_interior_added_areas_warms_latest_perimeter_fallback() -> No
         identifier="id-bug",
     )
     pending: list[peri_scribe.kml.fire_data.PendingFire] = [
-        (
-            entry,
-            frozenset({"id-bug"}),
-            (
+        peri_scribe.kml.fire_data.PendingFire(
+            entry=entry,
+            identifiers=frozenset({"id-bug"}),
+            perimeters=(
                 tests.peri_scribe.kml.kml_helpers.perimeter_with_time(
                     tests.factories.square(2.0),
                     observation_time,
                 ),
             ),
-            (),
-            (),
-            (),
+            progression_rings=(),
+            perimeter_positions=(),
+            point_positions=(),
         ),
     ]
     cache = peri_scribe.kml.fire_data.added_areas_for_rings
@@ -1167,7 +1170,14 @@ def test_precompute_interior_added_areas_leaves_fire_without_drawn_rings_alone()
         identifier="id-bug",
     )
     pending: list[peri_scribe.kml.fire_data.PendingFire] = [
-        (entry, frozenset({"id-bug"}), (), (), (), ()),
+        peri_scribe.kml.fire_data.PendingFire(
+            entry=entry,
+            identifiers=frozenset({"id-bug"}),
+            perimeters=(),
+            progression_rings=(),
+            perimeter_positions=(),
+            point_positions=(),
+        ),
     ]
     cache = peri_scribe.kml.fire_data.added_areas_for_rings
     before = cache.cache_info().currsize
@@ -1282,7 +1292,7 @@ def description_point_frame() -> geopandas.GeoDataFrame:
     )
 
 
-def test_fire_description_prefers_latest_perimeter_values() -> None:
+def test_fire_description_uses_latest_incident_values() -> None:
     entry = tests.peri_scribe.kml.kml_helpers.fire_index_entry(
         "Bug",
         "active",
@@ -1298,11 +1308,11 @@ def test_fire_description_prefers_latest_perimeter_values() -> None:
     assert description.area.m_as("acres") == pytest.approx(
         peri_scribe.units.area(tests.factories.square(2.0)).m_as("acres"),
     )
-    assert description.percent_contained == pytest.approx(20.0)
+    assert description.percent_contained == pytest.approx(30.0)
     assert description.estimated_cost_to_date is not None
-    assert description.estimated_cost_to_date.m_as("dollars") == pytest.approx(2_000.0)
+    assert description.estimated_cost_to_date.m_as("dollars") == pytest.approx(3_000.0)
     assert description.estimated_final_cost is not None
-    assert description.estimated_final_cost.m_as("dollars") == pytest.approx(2_500.0)
+    assert description.estimated_final_cost.m_as("dollars") == pytest.approx(3_500.0)
     # Personnel comes from the sources' attributes, where the point feed's value wins
     # when both feeds carry it.
     assert description.total_personnel == pytest.approx(500.0)
@@ -1369,7 +1379,7 @@ def test_fire_description_presents_geometry_when_reported_understates() -> None:
     assert description.area.m_as("acres") != pytest.approx(reported_in_acres)
 
 
-def test_fire_description_keeps_reported_area_within_agreement() -> None:
+def test_fire_description_uses_geometry_within_agreement() -> None:
     entry = tests.peri_scribe.kml.kml_helpers.fire_index_entry(
         "Bug",
         "active",
@@ -1387,7 +1397,9 @@ def test_fire_description_keeps_reported_area_within_agreement() -> None:
         tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
     )
     assert description.area is not None
-    assert description.area.m_as("acres") == pytest.approx(reported_in_acres)
+    assert description.area.m_as("acres") == pytest.approx(
+        peri_scribe.units.area(geometry).m_as("acres"),
+    )
 
 
 def test_fire_description_falls_back_to_point_when_perimeter_missing() -> None:
@@ -1563,6 +1575,14 @@ def test_added_areas_for_rings_reuses_only_the_exact_stored_sequence(
     def tracked(
         geometries: typing.Iterable[shapely.geometry.base.BaseGeometry],
     ) -> tuple[object, ...]:
+        """Observe added-area calculations while preserving real measurements.
+
+        Args:
+            geometries: The ordered ring sequence whose cache use is checked.
+
+        Returns:
+            The measured added areas from the original implementation.
+        """
         values = tuple(geometries)
         calls.append(values)
         return original(values)
@@ -1603,3 +1623,44 @@ def test_perimeter_groups_carries_shared_measurements() -> None:
     assert ring is not None
     assert ring.added_area == expected_area
     assert ring.sequence_digest == digest
+
+
+def test_fire_geometries_uses_independent_incident_history() -> None:
+    index = tests.peri_scribe.kml.kml_helpers.fire_index([
+        tests.peri_scribe.kml.kml_helpers.fire_index_entry(
+            "Bug",
+            "active",
+            identifier="id-bug",
+        ),
+    ])
+    empty = tests.peri_scribe.kml.kml_helpers.geometry_frame([])
+    incidents = tests.factories.geo_frame(
+        {
+            "fire_identifier": ["id-bug", "id-bug"],
+            "fire_name": ["Bug", "Bug"],
+            "observation_time": [
+                tests.factories.utc(2026, 9, day, 0) for day in (1, 2)
+            ],
+            "incident_size": [100, 200],
+            "estimated_cost_to_date": [1000, 2000],
+            "report_confirmed": [False, False],
+        },
+        [None, None],
+    )
+    fires = peri_scribe.kml.fire_data.fire_geometries(
+        index,
+        empty,
+        empty,
+        empty,
+        incident_rows=incidents,
+    )
+    description = fires[0].description
+    assert description is not None
+    assert description.area is not None
+    assert description.area.m_as("acres") == pytest.approx(200)
+    assert description.area_basis is not None
+    assert description.area_basis.startswith("Reported;")
+    assert [item.filename for item in fires[0].images] == [
+        "id-bug-area.svg",
+        "id-bug-cost.svg",
+    ]

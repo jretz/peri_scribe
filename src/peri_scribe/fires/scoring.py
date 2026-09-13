@@ -241,9 +241,9 @@ def complexity_level(source_attributes_json: object) -> str | None:
 class PerimeterMetrics:
     """The size and growth measurements a fire's score tiers read.
 
-    Each acreage is the value presented to users: the reported acreage unless the
-    measured geometry is significantly larger, so a stale report does not understate the
-    fire.
+    Current acreage follows the shared mapping-freshness and report policy. Growth and
+    first-mapping acreage describe measured geometry, with supplied acreage used when
+    geometry measurements are unavailable.
     """
 
     area: pint.Quantity[float] | None

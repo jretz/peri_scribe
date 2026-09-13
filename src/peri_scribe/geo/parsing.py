@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import numbers
 import re
 import typing
 
@@ -98,12 +99,10 @@ def numeric_value(value: object) -> float | None:
         return None
     if isinstance(value, bool):
         return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
+    if isinstance(value, (numbers.Real, str)):
         try:
             return float(value)
-        except ValueError:
+        except TypeError, ValueError:
             return None
     return None
 

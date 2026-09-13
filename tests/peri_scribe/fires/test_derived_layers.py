@@ -44,3 +44,23 @@ def test_read_layer_if_present_reads_existing_file(
         "perimeter_history",
     )
     assert result is frame
+
+
+def test_read_incident_layer_reads_new_layer(tmp_path: pathlib.Path) -> None:
+    frame = tests.factories.geo_frame({"incident_size": [100.0]}, [None])
+    path = tmp_path / "history.gpkg"
+    frame.to_file(path, layer="incident_history", driver="GPKG")
+    result = peri_scribe.fires.derived_layers.read_incident_layer(path)
+    assert result["incident_size"].tolist() == [100.0]
+
+
+def test_read_incident_layer_returns_empty_for_geography_only_file(
+    tmp_path: pathlib.Path,
+) -> None:
+    frame = tests.factories.geo_frame(
+        {"area_acres": [100.0]},
+        [tests.factories.square(0.01)],
+    )
+    path = tmp_path / "history.gpkg"
+    frame.to_file(path, layer="perimeter_history", driver="GPKG")
+    assert peri_scribe.fires.derived_layers.read_incident_layer(path).empty

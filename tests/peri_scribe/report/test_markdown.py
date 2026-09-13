@@ -680,3 +680,17 @@ def test_markdown_text_shows_location_in_sections_and_details() -> None:
         )
         == LOCATION_COLUMN_SECTION_COUNT
     )
+
+
+def test_fire_detail_lines_includes_area_basis() -> None:
+    entry = make_entry(
+        "Example",
+        description=peri_scribe.kml.descriptions.FireDescription(
+            area=200 * units.acres,
+            area_basis="Reported; 09/02 17:00 PDT",
+        ),
+    )
+    assert (
+        "| Area basis | Reported; 09/02 17:00 PDT |"
+        in peri_scribe.report.markdown.fire_detail_lines(entry)
+    )

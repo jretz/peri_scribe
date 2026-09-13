@@ -48,7 +48,8 @@ when it is missing or unusable.
 
 Derived data is written below `data/<year>/derived/`:
 
-- `history_of_full_geography.gpkg` contains perimeter and point histories.
+- `history_of_full_geography.gpkg` contains `perimeter_history`, `point_history`, and
+  `incident_history`.
 - `history_of_differential_geography.gpkg` contains corrected growth rings.
 - `fire_scores.json` contains one score and explanation per fire.
 - `fire_scores_ccdf.html` plots the score distribution.
@@ -68,6 +69,32 @@ The original source snapshots are not modified by these cleansing steps. The out
 excludes fires without a qualifying area indication and includes latest-perimeter and
 progression-map views.
 
+## Incident evidence and area selection
+
+`fires/incident_history.py` derives reporting history from original observations before
+perimeter reconciliation can remove unchanged or superseded polygons. Incident fields
+use their incident modification time. Rows contain normalized measurements, report
+confirmation, and source provenance, with null geometry. Measurements at the same time
+can occupy separate rows when different reports support them. Direct location values win
+conflicts; matching values can retain formal confirmation from either feed.
+
+`incidents.py` reconciles those measurements independently of mapping. `areas.py` uses
+that reporting history and mapping evidence to select current and historical area for
+scoring, KMZ qualification, plots, and descriptions. Survey metadata or a footprint
+change of at least both 1% and one acre renews mapping freshness. Ordinary reported
+growth can take over after three days when it reaches both 1.25 times mapped area and an
+additional ten acres, and exceeds the report known at the survey. Rapid growth can take
+over after one day with two distinct formal confirmations at twice mapped area, subject
+to the same absolute increase and subsequent-growth requirements.
+
+Fresh surveys restore measured area, including legitimate decreases. Estimates retain
+separate effective and observation times because an eligibility deadline can occur after
+the supporting report. Source times are normalized to UTC; naive source timestamps are
+interpreted as UTC. Displayed provenance dates refer to the observation, while charts
+place estimates at their effective times. Growth and first-mapping signals use geometry
+independently of the selected current area. Area quantities carry their units; consumers
+convert explicitly rather than assuming acres or square meters.
+
 ## History reuse and shared measurements
 
 The geography stage reads and groups all source observations before deciding which fires
@@ -77,12 +104,14 @@ during reconciliation. It also covers fire identity and complex membership, pack
 source code, relevant geospatial library versions, boundary data, and cleaning,
 size-filtering, and classification settings.
 
-Matching fires retain their full point and perimeter rows and differential history.
-Other fires are classified and reconciled in full, and their complete differential
-sequences are rebuilt. Appended observations, shrinking corrections, late observations,
-metadata edits, removed records, and grouping changes can affect earlier output, so
-reuse is decided for a whole fire rather than an appended ring suffix. Source reading
-and global grouping remain work on every geography run.
+Matching fires retain their full point, perimeter, and incident rows and differential
+history. Incident reuse uses the complete source fingerprint, so a report edit
+invalidates it even when the polygon is unchanged. Other fires are classified and
+reconciled in full, and their complete differential sequences are rebuilt. Appended
+observations, shrinking corrections, late observations, metadata edits, removed records,
+and grouping changes can affect earlier output, so reuse is decided for a whole fire
+rather than an appended ring suffix. Source reading and global grouping remain work on
+every geography run.
 
 Full perimeter rows store `geometry_area_square_meters` and `exterior_perimeter_meters`
 for the cleaned shape. Differential rows store ring area and `added_area_square_meters`,
@@ -92,6 +121,11 @@ calculation. Downstream scoring, KML, and report consumers share these measureme
 When a consumer uses a different ring sequence or receives rows without stored
 measurements, it computes the measurements it needs. Scores, rankings, and presentation
 are regenerated to reflect external inputs and current time.
+
+Within each KMZ or report stage, prepared fire histories hold reconciled incident
+updates, the selected area timeline, and current and historical size. Qualification,
+charts, containment estimates, and descriptions share that evidence so JSON parsing,
+report reconciliation, and footprint comparisons are performed once per fire.
 
 `fires/reuse.py` validates each prior GeoPackage against its sibling `.reuse.json` file,
 which contains a cache version and the completed file's checksum. Missing, incompatible,

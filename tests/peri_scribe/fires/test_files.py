@@ -16,6 +16,7 @@ import peri_scribe.fires.history
 import peri_scribe.fires.sources
 import peri_scribe.geo.package
 import peri_scribe.models
+import peri_scribe.perimeters.versions
 import tests.factories
 
 
@@ -45,7 +46,17 @@ def history_inputs(
             ),
             source_name=feed,
             object_id=index,
-            attributes={"area_acres": 100.0},
+            attributes={
+                "area_acres": 100.0,
+                "attr_ModifiedOnDateTime_dt": tests.factories.utc(
+                    2026,
+                    9,
+                    1 + index,
+                    0,
+                ),
+                "attr_IncidentSize": 100.0,
+                "attr_EstimatedCostToDate": 1000.0,
+            },
         )
         for index, (name, geometry) in enumerate([
             ("First", shapely.box(-120, 40, -119.99, 40.01)),
@@ -75,7 +86,13 @@ def assert_histories_equal(
     left: peri_scribe.fires.derived_layers.DerivedLayers,
     right: peri_scribe.fires.derived_layers.DerivedLayers,
 ) -> None:
-    for name in ("perimeters", "points", "differential_perimeters"):
+    """Require reused and rebuilt histories to retain the same evidence and geometry.
+
+    Args:
+        left: The histories produced by an incremental rebuild.
+        right: The independently rebuilt reference histories.
+    """
+    for name in ("perimeters", "points", "differential_perimeters", "incidents"):
         first = getattr(left, name)
         second = getattr(right, name)
         geopandas.testing.assert_geodataframe_equal(first, second)
@@ -94,10 +111,24 @@ def test_write_history_of_full_geography_reuses_unchanged_fires(
     )
 
     def unexpected(*_args: object, **_kwargs: object) -> typing.Never:
+        """Reject source reconstruction when a complete cached history is available.
+
+        Args:
+            _args: Unused derivation inputs.
+            _kwargs: Unused derivation options.
+
+        Raises:
+            AssertionError: When an unchanged fire's evidence is reconstructed.
+        """
         message = "An unchanged fire was recomputed"
         raise AssertionError(message)
 
     monkeypatch.setattr(peri_scribe.fires.history, "history_rows_for_fire", unexpected)
+    monkeypatch.setattr(
+        peri_scribe.perimeters.versions,
+        "source_observation_from_row",
+        unexpected,
+    )
     monkeypatch.setattr(
         peri_scribe.fires.differential,
         "differential_rows_for_fire",
@@ -146,7 +177,10 @@ def test_write_history_of_full_geography_rebuilds_only_affected_fires(
     elif change == "attributes":
         rows[0] = dataclasses.replace(
             rows[0],
-            attributes={"area_acres": 120.0, "description": "corrected"},
+            attributes={
+                **rows[0].attributes,
+                "attr_EstimatedCostToDate": 2000.0,
+            },
         )
     elif change == "removed":
         rows.pop()
@@ -175,6 +209,19 @@ def test_write_history_of_full_geography_rebuilds_only_affected_fires(
         sources_directory: pathlib.Path,
         classification: peri_scribe.models.FireClassification | None,
     ) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+        """Observe which fires need reconstruction while preserving real derivation.
+
+        Args:
+            fire: The fire being reconstructed.
+            group: Its source-record positions.
+            full_rows: The source observations for this test.
+            full_paths: The corresponding snapshot paths.
+            sources_directory: The base for snapshot provenance.
+            classification: The selected border classification.
+
+        Returns:
+            The derived perimeter and point rows.
+        """
         calls.append(fire.name)
         return derive(
             fire,

@@ -9,10 +9,12 @@ import structlog
 
 import peri_scribe.fires.classification
 import peri_scribe.fires.history
+import peri_scribe.fires.incident_history
 import peri_scribe.fires.index
 import peri_scribe.fires.reuse
 import peri_scribe.fires.sources
 import peri_scribe.geo.measurements
+import peri_scribe.incidents
 import peri_scribe.models
 import peri_scribe.sources.snapshots
 
@@ -39,6 +41,7 @@ PERIMETER_COLUMNS = [
     "source_globalid",
     "source_file",
     "source_serial",
+    "superseded_sources",
     "observation_time",
     "created_time",
     "modified_time",
@@ -106,11 +109,12 @@ def write_history_of_full_geography(
     *,
     unconditional: bool = False,
 ) -> pathlib.Path:
-    """Build and write the full point and perimeter history GeoPackage.
+    """Build and write the full geography and incident history GeoPackage.
 
-    The output holds two layers: ``perimeter_history`` and ``point_history``, both in
-    the output spatial reference. Validated rows for unchanged fires are retained;
-    affected fires are reconciled in full so corrections can revise their history.
+    The spatial layers are ``perimeter_history`` and ``point_history``; the separate
+    ``incident_history`` layer preserves reports on their own observation dates.
+    Validated geography rows for unchanged fires are retained; affected fires are
+    reconciled in full so corrections can revise their history.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
@@ -127,7 +131,7 @@ def write_history_of_full_geography(
     output_path = history_geopackage_path(year_directory)
     cached = peri_scribe.fires.reuse.read_rows(
         output_path,
-        (PERIMETER_LAYER_NAME, POINT_LAYER_NAME),
+        (PERIMETER_LAYER_NAME, POINT_LAYER_NAME, peri_scribe.incidents.LAYER_NAME),
         unconditional=unconditional,
     )
     keys = peri_scribe.fires.reuse.fire_keys(
@@ -190,6 +194,23 @@ def write_history_of_full_geography(
             peri_scribe.models.LayerData(
                 name=POINT_LAYER_NAME,
                 dataframe=point_dataframe,
+            ),
+            peri_scribe.models.LayerData(
+                name=peri_scribe.incidents.LAYER_NAME,
+                dataframe=peri_scribe.fires.history.build_dataframe(
+                    peri_scribe.fires.incident_history.incident_layer_rows(
+                        read,
+                        record_groups,
+                        sources_directory,
+                        reused={
+                            identifier: cached[peri_scribe.incidents.LAYER_NAME][key]
+                            for identifier, key in keys.items()
+                            if key in cached.get(peri_scribe.incidents.LAYER_NAME, {})
+                        },
+                        derivation_keys=keys,
+                    ),
+                    peri_scribe.fires.incident_history.COLUMNS,
+                ),
             ),
         ],
     )

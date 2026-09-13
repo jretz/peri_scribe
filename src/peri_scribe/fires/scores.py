@@ -7,17 +7,17 @@ level. The score is a pure function of the current data. It does not depend on t
 contents of the scores file, so regenerating it from unchanged inputs produces the same
 scores.
 
-The size signals are measured from the mapped perimeters, and where a row's
-geometry-measured area is significantly larger than the acreage its source reported, the
-measured area is used so a stale reported figure does not understate the fire.
+Current size follows the shared mapping-freshness and incident-report policy used by
+charts and descriptions. Growth and first-mapping size describe measured geometry, so
+reported current size can advance while mapped growth awaits another survey.
 
-The score is derived from the differential history GeoPackage (for size, growth,
-first-mapping size) and the cumulative full history (for geometry), plus the point
-history (for the official complexity level), then joined spatially against the retrieved
-external datasets: building centroids and evacuation zones. Building counts come from
-the compact buildings database, whose tiles are selected by each fire's envelope and
-whose payloads are filtered in NumPy; the evacuation GeoPackage is queried through its
-R-Tree index. Either way, only the features near a fire are ever read.
+The score uses differential history for growth and first-mapping size, full perimeter
+and incident histories for current size, and point history for the official complexity
+level. Fire geometries are joined spatially against the retrieved external datasets:
+building centroids and evacuation zones. Building counts come from the compact buildings
+database, whose tiles are selected by each fire's envelope and whose payloads are
+filtered in NumPy; the evacuation GeoPackage is queried through its R-Tree index. Either
+way, only the features near a fire are ever read.
 
 The results are written to ``{year}/derived/fire_scores.json``, along with a
 ``{year}/derived/fire_scores_ccdf.html`` complementary CDF of the scores.
@@ -222,20 +222,26 @@ def read_history(
     geopandas.GeoDataFrame,
     geopandas.GeoDataFrame,
     geopandas.GeoDataFrame,
+    geopandas.GeoDataFrame,
 ]:
-    """Return the differential perimeters, points, and full perimeters.
+    """Return differential perimeters, points, full perimeters, and incident history.
 
     Args:
         year_directory: The year directory that holds the ``derived`` directory.
 
     Returns:
-        The differential perimeter layer, point layer, and full perimeter layer.
+        The differential perimeters, points, full perimeters, and incident updates.
     """
     layers = peri_scribe.fires.derived_layers.read_derived_layers(
         year_directory,
         tolerate_missing=True,
     )
-    return layers.differential_perimeters, layers.points, layers.perimeters
+    return (
+        layers.differential_perimeters,
+        layers.points,
+        layers.perimeters,
+        layers.incidents,
+    )
 
 
 def presented_acreage_series(reported: pd.Series, calculated: pd.Series) -> pd.Series:
@@ -262,59 +268,64 @@ def presented_acreage_series(reported: pd.Series, calculated: pd.Series) -> pd.S
     )
 
 
-def _latest_rows(
-    frame: geopandas.GeoDataFrame,
-    keys: pd.Series,
-) -> dict[str, pd.Series]:
-    """Return each fire's last history row in frame order, keyed by identity.
-
-    The last row in frame order is the fire's most recent observation, matching how the
-    display reads a fire's latest state.
-
-    Args:
-        frame: A history layer.
-        keys: Each row's fire identity key.
-
-    Returns:
-        One last row per fire, keyed by identity.
-    """
-    if frame.empty:
-        return {}
-    keyed = frame.assign(key=keys)
-    return {str(key): rows.iloc[-1] for key, rows in keyed.groupby("key", sort=False)}
-
-
 def displayed_areas(
     keys: list[str],
     full_perimeters: geopandas.GeoDataFrame,
     points: geopandas.GeoDataFrame,
     point_keys: pd.Series,
+    incident_rows: geopandas.GeoDataFrame | None = None,
 ) -> list[pint.Quantity[float] | None]:
-    """Return each fire's presented area from its latest perimeter or point row.
+    """Keep scoring's current acreage aligned with the area shown in fire descriptions.
 
-    The presented area is the value the fire displays and the size signal scoring uses.
-    It comes from the latest full-perimeter row, falling back to the latest point row,
-    so a fire with only a point record still presents its reported size.
+    Growth metrics describe geometry, while current size can follow newer reports under
+    the shared mapping-freshness policy.
 
     Args:
-        keys: The fires' identity keys, in score order.
-        full_perimeters: The full perimeter history layer.
-        points: The point history layer.
-        point_keys: Each point row's fire identity key.
+        keys: Fire identity keys in the desired output order.
+        full_perimeters: Full perimeter history for the fires being scored.
+        points: Incident location history for fallback report measurements.
+        point_keys: Fire identity keys aligned with the point rows.
+        incident_rows: The optional independent reporting history.
 
     Returns:
-        One presented area per fire, aligned with *keys*, or None when no row reports
-        one.
+        One selected area per key, or None for a fire without usable measurements.
     """
-    latest_perimeter = _latest_rows(
-        full_perimeters,
-        peri_scribe.fires.identity.group_keys(full_perimeters),
+
+    def grouped(frame: geopandas.GeoDataFrame) -> dict[str, geopandas.GeoDataFrame]:
+        """Align separate history layers through their shared fire identities.
+
+        Args:
+            frame: History rows carrying fire identity columns.
+
+        Returns:
+            Rows grouped by fire identity key, or an empty dictionary without rows.
+        """
+        return (
+            {
+                str(key): typing.cast("geopandas.GeoDataFrame", group)
+                for key, group in frame.groupby(
+                    peri_scribe.fires.identity.group_keys(frame),
+                )
+            }
+            if not frame.empty
+            else {}
+        )
+
+    perimeter_groups = grouped(full_perimeters)
+    point_groups = (
+        {
+            str(key): typing.cast("geopandas.GeoDataFrame", group)
+            for key, group in points.groupby(point_keys)
+        }
+        if not points.empty
+        else {}
     )
-    latest_point = _latest_rows(points, point_keys)
+    incident_groups = {} if incident_rows is None else grouped(incident_rows)
     return [
-        peri_scribe.areas.presented_area_for_latest(
-            latest_perimeter.get(key),
-            latest_point.get(key),
+        peri_scribe.areas.latest_area(
+            perimeter_groups.get(key, full_perimeters.iloc[0:0]),
+            point_groups.get(key, points.iloc[0:0]),
+            incident_groups.get(key),
         )
         for key in keys
     ]
@@ -326,15 +337,9 @@ def fire_metrics(
 ) -> tuple[pd.DataFrame, pd.Series]:
     """Return per-fire growth and first-mapping metrics.
 
-    Each growth row's reported acreage is compared against the same row's
-    geometry-measured acreage, and the presented value is the reported acreage unless
-    the measured one is significantly larger, so a stale reported figure does not
-    understate the signals that describe and rank a fire. A layer without the
-    geometry-measured columns (for example one written before they existed) is scored
-    from its reported acreages alone.
-
-    The size signal is not computed here: a fire's presented size comes from its latest
-    perimeter or point row via :func:`displayed_areas`, so scoring and display agree.
+    Growth and first-mapping signals describe the geometry when measured areas are
+    available. The current size comes from the shared chronological area selector, which
+    can use incident reports when mapping falls behind.
 
     Args:
         perimeters: The differential perimeter layer.
@@ -467,12 +472,12 @@ def scoring_input(year_directory: pathlib.Path) -> ScoringInput:
     Returns:
         The aligned per-fire inputs.
     """
-    perimeters, points, full_perimeters = read_history(year_directory)
+    perimeters, points, full_perimeters, incidents = read_history(year_directory)
     perimeter_keys = peri_scribe.fires.identity.group_keys(perimeters)
     point_keys = peri_scribe.fires.identity.group_keys(points)
     keys = sorted(set(perimeter_keys) | set(point_keys))
     metrics, first_mapping = fire_metrics(perimeters, perimeter_keys)
-    areas = displayed_areas(keys, full_perimeters, points, point_keys)
+    areas = displayed_areas(keys, full_perimeters, points, point_keys, incidents)
     names, identifiers = fire_names_and_identifiers(
         perimeters,
         points,
@@ -480,7 +485,6 @@ def scoring_input(year_directory: pathlib.Path) -> ScoringInput:
         point_keys,
     )
     geometries = cumulative_fire_geometries(keys, full_perimeters, points, point_keys)
-    perimeter_records = record_metrics(keys, metrics, first_mapping, areas)
     buffered = peri_scribe.fires.buffering.buffered_fire_geometries(geometries)
     signals = external_signals(year_directory, len(keys), geometries, buffered)
     return ScoringInput(
@@ -490,7 +494,7 @@ def scoring_input(year_directory: pathlib.Path) -> ScoringInput:
             peri_scribe.fires.identity.normalized_identifier(identifiers.get(key))
             for key in keys
         ],
-        metrics=perimeter_records,
+        metrics=record_metrics(keys, metrics, first_mapping, areas),
         geometries=geometries,
         buffered=buffered,
         signals=signals,

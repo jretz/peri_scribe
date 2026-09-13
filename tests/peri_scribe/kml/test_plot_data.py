@@ -19,69 +19,6 @@ if typing.TYPE_CHECKING:
     import shapely
 
 
-def test_series_points_reads_values_and_times() -> None:
-    frame = tests.factories.geo_frame(
-        {
-            "observation_time": [
-                tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
-                tests.peri_scribe.kml.kml_plot_helpers.observation_time(2),
-            ],
-            "area_acres": [10.0, 20.0],
-        },
-        [tests.factories.square(1.0), tests.factories.square(2.0)],
-    )
-    assert peri_scribe.kml.plot_data.series_points(
-        frame,
-        "observation_time",
-        "area_acres",
-    ) == (
-        tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 10.0),
-        tests.peri_scribe.kml.kml_plot_helpers.series_point(2, 20.0),
-    )
-
-
-def test_series_points_skips_missing_values() -> None:
-    frame = tests.factories.geo_frame(
-        {
-            "observation_time": [
-                tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
-                None,
-                tests.peri_scribe.kml.kml_plot_helpers.observation_time(3),
-            ],
-            "area_acres": [10.0, 20.0, None],
-        },
-        [
-            tests.factories.square(1.0),
-            tests.factories.square(2.0),
-            tests.factories.square(3.0),
-        ],
-    )
-    assert peri_scribe.kml.plot_data.series_points(
-        frame,
-        "observation_time",
-        "area_acres",
-    ) == (tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 10.0),)
-
-
-def test_series_points_returns_empty_for_missing_columns() -> None:
-    frame = tests.factories.geo_frame(
-        {
-            "observation_time": [
-                tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
-            ],
-        },
-        [tests.factories.square(1.0)],
-    )
-    assert (
-        peri_scribe.kml.plot_data.series_points(
-            frame,
-            "observation_time",
-            "area_acres",
-        )
-        == ()
-    )
-
-
 def test_exterior_perimeter_points_computes_lengths() -> None:
     frame = tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame_from_observations(
         [
@@ -215,6 +152,7 @@ def test_contained_perimeter_points_skips_missing_percent_or_time() -> None:
     points = peri_scribe.kml.plot_data.contained_perimeter_points(frame)
     assert [point.observation_time for point in points] == [
         tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
+        tests.peri_scribe.kml.kml_plot_helpers.observation_time(2),
     ]
 
 
@@ -246,17 +184,6 @@ def test_contained_perimeter_points_returns_empty_without_percent() -> None:
     assert peri_scribe.kml.plot_data.contained_perimeter_points(frame) == ()
 
 
-def test_merge_series_points_combines_in_chronological_order() -> None:
-    merged = peri_scribe.kml.plot_data.merge_series_points(
-        [
-            tests.peri_scribe.kml.kml_plot_helpers.series_point(3, 30.0),
-            tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 10.0),
-        ],
-        [tests.peri_scribe.kml.kml_plot_helpers.series_point(2, 20.0)],
-    )
-    assert [point.value for point in merged] == [10.0, 20.0, 30.0]
-
-
 def test_scaled_points_divides_each_value() -> None:
     scaled = peri_scribe.kml.plot_data.scaled_points(
         (
@@ -270,73 +197,6 @@ def test_scaled_points_divides_each_value() -> None:
         tests.peri_scribe.kml.kml_plot_helpers.observation_time(2),
     ]
     assert [point.value for point in scaled] == pytest.approx([0.01, 0.02])
-
-
-def test_source_attribute_points_reads_values_and_times() -> None:
-    frame = tests.factories.geo_frame(
-        {
-            "observation_time": [
-                tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
-                tests.peri_scribe.kml.kml_plot_helpers.observation_time(2),
-            ],
-            "source_attributes": [
-                json.dumps({"TotalIncidentPersonnel": 100}),
-                json.dumps({"TotalIncidentPersonnel": 200}),
-            ],
-        },
-        [tests.factories.square(1.0), tests.factories.square(2.0)],
-    )
-    assert peri_scribe.kml.plot_data.source_attribute_points(
-        frame,
-        "TotalIncidentPersonnel",
-    ) == (
-        tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 100.0),
-        tests.peri_scribe.kml.kml_plot_helpers.series_point(2, 200.0),
-    )
-
-
-def test_source_attribute_points_skips_missing_values() -> None:
-    frame = tests.factories.geo_frame(
-        {
-            "observation_time": [
-                tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
-                None,
-                tests.peri_scribe.kml.kml_plot_helpers.observation_time(3),
-            ],
-            "source_attributes": [
-                json.dumps({"TotalIncidentPersonnel": 100}),
-                json.dumps({"TotalIncidentPersonnel": 200}),
-                json.dumps({}),
-            ],
-        },
-        [
-            tests.factories.square(1.0),
-            tests.factories.square(2.0),
-            tests.factories.square(3.0),
-        ],
-    )
-    assert peri_scribe.kml.plot_data.source_attribute_points(
-        frame,
-        "TotalIncidentPersonnel",
-    ) == (tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 100.0),)
-
-
-def test_source_attribute_points_returns_empty_for_missing_columns() -> None:
-    frame = tests.factories.geo_frame(
-        {
-            "observation_time": [
-                tests.peri_scribe.kml.kml_plot_helpers.observation_time(1),
-            ],
-        },
-        [tests.factories.square(1.0)],
-    )
-    assert (
-        peri_scribe.kml.plot_data.source_attribute_points(
-            frame,
-            "TotalIncidentPersonnel",
-        )
-        == ()
-    )
 
 
 def test_fire_plots_builds_four_plots_with_labels() -> None:
@@ -370,7 +230,7 @@ def test_fire_plots_builds_four_plots_with_labels() -> None:
         "personnel",
     ]
     assert [plot.series[0].label for plot in plots] == [
-        "Area",
+        "Mapped area",
         "Exterior perimeter",
         "Cost to date",
         "Personnel",
@@ -383,6 +243,22 @@ def test_fire_plots_builds_four_plots_with_labels() -> None:
     ]
     assert plots[1].series[1].label == "Contained perimeter"
     assert plots[2].series[1].label == "Estimated final cost"
+    assert plots[0].series[0].reported_label == "Reported Area"
+
+
+def test_fire_plots_assigns_colors_by_measurement() -> None:
+    plots = peri_scribe.kml.plot_data.fire_plots(
+        tests.peri_scribe.kml.kml_plot_helpers.perimeter_frame_from_observations([]),
+        tests.peri_scribe.kml.kml_plot_helpers.point_frame_from_observations([]),
+    )
+    assert {series.label: series.color for plot in plots for series in plot.series} == {
+        "Mapped area": "#4c72b0",
+        "Exterior perimeter": "#4c72b0",
+        "Contained perimeter": "#dd8452",
+        "Cost to date": "#4c72b0",
+        "Estimated final cost": "#dd8452",
+        "Personnel": "#4c72b0",
+    }
 
 
 def test_fire_plots_merges_area_and_cost_from_both_feeds() -> None:
@@ -411,7 +287,8 @@ def test_fire_plots_merges_area_and_cost_from_both_feeds() -> None:
         ),
     )
     area = plots[0].series[0]
-    assert [point.value for point in area.points] == pytest.approx([0.01, 0.02])
+    measured = peri_scribe.units.area(tests.factories.square(1.0)).m_as("acres") / 1000
+    assert [point.value for point in area.points] == pytest.approx([measured, measured])
     cost = plots[2].series[0]
     assert [point.value for point in cost.points] == pytest.approx([0.001, 0.0015])
     final_cost = plots[2].series[1]
@@ -430,8 +307,14 @@ def test_fire_plots_merges_personnel_from_both_feeds() -> None:
                 tests.peri_scribe.kml.kml_plot_helpers.observation_time(3),
             ],
             "source_attributes": [
-                json.dumps({"attr_TotalIncidentPersonnel": 100}),
-                json.dumps({"attr_TotalIncidentPersonnel": 300}),
+                json.dumps({
+                    "attr_TotalIncidentPersonnel": 100,
+                    "attr_ModifiedOnDateTime_dt": "2026-08-01T00:00:00Z",
+                }),
+                json.dumps({
+                    "attr_TotalIncidentPersonnel": 300,
+                    "attr_ModifiedOnDateTime_dt": "2026-08-03T00:00:00Z",
+                }),
             ],
         },
         [tests.factories.square(1.0), tests.factories.square(2.0)],

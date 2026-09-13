@@ -73,16 +73,13 @@ PAD_AXIS_LABEL = 15.0
 AXIS_LABEL_LOWER_EDGE = 4.0
 AXIS_LABEL_GAP = 8.0
 
-# The categorical line colors, in the order the series are drawn.
-SERIES_COLORS = ("#4c72b0", "#dd8452", "#55a868", "#c44e52")
-
 
 def format_tick(value: float) -> str:
     """Format one y-axis tick with size-appropriate precision.
 
-    Large values carry thousands separators and no decimals; smaller values keep one or
-    two decimals so small measurements do not read as zero. Trailing zeros after the
-    decimal point are dropped.
+    Small values retain enough significant digits to distinguish the 1/2/2.5/5 tick
+    intervals even when measurements are tiny fractions of the axis unit. Trailing zeros
+    after the decimal point are dropped.
 
     Args:
         value: The tick value.
@@ -104,7 +101,8 @@ def format_tick(value: float) -> str:
     elif magnitude >= TICK_ONE_DECIMAL_THRESHOLD:
         text = f"{value:,.1f}"
     else:
-        text = f"{value:,.2f}"
+        precision = max(2, 2 - math.floor(math.log10(magnitude))) if magnitude else 2
+        text = f"{value:,.{precision}f}"
     if "." in text:
         text = text.rstrip("0").rstrip(".")
     return text
@@ -124,7 +122,10 @@ def observation_day_span(
     times = [
         point.observation_time for series in series_list for point in series.points
     ]
-    return min(times).date(), max(times).date()
+    return (
+        min(times).astimezone(datetime.UTC).date(),
+        max(times).astimezone(datetime.UTC).date(),
+    )
 
 
 def x_axis_ticks(
@@ -356,10 +357,13 @@ class PlotLayout:
         Returns:
             The x coordinate.
         """
-        return (
-            self.plot_left
-            + (time.date() - self.first_day).days / self.day_span * self.plot_width
+        first_midnight = datetime.datetime.combine(
+            self.first_day,
+            datetime.time.min,
+            tzinfo=datetime.UTC,
         )
+        elapsed = (time - first_midnight) / datetime.timedelta(days=self.day_span)
+        return self.plot_left + elapsed * self.plot_width
 
     def y_of(self, value: float) -> float:
         """Return the y coordinate of *value*.
@@ -378,10 +382,10 @@ def plot_layout(
 ) -> PlotLayout:
     """Return where every part of *series_list*'s plot is drawn.
 
-    The y-axis is counted up from zero. The x-axis runs one whole day past the last
-    observation, which keeps the final tick clear of the right edge instead of landing
-    on it. The left margin clears the rotated axis label, and the right margin keeps
-    half of the outermost x label inside the canvas so it is never clipped.
+    The y-axis is counted up from zero. The x-axis covers complete UTC days, including
+    the last observation's day, so intraday measurements fit between midnight ticks. The
+    left margin clears the rotated axis label, and the right margin keeps half of the
+    outermost x label inside the canvas so it is never clipped.
 
     Args:
         series_list: The lines drawn in the plot.
@@ -499,6 +503,24 @@ def frame_elements(layout: PlotLayout) -> list[str]:
     ]
 
 
+def stroke_attributes(
+    color: peri_scribe.kml.plot_data.SeriesColor,
+    *,
+    reported: bool,
+) -> str:
+    """Keep the legend swatches consistent with the lines they identify.
+
+    Args:
+        color: The series color shared by the plot and legend.
+        reported: Whether the stroke represents reported rather than mapped area.
+
+    Returns:
+        SVG stroke attributes shared by the line and its legend swatch.
+    """
+    dash = ' stroke-dasharray="5 3"' if reported else ""
+    return f'stroke="{color}"{dash}'
+
+
 def series_elements(
     series_list: tuple[peri_scribe.kml.plot_data.PlotSeries, ...],
     layout: PlotLayout,
@@ -512,18 +534,48 @@ def series_elements(
     Returns:
         The elements.
     """
-    return [
+    elements = [
         f'<g clip-path="url(#plot-area)" fill="none" stroke-width="{LINE_WIDTH}">',
-        *(
-            (
-                f'<path d="{line_path(series.points, layout.x_of, layout.y_of)}" '
-                f'stroke="{SERIES_COLORS[index % len(SERIES_COLORS)]}" '
-                f'stroke-linejoin="round"/>'
-            )
-            for index, series in enumerate(series_list)
-        ),
-        "</g>",
     ]
+    for series in series_list:
+        for points, reported in line_segments(series.points):
+            elements.append(
+                f'<path d="{line_path(points, layout.x_of, layout.y_of)}" '
+                f"{stroke_attributes(series.color, reported=reported)} "
+                'stroke-linejoin="round"/>',
+            )
+    return [*elements, "</g>"]
+
+
+def line_segments(
+    points: tuple[peri_scribe.kml.plot_data.SeriesPoint, ...],
+) -> list[tuple[tuple[peri_scribe.kml.plot_data.SeriesPoint, ...], bool]]:
+    """Keep source changes visible while connecting adjacent parts of one history.
+
+    A transition shares its preceding endpoint and takes the destination point's source
+    style. Isolated points cannot form a line or justify a legend entry.
+
+    Args:
+        points: Chronological measurements with mapped or reported provenance.
+
+    Returns:
+        Drawable point sequences paired with their reported-style flags, or an empty
+        list when there are too few points to form a line.
+    """
+    if len(points) <= 1:
+        return []
+    result: list[tuple[tuple[peri_scribe.kml.plot_data.SeriesPoint, ...], bool]] = []
+    segment = [points[0]]
+    reported = points[0].reported
+    for point in points[1:]:
+        if point.reported != reported:
+            if len(segment) > 1:
+                result.append((tuple(segment), reported))
+            segment = [segment[-1]]
+            reported = point.reported
+        segment.append(point)
+    result.append((tuple(segment), reported))
+    return result
 
 
 def label_elements(layout: PlotLayout, y_axis_label: str) -> list[str]:
@@ -576,12 +628,47 @@ def label_elements(layout: PlotLayout, y_axis_label: str) -> list[str]:
     ]
 
 
-def legend_entry_elements(index: int, label: str, start: float) -> tuple[str, str]:
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class LegendEntry:
+    """A label identifies a visible line's series color and source style."""
+
+    label: str
+    color: peri_scribe.kml.plot_data.SeriesColor
+    reported: bool
+
+
+def legend_entries(
+    series_list: tuple[peri_scribe.kml.plot_data.PlotSeries, ...],
+) -> tuple[LegendEntry, ...]:
+    """Only styles that form rendered segments need a legend entry.
+
+    Args:
+        series_list: Plot series whose visible segments determine the legend.
+
+    Returns:
+        One entry per visible style, with mapped area before reported area.
+    """
+    entries: list[LegendEntry] = []
+    for series in series_list:
+        styles = {reported for _points, reported in line_segments(series.points)}
+        entries.extend(
+            LegendEntry(
+                label=(series.reported_label or series.label)
+                if reported
+                else series.label,
+                color=series.color,
+                reported=reported,
+            )
+            for reported in sorted(styles)
+        )
+    return tuple(entries)
+
+
+def legend_entry_elements(entry: LegendEntry, start: float) -> tuple[str, str]:
     """Return the swatch and the label of one legend entry.
 
     Args:
-        index: The entry's position, which picks its color.
-        label: The entry's label.
+        entry: The visible line's label and style.
         start: The x coordinate the entry starts at.
 
     Returns:
@@ -592,26 +679,30 @@ def legend_entry_elements(index: int, label: str, start: float) -> tuple[str, st
         (
             f'<line x1="{start:.1f}" y1="{swatch_y:.1f}" '
             f'x2="{start + LEGEND_SWATCH_WIDTH:.1f}" y2="{swatch_y:.1f}" '
-            f'stroke="{SERIES_COLORS[index % len(SERIES_COLORS)]}" '
+            f"{stroke_attributes(entry.color, reported=entry.reported)} "
             f'stroke-width="{LINE_WIDTH}"/>'
         ),
         (
             f'<text x="{start + LEGEND_SWATCH_WIDTH + LEGEND_SWATCH_GAP:.1f}" '
-            f'y="{LEGEND_BASELINE_Y:.1f}">{peri_scribe.svg.escape_text(label)}</text>'
+            f'y="{LEGEND_BASELINE_Y:.1f}">'
+            f"{peri_scribe.svg.escape_text(entry.label)}</text>"
         ),
     )
 
 
-def legend_elements(labels: tuple[str, ...], width: int) -> list[str]:
+def legend_elements(entries: tuple[LegendEntry, ...], width: int) -> list[str]:
     """Return the one-row legend centred above the plot area.
 
     Args:
-        labels: The legend's labels, in order.
+        entries: The visible lines' labels and styles, in order.
         width: The canvas width the legend is centred within.
 
     Returns:
         The elements.
     """
+    if not entries:
+        return []
+    labels = tuple(entry.label for entry in entries)
     spacing = [legend_entry_width(label) + LEGEND_ENTRY_GAP for label in labels]
     starts = itertools.accumulate([(width - legend_width(labels)) / 2, *spacing[:-1]])
     return [
@@ -621,10 +712,8 @@ def legend_elements(labels: tuple[str, ...], width: int) -> list[str]:
         ),
         *(
             element
-            for index, (label, start) in enumerate(
-                zip(labels, starts, strict=True),
-            )
-            for element in legend_entry_elements(index, label, start)
+            for entry, start in zip(entries, starts, strict=True)
+            for element in legend_entry_elements(entry, start)
         ),
         "</g>",
     ]
@@ -664,7 +753,7 @@ def draw_plot(
         *series_elements(series_list, layout),
         *label_elements(layout, y_axis_label),
         *legend_elements(
-            tuple(series.label for series in series_list),
+            legend_entries(series_list),
             layout.width,
         ),
         "</svg>",

@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
+
+import defusedxml.minidom
+import pytest
 
 import peri_scribe.kml.plot_data
 import peri_scribe.kml.plot_rendering
@@ -171,6 +175,62 @@ def test_render_plot_request_returns_the_rendered_svg() -> None:
     )
     assert image.filename == "id-bug-area.svg"
     assert image.content.startswith(b"<svg")
+
+
+@pytest.mark.parametrize("primary_point_count", [0, 1, 2])
+@pytest.mark.parametrize(
+    ("suffix", "primary_label", "secondary_label"),
+    [
+        ("perimeter", "Exterior perimeter", "Contained perimeter"),
+        ("cost", "Cost to date", "Estimated final cost"),
+    ],
+)
+def test_plot_image_bundles_keeps_colors_when_primary_series_is_missing(
+    suffix: str,
+    primary_label: str,
+    secondary_label: str,
+    primary_point_count: int,
+) -> None:
+    source = two_point_series()
+    plot = peri_scribe.kml.plot_data.FirePlot(
+        filename_suffix=suffix,
+        y_axis_label="",
+        series=(
+            dataclasses.replace(
+                source,
+                label=primary_label,
+                points=source.points[:primary_point_count],
+            ),
+            dataclasses.replace(
+                source,
+                label=secondary_label,
+                color=peri_scribe.kml.plot_data.SeriesColor.ORANGE,
+            ),
+        ),
+    )
+    bundles = peri_scribe.kml.plot_rendering.plot_image_bundles((("id-fire", (plot,)),))
+    drawing = defusedxml.minidom.parseString(bundles[0][0].content)
+    legend = next(
+        group
+        for group in drawing.getElementsByTagName("g")
+        if group.getElementsByTagName("line") and group.getElementsByTagName("text")
+    )
+    expected = (
+        [(primary_label, "#4c72b0"), (secondary_label, "#dd8452")]
+        if primary_point_count == len(source.points)
+        else [(secondary_label, "#dd8452")]
+    )
+    assert [
+        (label.firstChild.data, swatch.getAttribute("stroke"))
+        for label, swatch in zip(
+            legend.getElementsByTagName("text"),
+            legend.getElementsByTagName("line"),
+            strict=True,
+        )
+    ] == expected
+    assert [
+        path.getAttribute("stroke") for path in drawing.getElementsByTagName("path")
+    ] == [color for _label, color in expected]
 
 
 def test_plot_requests_indexes_each_plot_by_its_fire() -> None:

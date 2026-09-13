@@ -146,6 +146,7 @@ def perimeter_row(
             ),
             "source_file": observation.source_file,
             "source_serial": observation.serial_number,
+            "superseded_sources": json.dumps(observation.superseded_sources),
             "observation_time": (
                 peri_scribe.perimeters.versions.effective_time(
                     observation,

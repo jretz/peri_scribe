@@ -60,6 +60,11 @@ def score_fires_stubs(
             read_layer_if_present,
         )
         monkeypatch.setattr(
+            peri_scribe.fires.derived_layers,
+            "read_incident_layer",
+            lambda _path: tests.factories.empty_frame(),
+        )
+        monkeypatch.setattr(
             peri_scribe.sources.external_sources,
             "output_path",
             output_path
