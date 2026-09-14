@@ -11,7 +11,6 @@ import contextlib
 import html
 import itertools
 import typing
-from collections.abc import Iterator
 
 
 if typing.TYPE_CHECKING:
@@ -125,7 +124,7 @@ class KmlWriter:
         visible: bool = True,
         list_item_type: str | None = None,
         item_icon: str | None = None,
-    ) -> Iterator[str]:
+    ) -> typing.Generator[str]:
         """Open a folder and yield its unique id, closing it on exit.
 
         Args:

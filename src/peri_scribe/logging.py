@@ -205,7 +205,7 @@ def configure_logging(
 
 
 @contextlib.contextmanager
-def command_file_logging(context: click.Context) -> typing.Iterator[None]:
+def command_file_logging(context: click.Context) -> typing.Generator[None]:
     """Keep year-specific logs scoped to the command that owns that directory.
 
     Args:
@@ -234,7 +234,7 @@ def log_execution(
     kind: typing.Literal["command", "phase"],
     name: str,
     **start_fields: object,
-) -> typing.Iterator[None]:
+) -> typing.Generator[None]:
     """Make execution boundaries and elapsed time visible, including failed work.
 
     Args:

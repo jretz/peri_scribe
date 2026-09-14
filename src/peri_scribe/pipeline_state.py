@@ -140,7 +140,7 @@ def complete_stage(year_directory: pathlib.Path, stage: str) -> None:
 
 
 @contextlib.contextmanager
-def run_lock(year_directory: pathlib.Path) -> typing.Iterator[bool]:
+def run_lock(year_directory: pathlib.Path) -> typing.Generator[bool]:
     """Avoid concurrent scheduled writers; the next invocation can retry skipped work.
 
     Args:

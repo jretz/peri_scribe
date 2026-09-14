@@ -33,7 +33,7 @@ def downloaded_response(
     url: str,
     *,
     stream: bool,
-) -> typing.Iterator[requests.Response]:
+) -> typing.Generator[requests.Response]:
     """Yield the open response for *url*, translating download failures.
 
     The response is yielded inside the guard, so a transfer that fails part-way through
