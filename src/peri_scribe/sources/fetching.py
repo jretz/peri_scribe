@@ -225,6 +225,7 @@ def fetch_all_feeds(
     *,
     year: int | None = None,
     full: bool = False,
+    build_index: bool = True,
 ) -> FetchResult:
     """Fetch each configured feed into its own GeoPackage snapshot.
 
@@ -248,6 +249,8 @@ def fetch_all_feeds(
             Defaults to the current working directory.
         year: Year to group the snapshots under. Defaults to the current year.
         full: Fetch every feed in full instead of incrementally.
+        build_index: Refresh the derived source index before returning. A publication
+            gate can defer this work until it accepts the saved changes.
 
     Returns:
         The outcome of the fetch: the paths to the GeoPackage files holding each
@@ -368,7 +371,7 @@ def fetch_all_feeds(
             )
         snapshot_paths.append(output_path)
         wrote_snapshot = True
-    if wrote_snapshot or full:
+    if build_index and (wrote_snapshot or full):
         peri_scribe.fires.index.index_fire_sources(
             peri_scribe.sources.snapshots.year_directory_path(base_dir, year),
         )

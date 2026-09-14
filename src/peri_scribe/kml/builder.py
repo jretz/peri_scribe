@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import datetime
 import pathlib
+import tempfile
 import typing
 import zipfile
 
@@ -26,6 +27,7 @@ import peri_scribe.kml.icons
 import peri_scribe.kml.selection
 import peri_scribe.kml.styles
 import peri_scribe.models
+import peri_scribe.publication
 import peri_scribe.sources.snapshots
 
 
@@ -423,6 +425,24 @@ def write_kmz(
         images: Each plot image's filename and its bytes, or None for none.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=path.parent) as directory:
+        temporary = pathlib.Path(directory) / path.name
+        write_archive(temporary, kml_text, images)
+        temporary.replace(path)
+
+
+def write_archive(
+    path: pathlib.Path,
+    kml_text: str,
+    images: typing.Mapping[str, bytes] | None,
+) -> None:
+    """Keep incomplete archive bytes away from the public KMZ path.
+
+    Args:
+        path: The temporary archive path, separate from the published KMZ.
+        kml_text: The KML document to include in the archive.
+        images: Plot image filenames and bytes, or None when no images are needed.
+    """
     with zipfile.ZipFile(
         path,
         "w",
@@ -557,7 +577,11 @@ def ring_style_urls_for(
     }
 
 
-def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
+def create_kmz(
+    year_directory: pathlib.Path,
+    *,
+    publication_inputs: peri_scribe.publication.Collection | None = None,
+) -> pathlib.Path:
     """Build and write the KMZ output for *year_directory*.
 
     The full history GeoPackage is read for geometry, the differential history supplies
@@ -570,6 +594,8 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
 
     Args:
         year_directory: The year directory that holds the ``derived`` directory.
+        publication_inputs: Source inventory frozen after a successful geography stage,
+            so the completed KMZ can acknowledge only the inputs it used.
 
     Returns:
         The path of the written KMZ file.
@@ -617,6 +643,11 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
         peri_scribe.kml.icons.perimeters_icon()
     )
     output_path = kmz_path(year_directory)
+    published = (
+        peri_scribe.publication.published_fires(publication_inputs, perimeters, index)
+        if publication_inputs is not None
+        else None
+    )
     write_kmz(
         output_path,
         fire_kml(
@@ -626,4 +657,11 @@ def create_kmz(year_directory: pathlib.Path) -> pathlib.Path:
         ),
         images,
     )
+    if publication_inputs is not None and published is not None:
+        peri_scribe.publication.commit(
+            year_directory,
+            output_path,
+            publication_inputs,
+            published,
+        )
     return output_path

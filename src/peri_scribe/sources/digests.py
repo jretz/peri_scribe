@@ -6,6 +6,7 @@ import datetime
 import hashlib
 import math
 import pathlib
+from collections.abc import Callable
 
 import geopandas
 import pandas as pd
@@ -20,6 +21,8 @@ def snapshot_matches(
     dataframe: geopandas.GeoDataFrame,
     snapshot_path: pathlib.Path,
     layer_name: str,
+    *,
+    normalize: Callable[[geopandas.GeoDataFrame], geopandas.GeoDataFrame] | None = None,
 ) -> bool:
     """Return whether *dataframe* holds the same features as *snapshot_path*.
 
@@ -31,6 +34,7 @@ def snapshot_matches(
         dataframe: The freshly fetched features.
         snapshot_path: The latest stored snapshot.
         layer_name: The snapshot's layer name.
+        normalize: Optional source-specific normalization of both comparison frames.
 
     Returns:
         True when the snapshot holds the same features as *dataframe*.
@@ -44,6 +48,9 @@ def snapshot_matches(
             error=str(error),
         )
         return False
+    if normalize is not None:
+        dataframe = normalize(dataframe)
+        stored = normalize(stored)
     return dataframe_digest(dataframe) == dataframe_digest(stored)
 
 

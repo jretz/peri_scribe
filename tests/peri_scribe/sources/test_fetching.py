@@ -1453,3 +1453,38 @@ def test_fetch_all_feeds_defaults_to_working_directory_and_year(
         ),
     )
     assert geo_package_store.has(output_path)
+
+
+def test_fetch_can_defer_index_without_losing_snapshot_or_current_state(
+    monkeypatch: pytest.MonkeyPatch,
+    feature_set_with_geometry: arcgis.features.FeatureSet,
+    fetch_all_feeds_stubs: typing.Callable[..., None],
+    geo_package_store: GeoPackageStore,
+) -> None:
+    fetch_all_feeds_stubs(
+        [sample_feed_stub()],
+        lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
+    )
+    indexed: list[pathlib.Path] = []
+    monkeypatch.setattr(peri_scribe.fires.index, "index_fire_sources", indexed.append)
+    result = peri_scribe.sources.fetching.fetch_all_feeds(
+        BASE_DIRECTORY,
+        year=2026,
+        build_index=False,
+    )
+    assert result.changed
+    assert geo_package_store.has(snapshot_path())
+    state_path = peri_scribe.sources.snapshots.current_state_path(
+        peri_scribe.sources.snapshots.source_directory_path(
+            BASE_DIRECTORY,
+            2026,
+            SAMPLE_FEED_NAME,
+        ),
+        0,
+    )
+    assert geo_package_store.has(state_path)
+    assert list(geo_package_store.layer(state_path, SAMPLE_FEED_NAME)["name"]) == [
+        "a",
+        "b",
+    ]
+    assert indexed == []

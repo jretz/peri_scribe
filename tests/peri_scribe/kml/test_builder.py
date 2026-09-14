@@ -7,6 +7,7 @@ import pathlib
 import typing
 import zipfile
 
+import pytest
 import shapely.geometry
 import time_machine
 
@@ -19,13 +20,13 @@ import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.icons
 import peri_scribe.models
+import peri_scribe.publication
 import tests.factories
 import tests.peri_scribe.kml.kml_helpers
 
 
 if typing.TYPE_CHECKING:
     import geopandas
-    import pytest
 
 
 def recording_archive_factory(
@@ -723,23 +724,16 @@ def test_fire_kml_shows_derived_point_for_inactive_fire_without_location() -> No
     )
 
 
-def test_write_kmz_writes_compressed_document(
+def test_write_archive_writes_compressed_document(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     path = pathlib.Path("/maps/PeriScribe Fires 2026.kmz")
-    made_directories: list[pathlib.Path] = []
     archives: list[FakeArchive] = []
 
-    monkeypatch.setattr(
-        pathlib.Path,
-        "mkdir",
-        lambda _self, **_keywords: made_directories.append(_self),
-    )
     monkeypatch.setattr(zipfile, "ZipFile", recording_archive_factory(archives))
 
-    peri_scribe.kml.builder.write_kmz(path, "<kml/>")
+    peri_scribe.kml.builder.write_archive(path, "<kml/>", None)
 
-    assert made_directories == [pathlib.Path("/maps")]
     assert len(archives) == 1
     archive = archives[0]
     assert archive.arguments == (path, "w")
@@ -751,22 +745,17 @@ def test_write_kmz_writes_compressed_document(
     assert archive.writes == [("doc.kml", "<kml/>", None)]
 
 
-def test_write_kmz_writes_images(
+def test_write_archive_writes_images(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     path = pathlib.Path("/maps/PeriScribe Fires 2026.kmz")
     archives: list[FakeArchive] = []
 
-    monkeypatch.setattr(
-        pathlib.Path,
-        "mkdir",
-        lambda _self, **_keywords: None,
-    )
     monkeypatch.setattr(zipfile, "ZipFile", recording_archive_factory(archives))
 
     image_content = b"\x89PNG\r\n\x1a\n"
     svg_content = b"<svg/>"
-    peri_scribe.kml.builder.write_kmz(
+    peri_scribe.kml.builder.write_archive(
         path,
         "<kml/>",
         {"id-bug-area.png": image_content, "id-bug-area.svg": svg_content},
@@ -947,3 +936,86 @@ def test_area_qualified_index_includes_independent_incident_history() -> None:
         peri_scribe.kml.builder.area_qualified_index(index, empty, empty, incidents)
         == index
     )
+
+
+def test_kmz_atomic_replacement_and_failed_write_preserve_complete_file(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "maps/output.kmz"
+    peri_scribe.kml.builder.write_kmz(output, "<kml>old</kml>")
+    previous = output.read_bytes()
+
+    def fail_after_partial_write(
+        path: pathlib.Path,
+        _text: str,
+        _images: object,
+    ) -> None:
+        """Simulate a disk failure while the archive is incomplete.
+
+        Args:
+            path: The temporary archive path where the partial write occurs.
+            _text: The KML document accepted to match the writer's signature; unused.
+            _images: The plot images accepted to match the writer's signature; unused.
+
+        Raises:
+            OSError: After the incomplete archive is written.
+        """
+        path.write_bytes(b"partial archive")
+        assert output.read_bytes() == previous
+        message = "disk failure"
+        raise OSError(message)
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            peri_scribe.kml.builder,
+            "write_archive",
+            fail_after_partial_write,
+        )
+        with pytest.raises(OSError, match="disk failure"):
+            peri_scribe.kml.builder.write_kmz(output, "<kml>new</kml>")
+    assert output.read_bytes() == previous
+    assert list(output.parent.iterdir()) == [output]
+    peri_scribe.kml.builder.write_kmz(output, "<kml>new</kml>")
+    with zipfile.ZipFile(output) as archive:
+        assert archive.read("doc.kml") == b"<kml>new</kml>"
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_create_kmz_advances_checkpoint_only_after_file_completion(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    fail: bool,
+) -> None:
+    year = tmp_path / "2026"
+    inputs = peri_scribe.publication.Collection()
+    empty = tests.peri_scribe.kml.kml_helpers.geometry_frame([])
+    index = tests.peri_scribe.kml.kml_helpers.fire_index([])
+    monkeypatch.setattr(peri_scribe.fires.index, "load_fire_index", lambda _year: index)
+    monkeypatch.setattr(
+        peri_scribe.fires.score_files,
+        "load_fire_scores",
+        lambda _year: None,
+    )
+    monkeypatch.setattr(peri_scribe.geo.reading, "read_layer", lambda *_args: empty)
+    checkpoint = peri_scribe.publication.publication_path(year)
+    checkpoint.parent.mkdir()
+    checkpoint.write_bytes(b"previous checkpoint")
+    if fail:
+        monkeypatch.setattr(
+            peri_scribe.kml.builder,
+            "write_kmz",
+            tests.factories.raising_stub(OSError("disk failure")),
+        )
+        with pytest.raises(OSError, match="disk failure"):
+            peri_scribe.kml.builder.create_kmz(year, publication_inputs=inputs)
+        assert checkpoint.read_bytes() == b"previous checkpoint"
+    else:
+        output = peri_scribe.kml.builder.create_kmz(year, publication_inputs=inputs)
+        published = peri_scribe.publication.read_publication(year, output)
+        assert published is not None
+        assert published.files == {}
+        assert published.fires == {}
+        with zipfile.ZipFile(output) as archive:
+            assert b"PeriScribe Fires 2026" in archive.read("doc.kml")

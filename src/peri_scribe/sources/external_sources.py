@@ -321,7 +321,7 @@ def fetch_arcgis_source(
     layer_name = source.layer_name or source.name
     output = output_path(year_directory, source)
     try:
-        geodataframe = query_arcgis_source(source)
+        geodataframe = normalize_arcgis_datetimes(query_arcgis_source(source))
     except peri_scribe.exceptions.ExternalDataError as error:
         if output.is_file():
             logger.warning(
@@ -335,6 +335,11 @@ def fetch_arcgis_source(
         geodataframe,
         output,
         layer_name,
+        normalize=(
+            evacuation_comparison_frame
+            if source.name == EVACUATIONS_SOURCE.name
+            else None
+        ),
     ):
         logger.debug(
             "External source unchanged",
@@ -364,6 +369,58 @@ def fetch_arcgis_source(
         features=len(geodataframe),
     )
     return output
+
+
+def normalize_arcgis_datetimes(
+    dataframe: geopandas.GeoDataFrame,
+) -> geopandas.GeoDataFrame:
+    """Keep millisecond source dates stable across GeoPackage storage.
+
+    ArcGIS dates have millisecond precision. The client can introduce sub-millisecond
+    floating-point noise when converting them to datetimes, and GeoPackage storage drops
+    that precision. Comparison and storage must use the same rounded values so an
+    identical response cannot repeatedly count as a change.
+
+    Args:
+        dataframe: The query result, including the client's converted date columns.
+
+    Returns:
+        A copy with date columns rounded to their source precision.
+    """
+    return typing.cast(
+        "geopandas.GeoDataFrame",
+        dataframe.assign(**{
+            column: dataframe[column].dt.round("ms")
+            for column in dataframe.select_dtypes(include=["datetime", "datetimetz"])
+        }),
+    )
+
+
+def evacuation_comparison_frame(
+    dataframe: geopandas.GeoDataFrame,
+) -> geopandas.GeoDataFrame:
+    """Compare evacuation audit dates at the service's reliable precision.
+
+    The evacuation service alternates between fractional and whole-second values for
+    CreationDate and EditDate on otherwise identical features. Those audit fields must
+    compare at whole-second precision to avoid false updates. Geometry, other fields,
+    and the dates written to storage retain their precision.
+
+    Args:
+        dataframe: The fetched or stored evacuation features.
+
+    Returns:
+        A comparison-only copy with audit dates truncated to whole seconds.
+    """
+    date_columns = dataframe.select_dtypes(include=["datetime", "datetimetz"])
+    return typing.cast(
+        "geopandas.GeoDataFrame",
+        dataframe.assign(**{
+            column: dataframe[column].dt.floor("s")
+            for column in ("CreationDate", "EditDate")
+            if column in date_columns
+        }),
+    )
 
 
 def query_arcgis_source(source: ExternalSource) -> geopandas.GeoDataFrame:

@@ -7,7 +7,9 @@ import pathlib
 import types
 import typing
 
+import arcgis.features
 import geopandas
+import pandas as pd
 import pyproj
 import pytest
 import shapely.geometry
@@ -195,7 +197,9 @@ def test_fetch_arcgis_source_writes_snapshot(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "geo_data_frame_from",
-        lambda *_arguments: [object()],
+        lambda *_arguments: (
+            tests.peri_scribe.sources.external_source_helpers.sample_arcgis_dataframe()
+        ),
     )
     writes: list[tuple[pathlib.Path, list[peri_scribe.models.LayerData]]] = []
     monkeypatch.setattr(
@@ -281,7 +285,9 @@ def test_fetch_arcgis_source_passes_where_clause(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "geo_data_frame_from",
-        lambda *_arguments: [object()],
+        lambda *_arguments: (
+            tests.peri_scribe.sources.external_source_helpers.sample_arcgis_dataframe()
+        ),
     )
     monkeypatch.setattr(
         peri_scribe.output,
@@ -393,7 +399,9 @@ def test_fetch_arcgis_source_logs_geometry_warning(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "geo_data_frame_from",
-        lambda *_arguments: [object()],
+        lambda *_arguments: (
+            tests.peri_scribe.sources.external_source_helpers.sample_arcgis_dataframe()
+        ),
     )
     monkeypatch.setattr(
         peri_scribe.output,
@@ -827,3 +835,168 @@ def test_fetch_buildings_combines_projected_centroids_into_wgs84(
     ).transform(1.0, 1.0)
     assert converted.geometry.iloc[0].x == pytest.approx(lon, abs=1e-12)
     assert converted.geometry.iloc[0].y == pytest.approx(lat, abs=1e-12)
+
+
+def test_fetch_arcgis_source_skips_identical_millisecond_dates_after_storage(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    feature_set = arcgis.features.FeatureSet(
+        features=[
+            arcgis.features.Feature(
+                attributes={
+                    "OBJECTID": 1,
+                    "EditDate": 1788906635576,
+                    "STATUS": "Evacuation Order",
+                },
+                geometry={"x": -121.0, "y": 40.0},
+            ),
+        ],
+        fields=[
+            {"name": "OBJECTID", "type": "esriFieldTypeOID"},
+            {"name": "EditDate", "type": "esriFieldTypeDate"},
+            {"name": "STATUS", "type": "esriFieldTypeString"},
+        ],
+        spatial_reference={"wkid": 4326},
+    )
+    monkeypatch.setattr(peri_scribe.sources.external_sources.arcgis.gis, "GIS", object)
+    monkeypatch.setattr(
+        peri_scribe.sources.external_sources.arcgis.features,
+        "FeatureLayer",
+        lambda *_arguments: object(),
+    )
+    monkeypatch.setattr(
+        peri_scribe.geo.data,
+        "query_with_retry",
+        lambda *_arguments, **_keywords: feature_set,
+    )
+    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+    first = peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    stamp = first.stat()
+    content = first.read_bytes()
+    second = peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    assert second == first
+    assert second.stat().st_mtime_ns == stamp.st_mtime_ns
+    assert second.read_bytes() == content
+    stored = geopandas.read_file(second, layer="evacuations")
+    assert stored.iloc[0]["EditDate"] == pd.Timestamp("2026-09-08 22:30:35.576")
+
+
+@pytest.mark.parametrize("column", ["CreationDate", "EditDate", "STATUS", "geometry"])
+def test_fetch_arcgis_source_preserves_real_changes_after_date_normalization(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    column: str,
+) -> None:
+    dataframe = tests.factories.geo_frame(
+        {
+            "OBJECTID": [1],
+            "CreationDate": [pd.Timestamp("2026-09-08 22:30:35.575999")],
+            "EditDate": [pd.Timestamp("2026-09-08 22:30:35.575999")],
+            "STATUS": ["Evacuation Order"],
+        },
+        [shapely.geometry.Point(-121.0, 40.0)],
+    )
+    install_arcgis_query_stubs(monkeypatch, dataframe)
+    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+    output = peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    before = geopandas.read_file(output, layer="evacuations")
+    changed = dataframe.copy()
+    changed.loc[0, column] = {
+        "CreationDate": pd.Timestamp("2026-09-08 22:30:36"),
+        "EditDate": pd.Timestamp("2026-09-08 22:30:36"),
+        "STATUS": "Evacuation Warning",
+        "geometry": shapely.geometry.Point(-122.0, 40.0),
+    }[column]
+    install_arcgis_query_stubs(monkeypatch, changed)
+    peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    after = geopandas.read_file(output, layer="evacuations")
+    assert before.iloc[0][column] != after.iloc[0][column]
+
+
+@pytest.mark.parametrize("initial_fraction", ["000", "576"])
+def test_fetch_arcgis_source_skips_alternating_evacuation_date_precision(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    initial_fraction: str,
+) -> None:
+    dataframe = tests.factories.geo_frame(
+        {
+            "OBJECTID": [1, 2],
+            "CreationDate": pd.to_datetime([
+                f"2026-09-08 22:30:35.{initial_fraction}",
+                None,
+            ]),
+            "EditDate": pd.to_datetime([
+                f"2026-09-13 17:40:33.{initial_fraction}",
+                None,
+            ]),
+            "STATUS": ["Evacuation Order", "Evacuation Warning"],
+        },
+        [shapely.geometry.Point(-121.0, 40.0), shapely.geometry.Point(-122.0, 40.0)],
+    )
+    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+    install_arcgis_query_stubs(monkeypatch, dataframe)
+    output = peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    stamp = output.stat().st_mtime_ns
+    content = output.read_bytes()
+    for fraction in ("000", "576", "577", "000", "575"):
+        fresh = dataframe.iloc[::-1].copy()
+        fresh.loc[0, "CreationDate"] = pd.Timestamp(f"2026-09-08 22:30:35.{fraction}")
+        fresh.loc[0, "EditDate"] = pd.Timestamp(f"2026-09-13 17:40:33.{fraction}")
+        install_arcgis_query_stubs(monkeypatch, fresh)
+        peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+        assert output.stat().st_mtime_ns == stamp
+        assert output.read_bytes() == content
+
+
+def test_fetch_arcgis_source_keeps_millisecond_comparisons_for_other_sources(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    dataframe = tests.factories.geo_frame(
+        {"EditDate": [pd.Timestamp("2026-09-08 22:30:35.576")]},
+        [shapely.geometry.Point(-121.0, 40.0)],
+    )
+    source = peri_scribe.sources.external_sources.MAJOR_CITIES_SOURCE
+    install_arcgis_query_stubs(monkeypatch, dataframe)
+    output = peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    changed = dataframe.copy()
+    changed.loc[0, "EditDate"] = pd.Timestamp("2026-09-08 22:30:35.577")
+    install_arcgis_query_stubs(monkeypatch, changed)
+    peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    stored = geopandas.read_file(output, layer=source.layer_name)
+    assert stored.iloc[0]["EditDate"] == changed.iloc[0]["EditDate"]
+
+
+def test_evacuation_comparison_frame_preserves_original_and_other_fields() -> None:
+    dates = pd.Series(pd.to_datetime(["2026-09-08T22:30:35.576Z", None]))
+    dataframe = tests.factories.geo_frame(
+        {"EditDate": dates, "Expires": dates, "STATUS": ["Order", None]},
+        [shapely.geometry.Point(-121.0, 40.0), None],
+    )
+    normalized = peri_scribe.sources.external_sources.evacuation_comparison_frame(
+        dataframe,
+    )
+    assert normalized.iloc[0]["EditDate"] == pd.Timestamp("2026-09-08T22:30:35Z")
+    assert pd.isna(normalized.iloc[1]["EditDate"])
+    assert dataframe["EditDate"].equals(dates)
+    assert normalized["Expires"].equals(dates)
+    assert normalized["STATUS"].equals(dataframe["STATUS"])
+    assert normalized.geometry.equals(dataframe.geometry)
+
+
+def test_normalize_arcgis_datetimes_preserves_missing_and_timezone_values() -> None:
+    dates = pd.Series(pd.to_datetime(["2026-09-08T22:30:35.575999Z", None]))
+    dataframe = tests.factories.geo_frame(
+        {"EditDate": dates, "STATUS": ["Order", None]},
+        [shapely.geometry.Point(-121.0, 40.0), None],
+    )
+    normalized = peri_scribe.sources.external_sources.normalize_arcgis_datetimes(
+        dataframe,
+    )
+    assert normalized.iloc[0]["EditDate"] == pd.Timestamp("2026-09-08T22:30:35.576Z")
+    assert pd.isna(normalized.iloc[1]["EditDate"])
+    assert dataframe.iloc[0]["EditDate"] == dates.iloc[0]
+    assert normalized["STATUS"].equals(dataframe["STATUS"])
+    assert normalized.geometry.equals(dataframe.geometry)

@@ -3,7 +3,9 @@
 import collections.abc
 import compression.zstd
 import contextlib
+import dataclasses
 import datetime
+import enum
 import fcntl
 import functools
 import json
@@ -36,6 +38,11 @@ def log_value(value: object) -> object:
     Returns:
         The value with quantities, paths, coordinate systems, and dates normalized.
     """
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        value = {
+            field.name: getattr(value, field.name)
+            for field in dataclasses.fields(value)
+        }
     if isinstance(value, dict):
         return {name: log_value(item) for name, item in value.items()}
     if isinstance(value, (set, frozenset)):
@@ -56,7 +63,7 @@ def log_value(value: object) -> object:
             "value": float(value.magnitude),
             "units": unit_name,
         }
-    if isinstance(value, (pathlib.PurePath, pyproj.CRS)):
+    if isinstance(value, (enum.StrEnum, pathlib.PurePath, pyproj.CRS)):
         return str(value)
     if isinstance(value, (datetime.date, datetime.time)):
         return value.isoformat()

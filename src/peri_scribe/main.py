@@ -5,21 +5,25 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import importlib.metadata
+import math
 import pathlib
 import re
 import textwrap
 import typing
 
 import click
+import pint
 import structlog
 
 import peri_scribe.fires.differential
+import peri_scribe.fires.index
 import peri_scribe.fires.scores
 import peri_scribe.kml.builder
 import peri_scribe.kml.colormap
 import peri_scribe.logging
 import peri_scribe.output
 import peri_scribe.pipeline_state
+import peri_scribe.publication
 import peri_scribe.report.gathering
 import peri_scribe.report.markdown
 import peri_scribe.sources.administrative_boundaries
@@ -30,16 +34,17 @@ import peri_scribe.sources.fetching
 import peri_scribe.sources.full_fetch_state
 import peri_scribe.sources.snapshots
 import peri_scribe.sources.validation
+from peri_scribe.units import units
 
 
 logger = structlog.get_logger()
 
 
 class Duration(click.ParamType):
-    """A duration of whole hours or days.
+    """A duration of whole minutes, hours or days.
 
-    Values are given as a non-negative whole number followed by ``h`` for hours or ``d``
-    for days, for example ``12h`` or ``1d``, and convert to a ``datetime.timedelta``.
+    Values are a non-negative whole number followed by ``m``, ``h`` or ``d``, for
+    example ``5m``, ``12h`` or ``1d``, and convert to a ``datetime.timedelta``.
     """
 
     name = "duration"
@@ -66,20 +71,81 @@ class Duration(click.ParamType):
         if isinstance(value, datetime.timedelta):
             return value
         message = (
-            f"{value!r} is not a duration of whole hours or days such as '12h' or '1d'"
+            f"{value!r} is not a duration of whole minutes, hours or days "
+            "such as '5m', '12h' or '1d'"
         )
         if not isinstance(value, str):
             self.fail(message, param, ctx)
-        duration_match = re.fullmatch(r"([0-9]+)([hd])", value)
+        duration_match = re.fullmatch(r"([0-9]+)([mhd])", value)
         if duration_match is None:
             self.fail(message, param, ctx)
         count = int(duration_match.group(1))
         try:
+            if duration_match.group(2) == "m":
+                return datetime.timedelta(minutes=count)
             if duration_match.group(2) == "h":
                 return datetime.timedelta(hours=count)
             return datetime.timedelta(days=count)
         except OverflowError:
             self.fail(f"{value!r} is too large to be a duration", param, ctx)
+
+
+class Area(click.ParamType):
+    """Require a positive finite area with explicit physical units."""
+
+    name = "area"
+
+    def convert(
+        self,
+        value: object,
+        param: click.Parameter | None,
+        ctx: click.Context | None,
+    ) -> pint.Quantity[float]:
+        """Reject unitless and non-area values before the pipeline can write data.
+
+        Args:
+            value: The command-line area value, including its physical units.
+            param: The Click parameter used to report validation errors, if available.
+            ctx: The Click invocation context, if available.
+
+        Returns:
+            The positive area converted to square meters.
+        """
+        message = f"{value!r} is not a positive area such as '25 acre'"
+        try:
+            area = units.Quantity(value).to("meters ** 2")
+        except pint.errors.PintError, TypeError, ValueError:
+            self.fail(message, param, ctx)
+        if not math.isfinite(area.magnitude) or area.magnitude <= 0:
+            self.fail(message, param, ctx)
+        return typing.cast("pint.Quantity[float]", area)
+
+
+def publication_threshold(
+    _context: click.Context,
+    _parameter: click.Parameter,
+    value: tuple[pint.Quantity[float], datetime.timedelta] | None,
+) -> peri_scribe.publication.Threshold | None:
+    """The two gate settings form one complete, validated policy.
+
+    Args:
+        _context: The invocation context supplied by Click; unused by this callback.
+        _parameter: The option supplied by Click; unused by this callback.
+        value: The parsed area and duration, or None when the option was omitted.
+
+    Returns:
+        The configured policy, or None when the option was omitted.
+
+    Raises:
+        click.BadParameter: If the publication interval is not positive.
+    """
+    if value is None:
+        return None
+    area, interval = value
+    if interval <= datetime.timedelta(0):
+        message = "The publication interval must be positive"
+        raise click.BadParameter(message)
+    return peri_scribe.publication.Threshold(area=area, interval=interval)
 
 
 def default_year_directory() -> pathlib.Path:
@@ -247,36 +313,24 @@ def write_reports(year_directory: pathlib.Path) -> pathlib.Path:
     return peri_scribe.report.markdown.render_markdown_report(report, year_directory)
 
 
-def run_fetch_stage(
+def fetch_fire_sources(
     year_directory: pathlib.Path,
     *,
     full_fetch_interval: datetime.timedelta | None,
-    unconditional: bool,
-) -> bool:
-    """Fetch fire feeds and external sources; return whether to keep going.
-
-    The fetch stage always fetches every configured fire feed, the external sources
-    (buildings, evacuations, and major cities), and the administrative-boundary
-    GeoPackage, which is downloaded only when it is missing or unusable. A full
-    fire-feed fetch is run when *full_fetch_interval* is given and the last recorded
-    full fetch, stored at ``YEAR_DIRECTORY/sources/fetch_state.json``, is at least that
-    old; without an interval every fire-feed fetch is incremental. A completed full
-    fetch records its completion time separately from its pending derived rebuild. New
-    snapshots, changed evacuations, and unfinished builds require downstream stages even
-    if a subsequent fetch finds no further changes.
+    defer_index: bool = False,
+) -> tuple[peri_scribe.sources.fetching.FetchResult, bool]:
+    """Preserve full-fetch and failure requirements across publication decisions.
 
     Args:
-        year_directory: The year directory that holds the ``sources`` directory.
-        full_fetch_interval: How often to fetch every fire feed in full, or None to
-            always fetch incrementally.
-        unconditional: Whether to run the later stages even when the fetch changed
-            nothing.
+        year_directory: The directory holding this year's sources and recovery state.
+        full_fetch_interval: How often to force a full fetch, or None.
+        defer_index: Build the index only after the publication gate accepts updates.
 
     Returns:
-        True when the remaining stages should run.
+        The collected snapshots and whether a scheduled full fetch was performed.
 
     Raises:
-        SystemExit: When a fire feed fails; unfinished work remains pending.
+        SystemExit: If collection fails; the required rebuild remains pending.
     """
     base_directory = peri_scribe.sources.snapshots.base_directory_for_year_directory(
         year_directory,
@@ -302,11 +356,19 @@ def run_fetch_stage(
             unconditional=True,
         )
     try:
-        result = peri_scribe.sources.fetching.fetch_all_feeds(
-            base_directory,
-            year=year,
-            full=full,
-        )
+        if defer_index:
+            result = peri_scribe.sources.fetching.fetch_all_feeds(
+                base_directory,
+                year=year,
+                full=full,
+                build_index=False,
+            )
+        else:
+            result = peri_scribe.sources.fetching.fetch_all_feeds(
+                base_directory,
+                year=year,
+                full=full,
+            )
     except Exception, SystemExit:
         # A failed feed can follow successful snapshot writes from other feeds.
         peri_scribe.pipeline_state.require_stages(
@@ -314,15 +376,50 @@ def run_fetch_stage(
             peri_scribe.pipeline_state.DERIVED_STAGES,
         )
         raise
+    if full and not defer_index:
+        peri_scribe.sources.full_fetch_state.write_state(
+            state_file,
+            last_full_fetch=datetime.datetime.now(datetime.UTC),
+        )
+    return result, full
+
+
+def run_fetch_stage(
+    year_directory: pathlib.Path,
+    *,
+    full_fetch_interval: datetime.timedelta | None,
+    unconditional: bool,
+    publish_threshold: peri_scribe.publication.Threshold | None = None,
+) -> bool:
+    """Changed inputs require output work unless the publication policy defers it.
+
+    Args:
+        year_directory: The directory holding the year's sources and outputs.
+        full_fetch_interval: How often to force full collection, or None.
+        unconditional: Bypass change-based skipping.
+        publish_threshold: Area and time requirements for deferred publication.
+
+    Returns:
+        Whether the selected downstream stages should run.
+
+    Raises:
+        SystemExit: If fetching fails; the required rebuild remains pending.
+    """
+    if publish_threshold is not None:
+        return run_gated_fetch_stage(
+            year_directory,
+            full_fetch_interval=full_fetch_interval,
+            unconditional=unconditional,
+            threshold=publish_threshold,
+        )
+    result, _full = fetch_fire_sources(
+        year_directory,
+        full_fetch_interval=full_fetch_interval,
+    )
     if result.changed:
         peri_scribe.pipeline_state.require_stages(
             year_directory,
             peri_scribe.pipeline_state.DERIVED_STAGES,
-        )
-    if full:
-        peri_scribe.sources.full_fetch_state.write_state(
-            state_file,
-            last_full_fetch=datetime.datetime.now(datetime.UTC),
         )
     try:
         evacuations_changed = refresh_external_sources(year_directory)
@@ -345,22 +442,133 @@ def run_fetch_stage(
     )
 
 
-def refresh_external_sources(year_directory: pathlib.Path) -> bool:
+def run_gated_fetch_stage(
+    year_directory: pathlib.Path,
+    *,
+    full_fetch_interval: datetime.timedelta | None,
+    unconditional: bool,
+    threshold: peri_scribe.publication.Threshold,
+) -> bool:
+    """Retain geometry and check evacuations before deciding to build outputs.
+
+    Args:
+        year_directory: The directory holding the year's sources and outputs.
+        full_fetch_interval: How often to force full collection, or None.
+        unconditional: Force the selected downstream work.
+        threshold: The configured mapped-area change and publication interval.
+
+    Returns:
+        Whether to continue past collection.
+
+    Raises:
+        SystemExit: If fetching or evaluating saved inputs fails.
+    """
+    with peri_scribe.logging.log_execution("phase", "fire-collection"):
+        _result, full = fetch_fire_sources(
+            year_directory,
+            full_fetch_interval=full_fetch_interval,
+            defer_index=True,
+        )
+    try:
+        with peri_scribe.logging.log_execution("phase", "evacuation-check"):
+            fetch_external_source(
+                peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
+                year_directory,
+            )
+        with peri_scribe.logging.log_execution("phase", "publication-gate"):
+            decision = publication_decision(year_directory, threshold)
+    except Exception, SystemExit:
+        peri_scribe.pipeline_state.require_stages(
+            year_directory,
+            peri_scribe.pipeline_state.DERIVED_STAGES,
+        )
+        raise
+    pending = bool(peri_scribe.pipeline_state.read_state(year_directory).remaining)
+    proceed = full or unconditional or pending or decision.proceed
+    logger.info(
+        "Publication gate accepted" if proceed else "Publication gate skipped",
+        reason="required rebuild"
+        if full or unconditional or pending
+        else decision.reason,
+        fire=decision.fire,
+        mapped_change=decision.change.to("acres"),
+        threshold=threshold.area.to("acres"),
+    )
+    if not proceed:
+        return False
+    peri_scribe.pipeline_state.require_stages(
+        year_directory,
+        peri_scribe.pipeline_state.DERIVED_STAGES,
+    )
+    with peri_scribe.logging.log_execution("phase", "deferred-fetch"):
+        peri_scribe.fires.index.index_fire_sources(year_directory)
+        if full:
+            peri_scribe.sources.full_fetch_state.write_state(
+                peri_scribe.sources.full_fetch_state.state_path(year_directory),
+                last_full_fetch=datetime.datetime.now(datetime.UTC),
+            )
+        refresh_external_sources(year_directory, include_evacuations=False)
+    return True
+
+
+def publication_decision(
+    year_directory: pathlib.Path,
+    threshold: peri_scribe.publication.Threshold,
+) -> peri_scribe.publication.Decision:
+    """Compare the saved inventory with the checkpoint belonging to the current KMZ.
+
+    Args:
+        year_directory: The year directory containing saved sources and the current KMZ.
+        threshold: The mapped-area change and elapsed-time publication requirements.
+
+    Returns:
+        The publication decision for the current time and saved inputs.
+    """
+    collection = peri_scribe.publication.collect(year_directory)
+    published = peri_scribe.publication.read_publication(
+        year_directory,
+        peri_scribe.kml.builder.kmz_path(year_directory),
+    )
+    return peri_scribe.publication.decide(
+        collection,
+        published,
+        threshold,
+        datetime.datetime.now(datetime.UTC),
+    )
+
+
+def refresh_external_sources(
+    year_directory: pathlib.Path,
+    *,
+    include_evacuations: bool = True,
+) -> bool:
     """Observe evacuation changes separately from fire-feed completion.
 
     Args:
         year_directory: The year directory holding the external source data.
+        include_evacuations: Fetch evacuations here when they were not checked before
+            the publication gate.
 
     Returns:
         Whether evacuation geography changed.
     """
-    evacuations_digest_before = stored_evacuations_digest(year_directory)
+    evacuations_digest_before = (
+        stored_evacuations_digest(year_directory) if include_evacuations else None
+    )
     for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES:
+        if (
+            not include_evacuations
+            and source is peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+        ):
+            continue
         fetch_external_source(source, year_directory)
     peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries(
         year_directory,
     )
-    return stored_evacuations_digest(year_directory) != evacuations_digest_before
+    return (
+        include_evacuations
+        and stored_evacuations_digest(year_directory) != evacuations_digest_before
+    )
 
 
 def run_geography_stage(
@@ -386,9 +594,25 @@ def run_score_stage(year_directory: pathlib.Path) -> None:
     peri_scribe.fires.scores.score_fires(year_directory)
 
 
-def run_kmz_stage(year_directory: pathlib.Path) -> None:
-    """Build the symbolized KMZ for Google Earth."""
-    peri_scribe.kml.builder.create_kmz(year_directory)
+def run_kmz_stage(
+    year_directory: pathlib.Path,
+    *,
+    publication_inputs: peri_scribe.publication.Collection | None = None,
+) -> None:
+    """Build the symbolized KMZ for Google Earth.
+
+    Args:
+        year_directory: The year directory containing derived geography and scores.
+        publication_inputs: Frozen source inputs to acknowledge after KMZ completion, or
+            None when no publication checkpoint is requested.
+    """
+    if publication_inputs is None:
+        peri_scribe.kml.builder.create_kmz(year_directory)
+    else:
+        peri_scribe.kml.builder.create_kmz(
+            year_directory,
+            publication_inputs=publication_inputs,
+        )
 
 
 def run_reports_stage(year_directory: pathlib.Path) -> None:
@@ -440,6 +664,8 @@ def run_pipeline_stage(
     *,
     full_fetch_interval: datetime.timedelta | None,
     unconditional: bool,
+    publish_threshold: peri_scribe.publication.Threshold | None = None,
+    publication_inputs: peri_scribe.publication.Collection | None = None,
 ) -> bool:
     """Run *stage* and return whether the next stage should run.
 
@@ -450,6 +676,8 @@ def run_pipeline_stage(
             None to always fetch incrementally.
         unconditional: Whether to continue after an unchanged fetch and bypass prior
             history reuse in the geography stage.
+        publish_threshold: The optional area and elapsed-time publication gate.
+        publication_inputs: Source inventory frozen after this run's geography stage.
 
     Returns:
         True when the next stage should run.
@@ -461,13 +689,22 @@ def run_pipeline_stage(
                     year_directory,
                     full_fetch_interval=full_fetch_interval,
                     unconditional=unconditional,
+                    publish_threshold=publish_threshold,
                 )
             case "geography":
                 run_geography_stage(year_directory, unconditional=unconditional)
             case "score":
                 run_score_stage(year_directory)
             case "kmz":
-                run_kmz_stage(year_directory)
+                run_kmz_stage(year_directory, publication_inputs=publication_inputs)
+                if publish_threshold is not None and publication_inputs is None:
+                    peri_scribe.publication.publication_path(year_directory).unlink(
+                        missing_ok=True,
+                    )
+                    logger.info(
+                        "KMZ created without fresh geography; "
+                        "publication checkpoint requires rebuild",
+                    )
             case "reports":
                 run_reports_stage(year_directory)
     return True
@@ -535,6 +772,12 @@ def selected_stage_range(
 
         Select a single stage with --only, a range with --from and --to, or list the
         stages with --list-stages. An error in any step stops the pipeline.
+        --publish-threshold AREA TIME_DELTA saves fire geometry and checks evacuations
+        before deciding whether to build outputs. A mapped-area increase or decrease of
+        at least AREA since the last published mapping triggers a build. Otherwise,
+        unpublished changes wait until TIME_DELTA since the last completed local KMZ.
+        Evacuation changes, scheduled full fetches, failed builds, and --unconditional
+        bypass the gate. For example: --publish-threshold "25 acre" 5m.
         {year_directory_default_help()}
         """,
     ),
@@ -548,6 +791,19 @@ def selected_stage_range(
         file_okay=False,
     ),
     required=False,
+)
+@click.option(
+    "--publish-threshold",
+    type=(Area(), Duration()),
+    callback=publication_threshold,
+    metavar="AREA TIME_DELTA",
+    help=textwrap.dedent(
+        """\
+        Publish when any mapped area changes by at least AREA in either direction,
+        or unpublished data has waited until TIME_DELTA since the last KMZ.
+        Use positive values, for example '25 acre' 5m.
+        """,
+    ),
 )
 @click.option(
     "--full-fetch-interval",
@@ -597,6 +853,7 @@ def run(
     year_directory: pathlib.Path,
     *,
     full_fetch_interval: datetime.timedelta | None = None,
+    publish_threshold: peri_scribe.publication.Threshold | None = None,
     unconditional: bool = False,
     only_stage: str | None = None,
     from_stage: str | None = None,
@@ -609,6 +866,7 @@ def run(
         year_directory: The resolved directory holding the pipeline data and logs.
         full_fetch_interval: How often to fetch every fire feed in full, or None to
             always fetch incrementally.
+        publish_threshold: Defer publication until the area or time requirement is met.
         unconditional: Whether to run selected stages regardless of input changes and
             bypass history reuse when geography is selected.
         only_stage: A single stage to run, or None to use a stage range.
@@ -639,6 +897,7 @@ def run(
             end,
             full_fetch_interval=full_fetch_interval,
             unconditional=unconditional,
+            publish_threshold=publish_threshold,
         )
 
 
@@ -649,6 +908,7 @@ def run_selected_stages(
     *,
     full_fetch_interval: datetime.timedelta | None,
     unconditional: bool,
+    publish_threshold: peri_scribe.publication.Threshold | None = None,
 ) -> None:
     """Keep recovery state until the required outputs have successfully completed.
 
@@ -660,6 +920,7 @@ def run_selected_stages(
             always fetch incrementally.
         unconditional: Whether to force the selected stages to rebuild, in addition to
             any unconditional requirement already recorded in recovery state.
+        publish_threshold: The optional mapped-area and elapsed-time gate.
     """
     selected = tuple(
         typing.cast("peri_scribe.pipeline_state.DerivedStage", stage.name)
@@ -672,6 +933,7 @@ def run_selected_stages(
             selected,
             unconditional=unconditional,
         )
+    publication_inputs = None
     for stage in PIPELINE_STAGES[start : end + 1]:
         pending = peri_scribe.pipeline_state.read_state(year_directory)
         should_continue = run_pipeline_stage(
@@ -682,10 +944,15 @@ def run_selected_stages(
                 unconditional
                 or (pending.unconditional and stage.name in pending.remaining)
             ),
+            publish_threshold=publish_threshold,
+            publication_inputs=publication_inputs,
         )
         if not should_continue and stage is not PIPELINE_STAGES[end]:
-            logger.debug("Nothing changed; skipping remaining pipeline steps")
+            if publish_threshold is None:
+                logger.debug("Nothing changed; skipping remaining pipeline steps")
             break
+        if stage.name == "geography" and publish_threshold is not None:
+            publication_inputs = peri_scribe.publication.collect(year_directory)
         peri_scribe.pipeline_state.complete_stage(year_directory, stage.name)
 
 
