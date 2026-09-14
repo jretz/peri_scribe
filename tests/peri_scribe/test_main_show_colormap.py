@@ -54,7 +54,8 @@ def test_show_turbo_colormap_prints_the_strip(
             peri_scribe.kml.colormap.TURBO_TRIM_FROM_END,
         ),
     ]
-    assert result.output == f"{strip}\n"
+    assert result.stdout == f"{strip}\n"
+    assert result.stderr == ""
 
 
 def test_show_turbo_colormap_passes_trim_options(

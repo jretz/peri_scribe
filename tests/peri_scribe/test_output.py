@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import io
 import json
-import logging
 import pathlib
 import shutil
 import typing
@@ -11,8 +10,10 @@ import geopandas
 import pytest
 import structlog
 
+import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.output
+import tests.factories
 
 
 class RecordingFile:
@@ -135,24 +136,6 @@ def test_remove_directory_tree_leaves_missing_path_alone(
     assert removed == []
 
 
-def test_configure_logging_filters_below_configured_level() -> None:
-    with structlog.testing.capture_logs():
-        peri_scribe.output.configure_logging("warning")
-        logger = structlog.get_logger()
-        assert not logger.is_enabled_for(logging.DEBUG)
-        assert not logger.is_enabled_for(logging.INFO)
-        assert logger.is_enabled_for(logging.WARNING)
-        assert logger.is_enabled_for(logging.ERROR)
-
-
-def test_configure_logging_debug_level_enables_every_level() -> None:
-    with structlog.testing.capture_logs():
-        peri_scribe.output.configure_logging("debug")
-        logger = structlog.get_logger()
-        assert logger.is_enabled_for(logging.DEBUG)
-        assert logger.is_enabled_for(logging.CRITICAL)
-
-
 def test_write_document_writes_pretty_printed_json(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -270,15 +253,47 @@ def test_ccdf_svg_labels_the_curve_knees() -> None:
 def test_ccdf_svg_still_draws_when_knees_fail(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    def failing_knees(_scores: list[int]) -> list[tuple[int, float]]:
-        message = "knee failure"
-        raise RuntimeError(message)
-
-    monkeypatch.setattr(peri_scribe.output, "curve_knees", failing_knees)
-    with structlog.testing.capture_logs() as captured:
+    monkeypatch.setattr(
+        peri_scribe.output,
+        "curve_knees",
+        tests.factories.raising_stub(RuntimeError("knee failure")),
+    )
+    with structlog.testing.capture_logs(
+        processors=[structlog.processors.format_exc_info],
+    ) as captured:
         svg = peri_scribe.output.ccdf_svg(fire_scores_document([12]))
     assert "<svg" in svg
     assert captured[0]["event"] == "Skipped fire scores knee labels"
+    assert "RuntimeError: knee failure" in captured[0]["exception"]
+    assert json.loads(json.dumps(captured)) == captured
+
+
+def test_ccdf_svg_preserves_tracebacks_with_json_logging(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.output,
+        "curve_knees",
+        tests.factories.raising_stub(RuntimeError("knee failure")),
+    )
+    peri_scribe.logging.configure_logging("info")
+    structlog.configure(
+        processors=[
+            *structlog.get_config()["processors"][:-1],
+            structlog.processors.format_exc_info,
+            structlog.processors.JSONRenderer(default=None, allow_nan=False),
+        ],
+    )
+    svg = peri_scribe.output.ccdf_svg(fire_scores_document([12]))
+    captured = capsys.readouterr()
+    entry = json.loads(captured.err)
+    assert "<svg" in svg
+    assert captured.out == ""
+    assert entry["level"] == "error"
+    assert entry["event"] == "Skipped fire scores knee labels"
+    assert "Traceback (most recent call last)" in entry["exception"]
+    assert "RuntimeError: knee failure" in entry["exception"]
 
 
 def test_ccdf_svg_draws_an_empty_chart_without_scores() -> None:

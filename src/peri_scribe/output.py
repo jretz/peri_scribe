@@ -598,19 +598,3 @@ def write_fire_scores_ccdf(
     """
     path.write_text(ccdf_html(document), encoding="utf-8")
     logger.debug("Wrote fire scores ccdf", path=path.name)
-
-
-def configure_logging(log_level: str) -> None:
-    """Configure structlog with the minimum log level.
-
-    Args:
-        log_level: The minimum severity to emit, such as ``debug`` or ``info``.
-    """
-    structlog.configure(
-        processors=[
-            structlog.processors.add_log_level,
-            structlog.processors.TimeStamper(fmt="%Y-%m-%dT%H:%M:%S%z", utc=False),
-            structlog.dev.ConsoleRenderer(),
-        ],
-        wrapper_class=structlog.make_filtering_bound_logger(log_level),
-    )

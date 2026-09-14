@@ -2,6 +2,7 @@
 
 import http
 import json
+import typing
 
 import pytest
 import requests
@@ -14,6 +15,10 @@ from tests.conftest import (
     RATE_LIMIT_ERROR_PAYLOAD,
     RATE_LIMIT_RETRY_AFTER,
 )
+
+
+if typing.TYPE_CHECKING:
+    import structlog.testing
 
 
 RETRY_AFTER_HEADER_IN_SECONDS = 7
@@ -244,3 +249,20 @@ def test_last_error_raises_without_outcome() -> None:
     )
     with pytest.raises(AssertionError, match="failed attempt"):
         peri_scribe.retry.last_error(retry_state)
+
+
+def test_run_with_retry_logs_serializable_traceback_on_exhaustion(
+    log_output: structlog.testing.LogCapture,
+) -> None:
+    def failing_query() -> None:
+        message = "Disconnected"
+        raise requests.exceptions.ConnectionError(message)
+
+    with pytest.raises(requests.exceptions.ConnectionError, match="Disconnected"):
+        peri_scribe.retry.run_with_retry("example", failing_query, max_retries=0)
+
+    entry = json.loads(json.dumps(log_output.entries[0]))
+    assert entry["event"] == "Retries exhausted"
+    assert entry["attempts"] == 1
+    assert "Traceback (most recent call last)" in entry["exception"]
+    assert "ConnectionError: Disconnected" in entry["exception"]

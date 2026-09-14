@@ -17,6 +17,7 @@ import peri_scribe.fires.differential
 import peri_scribe.fires.scores
 import peri_scribe.kml.builder
 import peri_scribe.kml.colormap
+import peri_scribe.logging
 import peri_scribe.output
 import peri_scribe.pipeline_state
 import peri_scribe.report.gathering
@@ -95,21 +96,49 @@ def default_year_directory() -> pathlib.Path:
 
 @click.group()
 @click.option(
-    "--log-level",
+    "--stderr-log-level",
     type=click.Choice(
         ["debug", "info", "warning", "error", "critical"],
         case_sensitive=False,
     ),
-    default="info",
+    default="debug",
     show_default=True,
-    help="Logging level.",
+    help="Minimum logging level for formatted stderr output.",
 )
-def cli(log_level: str) -> None:
+@click.option(
+    "--file-log-level",
+    type=click.Choice(
+        ["debug", "info", "warning", "error", "critical"],
+        case_sensitive=False,
+    ),
+    default="debug",
+    show_default=True,
+    help="Minimum logging level for monthly JSON files in YEAR_DIRECTORY/logs.",
+)
+def cli(stderr_log_level: str, file_log_level: str) -> None:
     """
     A tool for systematic gathering and symbolization of fire geography, for use in fire
     behavior analysis and presentation.
     """
-    peri_scribe.output.configure_logging(log_level)
+    peri_scribe.logging.configure_logging(stderr_log_level, file_log_level)
+
+
+def command_year_directory(
+    _context: click.Context,
+    _parameter: click.Parameter,
+    value: pathlib.Path | None,
+) -> pathlib.Path:
+    """Resolve the command's directory before its first log entry.
+
+    Args:
+        _context: The command's Click context.
+        _parameter: The year-directory argument being parsed.
+        value: The explicitly supplied directory, or None to use the current year.
+
+    Returns:
+        The directory shared by pipeline data and command logs.
+    """
+    return value if value is not None else default_year_directory()
 
 
 def year_directory_default_help() -> str:
@@ -425,21 +454,22 @@ def run_pipeline_stage(
     Returns:
         True when the next stage should run.
     """
-    match stage.name:
-        case "fetch":
-            return run_fetch_stage(
-                year_directory,
-                full_fetch_interval=full_fetch_interval,
-                unconditional=unconditional,
-            )
-        case "geography":
-            run_geography_stage(year_directory, unconditional=unconditional)
-        case "score":
-            run_score_stage(year_directory)
-        case "kmz":
-            run_kmz_stage(year_directory)
-        case "reports":
-            run_reports_stage(year_directory)
+    with peri_scribe.logging.log_execution("phase", stage.name):
+        match stage.name:
+            case "fetch":
+                return run_fetch_stage(
+                    year_directory,
+                    full_fetch_interval=full_fetch_interval,
+                    unconditional=unconditional,
+                )
+            case "geography":
+                run_geography_stage(year_directory, unconditional=unconditional)
+            case "score":
+                run_score_stage(year_directory)
+            case "kmz":
+                run_kmz_stage(year_directory)
+            case "reports":
+                run_reports_stage(year_directory)
     return True
 
 
@@ -511,6 +541,7 @@ def selected_stage_range(
 )
 @click.argument(
     "year_directory",
+    callback=command_year_directory,
     type=click.Path(
         path_type=pathlib.Path,
         exists=True,
@@ -561,8 +592,9 @@ def selected_stage_range(
     is_flag=True,
     help="List the pipeline stages and their descriptions without running anything.",
 )
+@peri_scribe.logging.log_command
 def run(
-    year_directory: pathlib.Path | None = None,
+    year_directory: pathlib.Path,
     *,
     full_fetch_interval: datetime.timedelta | None = None,
     unconditional: bool = False,
@@ -574,8 +606,7 @@ def run(
     """Run the selected pipeline stages.
 
     Args:
-        year_directory: The year directory holding the pipeline data, or None to use the
-            current year's default directory.
+        year_directory: The resolved directory holding the pipeline data and logs.
         full_fetch_interval: How often to fetch every fire feed in full, or None to
             always fetch incrementally.
         unconditional: Whether to run selected stages regardless of input changes and
@@ -591,8 +622,6 @@ def run(
     if list_stages:
         print_stages()
         return
-    if year_directory is None:
-        year_directory = default_year_directory()
     if only_stage is not None and (from_stage is not None or to_stage is not None):
         message = "--only cannot be combined with --from or --to"
         raise click.UsageError(message)
@@ -675,6 +704,7 @@ def run_selected_stages(
 )
 @click.argument(
     "year_directory",
+    callback=command_year_directory,
     type=click.Path(
         path_type=pathlib.Path,
         exists=True,
@@ -682,10 +712,9 @@ def run_selected_stages(
     ),
     required=False,
 )
-def validate_sources(year_directory: pathlib.Path | None = None) -> None:
+@peri_scribe.logging.log_command
+def validate_sources(year_directory: pathlib.Path) -> None:
     """Check that the stored sources cover a complete snapshot of every feed."""
-    if year_directory is None:
-        year_directory = default_year_directory()
     base_directory = peri_scribe.sources.snapshots.base_directory_for_year_directory(
         year_directory,
     )

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import itertools
 import pathlib
 import typing
 
@@ -13,6 +14,7 @@ import pytest
 import peri_scribe.exceptions
 import peri_scribe.fires.differential
 import peri_scribe.fires.scores
+import peri_scribe.logging
 import peri_scribe.main
 import peri_scribe.output
 import peri_scribe.pipeline_state
@@ -21,11 +23,110 @@ import peri_scribe.sources.external_sources
 import peri_scribe.sources.fetching
 import peri_scribe.sources.full_fetch_state
 import tests.factories
+from peri_scribe.units import units
 from tests.conftest import CLICK_USAGE_ERROR_EXIT_CODE
 from tests.main_stubs import (
     BASE_DIRECTORY,
     RunStubs,
 )
+
+
+if typing.TYPE_CHECKING:
+    import structlog.testing
+
+
+@pytest.mark.usefixtures("current_year")
+@pytest.mark.parametrize("changed", [True, False])
+def test_run_logs_each_executed_phase_inside_command_boundaries(
+    runner: click.testing.CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+    run_stubs: typing.Callable[..., RunStubs],
+    cli_log_output: structlog.testing.LogCapture,
+    *,
+    changed: bool,
+) -> None:
+    run_stubs(changed=changed)
+    ticks = itertools.count()
+    monkeypatch.setattr(peri_scribe.logging.time, "perf_counter", lambda: next(ticks))
+
+    result = runner.invoke(peri_scribe.main.cli, ["run"])
+
+    assert result.exit_code == 0
+    phases = ["fetch", "geography", "score", "kmz", "reports"] if changed else ["fetch"]
+    entries = [
+        entry
+        for entry in cli_log_output.entries
+        if "command" in entry or "phase" in entry
+    ]
+    assert entries == [
+        {
+            "event": "Starting command",
+            "command": "run",
+            "parameters": {},
+            "log_level": "info",
+        },
+        *(
+            entry
+            for phase in phases
+            for entry in (
+                {"event": "Starting phase", "phase": phase, "log_level": "info"},
+                {
+                    "event": "Finished phase",
+                    "phase": phase,
+                    "duration": {"value": 1.0, "units": units.seconds},
+                    "status": "completed",
+                    "log_level": "info",
+                },
+            )
+        ),
+        {
+            "event": "Finished command",
+            "command": "run",
+            "duration": {"value": float(2 * len(phases) + 1), "units": units.seconds},
+            "status": "completed",
+            "log_level": "info",
+        },
+    ]
+
+
+@pytest.mark.usefixtures("current_year")
+@pytest.mark.parametrize("error", [RuntimeError("boom"), SystemExit("boom")])
+def test_run_logs_elapsed_time_when_a_phase_fails(
+    runner: click.testing.CliRunner,
+    monkeypatch: pytest.MonkeyPatch,
+    run_stubs: typing.Callable[..., RunStubs],
+    cli_log_output: structlog.testing.LogCapture,
+    error: BaseException,
+) -> None:
+    run_stubs(changed=True)
+    monkeypatch.setattr(
+        peri_scribe.fires.scores,
+        "score_fires",
+        tests.factories.raising_stub(error),
+    )
+    ticks = iter((0.0, 10.0, 133.45, 200.0))
+    monkeypatch.setattr(peri_scribe.logging.time, "perf_counter", lambda: next(ticks))
+
+    result = runner.invoke(peri_scribe.main.cli, ["run", "--from", "score"])
+
+    assert result.exit_code != 0
+    assert result.exception is error
+    assert cli_log_output.entries[-2:] == [
+        {
+            "event": "Finished phase",
+            "phase": "score",
+            "duration": {"value": 123.45, "units": units.seconds},
+            "status": "failed",
+            "log_level": "error",
+        },
+        {
+            "event": "Finished command",
+            "command": "run",
+            "duration": {"value": 200.0, "units": units.seconds},
+            "status": "failed",
+            "log_level": "error",
+        },
+    ]
 
 
 def test_run_runs_all_stages_when_fetch_changed(
@@ -416,6 +517,7 @@ def test_run_partial_selection_keeps_full_rebuild_pending(
 def test_run_skips_an_overlapping_invocation(
     runner: click.testing.CliRunner,
     run_stubs: typing.Callable[..., RunStubs],
+    cli_log_output: structlog.testing.LogCapture,
 ) -> None:
     stubs = run_stubs(changed=True)
     with peri_scribe.pipeline_state.run_lock(
@@ -425,6 +527,11 @@ def test_run_skips_an_overlapping_invocation(
         result = runner.invoke(peri_scribe.main.cli, ["run"])
     assert result.exit_code == 0
     assert stubs.fetch_calls == []
+    assert [entry["event"] for entry in cli_log_output.entries] == [
+        "Starting command",
+        "Another run owns this year; skipping invocation",
+        "Finished command",
+    ]
 
 
 @pytest.mark.usefixtures("current_year")

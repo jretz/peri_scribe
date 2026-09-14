@@ -16,9 +16,11 @@ import structlog
 
 import peri_scribe.exceptions
 import peri_scribe.geo.data
+import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.retry
 import peri_scribe.sources.feed_types
+from peri_scribe.units import units
 from tests.conftest import (
     LOOSE_429_ERROR_PAYLOAD,
     RATE_LIMIT_ERROR_PAYLOAD,
@@ -303,14 +305,19 @@ def test_query_with_retry_logs_rate_limit_reason(
         feature_set_with_geometry,
     ]
     layer = QueryStub(outcomes)
-    with structlog.testing.capture_logs() as captured:
+    with structlog.testing.capture_logs(
+        processors=[peri_scribe.logging.serialize_log_values],
+    ) as captured:
         peri_scribe.geo.data.query_with_retry(
             SAMPLE_FEED_NAME,
             typing.cast("arcgis.features.FeatureLayer", layer),
         )
     assert captured[0]["event"] == "Rate-limited; retrying after server-suggested delay"
     assert captured[0]["attempt"] == 1
-    assert captured[0]["retry_delay"] == RATE_LIMIT_RETRY_AFTER
+    assert captured[0]["retry_delay"] == {
+        "value": RATE_LIMIT_RETRY_AFTER.m_as("seconds"),
+        "units": units.seconds,
+    }
 
 
 def test_query_with_retry_logs_transient_reason(
@@ -327,14 +334,19 @@ def test_query_with_retry_logs_transient_reason(
         feature_set_with_geometry,
     ]
     layer = QueryStub(outcomes)
-    with structlog.testing.capture_logs() as captured:
+    with structlog.testing.capture_logs(
+        processors=[peri_scribe.logging.serialize_log_values],
+    ) as captured:
         peri_scribe.geo.data.query_with_retry(
             SAMPLE_FEED_NAME,
             typing.cast("arcgis.features.FeatureLayer", layer),
         )
     assert captured[0]["event"] == "Transient network error; retrying after backoff"
     assert captured[0]["attempt"] == 1
-    assert captured[0]["retry_delay"] == peri_scribe.retry.BACKOFF_BASE
+    assert captured[0]["retry_delay"] == {
+        "value": peri_scribe.retry.BACKOFF_BASE.m_as("seconds"),
+        "units": units.seconds,
+    }
 
 
 class IdQueryStub:

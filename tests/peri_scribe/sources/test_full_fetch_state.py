@@ -187,5 +187,5 @@ def test_read_state_logs_malformed_state_error(
     assert len(log_output.entries) == 1
     entry = log_output.entries[0]
     assert entry["event"] == "Malformed fetch state"
-    assert entry["path"] == path
+    assert entry["path"] == str(path)
     assert "Expecting value" in entry["error"]

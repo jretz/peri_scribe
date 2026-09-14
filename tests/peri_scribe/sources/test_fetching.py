@@ -19,6 +19,7 @@ import structlog
 import peri_scribe.exceptions
 import peri_scribe.fires.index
 import peri_scribe.geo.data
+import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.retry
@@ -1168,7 +1169,9 @@ def test_fetch_all_feeds_skips_download_when_timestamp_present(
     assert events == ["timestamp", "download"]
     events.clear()
     # The second fetch sees the same last-edit timestamp and skips the download.
-    with structlog.testing.capture_logs() as captured:
+    with structlog.testing.capture_logs(
+        processors=[peri_scribe.logging.serialize_log_values],
+    ) as captured:
         result = peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
     assert result.changed is False
     assert events == ["timestamp"]
@@ -1179,7 +1182,7 @@ def test_fetch_all_feeds_skips_download_when_timestamp_present(
     ]
     assert skip_event["feed"] == SAMPLE_FEED_NAME
     assert skip_event["last_edit_timestamp"] == SAMPLE_LAST_EDIT_TIMESTAMP
-    assert skip_event["path"] == snapshot_path()
+    assert skip_event["path"] == str(snapshot_path())
 
 
 def test_fetch_all_feeds_full_downloads_when_timestamp_present(

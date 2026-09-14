@@ -12,10 +12,12 @@ from tests.main_stubs import BASE_DIRECTORY
 
 if typing.TYPE_CHECKING:
     import pytest
+    import structlog.testing
 
 
 def test_fetch_external_source_uses_given_year_directory(
     monkeypatch: pytest.MonkeyPatch,
+    log_output: structlog.testing.LogCapture,
 ) -> None:
     source = peri_scribe.sources.external_sources.BUILDINGS_SOURCE
     year_directory = pathlib.Path("data/2026")
@@ -35,6 +37,7 @@ def test_fetch_external_source_uses_given_year_directory(
     )
     peri_scribe.main.fetch_external_source(source, year_directory)
     assert fetched == [(source, year_directory)]
+    assert log_output.entries[-1]["paths"] == ["/out.gpkg"]
 
 
 def test_fetch_external_source_defaults_to_current_year_directory(

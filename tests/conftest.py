@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import http
+import json
 import pathlib
 import typing
 
@@ -18,6 +19,7 @@ import peri_scribe.fires.scores
 import peri_scribe.geo.package
 import peri_scribe.geo.reading
 import peri_scribe.kml.builder
+import peri_scribe.logging
 import peri_scribe.main
 import peri_scribe.models
 import peri_scribe.output
@@ -98,22 +100,46 @@ SAMPLE_STATUS_COLUMN = "status"
 
 
 @pytest.fixture
-def log_output() -> structlog.testing.LogCapture:
-    """Captures all log entries during a test.
+def log_output() -> typing.Iterator[structlog.testing.LogCapture]:
+    """Ensure captured log values can be serialized without a custom JSON encoder.
 
-    Returns:
+    Yields:
         An object that can be used to inspect captured log entries.
     """
-    return structlog.testing.LogCapture()
+    captured = structlog.testing.LogCapture()
+    yield captured
+    json.dumps(captured.entries, allow_nan=False)
 
 
 @pytest.fixture(autouse=True)  # ruff: ignore[pytest-fixture-autouse]
 def configure_structlog(log_output: structlog.testing.LogCapture) -> None:
-    """Configures structlog to use the LogCapture processor for all tests."""
+    """Capture logs after structlog converts exception information for JSON output."""
     structlog.configure(
-        processors=[log_output],
+        processors=[
+            peri_scribe.logging.serialize_log_values,
+            structlog.processors.format_exc_info,
+            log_output,
+        ],
         wrapper_class=structlog.make_filtering_bound_logger("DEBUG"),
     )
+
+
+@pytest.fixture
+def cli_log_output(
+    monkeypatch: pytest.MonkeyPatch,
+    log_output: structlog.testing.LogCapture,
+) -> structlog.testing.LogCapture:
+    """Keep CLI invocations using the test's structured log capture.
+
+    Returns:
+        The captured CLI log entries.
+    """
+    monkeypatch.setattr(
+        peri_scribe.logging,
+        "configure_logging",
+        lambda *_arguments, **_keywords: None,
+    )
+    return log_output
 
 
 def sample_feed() -> peri_scribe.sources.feed_types.ArcGISFeed:
@@ -202,7 +228,16 @@ def stub_fire_reader(
 
 
 @pytest.fixture
-def runner() -> click.testing.CliRunner:
+def runner(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> click.testing.CliRunner:
+    """Keep CLI-created data and logs inside the test's temporary directory.
+
+    Returns:
+        A runner whose default year directory is isolated from the repository.
+    """
+    monkeypatch.chdir(tmp_path)
     return click.testing.CliRunner()
 
 
@@ -502,12 +537,19 @@ def snapshot_path(
 @pytest.fixture
 def current_year(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
 ) -> typing.Iterator[None]:
     """Fix the working directory and freeze the current year at 2026."""
     monkeypatch.setattr(
         pathlib.Path,
         "cwd",
         staticmethod(lambda: BASE_DIRECTORY),
+    )
+    append_monthly_log = peri_scribe.logging.append_monthly_log
+    monkeypatch.setattr(
+        peri_scribe.logging,
+        "append_monthly_log",
+        lambda _directory, entry: append_monthly_log(tmp_path / "logs", entry),
     )
     with time_machine.travel(
         datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
@@ -741,7 +783,7 @@ def validate_sources_stubs(
 def validate_sources_setup(monkeypatch: pytest.MonkeyPatch) -> None:
     """Silence log configuration so validate-sources logs can be captured."""
     monkeypatch.setattr(
-        peri_scribe.output,
+        peri_scribe.logging,
         "configure_logging",
-        lambda log_level: log_level,
+        lambda *_args, **_kwargs: None,
     )

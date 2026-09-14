@@ -36,7 +36,7 @@ run = [
 description = "Check for new source data and use it to generate new maps and reports"
 depends = ["venv"]
 run = [
-    "uv run --locked peri_scribe --log-level warning run --full-fetch-interval 6h",
+    "uv run --locked peri_scribe --stderr-log-level warning --file-log-level info run --full-fetch-interval 6h",
     { task = "sync-kmz" },
 ]
 
