@@ -56,12 +56,7 @@ def latest_features_by_object_id(
             normalized = normalized.rename_geometry(
                 peri_scribe.models.GEOPACKAGE_GEOMETRY_COLUMN_NAME,
             )
-        present.append(
-            typing.cast(
-                "geopandas.GeoDataFrame",
-                normalized,
-            ),
-        )
+        present.append(typing.cast("geopandas.GeoDataFrame", normalized))
     if not present:
         return None
     combined = typing.cast(
@@ -107,9 +102,7 @@ def existing_features(
     return latest_features_by_object_id(dataframes)
 
 
-def current_state_serial_number(
-    directory: pathlib.Path,
-) -> int | None:
+def current_state_serial_number(directory: pathlib.Path) -> int | None:
     """Return the serial number of the newest snapshot in *directory*.
 
     Args:
@@ -132,12 +125,12 @@ def read_current_features(
     """Return the latest stored feature per OBJECTID, from the state file when fresh.
 
     The feed's maintained current-state file holds the latest feature per OBJECTID
-    across the snapshots it covers, so reading it costs one file read instead of a
-    read of every snapshot ever stored. The state file is used only when it covers
-    the newest snapshot; otherwise the snapshots are read directly, which is also how
-    a missing or unreadable state file is handled. A state file is fresh only when
-    its covered serial equals the newest snapshot serial, so a state file that
-    outlives a snapshot rollback is rebuilt rather than trusted.
+    across the snapshots it covers, so reading it costs one file read instead of a read
+    of every snapshot ever stored. The state file is used only when it covers the newest
+    snapshot; otherwise the snapshots are read directly, which is also how a missing or
+    unreadable state file is handled. A state file is fresh only when its covered serial
+    equals the newest snapshot serial, so a state file that outlives a snapshot rollback
+    is rebuilt rather than trusted.
 
     Args:
         directory: The directory holding the source's GeoPackage files.
@@ -146,9 +139,7 @@ def read_current_features(
     Returns:
         The most recent feature per OBJECTID, or None when there are none.
     """
-    state_files = peri_scribe.sources.snapshots.current_state_file_paths(
-        directory,
-    )
+    state_files = peri_scribe.sources.snapshots.current_state_file_paths(directory)
     if state_files:
         state_serial_number, state_path = state_files[-1]
         newest_serial_number = current_state_serial_number(directory)
@@ -157,10 +148,7 @@ def read_current_features(
             and state_serial_number == newest_serial_number
         ):
             try:
-                return peri_scribe.geo.reading.read_layer_dataframe(
-                    state_path,
-                    feed,
-                )
+                return peri_scribe.geo.reading.read_layer_dataframe(state_path, feed)
             except (OSError, RuntimeError, ValueError) as error:
                 logger.warning(
                     "Failed to read current state; reading snapshots instead",
@@ -178,29 +166,24 @@ def write_current_state(
 ) -> None:
     """Update *feed*'s current-state file to cover its newest snapshot.
 
-    The new state is the latest feature per OBJECTID across the previous state (or,
-    when there is no usable state file, every stored snapshot) and *new_features*,
-    the rows of the snapshot just written. The state file is named for the newest
-    snapshot's serial number, and any older state files for the feed are removed.
-    The snapshots remain the source of truth: the state file is only a derived
-    cache, rebuilt from the snapshots whenever it is missing, stale, or unreadable.
+    The new state is the latest feature per OBJECTID across the previous state (or, when
+    there is no usable state file, every stored snapshot) and *new_features*, the rows
+    of the snapshot just written. The state file is named for the newest snapshot's
+    serial number, and any older state files for the feed are removed. The snapshots
+    remain the source of truth: the state file is only a derived cache, rebuilt from the
+    snapshots whenever it is missing, stale, or unreadable.
 
     Args:
         directory: The directory holding the source's GeoPackage files.
         feed: The feed whose layer is stored.
         new_features: The rows of the snapshot that was just written.
     """
-    state_files = peri_scribe.sources.snapshots.current_state_file_paths(
-        directory,
-    )
+    state_files = peri_scribe.sources.snapshots.current_state_file_paths(directory)
     base: geopandas.GeoDataFrame | None = None
     if state_files:
         _state_serial_number, state_path = state_files[-1]
         try:
-            base = peri_scribe.geo.reading.read_layer_dataframe(
-                state_path,
-                feed,
-            )
+            base = peri_scribe.geo.reading.read_layer_dataframe(state_path, feed)
         except (OSError, RuntimeError, ValueError) as error:
             logger.warning(
                 "Failed to read current state while updating; rebuilding from "
@@ -222,12 +205,7 @@ def write_current_state(
     state_path.parent.mkdir(parents=True, exist_ok=True)
     peri_scribe.output.write_geopackage(
         state_path,
-        [
-            peri_scribe.models.LayerData(
-                name=feed.name,
-                dataframe=merged,
-            ),
-        ],
+        [peri_scribe.models.LayerData(name=feed.name, dataframe=merged)],
     )
     for _old_serial_number, old_path in state_files:
         if old_path != state_path:
@@ -235,14 +213,12 @@ def write_current_state(
                 old_path.unlink()
 
 
-def stored_object_ids(
-    existing: geopandas.GeoDataFrame | None,
-) -> set[int]:
+def stored_object_ids(existing: geopandas.GeoDataFrame | None) -> set[int]:
     """Return the OBJECTIDs already stored, or an empty set when unknown.
 
-    The set is the layer's stored identities: an OBJECTID present in the layer but
-    not in this set belongs to a feature the store has never captured, so the caller
-    can fetch it even when the source never populated its modified timestamp.
+    The set is the layer's stored identities: an OBJECTID present in the layer but not
+    in this set belongs to a feature the store has never captured, so the caller can
+    fetch it even when the source never populated its modified timestamp.
 
     Args:
         existing: The latest stored feature per OBJECTID, or None.
@@ -297,8 +273,8 @@ def stored_status_object_ids(
     """Return the stored OBJECTIDs whose latest stored status is *status*.
 
     Each row's raw status value is classified the same way the fire index does, so
-    callers can build queries that watch for status changes. Rows whose status value
-    is missing or unrecognized are ignored.
+    callers can build queries that watch for status changes. Rows whose status value is
+    missing or unrecognized are ignored.
 
     Args:
         existing: The latest stored feature per OBJECTID, or None.
@@ -367,17 +343,14 @@ def stored_status_literals(
     return tuple(literals)
 
 
-def where_clause_for(
-    change_columns: tuple[str, ...],
-    cutoff: datetime.datetime,
-) -> str:
+def where_clause_for(change_columns: tuple[str, ...], cutoff: datetime.datetime) -> str:
     """Return a where clause selecting features changed since *cutoff*.
 
-    The clause selects features whose change timestamp is at or after *cutoff*,
-    plus features with a missing change timestamp. The latter are included because
-    a source may add or update features without populating the change columns, and a
-    plain ``>=`` comparison would silently skip them. The caller deduplicates identical
-    rows already stored, so re-fetching the null-timestamp features is safe.
+    The clause selects features whose change timestamp is at or after *cutoff*, plus
+    features with a missing change timestamp. The latter are included because a source
+    may add or update features without populating the change columns, and a plain ``>=``
+    comparison would silently skip them. The caller deduplicates identical rows already
+    stored, so re-fetching the null-timestamp features is safe.
 
     Args:
         change_columns: The feed's change timestamp columns.

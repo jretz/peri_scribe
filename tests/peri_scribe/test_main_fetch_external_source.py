@@ -7,6 +7,7 @@ import typing
 
 import peri_scribe.main
 import peri_scribe.sources.external_sources
+import tests.peri_scribe.main_source_helpers
 from tests.main_stubs import BASE_DIRECTORY
 
 
@@ -23,12 +24,9 @@ def test_fetch_external_source_uses_given_year_directory(
     year_directory = pathlib.Path("data/2026")
     fetched: list[tuple[object, pathlib.Path]] = []
 
-    def fetch_external_source(
-        source_arg: object,
-        directory: pathlib.Path,
-    ) -> tuple[pathlib.Path, ...]:
-        fetched.append((source_arg, directory))
-        return (pathlib.Path("/out.gpkg"),)
+    fetch_external_source = tests.peri_scribe.main_source_helpers.make_fetch_recorder(
+        fetched=fetched,
+    )
 
     monkeypatch.setattr(
         peri_scribe.sources.external_sources,
@@ -47,12 +45,9 @@ def test_fetch_external_source_defaults_to_current_year_directory(
     source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
     fetched: list[tuple[object, pathlib.Path]] = []
 
-    def fetch_external_source(
-        source_arg: object,
-        directory: pathlib.Path,
-    ) -> tuple[pathlib.Path, ...]:
-        fetched.append((source_arg, directory))
-        return (pathlib.Path("/out.gpkg"),)
+    fetch_external_source = tests.peri_scribe.main_source_helpers.make_fetch_recorder(
+        fetched=fetched,
+    )
 
     monkeypatch.setattr(
         peri_scribe.sources.external_sources,

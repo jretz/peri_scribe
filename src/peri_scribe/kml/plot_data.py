@@ -370,10 +370,7 @@ def fire_plots(
         FirePlot(
             filename_suffix=COST_PLOT_SUFFIX,
             series=(
-                PlotSeries(
-                    label=COST_TO_DATE_SERIES_LABEL,
-                    points=cost_to_date_points,
-                ),
+                PlotSeries(label=COST_TO_DATE_SERIES_LABEL, points=cost_to_date_points),
                 PlotSeries(
                     label=ESTIMATED_FINAL_COST_SERIES_LABEL,
                     points=estimated_final_cost_points,
@@ -409,9 +406,7 @@ def has_multiple_observation_times(points: tuple[SeriesPoint, ...]) -> bool:
     )
 
 
-def retained_series(
-    series_list: typing.Iterable[PlotSeries],
-) -> tuple[PlotSeries, ...]:
+def retained_series(series_list: typing.Iterable[PlotSeries]) -> tuple[PlotSeries, ...]:
     """Return the series in *series_list* that span enough observation times.
 
     Args:

@@ -32,9 +32,9 @@ def area(geometry: shapely.Geometry) -> pint.Quantity[float]:
         >>> area(shapely.Point(0, 0)).m_as("acres")
         0.0
     """
-    measured_area, _perimeter = pyproj.Geod(
-        ellps="WGS84",
-    ).geometry_area_perimeter(geometry)
+    measured_area, _perimeter = pyproj.Geod(ellps="WGS84").geometry_area_perimeter(
+        geometry,
+    )
     return abs(measured_area) * units.meters**2
 
 
@@ -43,10 +43,10 @@ def exterior_perimeter(
 ) -> pint.Quantity[float] | None:
     """Return *geometry*'s exterior perimeter length, or None.
 
-    The length is the sum of each polygon part's outer ring, measured geodesically
-    so it is accurate anywhere on Earth. Interior rings (unburned islands inside a
-    fire perimeter) are excluded, and a geometry without any polygon exterior —
-    empty, missing, or non-polygonal — has no exterior perimeter.
+    The length is the sum of each polygon part's outer ring, measured geodesically so it
+    is accurate anywhere on Earth. Interior rings (unburned islands inside a fire
+    perimeter) are excluded, and a geometry without any polygon exterior — empty,
+    missing, or non-polygonal — has no exterior perimeter.
 
     Args:
         geometry: The perimeter geometry, in WGS 84 degrees.

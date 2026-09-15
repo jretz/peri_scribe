@@ -211,11 +211,11 @@ def features_are_identical(
 ) -> bool:
     """Return whether two feature rows describe the same feature.
 
-    Attributes must match after normalization, and the geometries must describe the
-    same shape. Comparing shapes rather than raw coordinates lets a source re-publish
-    an unchanged feature (different vertex order, ring orientation, or ring type)
-    without making it look new or changed. The geometries are passed separately
-    because the two frames may name their geometry columns differently.
+    Attributes must match after normalization, and the geometries must describe the same
+    shape. Comparing shapes rather than raw coordinates lets a source re-publish an
+    unchanged feature (different vertex order, ring orientation, or ring type) without
+    making it look new or changed. The geometries are passed separately because the two
+    frames may name their geometry columns differently.
 
     Args:
         values: The freshly fetched row's values, keyed by column name.
@@ -244,8 +244,8 @@ def drop_features_already_present(
 ) -> geopandas.GeoDataFrame:
     """Drop fetched features whose content is already stored identically.
 
-    A feature is kept when its OBJECTID is new, or when its stored content differs
-    from the freshly fetched content. Features with a matching OBJECTID and identical
+    A feature is kept when its OBJECTID is new, or when its stored content differs from
+    the freshly fetched content. Features with a matching OBJECTID and identical
     attributes and geometry are dropped, where geometry counts as identical when the
     stored and fetched shapes describe the same area.
 

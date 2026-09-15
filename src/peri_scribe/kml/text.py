@@ -229,8 +229,8 @@ def score_explanation_for(
 
     Args:
         notes_by_identifier: Explanations keyed by score entry identifier.
-        notes_by_name: Explanations for score entries without identifiers, keyed
-            by name.
+        notes_by_name: Explanations for score entries without identifiers, keyed by
+            name.
         fire_identifiers: The fire's canonical identifier and aliases.
         name: The fire's name.
 

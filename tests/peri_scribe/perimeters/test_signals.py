@@ -122,11 +122,7 @@ def test_geometry_signal_requires_presence_inside_california_to_cross(
 def test_geometry_signal_handles_missing_union(
     boundaries: peri_scribe.perimeters.border_classification.Boundaries,
 ) -> None:
-    result = peri_scribe.perimeters.signals.geometry_signal(
-        None,
-        boundaries,
-        CONFIG,
-    )
+    result = peri_scribe.perimeters.signals.geometry_signal(None, boundaries, CONFIG)
     assert not result.inside
     assert not result.crosses
     assert not result.near
@@ -176,9 +172,7 @@ def test_geometry_signal_one_sided_outside_collection(
 def test_geometry_signal_one_sided_inside_point_only(
     boundaries: peri_scribe.perimeters.border_classification.Boundaries,
 ) -> None:
-    union = shapely.geometry.GeometryCollection([
-        shapely.geometry.Point(5.0, 5.0),
-    ])
+    union = shapely.geometry.GeometryCollection([shapely.geometry.Point(5.0, 5.0)])
     result = peri_scribe.perimeters.signals.geometry_signal(
         union,
         boundaries,
@@ -193,9 +187,7 @@ def test_geometry_signal_one_sided_inside_point_only(
 def test_geometry_signal_one_sided_outside_point_only(
     boundaries: peri_scribe.perimeters.border_classification.Boundaries,
 ) -> None:
-    union = shapely.geometry.GeometryCollection([
-        shapely.geometry.Point(200.0, 200.0),
-    ])
+    union = shapely.geometry.GeometryCollection([shapely.geometry.Point(200.0, 200.0)])
     result = peri_scribe.perimeters.signals.geometry_signal(
         union,
         boundaries,
@@ -236,11 +228,7 @@ def test_freshest_observation_prefers_later_observation_time() -> None:
         observed_at=datetime.datetime(2026, 8, 17, tzinfo=datetime.UTC),
     )
     assert (
-        peri_scribe.perimeters.signals.freshest_observation([
-            earlier,
-            later,
-        ])
-        is later
+        peri_scribe.perimeters.signals.freshest_observation([earlier, later]) is later
     )
 
 
@@ -258,9 +246,10 @@ def test_freshest_observation_breaks_time_ties_by_serial_number() -> None:
         serial_number=2,
     )
     assert (
-        peri_scribe.perimeters.signals.freshest_observation(
-            [older_snapshot, newer_snapshot],
-        )
+        peri_scribe.perimeters.signals.freshest_observation([
+            older_snapshot,
+            newer_snapshot,
+        ])
         is newer_snapshot
     )
 
@@ -276,11 +265,7 @@ def test_freshest_observation_treats_missing_time_as_oldest() -> None:
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
     assert (
-        peri_scribe.perimeters.signals.freshest_observation([
-            untimed,
-            timed,
-        ])
-        is timed
+        peri_scribe.perimeters.signals.freshest_observation([untimed, timed]) is timed
     )
 
 
@@ -298,11 +283,7 @@ def test_are_contemporaneous_true_when_both_times_missing() -> None:
         tests.peri_scribe.perimeters.border_helpers.WFIGS_PERIMETER,
         shapely.geometry.Point(-120.0, 39.0),
     )
-    assert peri_scribe.perimeters.signals.are_contemporaneous(
-        left,
-        right,
-        CONFIG,
-    )
+    assert peri_scribe.perimeters.signals.are_contemporaneous(left, right, CONFIG)
 
 
 def test_are_contemporaneous_false_when_one_time_missing() -> None:
@@ -315,11 +296,7 @@ def test_are_contemporaneous_false_when_one_time_missing() -> None:
         tests.peri_scribe.perimeters.border_helpers.WFIGS_PERIMETER,
         shapely.geometry.Point(-120.0, 39.0),
     )
-    assert not peri_scribe.perimeters.signals.are_contemporaneous(
-        left,
-        right,
-        CONFIG,
-    )
+    assert not peri_scribe.perimeters.signals.are_contemporaneous(left, right, CONFIG)
 
 
 def test_are_contemporaneous_true_within_tolerance() -> None:
@@ -333,11 +310,7 @@ def test_are_contemporaneous_true_within_tolerance() -> None:
         shapely.geometry.Point(-120.0, 39.0),
         observed_at=datetime.datetime(2026, 8, 13, 12, 0, tzinfo=datetime.UTC),
     )
-    assert peri_scribe.perimeters.signals.are_contemporaneous(
-        left,
-        right,
-        CONFIG,
-    )
+    assert peri_scribe.perimeters.signals.are_contemporaneous(left, right, CONFIG)
 
 
 def test_are_contemporaneous_false_beyond_tolerance() -> None:
@@ -351,11 +324,7 @@ def test_are_contemporaneous_false_beyond_tolerance() -> None:
         shapely.geometry.Point(-120.0, 39.0),
         observed_at=datetime.datetime(2026, 8, 17, tzinfo=datetime.UTC),
     )
-    assert not peri_scribe.perimeters.signals.are_contemporaneous(
-        left,
-        right,
-        CONFIG,
-    )
+    assert not peri_scribe.perimeters.signals.are_contemporaneous(left, right, CONFIG)
 
 
 def test_extent_signal_returns_none_without_both_sources() -> None:
@@ -366,10 +335,7 @@ def test_extent_signal_returns_none_without_both_sources() -> None:
             observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
         ),
     ]
-    result = peri_scribe.perimeters.signals.extent_signal(
-        only_firis,
-        CONFIG,
-    )
+    result = peri_scribe.perimeters.signals.extent_signal(only_firis, CONFIG)
     assert result.wfigs_to_firis_area_ratio is None
     assert not result.disagrees
 
@@ -385,10 +351,7 @@ def test_extent_signal_skips_non_contemporaneous_perimeters() -> None:
         shapely.geometry.box(-120.5, 39.0, -119.0, 39.2),
         observed_at=datetime.datetime(2026, 8, 17, tzinfo=datetime.UTC),
     )
-    result = peri_scribe.perimeters.signals.extent_signal(
-        [firis, wfigs],
-        CONFIG,
-    )
+    result = peri_scribe.perimeters.signals.extent_signal([firis, wfigs], CONFIG)
     assert result.wfigs_to_firis_area_ratio is None
     assert not result.disagrees
 
@@ -404,10 +367,7 @@ def test_extent_signal_disagrees_when_wfigs_is_larger() -> None:
         shapely.geometry.box(-120.5, 39.0, -118.5, 39.2),
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
-    result = peri_scribe.perimeters.signals.extent_signal(
-        [firis, wfigs],
-        CONFIG,
-    )
+    result = peri_scribe.perimeters.signals.extent_signal([firis, wfigs], CONFIG)
     assert result.disagrees
     assert result.wfigs_to_firis_area_ratio is not None
     assert result.wfigs_to_firis_area_ratio > CONFIG.extent_ratio_threshold
@@ -424,10 +384,7 @@ def test_extent_signal_disagrees_when_symmetric_difference_is_large() -> None:
         shapely.geometry.box(-120.0, 40.0, -119.5, 40.102),
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
-    result = peri_scribe.perimeters.signals.extent_signal(
-        [firis, wfigs],
-        CONFIG,
-    )
+    result = peri_scribe.perimeters.signals.extent_signal([firis, wfigs], CONFIG)
     assert result.disagrees
 
 
@@ -443,10 +400,7 @@ def test_extent_signal_agrees_when_perimeters_match() -> None:
         geometry,
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
-    result = peri_scribe.perimeters.signals.extent_signal(
-        [firis, wfigs],
-        CONFIG,
-    )
+    result = peri_scribe.perimeters.signals.extent_signal([firis, wfigs], CONFIG)
     assert not result.disagrees
     assert result.wfigs_to_firis_area_ratio == pytest.approx(1.0)
 
@@ -462,43 +416,32 @@ def test_extent_signal_ignores_zero_area_firis_perimeter() -> None:
         shapely.geometry.box(-120.5, 39.0, -120.0, 39.1),
         observed_at=datetime.datetime(2026, 8, 13, tzinfo=datetime.UTC),
     )
-    result = peri_scribe.perimeters.signals.extent_signal(
-        [firis, wfigs],
-        CONFIG,
-    )
+    result = peri_scribe.perimeters.signals.extent_signal([firis, wfigs], CONFIG)
     assert result.wfigs_to_firis_area_ratio is None
     assert not result.disagrees
 
 
 def test_unit_state_code_is_out_of_california_detects_nevada() -> None:
-    assert peri_scribe.perimeters.signals.unit_state_code_is_out_of_california(
-        "nvccd",
-    )
+    assert peri_scribe.perimeters.signals.unit_state_code_is_out_of_california("nvccd")
 
 
 def test_unit_state_code_is_out_of_california_accepts_california() -> None:
     assert (
-        peri_scribe.perimeters.signals.unit_state_code_is_out_of_california(
-            "cahvt",
-        )
+        peri_scribe.perimeters.signals.unit_state_code_is_out_of_california("cahvt")
         is False
     )
 
 
 def test_unit_state_code_is_out_of_state_ignores_non_state_codes() -> None:
     assert (
-        peri_scribe.perimeters.signals.unit_state_code_is_out_of_california(
-            "lpf",
-        )
+        peri_scribe.perimeters.signals.unit_state_code_is_out_of_california("lpf")
         is False
     )
 
 
 def test_unit_state_code_is_out_of_state_ignores_short_tokens() -> None:
     assert (
-        peri_scribe.perimeters.signals.unit_state_code_is_out_of_california(
-            "c",
-        )
+        peri_scribe.perimeters.signals.unit_state_code_is_out_of_california("c")
         is False
     )
 
@@ -553,9 +496,7 @@ def test_identifier_signal_ignores_california_point_of_origin() -> None:
             point_of_origin_fips="06035",
         ),
     ]
-    assert not peri_scribe.perimeters.signals.identifier_signal(
-        observations,
-    )
+    assert not peri_scribe.perimeters.signals.identifier_signal(observations)
 
 
 def test_identifier_signal_detects_non_california_fips() -> None:

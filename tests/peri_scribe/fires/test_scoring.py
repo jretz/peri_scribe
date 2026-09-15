@@ -101,9 +101,7 @@ def test_complexity_level_returns_none_for_missing() -> None:
 
 def test_fire_importance_points_returns_zero_for_empty() -> None:
     assert (
-        peri_scribe.fires.scoring.fire_importance_points(
-            tests.factories.empty_frame(),
-        )
+        peri_scribe.fires.scoring.fire_importance_points(tests.factories.empty_frame())
         == 0
     )
 
@@ -112,36 +110,30 @@ def test_fire_importance_points_uses_latest_level() -> None:
     frame = tests.peri_scribe.fires.fire_helpers.point_frame(
         [
             {
-                "source_attributes": json.dumps(
-                    {"IncidentComplexityLevel": "Type 1 Incident"},
-                ),
+                "source_attributes": json.dumps({
+                    "IncidentComplexityLevel": "Type 1 Incident",
+                }),
             },
             {
-                "source_attributes": json.dumps(
-                    {"IncidentComplexityLevel": "Type 3 Incident"},
-                ),
+                "source_attributes": json.dumps({
+                    "IncidentComplexityLevel": "Type 3 Incident",
+                }),
             },
         ],
         [tests.factories.point(0, 0), tests.factories.point(1, 1)],
     )
-    assert peri_scribe.fires.scoring.fire_importance_points(
-        frame,
-    ) == pytest.approx(1)
+    assert peri_scribe.fires.scoring.fire_importance_points(frame) == pytest.approx(1)
 
 
 def test_fire_importance_points_returns_zero_when_latest_row_has_no_level() -> None:
     frame = tests.peri_scribe.fires.fire_helpers.point_frame(
         [
             {
-                "source_attributes": json.dumps(
-                    {"IncidentComplexityLevel": "Type 1 Incident"},
-                ),
+                "source_attributes": json.dumps({
+                    "IncidentComplexityLevel": "Type 1 Incident",
+                }),
             },
-            {
-                "source_attributes": json.dumps(
-                    {"IncidentComplexityLevel": None},
-                ),
-            },
+            {"source_attributes": json.dumps({"IncidentComplexityLevel": None})},
         ],
         [tests.factories.point(0, 0), tests.factories.point(1, 1)],
     )
@@ -150,10 +142,7 @@ def test_fire_importance_points_returns_zero_when_latest_row_has_no_level() -> N
 
 def test_fire_importance_points_returns_zero_without_any_level() -> None:
     frame = tests.peri_scribe.fires.fire_helpers.point_frame(
-        [
-            {"source_attributes": json.dumps({})},
-            {"source_attributes": json.dumps({})},
-        ],
+        [{"source_attributes": json.dumps({})}, {"source_attributes": json.dumps({})}],
         [tests.factories.point(0, 0), tests.factories.point(1, 1)],
     )
     assert peri_scribe.fires.scoring.fire_importance_points(frame) == 0
@@ -163,14 +152,14 @@ def test_fire_is_type_one_incident_marks_latest_type_one_level() -> None:
     frame = tests.peri_scribe.fires.fire_helpers.point_frame(
         [
             {
-                "source_attributes": json.dumps(
-                    {"IncidentComplexityLevel": "Type 2 Incident"},
-                ),
+                "source_attributes": json.dumps({
+                    "IncidentComplexityLevel": "Type 2 Incident",
+                }),
             },
             {
-                "source_attributes": json.dumps(
-                    {"IncidentComplexityLevel": "Type 1 Incident"},
-                ),
+                "source_attributes": json.dumps({
+                    "IncidentComplexityLevel": "Type 1 Incident",
+                }),
             },
         ],
         [tests.factories.point(0, 0), tests.factories.point(1, 1)],
@@ -182,14 +171,14 @@ def test_fire_is_type_one_incident_excludes_downgraded_fire() -> None:
     frame = tests.peri_scribe.fires.fire_helpers.point_frame(
         [
             {
-                "source_attributes": json.dumps(
-                    {"IncidentComplexityLevel": "Type 1 Incident"},
-                ),
+                "source_attributes": json.dumps({
+                    "IncidentComplexityLevel": "Type 1 Incident",
+                }),
             },
             {
-                "source_attributes": json.dumps(
-                    {"IncidentComplexityLevel": "Type 2 Incident"},
-                ),
+                "source_attributes": json.dumps({
+                    "IncidentComplexityLevel": "Type 2 Incident",
+                }),
             },
         ],
         [tests.factories.point(0, 0), tests.factories.point(1, 1)],
@@ -201,15 +190,11 @@ def test_fire_is_type_one_incident_excludes_fire_without_latest_level() -> None:
     frame = tests.peri_scribe.fires.fire_helpers.point_frame(
         [
             {
-                "source_attributes": json.dumps(
-                    {"IncidentComplexityLevel": "Type 1 Incident"},
-                ),
+                "source_attributes": json.dumps({
+                    "IncidentComplexityLevel": "Type 1 Incident",
+                }),
             },
-            {
-                "source_attributes": json.dumps(
-                    {"IncidentComplexityLevel": None},
-                ),
-            },
+            {"source_attributes": json.dumps({"IncidentComplexityLevel": None})},
         ],
         [tests.factories.point(0, 0), tests.factories.point(1, 1)],
     )
@@ -220,14 +205,14 @@ def test_fire_is_type_one_incident_rejects_lower_levels() -> None:
     frame = tests.peri_scribe.fires.fire_helpers.point_frame(
         [
             {
-                "source_attributes": json.dumps(
-                    {"IncidentComplexityLevel": "Type 2 Incident"},
-                ),
+                "source_attributes": json.dumps({
+                    "IncidentComplexityLevel": "Type 2 Incident",
+                }),
             },
             {
-                "source_attributes": json.dumps(
-                    {"IncidentComplexityLevel": "Type 4 Incident"},
-                ),
+                "source_attributes": json.dumps({
+                    "IncidentComplexityLevel": "Type 4 Incident",
+                }),
             },
         ],
         [tests.factories.point(0, 0), tests.factories.point(1, 1)],
@@ -281,9 +266,9 @@ def test_fire_score_for_combines_all_signals() -> None:
             {
                 "fire_name": "Bug",
                 "fire_identifier": "2026-a",
-                "source_attributes": json.dumps(
-                    {"IncidentComplexityLevel": "Type 2 Incident"},
-                ),
+                "source_attributes": json.dumps({
+                    "IncidentComplexityLevel": "Type 2 Incident",
+                }),
             },
         ],
         [tests.factories.point(0, 0)],
@@ -472,17 +457,11 @@ def test_signal_description_returns_none_for_unknown_tier() -> None:
 
 def test_tier_description_phrases_the_threshold() -> None:
     assert (
-        peri_scribe.fires.scoring.SizeTier(
-            threshold=100_000.0,
-            score=5,
-        ).description
+        peri_scribe.fires.scoring.SizeTier(threshold=100_000.0, score=5).description
         == "over 100,000 acres"
     )
     assert (
-        peri_scribe.fires.scoring.GrowthTier(
-            threshold=50_000.0,
-            score=4,
-        ).description
+        peri_scribe.fires.scoring.GrowthTier(threshold=50_000.0, score=4).description
         == "a single growth step over 50,000 acres"
     )
     assert (

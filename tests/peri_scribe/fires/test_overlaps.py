@@ -16,9 +16,7 @@ if typing.TYPE_CHECKING:
     import pytest
 
 
-def test_overlapping_fire_indices_detects_overlap(
-    tmp_path: pathlib.Path,
-) -> None:
+def test_overlapping_fire_indices_detects_overlap(tmp_path: pathlib.Path) -> None:
     zones = tests.factories.geo_frame(
         {"name": ["zone", "far"]},
         [tests.factories.square(2.0), shapely.geometry.box(100.0, 100.0, 101.0, 101.0)],
@@ -67,15 +65,17 @@ def test_overlapping_fire_indices_returns_empty_without_geometry() -> None:
     )
 
 
-def test_overlapping_fire_indices_reads_z_geometries(
-    tmp_path: pathlib.Path,
-) -> None:
+def test_overlapping_fire_indices_reads_z_geometries(tmp_path: pathlib.Path) -> None:
     zones = tests.factories.geo_frame(
         {"name": ["zone"]},
         [
-            shapely.geometry.Polygon(
-                [(0, 0, 0), (2, 0, 0), (2, 2, 0), (0, 2, 0), (0, 0, 0)],
-            ),
+            shapely.geometry.Polygon([
+                (0, 0, 0),
+                (2, 0, 0),
+                (2, 2, 0),
+                (0, 2, 0),
+                (0, 0, 0),
+            ]),
         ],
     )
     path = tmp_path / "zones.gpkg"

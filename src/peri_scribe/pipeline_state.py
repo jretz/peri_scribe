@@ -18,6 +18,8 @@ DERIVED_STAGES: tuple[DerivedStage, ...] = ("geography", "score", "kmz", "report
 
 
 class PendingRun(pydantic.BaseModel):
+    """Validated recovery requirements for an unfinished pipeline run."""
+
     model_config = pydantic.ConfigDict(extra="forbid")
 
     version: typing.Literal[1] = 1
@@ -50,7 +52,7 @@ def lock_path(year_directory: pathlib.Path) -> pathlib.Path:
 
 
 def read_state(year_directory: pathlib.Path) -> PendingRun:
-    """An invalid recovery marker requires a fresh rebuild rather than a skip.
+    """Require a fresh rebuild when the recovery marker is invalid.
 
     Args:
         year_directory: The year directory whose pending work should be read.
@@ -64,10 +66,7 @@ def read_state(year_directory: pathlib.Path) -> PendingRun:
     except FileNotFoundError:
         return PendingRun()
     except ValueError as error:
-        logger.warning(
-            "Invalid run state; requiring full rebuild",
-            error=str(error),
-        )
+        logger.warning("Invalid run state; requiring full rebuild", error=str(error))
     else:
         expected = tuple(stage for stage in DERIVED_STAGES if stage in state.remaining)
         if expected == state.remaining:
@@ -96,7 +95,7 @@ def require_stages(
     *,
     unconditional: bool = False,
 ) -> None:
-    """New inputs invalidate downstream output even if an earlier attempt failed.
+    """Invalidate downstream output when new inputs arrive after any attempt.
 
     Args:
         year_directory: The year directory whose outputs need rebuilding.

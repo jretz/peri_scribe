@@ -19,130 +19,8 @@ import peri_scribe.sources.external_sources
 import peri_scribe.sources.feeds
 import peri_scribe.units
 import tests.factories
+import tests.peri_scribe.publication_helpers
 from peri_scribe.units import units
-
-
-NOW = datetime.datetime(2026, 9, 13, tzinfo=datetime.UTC)
-STAMP = peri_scribe.publication.FileStamp(size=1, modified_nanoseconds=1)
-THRESHOLD = peri_scribe.publication.Threshold(
-    area=25.0 * units.acres,
-    interval=datetime.timedelta(minutes=5),
-)
-
-
-def mapping(
-    acres: float | None,
-    *,
-    serial: int = 1,
-    identifiers: tuple[str, ...] = ("a",),
-    captured_at: datetime.datetime = NOW,
-) -> peri_scribe.publication.Mapping:
-    """Construct source observations with deliberately distinct capture and map dates.
-
-    Args:
-        acres: The raw mapped area in acres, or None for an unmeasurable mapping.
-        serial: The snapshot serial used to distinguish and order observations.
-        identifiers: The fire identifiers associated with the mapping.
-        captured_at: The local first-capture time used for provenance.
-
-    Returns:
-        A raw source measurement suitable for persisted checkpoints.
-    """
-    return peri_scribe.publication.Mapping(
-        source_file=f"snapshot-{serial}",
-        object_id=serial,
-        identifiers=identifiers,
-        name="Example",
-        observed_at=NOW + datetime.timedelta(minutes=serial),
-        captured_at=captured_at,
-        serial=serial,
-        shape=str(acres),
-        area_square_meters=(acres * units.acres).m_as("meters ** 2")
-        if acres is not None
-        else None,
-    )
-
-
-def collection(
-    *mappings: peri_scribe.publication.Mapping,
-) -> peri_scribe.publication.Collection:
-    """Retain each downloaded snapshot independently of publication.
-
-    Args:
-        *mappings: Source observations to include in the downloaded inventory.
-
-    Returns:
-        A complete source inventory containing these observations.
-    """
-    return peri_scribe.publication.Collection(
-        files={item.source_file: STAMP for item in mappings},
-        mappings={item.source_file: (item,) for item in mappings},
-    )
-
-
-def publication(
-    baseline: peri_scribe.publication.Mapping | None,
-) -> peri_scribe.publication.Publication:
-    """Publication knows which source files were actually processed.
-
-    Args:
-        baseline: The previously displayed mapping, or None for an excluded fire.
-
-    Returns:
-        The completed baseline, including the zero baseline for excluded fires.
-    """
-    return peri_scribe.publication.Publication(
-        created_at=NOW,
-        output=STAMP,
-        files={} if baseline is None else {baseline.source_file: STAMP},
-        fires={
-            "id:a": peri_scribe.publication.PublishedFire(
-                identifiers=("a", "alias"),
-                name="Example",
-                mapping=baseline,
-            ),
-        },
-    )
-
-
-def write_perimeter_snapshot(
-    sources_directory: pathlib.Path,
-    geometry: shapely.Geometry | None,
-    attributes: dict[str, object],
-    *,
-    serial: int = 1,
-) -> pathlib.Path:
-    """Exercise collection with source attributes preserved through real storage.
-
-    Args:
-        sources_directory: The isolated directory containing the source snapshots.
-        geometry: The source perimeter in WGS84, or None when unavailable.
-        attributes: Reported sizes and other attributes to include in the source row.
-        serial: The snapshot number used to order observations.
-
-    Returns:
-        The stored perimeter snapshot path.
-    """
-    feed = peri_scribe.sources.feeds.WFIGS_PERIMETERS_FEED
-    values = {
-        "attr_IncidentName": "Example",
-        "attr_ActiveFireCandidate": 1,
-        "poly_IRWINID": "{A}",
-        "attr_UniqueFireIdentifier": None,
-        "attr_POOState": None,
-        "attr_POOFips": None,
-        "poly_DateCurrent": NOW + datetime.timedelta(minutes=serial),
-        "OBJECTID": 123,
-        **attributes,
-    }
-    frame = tests.factories.geo_frame(
-        {name: [value] for name, value in values.items()},
-        [geometry],
-    )
-    path = sources_directory / feed.name / f"000___/{serial:06d},lastEdit=1.gpkg"
-    path.parent.mkdir(parents=True, exist_ok=True)
-    frame.to_file(path, layer=feed.name, driver="GPKG")
-    return path
 
 
 @pytest.mark.parametrize(
@@ -154,88 +32,134 @@ def test_gate_includes_threshold_in_both_directions(
     *,
     proceed: bool,
 ) -> None:
-    baseline = mapping(100)
+    baseline = tests.peri_scribe.publication_helpers.mapping(100)
     decision = peri_scribe.publication.decide(
-        collection(baseline, mapping(area, serial=2)),
-        publication(baseline),
-        THRESHOLD,
-        NOW,
+        tests.peri_scribe.publication_helpers.collection(
+            baseline,
+            tests.peri_scribe.publication_helpers.mapping(area, serial=2),
+        ),
+        tests.peri_scribe.publication_helpers.publication(baseline),
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+        tests.peri_scribe.publication_helpers.NOW,
     )
     assert decision.proceed is proceed
     assert decision.change.m_as("acres") == pytest.approx(area - 100)
 
 
 def test_small_skipped_changes_accumulate_against_published_area() -> None:
-    baseline = mapping(100)
-    published = publication(baseline)
-    saved = collection(baseline, mapping(115, serial=2))
-    assert not peri_scribe.publication.decide(saved, published, THRESHOLD, NOW).proceed
-    saved = collection(baseline, mapping(115, serial=2), mapping(130, serial=3))
-    decision = peri_scribe.publication.decide(saved, published, THRESHOLD, NOW)
+    baseline = tests.peri_scribe.publication_helpers.mapping(100)
+    published = tests.peri_scribe.publication_helpers.publication(baseline)
+    saved = tests.peri_scribe.publication_helpers.collection(
+        baseline,
+        tests.peri_scribe.publication_helpers.mapping(115, serial=2),
+    )
+    assert not peri_scribe.publication.decide(
+        saved,
+        published,
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+        tests.peri_scribe.publication_helpers.NOW,
+    ).proceed
+    saved = tests.peri_scribe.publication_helpers.collection(
+        baseline,
+        tests.peri_scribe.publication_helpers.mapping(115, serial=2),
+        tests.peri_scribe.publication_helpers.mapping(130, serial=3),
+    )
+    decision = peri_scribe.publication.decide(
+        saved,
+        published,
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+        tests.peri_scribe.publication_helpers.NOW,
+    )
     assert decision.proceed
     assert decision.change.m_as("acres") == pytest.approx(30)
     assert published.fires["id:a"].mapping == baseline
 
 
 def test_latest_correction_replaces_an_unpublished_spike() -> None:
-    baseline = mapping(100)
-    saved = collection(baseline, mapping(600, serial=2), mapping(101, serial=3))
+    baseline = tests.peri_scribe.publication_helpers.mapping(100)
+    saved = tests.peri_scribe.publication_helpers.collection(
+        baseline,
+        tests.peri_scribe.publication_helpers.mapping(600, serial=2),
+        tests.peri_scribe.publication_helpers.mapping(101, serial=3),
+    )
     decision = peri_scribe.publication.decide(
         saved,
-        publication(baseline),
-        THRESHOLD,
-        NOW,
+        tests.peri_scribe.publication_helpers.publication(baseline),
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+        tests.peri_scribe.publication_helpers.NOW,
     )
     assert not decision.proceed
     assert decision.change.m_as("acres") == pytest.approx(1)
 
 
 def test_late_old_mapping_does_not_displace_newer_published_map() -> None:
-    baseline = mapping(100, serial=3)
-    saved = collection(baseline, mapping(1, serial=2))
+    baseline = tests.peri_scribe.publication_helpers.mapping(100, serial=3)
+    saved = tests.peri_scribe.publication_helpers.collection(
+        baseline,
+        tests.peri_scribe.publication_helpers.mapping(1, serial=2),
+    )
     assert not peri_scribe.publication.decide(
         saved,
-        publication(baseline),
-        THRESHOLD,
-        NOW,
+        tests.peri_scribe.publication_helpers.publication(baseline),
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+        tests.peri_scribe.publication_helpers.NOW,
     ).proceed
 
 
-@pytest.mark.parametrize("baseline", [None, mapping(100)])
+@pytest.mark.parametrize(
+    "baseline",
+    [None, tests.peri_scribe.publication_helpers.mapping(100)],
+)
 def test_new_unmapped_fire_compares_with_zero(
     baseline: peri_scribe.publication.Mapping | None,
 ) -> None:
     candidates = peri_scribe.publication.candidate_fires(
-        [mapping(25, identifiers=("new",))],
-        publication(baseline),
+        [tests.peri_scribe.publication_helpers.mapping(25, identifiers=("new",))],
+        tests.peri_scribe.publication_helpers.publication(baseline),
     )
-    assert peri_scribe.publication.mapping_decision(candidates, THRESHOLD).proceed
+    assert peri_scribe.publication.mapping_decision(
+        candidates,
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+    ).proceed
 
 
 def test_excluded_fire_has_zero_published_area() -> None:
     candidates = peri_scribe.publication.candidate_fires(
-        [mapping(25)],
-        publication(None),
+        [tests.peri_scribe.publication_helpers.mapping(25)],
+        tests.peri_scribe.publication_helpers.publication(None),
     )
-    assert peri_scribe.publication.mapping_decision(candidates, THRESHOLD).proceed
+    assert peri_scribe.publication.mapping_decision(
+        candidates,
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+    ).proceed
 
 
 def test_gate_uses_aliases_and_is_independent_of_snapshot_iteration_order() -> None:
-    baseline = mapping(100)
+    baseline = tests.peri_scribe.publication_helpers.mapping(100)
     candidates = peri_scribe.publication.candidate_fires(
-        [mapping(130, serial=3, identifiers=("alias",)), mapping(110, serial=2)],
-        publication(baseline),
+        [
+            tests.peri_scribe.publication_helpers.mapping(
+                130,
+                serial=3,
+                identifiers=("alias",),
+            ),
+            tests.peri_scribe.publication_helpers.mapping(110, serial=2),
+        ],
+        tests.peri_scribe.publication_helpers.publication(baseline),
     )
     assert candidates is not None
     assert set(candidates) == {"id:a"}
-    assert peri_scribe.publication.mapping_decision(candidates, THRESHOLD).change.m_as(
-        "acres",
-    ) == pytest.approx(30)
+    assert peri_scribe.publication.mapping_decision(
+        candidates,
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+    ).change.m_as("acres") == pytest.approx(30)
 
 
 @pytest.mark.parametrize("identifiers", [(), ("a", "b")])
 def test_ambiguous_identity_requires_build(identifiers: tuple[str, ...]) -> None:
-    published = publication(mapping(100))
+    published = tests.peri_scribe.publication_helpers.publication(
+        tests.peri_scribe.publication_helpers.mapping(100),
+    )
     published = published.model_copy(
         update={
             "fires": {
@@ -249,10 +173,13 @@ def test_ambiguous_identity_requires_build(identifiers: tuple[str, ...]) -> None
         },
     )
     candidates = peri_scribe.publication.candidate_fires(
-        [mapping(1, identifiers=identifiers)],
+        [tests.peri_scribe.publication_helpers.mapping(1, identifiers=identifiers)],
         published,
     )
-    decision = peri_scribe.publication.mapping_decision(candidates, THRESHOLD)
+    decision = peri_scribe.publication.mapping_decision(
+        candidates,
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+    )
     assert decision.proceed
     assert decision.reason == peri_scribe.publication.Reason.UNCERTAIN_MAPPING
 
@@ -262,12 +189,15 @@ def test_unmeasurable_geometry_requires_build(
     before: float | None,
     after: float | None,
 ) -> None:
-    baseline = mapping(before)
+    baseline = tests.peri_scribe.publication_helpers.mapping(before)
     decision = peri_scribe.publication.decide(
-        collection(baseline, mapping(after, serial=2)),
-        publication(baseline),
-        THRESHOLD,
-        NOW,
+        tests.peri_scribe.publication_helpers.collection(
+            baseline,
+            tests.peri_scribe.publication_helpers.mapping(after, serial=2),
+        ),
+        tests.peri_scribe.publication_helpers.publication(baseline),
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+        tests.peri_scribe.publication_helpers.NOW,
     )
     assert decision.proceed
     assert decision.reason == peri_scribe.publication.Reason.UNCERTAIN_MAPPING
@@ -275,31 +205,36 @@ def test_unmeasurable_geometry_requires_build(
 
 @pytest.mark.parametrize("seconds", [299, 300, 301])
 def test_timer_fires_on_saved_updates_even_without_new_downloads(seconds: int) -> None:
-    baseline = mapping(100)
-    saved = collection(baseline, mapping(100, serial=2))
+    baseline = tests.peri_scribe.publication_helpers.mapping(100)
+    saved = tests.peri_scribe.publication_helpers.collection(
+        baseline,
+        tests.peri_scribe.publication_helpers.mapping(100, serial=2),
+    )
     decision = peri_scribe.publication.decide(
         saved,
-        publication(baseline),
-        THRESHOLD,
-        NOW + datetime.timedelta(seconds=seconds),
+        tests.peri_scribe.publication_helpers.publication(baseline),
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+        tests.peri_scribe.publication_helpers.NOW + datetime.timedelta(seconds=seconds),
     )
     assert decision.proceed is (
-        datetime.timedelta(seconds=seconds) >= THRESHOLD.interval
+        datetime.timedelta(seconds=seconds)
+        >= tests.peri_scribe.publication_helpers.THRESHOLD.interval
     )
     assert decision.reason == (
         peri_scribe.publication.Reason.TIMER
-        if datetime.timedelta(seconds=seconds) >= THRESHOLD.interval
+        if datetime.timedelta(seconds=seconds)
+        >= tests.peri_scribe.publication_helpers.THRESHOLD.interval
         else peri_scribe.publication.Reason.BELOW_THRESHOLD
     )
 
 
 def test_unchanged_inputs_stay_skipped_after_timer_expires() -> None:
-    baseline = mapping(100)
+    baseline = tests.peri_scribe.publication_helpers.mapping(100)
     decision = peri_scribe.publication.decide(
-        collection(baseline),
-        publication(baseline),
-        THRESHOLD,
-        NOW + datetime.timedelta(hours=6),
+        tests.peri_scribe.publication_helpers.collection(baseline),
+        tests.peri_scribe.publication_helpers.publication(baseline),
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+        tests.peri_scribe.publication_helpers.NOW + datetime.timedelta(hours=6),
     )
     assert decision.reason == peri_scribe.publication.Reason.NO_CHANGES
     assert not decision.proceed
@@ -307,20 +242,21 @@ def test_unchanged_inputs_stay_skipped_after_timer_expires() -> None:
 
 def test_incident_updates_wait_for_timer() -> None:
     saved = peri_scribe.publication.Collection(
-        files={"points": STAMP},
+        files={"points": tests.peri_scribe.publication_helpers.STAMP},
         mappings={"points": ()},
     )
     assert not peri_scribe.publication.decide(
         saved,
-        publication(None),
-        THRESHOLD,
-        NOW,
+        tests.peri_scribe.publication_helpers.publication(None),
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+        tests.peri_scribe.publication_helpers.NOW,
     ).proceed
     assert peri_scribe.publication.decide(
         saved,
-        publication(None),
-        THRESHOLD,
-        NOW + THRESHOLD.interval,
+        tests.peri_scribe.publication_helpers.publication(None),
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+        tests.peri_scribe.publication_helpers.NOW
+        + tests.peri_scribe.publication_helpers.THRESHOLD.interval,
     ).proceed
 
 
@@ -335,15 +271,19 @@ def test_incident_updates_wait_for_timer() -> None:
 def test_missing_checkpoint_or_changed_acknowledged_inputs_require_build(
     reason: peri_scribe.publication.Reason,
 ) -> None:
-    published = publication(mapping(100))
+    published = tests.peri_scribe.publication_helpers.publication(
+        tests.peri_scribe.publication_helpers.mapping(100),
+    )
     saved = peri_scribe.publication.Collection()
     if reason == peri_scribe.publication.Reason.EVACUATIONS:
-        saved = saved.model_copy(update={"evacuations": STAMP})
+        saved = saved.model_copy(
+            update={"evacuations": tests.peri_scribe.publication_helpers.STAMP},
+        )
     decision = peri_scribe.publication.decide(
         saved,
         None if reason == peri_scribe.publication.Reason.NO_PUBLICATION else published,
-        THRESHOLD,
-        NOW,
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+        tests.peri_scribe.publication_helpers.NOW,
     )
     assert decision.proceed
     assert decision.reason == reason
@@ -354,22 +294,22 @@ def test_checkpoint_requires_matching_completed_output(tmp_path: pathlib.Path) -
     assert peri_scribe.publication.read_publication(tmp_path, output) is None
     peri_scribe.publication.write_state(
         peri_scribe.publication.publication_path(tmp_path),
-        publication(None),
+        tests.peri_scribe.publication_helpers.publication(None),
     )
     assert peri_scribe.publication.read_publication(tmp_path, output) is None
     output.write_bytes(b"complete")
     assert peri_scribe.publication.read_publication(tmp_path, output) is None
-    baseline = mapping(100)
-    with time_machine.travel(NOW, tick=False):
+    baseline = tests.peri_scribe.publication_helpers.mapping(100)
+    with time_machine.travel(tests.peri_scribe.publication_helpers.NOW, tick=False):
         peri_scribe.publication.commit(
             tmp_path,
             output,
-            collection(baseline),
-            publication(baseline).fires,
+            tests.peri_scribe.publication_helpers.collection(baseline),
+            tests.peri_scribe.publication_helpers.publication(baseline).fires,
         )
     loaded = peri_scribe.publication.read_publication(tmp_path, output)
     assert loaded is not None
-    assert loaded.created_at == NOW
+    assert loaded.created_at == tests.peri_scribe.publication_helpers.NOW
     assert loaded.fires["id:a"].mapping == baseline
     output.write_bytes(b"manually regenerated")
     assert peri_scribe.publication.read_publication(tmp_path, output) is None
@@ -396,7 +336,10 @@ def test_failed_checkpoint_replacement_preserves_previous_state(
         tests.factories.raising_stub(OSError("disk failure")),
     )
     with pytest.raises(OSError, match="disk failure"):
-        peri_scribe.publication.write_state(state, collection())
+        peri_scribe.publication.write_state(
+            state,
+            tests.peri_scribe.publication_helpers.collection(),
+        )
     assert state.read_bytes() == b"previous"
     assert list(tmp_path.iterdir()) == [state]
 
@@ -439,14 +382,33 @@ def test_nonfinite_area_cannot_authorize_skip(monkeypatch: pytest.MonkeyPatch) -
 def test_attribute_republication_keeps_first_capture_and_unknown_ids_do_not_merge() -> (
     None
 ):
-    first = mapping(100, captured_at=NOW - datetime.timedelta(hours=1))
-    second = mapping(100, serial=2, identifiers=("a", "alias"))
-    unknown = mapping(100, serial=3, identifiers=())
+    first = tests.peri_scribe.publication_helpers.mapping(
+        100,
+        captured_at=tests.peri_scribe.publication_helpers.NOW
+        - datetime.timedelta(hours=1),
+    )
+    second = tests.peri_scribe.publication_helpers.mapping(
+        100,
+        serial=2,
+        identifiers=("a", "alias"),
+    )
+    unknown = tests.peri_scribe.publication_helpers.mapping(
+        100,
+        serial=3,
+        identifiers=(),
+    )
     captures = peri_scribe.publication.first_captures(
-        collection(first, second, unknown).mappings,
+        tests.peri_scribe.publication_helpers.collection(
+            first,
+            second,
+            unknown,
+        ).mappings,
     )
     assert captures[second.source_file][0].captured_at == first.captured_at
-    assert captures[unknown.source_file][0].captured_at == NOW
+    assert (
+        captures[unknown.source_file][0].captured_at
+        == tests.peri_scribe.publication_helpers.NOW
+    )
     undated = unknown.model_copy(update={"observed_at": None, "object_id": None})
     assert peri_scribe.publication.mapping_order(undated) == (
         peri_scribe.models.EARLIEST_DATETIME,
@@ -466,7 +428,10 @@ def test_snapshot_reader_reprojects_and_ignores_incident_rows(
             "attr_ActiveFireCandidate": [1, 1],
             "poly_IRWINID": ["{A}", None],
             "attr_UniqueFireIdentifier": ["Alias", None],
-            "poly_DateCurrent": [NOW, NOW],
+            "poly_DateCurrent": [
+                tests.peri_scribe.publication_helpers.NOW,
+                tests.peri_scribe.publication_helpers.NOW,
+            ],
             "attr_POOState": [None, None],
             "attr_POOFips": [None, None],
             "OBJECTID": [123, 124],
@@ -483,12 +448,16 @@ def test_snapshot_reader_reprojects_and_ignores_incident_rows(
         ],
     )
     path = tmp_path / feed.name / "000___/000001,lastEdit=1789257600000.gpkg"
-    (observed,) = peri_scribe.publication.snapshot_mappings(path, tmp_path, NOW)
+    (observed,) = peri_scribe.publication.snapshot_mappings(
+        path,
+        tmp_path,
+        tests.peri_scribe.publication_helpers.NOW,
+    )
     assert observed.identifiers == ("a", "alias")
     assert observed.object_id == frame.iloc[0]["OBJECTID"]
     assert observed.source_file == str(path.relative_to(tmp_path))
     assert observed.area is not None
-    assert observed.area > THRESHOLD.area
+    assert observed.area > tests.peri_scribe.publication_helpers.THRESHOLD.area
 
 
 @pytest.mark.parametrize(
@@ -505,12 +474,16 @@ def test_snapshot_mappings_classifies_collapse_without_discarding_measurements(
     tmp_path: pathlib.Path,
     column: str,
 ) -> None:
-    path = write_perimeter_snapshot(
+    path = tests.peri_scribe.publication_helpers.write_perimeter_snapshot(
         tmp_path,
         shapely.box(-121, 40, -120.9999, 40.0001),
         {column: 4000.0},
     )
-    (observed,) = peri_scribe.publication.snapshot_mappings(path, tmp_path, NOW)
+    (observed,) = peri_scribe.publication.snapshot_mappings(
+        path,
+        tmp_path,
+        tests.peri_scribe.publication_helpers.NOW,
+    )
     assert observed.collapsed
     assert observed.area is not None
     assert observed.area > 0 * units.acres
@@ -523,21 +496,27 @@ def test_decide_preserves_valid_area_changes_after_collapse_check(
     change: float,
 ) -> None:
     geometry = shapely.box(-121, 40, -120.99, 40.01)
-    path = write_perimeter_snapshot(
+    path = tests.peri_scribe.publication_helpers.write_perimeter_snapshot(
         tmp_path,
         geometry,
         {"poly_Acres_AutoCalc": peri_scribe.units.area(geometry).m_as("acres")},
         serial=2,
     )
-    (observed,) = peri_scribe.publication.snapshot_mappings(path, tmp_path, NOW)
+    (observed,) = peri_scribe.publication.snapshot_mappings(
+        path,
+        tmp_path,
+        tests.peri_scribe.publication_helpers.NOW,
+    )
     assert not observed.collapsed
     assert observed.area is not None
-    baseline = mapping(observed.area.m_as("acres") - change)
+    baseline = tests.peri_scribe.publication_helpers.mapping(
+        observed.area.m_as("acres") - change,
+    )
     decision = peri_scribe.publication.decide(
-        collection(baseline, observed),
-        publication(baseline),
-        THRESHOLD,
-        NOW,
+        tests.peri_scribe.publication_helpers.collection(baseline, observed),
+        tests.peri_scribe.publication_helpers.publication(baseline),
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+        tests.peri_scribe.publication_helpers.NOW,
     )
     assert decision.reason == peri_scribe.publication.Reason.AREA
     assert decision.change.m_as("acres") == pytest.approx(change)
@@ -551,8 +530,16 @@ def test_snapshot_mappings_keeps_unknown_geometry_distinct_from_collapse(
     tmp_path: pathlib.Path,
     geometry: shapely.Geometry | None,
 ) -> None:
-    path = write_perimeter_snapshot(tmp_path, geometry, {"attr_IncidentSize": 4000.0})
-    (observed,) = peri_scribe.publication.snapshot_mappings(path, tmp_path, NOW)
+    path = tests.peri_scribe.publication_helpers.write_perimeter_snapshot(
+        tmp_path,
+        geometry,
+        {"attr_IncidentSize": 4000.0},
+    )
+    (observed,) = peri_scribe.publication.snapshot_mappings(
+        path,
+        tmp_path,
+        tests.peri_scribe.publication_helpers.NOW,
+    )
     assert observed.area is None
     assert not observed.collapsed
 
@@ -561,18 +548,23 @@ def test_snapshot_mappings_keeps_unknown_geometry_distinct_from_collapse(
 def test_candidate_fires_uses_latest_acceptable_mapping(
     identifiers: tuple[str, ...],
 ) -> None:
-    baseline = mapping(100)
-    acceptable = mapping(140, serial=2)
-    collapsed = mapping(0.05, serial=3, identifiers=identifiers).model_copy(
-        update={"collapsed": True},
-    )
+    baseline = tests.peri_scribe.publication_helpers.mapping(100)
+    acceptable = tests.peri_scribe.publication_helpers.mapping(140, serial=2)
+    collapsed = tests.peri_scribe.publication_helpers.mapping(
+        0.05,
+        serial=3,
+        identifiers=identifiers,
+    ).model_copy(update={"collapsed": True})
     candidates = peri_scribe.publication.candidate_fires(
         [collapsed, acceptable],
-        publication(baseline),
+        tests.peri_scribe.publication_helpers.publication(baseline),
     )
     assert candidates is not None
     assert candidates["id:a"][0] == acceptable
-    decision = peri_scribe.publication.mapping_decision(candidates, THRESHOLD)
+    decision = peri_scribe.publication.mapping_decision(
+        candidates,
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+    )
     assert decision.reason == peri_scribe.publication.Reason.AREA
     assert decision.change.m_as("acres") == pytest.approx(40)
 
@@ -581,16 +573,24 @@ def test_candidate_fires_uses_latest_acceptable_mapping(
 def test_decide_collapsed_updates_retain_timer_and_evacuation_overrides(
     override: str,
 ) -> None:
-    baseline = mapping(4000)
-    collapsed = mapping(0.05, serial=2).model_copy(update={"collapsed": True})
-    saved = collection(baseline, collapsed)
+    baseline = tests.peri_scribe.publication_helpers.mapping(4000)
+    collapsed = tests.peri_scribe.publication_helpers.mapping(
+        0.05,
+        serial=2,
+    ).model_copy(update={"collapsed": True})
+    saved = tests.peri_scribe.publication_helpers.collection(baseline, collapsed)
     if override == "evacuations":
-        saved = saved.model_copy(update={"evacuations": STAMP})
+        saved = saved.model_copy(
+            update={"evacuations": tests.peri_scribe.publication_helpers.STAMP},
+        )
     decision = peri_scribe.publication.decide(
         saved,
-        publication(baseline),
-        THRESHOLD,
-        NOW + THRESHOLD.interval if override == "timer" else NOW,
+        tests.peri_scribe.publication_helpers.publication(baseline),
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+        tests.peri_scribe.publication_helpers.NOW
+        + tests.peri_scribe.publication_helpers.THRESHOLD.interval
+        if override == "timer"
+        else tests.peri_scribe.publication_helpers.NOW,
     )
     assert (
         decision.reason
@@ -607,7 +607,7 @@ def test_collect_refreshes_stale_cache_once_and_preserves_published_checkpoint(
     tmp_path: pathlib.Path,
 ) -> None:
     sources = tmp_path / "sources"
-    write_perimeter_snapshot(
+    tests.peri_scribe.publication_helpers.write_perimeter_snapshot(
         sources,
         shapely.box(-121, 40, -120.99, 40.01),
         {"attr_IncidentSize": 4000.0},
@@ -620,14 +620,14 @@ def test_collect_refreshes_stale_cache_once_and_preserves_published_checkpoint(
         tmp_path,
         output,
         initial,
-        publication(baseline).fires,
+        tests.peri_scribe.publication_helpers.publication(baseline).fires,
     )
     checkpoint_path = peri_scribe.publication.publication_path(tmp_path)
     checkpoint = json.loads(checkpoint_path.read_bytes())
     checkpoint["fires"]["id:a"]["mapping"].pop("collapsed")
     checkpoint_path.write_text(json.dumps(checkpoint))
     checkpoint_bytes = checkpoint_path.read_bytes()
-    collapsed_path = write_perimeter_snapshot(
+    collapsed_path = tests.peri_scribe.publication_helpers.write_perimeter_snapshot(
         sources,
         shapely.box(-121, 40, -120.9999, 40.0001),
         {"attr_IncidentSize": 4000.0},
@@ -655,7 +655,12 @@ def test_collect_refreshes_stale_cache_once_and_preserves_published_checkpoint(
     published = peri_scribe.publication.read_publication(tmp_path, output)
     assert published is not None
     assert published.fires["id:a"].mapping == baseline
-    decision = peri_scribe.publication.decide(refreshed, published, THRESHOLD, NOW)
+    decision = peri_scribe.publication.decide(
+        refreshed,
+        published,
+        tests.peri_scribe.publication_helpers.THRESHOLD,
+        tests.peri_scribe.publication_helpers.NOW,
+    )
     assert decision.reason == peri_scribe.publication.Reason.BELOW_THRESHOLD
     assert not decision.proceed
 
@@ -670,23 +675,9 @@ def test_collection_reuses_measurements_and_retains_skipped_snapshots(
     first.write_bytes(b"first")
     reads: list[pathlib.Path] = []
 
-    def measure(
-        path: pathlib.Path,
-        _sources: pathlib.Path,
-        captured: datetime.datetime,
-    ) -> tuple[peri_scribe.publication.Mapping, ...]:
-        """Record expensive reads while exercising real inventory and cache I/O.
-
-        Args:
-            path: The source snapshot whose measurement request is recorded.
-            _sources: The sources root accepted to match the reader's signature; unused.
-            captured: The actual capture time supplied by collection.
-
-        Returns:
-            A source observation with the actual collection timestamp.
-        """
-        reads.append(path)
-        return (mapping(100, captured_at=captured),)
+    measure = tests.peri_scribe.publication_helpers.make_snapshot_measurement_recorder(
+        reads=reads,
+    )
 
     monkeypatch.setattr(peri_scribe.publication, "snapshot_mappings", measure)
     initial = peri_scribe.publication.collect(tmp_path)
@@ -723,10 +714,14 @@ def test_collection_reuses_measurements_and_retains_skipped_snapshots(
 
 def test_published_baseline_uses_raw_source_for_latest_displayed_history() -> None:
     first, latest, excluded, unnamed = (
-        mapping(100),
-        mapping(130, serial=2),
-        mapping(10, serial=3, identifiers=("tiny",)),
-        mapping(40, serial=4, identifiers=()),
+        tests.peri_scribe.publication_helpers.mapping(100),
+        tests.peri_scribe.publication_helpers.mapping(130, serial=2),
+        tests.peri_scribe.publication_helpers.mapping(
+            10,
+            serial=3,
+            identifiers=("tiny",),
+        ),
+        tests.peri_scribe.publication_helpers.mapping(40, serial=4, identifiers=()),
     )
     rows = geopandas.GeoDataFrame({
         "fire_identifier": ["a", "a", "tiny", None],
@@ -754,7 +749,12 @@ def test_published_baseline_uses_raw_source_for_latest_displayed_history() -> No
         ],
     )
     fires = peri_scribe.publication.published_fires(
-        collection(first, latest, excluded, unnamed),
+        tests.peri_scribe.publication_helpers.collection(
+            first,
+            latest,
+            excluded,
+            unnamed,
+        ),
         rows,
         index,
     )
@@ -764,4 +764,8 @@ def test_published_baseline_uses_raw_source_for_latest_displayed_history() -> No
     assert fires["name:Unnamed"].mapping == unnamed
     assert fires["name:Unnamed"].identifiers == ()
     with pytest.raises(ValueError, match="Cannot identify published mapping source"):
-        peri_scribe.publication.published_fires(collection(), rows, index)
+        peri_scribe.publication.published_fires(
+            tests.peri_scribe.publication_helpers.collection(),
+            rows,
+            index,
+        )

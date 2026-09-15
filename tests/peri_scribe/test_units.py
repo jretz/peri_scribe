@@ -14,12 +14,8 @@ def test_area_measures_geometry() -> None:
 
 
 def test_area_measures_geodesically_across_latitudes() -> None:
-    equatorial = peri_scribe.units.area(
-        shapely.geometry.box(-0.5, -0.5, 0.5, 0.5),
-    )
-    northern = peri_scribe.units.area(
-        shapely.geometry.box(-0.5, 65.5, 0.5, 66.5),
-    )
+    equatorial = peri_scribe.units.area(shapely.geometry.box(-0.5, -0.5, 0.5, 0.5))
+    northern = peri_scribe.units.area(shapely.geometry.box(-0.5, 65.5, 0.5, 66.5))
     assert equatorial.m_as("acres") == pytest.approx(3_041_678, rel=0.01)
     assert northern.m_as("acres") == pytest.approx(1_251_021, rel=0.01)
     assert northern < equatorial
@@ -59,12 +55,10 @@ def test_exterior_perimeter_excludes_holes() -> None:
 
 
 def test_exterior_perimeter_sums_multipolygon_parts() -> None:
-    multi = shapely.geometry.MultiPolygon(
-        [
-            shapely.geometry.box(0.0, 0.0, 1.0, 1.0),
-            shapely.geometry.box(10.0, 0.0, 11.0, 1.0),
-        ],
-    )
+    multi = shapely.geometry.MultiPolygon([
+        shapely.geometry.box(0.0, 0.0, 1.0, 1.0),
+        shapely.geometry.box(10.0, 0.0, 11.0, 1.0),
+    ])
     single = shapely.geometry.box(0.0, 0.0, 1.0, 1.0)
     single_perimeter = peri_scribe.units.exterior_perimeter(single)
     multi_perimeter = peri_scribe.units.exterior_perimeter(multi)
@@ -78,15 +72,7 @@ def test_exterior_perimeter_sums_multipolygon_parts() -> None:
 
 def test_exterior_perimeter_returns_none_without_exterior() -> None:
     assert peri_scribe.units.exterior_perimeter(None) is None
+    assert peri_scribe.units.exterior_perimeter(shapely.geometry.Polygon()) is None
     assert (
-        peri_scribe.units.exterior_perimeter(
-            shapely.geometry.Polygon(),
-        )
-        is None
-    )
-    assert (
-        peri_scribe.units.exterior_perimeter(
-            shapely.geometry.Point(0.0, 0.0),
-        )
-        is None
+        peri_scribe.units.exterior_perimeter(shapely.geometry.Point(0.0, 0.0)) is None
     )

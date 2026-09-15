@@ -1,12 +1,12 @@
+"""Verify serialized documents, GeoPackages, and score distribution plots."""
+
 from __future__ import annotations
 
-import io
 import json
 import pathlib
 import shutil
 import typing
 
-import geopandas
 import pytest
 import structlog
 
@@ -14,52 +14,7 @@ import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.output
 import tests.factories
-
-
-class RecordingFile:
-    """In-memory file stand-in that keeps its contents after being closed."""
-
-    def __init__(self) -> None:
-        self.stream = io.StringIO()
-
-    def write(self, text: str) -> int:
-        return self.stream.write(text)
-
-    def getvalue(self) -> str:
-        return self.stream.getvalue()
-
-    def __enter__(self) -> typing.Self:
-        return self
-
-    def __exit__(
-        self,
-        _exc_type: object,
-        _exc_value: object,
-        _traceback: object,
-    ) -> None:
-        return None
-
-
-def stub_to_file(
-    monkeypatch: pytest.MonkeyPatch,
-) -> list[tuple[pathlib.Path, str, str, str]]:
-    """Record GeoDataFrame.to_file calls.
-
-    Args:
-        monkeypatch: The monkeypatch fixture.
-
-    Returns:
-        The recorded (path, driver, layer, mode) calls.
-    """
-    calls: list[tuple[pathlib.Path, str, str, str]] = []
-    monkeypatch.setattr(
-        geopandas.GeoDataFrame,
-        "to_file",
-        lambda _self, path, driver, layer, mode: calls.append(
-            (path, driver, layer, mode),
-        ),
-    )
-    return calls
+import tests.peri_scribe.output_helpers
 
 
 def test_write_geopackage_writes_every_layer(
@@ -67,28 +22,19 @@ def test_write_geopackage_writes_every_layer(
     layer_data_factory: typing.Callable[[str], peri_scribe.models.LayerData],
 ) -> None:
     path = pathlib.Path("/out.gpkg")
-    calls = stub_to_file(monkeypatch)
+    calls = tests.peri_scribe.output_helpers.stub_to_file(monkeypatch)
     monkeypatch.setattr(pathlib.Path, "exists", lambda _self: False)
     with structlog.testing.capture_logs() as captured:
         peri_scribe.output.write_geopackage(
             path,
-            [
-                layer_data_factory("first_layer"),
-                layer_data_factory("second_layer"),
-            ],
+            [layer_data_factory("first_layer"), layer_data_factory("second_layer")],
         )
     assert calls == [
         (path, "GPKG", "first_layer", "w"),
         (path, "GPKG", "second_layer", "a"),
     ]
-    assert [event["event"] for event in captured] == [
-        "Wrote layer",
-        "Wrote layer",
-    ]
-    assert [event["layer"] for event in captured] == [
-        "first_layer",
-        "second_layer",
-    ]
+    assert [event["event"] for event in captured] == ["Wrote layer", "Wrote layer"]
+    assert [event["layer"] for event in captured] == ["first_layer", "second_layer"]
 
 
 def test_write_geopackage_replaces_existing_file(
@@ -97,11 +43,12 @@ def test_write_geopackage_replaces_existing_file(
 ) -> None:
     path = pathlib.Path("/out.gpkg")
     unlinked: list[pathlib.Path] = []
-    calls = stub_to_file(monkeypatch)
+    calls = tests.peri_scribe.output_helpers.stub_to_file(monkeypatch)
     monkeypatch.setattr(pathlib.Path, "exists", lambda _self: True)
 
-    def fake_unlink(_self: pathlib.Path) -> None:
-        unlinked.append(_self)
+    fake_unlink = tests.peri_scribe.output_helpers.make_unlink_recorder(
+        unlinked=unlinked,
+    )
 
     monkeypatch.setattr(pathlib.Path, "unlink", fake_unlink)
     with structlog.testing.capture_logs() as captured:
@@ -142,26 +89,11 @@ def test_write_document_writes_pretty_printed_json(
     path = pathlib.Path("/fires.json")
     document = peri_scribe.models.FireIndex.model_validate({
         "version": "2026-08-17",
-        "fires": [
-            {
-                "name": "Park Fire",
-                "status": "active",
-                "paths": ["one.gpkg"],
-            },
-        ],
+        "fires": [{"name": "Park Fire", "status": "active", "paths": ["one.gpkg"]}],
     })
-    files: list[RecordingFile] = []
+    files: list[tests.peri_scribe.output_helpers.RecordingFile] = []
 
-    def fake_open(
-        _self: pathlib.Path,
-        mode: str,
-        encoding: str,
-    ) -> RecordingFile:
-        assert mode == "w"
-        assert encoding == "utf-8"
-        file = RecordingFile()
-        files.append(file)
-        return file
+    fake_open = tests.peri_scribe.output_helpers.make_recording_file_opener(files=files)
 
     monkeypatch.setattr(pathlib.Path, "open", fake_open)
     with structlog.testing.capture_logs() as captured:
@@ -193,29 +125,12 @@ def test_curve_knees_returns_empty_without_a_bend() -> None:
     )
 
 
-def fire_scores_document(scores: list[int]) -> peri_scribe.models.FireScores:
-    return peri_scribe.models.FireScores.model_validate({
-        "version": "2026-08-28",
-        "fires": [
-            {
-                "name": f"Fire {index}",
-                "score": score,
-                "explanation": "No notable size, growth, threat, or "
-                "official-importance signals.",
-            }
-            for index, score in enumerate(scores)
-        ],
-    })
-
-
-def test_write_fire_scores_ccdf_writes_an_html_page(
-    tmp_path: pathlib.Path,
-) -> None:
+def test_write_fire_scores_ccdf_writes_an_html_page(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "fire_scores_ccdf.html"
     with structlog.testing.capture_logs() as captured:
         peri_scribe.output.write_fire_scores_ccdf(
             path,
-            fire_scores_document([12]),
+            tests.peri_scribe.output_helpers.fire_scores_document([12]),
         )
     written = path.read_text(encoding="utf-8")
     assert written.startswith("<!DOCTYPE html>")
@@ -226,7 +141,9 @@ def test_write_fire_scores_ccdf_writes_an_html_page(
 
 
 def test_ccdf_svg_uses_the_configured_chart_size() -> None:
-    svg = peri_scribe.output.ccdf_svg(fire_scores_document([12]))
+    svg = peri_scribe.output.ccdf_svg(
+        tests.peri_scribe.output_helpers.fire_scores_document([12]),
+    )
     width = int(peri_scribe.output.CCDF_CHART_WIDTH.magnitude)
     height = int(peri_scribe.output.CCDF_CHART_HEIGHT.magnitude)
     assert f'width="{width}"' in svg
@@ -234,7 +151,9 @@ def test_ccdf_svg_uses_the_configured_chart_size() -> None:
 
 
 def test_ccdf_svg_plots_the_complementary_share() -> None:
-    svg = peri_scribe.output.ccdf_svg(fire_scores_document([12, 12, 40]))
+    svg = peri_scribe.output.ccdf_svg(
+        tests.peri_scribe.output_helpers.fire_scores_document([12, 12, 40]),
+    )
     assert "<path" in svg
     assert "Complementary CDF" in svg
     assert ">Score<" in svg
@@ -242,7 +161,9 @@ def test_ccdf_svg_plots_the_complementary_share() -> None:
 
 def test_ccdf_svg_labels_the_curve_knees() -> None:
     svg = peri_scribe.output.ccdf_svg(
-        fire_scores_document([10] * 4 + [50] * 2 + [100, 200, 300, 500]),
+        tests.peri_scribe.output_helpers.fire_scores_document(
+            [10] * 4 + [50] * 2 + [100, 200, 300, 500],
+        ),
     )
     assert "score 100" in svg
     assert "percentile 70.0" in svg
@@ -250,9 +171,7 @@ def test_ccdf_svg_labels_the_curve_knees() -> None:
     assert "percentile 90.0" in svg
 
 
-def test_ccdf_svg_still_draws_when_knees_fail(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_ccdf_svg_still_draws_when_knees_fail(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
         peri_scribe.output,
         "curve_knees",
@@ -261,7 +180,9 @@ def test_ccdf_svg_still_draws_when_knees_fail(
     with structlog.testing.capture_logs(
         processors=[structlog.processors.format_exc_info],
     ) as captured:
-        svg = peri_scribe.output.ccdf_svg(fire_scores_document([12]))
+        svg = peri_scribe.output.ccdf_svg(
+            tests.peri_scribe.output_helpers.fire_scores_document([12]),
+        )
     assert "<svg" in svg
     assert captured[0]["event"] == "Skipped fire scores knee labels"
     assert "RuntimeError: knee failure" in captured[0]["exception"]
@@ -285,7 +206,9 @@ def test_ccdf_svg_preserves_tracebacks_with_json_logging(
             structlog.processors.JSONRenderer(default=None, allow_nan=False),
         ],
     )
-    svg = peri_scribe.output.ccdf_svg(fire_scores_document([12]))
+    svg = peri_scribe.output.ccdf_svg(
+        tests.peri_scribe.output_helpers.fire_scores_document([12]),
+    )
     captured = capsys.readouterr()
     entry = json.loads(captured.err)
     assert "<svg" in svg
@@ -297,7 +220,9 @@ def test_ccdf_svg_preserves_tracebacks_with_json_logging(
 
 
 def test_ccdf_svg_draws_an_empty_chart_without_scores() -> None:
-    svg = peri_scribe.output.ccdf_svg(fire_scores_document([]))
+    svg = peri_scribe.output.ccdf_svg(
+        tests.peri_scribe.output_helpers.fire_scores_document([]),
+    )
     assert "<svg" in svg
     assert "<path" not in svg
 

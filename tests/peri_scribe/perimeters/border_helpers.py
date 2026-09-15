@@ -37,6 +37,16 @@ def observation(
 ) -> peri_scribe.perimeters.border_classification.FireObservation:
     """Build a fire observation for a test.
 
+    Args:
+        source: Source family supplying the fire observation.
+        geometry: Geometry supplied for the selected spatial case.
+        observed_at: Observation time attached to the mapping, or None if unknown.
+        serial_number: Snapshot sequence number used in the bucket and filename.
+        identifiers: Fire identifiers supplied for identity matching.
+        mission: Mapping mission identifier, or None when unavailable.
+        point_of_origin_state: Reported origin state, or None when unavailable.
+        point_of_origin_fips: Reported origin FIPS code, or None when unavailable.
+
     Returns:
         The fire observation.
     """
@@ -64,6 +74,15 @@ def geometry_signal(
 ) -> peri_scribe.perimeters.border_classification.GeometrySignal:
     """Build a geometry signal, defaulting to a fire fully inside California.
 
+    Args:
+        distance_to_boundary: Distance to the boundary in meters.
+        outside_area_fraction: Fraction of the mapped area outside the boundary.
+        outside_area: Mapped area outside the boundary in square meters.
+        inside_area_fraction: Fraction of the mapped area inside the boundary.
+        crosses: Whether the mapped footprint crosses the boundary.
+        near: Whether the mapped footprint lies near the boundary.
+        inside: Whether the mapped footprint lies inside the boundary.
+
     Returns:
         The geometry signal.
     """
@@ -84,6 +103,10 @@ def extent_signal(
     disagrees: bool = False,
 ) -> peri_scribe.perimeters.border_classification.ExtentSignal:
     """Build an extent signal, defaulting to no disagreement.
+
+    Args:
+        wfigs_to_firis_area_ratio: Ratio of WFIGS to FIRIS area, or None if unavailable.
+        disagrees: Whether the two source extents disagree.
 
     Returns:
         The extent signal.

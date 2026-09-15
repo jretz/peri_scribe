@@ -22,8 +22,8 @@ FAST_GROWTH_WINDOW = (
     * units.hours
 )
 
-# The smallest growth percentage the report's formatter shows without rounding to 0%,
-# so a fire's details claim it grew only when that growth is visible.
+# The smallest growth percentage the report's formatter shows without rounding to 0%, so
+# a fire's details claim it grew only when that growth is visible.
 MINIMUM_DISPLAYED_GROWTH_PERCENT = 0.1 * units.percent
 
 # The growth facts' labels, spelled once so the summary tables' column headings and the
@@ -69,9 +69,7 @@ def markdown_report_path(year_directory: pathlib.Path) -> pathlib.Path:
     return year_directory / REPORTS_DIRECTORY_NAME / f"PeriScribe Fires {year}.md"
 
 
-def discovery_cell(
-    entry: peri_scribe.report.gathering.FireReportEntry,
-) -> str | None:
+def discovery_cell(entry: peri_scribe.report.gathering.FireReportEntry) -> str | None:
     """Return *entry*'s discovery time for a table cell, or None when unknown.
 
     Args:
@@ -121,9 +119,7 @@ def growth_percent_cell(
     return f"+{formatted}"
 
 
-def location_cell(
-    entry: peri_scribe.report.gathering.FireReportEntry,
-) -> str | None:
+def location_cell(entry: peri_scribe.report.gathering.FireReportEntry) -> str | None:
     """Return *entry*'s nearest-city location text for a table cell, or None.
 
     Args:
@@ -135,9 +131,7 @@ def location_cell(
     return entry.location
 
 
-def area_fact(
-    entry: peri_scribe.report.gathering.FireReportEntry,
-) -> str | None:
+def area_fact(entry: peri_scribe.report.gathering.FireReportEntry) -> str | None:
     """Return *entry*'s area fact, or None when its area is unknown.
 
     Args:
@@ -151,9 +145,7 @@ def area_fact(
     return peri_scribe.kml.descriptions.format_area(entry.description.area)
 
 
-def fire_heading(
-    entry: peri_scribe.report.gathering.FireReportEntry,
-) -> str:
+def fire_heading(entry: peri_scribe.report.gathering.FireReportEntry) -> str:
     """Return *entry*'s details heading text.
 
     The heading carries the fire's name alone; the identifier is shown as the
@@ -208,8 +200,8 @@ def markdown_table_lines(
     Args:
         column_headings: The table's column headings.
         rows: The table's rows, each with one cell text per column.
-        right_aligned_columns: One flag per column, or none when every column stays
-            left aligned.
+        right_aligned_columns: One flag per column, or none when every column stays left
+            aligned.
 
     Returns:
         The table's lines, without a trailing blank line.
@@ -261,10 +253,7 @@ def fire_table_section(
     entries: tuple[peri_scribe.report.gathering.FireReportEntry, ...],
     *,
     columns: tuple[tuple[str, ColumnTextFor, bool], ...],
-    anchors: typing.Mapping[
-        peri_scribe.report.gathering.FireReportEntry,
-        str,
-    ],
+    anchors: typing.Mapping[peri_scribe.report.gathering.FireReportEntry, str],
 ) -> list[str]:
     """Return the Markdown lines for one report section, rendered as a table.
 
@@ -361,9 +350,7 @@ def fire_detail_rows(
     return tuple(rows)
 
 
-def fire_detail_lines(
-    entry: peri_scribe.report.gathering.FireReportEntry,
-) -> list[str]:
+def fire_detail_lines(entry: peri_scribe.report.gathering.FireReportEntry) -> list[str]:
     """Return *entry*'s details mini section, headed by its name.
 
     The section opens with the fire's name as a ``###`` heading and then shows each
@@ -408,10 +395,7 @@ def fire_details_section(
     return lines
 
 
-def markdown_text(
-    report: peri_scribe.report.gathering.FireReport,
-    year: int,
-) -> str:
+def markdown_text(report: peri_scribe.report.gathering.FireReport, year: int) -> str:
     """Return *report* as Markdown text.
 
     Args:

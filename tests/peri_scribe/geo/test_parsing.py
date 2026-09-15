@@ -85,9 +85,7 @@ def test_normalize_identifier() -> None:
         == "286b7f1d-8945-4a5d-9d81-5235c18af1fe"
     )
     assert (
-        peri_scribe.geo.parsing.normalize_identifier(
-            " 2026-CACDD-007101 ",
-        )
+        peri_scribe.geo.parsing.normalize_identifier(" 2026-CACDD-007101 ")
         == "2026-cacdd-007101"
     )
 
@@ -115,10 +113,7 @@ def test_fire_name_from_returns_stripped_name_or_none() -> None:
 def test_mission_name_from_parses_unit_name_and_tail() -> None:
     assert peri_scribe.geo.parsing.mission_name_from(
         "CA-LNU-RUMSEY-UPDATED-N40Y",
-    ) == peri_scribe.models.MissionName(
-        name="RUMSEY-UPDATED",
-        base_name="RUMSEY",
-    )
+    ) == peri_scribe.models.MissionName(name="RUMSEY-UPDATED", base_name="RUMSEY")
     assert peri_scribe.geo.parsing.mission_name_from(
         "NV-CCD-BUG-N57B",
     ) == peri_scribe.models.MissionName(name="BUG", base_name="BUG")
@@ -196,16 +191,24 @@ def test_geometries_describe_same_shape_accepts_re_serialized_geometry() -> None
 
 
 def test_geometries_describe_same_shape_accepts_identical_geometry() -> None:
-    polygon = shapely.geometry.Polygon(
-        [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
-    )
+    polygon = shapely.geometry.Polygon([
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (1.0, 1.0),
+        (0.0, 1.0),
+        (0.0, 0.0),
+    ])
     assert peri_scribe.geo.parsing.geometries_describe_same_shape(polygon, polygon)
 
 
 def test_geometries_describe_same_shape_accepts_single_part_multi_polygon() -> None:
-    polygon = shapely.geometry.Polygon(
-        [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
-    )
+    polygon = shapely.geometry.Polygon([
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (1.0, 1.0),
+        (0.0, 1.0),
+        (0.0, 0.0),
+    ])
     assert peri_scribe.geo.parsing.geometries_describe_same_shape(
         polygon,
         shapely.geometry.MultiPolygon([polygon]),
@@ -225,16 +228,21 @@ def test_geometries_describe_same_shape_accepts_identical_nan_coordinates() -> N
 
 
 def test_geometries_describe_same_shape_rejects_different_shapes() -> None:
-    first = shapely.geometry.Polygon(
-        [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
-    )
-    different = shapely.geometry.Polygon(
-        [(0.0, 0.0), (2.0, 0.0), (2.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
-    )
-    assert not peri_scribe.geo.parsing.geometries_describe_same_shape(
-        first,
-        different,
-    )
+    first = shapely.geometry.Polygon([
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (1.0, 1.0),
+        (0.0, 1.0),
+        (0.0, 0.0),
+    ])
+    different = shapely.geometry.Polygon([
+        (0.0, 0.0),
+        (2.0, 0.0),
+        (2.0, 1.0),
+        (0.0, 1.0),
+        (0.0, 0.0),
+    ])
+    assert not peri_scribe.geo.parsing.geometries_describe_same_shape(first, different)
 
 
 def test_geometries_describe_same_shape_treats_missing_geometries() -> None:
@@ -260,18 +268,13 @@ def test_geometries_describe_same_shape_treats_empty_geometries() -> None:
 
 def test_object_id_from_returns_none_for_missing_value() -> None:
     assert (
-        peri_scribe.geo.parsing.object_id_from(
-            pd.Series({"OBJECTID": float("nan")}),
-        )
+        peri_scribe.geo.parsing.object_id_from(pd.Series({"OBJECTID": float("nan")}))
         is None
     )
 
 
 def test_row_attributes_excludes_geometry_column() -> None:
-    row = pd.Series({
-        "OBJECTID": 1,
-        "geometry": shapely.geometry.Point(0, 0),
-    })
+    row = pd.Series({"OBJECTID": 1, "geometry": shapely.geometry.Point(0, 0)})
     assert peri_scribe.geo.parsing.row_attributes(row, "geometry") == {"OBJECTID": 1}
 
 

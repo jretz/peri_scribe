@@ -3,14 +3,14 @@
 A fire is classified as INSIDE_CALIFORNIA, INSIDE_CALIFORNIA_NEAR_BORDER,
 CROSSES_CALIFORNIA_BORDER, OUTSIDE_CALIFORNIA_NEAR_BORDER, or OUTSIDE_CALIFORNIA by
 combining three signals. The primary signal compares the fire's geometry with a
-"California box" that traces the border California shares with its neighboring US
-states (Arizona, Nevada, and Oregon) and closes well out into the Pacific Ocean and
-Mexico, so maritime and international borders are absorbed into the box. The secondary
-signal compares contemporaneous FIRIS and WFIGS perimeters, where a WFIGS perimeter
-that is substantially larger suggests the fire extends beyond what FIRIS mapped. The
-tertiary signal flags out-of-state fire units and points of origin.
-CROSSES_CALIFORNIA_BORDER requires the geometry to span the California border; the
-weaker signals only ever support the near-border classifications.
+"California box" that traces the border California shares with its neighboring US states
+(Arizona, Nevada, and Oregon) and closes well out into the Pacific Ocean and Mexico, so
+maritime and international borders are absorbed into the box. The secondary signal
+compares contemporaneous FIRIS and WFIGS perimeters, where a WFIGS perimeter that is
+substantially larger suggests the fire extends beyond what FIRIS mapped. The tertiary
+signal flags out-of-state fire units and points of origin. CROSSES_CALIFORNIA_BORDER
+requires the geometry to span the California border; the weaker signals only ever
+support the near-border classifications.
 """
 
 from __future__ import annotations

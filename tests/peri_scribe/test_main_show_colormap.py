@@ -6,32 +6,12 @@ import typing
 
 import peri_scribe.kml.colormap
 import peri_scribe.main
+import tests.peri_scribe.main_show_colormap_helpers
 
 
 if typing.TYPE_CHECKING:
     import click.testing
     import pytest
-
-
-def recording_renderer(
-    calls: list[tuple[int, int]],
-    strip: str,
-) -> typing.Callable[..., str]:
-    """Return a colormap renderer that records each call's trim window.
-
-    Args:
-        calls: The list the renderer appends each (trim_start, trim_end) to.
-        strip: The text the renderer returns.
-
-    Returns:
-        The stand-in renderer.
-    """
-
-    def render(*, trim_start: int, trim_end: int) -> str:
-        calls.append((trim_start, trim_end))
-        return strip
-
-    return render
 
 
 def test_show_turbo_colormap_prints_the_strip(
@@ -44,7 +24,7 @@ def test_show_turbo_colormap_prints_the_strip(
     monkeypatch.setattr(
         peri_scribe.kml.colormap,
         "turbo_colormap_ansi",
-        recording_renderer(calls, strip),
+        tests.peri_scribe.main_show_colormap_helpers.recording_renderer(calls, strip),
     )
     result = runner.invoke(peri_scribe.main.cli, ["show-colormap"])
     assert result.exit_code == 0
@@ -68,7 +48,7 @@ def test_show_turbo_colormap_passes_trim_options(
     monkeypatch.setattr(
         peri_scribe.kml.colormap,
         "turbo_colormap_ansi",
-        recording_renderer(calls, strip),
+        tests.peri_scribe.main_show_colormap_helpers.recording_renderer(calls, strip),
     )
     result = runner.invoke(
         peri_scribe.main.cli,

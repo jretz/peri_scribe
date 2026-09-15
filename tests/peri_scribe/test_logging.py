@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import compression.zstd
 import concurrent.futures
-import dataclasses
 import datetime
-import enum
 import functools
 import json
 import logging
@@ -23,26 +21,8 @@ import time_machine
 
 import peri_scribe.logging
 import tests.factories
+import tests.peri_scribe.logging_helpers
 from peri_scribe.units import units
-
-
-class LogStatus(enum.StrEnum):
-    """A named status must remain a plain string in serialized logs."""
-
-    SKIPPED = "skipped"
-
-
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class LogDetails:
-    """Structured log fields need recursive normalization of their values.
-
-    Args:
-        path: A filesystem path that must become a JSON string.
-        status: A named status that must retain its string value.
-    """
-
-    path: pathlib.Path
-    status: LogStatus
 
 
 def test_configure_logging_filters_below_configured_level() -> None:
@@ -101,9 +81,12 @@ def test_log_execution_emits_failures_when_both_destinations_require_error(
     ("value", "expected"),
     [
         (pathlib.Path("fires.json"), "fires.json"),
-        (LogStatus.SKIPPED, "skipped"),
+        (tests.peri_scribe.logging_helpers.LogStatus.SKIPPED, "skipped"),
         (
-            LogDetails(path=pathlib.Path("fires.json"), status=LogStatus.SKIPPED),
+            tests.peri_scribe.logging_helpers.LogDetails(
+                path=pathlib.Path("fires.json"),
+                status=tests.peri_scribe.logging_helpers.LogStatus.SKIPPED,
+            ),
             {"path": "fires.json", "status": "skipped"},
         ),
         (datetime.timedelta(hours=6), {"value": 21600.0, "units": units.seconds}),

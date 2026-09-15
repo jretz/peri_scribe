@@ -14,19 +14,18 @@ CA_PERIMETERS_FEED = peri_scribe.sources.feed_types.ArcGISFeed(
     ),
     fire_name_column="incident_name",
     status_column="displayStatus",
-    # incident_number is the primary identifier, but rows mapped before an
-    # incident number is assigned carry only their record GUID, which is a
-    # stable per-feature identifier in its own right. Reading the GUID keeps
-    # such rows from becoming unidentified fires that downstream consumers
-    # can only distinguish by name.
+    # incident_number is the primary identifier, but rows mapped before an incident
+    # number is assigned carry only their record GUID, which is a stable per-feature
+    # identifier in its own right. Reading the GUID keeps such rows from becoming
+    # unidentified fires that downstream consumers can only distinguish by name.
     fire_identifier_columns=("incident_number", "GlobalID"),
     mission_column="mission",
     observation_time_column="poly_DateCurrent",
     change_columns=("EditDate",),
 )
 
-# The WFIGS perimeter layer, which keeps only the most recent perimeter for each
-# active fire.
+# The WFIGS perimeter layer, which keeps only the most recent perimeter for each active
+# fire.
 WFIGS_PERIMETERS_FEED = peri_scribe.sources.feed_types.ArcGISFeed(
     url=(
         "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/"
@@ -42,9 +41,9 @@ WFIGS_PERIMETERS_FEED = peri_scribe.sources.feed_types.ArcGISFeed(
     point_of_origin_fips_column="attr_POOFips",
     # The polygon record is edited in place as a fire grows, so its capture date
     # (poly_PolygonDateTime) stays at the original mapping and misdates every later
-    # version. poly_DateCurrent is the perimeter's as-of date (the date the version
-    # is current for; the date the source polygon record was last edited in WFIGS),
-    # which advances with each version and is the accurate per-version date.
+    # version. poly_DateCurrent is the perimeter's as-of date (the date the version is
+    # current for; the date the source polygon record was last edited in WFIGS), which
+    # advances with each version and is the accurate per-version date.
     observation_time_column="poly_DateCurrent",
     # The polygon table updates (geometry, poly_DateCurrent, poly_CreateDate) without
     # moving attr_ModifiedOnDateTime_dt, so all three columns must count as a change
@@ -70,9 +69,9 @@ WFIGS_INCIDENT_LOCATIONS_FEED = peri_scribe.sources.feed_types.ArcGISFeed(
     is_complex_child_column="IsCpxChild",
     point_of_origin_state_column="POOState",
     point_of_origin_fips_column="POOFips",
-    # NIFC determines a fire's information last update by the incident record's
-    # modified time, so the point observation is dated by ModifiedOnDateTime_dt
-    # rather than by when peri_scribe fetched the layer.
+    # NIFC determines a fire's information last update by the incident record's modified
+    # time, so the point observation is dated by ModifiedOnDateTime_dt rather than by
+    # when peri_scribe fetched the layer.
     observation_time_column="ModifiedOnDateTime_dt",
     change_columns=("ModifiedOnDateTime_dt",),
 )

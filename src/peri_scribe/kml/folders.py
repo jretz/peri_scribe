@@ -310,20 +310,14 @@ def status_folder(
     inactive = status is peri_scribe.models.FireStatus.INACTIVE
     if visible is None:
         visible = not inactive
-    with writer.folder(
-        status_folder_name(status),
-        visible=visible,
-    ):
+    with writer.folder(status_folder_name(status), visible=visible):
         for fire in status_fires:
             fire_folder(writer, fire, style_urls, ring_style_urls, visible=visible)
 
 
 def score_fire(
     entry: peri_scribe.models.FireScoreEntry,
-    fires_by_identifier: typing.Mapping[
-        str,
-        peri_scribe.kml.fire_data.FireGeometry,
-    ],
+    fires_by_identifier: typing.Mapping[str, peri_scribe.kml.fire_data.FireGeometry],
     fires_by_name: typing.Mapping[str, peri_scribe.kml.fire_data.FireGeometry],
 ) -> peri_scribe.kml.fire_data.FireGeometry | None:
     """Return the geometry matching *entry*, by identifier first and then name.
@@ -490,9 +484,7 @@ def notable_score_threshold(
     return active_scores[top_count - 1]
 
 
-def new_notable_signals_qualify(
-    entry: peri_scribe.models.FireScoreEntry,
-) -> bool:
+def new_notable_signals_qualify(entry: peri_scribe.models.FireScoreEntry) -> bool:
     """Return whether a newly discovered fire's signals make it notable.
 
     A fire qualifies by signals only once it presents at least

@@ -1,20 +1,16 @@
 """Tests for peri_scribe.sources.buildings.
 
-The tests use synthetic in-memory archives and temporary databases; they never touch
-the network or the real buildings dataset.
+The tests use synthetic in-memory archives and temporary databases; they never touch the
+network or the real buildings dataset.
 """
 
 from __future__ import annotations
 
 import dataclasses
-import io
 import itertools
-import json
 import pathlib
 import sqlite3
 import struct
-import tempfile
-import zipfile
 
 import numpy as np
 import pytest
@@ -25,117 +21,18 @@ import peri_scribe.sources.buildings
 import peri_scribe.sources.downloading
 import peri_scribe.sources.external_sources
 import tests.factories
+import tests.peri_scribe.sources.buildings_helpers
 import tests.peri_scribe.sources.external_source_helpers
 
 
 # The encoded coordinate values the quantization tests expect.
+
+
 QUANTIZED_ONE_POINT_FIVE_DEGREES = 150_000
 QUANTIZED_NEGATIVE_HALF_DEGREE = -50_000
 QUANTIZED_FORTY_POINT_TWENTY_FIVE_DEGREES = 4_025_000
 QUANTIZED_NEGATIVE_NINETY_DEGREES = -9_000_000
 QUANTIZED_HALF_DEGREE = 50_000
-
-
-def write_database(points: np.ndarray, path: pathlib.Path) -> None:
-    """Build a compact buildings database at *path* holding *points*.
-
-    The points are appended to temporary partition files and processed through the
-    production database build, so the resulting file is a real compact database.
-
-    Args:
-        points: The ``(n, 2)`` longitude/latitude pairs in degrees.
-        path: The database path to write.
-    """
-    with tempfile.TemporaryDirectory() as temporary_directory:
-        partition_directory = pathlib.Path(temporary_directory)
-        with peri_scribe.sources.buildings.PartitionFiles(
-            partition_directory,
-        ) as partition_files:
-            peri_scribe.sources.buildings.append_centroids_to_partitions(
-                points,
-                partition_files,
-            )
-        peri_scribe.sources.buildings.build_tiles_database(
-            partition_directory,
-            path,
-        )
-
-
-def zip_bytes(members: dict[str, bytes]) -> bytes:
-    """Return a zip archive holding *members*.
-
-    Args:
-        members: The member name to bytes mapping.
-
-    Returns:
-        The zip archive's bytes.
-    """
-    buffer = io.BytesIO()
-    with zipfile.ZipFile(buffer, "w") as archive:
-        for name, body in members.items():
-            archive.writestr(name, body)
-    return buffer.getvalue()
-
-
-def feature_collection_bytes(rings: list[list[list[float]]]) -> bytes:
-    """Return the bytes of a GeoJSON FeatureCollection holding *rings*.
-
-    Args:
-        rings: Each feature's polygon ring coordinates.
-
-    Returns:
-        The FeatureCollection's bytes.
-    """
-    features = [
-        {
-            "type": "Feature",
-            "properties": {},
-            "geometry": {"type": "Polygon", "coordinates": [ring]},
-        }
-        for ring in rings
-    ]
-    body = json.dumps(
-        {"type": "FeatureCollection", "features": features},
-        separators=(",", ":"),
-    )
-    return body.encode("utf-8")
-
-
-def square_ring(
-    center_x: float,
-    center_y: float,
-    half: float = 0.5,
-) -> list[list[float]]:
-    """Return the ring of a square centered at (*center_x*, *center_y*).
-
-    Args:
-        center_x: The center longitude.
-        center_y: The center latitude.
-        half: Half the square's side length.
-
-    Returns:
-        The ring's coordinates.
-    """
-    return [
-        [center_x - half, center_y - half],
-        [center_x + half, center_y - half],
-        [center_x + half, center_y + half],
-        [center_x - half, center_y + half],
-        [center_x - half, center_y - half],
-    ]
-
-
-def buildings_fetch_page() -> str:
-    """Return a repository page with a download link for every state.
-
-    Returns:
-        The page's HTML.
-    """
-    links = {
-        state: f"https://example.com/{state.replace(' ', '')}.geojson.zip"
-        for state in peri_scribe.sources.external_sources.BUILDINGS_STATES
-    }
-    return tests.peri_scribe.sources.external_source_helpers.buildings_page_html(links)
 
 
 def test_encode_longitude_scales_and_rounds() -> None:
@@ -188,17 +85,14 @@ def test_tile_ids_matches_scalar_tile_id() -> None:
     )
     identifiers = peri_scribe.sources.buildings.tile_ids(encoded)
     assert identifiers.tolist() == list(
-        itertools.starmap(
-            peri_scribe.sources.buildings.tile_id,
-            encoded,
-        ),
+        itertools.starmap(peri_scribe.sources.buildings.tile_id, encoded),
     )
 
 
 def test_tile_id_puts_boundary_points_in_upper_tile() -> None:
     # 0.5° is exactly representable, so its encoded coordinate lands on the boundary
-    # between tile columns 360 and 361 and rows 180 and 181; the floor division puts
-    # the point in the upper tile.
+    # between tile columns 360 and 361 and rows 180 and 181; the floor division puts the
+    # point in the upper tile.
     assert peri_scribe.sources.buildings.encode_longitude(0.5) == QUANTIZED_HALF_DEGREE
     assert (
         peri_scribe.sources.buildings.tile_id(
@@ -257,13 +151,8 @@ def test_compress_tile_points_sorts_raw_records() -> None:
     assert decoded.tolist() == [[0, 0], [1, 2], [-1, 3]]
 
 
-def test_process_partition_writes_one_row_per_tile(
-    tmp_path: pathlib.Path,
-) -> None:
-    points = np.asarray(
-        [[0.2, 0.2], [0.3, 0.3], [100.5, 40.25]],
-        dtype=float,
-    )
+def test_process_partition_writes_one_row_per_tile(tmp_path: pathlib.Path) -> None:
+    points = np.asarray([[0.2, 0.2], [0.3, 0.3], [100.5, 40.25]], dtype=float)
     with peri_scribe.sources.buildings.PartitionFiles(tmp_path) as partition_files:
         peri_scribe.sources.buildings.append_centroids_to_partitions(
             points,
@@ -284,7 +173,10 @@ def test_process_partition_writes_one_row_per_tile(
 
 def test_is_valid_database_accepts_written_database(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "buildings.sqlite"
-    write_database(np.asarray([[0.2, 0.2]], dtype=float), path)
+    tests.peri_scribe.sources.buildings_helpers.write_database(
+        np.asarray([[0.2, 0.2]], dtype=float),
+        path,
+    )
     assert peri_scribe.sources.buildings.is_valid_database(path)
 
 
@@ -294,9 +186,7 @@ def test_is_valid_database_rejects_missing_file(tmp_path: pathlib.Path) -> None:
     )
 
 
-def test_is_valid_database_rejects_non_database_file(
-    tmp_path: pathlib.Path,
-) -> None:
+def test_is_valid_database_rejects_non_database_file(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "junk.sqlite"
     path.write_bytes(b"not a database")
     assert not peri_scribe.sources.buildings.is_valid_database(path)
@@ -310,17 +200,16 @@ def test_is_valid_database_rejects_unopenable_path(
 
     path = tmp_path / "buildings.sqlite"
     path.write_bytes(b"")
-    monkeypatch.setattr(
-        peri_scribe.sources.buildings.sqlite3,
-        "connect",
-        fail,
-    )
+    monkeypatch.setattr(peri_scribe.sources.buildings.sqlite3, "connect", fail)
     assert not peri_scribe.sources.buildings.is_valid_database(path)
 
 
 def test_is_valid_database_rejects_wrong_metadata(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "buildings.sqlite"
-    write_database(np.asarray([[0.2, 0.2]], dtype=float), path)
+    tests.peri_scribe.sources.buildings_helpers.write_database(
+        np.asarray([[0.2, 0.2]], dtype=float),
+        path,
+    )
     connection = sqlite3.connect(path)
     try:
         connection.execute(
@@ -335,7 +224,10 @@ def test_is_valid_database_rejects_wrong_metadata(tmp_path: pathlib.Path) -> Non
 
 def test_is_valid_database_rejects_wrong_schema(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "buildings.sqlite"
-    write_database(np.asarray([[0.2, 0.2]], dtype=float), path)
+    tests.peri_scribe.sources.buildings_helpers.write_database(
+        np.asarray([[0.2, 0.2]], dtype=float),
+        path,
+    )
     connection = sqlite3.connect(path)
     try:
         connection.execute("DROP TABLE tiles")
@@ -348,7 +240,7 @@ def test_is_valid_database_rejects_wrong_schema(tmp_path: pathlib.Path) -> None:
 def test_decode_payload_round_trips_encoded_points(tmp_path: pathlib.Path) -> None:
     points = np.asarray([[0.2, 0.2], [0.3, 0.3], [100.5, 40.25]], dtype=float)
     path = tmp_path / "buildings.sqlite"
-    write_database(points, path)
+    tests.peri_scribe.sources.buildings_helpers.write_database(points, path)
     connection = sqlite3.connect(path)
     try:
         rows = connection.execute(
@@ -356,26 +248,22 @@ def test_decode_payload_round_trips_encoded_points(tmp_path: pathlib.Path) -> No
         ).fetchall()
     finally:
         connection.close()
-    decoded = np.concatenate(
-        [
-            peri_scribe.sources.buildings.decode_payload(payload)
-            for _identifier, payload in rows
-        ],
-    )
+    decoded = np.concatenate([
+        peri_scribe.sources.buildings.decode_payload(payload)
+        for _identifier, payload in rows
+    ])
     expected = peri_scribe.sources.buildings.quantize_centroids(points)
     assert sorted(map(tuple, decoded)) == sorted(map(tuple, expected))
 
 
 def test_tile_ids_for_box_selects_single_tile() -> None:
-    assert peri_scribe.sources.buildings.tile_ids_for_box(
-        (0.1, 0.1, 0.4, 0.4),
-    ) == [129_960]
+    assert peri_scribe.sources.buildings.tile_ids_for_box((0.1, 0.1, 0.4, 0.4)) == [
+        129_960,
+    ]
 
 
 def test_tile_ids_for_box_spans_multiple_tiles() -> None:
-    assert peri_scribe.sources.buildings.tile_ids_for_box(
-        (0.1, 0.1, 0.6, 0.6),
-    ) == [
+    assert peri_scribe.sources.buildings.tile_ids_for_box((0.1, 0.1, 0.6, 0.6)) == [
         180 * 720 + 360,
         180 * 720 + 361,
         181 * 720 + 360,
@@ -384,12 +272,10 @@ def test_tile_ids_for_box_spans_multiple_tiles() -> None:
 
 
 def test_tile_ids_for_box_includes_boundary_tiles() -> None:
-    # A box ending exactly at 0.5° includes tile column 361, where the boundary
-    # point itself lives.
+    # A box ending exactly at 0.5° includes tile column 361, where the boundary point
+    # itself lives.
     assert (
-        peri_scribe.sources.buildings.tile_ids_for_box(
-            (0.4, 0.4, 0.5, 0.5),
-        )[-1]
+        peri_scribe.sources.buildings.tile_ids_for_box((0.4, 0.4, 0.5, 0.5))[-1]
         == 181 * 720 + 361
     )
 
@@ -404,16 +290,11 @@ def test_building_counts_within_counts_points_across_tiles(
     tmp_path: pathlib.Path,
 ) -> None:
     points = np.asarray(
-        [
-            [0.2, 0.2],
-            [0.3, 0.3],
-            [100.5, 40.25],
-            [101.0, 41.0],
-        ],
+        [[0.2, 0.2], [0.3, 0.3], [100.5, 40.25], [101.0, 41.0]],
         dtype=float,
     )
     path = tmp_path / "buildings.sqlite"
-    write_database(points, path)
+    tests.peri_scribe.sources.buildings_helpers.write_database(points, path)
     counts = peri_scribe.sources.buildings.building_counts_within(
         [
             shapely.geometry.box(0.0, 0.0, 1.0, 1.0),
@@ -429,7 +310,7 @@ def test_building_counts_within_includes_points_on_upper_boundary(
 ) -> None:
     points = np.asarray([[0.5, 0.5]], dtype=float)
     path = tmp_path / "buildings.sqlite"
-    write_database(points, path)
+    tests.peri_scribe.sources.buildings_helpers.write_database(points, path)
     # The box filter and tile selection include a point exactly on the tile boundary,
     # Exact containment excludes a point on the query geometry's boundary; a box
     # strictly containing the point counts it.
@@ -450,12 +331,10 @@ def test_building_counts_within_includes_points_on_upper_boundary(
     assert counts == [0]
 
 
-def test_building_counts_within_tests_exact_containment(
-    tmp_path: pathlib.Path,
-) -> None:
+def test_building_counts_within_tests_exact_containment(tmp_path: pathlib.Path) -> None:
     points = np.asarray([[0.2, 0.1], [0.1, 0.2]], dtype=float)
     path = tmp_path / "buildings.sqlite"
-    write_database(points, path)
+    tests.peri_scribe.sources.buildings_helpers.write_database(points, path)
     triangle = shapely.geometry.Polygon([(0, 0), (1, 0), (1, 1)])
     counts = peri_scribe.sources.buildings.building_counts_within([triangle], path)
     assert counts == [1]
@@ -466,7 +345,7 @@ def test_building_counts_within_counts_point_for_each_containing_geometry(
 ) -> None:
     points = np.asarray([[0.5, 0.5]], dtype=float)
     path = tmp_path / "buildings.sqlite"
-    write_database(points, path)
+    tests.peri_scribe.sources.buildings_helpers.write_database(points, path)
     counts = peri_scribe.sources.buildings.building_counts_within(
         [
             shapely.geometry.box(0.0, 0.0, 1.0, 1.0),
@@ -481,7 +360,10 @@ def test_building_counts_within_returns_zero_without_geometry(
     tmp_path: pathlib.Path,
 ) -> None:
     path = tmp_path / "buildings.sqlite"
-    write_database(np.asarray([[0.2, 0.2]], dtype=float), path)
+    tests.peri_scribe.sources.buildings_helpers.write_database(
+        np.asarray([[0.2, 0.2]], dtype=float),
+        path,
+    )
     counts = peri_scribe.sources.buildings.building_counts_within(
         [None, shapely.geometry.Polygon()],
         path,
@@ -493,7 +375,10 @@ def test_building_counts_within_counts_duplicate_coordinates(
     tmp_path: pathlib.Path,
 ) -> None:
     path = tmp_path / "buildings.sqlite"
-    write_database(np.asarray([[0.2, 0.2], [0.2, 0.2]]), path)
+    tests.peri_scribe.sources.buildings_helpers.write_database(
+        np.asarray([[0.2, 0.2], [0.2, 0.2]]),
+        path,
+    )
     assert peri_scribe.sources.buildings.building_counts_within(
         [shapely.geometry.box(0.1, 0.1, 0.3, 0.3)],
         path,
@@ -504,7 +389,7 @@ def test_building_counts_within_respects_multipolygon_holes(
     tmp_path: pathlib.Path,
 ) -> None:
     path = tmp_path / "buildings.sqlite"
-    write_database(
+    tests.peri_scribe.sources.buildings_helpers.write_database(
         np.asarray([[0.1, 0.1], [0.2, 0.3], [0.3, 0.3], [0.7, 0.3], [0.9, 0.3]]),
         path,
     )
@@ -523,13 +408,17 @@ def test_building_counts_within_reads_shared_tile_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     path = tmp_path / "buildings.sqlite"
-    write_database(np.asarray([[0.2, 0.2]]), path)
+    tests.peri_scribe.sources.buildings_helpers.write_database(
+        np.asarray([[0.2, 0.2]]),
+        path,
+    )
     identifiers: list[int] = []
     read_tile_points = peri_scribe.sources.buildings.read_tile_points
 
-    def read(connection: sqlite3.Connection, tile_id: int) -> np.ndarray | None:
-        identifiers.append(tile_id)
-        return read_tile_points(connection, tile_id)
+    read = tests.peri_scribe.sources.buildings_helpers.make_tile_read_recorder(
+        identifiers=identifiers,
+        read_tile_points=read_tile_points,
+    )
 
     monkeypatch.setattr(peri_scribe.sources.buildings, "read_tile_points", read)
     peri_scribe.sources.buildings.building_counts_within(
@@ -539,16 +428,22 @@ def test_building_counts_within_reads_shared_tile_once(
         ],
         path,
     )
-    assert identifiers == peri_scribe.sources.buildings.tile_ids_for_box(
-        (0.1, 0.1, 0.4, 0.4),
-    )
+    assert identifiers == peri_scribe.sources.buildings.tile_ids_for_box((
+        0.1,
+        0.1,
+        0.4,
+        0.4,
+    ))
 
 
 def test_building_counts_within_releases_prepared_geometry(
     tmp_path: pathlib.Path,
 ) -> None:
     path = tmp_path / "buildings.sqlite"
-    write_database(np.asarray([[0.2, 0.2]]), path)
+    tests.peri_scribe.sources.buildings_helpers.write_database(
+        np.asarray([[0.2, 0.2]]),
+        path,
+    )
     geometry = shapely.geometry.box(0.1, 0.1, 0.3, 0.3)
     shapely.prepare(geometry)
     peri_scribe.sources.buildings.building_counts_within([geometry], path)
@@ -559,7 +454,10 @@ def test_building_counts_within_skips_geometries_without_candidates(
     tmp_path: pathlib.Path,
 ) -> None:
     path = tmp_path / "buildings.sqlite"
-    write_database(np.asarray([[0.2, 0.2]], dtype=float), path)
+    tests.peri_scribe.sources.buildings_helpers.write_database(
+        np.asarray([[0.2, 0.2]], dtype=float),
+        path,
+    )
     counts = peri_scribe.sources.buildings.building_counts_within(
         [shapely.geometry.box(200.0, 200.0, 201.0, 201.0)],
         path,
@@ -581,7 +479,10 @@ def test_building_counts_within_excludes_points_outside_envelope_in_same_tile(
     tmp_path: pathlib.Path,
 ) -> None:
     path = tmp_path / "buildings.sqlite"
-    write_database(np.asarray([[0.2, 0.2]]), path)
+    tests.peri_scribe.sources.buildings_helpers.write_database(
+        np.asarray([[0.2, 0.2]]),
+        path,
+    )
     counts = peri_scribe.sources.buildings.building_counts_within(
         [shapely.geometry.box(0.3, 0.3, 0.4, 0.4)],
         path,
@@ -597,48 +498,35 @@ def test_fetch_buildings_database_streams_states_into_database(
         peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
         states=("California", "Texas"),
     )
-    page = buildings_fetch_page()
+    page = tests.peri_scribe.sources.buildings_helpers.buildings_fetch_page()
     links = {
         state: f"https://example.com/{state.replace(' ', '')}.geojson.zip"
         for state in peri_scribe.sources.external_sources.BUILDINGS_STATES
     }
+    california = tests.peri_scribe.sources.buildings_helpers.feature_collection_bytes([
+        tests.peri_scribe.sources.buildings_helpers.square_ring(0.0, 0.0),
+    ])
+    texas = tests.peri_scribe.sources.buildings_helpers.feature_collection_bytes([
+        tests.peri_scribe.sources.buildings_helpers.square_ring(100.5, 40.25),
+    ])
     archives = {
-        "California.geojson.zip": zip_bytes(
-            {
-                "California.geojson": feature_collection_bytes(
-                    [square_ring(0.0, 0.0)],
-                ),
-            },
+        "California.geojson.zip": tests.peri_scribe.sources.buildings_helpers.zip_bytes(
+            {"California.geojson": california},
         ),
-        "Texas.geojson.zip": zip_bytes(
-            {
-                "Texas.geojson": feature_collection_bytes(
-                    [square_ring(100.5, 40.25)],
-                ),
-                "readme.txt": b"hi",
-            },
-        ),
+        "Texas.geojson.zip": tests.peri_scribe.sources.buildings_helpers.zip_bytes({
+            "Texas.geojson": texas,
+            "readme.txt": b"hi",
+        }),
     }
     urls: list[str] = []
 
-    def get(
-        url: str,
-        **_kwargs: object,
-    ) -> tests.peri_scribe.sources.external_source_helpers.FakeResponse:
-        urls.append(url)
-        if url == peri_scribe.sources.external_sources.BUILDINGS_SOURCE.url:
-            return tests.peri_scribe.sources.external_source_helpers.FakeResponse(
-                page.encode("utf-8"),
-            )
-        return tests.peri_scribe.sources.external_source_helpers.FakeResponse(
-            archives[url.rsplit("/", 1)[-1]],
-        )
-
-    monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
-        "get",
-        get,
+    get = tests.peri_scribe.sources.buildings_helpers.make_state_archive_responder(
+        urls=urls,
+        page=page,
+        archives=archives,
     )
+
+    monkeypatch.setattr(peri_scribe.sources.downloading.requests, "get", get)
 
     result = peri_scribe.sources.external_sources.fetch_external_source(
         source,
@@ -656,9 +544,7 @@ def test_fetch_buildings_database_streams_states_into_database(
     assert sorted(path.name for path in sources.iterdir()) == ["buildings.sqlite"]
     connection = sqlite3.connect(output)
     try:
-        tile_rows = connection.execute(
-            "SELECT COUNT(*) FROM tiles",
-        ).fetchone()[0]
+        tile_rows = connection.execute("SELECT COUNT(*) FROM tiles").fetchone()[0]
         total = connection.execute(
             "SELECT COALESCE(SUM(building_count), 0) FROM tiles",
         ).fetchone()[0]
@@ -682,7 +568,10 @@ def test_fetch_buildings_database_skips_valid_existing_database(
 ) -> None:
     output = tmp_path / "sources" / "buildings.sqlite"
     output.parent.mkdir(parents=True)
-    write_database(np.asarray([[0.2, 0.2]], dtype=float), output)
+    tests.peri_scribe.sources.buildings_helpers.write_database(
+        np.asarray([[0.2, 0.2]], dtype=float),
+        output,
+    )
     original = output.read_bytes()
     monkeypatch.setattr(
         peri_scribe.sources.downloading.requests,
@@ -741,11 +630,7 @@ def test_fetch_buildings_database_preserves_existing_file_when_archive_fails(
         peri_scribe.sources.downloading.requests.exceptions.RequestException("boom"),
     )
 
-    monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
-        "get",
-        fail,
-    )
+    monkeypatch.setattr(peri_scribe.sources.downloading.requests, "get", fail)
     with pytest.raises(
         peri_scribe.exceptions.ExternalDataError,
         match="Failed to download",
@@ -797,7 +682,9 @@ def test_fetch_buildings_database_raises_when_geojson_is_unreadable(
         state_urls=None,
         url="https://example.com/legacy/{state}.geojson.zip",
     )
-    archive = zip_bytes({"California.geojson": b"not valid geojson {{{ "})
+    archive = tests.peri_scribe.sources.buildings_helpers.zip_bytes({
+        "California.geojson": b"not valid geojson {{{ ",
+    })
     monkeypatch.setattr(
         peri_scribe.sources.downloading.requests,
         "get",
@@ -823,13 +710,12 @@ def test_fetch_buildings_database_raises_when_generated_database_is_invalid(
         state_urls=None,
         url="https://example.com/legacy/{state}.geojson.zip",
     )
-    archive = zip_bytes(
-        {
-            "California.geojson": feature_collection_bytes(
-                [square_ring(0.0, 0.0)],
-            ),
-        },
-    )
+    california = tests.peri_scribe.sources.buildings_helpers.feature_collection_bytes([
+        tests.peri_scribe.sources.buildings_helpers.square_ring(0.0, 0.0),
+    ])
+    archive = tests.peri_scribe.sources.buildings_helpers.zip_bytes({
+        "California.geojson": california,
+    })
     monkeypatch.setattr(
         peri_scribe.sources.downloading.requests,
         "get",
@@ -860,7 +746,9 @@ def test_fetch_buildings_database_raises_when_archive_has_no_geojson(
         state_urls=None,
         url="https://example.com/legacy/{state}.geojson.zip",
     )
-    archive = zip_bytes({"readme.txt": b"hi"})
+    archive = tests.peri_scribe.sources.buildings_helpers.zip_bytes({
+        "readme.txt": b"hi",
+    })
     monkeypatch.setattr(
         peri_scribe.sources.downloading.requests,
         "get",

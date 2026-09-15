@@ -13,35 +13,13 @@ import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
 import peri_scribe.kml.geometry
 import peri_scribe.kml.plot_rendering
-import peri_scribe.kml.styles
 import peri_scribe.models
 import peri_scribe.perimeters.progression
 import peri_scribe.units
 import tests.factories
+import tests.peri_scribe.kml.folders_helpers
 import tests.peri_scribe.kml.kml_helpers
 from peri_scribe.units import units
-
-
-@pytest.fixture
-def style_urls() -> dict[str, str]:
-    return peri_scribe.kml.styles.PLACEMARK_STYLE_URLS
-
-
-def ring_style_urls_for(
-    fire: peri_scribe.kml.fire_data.FireGeometry,
-) -> dict[str, str]:
-    """Return a ring style URL for every color *fire*'s rings use.
-
-    The mapping mirrors the builder's, so the fire's rings resolve to the styles the
-    KMZ document defines.
-
-    Args:
-        fire: The fire to symbolize.
-
-    Returns:
-        The ring style URLs.
-    """
-    return peri_scribe.kml.builder.ring_style_urls_for([fire])
 
 
 def test_fire_folder_includes_point_perimeters_and_interior(
@@ -188,11 +166,7 @@ def test_fire_folder_shows_only_available_perimeters(
             (folder, "Unknown Mapping"),
             (folder, "Bug"),
         )
-    } == {
-        "Interior": 0,
-        "Unknown Mapping": 2,
-        "Bug": 3,
-    }
+    } == {"Interior": 0, "Unknown Mapping": 2, "Bug": 3}
 
 
 def test_fire_folder_draws_interior_from_difference_rings(
@@ -258,9 +232,9 @@ def test_fire_folder_draws_interior_from_difference_rings(
         interior_folder,
         "08/07 13:00 Interior",
     )
-    # The rings are styled by their day's color rather than a single fill; with no
-    # area on any ring the active span is the first ring alone, so both clamp to the
-    # hottest color.
+    # The rings are styled by their day's color rather than a single fill; with no area
+    # on any ring the active span is the first ring alone, so both clamp to the hottest
+    # color.
     assert (
         tests.peri_scribe.kml.kml_helpers.placemark_style_url(first_interior)
         == "#ring-fill-ac1701"
@@ -274,10 +248,7 @@ def test_fire_folder_draws_interior_from_difference_rings(
             tests.peri_scribe.kml.kml_helpers.placemark_named(interior_folder, name),
         )
         for name in ("08/05 13:00 Interior", "08/07 13:00 Interior")
-    } == {
-        "08/05 13:00 Interior": 0,
-        "08/07 13:00 Interior": 1,
-    }
+    } == {"08/05 13:00 Interior": 0, "08/07 13:00 Interior": 1}
     # The outlines stack above the interior rings, and the point draws above both.
     assert {
         name: tests.peri_scribe.kml.kml_helpers.draw_order(
@@ -288,28 +259,14 @@ def test_fire_folder_draws_interior_from_difference_rings(
             (perimeters_folder, "08/07 13:00 Perimeter"),
             (folder, "Bug"),
         )
-    } == {
-        "08/05 13:00 Perimeter": 3,
-        "08/07 13:00 Perimeter": 4,
-        "Bug": 5,
-    }
+    } == {"08/05 13:00 Perimeter": 3, "08/07 13:00 Perimeter": 4, "Bug": 5}
     # The rings fill the interior instead of the complete latest perimeter.
     assert set(
         tests.peri_scribe.kml.kml_helpers.exterior_coordinates(first_interior),
-    ) == {
-        (-0.5, -0.5),
-        (0.5, -0.5),
-        (0.5, 0.5),
-        (-0.5, 0.5),
-    }
+    ) == {(-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)}
     assert set(
         tests.peri_scribe.kml.kml_helpers.exterior_coordinates(second_interior),
-    ) == {
-        (-1.0, -1.0),
-        (1.0, -1.0),
-        (1.0, 1.0),
-        (-1.0, 1.0),
-    }
+    ) == {(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)}
 
 
 def test_fire_folder_falls_back_to_complete_perimeter_without_dated_rings(
@@ -466,9 +423,7 @@ def test_fire_folder_lists_point_tour_and_interior_in_order(
     ] == [2.0, 1.0]
 
 
-def test_fire_folder_adds_tour_for_fallback_polygon(
-    style_urls: dict[str, str],
-) -> None:
+def test_fire_folder_adds_tour_for_fallback_polygon(style_urls: dict[str, str]) -> None:
     fire = peri_scribe.kml.fire_data.FireGeometry(
         name="Bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
@@ -510,14 +465,10 @@ def test_fire_folder_adds_tour_for_fallback_polygon(
     )
     assert tests.peri_scribe.kml.kml_helpers.update_visibility_by_target(
         updates[0],
-    ) == {
-        interior.get("id"): 1,
-    }
+    ) == {interior.get("id"): 1}
 
 
-def test_fire_folder_without_polygons_has_no_tour(
-    style_urls: dict[str, str],
-) -> None:
+def test_fire_folder_without_polygons_has_no_tour(style_urls: dict[str, str]) -> None:
     fire = peri_scribe.kml.fire_data.FireGeometry(
         name="Bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
@@ -542,9 +493,7 @@ def test_fire_folder_without_polygons_has_no_tour(
     ] == []
 
 
-def test_fire_folder_without_rings_holds_point_only(
-    style_urls: dict[str, str],
-) -> None:
+def test_fire_folder_without_rings_holds_point_only(style_urls: dict[str, str]) -> None:
     fire = peri_scribe.kml.fire_data.FireGeometry(
         name="Bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
@@ -566,9 +515,7 @@ def test_fire_folder_without_rings_holds_point_only(
     assert tests.peri_scribe.kml.kml_helpers.folder_names(bug_folder) == []
 
 
-def test_fire_folder_holds_point_and_ring_folders(
-    style_urls: dict[str, str],
-) -> None:
+def test_fire_folder_holds_point_and_ring_folders(style_urls: dict[str, str]) -> None:
     point = shapely.geometry.Point(1.0, 1.0)
     fire = peri_scribe.kml.fire_data.FireGeometry(
         name="Bug",
@@ -614,14 +561,9 @@ def test_fire_folder_holds_point_and_ring_folders(
             ),
         ),
     )
-    ring_style_urls = ring_style_urls_for(fire)
+    ring_style_urls = tests.peri_scribe.kml.folders_helpers.ring_style_urls_for(fire)
     writer = peri_scribe.kml.geometry.KmlWriter()
-    peri_scribe.kml.folders.fire_folder(
-        writer,
-        fire,
-        style_urls,
-        ring_style_urls,
-    )
+    peri_scribe.kml.folders.fire_folder(writer, fire, style_urls, ring_style_urls)
     bug_folder = tests.peri_scribe.kml.kml_helpers.folder_named(
         tests.peri_scribe.kml.kml_helpers.document_from_writer(writer),
         "Bug",
@@ -702,12 +644,7 @@ def test_fire_folder_holds_point_and_ring_folders(
                 "08/15 13:00 Interior",
             ),
         ),
-    ) == {
-        (-1.5, -1.5),
-        (1.5, -1.5),
-        (1.5, 1.5),
-        (-1.5, 1.5),
-    }
+    ) == {(-1.5, -1.5), (1.5, -1.5), (1.5, 1.5), (-1.5, 1.5)}
     assert set(
         tests.peri_scribe.kml.kml_helpers.exterior_coordinates(
             tests.peri_scribe.kml.kml_helpers.placemark_named(
@@ -715,12 +652,7 @@ def test_fire_folder_holds_point_and_ring_folders(
                 "08/13 13:00 Interior",
             ),
         ),
-    ) == {
-        (-0.5, -0.5),
-        (0.5, -0.5),
-        (0.5, 0.5),
-        (-0.5, 0.5),
-    }
+    ) == {(-0.5, -0.5), (0.5, -0.5), (0.5, 0.5), (-0.5, 0.5)}
     assert set(
         tests.peri_scribe.kml.kml_helpers.exterior_coordinates(
             tests.peri_scribe.kml.kml_helpers.placemark_named(
@@ -728,17 +660,10 @@ def test_fire_folder_holds_point_and_ring_folders(
                 "08/14 13:00 Interior",
             ),
         ),
-    ) == {
-        (-1.0, -1.0),
-        (1.0, -1.0),
-        (1.0, 1.0),
-        (-1.0, 1.0),
-    }
+    ) == {(-1.0, -1.0), (1.0, -1.0), (1.0, 1.0), (-1.0, 1.0)}
 
 
-def test_fire_folder_falls_back_to_latest_perimeter(
-    style_urls: dict[str, str],
-) -> None:
+def test_fire_folder_falls_back_to_latest_perimeter(style_urls: dict[str, str]) -> None:
     point = shapely.geometry.Point(1.0, 1.0)
     latest_time = datetime.datetime(2026, 8, 15, 20, 0, tzinfo=datetime.UTC)
     fire = peri_scribe.kml.fire_data.FireGeometry(
@@ -752,14 +677,9 @@ def test_fire_folder_falls_back_to_latest_perimeter(
             ),
         ),
     )
-    ring_style_urls = ring_style_urls_for(fire)
+    ring_style_urls = tests.peri_scribe.kml.folders_helpers.ring_style_urls_for(fire)
     writer = peri_scribe.kml.geometry.KmlWriter()
-    peri_scribe.kml.folders.fire_folder(
-        writer,
-        fire,
-        style_urls,
-        ring_style_urls,
-    )
+    peri_scribe.kml.folders.fire_folder(writer, fire, style_urls, ring_style_urls)
     bug_folder = tests.peri_scribe.kml.kml_helpers.folder_named(
         tests.peri_scribe.kml.kml_helpers.document_from_writer(writer),
         "Bug",
@@ -789,12 +709,7 @@ def test_fire_folder_falls_back_to_latest_perimeter(
                 "08/15 13:00 Interior",
             ),
         ),
-    ) == {
-        (-1.5, -1.5),
-        (1.5, -1.5),
-        (1.5, 1.5),
-        (-1.5, 1.5),
-    }
+    ) == {(-1.5, -1.5), (1.5, -1.5), (1.5, 1.5), (-1.5, 1.5)}
 
 
 def test_fire_folder_lists_point_tour_and_rings_in_order(
@@ -846,7 +761,7 @@ def test_fire_folder_lists_point_tour_and_rings_in_order(
         writer,
         fire,
         style_urls,
-        ring_style_urls_for(fire),
+        tests.peri_scribe.kml.folders_helpers.ring_style_urls_for(fire),
     )
     bug_folder = tests.peri_scribe.kml.kml_helpers.folder_named(
         tests.peri_scribe.kml.kml_helpers.document_from_writer(writer),
@@ -886,14 +801,11 @@ def test_fire_folder_lists_point_tour_and_rings_in_order(
         bug_folder,
         "Interior",
     )
-    # All three rings live in the single Interior folder, listed newest first; the
-    # tour still reveals them in the same chronological order the progression rings
-    # are listed.
+    # All three rings live in the single Interior folder, listed newest first; the tour
+    # still reveals them in the same chronological order the progression rings are
+    # listed.
     interior = [
-        tests.peri_scribe.kml.kml_helpers.placemark_named(
-            interior_folder,
-            name,
-        )
+        tests.peri_scribe.kml.kml_helpers.placemark_named(interior_folder, name)
         for name in (
             "08/15 13:00 Interior",
             "08/14 13:00 Interior",
@@ -953,7 +865,7 @@ def test_fire_folder_hides_its_tree(style_urls: dict[str, str]) -> None:
         writer,
         fire,
         style_urls,
-        ring_style_urls_for(fire),
+        tests.peri_scribe.kml.folders_helpers.ring_style_urls_for(fire),
         visible=False,
     )
     folder = tests.peri_scribe.kml.kml_helpers.folder_named(
@@ -989,7 +901,7 @@ def test_fire_folder_can_load_visible(style_urls: dict[str, str]) -> None:
         writer,
         fire,
         style_urls,
-        ring_style_urls_for(fire),
+        tests.peri_scribe.kml.folders_helpers.ring_style_urls_for(fire),
         visible=True,
     )
     folder = tests.peri_scribe.kml.kml_helpers.folder_named(
@@ -1001,45 +913,8 @@ def test_fire_folder_can_load_visible(style_urls: dict[str, str]) -> None:
 
 def test_status_folder_name_for_active() -> None:
     assert (
-        peri_scribe.kml.folders.status_folder_name(
-            peri_scribe.models.FireStatus.ACTIVE,
-        )
+        peri_scribe.kml.folders.status_folder_name(peri_scribe.models.FireStatus.ACTIVE)
         == "Active Fires"
-    )
-
-
-def score_entry(
-    name: str,
-    identifier: str | None,
-    score: int,
-    explanation: str,
-    *,
-    area: float | None = None,
-    building_count: int | None = None,
-    evacuation_overlap: bool | None = None,
-) -> peri_scribe.models.FireScoreEntry:
-    """Return a saved score for a fire.
-
-    Args:
-        name: The fire's name.
-        identifier: The fire's identifier, or None.
-        score: The fire's score.
-        explanation: Why the fire has the score.
-        area: The fire's presented area in acres, or None.
-        building_count: The buildings within a mile, or None.
-        evacuation_overlap: Whether the fire overlaps an evacuation zone.
-
-    Returns:
-        The score entry.
-    """
-    return peri_scribe.models.FireScoreEntry(
-        name=name,
-        identifier=identifier,
-        score=score,
-        explanation=explanation,
-        area=area,
-        building_count=building_count,
-        evacuation_overlap=evacuation_overlap,
     )
 
 
@@ -1061,13 +936,13 @@ def test_top_fires_matches_by_identifier() -> None:
     scores = peri_scribe.models.FireScores(
         version="test",
         fires=[
-            score_entry(
+            tests.peri_scribe.kml.folders_helpers.score_entry(
                 "Timber",
                 "id-small",
                 4,
                 "Over 5 structures within a mile.",
             ),
-            score_entry(
+            tests.peri_scribe.kml.folders_helpers.score_entry(
                 "Timber",
                 "id-big",
                 470,
@@ -1089,7 +964,7 @@ def test_top_fires_matches_any_fire_identifier() -> None:
     scores = peri_scribe.models.FireScores(
         version="test",
         fires=[
-            score_entry(
+            tests.peri_scribe.kml.folders_helpers.score_entry(
                 "Timber",
                 "id-big",
                 470,
@@ -1109,7 +984,14 @@ def test_top_fires_falls_back_to_name_without_identifier_match() -> None:
     )
     scores = peri_scribe.models.FireScores(
         version="test",
-        fires=[score_entry("Bug", None, 12, "A Type 1 Incident.")],
+        fires=[
+            tests.peri_scribe.kml.folders_helpers.score_entry(
+                "Bug",
+                None,
+                12,
+                "A Type 1 Incident.",
+            ),
+        ],
     )
     assert peri_scribe.kml.folders.top_fires([fire], scores) == [fire]
 
@@ -1124,84 +1006,32 @@ def test_top_fires_excludes_scores_without_matching_fire() -> None:
     )
     scores = peri_scribe.models.FireScores(
         version="test",
-        fires=[score_entry("Missing", "id-missing", 500, "A Type 1 Incident.")],
+        fires=[
+            tests.peri_scribe.kml.folders_helpers.score_entry(
+                "Missing",
+                "id-missing",
+                500,
+                "A Type 1 Incident.",
+            ),
+        ],
     )
     assert peri_scribe.kml.folders.top_fires([fire], scores) == []
 
 
-REFERENCE_TIME = datetime.datetime(2026, 8, 20, 12, 0, tzinfo=datetime.UTC)
-
-
-def active_fire(
-    name: str,
-    *,
-    description: peri_scribe.kml.descriptions.FireDescription | None = None,
-    perimeters: tuple[peri_scribe.kml.fire_data.Perimeter, ...] = (),
-    identifiers: frozenset[str] = frozenset(),
-) -> peri_scribe.kml.fire_data.FireGeometry:
-    """Return an active fire with the given description and perimeters.
-
-    Args:
-        name: The fire's name.
-        description: The fire's latest state, or None.
-        perimeters: The fire's perimeters, oldest first.
-        identifiers: The fire's identifiers.
-
-    Returns:
-        The active fire.
-    """
-    return peri_scribe.kml.fire_data.FireGeometry(
-        name=name,
-        status=peri_scribe.models.FireStatus.ACTIVE,
-        point=None,
-        perimeters=perimeters,
-        description=description,
-        identifiers=identifiers,
-    )
-
-
-def growing_fire(
-    name: str,
-    baseline_side: float,
-    latest_side: float,
-    reference_time: datetime.datetime,
-) -> peri_scribe.kml.fire_data.FireGeometry:
-    """Return an active fire growing from *baseline_side* to *latest_side*.
-
-    The baseline perimeter sits at the start of the 48-hour window and the latest one
-    at *reference_time*, so the fire's growth over the window is measurable.
-
-    Args:
-        name: The fire's name.
-        baseline_side: The side length of the baseline square.
-        latest_side: The side length of the latest square.
-        reference_time: The time the snapshot is as of.
-
-    Returns:
-        The growing fire.
-    """
-    return active_fire(
-        name,
-        perimeters=(
-            peri_scribe.kml.fire_data.Perimeter(
-                geometry=tests.factories.square(baseline_side),
-                observation_time=reference_time - datetime.timedelta(hours=48),
-            ),
-            peri_scribe.kml.fire_data.Perimeter(
-                geometry=tests.factories.square(latest_side),
-                observation_time=reference_time,
-            ),
-        ),
-    )
-
-
 def test_score_maps_partitions_entries_by_identity() -> None:
-    identified = score_entry("Timber", "id-big", 470, "Large.")
-    named = score_entry("Bug", None, 12, "A Type 1 Incident.")
-    scores = peri_scribe.models.FireScores(
-        version="test",
-        fires=[identified, named],
+    identified = tests.peri_scribe.kml.folders_helpers.score_entry(
+        "Timber",
+        "id-big",
+        470,
+        "Large.",
     )
+    named = tests.peri_scribe.kml.folders_helpers.score_entry(
+        "Bug",
+        None,
+        12,
+        "A Type 1 Incident.",
+    )
+    scores = peri_scribe.models.FireScores(version="test", fires=[identified, named])
 
     by_identifier, by_name = peri_scribe.kml.folders.score_maps(scores)
 
@@ -1210,68 +1040,84 @@ def test_score_maps_partitions_entries_by_identity() -> None:
 
 
 def test_score_value_for_fire_matches_by_identifier() -> None:
-    identified = score_entry("Timber", "id-big", 470, "Large.")
+    identified = tests.peri_scribe.kml.folders_helpers.score_entry(
+        "Timber",
+        "id-big",
+        470,
+        "Large.",
+    )
     scores = peri_scribe.models.FireScores(version="test", fires=[identified])
     by_identifier, by_name = peri_scribe.kml.folders.score_maps(scores)
-    fire = active_fire("Timber", identifiers=frozenset({"id-big", "alias-big"}))
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire(
+        "Timber",
+        identifiers=frozenset({"id-big", "alias-big"}),
+    )
 
     assert (
-        peri_scribe.kml.folders.score_value_for_fire(
-            fire,
-            by_identifier,
-            by_name,
-        )
+        peri_scribe.kml.folders.score_value_for_fire(fire, by_identifier, by_name)
         == identified.score
     )
 
 
 def test_score_value_for_fire_falls_back_to_name() -> None:
-    named = score_entry("Bug", None, 12, "A Type 1 Incident.")
+    named = tests.peri_scribe.kml.folders_helpers.score_entry(
+        "Bug",
+        None,
+        12,
+        "A Type 1 Incident.",
+    )
     scores = peri_scribe.models.FireScores(version="test", fires=[named])
     by_identifier, by_name = peri_scribe.kml.folders.score_maps(scores)
-    fire = active_fire("Bug")
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire("Bug")
 
     assert (
-        peri_scribe.kml.folders.score_value_for_fire(
-            fire,
-            by_identifier,
-            by_name,
-        )
+        peri_scribe.kml.folders.score_value_for_fire(fire, by_identifier, by_name)
         == named.score
     )
 
 
 def test_score_value_for_fire_returns_none_without_match() -> None:
-    named = score_entry("Bug", None, 12, "A Type 1 Incident.")
+    named = tests.peri_scribe.kml.folders_helpers.score_entry(
+        "Bug",
+        None,
+        12,
+        "A Type 1 Incident.",
+    )
     scores = peri_scribe.models.FireScores(version="test", fires=[named])
     by_identifier, by_name = peri_scribe.kml.folders.score_maps(scores)
-    fire = active_fire("Missing", identifiers=frozenset({"id-missing"}))
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire(
+        "Missing",
+        identifiers=frozenset({"id-missing"}),
+    )
 
     assert (
-        peri_scribe.kml.folders.score_value_for_fire(
-            fire,
-            by_identifier,
-            by_name,
-        )
+        peri_scribe.kml.folders.score_value_for_fire(fire, by_identifier, by_name)
         is None
     )
 
 
 def test_notable_score_threshold_uses_top_fraction() -> None:
-    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    fires = [
+        tests.peri_scribe.kml.folders_helpers.active_fire(f"Fire {index}")
+        for index in range(10)
+    ]
     scores = peri_scribe.models.FireScores(
         version="test",
         fires=[
-            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            tests.peri_scribe.kml.folders_helpers.score_entry(
+                f"Fire {index}",
+                None,
+                index + 1,
+                "Notable.",
+            )
             for index in range(10)
         ],
     )
     # Ten fires keep the highest-scoring fifth, so the cutoff is the second-highest
     # score.
-    expected_threshold = sorted(
-        (entry.score for entry in scores.fires),
-        reverse=True,
-    )[1]
+    expected_threshold = sorted((entry.score for entry in scores.fires), reverse=True)[
+        1
+    ]
     assert (
         peri_scribe.kml.folders.notable_score_threshold(fires, scores)
         == expected_threshold
@@ -1287,39 +1133,53 @@ def test_notable_score_threshold_ignores_inactive_fires() -> None:
     )
     scores = peri_scribe.models.FireScores(
         version="test",
-        fires=[score_entry("Old", None, 500, "A Type 1 Incident.")],
+        fires=[
+            tests.peri_scribe.kml.folders_helpers.score_entry(
+                "Old",
+                None,
+                500,
+                "A Type 1 Incident.",
+            ),
+        ],
     )
 
     assert peri_scribe.kml.folders.notable_score_threshold([fire], scores) is None
 
 
 def test_notable_score_threshold_returns_none_without_active_score() -> None:
-    fire = active_fire("Unscored")
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire("Unscored")
     scores = peri_scribe.models.FireScores(version="test", fires=[])
 
     assert peri_scribe.kml.folders.notable_score_threshold([fire], scores) is None
 
 
 def test_new_notable_fires_returns_empty_without_reference_time() -> None:
-    fire = active_fire(
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "New",
         description=peri_scribe.kml.descriptions.FireDescription(
-            discovery_time=REFERENCE_TIME,
+            discovery_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         ),
     )
     scores = peri_scribe.models.FireScores(
         version="test",
-        fires=[score_entry("New", None, 10, "Notable.")],
+        fires=[
+            tests.peri_scribe.kml.folders_helpers.score_entry(
+                "New",
+                None,
+                10,
+                "Notable.",
+            ),
+        ],
     )
 
     assert peri_scribe.kml.folders.new_notable_fires([fire], scores, None) == []
 
 
 def test_new_notable_fires_returns_empty_without_active_score() -> None:
-    fire = active_fire(
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Unscored",
         description=peri_scribe.kml.descriptions.FireDescription(
-            discovery_time=REFERENCE_TIME,
+            discovery_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         ),
     )
     scores = peri_scribe.models.FireScores(version="test", fires=[])
@@ -1328,222 +1188,325 @@ def test_new_notable_fires_returns_empty_without_active_score() -> None:
         peri_scribe.kml.folders.new_notable_fires(
             [fire],
             scores,
-            REFERENCE_TIME,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         )
         == []
     )
 
 
 def test_new_notable_fires_includes_recent_high_score_fire() -> None:
-    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    fires = [
+        tests.peri_scribe.kml.folders_helpers.active_fire(f"Fire {index}")
+        for index in range(10)
+    ]
     scores = peri_scribe.models.FireScores(
         version="test",
         fires=[
-            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            tests.peri_scribe.kml.folders_helpers.score_entry(
+                f"Fire {index}",
+                None,
+                index + 1,
+                "Notable.",
+            )
             for index in range(10)
         ],
     )
-    recent = REFERENCE_TIME - datetime.timedelta(days=1)
-    candidate = active_fire(
-        "New",
-        description=peri_scribe.kml.descriptions.FireDescription(
-            discovery_time=recent,
-        ),
+    recent = tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME - datetime.timedelta(
+        days=1,
     )
-    scores.fires.append(score_entry("New", None, 10, "Notable."))
+    candidate = tests.peri_scribe.kml.folders_helpers.active_fire(
+        "New",
+        description=peri_scribe.kml.descriptions.FireDescription(discovery_time=recent),
+    )
+    scores.fires.append(
+        tests.peri_scribe.kml.folders_helpers.score_entry("New", None, 10, "Notable."),
+    )
     fires.append(candidate)
 
     assert peri_scribe.kml.folders.new_notable_fires(
         fires,
         scores,
-        REFERENCE_TIME,
+        tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
     ) == [candidate]
 
 
 def test_new_notable_fires_sorts_by_score_descending() -> None:
-    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    fires = [
+        tests.peri_scribe.kml.folders_helpers.active_fire(f"Fire {index}")
+        for index in range(10)
+    ]
     scores = peri_scribe.models.FireScores(
         version="test",
         fires=[
-            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            tests.peri_scribe.kml.folders_helpers.score_entry(
+                f"Fire {index}",
+                None,
+                index + 1,
+                "Notable.",
+            )
             for index in range(10)
         ],
     )
-    recent = REFERENCE_TIME - datetime.timedelta(days=1)
-    lower = active_fire(
+    recent = tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME - datetime.timedelta(
+        days=1,
+    )
+    lower = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Lower",
-        description=peri_scribe.kml.descriptions.FireDescription(
-            discovery_time=recent,
-        ),
+        description=peri_scribe.kml.descriptions.FireDescription(discovery_time=recent),
     )
-    higher = active_fire(
+    higher = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Higher",
-        description=peri_scribe.kml.descriptions.FireDescription(
-            discovery_time=recent,
+        description=peri_scribe.kml.descriptions.FireDescription(discovery_time=recent),
+    )
+    scores.fires.append(
+        tests.peri_scribe.kml.folders_helpers.score_entry(
+            "Lower",
+            None,
+            10,
+            "Notable.",
         ),
     )
-    scores.fires.append(score_entry("Lower", None, 10, "Notable."))
-    scores.fires.append(score_entry("Higher", None, 12, "Notable."))
+    scores.fires.append(
+        tests.peri_scribe.kml.folders_helpers.score_entry(
+            "Higher",
+            None,
+            12,
+            "Notable.",
+        ),
+    )
     fires.extend([lower, higher])
 
     assert peri_scribe.kml.folders.new_notable_fires(
         fires,
         scores,
-        REFERENCE_TIME,
+        tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
     ) == [higher, lower]
 
 
 def test_new_notable_fires_excludes_stale_discovery() -> None:
-    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    fires = [
+        tests.peri_scribe.kml.folders_helpers.active_fire(f"Fire {index}")
+        for index in range(10)
+    ]
     scores = peri_scribe.models.FireScores(
         version="test",
         fires=[
-            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            tests.peri_scribe.kml.folders_helpers.score_entry(
+                f"Fire {index}",
+                None,
+                index + 1,
+                "Notable.",
+            )
             for index in range(10)
         ],
     )
-    stale = REFERENCE_TIME - datetime.timedelta(days=6)
-    candidate = active_fire(
-        "Old",
-        description=peri_scribe.kml.descriptions.FireDescription(
-            discovery_time=stale,
-        ),
+    stale = tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME - datetime.timedelta(
+        days=6,
     )
-    scores.fires.append(score_entry("Old", None, 20, "Notable."))
+    candidate = tests.peri_scribe.kml.folders_helpers.active_fire(
+        "Old",
+        description=peri_scribe.kml.descriptions.FireDescription(discovery_time=stale),
+    )
+    scores.fires.append(
+        tests.peri_scribe.kml.folders_helpers.score_entry("Old", None, 20, "Notable."),
+    )
     fires.append(candidate)
 
     assert (
         peri_scribe.kml.folders.new_notable_fires(
             fires,
             scores,
-            REFERENCE_TIME,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         )
         == []
     )
 
 
 def test_new_notable_fires_excludes_future_discovery() -> None:
-    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    fires = [
+        tests.peri_scribe.kml.folders_helpers.active_fire(f"Fire {index}")
+        for index in range(10)
+    ]
     scores = peri_scribe.models.FireScores(
         version="test",
         fires=[
-            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            tests.peri_scribe.kml.folders_helpers.score_entry(
+                f"Fire {index}",
+                None,
+                index + 1,
+                "Notable.",
+            )
             for index in range(10)
         ],
     )
-    future = REFERENCE_TIME + datetime.timedelta(hours=1)
-    candidate = active_fire(
+    future = tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME + datetime.timedelta(
+        hours=1,
+    )
+    candidate = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Future",
-        description=peri_scribe.kml.descriptions.FireDescription(
-            discovery_time=future,
+        description=peri_scribe.kml.descriptions.FireDescription(discovery_time=future),
+    )
+    scores.fires.append(
+        tests.peri_scribe.kml.folders_helpers.score_entry(
+            "Future",
+            None,
+            20,
+            "Notable.",
         ),
     )
-    scores.fires.append(score_entry("Future", None, 20, "Notable."))
     fires.append(candidate)
 
     assert (
         peri_scribe.kml.folders.new_notable_fires(
             fires,
             scores,
-            REFERENCE_TIME,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         )
         == []
     )
 
 
 def test_new_notable_fires_excludes_missing_description() -> None:
-    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    fires = [
+        tests.peri_scribe.kml.folders_helpers.active_fire(f"Fire {index}")
+        for index in range(10)
+    ]
     scores = peri_scribe.models.FireScores(
         version="test",
         fires=[
-            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            tests.peri_scribe.kml.folders_helpers.score_entry(
+                f"Fire {index}",
+                None,
+                index + 1,
+                "Notable.",
+            )
             for index in range(10)
         ],
     )
-    candidate = active_fire("NoDescription")
-    scores.fires.append(score_entry("NoDescription", None, 20, "Notable."))
+    candidate = tests.peri_scribe.kml.folders_helpers.active_fire("NoDescription")
+    scores.fires.append(
+        tests.peri_scribe.kml.folders_helpers.score_entry(
+            "NoDescription",
+            None,
+            20,
+            "Notable.",
+        ),
+    )
     fires.append(candidate)
 
     assert (
         peri_scribe.kml.folders.new_notable_fires(
             fires,
             scores,
-            REFERENCE_TIME,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         )
         == []
     )
 
 
 def test_new_notable_fires_excludes_missing_discovery_time() -> None:
-    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    fires = [
+        tests.peri_scribe.kml.folders_helpers.active_fire(f"Fire {index}")
+        for index in range(10)
+    ]
     scores = peri_scribe.models.FireScores(
         version="test",
         fires=[
-            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            tests.peri_scribe.kml.folders_helpers.score_entry(
+                f"Fire {index}",
+                None,
+                index + 1,
+                "Notable.",
+            )
             for index in range(10)
         ],
     )
-    candidate = active_fire(
+    candidate = tests.peri_scribe.kml.folders_helpers.active_fire(
         "NoDiscovery",
         description=peri_scribe.kml.descriptions.FireDescription(),
     )
-    scores.fires.append(score_entry("NoDiscovery", None, 20, "Notable."))
+    scores.fires.append(
+        tests.peri_scribe.kml.folders_helpers.score_entry(
+            "NoDiscovery",
+            None,
+            20,
+            "Notable.",
+        ),
+    )
     fires.append(candidate)
 
     assert (
         peri_scribe.kml.folders.new_notable_fires(
             fires,
             scores,
-            REFERENCE_TIME,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         )
         == []
     )
 
 
 def test_new_notable_fires_excludes_below_threshold() -> None:
-    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    fires = [
+        tests.peri_scribe.kml.folders_helpers.active_fire(f"Fire {index}")
+        for index in range(10)
+    ]
     scores = peri_scribe.models.FireScores(
         version="test",
         fires=[
-            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            tests.peri_scribe.kml.folders_helpers.score_entry(
+                f"Fire {index}",
+                None,
+                index + 1,
+                "Notable.",
+            )
             for index in range(10)
         ],
     )
-    recent = REFERENCE_TIME - datetime.timedelta(days=1)
-    candidate = active_fire(
-        "Low",
-        description=peri_scribe.kml.descriptions.FireDescription(
-            discovery_time=recent,
-        ),
+    recent = tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME - datetime.timedelta(
+        days=1,
     )
-    scores.fires.append(score_entry("Low", None, 5, "Notable."))
+    candidate = tests.peri_scribe.kml.folders_helpers.active_fire(
+        "Low",
+        description=peri_scribe.kml.descriptions.FireDescription(discovery_time=recent),
+    )
+    scores.fires.append(
+        tests.peri_scribe.kml.folders_helpers.score_entry("Low", None, 5, "Notable."),
+    )
     fires.append(candidate)
 
     assert (
         peri_scribe.kml.folders.new_notable_fires(
             fires,
             scores,
-            REFERENCE_TIME,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         )
         == []
     )
 
 
 def test_new_notable_fires_excludes_unscored_fire() -> None:
-    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    fires = [
+        tests.peri_scribe.kml.folders_helpers.active_fire(f"Fire {index}")
+        for index in range(10)
+    ]
     scores = peri_scribe.models.FireScores(
         version="test",
         fires=[
-            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            tests.peri_scribe.kml.folders_helpers.score_entry(
+                f"Fire {index}",
+                None,
+                index + 1,
+                "Notable.",
+            )
             for index in range(10)
         ],
     )
-    recent = REFERENCE_TIME - datetime.timedelta(days=1)
-    candidate = active_fire(
+    recent = tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME - datetime.timedelta(
+        days=1,
+    )
+    candidate = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Unscored",
-        description=peri_scribe.kml.descriptions.FireDescription(
-            discovery_time=recent,
-        ),
+        description=peri_scribe.kml.descriptions.FireDescription(discovery_time=recent),
     )
     fires.append(candidate)
 
@@ -1551,14 +1514,14 @@ def test_new_notable_fires_excludes_unscored_fire() -> None:
         peri_scribe.kml.folders.new_notable_fires(
             fires,
             scores,
-            REFERENCE_TIME,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         )
         == []
     )
 
 
 def test_new_notable_signals_qualify_by_size() -> None:
-    entry = score_entry(
+    entry = tests.peri_scribe.kml.folders_helpers.score_entry(
         "Big",
         None,
         5,
@@ -1569,7 +1532,7 @@ def test_new_notable_signals_qualify_by_size() -> None:
 
 
 def test_new_notable_signals_qualify_by_evacuation() -> None:
-    entry = score_entry(
+    entry = tests.peri_scribe.kml.folders_helpers.score_entry(
         "Zone",
         None,
         5,
@@ -1581,7 +1544,7 @@ def test_new_notable_signals_qualify_by_evacuation() -> None:
 
 
 def test_new_notable_signals_qualify_by_buildings() -> None:
-    entry = score_entry(
+    entry = tests.peri_scribe.kml.folders_helpers.score_entry(
         "Near",
         None,
         5,
@@ -1593,7 +1556,7 @@ def test_new_notable_signals_qualify_by_buildings() -> None:
 
 
 def test_new_notable_signals_qualify_requires_minimum_area() -> None:
-    entry = score_entry(
+    entry = tests.peri_scribe.kml.folders_helpers.score_entry(
         "Small",
         None,
         5,
@@ -1605,7 +1568,7 @@ def test_new_notable_signals_qualify_requires_minimum_area() -> None:
 
 
 def test_new_notable_signals_qualify_requires_known_area() -> None:
-    entry = score_entry(
+    entry = tests.peri_scribe.kml.folders_helpers.score_entry(
         "Unknown",
         None,
         5,
@@ -1616,51 +1579,73 @@ def test_new_notable_signals_qualify_requires_known_area() -> None:
 
 
 def test_new_notable_fires_includes_fire_qualifying_by_signals() -> None:
-    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    fires = [
+        tests.peri_scribe.kml.folders_helpers.active_fire(f"Fire {index}")
+        for index in range(10)
+    ]
     scores = peri_scribe.models.FireScores(
         version="test",
         fires=[
-            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            tests.peri_scribe.kml.folders_helpers.score_entry(
+                f"Fire {index}",
+                None,
+                index + 1,
+                "Notable.",
+            )
             for index in range(10)
         ],
     )
-    recent = REFERENCE_TIME - datetime.timedelta(days=1)
-    candidate = active_fire(
+    recent = tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME - datetime.timedelta(
+        days=1,
+    )
+    candidate = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Big",
-        description=peri_scribe.kml.descriptions.FireDescription(
-            discovery_time=recent,
-        ),
+        description=peri_scribe.kml.descriptions.FireDescription(discovery_time=recent),
     )
     scores.fires.append(
-        score_entry("Big", None, 5, "Over 1,000 acres.", area=1_500.0),
+        tests.peri_scribe.kml.folders_helpers.score_entry(
+            "Big",
+            None,
+            5,
+            "Over 1,000 acres.",
+            area=1_500.0,
+        ),
     )
     fires.append(candidate)
 
     assert peri_scribe.kml.folders.new_notable_fires(
         fires,
         scores,
-        REFERENCE_TIME,
+        tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
     ) == [candidate]
 
 
 def test_new_notable_fires_excludes_below_minimum_area_by_signals() -> None:
-    fires = [active_fire(f"Fire {index}") for index in range(10)]
+    fires = [
+        tests.peri_scribe.kml.folders_helpers.active_fire(f"Fire {index}")
+        for index in range(10)
+    ]
     scores = peri_scribe.models.FireScores(
         version="test",
         fires=[
-            score_entry(f"Fire {index}", None, index + 1, "Notable.")
+            tests.peri_scribe.kml.folders_helpers.score_entry(
+                f"Fire {index}",
+                None,
+                index + 1,
+                "Notable.",
+            )
             for index in range(10)
         ],
     )
-    recent = REFERENCE_TIME - datetime.timedelta(days=1)
-    candidate = active_fire(
+    recent = tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME - datetime.timedelta(
+        days=1,
+    )
+    candidate = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Tiny",
-        description=peri_scribe.kml.descriptions.FireDescription(
-            discovery_time=recent,
-        ),
+        description=peri_scribe.kml.descriptions.FireDescription(discovery_time=recent),
     )
     scores.fires.append(
-        score_entry(
+        tests.peri_scribe.kml.folders_helpers.score_entry(
             "Tiny",
             None,
             5,
@@ -1675,64 +1660,45 @@ def test_new_notable_fires_excludes_below_minimum_area_by_signals() -> None:
         peri_scribe.kml.folders.new_notable_fires(
             fires,
             scores,
-            REFERENCE_TIME,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         )
         == []
     )
 
 
-def type_one_fire(
-    name: str,
-    *,
-    active: bool = True,
-) -> peri_scribe.kml.fire_data.FireGeometry:
-    """Return a fire carrying the given name and Type 1 marker.
-
-    Args:
-        name: The fire's name.
-        active: Whether the fire is active.
-
-    Returns:
-        The fire.
-    """
-    return peri_scribe.kml.fire_data.FireGeometry(
-        name=name,
-        status=(
-            peri_scribe.models.FireStatus.ACTIVE
-            if active
-            else peri_scribe.models.FireStatus.INACTIVE
-        ),
-        point=None,
-        perimeters=(),
-        type_one=True,
-    )
-
-
 def test_type_one_fires_includes_active_type_one_fires_sorted_by_name() -> None:
-    zulu = type_one_fire("Zulu")
-    alpha = type_one_fire("alpha")
+    zulu = tests.peri_scribe.kml.folders_helpers.type_one_fire("Zulu")
+    alpha = tests.peri_scribe.kml.folders_helpers.type_one_fire("alpha")
 
     assert peri_scribe.kml.folders.type_one_fires([zulu, alpha]) == [alpha, zulu]
 
 
 def test_type_one_fires_excludes_inactive_fire() -> None:
-    done = type_one_fire("Done", active=False)
+    done = tests.peri_scribe.kml.folders_helpers.type_one_fire("Done", active=False)
 
     assert peri_scribe.kml.folders.type_one_fires([done]) == []
 
 
 def test_type_one_fires_excludes_unmarked_active_fire() -> None:
-    plain = active_fire("Plain")
+    plain = tests.peri_scribe.kml.folders_helpers.active_fire("Plain")
 
     assert peri_scribe.kml.folders.type_one_fires([plain]) == []
 
 
 def test_fire_growth_compares_latest_area_with_window_start() -> None:
-    fire = growing_fire("Grower", 0.02, 0.03, REFERENCE_TIME)
+    fire = tests.peri_scribe.kml.folders_helpers.growing_fire(
+        "Grower",
+        0.02,
+        0.03,
+        tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+    )
     baseline = peri_scribe.units.area(tests.factories.square(0.02))
     latest = peri_scribe.units.area(tests.factories.square(0.03))
 
-    growth, growth_percent = peri_scribe.kml.folders.fire_growth(fire, REFERENCE_TIME)
+    growth, growth_percent = peri_scribe.kml.folders.fire_growth(
+        fire,
+        tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+    )
 
     assert growth is not None
     assert growth.m_as("meters ** 2") == pytest.approx(
@@ -1745,16 +1711,17 @@ def test_fire_growth_compares_latest_area_with_window_start() -> None:
 
 
 def test_fire_growth_sorts_perimeters_chronologically() -> None:
-    fire = active_fire(
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Scrambled",
         perimeters=(
             peri_scribe.kml.fire_data.Perimeter(
                 geometry=tests.factories.square(0.03),
-                observation_time=REFERENCE_TIME,
+                observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
             ),
             peri_scribe.kml.fire_data.Perimeter(
                 geometry=tests.factories.square(0.02),
-                observation_time=REFERENCE_TIME - datetime.timedelta(hours=48),
+                observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME
+                - datetime.timedelta(hours=48),
             ),
         ),
     )
@@ -1763,7 +1730,7 @@ def test_fire_growth_sorts_perimeters_chronologically() -> None:
 
     growth, _growth_percent = peri_scribe.kml.folders.fire_growth(
         fire,
-        REFERENCE_TIME,
+        tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
     )
 
     assert growth is not None
@@ -1773,7 +1740,7 @@ def test_fire_growth_sorts_perimeters_chronologically() -> None:
 
 
 def test_fire_growth_without_timed_perimeters_is_unknown() -> None:
-    fire = active_fire(
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Timeless",
         perimeters=(
             peri_scribe.kml.fire_data.Perimeter(
@@ -1783,27 +1750,31 @@ def test_fire_growth_without_timed_perimeters_is_unknown() -> None:
         ),
     )
 
-    assert peri_scribe.kml.folders.fire_growth(fire, REFERENCE_TIME) == (None, None)
+    assert peri_scribe.kml.folders.fire_growth(
+        fire,
+        tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+    ) == (None, None)
 
 
 def test_fire_growth_without_window_start_counts_whole_area() -> None:
-    fire = active_fire(
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Newborn",
         perimeters=(
             peri_scribe.kml.fire_data.Perimeter(
                 geometry=tests.factories.square(0.03),
-                observation_time=REFERENCE_TIME - datetime.timedelta(hours=24),
+                observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME
+                - datetime.timedelta(hours=24),
             ),
             peri_scribe.kml.fire_data.Perimeter(
                 geometry=tests.factories.square(0.04),
-                observation_time=REFERENCE_TIME,
+                observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
             ),
         ),
     )
 
     growth, growth_percent = peri_scribe.kml.folders.fire_growth(
         fire,
-        REFERENCE_TIME,
+        tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
     )
 
     assert growth is not None
@@ -1814,23 +1785,24 @@ def test_fire_growth_without_window_start_counts_whole_area() -> None:
 
 
 def test_fire_growth_percent_is_unknown_without_baseline_area() -> None:
-    fire = active_fire(
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "FromNothing",
         perimeters=(
             peri_scribe.kml.fire_data.Perimeter(
                 geometry=shapely.geometry.Point(0.0, 0.0),
-                observation_time=REFERENCE_TIME - datetime.timedelta(hours=48),
+                observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME
+                - datetime.timedelta(hours=48),
             ),
             peri_scribe.kml.fire_data.Perimeter(
                 geometry=tests.factories.square(0.03),
-                observation_time=REFERENCE_TIME,
+                observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
             ),
         ),
     )
 
     growth, growth_percent = peri_scribe.kml.folders.fire_growth(
         fire,
-        REFERENCE_TIME,
+        tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
     )
 
     assert growth_percent is None
@@ -1842,46 +1814,73 @@ def test_fire_growth_percent_is_unknown_without_baseline_area() -> None:
 
 def test_fast_growing_fires_by_acres_filters_and_sorts() -> None:
     fires = [
-        growing_fire("Small", 0.01, 0.015, REFERENCE_TIME),
-        growing_fire("Huge", 0.02, 0.04, REFERENCE_TIME),
-        growing_fire("Big", 0.02, 0.03, REFERENCE_TIME),
+        tests.peri_scribe.kml.folders_helpers.growing_fire(
+            "Small",
+            0.01,
+            0.015,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+        ),
+        tests.peri_scribe.kml.folders_helpers.growing_fire(
+            "Huge",
+            0.02,
+            0.04,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+        ),
+        tests.peri_scribe.kml.folders_helpers.growing_fire(
+            "Big",
+            0.02,
+            0.03,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+        ),
     ]
 
     assert [
         fire.name
         for fire in peri_scribe.kml.folders.fast_growing_fires_by_acres(
             fires,
-            REFERENCE_TIME,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         )
     ] == ["Huge", "Big"]
 
 
 def test_fast_growing_fires_by_acres_returns_empty_without_reference_time() -> None:
-    fires = [growing_fire("Big", 0.02, 0.03, REFERENCE_TIME)]
+    fires = [
+        tests.peri_scribe.kml.folders_helpers.growing_fire(
+            "Big",
+            0.02,
+            0.03,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+        ),
+    ]
 
     assert peri_scribe.kml.folders.fast_growing_fires_by_acres(fires, None) == []
 
 
 def test_fast_growing_fires_by_acres_includes_zero_baseline_growth() -> None:
-    fire = active_fire(
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Newborn",
         perimeters=(
             peri_scribe.kml.fire_data.Perimeter(
                 geometry=tests.factories.square(0.03),
-                observation_time=REFERENCE_TIME,
+                observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
             ),
         ),
     )
 
     assert peri_scribe.kml.folders.fast_growing_fires_by_acres(
         [fire],
-        REFERENCE_TIME,
+        tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
     ) == [fire]
 
 
 def test_fast_growing_fires_by_acres_limits_to_top_count() -> None:
     fires = [
-        growing_fire(f"Grower {index}", 0.02, 0.03, REFERENCE_TIME)
+        tests.peri_scribe.kml.folders_helpers.growing_fire(
+            f"Grower {index}",
+            0.02,
+            0.03,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+        )
         for index in range(51)
     ]
 
@@ -1889,7 +1888,7 @@ def test_fast_growing_fires_by_acres_limits_to_top_count() -> None:
         len(
             peri_scribe.kml.folders.fast_growing_fires_by_acres(
                 fires,
-                REFERENCE_TIME,
+                tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
             ),
         )
         == peri_scribe.kml.folders.TOP_FIRE_COUNT
@@ -1898,33 +1897,55 @@ def test_fast_growing_fires_by_acres_limits_to_top_count() -> None:
 
 def test_fast_growing_fires_by_percent_filters_and_sorts() -> None:
     fires = [
-        growing_fire("Small", 0.1, 0.102, REFERENCE_TIME),
-        growing_fire("Huge", 0.03, 0.04, REFERENCE_TIME),
-        growing_fire("Big", 0.02, 0.03, REFERENCE_TIME),
+        tests.peri_scribe.kml.folders_helpers.growing_fire(
+            "Small",
+            0.1,
+            0.102,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+        ),
+        tests.peri_scribe.kml.folders_helpers.growing_fire(
+            "Huge",
+            0.03,
+            0.04,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+        ),
+        tests.peri_scribe.kml.folders_helpers.growing_fire(
+            "Big",
+            0.02,
+            0.03,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+        ),
     ]
 
     assert [
         fire.name
         for fire in peri_scribe.kml.folders.fast_growing_fires_by_percent(
             fires,
-            REFERENCE_TIME,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         )
     ] == ["Big", "Huge"]
 
 
 def test_fast_growing_fires_by_percent_returns_empty_without_reference_time() -> None:
-    fires = [growing_fire("Big", 0.02, 0.03, REFERENCE_TIME)]
+    fires = [
+        tests.peri_scribe.kml.folders_helpers.growing_fire(
+            "Big",
+            0.02,
+            0.03,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+        ),
+    ]
 
     assert peri_scribe.kml.folders.fast_growing_fires_by_percent(fires, None) == []
 
 
 def test_fast_growing_fires_by_percent_excludes_zero_baseline_growth() -> None:
-    fire = active_fire(
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Newborn",
         perimeters=(
             peri_scribe.kml.fire_data.Perimeter(
                 geometry=tests.factories.square(0.03),
-                observation_time=REFERENCE_TIME,
+                observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
             ),
         ),
     )
@@ -1932,7 +1953,7 @@ def test_fast_growing_fires_by_percent_excludes_zero_baseline_growth() -> None:
     assert (
         peri_scribe.kml.folders.fast_growing_fires_by_percent(
             [fire],
-            REFERENCE_TIME,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         )
         == []
     )
@@ -1940,7 +1961,12 @@ def test_fast_growing_fires_by_percent_excludes_zero_baseline_growth() -> None:
 
 def test_fast_growing_fires_by_percent_limits_to_top_count() -> None:
     fires = [
-        growing_fire(f"Grower {index}", 0.02, 0.03, REFERENCE_TIME)
+        tests.peri_scribe.kml.folders_helpers.growing_fire(
+            f"Grower {index}",
+            0.02,
+            0.03,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+        )
         for index in range(51)
     ]
 
@@ -1948,7 +1974,7 @@ def test_fast_growing_fires_by_percent_limits_to_top_count() -> None:
         len(
             peri_scribe.kml.folders.fast_growing_fires_by_percent(
                 fires,
-                REFERENCE_TIME,
+                tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
             ),
         )
         == peri_scribe.kml.folders.TOP_FIRE_COUNT
@@ -1956,18 +1982,18 @@ def test_fast_growing_fires_by_percent_limits_to_top_count() -> None:
 
 
 def test_most_personnel_fires_sorts_known_personnel() -> None:
-    low = active_fire(
+    low = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Low",
         description=peri_scribe.kml.descriptions.FireDescription(
             total_personnel=10.0,
-            observation_time=REFERENCE_TIME,
+            observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         ),
     )
-    high = active_fire(
+    high = tests.peri_scribe.kml.folders_helpers.active_fire(
         "High",
         description=peri_scribe.kml.descriptions.FireDescription(
             total_personnel=100.0,
-            observation_time=REFERENCE_TIME,
+            observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         ),
     )
 
@@ -1975,24 +2001,26 @@ def test_most_personnel_fires_sorts_known_personnel() -> None:
         fire.name
         for fire in peri_scribe.kml.folders.most_personnel_fires(
             [low, high],
-            REFERENCE_TIME,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         )
     ] == ["High", "Low"]
 
 
 def test_most_personnel_fires_excludes_missing_personnel() -> None:
-    missing_description = active_fire("NoDescription")
-    missing_count = active_fire(
+    missing_description = tests.peri_scribe.kml.folders_helpers.active_fire(
+        "NoDescription",
+    )
+    missing_count = tests.peri_scribe.kml.folders_helpers.active_fire(
         "NoCount",
         description=peri_scribe.kml.descriptions.FireDescription(
-            observation_time=REFERENCE_TIME,
+            observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         ),
     )
-    staffed = active_fire(
+    staffed = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Staffed",
         description=peri_scribe.kml.descriptions.FireDescription(
             total_personnel=5.0,
-            observation_time=REFERENCE_TIME,
+            observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         ),
     )
 
@@ -2000,52 +2028,70 @@ def test_most_personnel_fires_excludes_missing_personnel() -> None:
         fire.name
         for fire in peri_scribe.kml.folders.most_personnel_fires(
             [missing_description, missing_count, staffed],
-            REFERENCE_TIME,
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         )
     ] == ["Staffed"]
 
 
 def test_most_personnel_fires_excludes_stale_update() -> None:
-    stale = active_fire(
+    stale = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Stale",
         description=peri_scribe.kml.descriptions.FireDescription(
             total_personnel=50.0,
-            observation_time=REFERENCE_TIME - datetime.timedelta(days=8),
+            observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME
+            - datetime.timedelta(days=8),
         ),
     )
 
-    assert peri_scribe.kml.folders.most_personnel_fires([stale], REFERENCE_TIME) == []
+    assert (
+        peri_scribe.kml.folders.most_personnel_fires(
+            [stale],
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+        )
+        == []
+    )
 
 
 def test_most_personnel_fires_excludes_missing_update() -> None:
-    fire = active_fire(
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "NoUpdate",
-        description=peri_scribe.kml.descriptions.FireDescription(
-            total_personnel=50.0,
-        ),
+        description=peri_scribe.kml.descriptions.FireDescription(total_personnel=50.0),
     )
 
-    assert peri_scribe.kml.folders.most_personnel_fires([fire], REFERENCE_TIME) == []
+    assert (
+        peri_scribe.kml.folders.most_personnel_fires(
+            [fire],
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+        )
+        == []
+    )
 
 
 def test_most_personnel_fires_excludes_future_update() -> None:
-    fire = active_fire(
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Future",
         description=peri_scribe.kml.descriptions.FireDescription(
             total_personnel=50.0,
-            observation_time=REFERENCE_TIME + datetime.timedelta(hours=1),
+            observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME
+            + datetime.timedelta(hours=1),
         ),
     )
 
-    assert peri_scribe.kml.folders.most_personnel_fires([fire], REFERENCE_TIME) == []
+    assert (
+        peri_scribe.kml.folders.most_personnel_fires(
+            [fire],
+            tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+        )
+        == []
+    )
 
 
 def test_most_personnel_fires_returns_empty_without_reference_time() -> None:
-    fire = active_fire(
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Staffed",
         description=peri_scribe.kml.descriptions.FireDescription(
             total_personnel=5.0,
-            observation_time=REFERENCE_TIME,
+            observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
         ),
     )
 
@@ -2054,18 +2100,23 @@ def test_most_personnel_fires_returns_empty_without_reference_time() -> None:
 
 def test_most_personnel_fires_limits_to_top_count() -> None:
     fires = [
-        active_fire(
+        tests.peri_scribe.kml.folders_helpers.active_fire(
             f"Staffed {index}",
             description=peri_scribe.kml.descriptions.FireDescription(
                 total_personnel=float(index),
-                observation_time=REFERENCE_TIME,
+                observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
             ),
         )
         for index in range(51)
     ]
 
     assert (
-        len(peri_scribe.kml.folders.most_personnel_fires(fires, REFERENCE_TIME))
+        len(
+            peri_scribe.kml.folders.most_personnel_fires(
+                fires,
+                tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
+            ),
+        )
         == peri_scribe.kml.folders.TOP_FIRE_COUNT
     )
 
@@ -2092,8 +2143,8 @@ def test_top_fires_folder_holds_fires_visible_by_default(
         document,
         "Top Fires by Name",
     )
-    # The folder loads checked and holds the fire folders directly, all visible, so
-    # the fires all show as soon as the folder is enabled.
+    # The folder loads checked and holds the fire folders directly, all visible, so the
+    # fires all show as soon as the folder is enabled.
     assert tests.peri_scribe.kml.kml_helpers.visibility(folder) is None
     assert tests.peri_scribe.kml.kml_helpers.folder_list_item_type(folder) is None
     assert tests.peri_scribe.kml.kml_helpers.folder_names(folder) == ["Zulu"]
@@ -2162,9 +2213,7 @@ def test_status_folder_filters_by_status(style_urls: dict[str, str]) -> None:
     document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
     folder = tests.peri_scribe.kml.kml_helpers.folder_named(document, "Active Fires")
     assert tests.peri_scribe.kml.kml_helpers.folder_list_item_type(folder) is None
-    assert tests.peri_scribe.kml.kml_helpers.folder_names(folder) == [
-        "Active Fire",
-    ]
+    assert tests.peri_scribe.kml.kml_helpers.folder_names(folder) == ["Active Fire"]
 
 
 def test_status_folder_can_load_hidden(style_urls: dict[str, str]) -> None:
@@ -2191,9 +2240,7 @@ def test_status_folder_can_load_hidden(style_urls: dict[str, str]) -> None:
     tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(folder)
 
 
-def test_status_folder_holds_every_fire(
-    style_urls: dict[str, str],
-) -> None:
+def test_status_folder_holds_every_fire(style_urls: dict[str, str]) -> None:
     first_time = datetime.datetime(2026, 8, 13, 20, 0, tzinfo=datetime.UTC)
     second_time = datetime.datetime(2026, 8, 14, 20, 0, tzinfo=datetime.UTC)
     with_rings = peri_scribe.kml.fire_data.FireGeometry(
@@ -2230,9 +2277,7 @@ def test_status_folder_holds_every_fire(
         [with_rings, point_only, empty],
         peri_scribe.models.FireStatus.ACTIVE,
         style_urls,
-        peri_scribe.kml.builder.ring_style_urls_for(
-            [with_rings, point_only, empty],
-        ),
+        peri_scribe.kml.builder.ring_style_urls_for([with_rings, point_only, empty]),
     )
     document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
     folder = tests.peri_scribe.kml.kml_helpers.folder_named(document, "Active Fires")
@@ -2241,29 +2286,6 @@ def test_status_folder_holds_every_fire(
         "Point",
         "Empty",
     ]
-
-
-def balloon_text(
-    description: peri_scribe.kml.descriptions.FireDescription,
-    image_filenames: tuple[str, ...] = (),
-    leading_rows: tuple[tuple[str, str | None], ...] = (),
-) -> str:
-    """Return *description*'s balloon as the KML parser reads it.
-
-    Args:
-        description: The fire description to render.
-        image_filenames: The plot image filenames to show below the table.
-        leading_rows: The rows to lead the table with.
-
-    Returns:
-        The balloon's CDATA content, without the section markers the parser strips.
-    """
-    html = peri_scribe.kml.descriptions.description_html(
-        description,
-        image_filenames,
-        leading_rows=leading_rows,
-    )
-    return html[len("<![CDATA[") : -len("]]>")]
 
 
 def test_fire_folder_applies_fire_balloon_to_point_and_outline_placemarks(
@@ -2304,7 +2326,10 @@ def test_fire_folder_applies_fire_balloon_to_point_and_outline_placemarks(
         "Bug",
         "Unknown Mapping",
     ]
-    expected = balloon_text(description, ("id-bug-perimeter.png",))
+    expected = tests.peri_scribe.kml.folders_helpers.balloon_text(
+        description,
+        ("id-bug-perimeter.png",),
+    )
     for name in ("Bug", "Unknown Mapping"):
         balloon = tests.peri_scribe.kml.kml_helpers.description_text(
             tests.peri_scribe.kml.kml_helpers.placemark_named(folder, name),
@@ -2354,7 +2379,9 @@ def test_fire_folder_interior_ring_balloons_lead_with_added_area(
     point_balloon = tests.peri_scribe.kml.kml_helpers.description_text(
         tests.peri_scribe.kml.kml_helpers.placemark_named(folder, "Bug"),
     )
-    assert point_balloon == balloon_text(description)
+    assert point_balloon == tests.peri_scribe.kml.folders_helpers.balloon_text(
+        description,
+    )
     assert "Added area" not in point_balloon
     interior_folder = tests.peri_scribe.kml.kml_helpers.folder_named(folder, "Interior")
     assert tests.peri_scribe.kml.kml_helpers.placemark_names(interior_folder) == [
@@ -2366,7 +2393,7 @@ def test_fire_folder_interior_ring_balloons_lead_with_added_area(
     first_added_area = peri_scribe.units.area(first_ring)
     second_added_area = peri_scribe.units.area(second_ring) - first_added_area
     expected_balloons = {
-        "08/05 13:00 Interior": balloon_text(
+        "08/05 13:00 Interior": tests.peri_scribe.kml.folders_helpers.balloon_text(
             description,
             leading_rows=(
                 (
@@ -2377,7 +2404,7 @@ def test_fire_folder_interior_ring_balloons_lead_with_added_area(
                 ),
             ),
         ),
-        "08/07 13:00 Interior": balloon_text(
+        "08/07 13:00 Interior": tests.peri_scribe.kml.folders_helpers.balloon_text(
             description,
             leading_rows=(
                 (
@@ -2391,10 +2418,7 @@ def test_fire_folder_interior_ring_balloons_lead_with_added_area(
     }
     for name, expected in expected_balloons.items():
         balloon = tests.peri_scribe.kml.kml_helpers.description_text(
-            tests.peri_scribe.kml.kml_helpers.placemark_named(
-                interior_folder,
-                name,
-            ),
+            tests.peri_scribe.kml.kml_helpers.placemark_named(interior_folder, name),
         )
         assert balloon == expected
         assert "<b>Identifier</b>" in balloon
@@ -2430,15 +2454,12 @@ def test_fire_folder_fallback_ring_balloon_leads_with_its_area(
     )
     interior_folder = tests.peri_scribe.kml.kml_helpers.folder_named(folder, "Interior")
     balloon = tests.peri_scribe.kml.kml_helpers.description_text(
-        tests.peri_scribe.kml.kml_helpers.placemark_named(
-            interior_folder,
-            "Interior",
-        ),
+        tests.peri_scribe.kml.kml_helpers.placemark_named(interior_folder, "Interior"),
     )
     # The fallback ring is the fire's whole latest perimeter, so it added that entire
     # area at its observation rather than a slice.
     added_area = peri_scribe.units.area(tests.factories.square(1.0))
-    assert balloon == balloon_text(
+    assert balloon == tests.peri_scribe.kml.folders_helpers.balloon_text(
         description,
         leading_rows=(
             (

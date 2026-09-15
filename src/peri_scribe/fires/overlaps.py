@@ -210,9 +210,7 @@ def overlapping_fire_indices(
             geopandas.GeoSeries(
                 valid_geometries,
                 crs=peri_scribe.geo.spatial_reference.WGS84_SPATIAL_REFERENCE,
-            ).to_crs(
-                layer_crs,
-            ),
+            ).to_crs(layer_crs),
         )
     reproj = [
         (index, geometry)

@@ -12,6 +12,7 @@ import peri_scribe.geo.package
 import peri_scribe.geo.reading
 import peri_scribe.sources.feed_types
 import tests.factories
+import tests.peri_scribe.geo.reading_helpers
 from tests.conftest import SAMPLE_FEED_NAME
 
 
@@ -19,32 +20,25 @@ if typing.TYPE_CHECKING:
     import pytest
 
 
-def test_read_layer_reads_named_layer(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_read_layer_reads_named_layer(monkeypatch: pytest.MonkeyPatch) -> None:
     frame = tests.factories.geo_frame(
         {"fire_name": ["Bug"]},
         [shapely.geometry.Point(0, 0)],
     )
     calls: list[tuple[pathlib.Path, str]] = []
 
-    def read_file(read_path: pathlib.Path, *, layer: str) -> geopandas.GeoDataFrame:
-        calls.append((read_path, layer))
-        return frame
-
-    monkeypatch.setattr(
-        peri_scribe.geo.package.geopandas,
-        "read_file",
-        read_file,
+    read_file = tests.peri_scribe.geo.reading_helpers.make_recording_layer_reader(
+        calls=calls,
+        frame=frame,
     )
+
+    monkeypatch.setattr(peri_scribe.geo.package.geopandas, "read_file", read_file)
     path = pathlib.Path("/derived/full.gpkg")
     assert peri_scribe.geo.reading.read_layer(path, "perimeter_history") is frame
     assert calls == [(path, "perimeter_history")]
 
 
-def test_read_layer_chunks_yields_bounded_chunks(
-    tmp_path: pathlib.Path,
-) -> None:
+def test_read_layer_chunks_yields_bounded_chunks(tmp_path: pathlib.Path) -> None:
     dataframe = tests.factories.geo_frame(
         {"a": [1, 2, 3, 4, 5]},
         [shapely.geometry.Point(index, 0) for index in range(5)],
@@ -53,11 +47,7 @@ def test_read_layer_chunks_yields_bounded_chunks(
     dataframe.to_file(path, layer="features")
 
     chunks = list(
-        peri_scribe.geo.reading.read_layer_chunks(
-            path,
-            "features",
-            chunk_size=2,
-        ),
+        peri_scribe.geo.reading.read_layer_chunks(path, "features", chunk_size=2),
     )
 
     assert [len(chunk) for chunk in chunks] == [2, 2, 1]
@@ -74,13 +64,7 @@ def test_read_layer_chunks_reads_default_layer_without_name(
     path = tmp_path / "layer.gpkg"
     dataframe.to_file(path, layer="features")
 
-    chunks = list(
-        peri_scribe.geo.reading.read_layer_chunks(
-            path,
-            None,
-            chunk_size=2,
-        ),
-    )
+    chunks = list(peri_scribe.geo.reading.read_layer_chunks(path, None, chunk_size=2))
 
     assert [len(chunk) for chunk in chunks] == [2, 1]
 
@@ -93,11 +77,7 @@ def test_read_layer_chunks_yields_nothing_for_empty_layer(
     dataframe.to_file(path, layer="features")
 
     chunks = list(
-        peri_scribe.geo.reading.read_layer_chunks(
-            path,
-            "features",
-            chunk_size=2,
-        ),
+        peri_scribe.geo.reading.read_layer_chunks(path, "features", chunk_size=2),
     )
 
     assert chunks == []

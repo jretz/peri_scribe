@@ -170,10 +170,9 @@ def first_source_text(
     Args:
         perimeter_row: A perimeter history row, or None.
         point_row: A point history row, or None.
-        point_key: The attribute key in the point row's source attributes, or
+        point_key: The attribute key in the point row's source attributes, or None.
+        perimeter_key: The attribute key in the perimeter row's source attributes, or
             None.
-        perimeter_key: The attribute key in the perimeter row's source
-            attributes, or None.
 
     Returns:
         The first present value, or None when both are missing.
@@ -270,7 +269,6 @@ def source_label(source: object) -> str | None:
     """
     if peri_scribe.geo.parsing.is_missing(source):
         return None
-    return {
-        "firis_perimeter": "FIRIS / NIFC",
-        "wfigs_perimeter": "WFIGS",
-    }.get(str(source))
+    return {"firis_perimeter": "FIRIS / NIFC", "wfigs_perimeter": "WFIGS"}.get(
+        str(source),
+    )

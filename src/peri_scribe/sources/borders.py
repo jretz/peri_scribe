@@ -57,13 +57,11 @@ CALIFORNIA_BOX_WESTERN_LONGITUDE = -126.0
 BORDER_PATH_ENDPOINT_COUNT = 2
 
 
-EXPECTED_COLUMNS = frozenset(
-    {
-        NEIGHBOR_COLUMN_NAME,
-        NEIGHBOR_ABBREVIATION_COLUMN_NAME,
-        LENGTH_COLUMN_NAME,
-    },
-)
+EXPECTED_COLUMNS = frozenset({
+    NEIGHBOR_COLUMN_NAME,
+    NEIGHBOR_ABBREVIATION_COLUMN_NAME,
+    LENGTH_COLUMN_NAME,
+})
 
 
 def line_parts(geometry: shapely.Geometry) -> list[shapely.LineString]:
@@ -164,8 +162,8 @@ def layer_dataframe(
     """Query *layer* and return its features as a GeoDataFrame in WGS84.
 
     The query requests the features re-projected to WGS 84 so the two sources can be
-    intersected in one spatial reference. A layer that returns no features is an
-    error, since no border can be computed from it.
+    intersected in one spatial reference. A layer that returns no features is an error,
+    since no border can be computed from it.
 
     Args:
         layer: The layer to query.
@@ -189,9 +187,7 @@ def layer_dataframe(
     return peri_scribe.geo.data.geo_data_frame_from_feature_set(feature_set)
 
 
-def boundary_geometries(
-    layer: arcgis.features.FeatureLayer,
-) -> geopandas.GeoDataFrame:
+def boundary_geometries(layer: arcgis.features.FeatureLayer) -> geopandas.GeoDataFrame:
     """Return California and its neighboring states from the state layer.
 
     The generalized state-boundary layer contains California as well as Arizona, Nevada,
@@ -227,9 +223,7 @@ def boundary_geometries(
     return dataframe
 
 
-def california_geometry_from_states(
-    states: geopandas.GeoDataFrame,
-) -> shapely.Geometry:
+def california_geometry_from_states(states: geopandas.GeoDataFrame) -> shapely.Geometry:
     """Return California's polygon from a combined state-boundary dataframe.
 
     Args:
@@ -287,10 +281,7 @@ def border_dataframe(
     lengths: list[float] = []
     borders: list[shapely.Geometry] = []
     for index in range(len(neighbors)):
-        border = shared_border(
-            california_geometry,
-            neighbors.geometry.iloc[index],
-        )
+        border = shared_border(california_geometry, neighbors.geometry.iloc[index])
         names.append(str(neighbors["STATE_NAME"].iloc[index]))
         abbreviations.append(str(neighbors["STATE_ABBR"].iloc[index]))
         lengths.append(round(border_length(border).m_as("kilometers"), 2))
@@ -337,9 +328,9 @@ def ordered_border_coordinates(
         message = "California border has no line segments"
         raise peri_scribe.exceptions.AdministrativeBoundariesError(message)
 
-    # Endpoints that round to the same four-decimal coordinate are the same corner.
-    # The stored borders are offset by roughly a meter at the corners, so this snaps
-    # them together without merging the far-apart vertices that trace the border.
+    # Endpoints that round to the same four-decimal coordinate are the same corner. The
+    # stored borders are offset by roughly a meter at the corners, so this snaps them
+    # together without merging the far-apart vertices that trace the border.
     def snapped(point: tuple[float, float]) -> tuple[float, float]:
         """Treat slightly offset state-corner endpoints as the same graph vertex.
 
@@ -371,13 +362,7 @@ def ordered_border_coordinates(
     start_key = min(odd_endpoints, key=operator.itemgetter(0))
     ordered = [representatives[start_key]]
     current_key = start_key
-    previous_segment: (
-        tuple[
-            tuple[float, float],
-            tuple[float, float],
-        ]
-        | None
-    ) = None
+    previous_segment: tuple[tuple[float, float], tuple[float, float]] | None = None
     while True:
         incident = [
             segment

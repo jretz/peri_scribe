@@ -12,6 +12,7 @@ import requests
 
 import peri_scribe.retry
 import peri_scribe.sources.feed_types
+import tests.peri_scribe.sources.feed_types_helpers
 from tests.conftest import (
     SAMPLE_FEED_NAME,
     SAMPLE_FEED_URL,
@@ -28,24 +29,6 @@ if TYPE_CHECKING:
 
 
 SAMPLE_LAST_EDIT_DATE = 123
-
-
-def feed_document(**overrides: object) -> dict[str, object]:
-    """Return the sample feed's configuration document with *overrides*.
-
-    Args:
-        overrides: Configuration keys to add or replace.
-
-    Returns:
-        The feed configuration document.
-    """
-    return {
-        "feed_type": "ArcGISFeed",
-        "url": SAMPLE_FEED_URL,
-        "fire_name_column": SAMPLE_FIRE_NAME_COLUMN,
-        "status_column": SAMPLE_STATUS_COLUMN,
-        **overrides,
-    }
 
 
 def test_arc_gis_feed_path_segments(
@@ -67,15 +50,11 @@ def test_arc_gis_feed_service_name(
     assert feed.service_name == SAMPLE_SERVICE_NAME
 
 
-def test_arc_gis_feed_layer_id(
-    feed: peri_scribe.sources.feed_types.ArcGISFeed,
-) -> None:
+def test_arc_gis_feed_layer_id(feed: peri_scribe.sources.feed_types.ArcGISFeed) -> None:
     assert feed.layer_id == SAMPLE_LAYER_ID
 
 
-def test_arc_gis_feed_name(
-    feed: peri_scribe.sources.feed_types.ArcGISFeed,
-) -> None:
+def test_arc_gis_feed_name(feed: peri_scribe.sources.feed_types.ArcGISFeed) -> None:
     assert feed.name == SAMPLE_FEED_NAME
 
 
@@ -108,7 +87,7 @@ def test_arc_gis_feed_exposes_identifier_and_complex_columns(
 
 
 def test_arc_gis_feed_rejects_missing_url() -> None:
-    document = feed_document()
+    document = tests.peri_scribe.sources.feed_types_helpers.feed_document()
     del document["url"]
     with pytest.raises(pydantic.ValidationError):
         peri_scribe.sources.feed_types.ArcGISFeed.model_validate(document)

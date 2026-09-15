@@ -71,8 +71,7 @@ def format_number(value: float | None, decimal_places: int = 0) -> str | None:
 
     Args:
         value: The number to format, or None.
-        decimal_places: The number of decimal places to keep, or 0 for a whole
-            number.
+        decimal_places: The number of decimal places to keep, or 0 for a whole number.
 
     Returns:
         The formatted number, or None when *value* is None.
@@ -184,10 +183,7 @@ def format_perimeter_length(value: pint.Quantity[float] | None) -> str | None:
         return None
     rounded = round(value.m_as("miles"), MAX_PERIMETER_DECIMAL_PLACES)
     if abs(rounded) >= PERIMETER_SIGNIFICANT_DIGIT_THRESHOLD.m_as("miles"):
-        rounded = round_to_significant_digits(
-            rounded,
-            MAX_PERIMETER_SIGNIFICANT_DIGITS,
-        )
+        rounded = round_to_significant_digits(rounded, MAX_PERIMETER_SIGNIFICANT_DIGITS)
     return format_number(rounded, MAX_PERIMETER_DECIMAL_PLACES)
 
 
@@ -296,7 +292,7 @@ def format_pacific_time(value: datetime.datetime | None) -> str | None:
 
     Examples:
         >>> format_pacific_time(
-        ...     datetime.datetime(2025, 8, 2, 5, 30, tzinfo=datetime.UTC),
+        ...     datetime.datetime(2025, 8, 2, 5, 30, tzinfo=datetime.UTC)
         ... )
         '08/01 22:30 PDT'
     """
@@ -345,9 +341,7 @@ def escape_html_text(value: str) -> str:
     return html.escape(value, quote=False)
 
 
-def description_rows(
-    description: FireDescription,
-) -> list[tuple[str, str | None]]:
+def description_rows(description: FireDescription) -> list[tuple[str, str | None]]:
     """Return the label/value rows shown in *description*'s balloon.
 
     Every fact the balloon's table shows appears once in its reading order, with None as
@@ -369,10 +363,7 @@ def description_rows(
             if description.area_basis is not None
             else []
         ),
-        (
-            "Exterior perimeter",
-            format_miles(description.exterior_perimeter),
-        ),
+        ("Exterior perimeter", format_miles(description.exterior_perimeter)),
         (
             "Containment",
             format_containment(
@@ -422,8 +413,8 @@ def description_html(
 
     Args:
         description: The fire's latest state.
-        image_filenames: The relative filename of each plot image to show, in
-            display order.
+        image_filenames: The relative filename of each plot image to show, in display
+            order.
         leading_rows: The (label, value) rows to show at the top of the table, in
             display order.
 
@@ -431,9 +422,7 @@ def description_html(
         The balloon's KML description text.
     """
     body_style = f' style="font-size:{BODY_FONT_SIZE.magnitude}px;"'
-    parts = [
-        f'<table cellspacing="0" cellpadding="4"{body_style}>',
-    ]
+    parts = [f'<table cellspacing="0" cellpadding="4"{body_style}>']
     rows = [*leading_rows, *description_rows(description)]
     for index, (label, value) in enumerate(rows):
         background = (

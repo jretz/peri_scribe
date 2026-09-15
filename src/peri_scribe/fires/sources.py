@@ -132,9 +132,7 @@ def group_fire_sources(read: ReadFireSources) -> FireRecordGroups:
     records = [row.record for row in read.rows]
     groups = peri_scribe.fires.grouping.group_fire_record_indices(records)
     fires = [
-        peri_scribe.fires.grouping.most_common_fire(
-            [records[index] for index in group],
-        )
+        peri_scribe.fires.grouping.most_common_fire([records[index] for index in group])
         for group in groups
     ]
     peri_scribe.fires.grouping.warn_for_inconsistent_fires(records, groups, fires)
@@ -202,26 +200,18 @@ def non_complex_fire_sources(
         One ``(FireSources, record indices)`` pair per non-complex fire, in group order.
     """
     sources: list[tuple[peri_scribe.models.FireSources, tuple[int, ...]]] = []
-    for fire, group in zip(
-        record_groups.fires,
-        record_groups.groups,
-        strict=True,
-    ):
+    for fire, group in zip(record_groups.fires, record_groups.groups, strict=True):
         if fire_is_complex_parent(record_groups, group):
             continue
-        sources.append(
-            (
-                peri_scribe.models.FireSources(
-                    fire=fire,
-                    paths=tuple(
-                        sorted(
-                            {record_groups.record_paths[index] for index in group},
-                        ),
-                    ),
+        sources.append((
+            peri_scribe.models.FireSources(
+                fire=fire,
+                paths=tuple(
+                    sorted({record_groups.record_paths[index] for index in group}),
                 ),
-                group,
             ),
-        )
+            group,
+        ))
     return sources
 
 

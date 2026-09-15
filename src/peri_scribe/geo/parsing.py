@@ -18,9 +18,9 @@ import peri_scribe.sources.feed_types
 def fire_status_from(value: object) -> peri_scribe.models.FireStatus | None:
     """Classify a feed's raw status value as active or inactive.
 
-    Blank values (including None) are treated as missing and return None. Values
-    that do not represent a known status raise an error, since they point at a
-    misconfigured status column or unexpected data.
+    Blank values (including None) are treated as missing and return None. Values that do
+    not represent a known status raise an error, since they point at a misconfigured
+    status column or unexpected data.
 
     Args:
         value: The raw status value from a feed.
@@ -139,9 +139,10 @@ def normalize_identifier(value: object) -> str | None:
     """Normalize a raw identifier value, or return None when it is missing.
 
     Identifiers are case-folded and stripped of surrounding braces so that equal
-    identifiers match regardless of formatting, e.g. ``{286B7F1D-8945-4A5D-9D81-
-    5235C18AF1FE}`` and ``286b7f1d-8945-4a5d-9d81-5235c18af1fe``. Blank values
-    (including None and NaN) are treated as missing and return None.
+    identifiers match regardless of formatting, e.g.
+    ``{286B7F1D-8945-4A5D-9D81-5235C18AF1FE}`` and
+    ``286b7f1d-8945-4a5d-9d81-5235c18af1fe``. Blank values (including None and NaN) are
+    treated as missing and return None.
 
     Args:
         value: The raw identifier value from a feed.
@@ -206,13 +207,7 @@ MINIMUM_UNIT_CODE_LENGTH = 3
 UNIT_PREFIX_TOKEN_COUNT = 2
 
 
-MISSION_NAME_NOISE_TOKENS = frozenset({
-    "updated",
-    "update",
-    "revised",
-    "final",
-    "copy",
-})
+MISSION_NAME_NOISE_TOKENS = frozenset({"updated", "update", "revised", "final", "copy"})
 
 
 def fire_name_from(value: object) -> str | None:
@@ -480,10 +475,7 @@ def object_id_from(row: pd.Series) -> int | None:
     return int(value)
 
 
-def row_attributes(
-    row: pd.Series,
-    geometry_name: str,
-) -> dict[str, object]:
+def row_attributes(row: pd.Series, geometry_name: str) -> dict[str, object]:
     """Return the row's non-geometry columns as a dictionary.
 
     Args:

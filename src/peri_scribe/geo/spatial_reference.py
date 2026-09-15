@@ -320,8 +320,8 @@ def classify_candidates_for_bounds(
 
     A candidate whose expected coordinate range does not fit the bounds is excluded,
     with a description of why. A geographic candidate whose expected range fits but
-    whose area of use does not contain the coordinates is kept, but reported as
-    outside its area of use.
+    whose area of use does not contain the coordinates is kept, but reported as outside
+    its area of use.
 
     Args:
         candidates: The spatial-reference identifiers reported by the source.
@@ -330,9 +330,9 @@ def classify_candidates_for_bounds(
 
     Returns:
         A tuple of the wkids that fit the bounds and contain the coordinates in their
-        area of use, the wkids that fit the bounds but not the coordinates in their
-        area of use (mapped to their area of use text), and the descriptions of the
-        excluded candidates.
+        area of use, the wkids that fit the bounds but not the coordinates in their area
+        of use (mapped to their area of use text), and the descriptions of the excluded
+        candidates.
     """
     matches: list[int] = []
     outside_area: dict[int, str] = {}
@@ -342,12 +342,9 @@ def classify_candidates_for_bounds(
         if domain is None:
             excluded.append(f"{wkid} (no expected coordinate range known)")
         elif not coordinates_match_domain(domain.bands, bounds):
-            (
-                x_minimum_band,
-                x_maximum_band,
-                y_minimum_band,
-                y_maximum_band,
-            ) = domain.bands
+            (x_minimum_band, x_maximum_band, y_minimum_band, y_maximum_band) = (
+                domain.bands
+            )
             x_minimum, x_maximum, y_minimum, y_maximum = bounds
             excluded.append(
                 f"{wkid} ({domain.description}, expected coordinate "
@@ -374,10 +371,9 @@ def select_spatial_reference_wkid(
     geographic candidates whose area of use does not contain the coordinates. When
     exactly one candidate remains, it wins and the selection carries a warning listing
     the excluded candidates and the reason. When no candidate remains but exactly one
-    was excluded only by the area-of-use check, that candidate is chosen with a
-    warning, because its coordinate range is plausible and no better candidate is
-    reported. When no wkid can be chosen, the selection carries a failure message that
-    explains why.
+    was excluded only by the area-of-use check, that candidate is chosen with a warning,
+    because its coordinate range is plausible and no better candidate is reported. When
+    no wkid can be chosen, the selection carries a failure message that explains why.
 
     Args:
         candidates: The spatial-reference identifiers reported by the source.
@@ -409,10 +405,7 @@ def select_spatial_reference_wkid(
             ),
         )
     x_minimum, x_maximum, y_minimum, y_maximum = bounds
-    matches, outside_area, excluded = classify_candidates_for_bounds(
-        candidates,
-        bounds,
-    )
+    matches, outside_area, excluded = classify_candidates_for_bounds(candidates, bounds)
     outside_area_descriptions = [
         f"{wkid} (coordinates outside its area of use {area_text})"
         for wkid, area_text in outside_area.items()

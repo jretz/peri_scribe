@@ -13,7 +13,6 @@ import geopandas
 import pandas as pd
 import pyproj
 import pytest
-import shapely
 import shapely.geometry
 
 import peri_scribe.exceptions
@@ -25,50 +24,7 @@ import peri_scribe.output
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.snapshots
 import tests.factories
-
-
-def stub_single_layer(
-    stub_geo_package: typing.Callable[
-        [pd.DataFrame, dict[str, pd.DataFrame]],
-        None,
-    ],
-    layer_name: str,
-    geometry_type: str,
-    dataframe: pd.DataFrame,
-) -> None:
-    """Point the GeoPackage reader at a single layer.
-
-    Args:
-        stub_geo_package: The fixture installing in-memory GeoPackage reads.
-        layer_name: The layer's name, matching a configured feed.
-        geometry_type: The layer's reported geometry type.
-        dataframe: The layer's rows.
-    """
-    stub_geo_package(
-        pd.DataFrame({"name": [layer_name], "geometry_type": [geometry_type]}),
-        {layer_name: dataframe},
-    )
-
-
-def wgs84_dataframe(
-    columns: dict[str, list[object]],
-    geometry: list[shapely.Geometry | None] | None = None,
-) -> geopandas.GeoDataFrame:
-    """Build an unprojected GeoDataFrame with the given columns.
-
-    Args:
-        columns: The attribute columns.
-        geometry: The feature geometries; defaults to two WGS84 points.
-
-    Returns:
-        The GeoDataFrame, without an explicit CRS.
-    """
-    if geometry is None:
-        geometry = [
-            shapely.geometry.Point(0, 0),
-            shapely.geometry.Point(1, 1),
-        ]
-    return geopandas.GeoDataFrame(columns, geometry=geometry)
+import tests.peri_scribe.geo.package_helpers
 
 
 def test_read_geopackage_reads_records_from_every_layer(
@@ -86,27 +42,17 @@ def test_read_geopackage_reads_records_from_every_layer(
                     "incident_name": ["Park Fire", "ALTA"],
                     "displayStatus": ["Active", "Inactive"],
                 },
-                geometry=[
-                    shapely.geometry.Point(0, 0),
-                    shapely.geometry.Point(1, 1),
-                ],
+                geometry=[shapely.geometry.Point(0, 0), shapely.geometry.Point(1, 1)],
             ),
             "Fires_Two_0": geopandas.GeoDataFrame(
-                {
-                    "IncidentName": ["Creek Fire"],
-                    "ActiveFireCandidate": [1],
-                },
+                {"IncidentName": ["Creek Fire"], "ActiveFireCandidate": [1]},
                 geometry=[shapely.geometry.Point(2, 2)],
             ),
         },
     )
     contents = peri_scribe.geo.package.read_geopackage(pathlib.Path("fires.gpkg"))
     records = [row.record for row in contents.rows]
-    assert [record.name for record in records] == [
-        "Park Fire",
-        "ALTA",
-        "Creek Fire",
-    ]
+    assert [record.name for record in records] == ["Park Fire", "ALTA", "Creek Fire"]
     assert [record.status for record in records] == [
         tests.factories.ACTIVE,
         tests.factories.INACTIVE,
@@ -123,30 +69,28 @@ def test_read_geopackage_omits_rows_without_status(
     configured_feeds: list[peri_scribe.sources.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_single_layer(
+    tests.peri_scribe.geo.package_helpers.stub_single_layer(
         stub_geo_package,
         "Fires_One_0",
         "Polygon",
-        wgs84_dataframe({
+        tests.peri_scribe.geo.package_helpers.wgs84_dataframe({
             "incident_name": ["Park Fire", "ALTA"],
             "displayStatus": ["Active", None],
         }),
     )
     contents = peri_scribe.geo.package.read_geopackage(pathlib.Path("fires.gpkg"))
-    assert [row.record.name for row in contents.rows] == [
-        "Park Fire",
-    ]
+    assert [row.record.name for row in contents.rows] == ["Park Fire"]
 
 
 def test_read_geopackage_names_blank_rows_from_mission(
     configured_feeds_with_mission: list[peri_scribe.sources.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_single_layer(
+    tests.peri_scribe.geo.package_helpers.stub_single_layer(
         stub_geo_package,
         "Fires_One_0",
         "Polygon",
-        wgs84_dataframe({
+        tests.peri_scribe.geo.package_helpers.wgs84_dataframe({
             "incident_name": [None, "Woodside"],
             "displayStatus": ["Active", "Active"],
             "incident_number": [None, None],
@@ -162,15 +106,12 @@ def test_read_geopackage_omits_rows_with_no_name_at_all(
     configured_feeds: list[peri_scribe.sources.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_single_layer(
+    tests.peri_scribe.geo.package_helpers.stub_single_layer(
         stub_geo_package,
         "Fires_One_0",
         "Polygon",
-        wgs84_dataframe(
-            {
-                "incident_name": [None],
-                "displayStatus": ["Active"],
-            },
+        tests.peri_scribe.geo.package_helpers.wgs84_dataframe(
+            {"incident_name": [None], "displayStatus": ["Active"]},
             geometry=[shapely.geometry.Point(0, 0)],
         ),
     )
@@ -189,10 +130,7 @@ def test_read_geopackage_raises_for_layer_without_configured_feed(
         }),
         {
             "Fires_One_0": geopandas.GeoDataFrame(
-                {
-                    "incident_name": ["Park Fire"],
-                    "displayStatus": ["Active"],
-                },
+                {"incident_name": ["Park Fire"], "displayStatus": ["Active"]},
                 geometry=[shapely.geometry.Point(0, 0)],
             ),
         },
@@ -208,17 +146,14 @@ def test_read_geopackage_reads_normalized_identifiers(
     configured_feeds_with_identifiers: list[peri_scribe.sources.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_single_layer(
+    tests.peri_scribe.geo.package_helpers.stub_single_layer(
         stub_geo_package,
         "Fires_One_0",
         "Polygon",
-        wgs84_dataframe({
+        tests.peri_scribe.geo.package_helpers.wgs84_dataframe({
             "incident_name": ["Bug", "BUG"],
             "displayStatus": ["Active", "Inactive"],
-            "incident_number": [
-                "{E3094E35-8B33-4A82-BE4B-D2E83652C29F}",
-                None,
-            ],
+            "incident_number": ["{E3094E35-8B33-4A82-BE4B-D2E83652C29F}", None],
         }),
     )
     contents = peri_scribe.geo.package.read_geopackage(pathlib.Path("fires.gpkg"))
@@ -232,11 +167,11 @@ def test_read_geopackage_reads_geometry_and_observation_time(
     configured_feeds_with_mission: list[peri_scribe.sources.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_single_layer(
+    tests.peri_scribe.geo.package_helpers.stub_single_layer(
         stub_geo_package,
         "Fires_One_0",
         "Polygon",
-        wgs84_dataframe(
+        tests.peri_scribe.geo.package_helpers.wgs84_dataframe(
             {
                 "incident_name": ["Bug"],
                 "displayStatus": ["Active"],
@@ -265,11 +200,11 @@ def test_read_geopackage_reads_mission_and_point_of_origin(
     configured_feeds_with_point_of_origin: list[peri_scribe.sources.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_single_layer(
+    tests.peri_scribe.geo.package_helpers.stub_single_layer(
         stub_geo_package,
         "Fires_Two_0",
         "Point",
-        wgs84_dataframe(
+        tests.peri_scribe.geo.package_helpers.wgs84_dataframe(
             {
                 "IncidentName": ["Bug"],
                 "ActiveFireCandidate": ["Active"],
@@ -292,11 +227,11 @@ def test_read_geopackage_reads_complex_memberships(
     configured_feeds_with_identifiers: list[peri_scribe.sources.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_single_layer(
+    tests.peri_scribe.geo.package_helpers.stub_single_layer(
         stub_geo_package,
         "Fires_Two_0",
         "Point",
-        wgs84_dataframe({
+        tests.peri_scribe.geo.package_helpers.wgs84_dataframe({
             "IncidentName": ["0445 CROSSWHITE", "ROWE CREEK COMPLEX"],
             "ActiveFireCandidate": [1, 1],
             "IrwinID": [
@@ -322,11 +257,11 @@ def test_read_geopackage_reads_no_memberships_without_complex_columns(
     configured_feeds_with_identifiers: list[peri_scribe.sources.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_single_layer(
+    tests.peri_scribe.geo.package_helpers.stub_single_layer(
         stub_geo_package,
         "Fires_One_0",
         "Polygon",
-        wgs84_dataframe(
+        tests.peri_scribe.geo.package_helpers.wgs84_dataframe(
             {
                 "incident_name": ["Bug"],
                 "displayStatus": ["Active"],
@@ -343,11 +278,11 @@ def test_read_geopackage_skips_rows_not_marked_as_complex_children(
     configured_feeds_with_identifiers: list[peri_scribe.sources.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_single_layer(
+    tests.peri_scribe.geo.package_helpers.stub_single_layer(
         stub_geo_package,
         "Fires_Two_0",
         "Point",
-        wgs84_dataframe(
+        tests.peri_scribe.geo.package_helpers.wgs84_dataframe(
             {
                 "IncidentName": ["Creek Fire"],
                 "ActiveFireCandidate": [1],
@@ -367,11 +302,11 @@ def test_read_geopackage_omits_memberships_with_blank_values(
     configured_feeds_with_identifiers: list[peri_scribe.sources.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:
-    stub_single_layer(
+    tests.peri_scribe.geo.package_helpers.stub_single_layer(
         stub_geo_package,
         "Fires_Two_0",
         "Point",
-        wgs84_dataframe({
+        tests.peri_scribe.geo.package_helpers.wgs84_dataframe({
             "IncidentName": ["A", "B"],
             "ActiveFireCandidate": [1, 1],
             "IrwinID": ["", "id-b"],
@@ -421,10 +356,7 @@ def test_read_geopackage_reads_missing_object_id(
         pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Point"]}),
         {
             "Fires_One_0": geopandas.GeoDataFrame(
-                {
-                    "incident_name": ["Park Fire"],
-                    "displayStatus": ["Active"],
-                },
+                {"incident_name": ["Park Fire"], "displayStatus": ["Active"]},
                 geometry=[shapely.geometry.Point(0, 0)],
             ),
         },
@@ -445,72 +377,12 @@ def test_read_geopackage_skips_rows_without_status(
                     "incident_name": ["Park Fire", "No Status"],
                     "displayStatus": ["Active", None],
                 },
-                geometry=[
-                    shapely.geometry.Point(0, 0),
-                    shapely.geometry.Point(1, 1),
-                ],
+                geometry=[shapely.geometry.Point(0, 0), shapely.geometry.Point(1, 1)],
             ),
         },
     )
     rows = peri_scribe.geo.package.read_geopackage(pathlib.Path("fires.gpkg")).rows
     assert [row.record.name for row in rows] == ["Park Fire"]
-
-
-def write_cache_snapshot(
-    tmp_path: pathlib.Path,
-    feed: peri_scribe.sources.feed_types.Feed,
-    rows: list[tuple[str, str]],
-    *,
-    serial_number: int = 0,
-) -> pathlib.Path:
-    """Write one snapshot GeoPackage for *feed* under a sources-like layout.
-
-    Args:
-        tmp_path: The per-test directory holding the sources tree.
-        feed: The feed the snapshot's layer belongs to.
-        rows: The name and status of each feature.
-        serial_number: The snapshot's serial number.
-
-    Returns:
-        The snapshot's path.
-    """
-    path = (
-        tmp_path
-        / "sources"
-        / feed.name
-        / "000___"
-        / f"{serial_number:06d},lastEdit=0.gpkg"
-    )
-    path.parent.mkdir(parents=True, exist_ok=True)
-    peri_scribe.output.write_geopackage(
-        path,
-        [
-            peri_scribe.models.LayerData(
-                name=feed.name,
-                dataframe=geopandas.GeoDataFrame(
-                    {
-                        "incident_name": [name for name, _status in rows],
-                        "displayStatus": [status for _name, status in rows],
-                    },
-                    geometry=[shapely.geometry.Point(0, 0) for _row in rows],
-                    crs=pyproj.CRS.from_epsg(4326),
-                ),
-            ),
-        ],
-    )
-    return path
-
-
-def record_cache_database_path(path: pathlib.Path) -> pathlib.Path:
-    """Return the record cache database for the feed holding *path*.
-
-    Args:
-        path: A snapshot path under ``sources/{feed}/...``.
-
-    Returns:
-        The feed's record cache database path.
-    """
-    return peri_scribe.sources.snapshots.record_cache_database_path(path.parent.parent)
 
 
 def test_read_geopackage_cached_writes_and_reuses_cache(
@@ -519,10 +391,16 @@ def test_read_geopackage_cached_writes_and_reuses_cache(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     feed = configured_feeds[0]
-    path = write_cache_snapshot(tmp_path, feed, [("Park Fire", "Active")])
+    path = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
+        tmp_path,
+        feed,
+        [("Park Fire", "Active")],
+    )
     contents = peri_scribe.geo.reading.read_geopackage_cached(path)
     assert [row.record.name for row in contents.rows] == ["Park Fire"]
-    assert record_cache_database_path(path).is_file()
+    assert tests.peri_scribe.geo.package_helpers.record_cache_database_path(
+        path,
+    ).is_file()
     # A second read must come from the cache, not from the GeoPackage.
     monkeypatch.setattr(
         peri_scribe.geo.package,
@@ -538,9 +416,17 @@ def test_read_geopackage_cached_rebuilds_when_snapshot_changes(
     configured_feeds: list[peri_scribe.sources.feed_types.Feed],
 ) -> None:
     feed = configured_feeds[0]
-    path = write_cache_snapshot(tmp_path, feed, [("Park Fire", "Active")])
+    path = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
+        tmp_path,
+        feed,
+        [("Park Fire", "Active")],
+    )
     peri_scribe.geo.reading.read_geopackage_cached(path)
-    write_cache_snapshot(tmp_path, feed, [("ALTA", "Inactive")])
+    tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
+        tmp_path,
+        feed,
+        [("ALTA", "Inactive")],
+    )
     # Give the rewritten snapshot a deterministically different modification time.
     os.utime(path, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
     contents = peri_scribe.geo.reading.read_geopackage_cached(path)
@@ -552,15 +438,18 @@ def test_read_geopackage_cached_rebuilds_corrupt_database(
     configured_feeds: list[peri_scribe.sources.feed_types.Feed],
 ) -> None:
     feed = configured_feeds[0]
-    path = write_cache_snapshot(tmp_path, feed, [("Park Fire", "Active")])
+    path = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
+        tmp_path,
+        feed,
+        [("Park Fire", "Active")],
+    )
     peri_scribe.geo.reading.read_geopackage_cached(path)
-    record_cache_database_path(path).write_bytes(b"not a database")
+    tests.peri_scribe.geo.package_helpers.record_cache_database_path(path).write_bytes(
+        b"not a database",
+    )
     # Change the snapshot's bucket directory so the in-process freshness memo
     # re-verifies and the corrupt database is rebuilt.
-    os.utime(
-        path.parent,
-        ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000),
-    )
+    os.utime(path.parent, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
     contents = peri_scribe.geo.reading.read_geopackage_cached(path)
     assert [row.record.name for row in contents.rows] == ["Park Fire"]
 
@@ -570,18 +459,21 @@ def test_read_geopackage_cached_rebuilds_outdated_schema(
     configured_feeds: list[peri_scribe.sources.feed_types.Feed],
 ) -> None:
     feed = configured_feeds[0]
-    path = write_cache_snapshot(tmp_path, feed, [("Park Fire", "Active")])
+    path = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
+        tmp_path,
+        feed,
+        [("Park Fire", "Active")],
+    )
     peri_scribe.geo.reading.read_geopackage_cached(path)
-    conn = sqlite3.connect(record_cache_database_path(path))
+    conn = sqlite3.connect(
+        tests.peri_scribe.geo.package_helpers.record_cache_database_path(path),
+    )
     conn.execute("PRAGMA user_version = 999")
     conn.commit()
     conn.close()
     # Change the snapshot's bucket directory so the in-process freshness memo
     # re-verifies and the outdated database is rebuilt.
-    os.utime(
-        path.parent,
-        ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000),
-    )
+    os.utime(path.parent, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
     again = peri_scribe.geo.reading.read_geopackage_cached(path)
     assert [row.record.name for row in again.rows] == ["Park Fire"]
 
@@ -592,15 +484,20 @@ def test_read_geopackage_cached_reads_when_snapshot_directory_unreadable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     feed = configured_feeds[0]
-    path = write_cache_snapshot(tmp_path, feed, [("Park Fire", "Active")])
+    path = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
+        tmp_path,
+        feed,
+        [("Park Fire", "Active")],
+    )
     source_directory = path.parent.parent
     original_stat = pathlib.Path.stat
 
-    def failing_stat(self: pathlib.Path) -> object:
-        if self == source_directory:
-            message = "no such directory"
-            raise OSError(message)
-        return original_stat(self)
+    failing_stat = (
+        tests.peri_scribe.geo.package_helpers.make_source_directory_stat_failure(
+            source_directory=source_directory,
+            original_stat=original_stat,
+        )
+    )
 
     monkeypatch.setattr(pathlib.Path, "stat", failing_stat)
     contents = peri_scribe.geo.reading.read_geopackage_cached(path)
@@ -612,7 +509,11 @@ def test_read_geopackage_cached_ignores_non_directory_entries(
     configured_feeds: list[peri_scribe.sources.feed_types.Feed],
 ) -> None:
     feed = configured_feeds[0]
-    path = write_cache_snapshot(tmp_path, feed, [("Park Fire", "Active")])
+    path = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
+        tmp_path,
+        feed,
+        [("Park Fire", "Active")],
+    )
     (path.parent.parent / "stray.txt").write_text("not a snapshot")
     contents = peri_scribe.geo.reading.read_geopackage_cached(path)
     assert [row.record.name for row in contents.rows] == ["Park Fire"]
@@ -624,15 +525,20 @@ def test_read_geopackage_cached_ignores_unreadable_bucket_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     feed = configured_feeds[0]
-    path = write_cache_snapshot(tmp_path, feed, [("Park Fire", "Active")])
+    path = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
+        tmp_path,
+        feed,
+        [("Park Fire", "Active")],
+    )
     bucket_directory = path.parent
     original_stat = pathlib.Path.stat
 
-    def failing_stat(self: pathlib.Path) -> object:
-        if self == bucket_directory:
-            message = "no such directory"
-            raise OSError(message)
-        return original_stat(self)
+    failing_stat = (
+        tests.peri_scribe.geo.package_helpers.make_bucket_directory_stat_failure(
+            bucket_directory=bucket_directory,
+            original_stat=original_stat,
+        )
+    )
 
     monkeypatch.setattr(pathlib.Path, "stat", failing_stat)
     contents = peri_scribe.geo.reading.read_geopackage_cached(path)
@@ -645,17 +551,15 @@ def test_read_geopackage_cached_falls_back_when_database_unusable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     feed = configured_feeds[0]
-    path = write_cache_snapshot(tmp_path, feed, [("Park Fire", "Active")])
-
-    def failing_sync(*_arguments: object, **_keywords: object) -> None:
-        message = "boom"
-        raise sqlite3.OperationalError(message)
-
-    monkeypatch.setattr(
-        peri_scribe.geo.database,
-        "open_and_sync",
-        failing_sync,
+    path = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
+        tmp_path,
+        feed,
+        [("Park Fire", "Active")],
     )
+
+    failing_sync = tests.peri_scribe.geo.package_helpers.fail_cache_synchronization
+
+    monkeypatch.setattr(peri_scribe.geo.database, "open_and_sync", failing_sync)
     contents = peri_scribe.geo.reading.read_geopackage_cached(path)
     assert [row.record.name for row in contents.rows] == ["Park Fire"]
 
@@ -666,14 +570,17 @@ def test_read_geopackage_cached_reads_without_cache_when_stat_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     feed = configured_feeds[0]
-    path = write_cache_snapshot(tmp_path, feed, [("Park Fire", "Active")])
+    path = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
+        tmp_path,
+        feed,
+        [("Park Fire", "Active")],
+    )
     original_stat = pathlib.Path.stat
 
-    def failing_stat(self: pathlib.Path) -> object:
-        if self == path:
-            message = "no such file"
-            raise OSError(message)
-        return original_stat(self)
+    failing_stat = tests.peri_scribe.geo.package_helpers.make_snapshot_stat_failure(
+        path=path,
+        original_stat=original_stat,
+    )
 
     monkeypatch.setattr(pathlib.Path, "stat", failing_stat)
     contents = peri_scribe.geo.reading.read_geopackage_cached(path)
@@ -685,9 +592,13 @@ def test_read_geopackage_cached_stores_new_snapshots_incrementally(
     configured_feeds: list[peri_scribe.sources.feed_types.Feed],
 ) -> None:
     feed = configured_feeds[0]
-    first = write_cache_snapshot(tmp_path, feed, [("Park Fire", "Active")])
+    first = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
+        tmp_path,
+        feed,
+        [("Park Fire", "Active")],
+    )
     peri_scribe.geo.reading.read_geopackage_cached(first)
-    second = write_cache_snapshot(
+    second = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
         tmp_path,
         feed,
         [("ALTA", "Inactive")],
@@ -697,13 +608,13 @@ def test_read_geopackage_cached_stores_new_snapshots_incrementally(
     assert [row.record.name for row in contents.rows] == ["ALTA"]
     again = peri_scribe.geo.reading.read_geopackage_cached(first)
     assert [row.record.name for row in again.rows] == ["Park Fire"]
-    conn = sqlite3.connect(record_cache_database_path(first))
+    conn = sqlite3.connect(
+        tests.peri_scribe.geo.package_helpers.record_cache_database_path(first),
+    )
     try:
         serials = [
             row[0]
-            for row in conn.execute(
-                "SELECT serial FROM snapshots ORDER BY serial",
-            )
+            for row in conn.execute("SELECT serial FROM snapshots ORDER BY serial")
         ]
     finally:
         conn.close()
@@ -715,8 +626,12 @@ def test_read_geopackage_cached_drops_rows_for_missing_snapshots(
     configured_feeds: list[peri_scribe.sources.feed_types.Feed],
 ) -> None:
     feed = configured_feeds[0]
-    first = write_cache_snapshot(tmp_path, feed, [("Park Fire", "Active")])
-    second = write_cache_snapshot(
+    first = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
+        tmp_path,
+        feed,
+        [("Park Fire", "Active")],
+    )
+    second = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
         tmp_path,
         feed,
         [("ALTA", "Inactive")],
@@ -726,13 +641,13 @@ def test_read_geopackage_cached_drops_rows_for_missing_snapshots(
     peri_scribe.geo.reading.read_geopackage_cached(second)
     first.unlink()
     peri_scribe.geo.reading.read_geopackage_cached(second)
-    conn = sqlite3.connect(record_cache_database_path(second))
+    conn = sqlite3.connect(
+        tests.peri_scribe.geo.package_helpers.record_cache_database_path(second),
+    )
     try:
         serials = [
             row[0]
-            for row in conn.execute(
-                "SELECT serial FROM snapshots ORDER BY serial",
-            )
+            for row in conn.execute("SELECT serial FROM snapshots ORDER BY serial")
         ]
     finally:
         conn.close()
@@ -745,18 +660,16 @@ def test_read_geopackage_cached_falls_back_when_read_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     feed = configured_feeds[0]
-    path = write_cache_snapshot(tmp_path, feed, [("Park Fire", "Active")])
+    path = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
+        tmp_path,
+        feed,
+        [("Park Fire", "Active")],
+    )
     peri_scribe.geo.reading.read_geopackage_cached(path)
 
-    def failing_read(*_arguments: object, **_keywords: object) -> object:
-        message = "boom"
-        raise sqlite3.OperationalError(message)
+    failing_read = tests.peri_scribe.geo.package_helpers.fail_cache_read
 
-    monkeypatch.setattr(
-        peri_scribe.geo.reading,
-        "read_snapshot_contents",
-        failing_read,
-    )
+    monkeypatch.setattr(peri_scribe.geo.reading, "read_snapshot_contents", failing_read)
     contents = peri_scribe.geo.reading.read_geopackage_cached(path)
     assert [row.record.name for row in contents.rows] == ["Park Fire"]
 
@@ -767,20 +680,16 @@ def test_read_geopackage_cached_skips_snapshot_that_cannot_be_checked(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     feed = configured_feeds[0]
-    path = write_cache_snapshot(tmp_path, feed, [("Park Fire", "Active")])
+    path = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
+        tmp_path,
+        feed,
+        [("Park Fire", "Active")],
+    )
     original = peri_scribe.sources.snapshots.existing_source_files
 
-    def phantom_files(
-        directory: pathlib.Path,
-    ) -> list[peri_scribe.sources.snapshots.SourceFile]:
-        files = original(directory)
-        return [
-            *files,
-            peri_scribe.sources.snapshots.SourceFile(
-                serial_number=99,
-                last_edit_timestamp=0,
-            ),
-        ]
+    phantom_files = tests.peri_scribe.geo.package_helpers.make_phantom_snapshot_listing(
+        original=original,
+    )
 
     monkeypatch.setattr(
         peri_scribe.sources.snapshots,
@@ -789,13 +698,13 @@ def test_read_geopackage_cached_skips_snapshot_that_cannot_be_checked(
     )
     contents = peri_scribe.geo.reading.read_geopackage_cached(path)
     assert [row.record.name for row in contents.rows] == ["Park Fire"]
-    conn = sqlite3.connect(record_cache_database_path(path))
+    conn = sqlite3.connect(
+        tests.peri_scribe.geo.package_helpers.record_cache_database_path(path),
+    )
     try:
         serials = [
             row[0]
-            for row in conn.execute(
-                "SELECT serial FROM snapshots ORDER BY serial",
-            )
+            for row in conn.execute("SELECT serial FROM snapshots ORDER BY serial")
         ]
     finally:
         conn.close()
@@ -808,9 +717,13 @@ def test_read_geopackage_cached_reads_directly_when_snapshot_not_stored(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     feed = configured_feeds[0]
-    first = write_cache_snapshot(tmp_path, feed, [("Park Fire", "Active")])
+    first = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
+        tmp_path,
+        feed,
+        [("Park Fire", "Active")],
+    )
     peri_scribe.geo.reading.read_geopackage_cached(first)
-    second = write_cache_snapshot(
+    second = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
         tmp_path,
         feed,
         [("ALTA", "Inactive")],
@@ -832,35 +745,27 @@ def test_read_geopackage_cached_round_trips_memberships(
     feed = configured_feeds_with_identifiers[1]
     path = tmp_path / "sources" / feed.name / "000___" / "000000,lastEdit=0.gpkg"
     path.parent.mkdir(parents=True, exist_ok=True)
-    dataframe = wgs84_dataframe({
+    dataframe = tests.peri_scribe.geo.package_helpers.wgs84_dataframe({
         "IncidentName": ["0445 CROSSWHITE", "ROWE CREEK COMPLEX"],
         "ActiveFireCandidate": [1, 1],
         "IrwinID": [
             "{1B0219EE-5298-4FEF-9927-C2666D9D53FC}",
             "{B8431C26-6A9B-4EF0-88D8-F7EA9A3F56C3}",
         ],
-        "CpxID": [
-            "{B8431C26-6A9B-4EF0-88D8-F7EA9A3F56C3}",
-            None,
-        ],
+        "CpxID": ["{B8431C26-6A9B-4EF0-88D8-F7EA9A3F56C3}", None],
         "CpxName": ["ROWE CREEK COMPLEX", None],
         "IsCpxChild": [1, 0],
     })
     dataframe.crs = pyproj.CRS.from_epsg(4326)
     peri_scribe.output.write_geopackage(
         path,
-        [
-            peri_scribe.models.LayerData(
-                name=feed.name,
-                dataframe=dataframe,
-            ),
-        ],
+        [peri_scribe.models.LayerData(name=feed.name, dataframe=dataframe)],
     )
     direct = peri_scribe.geo.package.read_geopackage(path)
     cached = peri_scribe.geo.reading.read_geopackage_cached(path)
-    # The records' fixed fields and the memberships round-trip exactly; the
-    # attribute bags round-trip with normalized values (numpy scalars become
-    # Python values and missing values become None).
+    # The records' fixed fields and the memberships round-trip exactly; the attribute
+    # bags round-trip with normalized values (numpy scalars become Python values and
+    # missing values become None).
     assert [row.record for row in cached.rows] == [row.record for row in direct.rows]
     assert cached.memberships == direct.memberships
     assert [row.attributes.keys() for row in cached.rows] == [

@@ -1,8 +1,8 @@
 """Turning a year's history layers into the geometry each fire symbolizes.
 
-These helpers group perimeters and point locations by fire, derive each fire's
-latest state for its balloon description, and assemble one FireGeometry per
-indexed fire together with its rendered plot images.
+These helpers group perimeters and point locations by fire, derive each fire's latest
+state for its balloon description, and assemble one FireGeometry per indexed fire
+together with its rendered plot images.
 """
 
 from __future__ import annotations
@@ -49,7 +49,12 @@ class Perimeter:
 
     @property
     def measured_area(self) -> pint.Quantity[float]:
-        """Share stored measurements while supporting standalone history layers."""
+        """Share stored measurements while supporting standalone history layers.
+
+        Returns:
+            The perimeter area as a unit-aware quantity, using stored measurements when
+            available.
+        """
         return peri_scribe.units.area(self.geometry) if self.area is None else self.area
 
 
@@ -78,7 +83,11 @@ class NamedFire(typing.Protocol):
 
     @property
     def name(self) -> str:
-        """The fire's name."""
+        """The fire's name.
+
+        Returns:
+            The display name of the fire.
+        """
         ...
 
 
@@ -97,9 +106,7 @@ def fire_name_key(named: NamedFire) -> str:
     return named.name.casefold()
 
 
-def descending_value_name_key(
-    ranked: tuple[FireGeometry, float],
-) -> tuple[float, str]:
+def descending_value_name_key(ranked: tuple[FireGeometry, float]) -> tuple[float, str]:
     """Return the ordering key that ranks fires by value, then by name.
 
     The largest value comes first, and fires whose values tie keep one stable order.
@@ -368,10 +375,7 @@ def prepare_fire_bundles(
             fire_identifiers,
             entry.name,
         )
-        point_positions = point_index.positions_for(
-            fire_identifiers,
-            entry.name,
-        )
+        point_positions = point_index.positions_for(fire_identifiers, entry.name)
         perimeter_rows = peri_scribe.kml.history_index.select_rows(
             perimeters,
             perimeter_positions,

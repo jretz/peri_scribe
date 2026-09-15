@@ -193,10 +193,7 @@ def read_geopackage_cached(
     return read_cached_snapshot(db_path, serial, path, geometry_pool=geometry_pool)
 
 
-def read_layer(
-    path: pathlib.Path,
-    layer_name: str,
-) -> geopandas.GeoDataFrame:
+def read_layer(path: pathlib.Path, layer_name: str) -> geopandas.GeoDataFrame:
     """Read *layer_name* from the GeoPackage at *path*.
 
     The file is only read, never written.
@@ -337,10 +334,6 @@ def read_gpkg_layer_chunks(
         if not dataframe.empty:
             yield dataframe
         lower = upper
-    dataframe = geopandas.read_file(
-        path,
-        layer=layer_name,
-        where=f"fid > {lower}",
-    )
+    dataframe = geopandas.read_file(path, layer=layer_name, where=f"fid > {lower}")
     if not dataframe.empty:
         yield dataframe

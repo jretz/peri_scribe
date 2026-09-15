@@ -4,15 +4,14 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
+from typing import TYPE_CHECKING
 
 import numpy as np
-import pytest
 
 import peri_scribe.fires.derived_layers
 import peri_scribe.fires.history
 import peri_scribe.fires.incident_history
 import peri_scribe.fires.sources
-import peri_scribe.geo.package
 import peri_scribe.incidents
 import peri_scribe.models
 import peri_scribe.output
@@ -20,47 +19,8 @@ import peri_scribe.sources.feeds
 import tests.factories
 
 
-@pytest.fixture
-def incident_sources(
-    tmp_path: pathlib.Path,
-) -> peri_scribe.fires.sources.ReadFireSources:
-    """Expose report changes that a geometry-only history would discard.
-
-    Args:
-        tmp_path: The isolated base for synthetic source provenance paths.
-
-    Returns:
-        Two snapshots with identical polygon evidence and different incident costs
-        and modification times; no snapshot files need to be written.
-    """
-    feed = "WFIGS_Interagency_Perimeters_Current_0"
-    rows = tuple(
-        peri_scribe.geo.package.FireRowRecord(
-            record=tests.factories.fire_record(
-                "Example",
-                tests.factories.ACTIVE,
-                {"example"},
-                geometry=tests.factories.square(0.01),
-                observed_at=tests.factories.utc(2026, 9, 1, 0),
-            ),
-            source_name=feed,
-            object_id=1,
-            attributes={
-                "attr_IncidentSize": 100,
-                "attr_EstimatedCostToDate": day * 1000,
-                "attr_ModifiedOnDateTime_dt": tests.factories.utc(2026, 9, day, 0),
-            },
-        )
-        for day in (2, 3)
-    )
-    return peri_scribe.fires.sources.ReadFireSources(
-        rows=rows,
-        paths=tuple(
-            tmp_path / feed / "000___" / f"{index:06d},lastEdit=1.gpkg"
-            for index in range(2)
-        ),
-        memberships=(),
-    )
+if TYPE_CHECKING:
+    import pytest
 
 
 def test_incident_layer_rows_keeps_reports_on_unchanged_polygon(

@@ -1,9 +1,9 @@
 """Reconciling perimeter and point observations into versioned history.
 
-Turns each source row into a labeled observation, collapses and merges observations
-that describe the same moment, and drops perimeters whose geometry collapsed below the
-size the source reports. The attribute-value helpers used to read a row's fields live
-here because both versioning and row construction share them.
+Turns each source row into a labeled observation, collapses and merges observations that
+describe the same moment, and drops perimeters whose geometry collapsed below the size
+the source reports. The attribute-value helpers used to read a row's fields live here
+because both versioning and row construction share them.
 """
 
 from __future__ import annotations
@@ -46,13 +46,11 @@ WFIGS_LOCATION = (
 )
 
 
-WFIGS_PREFERRED_CLASSIFICATIONS = frozenset(
-    {
-        peri_scribe.models.BorderClassification.CROSSES_CALIFORNIA_BORDER,
-        peri_scribe.models.BorderClassification.OUTSIDE_CALIFORNIA_NEAR_BORDER,
-        peri_scribe.models.BorderClassification.OUTSIDE_CALIFORNIA,
-    },
-)
+WFIGS_PREFERRED_CLASSIFICATIONS = frozenset({
+    peri_scribe.models.BorderClassification.CROSSES_CALIFORNIA_BORDER,
+    peri_scribe.models.BorderClassification.OUTSIDE_CALIFORNIA_NEAR_BORDER,
+    peri_scribe.models.BorderClassification.OUTSIDE_CALIFORNIA,
+})
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -124,20 +122,17 @@ def source_observation_from_row(
     )
 
 
-def effective_time(
-    observation: SourceObservation,
-) -> datetime.datetime | None:
+def effective_time(observation: SourceObservation) -> datetime.datetime | None:
     """Return the observation's as-of time, falling back to its own edit time.
 
     The as-of time is the feed's observation column: for both perimeter feeds that is
-    ``poly_DateCurrent``, the date the perimeter version is current for, so each
-    version of an in-place-edited perimeter carries the date its shape became
-    current. A row whose observation column is empty falls back to its modified-time
-    column (``EditDate`` for FIRIS, ``attr_ModifiedOnDateTime_dt`` for WFIGS) and
-    then to the snapshot's last-edit timestamp as the last resort: that timestamp
-    describes when the layer changed, not when the row was current, and dating a
-    dateless perimeter by it can make a stale re-published row look like the newest
-    mapping.
+    ``poly_DateCurrent``, the date the perimeter version is current for, so each version
+    of an in-place-edited perimeter carries the date its shape became current. A row
+    whose observation column is empty falls back to its modified-time column
+    (``EditDate`` for FIRIS, ``attr_ModifiedOnDateTime_dt`` for WFIGS) and then to the
+    snapshot's last-edit timestamp as the last resort: that timestamp describes when the
+    layer changed, not when the row was current, and dating a dateless perimeter by it
+    can make a stale re-published row look like the newest mapping.
 
     Args:
         observation: The observation to time.
@@ -247,9 +242,9 @@ def preferred_perimeter_source(
 ) -> peri_scribe.perimeters.border_classification.FireSourceKind:
     """Return the perimeter source most likely to be correct for a fire.
 
-    WFIGS is preferred when a fire crosses or sits outside California, where it maps
-    the full extent. FIRIS is preferred for fires inside California, including those
-    near the border.
+    WFIGS is preferred when a fire crosses or sits outside California, where it maps the
+    full extent. FIRIS is preferred for fires inside California, including those near
+    the border.
 
     Args:
         classification: The fire's border classification, or None.
@@ -360,9 +355,7 @@ def merge_identical_observations(
     return versions
 
 
-def credible_capture_time(
-    observation: SourceObservation,
-) -> datetime.datetime | None:
+def credible_capture_time(observation: SourceObservation) -> datetime.datetime | None:
     """Old or malformed capture fields cannot establish a mapping's freshness.
 
     Args:
@@ -390,7 +383,7 @@ def mapping_is_superseded(
     observation: SourceObservation,
     preferred: SourceObservation,
 ) -> bool:
-    """A delayed copy of an older survey cannot displace a newer preferred mapping.
+    """Protect newer preferred mappings from delayed copies of older surveys.
 
     Similar footprints corroborate the capture dates. Substantial footprint changes
     remain eligible because a capture field can stay unchanged during later edits.
@@ -411,11 +404,7 @@ def mapping_is_superseded(
     return (
         preferred_time <= published
         and captured <= preferred_capture + CONTEMPORANEOUS_TOLERANCE
-        and overlapping_footprints(
-            observation,
-            preferred,
-            SUPERSEDED_FOOTPRINT_OVERLAP,
-        )
+        and overlapping_footprints(observation, preferred, SUPERSEDED_FOOTPRINT_OVERLAP)
     )
 
 
@@ -495,8 +484,8 @@ def reconcile_perimeter_versions(
 ) -> list[SourceObservation]:
     """Reconcile the two perimeter sources into one version list.
 
-    Equal geometries observed within the tolerance merge into one version. Where the
-    two sources disagree within the tolerance, the preferred source wins.
+    Equal geometries observed within the tolerance merge into one version. Where the two
+    sources disagree within the tolerance, the preferred source wins.
 
     Args:
         firis_observations: The FIRIS perimeter versions for one fire.
@@ -515,10 +504,7 @@ def reconcile_perimeter_versions(
     return collapse_mapping_revisions(drop_losing_source_versions(versions, preferred))
 
 
-def attributes_are_equal(
-    left: dict[str, object],
-    right: dict[str, object],
-) -> bool:
+def attributes_are_equal(left: dict[str, object], right: dict[str, object]) -> bool:
     """Return whether two attribute dictionaries hold the same values.
 
     Args:
@@ -537,9 +523,7 @@ def attributes_are_equal(
     )
 
 
-def point_versions(
-    observations: list[SourceObservation],
-) -> list[SourceObservation]:
+def point_versions(observations: list[SourceObservation]) -> list[SourceObservation]:
     """Return one point version per distinct attribute state.
 
     The location is never part of version identity, so a location move alone folds the

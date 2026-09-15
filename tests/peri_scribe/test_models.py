@@ -1,3 +1,5 @@
+"""Verify fire identities, complex membership, and model validation."""
+
 import peri_scribe.models
 
 

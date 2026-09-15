@@ -8,7 +8,6 @@ import typing
 
 import arcgis.features
 import geopandas
-import pandas as pd
 import pyproj
 import pytest
 import shapely.geometry
@@ -19,187 +18,23 @@ import peri_scribe.exceptions
 import peri_scribe.models
 import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.borders
+import tests.peri_scribe.sources.boundary_helpers
 
 
 if typing.TYPE_CHECKING:
     from tests.factories import GeoPackageStore
 
 
-CALIFORNIA = shapely.geometry.Polygon([(0, 0), (0, 10), (10, 10), (10, 0)])
-ARIZONA = shapely.geometry.Polygon([(10, 0), (10, 10), (20, 10), (20, 0)])
-NEVADA = shapely.geometry.Polygon([(0, 10), (0, 20), (10, 20), (10, 10)])
-OREGON = shapely.geometry.Polygon([(-10, 0), (-10, 10), (0, 10), (0, 0)])
-
-BASE_DIRECTORY = pathlib.Path("/boundaries")
-
-OUTPUT_LAYER_NAME = peri_scribe.sources.administrative_boundaries.OUTPUT_LAYER_NAME
-
-ensure_administrative_boundaries = (
-    peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries
-)
-
-
-class FeatureLayerStub:
-    """Minimal stand-in for an ArcGIS FeatureLayer with a fixed query result."""
-
-    def __init__(self, feature_set: object) -> None:
-        self.feature_set = feature_set
-        self.queries: list[dict[str, object]] = []
-
-    def query(self, **parameters: object) -> object:
-        self.queries.append(parameters)
-        return self.feature_set
-
-
-class FailingFeatureLayerStub:
-    """FeatureLayer stand-in whose query always raises."""
-
-    @staticmethod
-    def query(**_parameters: object) -> object:
-        message = "boom"
-        raise RuntimeError(message)
-
-
-class GeometrylessFeatureSetStub:
-    """FeatureSet stand-in whose dataframe carries no geometry column."""
-
-    def __init__(self, count: int) -> None:
-        self.features = [object()] * count
-        self.sdf = pd.DataFrame(
-            {"STATE_NAME": [f"State {index}" for index in range(count)]},
-        )
-
-
-def as_feature_layer(stub: object) -> arcgis.features.FeatureLayer:
-    """Type *stub* as an ArcGIS FeatureLayer for the functions under test.
-
-    Returns:
-        The stub, statically typed as a FeatureLayer.
-    """
-    return typing.cast("arcgis.features.FeatureLayer", stub)
-
-
-def polygon_feature_set(
-    polygons: list[shapely.Polygon],
-    names: list[str],
-    abbreviations: list[str],
-) -> arcgis.features.FeatureSet:
-    """Build an ArcGIS FeatureSet from polygon geometries in WGS84.
-
-    Returns:
-        A FeatureSet whose features carry the named polygons in WGS84.
-    """
-    features = []
-    for polygon, name, abbreviation in zip(
-        polygons,
-        names,
-        abbreviations,
-        strict=True,
-    ):
-        rings = [[list(coordinate) for coordinate in polygon.exterior.coords]]
-        features.append(
-            arcgis.features.Feature(
-                geometry={
-                    "rings": rings,
-                    "spatialReference": {"wkid": 4326},
-                },
-                attributes={"STATE_NAME": name, "STATE_ABBR": abbreviation},
-            ),
-        )
-    return arcgis.features.FeatureSet(features)
-
-
-def good_border_dataframe() -> geopandas.GeoDataFrame:
-    """Return the border GeoDataFrame for the sample neighboring states.
-
-    Returns:
-        The three shared borders in WGS84 with the expected columns.
-    """
-    neighbors = geopandas.GeoDataFrame(
-        {
-            "STATE_NAME": ["Arizona", "Nevada", "Oregon"],
-            "STATE_ABBR": ["AZ", "NV", "OR"],
-        },
-        geometry=[ARIZONA, NEVADA, OREGON],
-        crs=pyproj.CRS.from_epsg(4326),
-    )
-    return peri_scribe.sources.borders.border_dataframe(
-        CALIFORNIA,
-        neighbors,
-    )
-
-
-def stub_geopackage_reads(
-    monkeypatch: pytest.MonkeyPatch,
-    layer_names: list[str],
-    dataframe: geopandas.GeoDataFrame,
-) -> None:
-    """Point the module's GeoPackage reads at in-memory stand-ins."""
-    monkeypatch.setattr(pathlib.Path, "is_file", lambda _self: True)
-    monkeypatch.setattr(
-        peri_scribe.sources.administrative_boundaries.geopandas,
-        "list_layers",
-        lambda _path: pd.DataFrame({"name": layer_names}),
-    )
-    monkeypatch.setattr(
-        peri_scribe.sources.administrative_boundaries.geopandas,
-        "read_file",
-        lambda _path, **_keywords: dataframe,
-    )
-
-
-def is_usable_dataframe(
-    *,
-    geometry: list[shapely.Geometry | None],
-    crs: object | None = pyproj.CRS.from_epsg(4326),
-) -> geopandas.GeoDataFrame:
-    """Build a candidate border dataframe for the is_usable checks.
-
-    Args:
-        geometry: The border line geometries.
-        crs: The dataframe's CRS, or None to omit it.
-
-    Returns:
-        The GeoDataFrame with the expected border columns.
-    """
-    return geopandas.GeoDataFrame(
-        {
-            "NEIGHBOR": ["Arizona", "Nevada", "Oregon"],
-            "NEIGHBOR_ABBR": ["AZ", "NV", "OR"],
-            "LENGTH_KM": [1.0, 2.0, 3.0],
-        },
-        geometry=geometry,
-        crs=crs,
-    )
-
-
-def stub_border_file(
-    monkeypatch: pytest.MonkeyPatch,
-    dataframe: geopandas.GeoDataFrame,
-) -> None:
-    """Point load_border_geometry's file reads at *dataframe*.
-
-    Args:
-        monkeypatch: The monkeypatch fixture.
-        dataframe: The stored border dataframe.
-    """
-    monkeypatch.setattr(
-        peri_scribe.sources.administrative_boundaries,
-        "output_geopackage_path",
-        lambda _year_directory: pathlib.Path("/data/border.gpkg"),
-    )
-    monkeypatch.setattr(
-        peri_scribe.sources.administrative_boundaries.geopandas,
-        "read_file",
-        lambda _path, **_keywords: dataframe,
-    )
-
-
 def test_output_geopackage_path() -> None:
     path = peri_scribe.sources.administrative_boundaries.output_geopackage_path(
-        BASE_DIRECTORY,
+        tests.peri_scribe.sources.boundary_helpers.BASE_DIRECTORY,
     )
-    assert path == BASE_DIRECTORY / "sources" / "CA_border_with_AZ_NV_and_OR.gpkg"
+    assert (
+        path
+        == tests.peri_scribe.sources.boundary_helpers.BASE_DIRECTORY
+        / "sources"
+        / "CA_border_with_AZ_NV_and_OR.gpkg"
+    )
 
 
 def test_line_parts_returns_lines_from_collection() -> None:
@@ -213,18 +48,13 @@ def test_line_parts_returns_lines_from_collection() -> None:
 
 
 def test_line_parts_returns_empty_for_point() -> None:
-    assert (
-        peri_scribe.sources.borders.line_parts(
-            shapely.geometry.Point(0, 0),
-        )
-        == []
-    )
+    assert peri_scribe.sources.borders.line_parts(shapely.geometry.Point(0, 0)) == []
 
 
 def test_shared_border_returns_shared_edge() -> None:
     border = peri_scribe.sources.borders.shared_border(
-        CALIFORNIA,
-        ARIZONA,
+        tests.peri_scribe.sources.boundary_helpers.CALIFORNIA,
+        tests.peri_scribe.sources.boundary_helpers.ARIZONA,
     )
     assert border.geom_type == "LineString"
     assert border.length == pytest.approx(10.0, abs=1e-3)
@@ -239,7 +69,7 @@ def test_shared_border_accepts_slightly_misaligned_neighbor() -> None:
         (20, 0),
     ])
     border = peri_scribe.sources.borders.shared_border(
-        CALIFORNIA,
+        tests.peri_scribe.sources.boundary_helpers.CALIFORNIA,
         neighbor,
     )
     assert not border.is_empty
@@ -249,9 +79,12 @@ def test_shared_border_accepts_slightly_misaligned_neighbor() -> None:
 
 
 def test_shared_border_returns_multi_line_string_for_multiple_segments() -> None:
-    neighbor = shapely.geometry.MultiPolygon([ARIZONA, OREGON])
+    neighbor = shapely.geometry.MultiPolygon([
+        tests.peri_scribe.sources.boundary_helpers.ARIZONA,
+        tests.peri_scribe.sources.boundary_helpers.OREGON,
+    ])
     border = peri_scribe.sources.borders.shared_border(
-        CALIFORNIA,
+        tests.peri_scribe.sources.boundary_helpers.CALIFORNIA,
         neighbor,
     )
     assert border.geom_type == "MultiLineString"
@@ -262,17 +95,15 @@ def test_shared_border_returns_multi_line_string_for_multiple_segments() -> None
 
 
 def test_shared_border_raises_when_geometries_share_no_border() -> None:
-    distant = shapely.geometry.Polygon([
-        (50, 50),
-        (50, 60),
-        (60, 60),
-        (60, 50),
-    ])
+    distant = shapely.geometry.Polygon([(50, 50), (50, 60), (60, 60), (60, 50)])
     with pytest.raises(
         peri_scribe.exceptions.AdministrativeBoundariesError,
         match="share no border",
     ):
-        peri_scribe.sources.borders.shared_border(CALIFORNIA, distant)
+        peri_scribe.sources.borders.shared_border(
+            tests.peri_scribe.sources.boundary_helpers.CALIFORNIA,
+            distant,
+        )
 
 
 def test_border_length() -> None:
@@ -286,9 +117,7 @@ def test_border_length_sums_line_parts() -> None:
         shapely.geometry.LineString([(0, 0), (1, 0)]),
         shapely.geometry.LineString([(1, 0), (2, 0)]),
     ])
-    length = peri_scribe.sources.borders.border_length(
-        multi_line,
-    )
+    length = peri_scribe.sources.borders.border_length(multi_line)
     assert length.m_as("kilometers") == pytest.approx(222.638, rel=1e-4)
 
 
@@ -301,11 +130,15 @@ def test_border_dataframe_builds_neighbor_rows() -> None:
             "STATE_NAME": neighbor_state_names,
             "STATE_ABBR": neighbor_state_abbreviations,
         },
-        geometry=[ARIZONA, NEVADA, OREGON],
+        geometry=[
+            tests.peri_scribe.sources.boundary_helpers.ARIZONA,
+            tests.peri_scribe.sources.boundary_helpers.NEVADA,
+            tests.peri_scribe.sources.boundary_helpers.OREGON,
+        ],
         crs=pyproj.CRS.from_epsg(4326),
     )
     border = peri_scribe.sources.borders.border_dataframe(
-        CALIFORNIA,
+        tests.peri_scribe.sources.boundary_helpers.CALIFORNIA,
         neighbors,
     )
     assert list(border["NEIGHBOR"]) == neighbor_state_names
@@ -316,10 +149,14 @@ def test_border_dataframe_builds_neighbor_rows() -> None:
 
 
 def test_layer_dataframe_queries_features_in_wgs84() -> None:
-    feature_set = polygon_feature_set([ARIZONA], ["Arizona"], ["AZ"])
-    layer = FeatureLayerStub(feature_set)
+    feature_set = tests.peri_scribe.sources.boundary_helpers.polygon_feature_set(
+        [tests.peri_scribe.sources.boundary_helpers.ARIZONA],
+        ["Arizona"],
+        ["AZ"],
+    )
+    layer = tests.peri_scribe.sources.boundary_helpers.FeatureLayerStub(feature_set)
     dataframe = peri_scribe.sources.borders.layer_dataframe(
-        as_feature_layer(layer),
+        tests.peri_scribe.sources.boundary_helpers.as_feature_layer(layer),
         "Neighboring states",
         where="STATE_ABBR IN ('AZ','NV','OR')",
     )
@@ -336,23 +173,27 @@ def test_layer_dataframe_queries_features_in_wgs84() -> None:
 
 
 def test_layer_dataframe_raises_when_layer_has_no_features() -> None:
-    layer = FeatureLayerStub(arcgis.features.FeatureSet([]))
+    layer = tests.peri_scribe.sources.boundary_helpers.FeatureLayerStub(
+        arcgis.features.FeatureSet([]),
+    )
     with pytest.raises(
         peri_scribe.exceptions.AdministrativeBoundariesError,
         match="returned no features",
     ):
         peri_scribe.sources.borders.layer_dataframe(
-            as_feature_layer(layer),
+            tests.peri_scribe.sources.boundary_helpers.as_feature_layer(layer),
             "California",
             where="STATE_ABBR='CA'",
         )
 
 
 def test_layer_dataframe_logs_warning_when_geometry_missing() -> None:
-    layer = FeatureLayerStub(GeometrylessFeatureSetStub(1))
+    layer = tests.peri_scribe.sources.boundary_helpers.FeatureLayerStub(
+        tests.peri_scribe.sources.boundary_helpers.GeometrylessFeatureSetStub(1),
+    )
     with structlog.testing.capture_logs() as captured:
         dataframe = peri_scribe.sources.borders.layer_dataframe(
-            as_feature_layer(layer),
+            tests.peri_scribe.sources.boundary_helpers.as_feature_layer(layer),
             "California",
             where="STATE_ABBR='CA'",
         )
@@ -364,15 +205,20 @@ def test_layer_dataframe_logs_warning_when_geometry_missing() -> None:
 
 
 def test_boundary_geometries_queries_california_and_neighbors_once() -> None:
-    layer = FeatureLayerStub(
-        polygon_feature_set(
-            [CALIFORNIA, ARIZONA, NEVADA, OREGON],
+    layer = tests.peri_scribe.sources.boundary_helpers.FeatureLayerStub(
+        tests.peri_scribe.sources.boundary_helpers.polygon_feature_set(
+            [
+                tests.peri_scribe.sources.boundary_helpers.CALIFORNIA,
+                tests.peri_scribe.sources.boundary_helpers.ARIZONA,
+                tests.peri_scribe.sources.boundary_helpers.NEVADA,
+                tests.peri_scribe.sources.boundary_helpers.OREGON,
+            ],
             ["California", "Arizona", "Nevada", "Oregon"],
             ["CA", "AZ", "NV", "OR"],
         ),
     )
     states = peri_scribe.sources.borders.boundary_geometries(
-        as_feature_layer(layer),
+        tests.peri_scribe.sources.boundary_helpers.as_feature_layer(layer),
     )
     assert list(states["STATE_ABBR"]) == ["CA", "AZ", "NV", "OR"]
     assert layer.queries == [
@@ -385,9 +231,13 @@ def test_boundary_geometries_queries_california_and_neighbors_once() -> None:
 
 
 def test_boundary_geometries_raises_when_state_missing() -> None:
-    layer = FeatureLayerStub(
-        polygon_feature_set(
-            [CALIFORNIA, ARIZONA, NEVADA],
+    layer = tests.peri_scribe.sources.boundary_helpers.FeatureLayerStub(
+        tests.peri_scribe.sources.boundary_helpers.polygon_feature_set(
+            [
+                tests.peri_scribe.sources.boundary_helpers.CALIFORNIA,
+                tests.peri_scribe.sources.boundary_helpers.ARIZONA,
+                tests.peri_scribe.sources.boundary_helpers.NEVADA,
+            ],
             ["California", "Arizona", "Nevada"],
             ["CA", "AZ", "NV"],
         ),
@@ -396,17 +246,22 @@ def test_boundary_geometries_raises_when_state_missing() -> None:
         peri_scribe.exceptions.AdministrativeBoundariesError,
         match="Expected California and 3 neighboring states, got 3",
     ):
-        peri_scribe.sources.borders.boundary_geometries(as_feature_layer(layer))
+        peri_scribe.sources.borders.boundary_geometries(
+            tests.peri_scribe.sources.boundary_helpers.as_feature_layer(layer),
+        )
 
 
 def test_boundary_geometries_raises_when_geometry_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     states = geopandas.GeoDataFrame(
-        {
-            "STATE_ABBR": ["CA", "AZ", "NV", "OR"],
-        },
-        geometry=[CALIFORNIA, ARIZONA, NEVADA, None],
+        {"STATE_ABBR": ["CA", "AZ", "NV", "OR"]},
+        geometry=[
+            tests.peri_scribe.sources.boundary_helpers.CALIFORNIA,
+            tests.peri_scribe.sources.boundary_helpers.ARIZONA,
+            tests.peri_scribe.sources.boundary_helpers.NEVADA,
+            None,
+        ],
         crs=pyproj.CRS.from_epsg(4326),
     )
     monkeypatch.setattr(
@@ -419,16 +274,18 @@ def test_boundary_geometries_raises_when_geometry_missing(
         match="border state feature has no geometry",
     ):
         peri_scribe.sources.borders.boundary_geometries(
-            as_feature_layer(object()),
+            tests.peri_scribe.sources.boundary_helpers.as_feature_layer(object()),
         )
 
 
 def test_california_geometry_from_states_raises_when_missing() -> None:
     states = geopandas.GeoDataFrame(
-        {
-            "STATE_ABBR": ["AZ", "NV", "OR"],
-        },
-        geometry=[ARIZONA, NEVADA, OREGON],
+        {"STATE_ABBR": ["AZ", "NV", "OR"]},
+        geometry=[
+            tests.peri_scribe.sources.boundary_helpers.ARIZONA,
+            tests.peri_scribe.sources.boundary_helpers.NEVADA,
+            tests.peri_scribe.sources.boundary_helpers.OREGON,
+        ],
         crs=pyproj.CRS.from_epsg(4326),
     )
     with pytest.raises(
@@ -444,14 +301,10 @@ def test_is_usable_false_when_file_missing() -> None:
     )
 
 
-def test_is_usable_false_when_file_unreadable(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_is_usable_false_when_file_unreadable(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(pathlib.Path, "is_file", lambda _self: True)
 
-    def fail_to_list(_path: object) -> typing.Never:
-        message = "corrupt"
-        raise RuntimeError(message)
+    fail_to_list = tests.peri_scribe.sources.boundary_helpers.fail_layer_listing
 
     monkeypatch.setattr(
         peri_scribe.sources.administrative_boundaries.geopandas,
@@ -466,13 +319,11 @@ def test_is_usable_false_when_file_unreadable(
     assert captured[0]["event"] == "Administrative boundaries file is not usable"
 
 
-def test_is_usable_false_when_layer_missing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    stub_geopackage_reads(
+def test_is_usable_false_when_layer_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    tests.peri_scribe.sources.boundary_helpers.stub_geopackage_reads(
         monkeypatch,
         ["Some_Other_Layer"],
-        good_border_dataframe(),
+        tests.peri_scribe.sources.boundary_helpers.good_border_dataframe(),
     )
     assert not peri_scribe.sources.administrative_boundaries.is_usable(
         pathlib.Path("/data/file.gpkg"),
@@ -482,25 +333,25 @@ def test_is_usable_false_when_layer_missing(
 def test_is_usable_false_when_feature_count_wrong(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    stub_geopackage_reads(
+    tests.peri_scribe.sources.boundary_helpers.stub_geopackage_reads(
         monkeypatch,
-        [OUTPUT_LAYER_NAME],
-        good_border_dataframe().head(2),
+        [tests.peri_scribe.sources.boundary_helpers.OUTPUT_LAYER_NAME],
+        tests.peri_scribe.sources.boundary_helpers.good_border_dataframe().head(2),
     )
     assert not peri_scribe.sources.administrative_boundaries.is_usable(
         pathlib.Path("/data/file.gpkg"),
     )
 
 
-def test_is_usable_false_when_columns_wrong(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    stub_geopackage_reads(
+def test_is_usable_false_when_columns_wrong(monkeypatch: pytest.MonkeyPatch) -> None:
+    tests.peri_scribe.sources.boundary_helpers.stub_geopackage_reads(
         monkeypatch,
-        [OUTPUT_LAYER_NAME],
+        [tests.peri_scribe.sources.boundary_helpers.OUTPUT_LAYER_NAME],
         typing.cast(
             "geopandas.GeoDataFrame",
-            good_border_dataframe().drop(columns=["LENGTH_KM"]),
+            tests.peri_scribe.sources.boundary_helpers.good_border_dataframe().drop(
+                columns=["LENGTH_KM"],
+            ),
         ),
     )
     assert not peri_scribe.sources.administrative_boundaries.is_usable(
@@ -508,26 +359,24 @@ def test_is_usable_false_when_columns_wrong(
     )
 
 
-def test_is_usable_false_when_geometry_missing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    stub_geopackage_reads(
+def test_is_usable_false_when_geometry_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    tests.peri_scribe.sources.boundary_helpers.stub_geopackage_reads(
         monkeypatch,
-        [OUTPUT_LAYER_NAME],
-        is_usable_dataframe(geometry=[None, None, None]),
+        [tests.peri_scribe.sources.boundary_helpers.OUTPUT_LAYER_NAME],
+        tests.peri_scribe.sources.boundary_helpers.is_usable_dataframe(
+            geometry=[None, None, None],
+        ),
     )
     assert not peri_scribe.sources.administrative_boundaries.is_usable(
         pathlib.Path("/data/file.gpkg"),
     )
 
 
-def test_is_usable_false_when_geometry_empty(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    stub_geopackage_reads(
+def test_is_usable_false_when_geometry_empty(monkeypatch: pytest.MonkeyPatch) -> None:
+    tests.peri_scribe.sources.boundary_helpers.stub_geopackage_reads(
         monkeypatch,
-        [OUTPUT_LAYER_NAME],
-        is_usable_dataframe(
+        [tests.peri_scribe.sources.boundary_helpers.OUTPUT_LAYER_NAME],
+        tests.peri_scribe.sources.boundary_helpers.is_usable_dataframe(
             geometry=[
                 shapely.geometry.LineString(),
                 shapely.geometry.LineString(),
@@ -543,10 +392,10 @@ def test_is_usable_false_when_geometry_empty(
 def test_is_usable_false_when_spatial_reference_wrong(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    stub_geopackage_reads(
+    tests.peri_scribe.sources.boundary_helpers.stub_geopackage_reads(
         monkeypatch,
-        [OUTPUT_LAYER_NAME],
-        good_border_dataframe().to_crs(3857),
+        [tests.peri_scribe.sources.boundary_helpers.OUTPUT_LAYER_NAME],
+        tests.peri_scribe.sources.boundary_helpers.good_border_dataframe().to_crs(3857),
     )
     assert not peri_scribe.sources.administrative_boundaries.is_usable(
         pathlib.Path("/data/file.gpkg"),
@@ -556,10 +405,10 @@ def test_is_usable_false_when_spatial_reference_wrong(
 def test_is_usable_false_when_no_spatial_reference(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    stub_geopackage_reads(
+    tests.peri_scribe.sources.boundary_helpers.stub_geopackage_reads(
         monkeypatch,
-        [OUTPUT_LAYER_NAME],
-        is_usable_dataframe(
+        [tests.peri_scribe.sources.boundary_helpers.OUTPUT_LAYER_NAME],
+        tests.peri_scribe.sources.boundary_helpers.is_usable_dataframe(
             geometry=[
                 shapely.geometry.LineString([(0, 0), (1, 1)]),
                 shapely.geometry.LineString([(2, 2), (3, 3)]),
@@ -574,10 +423,10 @@ def test_is_usable_false_when_no_spatial_reference(
 
 
 def test_is_usable_true_when_file_good(monkeypatch: pytest.MonkeyPatch) -> None:
-    stub_geopackage_reads(
+    tests.peri_scribe.sources.boundary_helpers.stub_geopackage_reads(
         monkeypatch,
-        [OUTPUT_LAYER_NAME],
-        good_border_dataframe(),
+        [tests.peri_scribe.sources.boundary_helpers.OUTPUT_LAYER_NAME],
+        tests.peri_scribe.sources.boundary_helpers.good_border_dataframe(),
     )
     assert peri_scribe.sources.administrative_boundaries.is_usable(
         pathlib.Path("/data/file.gpkg"),
@@ -587,6 +436,9 @@ def test_is_usable_true_when_file_good(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_ensure_administrative_boundaries_skips_when_file_usable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    ensure_administrative_boundaries = (
+        peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries
+    )
     monkeypatch.setattr(
         peri_scribe.sources.administrative_boundaries,
         "is_usable",
@@ -599,10 +451,12 @@ def test_ensure_administrative_boundaries_skips_when_file_usable(
         lambda url, _gis: constructed.append(url) or object(),
     )
     with structlog.testing.capture_logs() as captured:
-        result = ensure_administrative_boundaries(BASE_DIRECTORY)
+        result = ensure_administrative_boundaries(
+            tests.peri_scribe.sources.boundary_helpers.BASE_DIRECTORY,
+        )
     assert result == (
         peri_scribe.sources.administrative_boundaries.output_geopackage_path(
-            BASE_DIRECTORY,
+            tests.peri_scribe.sources.boundary_helpers.BASE_DIRECTORY,
         )
     )
     assert constructed == []
@@ -625,16 +479,20 @@ def test_ensure_administrative_boundaries_builds_when_file_unusable(
         "GIS",
         object,
     )
-    state_set = polygon_feature_set(
-        [CALIFORNIA, ARIZONA, NEVADA, OREGON],
+    state_set = tests.peri_scribe.sources.boundary_helpers.polygon_feature_set(
+        [
+            tests.peri_scribe.sources.boundary_helpers.CALIFORNIA,
+            tests.peri_scribe.sources.boundary_helpers.ARIZONA,
+            tests.peri_scribe.sources.boundary_helpers.NEVADA,
+            tests.peri_scribe.sources.boundary_helpers.OREGON,
+        ],
         ["California", "Arizona", "Nevada", "Oregon"],
         ["CA", "AZ", "NV", "OR"],
     )
 
-    def layer_factory(url: str, gis: object) -> FeatureLayerStub:
-        if url == peri_scribe.sources.administrative_boundaries.NEIGHBOR_LAYER_URL:
-            return FeatureLayerStub(state_set)
-        raise AssertionError(url)
+    layer_factory = tests.peri_scribe.sources.boundary_helpers.make_layer_factory(
+        state_set=state_set,
+    )
 
     monkeypatch.setattr(
         peri_scribe.sources.administrative_boundaries.arcgis.features,
@@ -642,24 +500,22 @@ def test_ensure_administrative_boundaries_builds_when_file_unusable(
         layer_factory,
     )
     output_path = peri_scribe.sources.administrative_boundaries.output_geopackage_path(
-        BASE_DIRECTORY,
+        tests.peri_scribe.sources.boundary_helpers.BASE_DIRECTORY,
     )
     result = (
         peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries(
-            BASE_DIRECTORY,
+            tests.peri_scribe.sources.boundary_helpers.BASE_DIRECTORY,
         )
     )
     assert result == output_path
     assert geo_package_store.has(output_path)
-    written = geo_package_store.layer(output_path, OUTPUT_LAYER_NAME)
+    written = geo_package_store.layer(
+        output_path,
+        tests.peri_scribe.sources.boundary_helpers.OUTPUT_LAYER_NAME,
+    )
     assert list(written["NEIGHBOR"]) == ["Arizona", "Nevada", "Oregon"]
     assert list(written["NEIGHBOR_ABBR"]) == ["AZ", "NV", "OR"]
-    assert list(written.columns) == [
-        "NEIGHBOR",
-        "NEIGHBOR_ABBR",
-        "LENGTH_KM",
-        "geom",
-    ]
+    assert list(written.columns) == ["NEIGHBOR", "NEIGHBOR_ABBR", "LENGTH_KM", "geom"]
     assert written.crs.to_epsg() == peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID
 
 
@@ -679,20 +535,25 @@ def test_ensure_administrative_boundaries_raises_when_fetch_fails(
     monkeypatch.setattr(
         peri_scribe.sources.administrative_boundaries.arcgis.features,
         "FeatureLayer",
-        lambda _url, _gis: FailingFeatureLayerStub(),
+        lambda _url, _gis: (
+            tests.peri_scribe.sources.boundary_helpers.FailingFeatureLayerStub()
+        ),
     )
     with pytest.raises(
         peri_scribe.exceptions.AdministrativeBoundariesError,
         match="Failed to build administrative boundaries: boom",
     ):
         peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries(
-            BASE_DIRECTORY,
+            tests.peri_scribe.sources.boundary_helpers.BASE_DIRECTORY,
         )
 
 
 def test_ensure_administrative_boundaries_defaults_to_current_year_directory(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    ensure_administrative_boundaries = (
+        peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries
+    )
     monkeypatch.setattr(
         peri_scribe.sources.administrative_boundaries,
         "is_usable",
@@ -701,14 +562,14 @@ def test_ensure_administrative_boundaries_defaults_to_current_year_directory(
     monkeypatch.setattr(
         pathlib.Path,
         "cwd",
-        staticmethod(lambda: BASE_DIRECTORY),
+        staticmethod(lambda: tests.peri_scribe.sources.boundary_helpers.BASE_DIRECTORY),
     )
     with time_machine.travel(datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)):
         result = ensure_administrative_boundaries()
     assert (
         result
         == peri_scribe.sources.administrative_boundaries.output_geopackage_path(
-            BASE_DIRECTORY / "data" / "2026",
+            tests.peri_scribe.sources.boundary_helpers.BASE_DIRECTORY / "data" / "2026",
         )
     )
 
@@ -716,9 +577,12 @@ def test_ensure_administrative_boundaries_defaults_to_current_year_directory(
 def test_load_border_geometry_returns_stored_lines(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    stub_border_file(monkeypatch, good_border_dataframe())
+    tests.peri_scribe.sources.boundary_helpers.stub_border_file(
+        monkeypatch,
+        tests.peri_scribe.sources.boundary_helpers.good_border_dataframe(),
+    )
     result = peri_scribe.sources.administrative_boundaries.load_border_geometry(
-        BASE_DIRECTORY,
+        tests.peri_scribe.sources.boundary_helpers.BASE_DIRECTORY,
     )
     assert isinstance(result, shapely.geometry.MultiLineString)
 
@@ -727,40 +591,20 @@ def test_load_border_geometry_returns_single_line_when_one_part(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     single = geopandas.GeoDataFrame(
-        {
-            "NEIGHBOR": ["Oregon"],
-            "NEIGHBOR_ABBR": ["OR"],
-            "LENGTH_KM": [10.0],
-        },
+        {"NEIGHBOR": ["Oregon"], "NEIGHBOR_ABBR": ["OR"], "LENGTH_KM": [10.0]},
         geometry=[shapely.geometry.LineString([(0.0, 0.0), (10.0, 0.0)])],
         crs=pyproj.CRS.from_epsg(4326),
     )
-    stub_border_file(monkeypatch, single)
+    tests.peri_scribe.sources.boundary_helpers.stub_border_file(monkeypatch, single)
     result = peri_scribe.sources.administrative_boundaries.load_border_geometry(
-        BASE_DIRECTORY,
+        tests.peri_scribe.sources.boundary_helpers.BASE_DIRECTORY,
     )
     assert isinstance(result, shapely.geometry.LineString)
 
 
-def california_like_border() -> shapely.geometry.MultiLineString:
-    """Return a synthetic border shaped like California's interstate border.
-
-    Returns:
-        An Oregon segment across the top and a Nevada/Arizona segment down the east.
-    """
-    return shapely.geometry.MultiLineString([
-        shapely.geometry.LineString([(-124.0, 42.0), (-120.0, 42.0)]),
-        shapely.geometry.LineString([(-120.0, 42.0), (-114.0, 32.7)]),
-    ])
-
-
 def test_ordered_border_coordinates_orders_single_path() -> None:
-    parts = [
-        shapely.geometry.LineString([(0.0, 10.0), (5.0, 10.0), (10.0, 5.0)]),
-    ]
-    assert peri_scribe.sources.borders.ordered_border_coordinates(
-        parts,
-    ) == [
+    parts = [shapely.geometry.LineString([(0.0, 10.0), (5.0, 10.0), (10.0, 5.0)])]
+    assert peri_scribe.sources.borders.ordered_border_coordinates(parts) == [
         (0.0, 10.0),
         (5.0, 10.0),
         (10.0, 5.0),
@@ -772,9 +616,7 @@ def test_ordered_border_coordinates_orders_multiple_parts() -> None:
         shapely.geometry.LineString([(0.0, 10.0), (5.0, 10.0)]),
         shapely.geometry.LineString([(5.0, 10.0), (10.0, 5.0)]),
     ]
-    assert peri_scribe.sources.borders.ordered_border_coordinates(
-        parts,
-    ) == [
+    assert peri_scribe.sources.borders.ordered_border_coordinates(parts) == [
         (0.0, 10.0),
         (5.0, 10.0),
         (10.0, 5.0),
@@ -786,9 +628,7 @@ def test_ordered_border_coordinates_bridges_small_gaps() -> None:
         shapely.geometry.LineString([(0.0, 10.0), (5.0, 10.0)]),
         shapely.geometry.LineString([(5.00001, 10.0), (10.0, 5.0)]),
     ]
-    assert peri_scribe.sources.borders.ordered_border_coordinates(
-        parts,
-    ) == [
+    assert peri_scribe.sources.borders.ordered_border_coordinates(parts) == [
         (0.0, 10.0),
         (5.0, 10.0),
         (10.0, 5.0),
@@ -817,7 +657,7 @@ def test_ordered_border_coordinates_raises_when_not_a_single_path() -> None:
 
 def test_california_box_polygon_contains_california() -> None:
     box = peri_scribe.sources.borders.california_box_polygon(
-        california_like_border(),
+        tests.peri_scribe.sources.boundary_helpers.california_like_border(),
     )
     assert box.is_valid
     assert box.contains(shapely.geometry.Point(-120.0, 40.0))
@@ -826,7 +666,7 @@ def test_california_box_polygon_contains_california() -> None:
 
 def test_california_box_polygon_excludes_neighboring_states() -> None:
     box = peri_scribe.sources.borders.california_box_polygon(
-        california_like_border(),
+        tests.peri_scribe.sources.boundary_helpers.california_like_border(),
     )
     assert not box.contains(shapely.geometry.Point(-117.0, 40.0))
     assert not box.contains(shapely.geometry.Point(-120.0, 43.0))
@@ -834,7 +674,7 @@ def test_california_box_polygon_excludes_neighboring_states() -> None:
 
 def test_california_box_polygon_absorbs_maritime_and_mexico() -> None:
     box = peri_scribe.sources.borders.california_box_polygon(
-        california_like_border(),
+        tests.peri_scribe.sources.boundary_helpers.california_like_border(),
     )
     assert box.contains(shapely.geometry.Point(-116.0, 32.3))
     assert not box.contains(shapely.geometry.Point(-116.0, 30.0))

@@ -273,10 +273,7 @@ def history(
     frames = (
         ((incident_rows, False),)
         if incident_rows is not None and not incident_rows.empty
-        else (
-            (perimeters, True),
-            (points, False),
-        )
+        else ((perimeters, True), (points, False))
     )
     return reconcile_updates(
         update

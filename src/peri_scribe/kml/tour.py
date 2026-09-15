@@ -36,8 +36,8 @@ PROGRESSION_TOUR_NAME = "Progression"
 def time_label(observation_time: datetime.datetime | None) -> str | None:
     """Return the California-time label for *observation_time*, or None.
 
-    The label reads like ``08/05 13:30``: month/day, then a 24-hour clock
-    time with leading zeros and no am/pm marker.
+    The label reads like ``08/05 13:30``: month/day, then a 24-hour clock time with
+    leading zeros and no am/pm marker.
 
     Args:
         observation_time: The observation time as an aware UTC datetime, or None.
@@ -64,8 +64,8 @@ def interior_placemark_name(observation_time: datetime.datetime | None) -> str:
         observation_time: The observation time of the latest perimeter, or None.
 
     Returns:
-        The placemark name, ``<date> Interior`` when the time is known and
-        ``Interior`` otherwise.
+        The placemark name, ``<date> Interior`` when the time is known and ``Interior``
+        otherwise.
 
     Examples:
         >>> interior_placemark_name(None)
@@ -84,8 +84,8 @@ def mapping_placemark_name(observation_time: datetime.datetime | None) -> str:
         observation_time: The observation time of the perimeter, or None.
 
     Returns:
-        The placemark name, ``<date> Perimeter`` when the time is known and
-        ``Unknown Mapping`` otherwise.
+        The placemark name, ``<date> Perimeter`` when the time is known and ``Unknown
+        Mapping`` otherwise.
     """
     label = time_label(observation_time)
     if label is None:
@@ -169,10 +169,7 @@ def tour_wait(
     return gap_in_days * playback_rate * units.seconds
 
 
-def visibility_change(
-    ring_ids: typing.Sequence[str],
-    shown_through: int,
-) -> str:
+def visibility_change(ring_ids: typing.Sequence[str], shown_through: int) -> str:
     """Return the update text that reveals rings through *shown_through*.
 
     Each ring through *shown_through* is shown and every later ring is hidden, so each
@@ -227,9 +224,7 @@ def progression_tour(
         parts.append("<visibility>0</visibility>")
     parts.append(f"<name>{PROGRESSION_TOUR_NAME}</name><gx:Playlist>")
     for index, ring_time in enumerate(ring_times):
-        parts.append(
-            "<gx:AnimatedUpdate><Update><targetHref></targetHref><Change>",
-        )
+        parts.append("<gx:AnimatedUpdate><Update><targetHref></targetHref><Change>")
         parts.append(visibility_change(ring_ids, index))
         parts.append("</Change></Update></gx:AnimatedUpdate>")
         if index + 1 < len(ring_times):

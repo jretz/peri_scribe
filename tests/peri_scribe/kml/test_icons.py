@@ -29,20 +29,11 @@ def test_perimeters_icon_draws_two_full_width_lines() -> None:
     background = (0x32, 0x4B, 0x32, 255)
     for row_index, row in enumerate(rows):
         if row_index == top_line_row:
-            assert (
-                row
-                == [
-                    (*peri_scribe.kml.icons.LATEST_PERIMETER_COLOR, 255),
-                ]
-                * side
-            )
+            assert row == [(*peri_scribe.kml.icons.LATEST_PERIMETER_COLOR, 255)] * side
         elif row_index == bottom_line_row:
             assert (
                 row
-                == [
-                    (*peri_scribe.kml.icons.PENULTIMATE_PERIMETER_COLOR, 255),
-                ]
-                * side
+                == [(*peri_scribe.kml.icons.PENULTIMATE_PERIMETER_COLOR, 255)] * side
             )
         else:
             assert row == [background] * side

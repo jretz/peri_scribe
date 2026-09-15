@@ -13,56 +13,7 @@ import peri_scribe.perimeters.border_classification
 import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.borders
 import tests.peri_scribe.perimeters.border_helpers
-
-
-CALIFORNIA_BOX_WGS84 = shapely.geometry.box(-126.0, 31.0, -119.0, 40.0)
-
-CA_BORDER_WGS84 = shapely.geometry.LineString([(-119.0, 38.0), (-119.0, 40.0)])
-
-
-@pytest.fixture
-def wgs84_boundaries() -> peri_scribe.perimeters.border_classification.Boundaries:
-    """Return a synthetic California box and border in California Albers.
-
-    Returns:
-        The California box and border, reprojected from WGS84.
-    """
-    return peri_scribe.perimeters.border_classification.Boundaries(
-        box=peri_scribe.perimeters.border_classification.reproject_to_california_albers(
-            CALIFORNIA_BOX_WGS84,
-            4326,
-        ),
-        border=peri_scribe.perimeters.border_classification.reproject_to_california_albers(
-            CA_BORDER_WGS84,
-            4326,
-        ),
-    )
-
-
-def classifiable_record(
-    *,
-    geometry: shapely.geometry.base.BaseGeometry,
-    observed_at: datetime.datetime | None = None,
-    identifiers: frozenset[str] = frozenset(),
-    mission: str | None = None,
-    point_of_origin_state: str | None = None,
-    point_of_origin_fips: str | None = None,
-) -> peri_scribe.models.FireRecord:
-    """Build a fire record for classification tests.
-
-    Returns:
-        The fire record, named "Fire" and active.
-    """
-    return peri_scribe.models.FireRecord(
-        name="Fire",
-        status=peri_scribe.models.FireStatus.ACTIVE,
-        identifiers=identifiers,
-        geometry=geometry,
-        observed_at=observed_at,
-        mission=mission,
-        point_of_origin_state=point_of_origin_state,
-        point_of_origin_fips=point_of_origin_fips,
-    )
+import tests.peri_scribe.perimeters.classification_helpers
 
 
 def test_source_kind_for_feed_name_recognizes_firis() -> None:
@@ -138,12 +89,16 @@ def test_load_boundaries_builds_box_and_reprojects(
     monkeypatch.setattr(
         peri_scribe.sources.administrative_boundaries,
         "load_border_geometry",
-        lambda _base_dir: CA_BORDER_WGS84,
+        lambda _base_dir: (
+            tests.peri_scribe.perimeters.classification_helpers.CA_BORDER_WGS84
+        ),
     )
     monkeypatch.setattr(
         peri_scribe.sources.borders,
         "california_box_polygon",
-        lambda _border: CALIFORNIA_BOX_WGS84,
+        lambda _border: (
+            tests.peri_scribe.perimeters.classification_helpers.CALIFORNIA_BOX_WGS84
+        ),
     )
     loaded = peri_scribe.perimeters.border_classification.load_boundaries(
         pathlib.Path("/base"),
@@ -219,17 +174,20 @@ def test_unioned_observation_geometry_dedupes_identical_observations(
     boundaries: peri_scribe.perimeters.border_classification.Boundaries,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    # One observation inside the California box and one outside, so the parts
-    # straddle the box and the true union is needed.
+    # One observation inside the California box and one outside, so the parts straddle
+    # the box and the true union is needed.
     inside = shapely.geometry.Point(5.0, 5.0)
     outside = shapely.geometry.Point(200.0, 200.0)
     distinct_geometry_count = 2
     union_inputs: list[list[shapely.Geometry]] = []
     original_union_all = shapely.union_all
 
-    def recording_union_all(geometries: list[shapely.Geometry]) -> shapely.Geometry:
-        union_inputs.append(list(geometries))
-        return original_union_all(geometries)
+    recording_union_all = (
+        tests.peri_scribe.perimeters.classification_helpers.make_union_recorder(
+            union_inputs=union_inputs,
+            original_union_all=original_union_all,
+        )
+    )
 
     monkeypatch.setattr(shapely, "union_all", recording_union_all)
     monkeypatch.setattr(
@@ -309,14 +267,13 @@ def test_unioned_observation_geometry_keeps_identical_geometries_from_different_
         peri_scribe.perimeters.border_classification.reproject_to_california_albers
     )
 
-    def recording_reproject(geometry: shapely.Geometry, wkid: int) -> shapely.Geometry:
-        reprojected.append((wkid, geometry.wkb))
-        return original(geometry, wkid)
-
     monkeypatch.setattr(
         peri_scribe.perimeters.border_classification,
         "reproject_to_california_albers",
-        recording_reproject,
+        tests.peri_scribe.perimeters.classification_helpers.make_reproject_recorder(
+            reprojected=reprojected,
+            original=original,
+        ),
     )
     union = peri_scribe.perimeters.border_classification.unioned_observation_geometry(
         [
@@ -467,14 +424,15 @@ def test_classify_fire_classifies_cross_border_fire(
     wgs84_boundaries: peri_scribe.perimeters.border_classification.Boundaries,
 ) -> None:
     records = [
-        classifiable_record(
+        tests.peri_scribe.perimeters.classification_helpers.classifiable_record(
             geometry=shapely.geometry.box(-120.5, 39.0, -118.5, 39.5),
             observed_at=datetime.datetime(2026, 8, 16, tzinfo=datetime.UTC),
         ),
     ]
     record_paths = [
         pathlib.Path(
-            "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/000___/000000,lastEdit=0.gpkg",
+            "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/"
+            "000___/000000,lastEdit=0.gpkg",
         ),
     ]
     result = peri_scribe.perimeters.border_classification.classify_fire(
@@ -492,14 +450,15 @@ def test_classify_fire_classifies_inside_california_fire(
     wgs84_boundaries: peri_scribe.perimeters.border_classification.Boundaries,
 ) -> None:
     records = [
-        classifiable_record(
+        tests.peri_scribe.perimeters.classification_helpers.classifiable_record(
             geometry=shapely.geometry.box(-120.5, 39.0, -120.0, 39.5),
             observed_at=datetime.datetime(2026, 8, 16, tzinfo=datetime.UTC),
         ),
     ]
     record_paths = [
         pathlib.Path(
-            "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/000___/000000,lastEdit=0.gpkg",
+            "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/"
+            "000___/000000,lastEdit=0.gpkg",
         ),
     ]
     result = peri_scribe.perimeters.border_classification.classify_fire(
@@ -517,13 +476,14 @@ def test_classify_fire_classifies_outside_california_fire(
     wgs84_boundaries: peri_scribe.perimeters.border_classification.Boundaries,
 ) -> None:
     records = [
-        classifiable_record(
+        tests.peri_scribe.perimeters.classification_helpers.classifiable_record(
             geometry=shapely.geometry.box(-117.5, 39.0, -116.0, 39.5),
         ),
     ]
     record_paths = [
         pathlib.Path(
-            "sources/WFIGS_Interagency_Perimeters_Current_0/000___/000000,lastEdit=0.gpkg",
+            "sources/WFIGS_Interagency_Perimeters_Current_0/"
+            "000___/000000,lastEdit=0.gpkg",
         ),
     ]
     result = peri_scribe.perimeters.border_classification.classify_fire(
@@ -541,14 +501,15 @@ def test_classify_fire_captures_identifier_signal(
     wgs84_boundaries: peri_scribe.perimeters.border_classification.Boundaries,
 ) -> None:
     records = [
-        classifiable_record(
+        tests.peri_scribe.perimeters.classification_helpers.classifiable_record(
             geometry=shapely.geometry.box(-120.5, 39.0, -120.0, 39.5),
             identifiers=frozenset({"2026-nvccd-030683"}),
         ),
     ]
     record_paths = [
         pathlib.Path(
-            "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/000___/000000,lastEdit=0.gpkg",
+            "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/"
+            "000___/000000,lastEdit=0.gpkg",
         ),
     ]
     result = peri_scribe.perimeters.border_classification.classify_fire(
@@ -563,13 +524,14 @@ def test_classify_fire_keeps_coastal_fire_inside(
     wgs84_boundaries: peri_scribe.perimeters.border_classification.Boundaries,
 ) -> None:
     records = [
-        classifiable_record(
+        tests.peri_scribe.perimeters.classification_helpers.classifiable_record(
             geometry=shapely.geometry.box(-121.5, 39.0, -119.5, 39.5),
         ),
     ]
     record_paths = [
         pathlib.Path(
-            "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/000___/000000,lastEdit=0.gpkg",
+            "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/"
+            "000___/000000,lastEdit=0.gpkg",
         ),
     ]
     result = peri_scribe.perimeters.border_classification.classify_fire(

@@ -143,16 +143,14 @@ def location_text(city: NearestCity) -> str:
         ...         state_abbreviation="OR",
         ...         distance=14.6 * units.miles,
         ...         bearing=112.5 * units.degrees,
-        ...     ),
+        ...     )
         ... )
         '15 mi ESE of Portland, OR'
 
         >>> location_text(
         ...     NearestCity(
-        ...         name="Portland",
-        ...         state_abbreviation="OR",
-        ...         distance=0 * units.miles,
-        ...     ),
+        ...         name="Portland", state_abbreviation="OR", distance=0 * units.miles
+        ...     )
         ... )
         '0 mi of Portland, OR'
     """
@@ -221,10 +219,7 @@ def distance_and_bearing_from_point(
         geometry,
         transformer,
     )
-    projected_longitude, projected_latitude = transformer.transform(
-        longitude,
-        latitude,
-    )
+    projected_longitude, projected_latitude = transformer.transform(longitude, latitude)
     projected_point = shapely.Point(projected_longitude, projected_latitude)
     if shapely.intersects(projected_point, projected_interior):
         return 0 * units.meters, None
@@ -232,10 +227,7 @@ def distance_and_bearing_from_point(
     nearest = shapely.ops.nearest_points(projected_point, projected_interior)[1]
     bearing = (
         math.degrees(
-            math.atan2(
-                nearest.x - projected_longitude,
-                nearest.y - projected_latitude,
-            ),
+            math.atan2(nearest.x - projected_longitude, nearest.y - projected_latitude),
         )
         * units.degrees
     )
@@ -264,8 +256,8 @@ def plausible_city_indices(
         city_longitudes: Each city's longitude, in degrees.
         city_latitudes: Each city's latitude, in degrees.
         city_names: Each city's name, aligned with the coordinate arrays.
-        state_abbreviations: Each city's state abbreviation, aligned with the
-            coordinate arrays.
+        state_abbreviations: Each city's state abbreviation, aligned with the coordinate
+            arrays.
 
     Returns:
         The index of each plausible city, ordered by name and state so equal distances

@@ -79,6 +79,8 @@ def times_are_contemporaneous(
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class LayerData:
+    """A named geospatial layer ready for GeoPackage output."""
+
     name: str
     dataframe: geopandas.GeoDataFrame
 
@@ -114,10 +116,7 @@ GLOBALLY_UNIQUE_IDENTIFIER_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
-UNIQUE_FIRE_IDENTIFIER_PATTERN = re.compile(
-    r"^20\d{2}-[a-z0-9]+-\d+$",
-    re.IGNORECASE,
-)
+UNIQUE_FIRE_IDENTIFIER_PATTERN = re.compile(r"^20\d{2}-[a-z0-9]+-\d+$", re.IGNORECASE)
 
 SEPARATOR_PATTERN = re.compile(r"[-_/]+")
 
@@ -285,6 +284,7 @@ class FireComplex:
     fires: frozenset[Fire]
 
     def __post_init__(self) -> None:
+        """Link member fires to this complex for shared identity and presentation."""
         for fire in self.fires:
             object.__setattr__(fire, "complex", self)
 

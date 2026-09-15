@@ -16,28 +16,21 @@ if typing.TYPE_CHECKING:
     import shapely
 
 
-COMPUTED_AREA_COLUMNS = (
-    "poly_Acres_AutoCalc",
-    "poly_GISAcres",
-    "area_acres",
-)
+COMPUTED_AREA_COLUMNS = ("poly_Acres_AutoCalc", "poly_GISAcres", "area_acres")
 
 
-INCIDENT_SIZE_COLUMNS = (
-    "attr_IncidentSize",
-    "attr_FinalAcres",
-)
+INCIDENT_SIZE_COLUMNS = ("attr_IncidentSize", "attr_FinalAcres")
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class PerimeterSizeFilterConfig:
     """Thresholds for dropping a perimeter whose geometry collapsed.
 
-    A perimeter is dropped when its geometry area is smaller than one of these
-    fractions of the size the source reports for the same row. The computed-area
-    fraction is generous because the polygon's computed area should match its
-    geometry; the incident-size fraction is strict because the incident size
-    legitimately runs ahead of the mapped extent early in a fire.
+    A perimeter is dropped when its geometry area is smaller than one of these fractions
+    of the size the source reports for the same row. The computed-area fraction is
+    generous because the polygon's computed area should match its geometry; the
+    incident-size fraction is strict because the incident size legitimately runs ahead
+    of the mapped extent early in a fire.
     """
 
     minimum_computed_area_fraction: float = 0.2

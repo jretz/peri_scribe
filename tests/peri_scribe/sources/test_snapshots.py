@@ -4,67 +4,33 @@ from __future__ import annotations
 
 import pathlib
 import re
-import typing
 
 import pytest
 
 import peri_scribe.sources.snapshots
-
-
-def stub_directory(
-    monkeypatch: pytest.MonkeyPatch,
-    files: list[pathlib.Path],
-) -> None:
-    """Point Path.is_dir and rglob at the given files.
-
-    Args:
-        monkeypatch: The monkeypatch fixture.
-        files: The directory's contents.
-    """
-    monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: True)
-    monkeypatch.setattr(pathlib.Path, "rglob", lambda _self, _pattern: iter(files))
-
-
-def source_file(
-    *,
-    serial_number: int,
-    last_edit_timestamp: int = 0,
-) -> peri_scribe.sources.snapshots.SourceFile:
-    """Return a SourceFile with *serial_number* and *last_edit_timestamp*.
-
-    Args:
-        serial_number: The source file's serial number.
-        last_edit_timestamp: The source file's last-edit timestamp.
-
-    Returns:
-        The constructed source file.
-    """
-    return peri_scribe.sources.snapshots.SourceFile(
-        serial_number=serial_number,
-        last_edit_timestamp=last_edit_timestamp,
-    )
+import tests.peri_scribe.sources.snapshots_helpers
 
 
 def test_source_file_relative_path_places_file_in_bucket_directory() -> None:
-    assert source_file(
+    assert tests.peri_scribe.sources.snapshots_helpers.source_file(
         serial_number=2037,
         last_edit_timestamp=1787118540625,
     ).relative_path == pathlib.Path("002___/002037,lastEdit=1787118540625.gpkg")
 
 
 def test_source_file_relative_path_buckets_by_thousands() -> None:
-    assert source_file(serial_number=999).relative_path == pathlib.Path(
-        "000___/000999,lastEdit=0.gpkg",
-    )
-    assert source_file(serial_number=1_000).relative_path == pathlib.Path(
-        "001___/001000,lastEdit=0.gpkg",
-    )
+    assert tests.peri_scribe.sources.snapshots_helpers.source_file(
+        serial_number=999,
+    ).relative_path == pathlib.Path("000___/000999,lastEdit=0.gpkg")
+    assert tests.peri_scribe.sources.snapshots_helpers.source_file(
+        serial_number=1_000,
+    ).relative_path == pathlib.Path("001___/001000,lastEdit=0.gpkg")
 
 
 def test_source_file_from_path_parses_serial_and_timestamp() -> None:
     assert peri_scribe.sources.snapshots.SourceFile.from_path(
         pathlib.Path("002___/002037,lastEdit=1787118540625.gpkg"),
-    ) == source_file(
+    ) == tests.peri_scribe.sources.snapshots_helpers.source_file(
         serial_number=2037,
         last_edit_timestamp=1787118540625,
     )
@@ -90,7 +56,12 @@ def test_next_serial_number_increments_beyond_largest_serial() -> None:
     expected_serial_number = 4
     assert (
         peri_scribe.sources.snapshots.next_serial_number(
-            [source_file(serial_number=3, last_edit_timestamp=123)],
+            [
+                tests.peri_scribe.sources.snapshots_helpers.source_file(
+                    serial_number=3,
+                    last_edit_timestamp=123,
+                ),
+            ],
             456,
         )
         == expected_serial_number
@@ -101,7 +72,12 @@ def test_next_serial_number_reuses_serial_for_existing_timestamp() -> None:
     expected_serial_number = 3
     assert (
         peri_scribe.sources.snapshots.next_serial_number(
-            [source_file(serial_number=3, last_edit_timestamp=123)],
+            [
+                tests.peri_scribe.sources.snapshots_helpers.source_file(
+                    serial_number=3,
+                    last_edit_timestamp=123,
+                ),
+            ],
             123,
         )
         == expected_serial_number
@@ -127,11 +103,20 @@ def test_existing_source_files_returns_source_files_sorted_by_serial(
         directory / "000___" / "000002,lastEdit=2.gpkg",
         directory / "000___" / "000001,lastEdit=1.gpkg",
     ]
-    stub_directory(monkeypatch, files)
+    tests.peri_scribe.sources.snapshots_helpers.stub_directory(monkeypatch, files)
     assert peri_scribe.sources.snapshots.existing_source_files(directory) == [
-        source_file(serial_number=1, last_edit_timestamp=1),
-        source_file(serial_number=2, last_edit_timestamp=2),
-        source_file(serial_number=1003, last_edit_timestamp=3),
+        tests.peri_scribe.sources.snapshots_helpers.source_file(
+            serial_number=1,
+            last_edit_timestamp=1,
+        ),
+        tests.peri_scribe.sources.snapshots_helpers.source_file(
+            serial_number=2,
+            last_edit_timestamp=2,
+        ),
+        tests.peri_scribe.sources.snapshots_helpers.source_file(
+            serial_number=1003,
+            last_edit_timestamp=3,
+        ),
     ]
 
 
@@ -143,9 +128,12 @@ def test_existing_source_files_ignores_malformed_filenames(
         directory / "000___" / "000001,lastEdit=1.gpkg",
         directory / "old-style.gpkg",
     ]
-    stub_directory(monkeypatch, files)
+    tests.peri_scribe.sources.snapshots_helpers.stub_directory(monkeypatch, files)
     assert peri_scribe.sources.snapshots.existing_source_files(directory) == [
-        source_file(serial_number=1, last_edit_timestamp=1),
+        tests.peri_scribe.sources.snapshots_helpers.source_file(
+            serial_number=1,
+            last_edit_timestamp=1,
+        ),
     ]
 
 
@@ -161,11 +149,7 @@ def test_geo_package_files_returns_nested_files_in_sorted_order(
         alpha / "000001,lastEdit=1.gpkg",
     ]
     monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: True)
-    monkeypatch.setattr(
-        pathlib.Path,
-        "rglob",
-        lambda _self, _pattern: iter(files),
-    )
+    monkeypatch.setattr(pathlib.Path, "rglob", lambda _self, _pattern: iter(files))
     assert peri_scribe.sources.snapshots.geo_package_files(directory) == [
         alpha / "000001,lastEdit=1.gpkg",
         alpha / "000002,lastEdit=2.gpkg",
@@ -190,7 +174,7 @@ def test_geo_package_files_skips_non_snapshot_files(
     boundary = directory / "CA_border.gpkg"
     evacuations = directory / "evacuations.gpkg"
     state = directory / "Feed_0" / "state-0.gpkg"
-    stub_directory(
+    tests.peri_scribe.sources.snapshots_helpers.stub_directory(
         monkeypatch,
         [keep, boundary, evacuations, state],
     )
@@ -202,9 +186,7 @@ def test_geo_package_files_raises_system_exit_when_tree_cannot_be_read(
 ) -> None:
     directory = pathlib.Path("/data")
 
-    def fake_rglob(_self: pathlib.Path, _pattern: str) -> typing.Never:
-        message = "denied"
-        raise PermissionError(message)
+    fake_rglob = tests.peri_scribe.sources.snapshots_helpers.deny_snapshot_listing
 
     monkeypatch.setattr(pathlib.Path, "is_dir", lambda _self: True)
     monkeypatch.setattr(pathlib.Path, "rglob", fake_rglob)
@@ -220,7 +202,10 @@ def test_source_geopackage_path_places_file_under_source_directory() -> None:
         pathlib.Path("/base"),
         2026,
         "CA_Perimeters_NIFC_FIRIS_public_view_0",
-        source_file(serial_number=17, last_edit_timestamp=123),
+        tests.peri_scribe.sources.snapshots_helpers.source_file(
+            serial_number=17,
+            last_edit_timestamp=123,
+        ),
     )
     assert path == pathlib.Path(
         "/base/data/2026/sources/CA_Perimeters_NIFC_FIRIS_public_view_0/"
@@ -232,7 +217,7 @@ def test_snapshot_path_for_last_edit_timestamp_returns_matching_path(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     directory = pathlib.Path("/sources/CA_Perimeters_NIFC_FIRIS_public_view_0")
-    stub_directory(
+    tests.peri_scribe.sources.snapshots_helpers.stub_directory(
         monkeypatch,
         [
             directory / "000___" / "000017,lastEdit=123.gpkg",
@@ -252,7 +237,7 @@ def test_snapshot_path_for_last_edit_timestamp_returns_none_without_match(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     directory = pathlib.Path("/sources/CA_Perimeters_NIFC_FIRIS_public_view_0")
-    stub_directory(
+    tests.peri_scribe.sources.snapshots_helpers.stub_directory(
         monkeypatch,
         [directory / "000___" / "000017,lastEdit=123.gpkg"],
     )

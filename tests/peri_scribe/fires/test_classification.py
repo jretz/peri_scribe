@@ -9,39 +9,15 @@ import shapely.geometry
 import structlog
 
 import peri_scribe.fires.classification
-import peri_scribe.fires.sources
 import peri_scribe.models
 import peri_scribe.perimeters.border_classification
 import tests.factories
-from tests.factories import ACTIVE, fire_record
+import tests.peri_scribe.fires.classification_helpers
+from tests.factories import ACTIVE
 
 
 if typing.TYPE_CHECKING:
     import pytest
-
-
-def record_groups(
-    *,
-    fire: peri_scribe.models.Fire,
-    complex_identifiers: frozenset[str] = frozenset(),
-) -> peri_scribe.fires.sources.FireRecordGroups:
-    identifiers = frozenset({fire.identifier}) if fire.identifier else frozenset()
-    record = fire_record(
-        "Park Fire",
-        ACTIVE,
-        identifiers=identifiers,
-        geometry=shapely.geometry.Point(-120.0, 39.0),
-    )
-    path = pathlib.Path(
-        "sources/CA_Perimeters_NIFC_FIRIS_public_view_0/000___/000000,lastEdit=0.gpkg",
-    )
-    return peri_scribe.fires.sources.FireRecordGroups(
-        records=(record,),
-        record_paths=(path,),
-        fires=(fire,),
-        groups=((0,),),
-        complex_identifiers=complex_identifiers,
-    )
 
 
 def test_classify_fire_sources_returns_empty_without_non_complex_fires() -> None:
@@ -51,7 +27,7 @@ def test_classify_fire_sources_returns_empty_without_non_complex_fires() -> None
         identifier="parent",
         aliases=frozenset({"parent"}),
     )
-    groups = record_groups(
+    groups = tests.peri_scribe.fires.classification_helpers.record_groups(
         fire=fire,
         complex_identifiers=frozenset({"parent"}),
     )
@@ -78,13 +54,11 @@ def test_classify_fire_sources_returns_empty_when_boundaries_missing(
     )
     with structlog.testing.capture_logs() as captured:
         result = peri_scribe.fires.classification.classify_fire_sources(
-            record_groups(fire=fire),
+            tests.peri_scribe.fires.classification_helpers.record_groups(fire=fire),
             pathlib.Path("/base"),
         )
     assert result == {}
-    assert [event["event"] for event in captured] == [
-        "Skipping border classification",
-    ]
+    assert [event["event"] for event in captured] == ["Skipping border classification"]
 
 
 def test_classify_fire_sources_classifies_each_fire(
@@ -111,7 +85,7 @@ def test_classify_fire_sources_classifies_each_fire(
         lambda **_keywords: classification,
     )
     result = peri_scribe.fires.classification.classify_fire_sources(
-        record_groups(fire=fire),
+        tests.peri_scribe.fires.classification_helpers.record_groups(fire=fire),
         pathlib.Path("/base"),
     )
     assert result == {id(fire): classification}

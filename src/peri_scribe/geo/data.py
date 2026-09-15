@@ -51,9 +51,7 @@ def extract_geometries(
         )
     return (
         dataframe.drop(columns=[peri_scribe.models.SHAPE_COLUMN_NAME]),
-        list(
-            dataframe[peri_scribe.models.SHAPE_COLUMN_NAME].geom.as_shapely,
-        ),
+        list(dataframe[peri_scribe.models.SHAPE_COLUMN_NAME].geom.as_shapely),
         None,
     )
 

@@ -11,8 +11,8 @@ import peri_scribe.output
 import peri_scribe.sources.snapshots
 
 
-# The current version of the fire source index format; bump it when the format
-# changes so that consumers can tell which format a file uses.
+# The current version of the fire source index format; bump it when the format changes
+# so that consumers can tell which format a file uses.
 FIRE_INDEX_VERSION = "2026-08-18"
 
 
@@ -80,11 +80,7 @@ def fire_sources_document(
 def fire_index_entries(
     sources: list[peri_scribe.models.FireSources],
     sources_directory: pathlib.Path,
-    classifications: dict[
-        int,
-        peri_scribe.models.FireClassification,
-    ]
-    | None = None,
+    classifications: dict[int, peri_scribe.models.FireClassification] | None = None,
 ) -> list[dict[str, object]]:
     """Return the fire index documents for *sources*, sorted by fire name.
 
@@ -180,8 +176,8 @@ def load_fire_index(year_directory: pathlib.Path) -> peri_scribe.models.FireInde
     """Return the fire index for *year_directory*, building it first if needed.
 
     The index is read from ``{year_directory}/sources/fires.json``. When the file is
-    missing, it is built from the GeoPackage files under the sources directory before
-    it is read, so the index is always available once this returns.
+    missing, it is built from the GeoPackage files under the sources directory before it
+    is read, so the index is always available once this returns.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
@@ -192,7 +188,4 @@ def load_fire_index(year_directory: pathlib.Path) -> peri_scribe.models.FireInde
     index_path = peri_scribe.sources.snapshots.fire_index_path(year_directory)
     if not index_path.is_file():
         index_fire_sources(year_directory)
-    return peri_scribe.output.read_document(
-        index_path,
-        peri_scribe.models.FireIndex,
-    )
+    return peri_scribe.output.read_document(index_path, peri_scribe.models.FireIndex)

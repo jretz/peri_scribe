@@ -4,26 +4,8 @@ import pytest
 import shapely.geometry
 
 import peri_scribe.perimeters.cleaning
+import tests.peri_scribe.perimeters.cleaning_helpers
 from peri_scribe.units import units
-
-
-def noisy_top_edge_polygon() -> shapely.geometry.Polygon:
-    """Return a square whose top edge carries many small wiggles.
-
-    The wiggles are far smaller than the cleaning deviation but far larger than the
-    collinear epsilon, so they exercise the slit-killing simplification rather than the
-    collinear removal alone.
-
-    Returns:
-        The noisy square.
-    """
-    points = [(0.0, 0.0), (1.0, 0.0), (1.0, 1.0)]
-    for index in range(99, 0, -1):
-        x = index / 100.0
-        y = 1.0 + (0.00001 if index % 2 == 0 else -0.00001)
-        points.append((x, y))
-    points.extend(((0.0, 1.0), (0.0, 0.0)))
-    return shapely.geometry.Polygon(points)
 
 
 def test_clean_perimeter_returns_none_for_missing() -> None:
@@ -31,9 +13,7 @@ def test_clean_perimeter_returns_none_for_missing() -> None:
 
 
 def test_clean_perimeter_keeps_empty_polygon() -> None:
-    result = peri_scribe.perimeters.cleaning.clean_perimeter(
-        shapely.geometry.Polygon(),
-    )
+    result = peri_scribe.perimeters.cleaning.clean_perimeter(shapely.geometry.Polygon())
     assert result is not None
     assert result.is_empty
 
@@ -45,9 +25,7 @@ def test_clean_perimeter_passes_non_polygonal_geometry_through() -> None:
 
 def test_clean_perimeter_removes_zero_area_parts() -> None:
     box = shapely.geometry.box(0.0, 0.0, 1.0, 1.0)
-    sliver = shapely.geometry.Polygon(
-        [(5.0, 5.0), (6.0, 5.0), (7.0, 5.0), (5.0, 5.0)],
-    )
+    sliver = shapely.geometry.Polygon([(5.0, 5.0), (6.0, 5.0), (7.0, 5.0), (5.0, 5.0)])
     result = peri_scribe.perimeters.cleaning.clean_perimeter(
         shapely.geometry.MultiPolygon([box, sliver]),
     )
@@ -88,19 +66,17 @@ def test_clean_perimeter_keeps_multiple_parts() -> None:
 
 
 def test_clean_perimeter_keeps_close_parts_from_overlapping() -> None:
-    notched = shapely.geometry.Polygon(
-        [
-            (0.0, 0.0),
-            (1.0, 0.0),
-            (1.0, 0.4),
-            (0.9999, 0.4),
-            (0.9999, 0.6),
-            (1.0, 0.6),
-            (1.0, 1.0),
-            (0.0, 1.0),
-            (0.0, 0.0),
-        ],
-    )
+    notched = shapely.geometry.Polygon([
+        (0.0, 0.0),
+        (1.0, 0.0),
+        (1.0, 0.4),
+        (0.9999, 0.4),
+        (0.9999, 0.6),
+        (1.0, 0.6),
+        (1.0, 1.0),
+        (0.0, 1.0),
+        (0.0, 0.0),
+    ])
     neighbor = shapely.geometry.box(0.99995, 0.45, 0.99999, 0.55)
     polygon = shapely.geometry.MultiPolygon([notched, neighbor])
     assert polygon.is_valid
@@ -111,9 +87,14 @@ def test_clean_perimeter_keeps_close_parts_from_overlapping() -> None:
 
 
 def test_clean_perimeter_removes_collinear_points() -> None:
-    polygon = shapely.geometry.Polygon(
-        [(0.0, 0.0), (0.5, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
-    )
+    polygon = shapely.geometry.Polygon([
+        (0.0, 0.0),
+        (0.5, 0.0),
+        (1.0, 0.0),
+        (1.0, 1.0),
+        (0.0, 1.0),
+        (0.0, 0.0),
+    ])
     result = peri_scribe.perimeters.cleaning.clean_perimeter(polygon)
     assert result is not None
     assert len(result.exterior.coords) < len(polygon.exterior.coords)
@@ -124,16 +105,21 @@ def test_clean_perimeter_removes_collinear_points_without_deviation() -> None:
     config = peri_scribe.perimeters.cleaning.PerimeterCleaningConfig(
         maximum_deviation=0.0 * units.meters,
     )
-    polygon = shapely.geometry.Polygon(
-        [(0.0, 0.0), (0.5, 0.0), (1.0, 0.0), (1.0, 1.0), (0.0, 1.0), (0.0, 0.0)],
-    )
+    polygon = shapely.geometry.Polygon([
+        (0.0, 0.0),
+        (0.5, 0.0),
+        (1.0, 0.0),
+        (1.0, 1.0),
+        (0.0, 1.0),
+        (0.0, 0.0),
+    ])
     result = peri_scribe.perimeters.cleaning.clean_perimeter(polygon, config)
     assert result is not None
     assert len(result.exterior.coords) < len(polygon.exterior.coords)
 
 
 def test_clean_perimeter_simplifies_noisy_ring() -> None:
-    polygon = noisy_top_edge_polygon()
+    polygon = tests.peri_scribe.perimeters.cleaning_helpers.noisy_top_edge_polygon()
     result = peri_scribe.perimeters.cleaning.clean_perimeter(polygon)
     assert result is not None
     assert len(result.exterior.coords) < len(polygon.exterior.coords)
@@ -141,19 +127,17 @@ def test_clean_perimeter_simplifies_noisy_ring() -> None:
 
 
 def test_clean_perimeter_makes_invalid_polygon_valid() -> None:
-    polygon = shapely.geometry.Polygon(
-        [
-            (0.0, 0.0),
-            (4.0, 0.0),
-            (4.0, 2.0),
-            (2.0, 2.0),
-            (2.0, 1.0),
-            (3.0, 1.0),
-            (3.0, 4.0),
-            (0.0, 4.0),
-            (0.0, 0.0),
-        ],
-    )
+    polygon = shapely.geometry.Polygon([
+        (0.0, 0.0),
+        (4.0, 0.0),
+        (4.0, 2.0),
+        (2.0, 2.0),
+        (2.0, 1.0),
+        (3.0, 1.0),
+        (3.0, 4.0),
+        (0.0, 4.0),
+        (0.0, 0.0),
+    ])
     assert not polygon.is_valid
     result = peri_scribe.perimeters.cleaning.clean_perimeter(polygon)
     assert result is not None
@@ -170,7 +154,7 @@ def test_clean_perimeter_keeps_geometry_when_everything_is_below_area_floor() ->
 
 
 def test_clean_perimeter_is_idempotent() -> None:
-    polygon = noisy_top_edge_polygon()
+    polygon = tests.peri_scribe.perimeters.cleaning_helpers.noisy_top_edge_polygon()
     cleaned = peri_scribe.perimeters.cleaning.clean_perimeter(polygon)
     assert cleaned is not None
     result = peri_scribe.perimeters.cleaning.clean_perimeter(cleaned)
@@ -184,8 +168,5 @@ def test_simplify_tolerance_floors_at_collinear_epsilon() -> None:
         maximum_deviation=0.0 * units.meters,
     )
     geometry = shapely.geometry.box(0.0, 0.0, 1.0, 1.0)
-    tolerance = peri_scribe.perimeters.cleaning.simplify_tolerance(
-        geometry,
-        config,
-    )
+    tolerance = peri_scribe.perimeters.cleaning.simplify_tolerance(geometry, config)
     assert tolerance.m_as("degrees") == pytest.approx(1e-6)

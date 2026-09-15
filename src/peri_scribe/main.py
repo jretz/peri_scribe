@@ -126,7 +126,7 @@ def publication_threshold(
     _parameter: click.Parameter,
     value: tuple[pint.Quantity[float], datetime.timedelta] | None,
 ) -> peri_scribe.publication.Threshold | None:
-    """The two gate settings form one complete, validated policy.
+    """Validate the area and time settings as one publication policy.
 
     Args:
         _context: The invocation context supplied by Click; unused by this callback.
@@ -182,9 +182,13 @@ def default_year_directory() -> pathlib.Path:
     help="Minimum logging level for monthly JSON files in YEAR_DIRECTORY/logs.",
 )
 def cli(stderr_log_level: str, file_log_level: str) -> None:
-    """
-    A tool for systematic gathering and symbolization of fire geography, for use in fire
-    behavior analysis and presentation.
+    """Support systematic gathering and symbolization of fire geography.
+
+    Use the collected geography for fire behavior analysis and presentation.
+
+    Args:
+        stderr_log_level: Minimum severity for console logging.
+        file_log_level: Minimum severity for persistent command logs.
     """
     peri_scribe.logging.configure_logging(stderr_log_level, file_log_level)
 
@@ -226,18 +230,20 @@ def fetch_external_source(
     source: peri_scribe.sources.external_sources.ExternalSource,
     year_directory: pathlib.Path | None,
 ) -> None:
-    """Fetch *source* into *year_directory*, resolving the default directory."""
+    """Fetch *source* into *year_directory*, resolving the default directory.
+
+    Args:
+        source: External source selected for collection.
+        year_directory: Destination year directory, or None to use the current year's
+            directory.
+    """
     if year_directory is None:
         year_directory = default_year_directory()
     paths = peri_scribe.sources.external_sources.fetch_external_source(
         source,
         year_directory,
     )
-    logger.info(
-        "Fetched external source",
-        source=source.name,
-        paths=paths,
-    )
+    logger.info("Fetched external source", source=source.name, paths=paths)
 
 
 @cli.command()
@@ -255,11 +261,7 @@ def fetch_external_source(
     show_default=True,
     help="Colors to exclude from the end of the used range.",
 )
-def show_colormap(
-    *,
-    trim_start: int,
-    trim_end: int,
-) -> None:
+def show_colormap(*, trim_start: int, trim_end: int) -> None:
     """Print a Turbo colormap strip to the terminal as ANSI truecolor.
 
     The strip is one colored cell per color of the full 256-color colormap. A tick label
@@ -268,6 +270,10 @@ def show_colormap(
     the marker itself is drawn beside every color in that range. The marked range
     defaults to the ramp the rings sample, so --trim-start and --trim-end preview a ramp
     with different endpoints.
+
+    Args:
+        trim_start: Number of colors excluded from the cool end of the Turbo ramp.
+        trim_end: Number of colors excluded from the hot end of the Turbo ramp.
     """
     strip = peri_scribe.kml.colormap.turbo_colormap_ansi(
         trim_start=trim_start,
@@ -391,7 +397,7 @@ def run_fetch_stage(
     unconditional: bool,
     publish_threshold: peri_scribe.publication.Threshold | None = None,
 ) -> bool:
-    """Changed inputs require output work unless the publication policy defers it.
+    """Run required output work when the publication policy permits it.
 
     Args:
         year_directory: The directory holding the year's sources and outputs.
@@ -590,7 +596,12 @@ def run_geography_stage(
 
 
 def run_score_stage(year_directory: pathlib.Path) -> None:
-    """Score fires from the derived geography."""
+    """Score fires from the derived geography.
+
+    Args:
+        year_directory: Directory containing the year's source snapshots and derived
+            outputs.
+    """
     peri_scribe.fires.scores.score_fires(year_directory)
 
 
@@ -616,7 +627,12 @@ def run_kmz_stage(
 
 
 def run_reports_stage(year_directory: pathlib.Path) -> None:
-    """Write fire reports from the derived outputs."""
+    """Write fire reports from the derived outputs.
+
+    Args:
+        year_directory: Directory containing the year's source snapshots and derived
+            outputs.
+    """
     write_reports(year_directory)
 
 
@@ -640,14 +656,8 @@ PIPELINE_STAGES: tuple[PipelineStage, ...] = (
         name="geography",
         description="Derive fire geography histories from the fetched sources.",
     ),
-    PipelineStage(
-        name="score",
-        description="Score fires from the derived geography.",
-    ),
-    PipelineStage(
-        name="kmz",
-        description="Build the symbolized KMZ for Google Earth.",
-    ),
+    PipelineStage(name="score", description="Score fires from the derived geography."),
+    PipelineStage(name="kmz", description="Build the symbolized KMZ for Google Earth."),
     PipelineStage(
         name="reports",
         description="Write fire reports from the derived outputs.",
@@ -785,11 +795,7 @@ def selected_stage_range(
 @click.argument(
     "year_directory",
     callback=command_year_directory,
-    type=click.Path(
-        path_type=pathlib.Path,
-        exists=True,
-        file_okay=False,
-    ),
+    type=click.Path(path_type=pathlib.Path, exists=True, file_okay=False),
     required=False,
 )
 @click.option(
@@ -972,16 +978,17 @@ def run_selected_stages(
 @click.argument(
     "year_directory",
     callback=command_year_directory,
-    type=click.Path(
-        path_type=pathlib.Path,
-        exists=True,
-        file_okay=False,
-    ),
+    type=click.Path(path_type=pathlib.Path, exists=True, file_okay=False),
     required=False,
 )
 @peri_scribe.logging.log_command
 def validate_sources(year_directory: pathlib.Path) -> None:
-    """Check that the stored sources cover a complete snapshot of every feed."""
+    """Check that the stored sources cover a complete snapshot of every feed.
+
+    Args:
+        year_directory: Directory containing the year's source snapshots and derived
+            outputs.
+    """
     base_directory = peri_scribe.sources.snapshots.base_directory_for_year_directory(
         year_directory,
     )

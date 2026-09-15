@@ -1,3 +1,5 @@
+"""Provide isolated source, storage, logging, and CLI fixtures."""
+
 from __future__ import annotations
 
 import datetime
@@ -113,7 +115,11 @@ def log_output() -> typing.Iterator[structlog.testing.LogCapture]:
 
 @pytest.fixture(autouse=True)  # ruff: ignore[pytest-fixture-autouse]
 def configure_structlog(log_output: structlog.testing.LogCapture) -> None:
-    """Capture logs after structlog converts exception information for JSON output."""
+    """Capture logs after structlog converts exception information for JSON output.
+
+    Args:
+        log_output: Captured structured log entries for assertions.
+    """
     structlog.configure(
         processors=[
             peri_scribe.logging.serialize_log_values,
@@ -130,6 +136,10 @@ def cli_log_output(
     log_output: structlog.testing.LogCapture,
 ) -> structlog.testing.LogCapture:
     """Keep CLI invocations using the test's structured log capture.
+
+    Args:
+        monkeypatch: Replace dependencies and restore them after the test.
+        log_output: Captured structured log entries for assertions.
 
     Returns:
         The captured CLI log entries.
@@ -163,23 +173,21 @@ def sample_geo_dataframe() -> geopandas.GeoDataFrame:
     """
     return geopandas.GeoDataFrame(
         {"name": ["a", "b"]},
-        geometry=[
-            shapely.geometry.Point(1.0, 2.0),
-            shapely.geometry.Point(3.0, 4.0),
-        ],
+        geometry=[shapely.geometry.Point(1.0, 2.0), shapely.geometry.Point(3.0, 4.0)],
         crs=pyproj.CRS.from_epsg(WGS84_WKID),
     )
 
 
 @pytest.fixture
-def stub_fire_reader(
-    monkeypatch: pytest.MonkeyPatch,
-) -> tests.factories.StubFireReader:
+def stub_fire_reader(monkeypatch: pytest.MonkeyPatch) -> tests.factories.StubFireReader:
     """Point the GeoPackage readers at in-memory fires and memberships.
 
+    Args:
+        monkeypatch: Replace dependencies and restore them after the test.
+
     Returns:
-        A function that installs stand-ins serving the given fires and
-        memberships per GeoPackage path.
+        A function that installs stand-ins serving the given fires and memberships per
+        GeoPackage path.
     """
 
     def stub(
@@ -190,9 +198,25 @@ def stub_fire_reader(
         ]
         | None = None,
     ) -> None:
+        """Install fire observations and memberships for isolated reader tests.
+
+        Args:
+            records_by_path: Fire observations to serve for each GeoPackage path.
+            memberships_by_path: Complex memberships to serve per path, or None for no
+                memberships.
+        """
+
         def fake_read_geopackage(
             path: pathlib.Path,
         ) -> peri_scribe.geo.package.GeopackageContents:
+            """Serve the configured observations without reading a GeoPackage.
+
+            Args:
+                path: Path supplied to the intercepted file operation.
+
+            Returns:
+                The fire rows and memberships configured for this path.
+            """
             memberships = (memberships_by_path or {}).get(path, [])
             rows = tuple(
                 peri_scribe.geo.package.FireRowRecord(
@@ -208,9 +232,16 @@ def stub_fire_reader(
                 memberships=tuple(memberships),
             )
 
-        def fake_geo_package_files(
-            _directory: pathlib.Path,
-        ) -> list[pathlib.Path]:
+        def fake_geo_package_files(_directory: pathlib.Path) -> list[pathlib.Path]:
+            """Expose the configured snapshot paths to the source reader.
+
+            Args:
+                _directory: Directory accepted for reader compatibility; configured
+                    paths are used.
+
+            Returns:
+                The sorted paths containing configured fires or memberships.
+            """
             return sorted(set(records_by_path) | set(memberships_by_path or {}))
 
         monkeypatch.setattr(
@@ -234,6 +265,10 @@ def runner(
 ) -> click.testing.CliRunner:
     """Keep CLI-created data and logs inside the test's temporary directory.
 
+    Args:
+        monkeypatch: Replace dependencies and restore them after the test.
+        tmp_path: Isolated directory for this test's files.
+
     Returns:
         A runner whose default year directory is isolated from the repository.
     """
@@ -243,15 +278,12 @@ def runner(
 
 @pytest.fixture
 def feature_set_with_geometry() -> arcgis.features.FeatureSet:
-    """A FeatureSet whose features carry point geometries in WGS84.
+    """Provide point features with a known WGS84 spatial reference.
 
     Returns:
         A FeatureSet with two point features in WGS84.
     """
-    return wgs84_feature_set([
-        (None, "a", 1.0, 2.0),
-        (None, "b", 3.0, 4.0),
-    ])
+    return wgs84_feature_set([(None, "a", 1.0, 2.0), (None, "b", 3.0, 4.0)])
 
 
 @pytest.fixture
@@ -341,6 +373,9 @@ def configured_feeds(
 ) -> list[peri_scribe.sources.feed_types.Feed]:
     """Point feeds.FEEDS at two configured feeds for GeoPackage reading.
 
+    Args:
+        monkeypatch: Replace dependencies and restore them after the test.
+
     Returns:
         The two feeds, configured with fire name and status columns.
     """
@@ -362,9 +397,12 @@ def configured_feeds_with_identifiers(
     The first feed is CA-layer-like, with an identifier column only. The second is
     WFIGS-like, with identifier and complex columns.
 
+    Args:
+        monkeypatch: Replace dependencies and restore them after the test.
+
     Returns:
-        The two feeds, configured with fire name, status, identifier, and
-        complex columns.
+        The two feeds, configured with fire name, status, identifier, and complex
+        columns.
     """
     return configure_feeds(
         monkeypatch,
@@ -394,6 +432,9 @@ def configured_feeds_with_mission(
 ) -> list[peri_scribe.sources.feed_types.Feed]:
     """Point feeds.FEEDS at a CA-layer-like feed with mission and time columns.
 
+    Args:
+        monkeypatch: Replace dependencies and restore them after the test.
+
     Returns:
         The feed, configured with name, status, identifier, mission, and observation
         time columns.
@@ -419,9 +460,12 @@ def configured_feeds_with_point_of_origin(
 ) -> list[peri_scribe.sources.feed_types.Feed]:
     """Point feeds.FEEDS at a WFIGS-like feed with point of origin columns.
 
+    Args:
+        monkeypatch: Replace dependencies and restore them after the test.
+
     Returns:
-        The feed, configured with name, status, identifier, mission, and point of
-        origin columns.
+        The feed, configured with name, status, identifier, mission, and point of origin
+        columns.
     """
     return configure_feeds(
         monkeypatch,
@@ -445,12 +489,21 @@ def stub_geo_package(
 ) -> typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None]:
     """Point GeoPackage layer listing and reading at in-memory stand-ins.
 
+    Args:
+        monkeypatch: Replace dependencies and restore them after the test.
+
     Returns:
-        A function that installs stand-ins serving the given layers table and
-        per-layer dataframes.
+        A function that installs stand-ins serving the given layers table and per-layer
+        dataframes.
     """
 
     def stub(layers: pd.DataFrame, dataframes: dict[str, pd.DataFrame]) -> None:
+        """Install the layer metadata and contents used by GeoPackage readers.
+
+        Args:
+            layers: Layer-listing dataframe identifying the available GeoPackage layers.
+            dataframes: Dataframe contents keyed by layer name.
+        """
         monkeypatch.setattr(
             peri_scribe.geo.package.geopandas,
             "list_layers",
@@ -474,19 +527,25 @@ def layer_data_factory() -> typing.Callable[[str], peri_scribe.models.LayerData]
     """
 
     def make_layer_data(name: str) -> peri_scribe.models.LayerData:
-        return peri_scribe.models.LayerData(
-            name=name,
-            dataframe=sample_geo_dataframe(),
-        )
+        """Build a named sample layer for GeoPackage writer tests.
+
+        Args:
+            name: Name assigned to the selected layer or source.
+
+        Returns:
+            The named layer containing the sample point dataframe.
+        """
+        return peri_scribe.models.LayerData(name=name, dataframe=sample_geo_dataframe())
 
     return make_layer_data
 
 
 @pytest.fixture
-def geo_package_store(
-    monkeypatch: pytest.MonkeyPatch,
-) -> GeoPackageStore:
+def geo_package_store(monkeypatch: pytest.MonkeyPatch) -> GeoPackageStore:
     """Install an in-memory stand-in for the fetch command's file storage.
+
+    Args:
+        monkeypatch: Replace dependencies and restore them after the test.
 
     Returns:
         The store recording written GeoPackage layers.
@@ -503,11 +562,7 @@ def geo_package_store(
         "read_layer_dataframe",
         store.read_layer,
     )
-    monkeypatch.setattr(
-        pathlib.Path,
-        "mkdir",
-        lambda *_arguments, **_keywords: None,
-    )
+    monkeypatch.setattr(pathlib.Path, "mkdir", lambda *_arguments, **_keywords: None)
     return store
 
 
@@ -519,9 +574,13 @@ def snapshot_path(
 ) -> pathlib.Path:
     """Return the snapshot path fetch writes for a feed and last-edit timestamp.
 
+    Args:
+        feed_name: Feed name used in the snapshot directory.
+        serial_number: Snapshot sequence number used in the bucket and filename.
+        last_edit_timestamp: Layer edit timestamp in milliseconds since the Unix epoch.
+
     Returns:
-        The snapshot path, assuming the 2026 test year, no prior snapshots, and a first
-        serial number of 0.
+        The snapshot path for the 2026 test year and supplied feed metadata.
     """
     return peri_scribe.sources.snapshots.source_geopackage_path(
         BASE_DIRECTORY,
@@ -539,12 +598,16 @@ def current_year(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: pathlib.Path,
 ) -> typing.Iterator[None]:
-    """Fix the working directory and freeze the current year at 2026."""
-    monkeypatch.setattr(
-        pathlib.Path,
-        "cwd",
-        staticmethod(lambda: BASE_DIRECTORY),
-    )
+    """Fix the working directory and freeze the current year at 2026.
+
+    Args:
+        monkeypatch: Replace dependencies and restore them after the test.
+        tmp_path: Isolated directory for this test's files.
+
+    Yields:
+        Control while the working directory and current year are isolated.
+    """
+    monkeypatch.setattr(pathlib.Path, "cwd", staticmethod(lambda: BASE_DIRECTORY))
     append_monthly_log = peri_scribe.logging.append_monthly_log
     monkeypatch.setattr(
         peri_scribe.logging,
@@ -583,6 +646,17 @@ def run_stubs(
             peri_scribe.sources.full_fetch_state.FullFetchState | None
         ) = None,
     ) -> RunStubs:
+        """Isolate pipeline stages and capture their invocations.
+
+        Args:
+            changed: Whether source collection reports changed fire observations.
+            evacuations_changed: Whether evacuation contents differ across the simulated
+                fetch.
+            stored_state: Previously recorded full-fetch checkpoint, or None if absent.
+
+        Returns:
+            The configured fetch outcome and captured pipeline calls.
+        """
         monkeypatch.setattr(
             peri_scribe.pipeline_state,
             "state_path",
@@ -614,6 +688,16 @@ def run_stubs(
             year: int,
             full: bool = False,
         ) -> peri_scribe.sources.fetching.FetchResult:
+            """Capture fetch options and serve the configured source outcome.
+
+            Args:
+                base_directory: Root directory containing data grouped by year.
+                year: Collection year supplied by the command.
+                full: Whether the fetch must collect the complete layer.
+
+            Returns:
+                The source fetch outcome selected for this test.
+            """
             stubs.fetch_calls.append((base_directory, year, full))
             return stubs.fetch_result
 
@@ -626,6 +710,15 @@ def run_stubs(
         def read_state(
             _path: pathlib.Path,
         ) -> peri_scribe.sources.full_fetch_state.FullFetchState | None:
+            """Serve the configured full-fetch checkpoint without file access.
+
+            Args:
+                _path: File path accepted for compatibility; the configured stub outcome
+                    is used.
+
+            Returns:
+                The configured checkpoint, or None when none has been stored.
+            """
             return stored_state
 
         def write_state(
@@ -633,6 +726,13 @@ def run_stubs(
             *,
             last_full_fetch: datetime.datetime,
         ) -> None:
+            """Capture checkpoint updates for pipeline assertions.
+
+            Args:
+                path: Path supplied to the intercepted file operation.
+                last_full_fetch: Completion time recorded for the most recent full
+                    fetch.
+            """
             stubs.write_state_calls.append((path, last_full_fetch))
 
         monkeypatch.setattr(
@@ -650,9 +750,16 @@ def run_stubs(
         # evacuations.
         digests = ["before", "after"] if evacuations_changed else ["same", "same"]
 
-        def stored_evacuations_digest(
-            _year_directory: pathlib.Path,
-        ) -> str | None:
+        def stored_evacuations_digest(_year_directory: pathlib.Path) -> str | None:
+            """Simulate evacuation contents before and after collection.
+
+            Args:
+                _year_directory: Year directory accepted for compatibility with the
+                    digest reader.
+
+            Returns:
+                The next configured digest, or a stable digest after both reads.
+            """
             return digests.pop() if digests else "same"
 
         monkeypatch.setattr(
@@ -663,9 +770,10 @@ def run_stubs(
         monkeypatch.setattr(
             peri_scribe.main,
             "fetch_external_source",
-            lambda source, year_directory: stubs.external_calls.append(
-                (source, year_directory),
-            ),
+            lambda source, year_directory: stubs.external_calls.append((
+                source,
+                year_directory,
+            )),
         )
         monkeypatch.setattr(
             peri_scribe.sources.administrative_boundaries,
@@ -713,6 +821,9 @@ def validate_sources_stubs(
 ]:
     """Install step stubs for the validate-sources command.
 
+    Args:
+        monkeypatch: Replace dependencies and restore them after the test.
+
     Returns:
         A callable taking the validation results to serve and returning the recorded
         step calls.
@@ -721,6 +832,14 @@ def validate_sources_stubs(
     def install(
         results: tuple[peri_scribe.sources.validation.FeedValidationResult, ...],
     ) -> ValidateSourcesStubs:
+        """Isolate validation stages and capture their invocations.
+
+        Args:
+            results: Validation findings to return from the simulated comparison.
+
+        Returns:
+            The captured complete fetch, incremental fetch, and validation calls.
+        """
         stubs = ValidateSourcesStubs(
             fetch_complete_calls=[],
             fetch_incremental_calls=[],
@@ -733,6 +852,15 @@ def validate_sources_stubs(
             *,
             year: int,
         ) -> tuple[pathlib.Path, ...]:
+            """Capture complete-fetch requests without collecting remote data.
+
+            Args:
+                base_directory: Root directory containing data grouped by year.
+                year: Collection year supplied by the command.
+
+            Returns:
+                An empty tuple because this stub creates no snapshots.
+            """
             stubs.fetch_complete_calls.append((base_directory, year))
             return ()
 
@@ -741,6 +869,15 @@ def validate_sources_stubs(
             *,
             year: int,
         ) -> peri_scribe.sources.fetching.FetchResult:
+            """Capture incremental-fetch requests without collecting remote data.
+
+            Args:
+                base_directory: Root directory containing data grouped by year.
+                year: Collection year supplied by the command.
+
+            Returns:
+                A fetch outcome with no snapshots or source changes.
+            """
             stubs.fetch_incremental_calls.append((base_directory, year))
             return peri_scribe.sources.fetching.FetchResult(
                 snapshot_paths=(),
@@ -751,6 +888,16 @@ def validate_sources_stubs(
             year_directory: pathlib.Path,
             feeds: object,
         ) -> tuple[peri_scribe.sources.validation.FeedValidationResult, ...]:
+            """Capture the validation directory and serve the configured findings.
+
+            Args:
+                year_directory: Directory containing the year's source snapshots and
+                    derived outputs.
+                feeds: Feed configurations to include in the collection or validation.
+
+            Returns:
+                The validation findings selected for this test.
+            """
             stubs.validate_calls.append(year_directory)
             return results
 
@@ -781,7 +928,11 @@ def validate_sources_stubs(
 
 @pytest.fixture
 def validate_sources_setup(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Silence log configuration so validate-sources logs can be captured."""
+    """Silence log configuration so validate-sources logs can be captured.
+
+    Args:
+        monkeypatch: Replace dependencies and restore them after the test.
+    """
     monkeypatch.setattr(
         peri_scribe.logging,
         "configure_logging",

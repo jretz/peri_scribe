@@ -42,10 +42,7 @@ class HistoryRowIndex:
     positions_by_name: typing.Mapping[object, tuple[int, ...]]
 
     @classmethod
-    def from_frame(
-        cls,
-        frame: geopandas.GeoDataFrame,
-    ) -> HistoryRowIndex:
+    def from_frame(cls, frame: geopandas.GeoDataFrame) -> HistoryRowIndex:
         """Return an index of *frame*'s rows in one pass.
 
         Row positions are kept in ascending order, which is chronological order because

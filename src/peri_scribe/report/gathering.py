@@ -189,10 +189,7 @@ def report_entry(
     Returns:
         The fire's report facts.
     """
-    growth, growth_percent = peri_scribe.kml.folders.fire_growth(
-        fire,
-        reference_time,
-    )
+    growth, growth_percent = peri_scribe.kml.folders.fire_growth(fire, reference_time)
     return FireReportEntry(
         name=fire.name,
         identifier=peri_scribe.models.canonical_fire_identifier(fire.identifiers),
@@ -278,10 +275,7 @@ def located_entries(
         scores_by_identifier,
         scores_by_name,
         reference_time,
-        locations_by_identity=fire_locations(
-            fires,
-            read_cities_layer(year_directory),
-        ),
+        locations_by_identity=fire_locations(fires, read_cities_layer(year_directory)),
     )
 
 
@@ -369,11 +363,7 @@ def gather_report(year_directory: pathlib.Path) -> FireReport:
     )
     reference_time = datetime.datetime.now(datetime.UTC)
     new_notable_entries = located_entries(
-        peri_scribe.kml.folders.new_notable_fires(
-            fires,
-            fire_scores,
-            reference_time,
-        ),
+        peri_scribe.kml.folders.new_notable_fires(fires, fire_scores, reference_time),
         scores_by_identifier,
         scores_by_name,
         reference_time,
@@ -387,20 +377,14 @@ def gather_report(year_directory: pathlib.Path) -> FireReport:
         year_directory,
     )
     fast_growing_by_acres_entries = located_entries(
-        peri_scribe.kml.folders.fast_growing_fires_by_acres(
-            fires,
-            reference_time,
-        ),
+        peri_scribe.kml.folders.fast_growing_fires_by_acres(fires, reference_time),
         scores_by_identifier,
         scores_by_name,
         reference_time,
         year_directory,
     )
     fast_growing_by_percent_entries = located_entries(
-        peri_scribe.kml.folders.fast_growing_fires_by_percent(
-            fires,
-            reference_time,
-        ),
+        peri_scribe.kml.folders.fast_growing_fires_by_percent(fires, reference_time),
         scores_by_identifier,
         scores_by_name,
         reference_time,

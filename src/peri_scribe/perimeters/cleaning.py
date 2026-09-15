@@ -1,11 +1,10 @@
 """Cleaning fire perimeter polygons for Google Earth rendering.
 
-WFIGS/IRWIN perimeters are produced by rapid mapping at scale and carry
-below-resolution artifacts — zero-area parts and holes, and doubled-back
-"hairline" slits — that Google Earth's tessellator cannot render. These
-functions remove those artifacts from perimeters read from the sources
-directory before they are written to the derived directory, without changing
-the source files.
+WFIGS/IRWIN perimeters are produced by rapid mapping at scale and carry below-resolution
+artifacts — zero-area parts and holes, and doubled-back "hairline" slits — that Google
+Earth's tessellator cannot render. These functions remove those artifacts from
+perimeters read from the sources directory before they are written to the derived
+directory, without changing the source files.
 """
 
 from __future__ import annotations
@@ -49,9 +48,12 @@ def meridional_degree_length(latitude: float) -> pint.Quantity[float]:
     Returns:
         The meridional length of one degree, in meters per degree.
     """
-    _forward_azimuth, _backward_azimuth, distance = pyproj.Geod(
-        ellps="WGS84",
-    ).inv(0.0, latitude, 0.0, latitude + 1.0)
+    _forward_azimuth, _backward_azimuth, distance = pyproj.Geod(ellps="WGS84").inv(
+        0.0,
+        latitude,
+        0.0,
+        latitude + 1.0,
+    )
     return distance * units.meters / units.degrees
 
 
@@ -108,14 +110,13 @@ def clean_perimeter(
 ) -> shapely.Geometry | None:
     """Return *geometry* cleaned for rendering, or None when nothing remains.
 
-    Parts smaller than the area floor are rejected, degenerate holes are dropped,
-    and the surviving geometry is simplified as a whole within the configured
-    maximum deviation (which also removes collinear points) and repaired if the
-    result is invalid. When every part is below the floor, the original geometry is
-    kept, since a whole fire is not below-resolution noise. Simplifying the assembled
-    geometry rather than each part keeps the parts from drifting into each other, so
-    the result is valid. The geometry is only changed in memory; the source is never
-    modified.
+    Parts smaller than the area floor are rejected, degenerate holes are dropped, and
+    the surviving geometry is simplified as a whole within the configured maximum
+    deviation (which also removes collinear points) and repaired if the result is
+    invalid. When every part is below the floor, the original geometry is kept, since a
+    whole fire is not below-resolution noise. Simplifying the assembled geometry rather
+    than each part keeps the parts from drifting into each other, so the result is
+    valid. The geometry is only changed in memory; the source is never modified.
 
     Args:
         geometry: The perimeter geometry, in degree coordinates.

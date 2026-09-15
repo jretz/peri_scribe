@@ -3,37 +3,16 @@
 import dataclasses
 import pathlib
 
-import geopandas
 import pytest
 import shapely
 
 import peri_scribe.fires.reuse
 import peri_scribe.fires.sources
-import peri_scribe.geo.package
 import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.perimeters.cleaning
 import peri_scribe.sources.administrative_boundaries
-import tests.factories
-
-
-@pytest.fixture
-def cached_layers() -> list[peri_scribe.models.LayerData]:
-    """Supply an isolated cache payload.
-
-    Returns:
-        Small independent histories with stable derivation keys.
-    """
-    return [
-        peri_scribe.models.LayerData(
-            name="perimeters",
-            dataframe=geopandas.GeoDataFrame(
-                {"derivation_key": ["first", "second"], "revision": [1, 2]},
-                geometry=[shapely.box(0, 0, 1, 1), shapely.box(2, 2, 3, 3)],
-                crs=4326,
-            ),
-        ),
-    ]
+import tests.peri_scribe.fires.reuse_helpers
 
 
 def test_read_rows_round_trips_complete_output(
@@ -99,10 +78,7 @@ def test_write_layers_preserves_old_output_when_generation_fails(
     peri_scribe.fires.reuse.write_layers(path, cached_layers)
     original = path.read_bytes()
 
-    def fail(path: pathlib.Path, _layers: list[peri_scribe.models.LayerData]) -> None:
-        path.write_bytes(b"partial")
-        message = "interrupted"
-        raise RuntimeError(message)
+    fail = tests.peri_scribe.fires.reuse_helpers.write_partial_output_and_fail
 
     monkeypatch.setattr(peri_scribe.output, "write_geopackage", fail)
     with pytest.raises(RuntimeError, match="interrupted"):
@@ -133,37 +109,6 @@ def test_data_digest_ignores_dictionary_insertion_order() -> None:
     }) == peri_scribe.fires.reuse.data_digest({"b": 2, "a": 1})
 
 
-@pytest.fixture
-def source_rows() -> peri_scribe.fires.sources.ReadFireSources:
-    """Supply observations whose dependencies can change independently.
-
-    Returns:
-        Repeated shapes and a missing geometry under one fire identity.
-    """
-    geometry = shapely.box(0, 0, 1, 1)
-    return peri_scribe.fires.sources.ReadFireSources(
-        rows=tuple(
-            peri_scribe.geo.package.FireRowRecord(
-                record=tests.factories.fire_record(
-                    "Example",
-                    tests.factories.ACTIVE,
-                    {"example"},
-                    geometry=shape,
-                ),
-                source_name="CA_Perimeters_NIFC_FIRIS_public_view_0",
-                object_id=1,
-                attributes={"revision": index},
-            )
-            for index, shape in enumerate([geometry, geometry, None])
-        ),
-        paths=tuple(
-            pathlib.Path(f"sources/feed/00000{index},lastEdit=1.gpkg")
-            for index in range(3)
-        ),
-        memberships=(),
-    )
-
-
 def test_derivation_context_changes_when_settings_change(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -188,33 +133,15 @@ def test_write_layers_does_not_trust_unpublished_metadata(
     replace = pathlib.Path.replace
     cached_layers[0].dataframe["revision"] = 3
 
-    def interrupted(source: pathlib.Path, target: pathlib.Path) -> pathlib.Path:
-        if target == peri_scribe.fires.reuse.signature_path(path):
-            message = "interrupted metadata publication"
-            raise OSError(message)
-        return replace(source, target)
+    interrupted = tests.peri_scribe.fires.reuse_helpers.make_interrupted_replacement(
+        path=path,
+        replace=replace,
+    )
 
     monkeypatch.setattr(pathlib.Path, "replace", interrupted)
     with pytest.raises(OSError, match="interrupted"):
         peri_scribe.fires.reuse.write_layers(path, cached_layers)
     assert peri_scribe.fires.reuse.read_rows(path, ("perimeters",)) == {}
-
-
-def source_key(
-    read: peri_scribe.fires.sources.ReadFireSources,
-    context: str = "context",
-) -> str:
-    groups = peri_scribe.fires.sources.group_fire_sources(read)
-    return next(
-        iter(
-            peri_scribe.fires.reuse.fire_keys(
-                read,
-                groups,
-                pathlib.Path("sources"),
-                context,
-            ).values(),
-        ),
-    )
 
 
 @pytest.mark.parametrize(
@@ -233,7 +160,7 @@ def test_fire_keys_invalidate_changed_dependencies(
     source_rows: peri_scribe.fires.sources.ReadFireSources,
     change: str,
 ) -> None:
-    first = source_key(source_rows)
+    first = tests.peri_scribe.fires.reuse_helpers.source_key(source_rows)
     rows = list(source_rows.rows)
     if change == "attributes":
         rows[0] = dataclasses.replace(rows[0], attributes={"revision": "corrected"})
@@ -269,4 +196,7 @@ def test_fire_keys_invalidate_changed_dependencies(
             ),
         )
     changed = dataclasses.replace(source_rows, rows=tuple(rows))
-    assert first != source_key(changed, "changed" if change == "context" else "context")
+    assert first != tests.peri_scribe.fires.reuse_helpers.source_key(
+        changed,
+        "changed" if change == "context" else "context",
+    )

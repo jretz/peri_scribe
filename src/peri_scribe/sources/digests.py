@@ -54,10 +54,7 @@ def snapshot_matches(
     return dataframe_digest(dataframe) == dataframe_digest(stored)
 
 
-def stored_geopackage_digest(
-    path: pathlib.Path,
-    layer_name: str,
-) -> str | None:
+def stored_geopackage_digest(path: pathlib.Path, layer_name: str) -> str | None:
     """Return the content digest of the GeoPackage at *path*, or None.
 
     A file that is missing or cannot be read has no digest; a readable file digests the

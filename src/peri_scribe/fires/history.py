@@ -1,11 +1,11 @@
 """Building the full point and perimeter history for a year's fires.
 
-The derived history is written to a GeoPackage with one layer for perimeters and one
-for points. Perimeter history is reconciled across the two perimeter sources, where a
-fire that appears in both keeps the source most likely to be correct at each moment
-under the border-classification rules. Point history comes from the single incident
-location source, so every distinct attribute state is kept while the location itself
-never creates a version.
+The derived history is written to a GeoPackage with one layer for perimeters and one for
+points. Perimeter history is reconciled across the two perimeter sources, where a fire
+that appears in both keeps the source most likely to be correct at each moment under the
+border-classification rules. Point history comes from the single incident location
+source, so every distinct attribute state is kept while the location itself never
+creates a version.
 """
 
 from __future__ import annotations
@@ -127,115 +127,111 @@ def perimeter_row(
     attributes = observation.attributes
     geometry = peri_scribe.perimeters.cleaning.clean_perimeter(observation.geometry)
     row = identity_fields(fire, classification)
-    row.update(
-        {
-            "source": observation.source_kind.value,
-            "source_subsource": (
-                peri_scribe.perimeters.history_attributes.text_attribute(
-                    attributes,
-                    "source",
-                    "poly_Source",
-                )
-            ),
-            "source_objectid": observation.object_id,
-            "source_globalid": (
-                peri_scribe.perimeters.history_attributes.text_attribute(
-                    attributes,
-                    "GlobalID",
-                )
-            ),
-            "source_file": observation.source_file,
-            "source_serial": observation.serial_number,
-            "superseded_sources": json.dumps(observation.superseded_sources),
-            "observation_time": (
-                peri_scribe.perimeters.versions.effective_time(
-                    observation,
-                )
-            ),
-            "created_time": (
-                peri_scribe.perimeters.history_attributes.datetime_attribute(
-                    attributes,
-                    "CreationDate",
-                    "poly_CreateDate",
-                )
-            ),
-            "modified_time": (
-                peri_scribe.perimeters.history_attributes.datetime_attribute(
-                    attributes,
-                    "EditDate",
-                    "attr_ModifiedOnDateTime_dt",
-                )
-            ),
-            "discovery_time": (
-                peri_scribe.perimeters.history_attributes.datetime_attribute(
-                    attributes,
-                    "FireDiscoveryDate",
-                    "attr_FireDiscoveryDateTime",
-                )
-            ),
-            "area_acres": (
-                peri_scribe.perimeters.history_attributes.float_attribute(
-                    attributes,
-                    "area_acres",
-                    "poly_GISAcres",
-                )
-            ),
-            "percent_contained": (
-                peri_scribe.perimeters.history_attributes.float_attribute(
-                    attributes,
-                    "attr_PercentContained",
-                )
-            ),
-            "containment_datetime": (
-                peri_scribe.perimeters.history_attributes.datetime_attribute(
-                    attributes,
-                    "attr_ContainmentDateTime",
-                )
-            ),
-            "estimated_cost_to_date": (
-                peri_scribe.perimeters.history_attributes.float_attribute(
-                    attributes,
-                    "attr_EstimatedCostToDate",
-                )
-            ),
-            "estimated_final_cost": (
-                peri_scribe.perimeters.history_attributes.float_attribute(
-                    attributes,
-                    "attr_EstimatedFinalCost",
-                )
-            ),
-            "type": peri_scribe.perimeters.history_attributes.text_attribute(
+    row.update({
+        "source": observation.source_kind.value,
+        "source_subsource": (
+            peri_scribe.perimeters.history_attributes.text_attribute(
                 attributes,
-                "type",
-            ),
-            "feature_category": (
-                peri_scribe.perimeters.history_attributes.text_attribute(
-                    attributes,
-                    "poly_FeatureCategory",
-                )
-            ),
-            "map_method": (
-                peri_scribe.perimeters.history_attributes.text_attribute(
-                    attributes,
-                    "poly_MapMethod",
-                )
-            ),
-            "mission": (
-                peri_scribe.perimeters.history_attributes.text_attribute(
-                    attributes,
-                    "mission",
-                )
-            ),
-            "description": (
-                peri_scribe.perimeters.history_attributes.text_attribute(
-                    attributes,
-                    "description",
-                )
-            ),
-            "source_attributes": attributes_json(attributes),
-            "geometry": geometry,
-        },
-    )
+                "source",
+                "poly_Source",
+            )
+        ),
+        "source_objectid": observation.object_id,
+        "source_globalid": (
+            peri_scribe.perimeters.history_attributes.text_attribute(
+                attributes,
+                "GlobalID",
+            )
+        ),
+        "source_file": observation.source_file,
+        "source_serial": observation.serial_number,
+        "superseded_sources": json.dumps(observation.superseded_sources),
+        "observation_time": (
+            peri_scribe.perimeters.versions.effective_time(observation)
+        ),
+        "created_time": (
+            peri_scribe.perimeters.history_attributes.datetime_attribute(
+                attributes,
+                "CreationDate",
+                "poly_CreateDate",
+            )
+        ),
+        "modified_time": (
+            peri_scribe.perimeters.history_attributes.datetime_attribute(
+                attributes,
+                "EditDate",
+                "attr_ModifiedOnDateTime_dt",
+            )
+        ),
+        "discovery_time": (
+            peri_scribe.perimeters.history_attributes.datetime_attribute(
+                attributes,
+                "FireDiscoveryDate",
+                "attr_FireDiscoveryDateTime",
+            )
+        ),
+        "area_acres": (
+            peri_scribe.perimeters.history_attributes.float_attribute(
+                attributes,
+                "area_acres",
+                "poly_GISAcres",
+            )
+        ),
+        "percent_contained": (
+            peri_scribe.perimeters.history_attributes.float_attribute(
+                attributes,
+                "attr_PercentContained",
+            )
+        ),
+        "containment_datetime": (
+            peri_scribe.perimeters.history_attributes.datetime_attribute(
+                attributes,
+                "attr_ContainmentDateTime",
+            )
+        ),
+        "estimated_cost_to_date": (
+            peri_scribe.perimeters.history_attributes.float_attribute(
+                attributes,
+                "attr_EstimatedCostToDate",
+            )
+        ),
+        "estimated_final_cost": (
+            peri_scribe.perimeters.history_attributes.float_attribute(
+                attributes,
+                "attr_EstimatedFinalCost",
+            )
+        ),
+        "type": peri_scribe.perimeters.history_attributes.text_attribute(
+            attributes,
+            "type",
+        ),
+        "feature_category": (
+            peri_scribe.perimeters.history_attributes.text_attribute(
+                attributes,
+                "poly_FeatureCategory",
+            )
+        ),
+        "map_method": (
+            peri_scribe.perimeters.history_attributes.text_attribute(
+                attributes,
+                "poly_MapMethod",
+            )
+        ),
+        "mission": (
+            peri_scribe.perimeters.history_attributes.text_attribute(
+                attributes,
+                "mission",
+            )
+        ),
+        "description": (
+            peri_scribe.perimeters.history_attributes.text_attribute(
+                attributes,
+                "description",
+            )
+        ),
+        "source_attributes": attributes_json(attributes),
+        "geometry": geometry,
+    })
     if geometry is not None:
         row[peri_scribe.geo.measurements.AREA_COLUMN] = peri_scribe.units.area(
             geometry,
@@ -264,96 +260,94 @@ def point_row(
     """
     attributes = observation.attributes
     row = identity_fields(fire, classification)
-    row.update(
-        {
-            "source": observation.source_kind.value,
-            "source_objectid": observation.object_id,
-            "source_globalid": (
-                peri_scribe.perimeters.history_attributes.text_attribute(
-                    attributes,
-                    "GlobalID",
-                )
-            ),
-            "source_file": observation.source_file,
-            "source_serial": observation.serial_number,
-            # The incident record's modified time (the feed's observation column)
-            # is the as-of date for the point's reported state; the snapshot time
-            # is the fallback when the record carries no modified time.
-            "observation_time": (
-                observation.observation_time
-                if observation.observation_time is not None
-                else observation.snapshot_time
-            ),
-            "created_time": (
-                peri_scribe.perimeters.history_attributes.datetime_attribute(
-                    attributes,
-                    "CreatedOnDateTime_dt",
-                )
-            ),
-            "modified_time": (
-                peri_scribe.perimeters.history_attributes.datetime_attribute(
-                    attributes,
-                    "ModifiedOnDateTime_dt",
-                )
-            ),
-            "discovery_time": (
-                peri_scribe.perimeters.history_attributes.datetime_attribute(
-                    attributes,
-                    "FireDiscoveryDateTime",
-                )
-            ),
-            "incident_size": (
-                peri_scribe.perimeters.history_attributes.float_attribute(
-                    attributes,
-                    "IncidentSize",
-                )
-            ),
-            "discovery_acres": (
-                peri_scribe.perimeters.history_attributes.float_attribute(
-                    attributes,
-                    "DiscoveryAcres",
-                )
-            ),
-            "final_acres": (
-                peri_scribe.perimeters.history_attributes.float_attribute(
-                    attributes,
-                    "FinalAcres",
-                )
-            ),
-            "estimated_cost_to_date": (
-                peri_scribe.perimeters.history_attributes.float_attribute(
-                    attributes,
-                    "EstimatedCostToDate",
-                )
-            ),
-            "estimated_final_cost": (
-                peri_scribe.perimeters.history_attributes.float_attribute(
-                    attributes,
-                    "EstimatedFinalCost",
-                )
-            ),
-            "percent_contained": (
-                peri_scribe.perimeters.history_attributes.float_attribute(
-                    attributes,
-                    "PercentContained",
-                )
-            ),
-            "containment_datetime": (
-                peri_scribe.perimeters.history_attributes.datetime_attribute(
-                    attributes,
-                    "ContainmentDateTime",
-                )
-            ),
-            "control_datetime": (
-                peri_scribe.perimeters.history_attributes.datetime_attribute(
-                    attributes,
-                    "ControlDateTime",
-                )
-            ),
-            "source_attributes": attributes_json(attributes),
-            "geometry": observation.geometry,
-        },
-    )
+    row.update({
+        "source": observation.source_kind.value,
+        "source_objectid": observation.object_id,
+        "source_globalid": (
+            peri_scribe.perimeters.history_attributes.text_attribute(
+                attributes,
+                "GlobalID",
+            )
+        ),
+        "source_file": observation.source_file,
+        "source_serial": observation.serial_number,
+        # The incident record's modified time (the feed's observation column) is the
+        # as-of date for the point's reported state; the snapshot time is the fallback
+        # when the record carries no modified time.
+        "observation_time": (
+            observation.observation_time
+            if observation.observation_time is not None
+            else observation.snapshot_time
+        ),
+        "created_time": (
+            peri_scribe.perimeters.history_attributes.datetime_attribute(
+                attributes,
+                "CreatedOnDateTime_dt",
+            )
+        ),
+        "modified_time": (
+            peri_scribe.perimeters.history_attributes.datetime_attribute(
+                attributes,
+                "ModifiedOnDateTime_dt",
+            )
+        ),
+        "discovery_time": (
+            peri_scribe.perimeters.history_attributes.datetime_attribute(
+                attributes,
+                "FireDiscoveryDateTime",
+            )
+        ),
+        "incident_size": (
+            peri_scribe.perimeters.history_attributes.float_attribute(
+                attributes,
+                "IncidentSize",
+            )
+        ),
+        "discovery_acres": (
+            peri_scribe.perimeters.history_attributes.float_attribute(
+                attributes,
+                "DiscoveryAcres",
+            )
+        ),
+        "final_acres": (
+            peri_scribe.perimeters.history_attributes.float_attribute(
+                attributes,
+                "FinalAcres",
+            )
+        ),
+        "estimated_cost_to_date": (
+            peri_scribe.perimeters.history_attributes.float_attribute(
+                attributes,
+                "EstimatedCostToDate",
+            )
+        ),
+        "estimated_final_cost": (
+            peri_scribe.perimeters.history_attributes.float_attribute(
+                attributes,
+                "EstimatedFinalCost",
+            )
+        ),
+        "percent_contained": (
+            peri_scribe.perimeters.history_attributes.float_attribute(
+                attributes,
+                "PercentContained",
+            )
+        ),
+        "containment_datetime": (
+            peri_scribe.perimeters.history_attributes.datetime_attribute(
+                attributes,
+                "ContainmentDateTime",
+            )
+        ),
+        "control_datetime": (
+            peri_scribe.perimeters.history_attributes.datetime_attribute(
+                attributes,
+                "ControlDateTime",
+            )
+        ),
+        "source_attributes": attributes_json(attributes),
+        "geometry": observation.geometry,
+    })
     return row
 
 
@@ -458,10 +452,7 @@ def history_rows_for_fire(
 
 def history_layer_rows(
     record_groups: peri_scribe.fires.sources.FireRecordGroups,
-    classifications: dict[
-        int,
-        peri_scribe.models.FireClassification,
-    ],
+    classifications: dict[int, peri_scribe.models.FireClassification],
     full_rows: list[peri_scribe.geo.package.FireRowRecord],
     full_paths: list[pathlib.Path],
     sources_directory: pathlib.Path,
@@ -490,11 +481,7 @@ def history_layer_rows(
     """
     non_complex_fires = [
         (fire, group)
-        for fire, group in zip(
-            record_groups.fires,
-            record_groups.groups,
-            strict=True,
-        )
+        for fire, group in zip(record_groups.fires, record_groups.groups, strict=True)
         if not peri_scribe.fires.sources.fire_is_complex_parent(record_groups, group)
     ]
     if not non_complex_fires:

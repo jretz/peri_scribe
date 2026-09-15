@@ -62,10 +62,7 @@ def group_keys(dataframe: geopandas.GeoDataFrame) -> pd.Series:
         return pd.Series(dtype=object, index=dataframe.index)
     return pd.Series(
         [
-            identity_key(
-                str(name),
-                normalized_identifier(identifier),
-            )
+            identity_key(str(name), normalized_identifier(identifier))
             for name, identifier in zip(
                 dataframe["fire_name"],
                 dataframe["fire_identifier"],

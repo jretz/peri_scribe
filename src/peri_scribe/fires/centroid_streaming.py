@@ -283,8 +283,8 @@ def convert_zip_stream(
         The number of features converted.
 
     Raises:
-        ExternalDataError: If the stream is not a zip archive or holds no GeoJSON
-            member with any features.
+        ExternalDataError: If the stream is not a zip archive or holds no GeoJSON member
+            with any features.
     """
     try:
         feature_count, wrote_any = convert_zip_members(

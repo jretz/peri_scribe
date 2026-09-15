@@ -37,9 +37,7 @@ NAME_AREA_KEY = "name"
 AreaKey = tuple[str, str]
 
 
-def identifiers(
-    entry: peri_scribe.models.FireIndexEntry,
-) -> frozenset[str]:
+def identifiers(entry: peri_scribe.models.FireIndexEntry) -> frozenset[str]:
     """Return every identifier known for *entry*.
 
     Args:
@@ -59,9 +57,9 @@ def unique_filename_prefix(
 ) -> str:
     """Return a filename prefix for a fire that avoids *used_prefixes*.
 
-    The fire's canonical identifier is preferred, with its name as a fallback; when
-    that base prefix is already taken, a numeric suffix is appended until the result
-    is unused, so every fire's plot images land in distinct files.
+    The fire's canonical identifier is preferred, with its name as a fallback; when that
+    base prefix is already taken, a numeric suffix is appended until the result is
+    unused, so every fire's plot images land in distinct files.
 
     Args:
         identifier: The fire's canonical identifier, or None.
@@ -379,11 +377,10 @@ def fire_point_location(
 ) -> shapely.Point | None:
     """Return the point location to show for one fire, or None.
 
-    The last known point location is used when the fire has one. A fire without a
-    known location falls back to a representative point of its latest perimeter,
-    because its icon still needs somewhere to draw. The point source drops
-    inactive fires while their perimeters remain available, so this fallback
-    keeps their icons in the output.
+    The last known point location is used when the fire has one. A fire without a known
+    location falls back to a representative point of its latest perimeter, because its
+    icon still needs somewhere to draw. The point source drops inactive fires while
+    their perimeters remain available, so this fallback keeps their icons in the output.
 
     Args:
         fire_identifiers: The fire's identifiers.
@@ -393,15 +390,10 @@ def fire_point_location(
         perimeters: The fire's perimeters in chronological order.
 
     Returns:
-        The fire's point location, or None when it has neither a known location
-        nor any perimeter to derive one from.
+        The fire's point location, or None when it has neither a known location nor any
+        perimeter to derive one from.
     """
-    point = fire_point(
-        fire_identifiers,
-        entry_name,
-        point_by_identifier,
-        point_by_name,
-    )
+    point = fire_point(fire_identifiers, entry_name, point_by_identifier, point_by_name)
     if point is not None:
         return point
     if perimeters:

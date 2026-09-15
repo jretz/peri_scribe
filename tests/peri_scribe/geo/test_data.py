@@ -20,6 +20,7 @@ import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.retry
 import peri_scribe.sources.feed_types
+import tests.peri_scribe.geo.data_helpers
 from peri_scribe.units import units
 from tests.conftest import (
     LOOSE_429_ERROR_PAYLOAD,
@@ -62,11 +63,7 @@ def test_geo_data_frame_from_builds_native_crs_dataframe() -> None:
         shapely.geometry.Point(1.0, 2.0),
         shapely.geometry.Point(3.0, 4.0),
     ]
-    result = peri_scribe.geo.data.geo_data_frame_from(
-        dataframe,
-        geometries,
-        WGS84_WKID,
-    )
+    result = peri_scribe.geo.data.geo_data_frame_from(dataframe, geometries, WGS84_WKID)
     assert result.crs == pyproj.CRS.from_epsg(WGS84_WKID)
     assert result.geometry.name == peri_scribe.models.GEOMETRY_COLUMN_NAME
     assert list(result["name"]) == ["a", "b"]
@@ -76,11 +73,7 @@ def test_geo_data_frame_from_builds_native_crs_dataframe() -> None:
 def test_geo_data_frame_from_allows_null_geometries() -> None:
     dataframe = pd.DataFrame({"name": ["a"]})
     geometries: list[shapely.Geometry | None] = [None]
-    result = peri_scribe.geo.data.geo_data_frame_from(
-        dataframe,
-        geometries,
-        WGS84_WKID,
-    )
+    result = peri_scribe.geo.data.geo_data_frame_from(dataframe, geometries, WGS84_WKID)
     assert list(result.geometry) == [None]
 
 
@@ -119,12 +112,10 @@ def test_dataframe_for_layer_warns_when_features_lack_geometry(
     feed: peri_scribe.sources.feed_types.Feed,
 ) -> None:
     layer = LayerStub(properties={"spatialReference": {"wkid": WGS84_WKID}})
-    feature_set = arcgis.features.FeatureSet(
-        [
-            arcgis.features.Feature(attributes={"name": "a"}),
-            arcgis.features.Feature(attributes={"name": "b"}),
-        ],
-    )
+    feature_set = arcgis.features.FeatureSet([
+        arcgis.features.Feature(attributes={"name": "a"}),
+        arcgis.features.Feature(attributes={"name": "b"}),
+    ])
     with structlog.testing.capture_logs() as captured:
         result = peri_scribe.geo.data.dataframe_for_layer(feed, layer, feature_set)
     assert len(captured) == 1
@@ -133,31 +124,14 @@ def test_dataframe_for_layer_warns_when_features_lack_geometry(
     assert list(result.geometry) == [None, None]
 
 
-class QueryStub:
-    """Callable that returns or raises successive outcomes from a list."""
-
-    def __init__(self, outcomes: list[arcgis.features.FeatureSet | Exception]) -> None:
-        self.outcomes = list(outcomes)
-        self.call_count = 0
-
-    def query(self) -> arcgis.features.FeatureSet:
-        outcome = self.outcomes[self.call_count]
-        self.call_count += 1
-        if isinstance(outcome, Exception):
-            raise outcome
-        return outcome
-
-
 def test_query_with_retry_succeeds_on_first_attempt(
     monkeypatch: pytest.MonkeyPatch,
     feature_set_with_geometry: arcgis.features.FeatureSet,
 ) -> None:
     sleep_calls: list[float] = []
     monkeypatch.setattr(time, "sleep", sleep_calls.append)
-    outcomes: list[arcgis.features.FeatureSet | Exception] = [
-        feature_set_with_geometry,
-    ]
-    layer = QueryStub(outcomes)
+    outcomes: list[arcgis.features.FeatureSet | Exception] = [feature_set_with_geometry]
+    layer = tests.peri_scribe.geo.data_helpers.QueryStub(outcomes)
     result = peri_scribe.geo.data.query_with_retry(
         SAMPLE_FEED_NAME,
         typing.cast("arcgis.features.FeatureLayer", layer),
@@ -177,7 +151,7 @@ def test_query_with_retry_retries_on_429_with_retry_after(
         rate_limit_error,
         feature_set_with_geometry,
     ]
-    layer = QueryStub(outcomes)
+    layer = tests.peri_scribe.geo.data_helpers.QueryStub(outcomes)
     result = peri_scribe.geo.data.query_with_retry(
         SAMPLE_FEED_NAME,
         typing.cast("arcgis.features.FeatureLayer", layer),
@@ -197,15 +171,13 @@ def test_query_with_retry_retries_on_loose_429(
         loose_429_error,
         feature_set_with_geometry,
     ]
-    layer = QueryStub(outcomes)
+    layer = tests.peri_scribe.geo.data_helpers.QueryStub(outcomes)
     result = peri_scribe.geo.data.query_with_retry(
         SAMPLE_FEED_NAME,
         typing.cast("arcgis.features.FeatureLayer", layer),
     )
     assert result is feature_set_with_geometry
-    assert sleep_calls == [
-        float(peri_scribe.retry.FALLBACK_RETRY.m_as("seconds")),
-    ]
+    assert sleep_calls == [float(peri_scribe.retry.FALLBACK_RETRY.m_as("seconds"))]
 
 
 def test_query_with_retry_exhausts_retries_and_raises(
@@ -218,7 +190,7 @@ def test_query_with_retry_exhausts_retries_and_raises(
     outcomes: list[arcgis.features.FeatureSet | Exception] = [rate_limit_error] * (
         max_retries + 2
     )
-    layer = QueryStub(outcomes)
+    layer = tests.peri_scribe.geo.data_helpers.QueryStub(outcomes)
     with pytest.raises(ValueError, match=re.escape(str(RATE_LIMIT_ERROR_PAYLOAD))):
         peri_scribe.geo.data.query_with_retry(
             SAMPLE_FEED_NAME,
@@ -235,7 +207,7 @@ def test_query_with_retry_fails_immediately_on_non_429(
     monkeypatch.setattr(time, "sleep", sleep_calls.append)
     generic_error = RuntimeError("something else broke")
     outcomes: list[arcgis.features.FeatureSet | Exception] = [generic_error]
-    layer = QueryStub(outcomes)
+    layer = tests.peri_scribe.geo.data_helpers.QueryStub(outcomes)
     with pytest.raises(RuntimeError, match="something else broke"):
         peri_scribe.geo.data.query_with_retry(
             SAMPLE_FEED_NAME,
@@ -257,7 +229,7 @@ def test_query_with_retry_retries_on_transient_error(
         transient_error,
         feature_set_with_geometry,
     ]
-    layer = QueryStub(outcomes)
+    layer = tests.peri_scribe.geo.data_helpers.QueryStub(outcomes)
     result = peri_scribe.geo.data.query_with_retry(
         SAMPLE_FEED_NAME,
         typing.cast("arcgis.features.FeatureLayer", layer),
@@ -279,7 +251,7 @@ def test_query_with_retry_exhausts_transient_retries_and_raises(
     outcomes: list[arcgis.features.FeatureSet | Exception] = [transient_error] * (
         retries + 2
     )
-    layer = QueryStub(outcomes)
+    layer = tests.peri_scribe.geo.data_helpers.QueryStub(outcomes)
     with pytest.raises(requests.exceptions.ConnectionError, match="Connection broken"):
         peri_scribe.geo.data.query_with_retry(
             SAMPLE_FEED_NAME,
@@ -304,7 +276,7 @@ def test_query_with_retry_logs_rate_limit_reason(
         rate_limit_error,
         feature_set_with_geometry,
     ]
-    layer = QueryStub(outcomes)
+    layer = tests.peri_scribe.geo.data_helpers.QueryStub(outcomes)
     with structlog.testing.capture_logs(
         processors=[peri_scribe.logging.serialize_log_values],
     ) as captured:
@@ -333,7 +305,7 @@ def test_query_with_retry_logs_transient_reason(
         transient_error,
         feature_set_with_geometry,
     ]
-    layer = QueryStub(outcomes)
+    layer = tests.peri_scribe.geo.data_helpers.QueryStub(outcomes)
     with structlog.testing.capture_logs(
         processors=[peri_scribe.logging.serialize_log_values],
     ) as captured:
@@ -349,18 +321,8 @@ def test_query_with_retry_logs_transient_reason(
     }
 
 
-class IdQueryStub:
-    """Layer stand-in returning a fixed object-id query result."""
-
-    def __init__(self, result: dict[str, object]) -> None:
-        self.result = result
-
-    def query(self, **_parameters: object) -> dict[str, object]:
-        return self.result
-
-
 def test_query_object_ids_with_retry_returns_object_ids() -> None:
-    layer = IdQueryStub({"objectIds": [3, 4]})
+    layer = tests.peri_scribe.geo.data_helpers.IdQueryStub({"objectIds": [3, 4]})
     result = peri_scribe.geo.data.query_object_ids_with_retry(
         SAMPLE_FEED_NAME,
         typing.cast("arcgis.features.FeatureLayer", layer),
@@ -370,11 +332,8 @@ def test_query_object_ids_with_retry_returns_object_ids() -> None:
 
 
 def test_query_object_ids_with_retry_raises_without_object_ids() -> None:
-    layer = IdQueryStub({"count": 0})
-    with pytest.raises(
-        peri_scribe.exceptions.NoFeaturesError,
-        match="no object ids",
-    ):
+    layer = tests.peri_scribe.geo.data_helpers.IdQueryStub({"count": 0})
+    with pytest.raises(peri_scribe.exceptions.NoFeaturesError, match="no object ids"):
         peri_scribe.geo.data.query_object_ids_with_retry(
             SAMPLE_FEED_NAME,
             typing.cast("arcgis.features.FeatureLayer", layer),

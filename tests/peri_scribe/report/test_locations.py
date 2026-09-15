@@ -8,95 +8,8 @@ import pytest
 import shapely
 
 import peri_scribe.report.locations
+import tests.peri_scribe.report.locations_helpers
 from peri_scribe.units import units
-
-
-GEOD = pyproj.Geod(ellps="WGS84")
-
-PORTLAND_LONGITUDE = -122.6750
-PORTLAND_LATITUDE = 45.5051
-
-
-def city_frame(
-    rows: list[tuple[str | None, str | None, tuple[float, float] | None]],
-) -> geopandas.GeoDataFrame:
-    """Build a major-cities frame from (name, state, coordinates) rows.
-
-    A row whose name, state, or coordinates are None holds that missing value, so
-    tests can exercise the filtering of unusable rows.
-
-    Args:
-        rows: The city name, state abbreviation, and point coordinates of each row.
-
-    Returns:
-        The rows as a GeoDataFrame in WGS 84.
-    """
-    return geopandas.GeoDataFrame(
-        {
-            "NAME": [name for name, _state, _coordinates in rows],
-            "STATE_ABBR": [state for _name, state, _coordinates in rows],
-            "geometry": [
-                None if coordinates is None else shapely.Point(coordinates)
-                for _name, _state, coordinates in rows
-            ],
-        },
-        crs="EPSG:4326",
-    )
-
-
-def geodesic_quad(
-    longitude: float,
-    latitude: float,
-    bearing: float,
-    distance: float,
-    *,
-    length: float,
-    width_in_miles: float,
-) -> shapely.Geometry:
-    """Return a quad whose nearest corner sits at a known geodesic distance and bearing.
-
-    The quad's first corner lies exactly *distance* miles from the point at
-    *bearing*, and the quad extends away along that bearing and
-    perpendicular to it, so the corner is the point of the quad nearest to the given
-    point.
-
-    Args:
-        longitude: The point's longitude, in degrees.
-        latitude: The point's latitude, in degrees.
-        bearing: The bearing toward the quad's nearest corner.
-        distance: The distance to the quad's nearest corner.
-        length: How far the quad extends along the bearing.
-        width_in_miles: How far the quad extends to the right of the bearing.
-
-    Returns:
-        The quad polygon, in WGS 84 degrees.
-    """
-    corner_longitude, corner_latitude, _ = GEOD.fwd(
-        longitude,
-        latitude,
-        bearing,
-        (distance * units.miles).m_as("meters"),
-    )
-    first = (corner_longitude, corner_latitude)
-    second = GEOD.fwd(
-        first[0],
-        first[1],
-        bearing,
-        (length * units.miles).m_as("meters"),
-    )[:2]
-    third = GEOD.fwd(
-        second[0],
-        second[1],
-        bearing + 90.0,
-        (width_in_miles * units.miles).m_as("meters"),
-    )[:2]
-    fourth = GEOD.fwd(
-        first[0],
-        first[1],
-        bearing + 90.0,
-        (width_in_miles * units.miles).m_as("meters"),
-    )[:2]
-    return shapely.Polygon([first, second, third, fourth])
 
 
 def test_compass_point_names_each_wind() -> None:
@@ -148,18 +61,14 @@ def test_location_text_without_bearing_names_zero_distance_city() -> None:
 
 def test_azimuthal_equidistant_projection_centers_on_point() -> None:
     projection = peri_scribe.report.locations.azimuthal_equidistant_projection(
-        PORTLAND_LONGITUDE,
-        PORTLAND_LATITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
     )
-    transformer = pyproj.Transformer.from_crs(
-        "EPSG:4326",
-        projection,
-        always_xy=True,
-    )
+    transformer = pyproj.Transformer.from_crs("EPSG:4326", projection, always_xy=True)
 
     x_coordinate, y_coordinate = transformer.transform(
-        PORTLAND_LONGITUDE,
-        PORTLAND_LATITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
     )
 
     assert x_coordinate == pytest.approx(0.0, abs=1e-6)
@@ -167,9 +76,9 @@ def test_azimuthal_equidistant_projection_centers_on_point() -> None:
 
 
 def test_distance_and_bearing_from_point_measure_geodesically() -> None:
-    interior = geodesic_quad(
-        PORTLAND_LONGITUDE,
-        PORTLAND_LATITUDE,
+    interior = tests.peri_scribe.report.locations_helpers.geodesic_quad(
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
         112.5,
         15.0,
         length=10.0,
@@ -178,8 +87,8 @@ def test_distance_and_bearing_from_point_measure_geodesically() -> None:
 
     distance, bearing = peri_scribe.report.locations.distance_and_bearing_from_point(
         interior,
-        PORTLAND_LONGITUDE,
-        PORTLAND_LATITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
     )
 
     assert distance is not None
@@ -189,12 +98,15 @@ def test_distance_and_bearing_from_point_measure_geodesically() -> None:
 
 
 def test_distance_and_bearing_from_point_zero_inside_interior() -> None:
-    interior = shapely.Point(PORTLAND_LONGITUDE, PORTLAND_LATITUDE).buffer(0.5)
+    interior = shapely.Point(
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+    ).buffer(0.5)
 
     distance, bearing = peri_scribe.report.locations.distance_and_bearing_from_point(
         interior,
-        PORTLAND_LONGITUDE,
-        PORTLAND_LATITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
     )
 
     assert distance.m_as("meters") == pytest.approx(0.0, abs=1e-9)
@@ -202,26 +114,33 @@ def test_distance_and_bearing_from_point_zero_inside_interior() -> None:
 
 
 def test_nearest_city_picks_closest_city() -> None:
-    interior = geodesic_quad(
-        PORTLAND_LONGITUDE,
-        PORTLAND_LATITUDE,
+    interior = tests.peri_scribe.report.locations_helpers.geodesic_quad(
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
         112.5,
         15.0,
         length=10.0,
         width_in_miles=5.0,
     )
-    far_longitude, far_latitude, _ = GEOD.fwd(
-        PORTLAND_LONGITUDE,
-        PORTLAND_LATITUDE,
-        0.0,
-        (80.0 * units.miles).m_as("meters"),
+    far_longitude, far_latitude, _ = (
+        tests.peri_scribe.report.locations_helpers.GEOD.fwd(
+            tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+            tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+            0.0,
+            (80.0 * units.miles).m_as("meters"),
+        )
     )
-    cities = city_frame(
-        [
-            ("Faraway", "OR", (far_longitude, far_latitude)),
-            ("Portland", "OR", (PORTLAND_LONGITUDE, PORTLAND_LATITUDE)),
-        ],
-    )
+    cities = tests.peri_scribe.report.locations_helpers.city_frame([
+        ("Faraway", "OR", (far_longitude, far_latitude)),
+        (
+            "Portland",
+            "OR",
+            (
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+            ),
+        ),
+    ])
 
     nearest = peri_scribe.report.locations.nearest_city(interior, cities)
 
@@ -239,13 +158,28 @@ def test_nearest_city_picks_closest_city() -> None:
 
 
 def test_nearest_city_names_city_inside_the_interior() -> None:
-    interior = shapely.Point(PORTLAND_LONGITUDE, PORTLAND_LATITUDE).buffer(1.0)
-    cities = city_frame(
-        [
-            ("Portland", "OR", (PORTLAND_LONGITUDE, PORTLAND_LATITUDE)),
-            ("Faraway", "OR", (PORTLAND_LONGITUDE - 2.0, PORTLAND_LATITUDE)),
-        ],
-    )
+    interior = shapely.Point(
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+    ).buffer(1.0)
+    cities = tests.peri_scribe.report.locations_helpers.city_frame([
+        (
+            "Portland",
+            "OR",
+            (
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+            ),
+        ),
+        (
+            "Faraway",
+            "OR",
+            (
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE - 2.0,
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+            ),
+        ),
+    ])
 
     nearest = peri_scribe.report.locations.nearest_city(interior, cities)
 
@@ -257,13 +191,28 @@ def test_nearest_city_names_city_inside_the_interior() -> None:
 
 
 def test_nearest_city_ties_go_to_first_city_alphabetically() -> None:
-    interior = shapely.Point(PORTLAND_LONGITUDE, PORTLAND_LATITUDE).buffer(1.0)
-    cities = city_frame(
-        [
-            ("Zebra", "OR", (PORTLAND_LONGITUDE, PORTLAND_LATITUDE)),
-            ("Alpha", "OR", (PORTLAND_LONGITUDE, PORTLAND_LATITUDE)),
-        ],
-    )
+    interior = shapely.Point(
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+    ).buffer(1.0)
+    cities = tests.peri_scribe.report.locations_helpers.city_frame([
+        (
+            "Zebra",
+            "OR",
+            (
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+            ),
+        ),
+        (
+            "Alpha",
+            "OR",
+            (
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+            ),
+        ),
+    ])
 
     nearest = peri_scribe.report.locations.nearest_city(interior, cities)
 
@@ -272,26 +221,44 @@ def test_nearest_city_ties_go_to_first_city_alphabetically() -> None:
 
 
 def test_nearest_city_returns_none_for_empty_cities() -> None:
-    interior = shapely.Point(PORTLAND_LONGITUDE, PORTLAND_LATITUDE).buffer(1.0)
+    interior = shapely.Point(
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+    ).buffer(1.0)
 
     assert (
         peri_scribe.report.locations.nearest_city(
             interior,
-            city_frame([]),
+            tests.peri_scribe.report.locations_helpers.city_frame([]),
         )
         is None
     )
 
 
 def test_nearest_city_ignores_unusable_rows() -> None:
-    interior = shapely.Point(PORTLAND_LONGITUDE, PORTLAND_LATITUDE).buffer(1.0)
-    cities = city_frame(
-        [
-            (None, "OR", (PORTLAND_LONGITUDE, PORTLAND_LATITUDE)),
-            ("No state", None, (PORTLAND_LONGITUDE, PORTLAND_LATITUDE)),
-            ("No geometry", "OR", None),
-        ],
-    )
+    interior = shapely.Point(
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+    ).buffer(1.0)
+    cities = tests.peri_scribe.report.locations_helpers.city_frame([
+        (
+            None,
+            "OR",
+            (
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+            ),
+        ),
+        (
+            "No state",
+            None,
+            (
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+            ),
+        ),
+        ("No geometry", "OR", None),
+    ])
 
     nearest = peri_scribe.report.locations.nearest_city(interior, cities)
 
@@ -299,19 +266,30 @@ def test_nearest_city_ignores_unusable_rows() -> None:
 
 
 def test_nearest_city_ignores_non_point_rows() -> None:
-    interior = shapely.Point(PORTLAND_LONGITUDE, PORTLAND_LATITUDE).buffer(1.0)
+    interior = shapely.Point(
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+    ).buffer(1.0)
     cities = geopandas.GeoDataFrame(
         {
             "NAME": ["Portland", "Many"],
             "STATE_ABBR": ["OR", "OR"],
             "geometry": [
-                shapely.Point(PORTLAND_LONGITUDE, PORTLAND_LATITUDE),
-                shapely.MultiPoint(
-                    [
-                        (PORTLAND_LONGITUDE, PORTLAND_LATITUDE),
-                        (PORTLAND_LONGITUDE + 1.0, PORTLAND_LATITUDE),
-                    ],
+                shapely.Point(
+                    tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+                    tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
                 ),
+                shapely.MultiPoint([
+                    (
+                        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+                        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+                    ),
+                    (
+                        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE
+                        + 1.0,
+                        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+                    ),
+                ]),
             ],
         },
         crs="EPSG:4326",
@@ -324,20 +302,30 @@ def test_nearest_city_ignores_non_point_rows() -> None:
 
 
 def test_nearest_city_keeps_usable_rows_among_unusable() -> None:
-    interior = shapely.Point(PORTLAND_LONGITUDE, PORTLAND_LATITUDE).buffer(1.0)
-    far_longitude, far_latitude, _ = GEOD.fwd(
-        PORTLAND_LONGITUDE,
-        PORTLAND_LATITUDE,
-        0.0,
-        (80.0 * units.miles).m_as("meters"),
+    interior = shapely.Point(
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+    ).buffer(1.0)
+    far_longitude, far_latitude, _ = (
+        tests.peri_scribe.report.locations_helpers.GEOD.fwd(
+            tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+            tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+            0.0,
+            (80.0 * units.miles).m_as("meters"),
+        )
     )
-    cities = city_frame(
-        [
-            (None, "OR", None),
-            ("Portland", "OR", (PORTLAND_LONGITUDE, PORTLAND_LATITUDE)),
-            ("Faraway", "OR", (far_longitude, far_latitude)),
-        ],
-    )
+    cities = tests.peri_scribe.report.locations_helpers.city_frame([
+        (None, "OR", None),
+        (
+            "Portland",
+            "OR",
+            (
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+            ),
+        ),
+        ("Faraway", "OR", (far_longitude, far_latitude)),
+    ])
 
     nearest = peri_scribe.report.locations.nearest_city(interior, cities)
 
@@ -349,18 +337,29 @@ def test_nearest_city_measures_to_the_interior_not_the_point() -> None:
     # A ring-shaped fire surrounds a hole at its center: the city at the very center
     # lies nearest to the fire's centroid but outside its interior, while a city within
     # the ring is at distance zero from the interior.
-    center = shapely.Point(PORTLAND_LONGITUDE, PORTLAND_LATITUDE)
-    interior = center.buffer(0.5).difference(center.buffer(0.3))
-    cities = city_frame(
-        [
-            ("Hole", "OR", (PORTLAND_LONGITUDE, PORTLAND_LATITUDE)),
-            (
-                "Ring",
-                "OR",
-                (PORTLAND_LONGITUDE + 0.4, PORTLAND_LATITUDE),
-            ),
-        ],
+    center = shapely.Point(
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
     )
+    interior = center.buffer(0.5).difference(center.buffer(0.3))
+    cities = tests.peri_scribe.report.locations_helpers.city_frame([
+        (
+            "Hole",
+            "OR",
+            (
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+            ),
+        ),
+        (
+            "Ring",
+            "OR",
+            (
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE + 0.4,
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+            ),
+        ),
+    ])
 
     nearest = peri_scribe.report.locations.nearest_city(interior, cities)
 
@@ -370,21 +369,28 @@ def test_nearest_city_measures_to_the_interior_not_the_point() -> None:
 
 
 def test_plausible_city_indices_orders_by_name() -> None:
-    interior = shapely.Point(PORTLAND_LONGITUDE, PORTLAND_LATITUDE).buffer(0.05)
-    cities = city_frame(
-        [
+    interior = shapely.Point(
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+    ).buffer(0.05)
+    cities = tests.peri_scribe.report.locations_helpers.city_frame([
+        (
+            "Second",
+            "OR",
             (
-                "Second",
-                "OR",
-                (PORTLAND_LONGITUDE - 0.02, PORTLAND_LATITUDE + 0.02),
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE - 0.02,
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE + 0.02,
             ),
+        ),
+        (
+            "First",
+            "OR",
             (
-                "First",
-                "OR",
-                (PORTLAND_LONGITUDE + 0.02, PORTLAND_LATITUDE - 0.02),
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE + 0.02,
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE - 0.02,
             ),
-        ],
-    )
+        ),
+    ])
 
     indices = peri_scribe.report.locations.plausible_city_indices(
         interior,
@@ -398,10 +404,20 @@ def test_plausible_city_indices_orders_by_name() -> None:
 
 
 def test_plausible_city_indices_without_boundary_vertices() -> None:
-    interior = shapely.Point(PORTLAND_LONGITUDE, PORTLAND_LATITUDE)
-    cities = city_frame(
-        [("Portland", "OR", (PORTLAND_LONGITUDE, PORTLAND_LATITUDE))],
+    interior = shapely.Point(
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+        tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
     )
+    cities = tests.peri_scribe.report.locations_helpers.city_frame([
+        (
+            "Portland",
+            "OR",
+            (
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+            ),
+        ),
+    ])
 
     indices = peri_scribe.report.locations.plausible_city_indices(
         interior,
@@ -415,24 +431,33 @@ def test_plausible_city_indices_without_boundary_vertices() -> None:
 
 
 def test_nearest_city_measures_to_a_point_location() -> None:
-    point_longitude, point_latitude, _ = GEOD.fwd(
-        PORTLAND_LONGITUDE,
-        PORTLAND_LATITUDE,
-        112.5,
-        (15.0 * units.miles).m_as("meters"),
+    point_longitude, point_latitude, _ = (
+        tests.peri_scribe.report.locations_helpers.GEOD.fwd(
+            tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+            tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+            112.5,
+            (15.0 * units.miles).m_as("meters"),
+        )
     )
-    far_longitude, far_latitude, _ = GEOD.fwd(
-        PORTLAND_LONGITUDE,
-        PORTLAND_LATITUDE,
-        0.0,
-        (80.0 * units.miles).m_as("meters"),
+    far_longitude, far_latitude, _ = (
+        tests.peri_scribe.report.locations_helpers.GEOD.fwd(
+            tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+            tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+            0.0,
+            (80.0 * units.miles).m_as("meters"),
+        )
     )
-    cities = city_frame(
-        [
-            ("Faraway", "OR", (far_longitude, far_latitude)),
-            ("Portland", "OR", (PORTLAND_LONGITUDE, PORTLAND_LATITUDE)),
-        ],
-    )
+    cities = tests.peri_scribe.report.locations_helpers.city_frame([
+        ("Faraway", "OR", (far_longitude, far_latitude)),
+        (
+            "Portland",
+            "OR",
+            (
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
+                tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
+            ),
+        ),
+    ])
 
     nearest = peri_scribe.report.locations.nearest_city(
         shapely.Point(point_longitude, point_latitude),

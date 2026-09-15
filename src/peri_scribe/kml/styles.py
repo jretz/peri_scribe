@@ -110,8 +110,8 @@ def outline_draw_order(outline_count: int, newest_first_index: int) -> int:
 
     Args:
         outline_count: The number of outlines drawn for the fire.
-        newest_first_index: The outline's position counting from the newest
-            outline first, where 0 is the newest.
+        newest_first_index: The outline's position counting from the newest outline
+            first, where 0 is the newest.
 
     Returns:
         The draw order, from 1 for the oldest outline to outline_count for the newest.
@@ -145,8 +145,8 @@ def point_style() -> Style:
 def filled_polygon_style(style_id: str, color: str) -> Style:
     """Return the polygon fill style with *style_id* and *color*.
 
-    The polygon fills at :data:`FILL_OPACITY` with no outline, so wherever fills
-    overlap each one shows through the next and the newest reads hottest.
+    The polygon fills at :data:`FILL_OPACITY` with no outline, so wherever fills overlap
+    each one shows through the next and the newest reads hottest.
 
     Args:
         style_id: The style's identifier.

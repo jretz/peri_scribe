@@ -81,7 +81,6 @@ select = ["ALL"]
 ignore = [
     # Rule sets
     "C90",  # https://docs.astral.sh/ruff/rules/#mccabe-c90
-    "D",  # https://docs.astral.sh/ruff/rules/#pydocstyle-d
     "DTZ",  # https://docs.astral.sh/ruff/rules/#flake8-datetimez-dtz
     "FIX",  # https://docs.astral.sh/ruff/rules/#flake8-fixme-fix
     "T20",  # https://docs.astral.sh/ruff/rules/#flake8-print-t20
@@ -111,6 +110,13 @@ lines-after-imports = 2
     "compare-to-empty-string",  # https://docs.astral.sh/ruff/rules/compare-to-empty-string/
     "assert",  # https://docs.astral.sh/ruff/rules/assert/
 ]
+"tests/**/test_*.py" = [
+    # Rule sets
+    "D",  # https://docs.astral.sh/ruff/rules/#pydocstyle-d
+]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
 
 [tool.rumdl]
 line-length = 88

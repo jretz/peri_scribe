@@ -77,9 +77,7 @@ def geojson_feature_chunks(
                 None if geometry is None else shapely.geometry.shape(geometry),
             )
             properties = feature.get("properties")
-            attributes.append(
-                properties if isinstance(properties, dict) else {},
-            )
+            attributes.append(properties if isinstance(properties, dict) else {})
             if len(geometries) >= chunk_size:
                 yield geojson_chunk_dataframe(geometries, attributes)
                 geometries = []
@@ -189,8 +187,8 @@ def converted_chunk(
         keep_attributes: Keep the source's attribute columns.
 
     Returns:
-        The chunk's features, reduced to centroids and to geometry alone when
-        attributes are not kept.
+        The chunk's features, reduced to centroids and to geometry alone when attributes
+        are not kept.
     """
     dataframe = centroid_dataframe(chunk) if centroids else chunk
     if not keep_attributes:

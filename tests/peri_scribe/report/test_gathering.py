@@ -4,95 +4,36 @@ from __future__ import annotations
 
 import datetime
 import pathlib
-import typing
 
 import geopandas
 import pytest
 import shapely.geometry
 
-import peri_scribe.areas
 import peri_scribe.fires.differential
 import peri_scribe.fires.files
 import peri_scribe.fires.index
 import peri_scribe.fires.score_files
 import peri_scribe.geo.reading
-import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
-import peri_scribe.kml.selection
 import peri_scribe.models
 import peri_scribe.report.gathering
 import peri_scribe.report.locations
 import peri_scribe.sources.external_sources
 import tests.peri_scribe.kml.kml_helpers
+import tests.peri_scribe.report.gathering_helpers
 from peri_scribe.units import units
 
 
-def make_fire(
-    name: str,
-    identifier: str,
-) -> peri_scribe.kml.fire_data.FireGeometry:
-    """Return a described fire with the given name and identifier.
-
-    Args:
-        name: The fire's name.
-        identifier: The fire's identifier.
-
-    Returns:
-        An active fire with a description carrying fixed area, containment, and
-        discovery facts.
-    """
-    return peri_scribe.kml.fire_data.FireGeometry(
-        name=name,
-        status=peri_scribe.models.FireStatus.ACTIVE,
-        point=None,
-        perimeters=(),
-        identifiers=frozenset({identifier}),
-        description=peri_scribe.kml.descriptions.FireDescription(
-            identifier=identifier,
-            area=100.0 * units.acres,
-            percent_contained=50.0,
-            discovery_time=datetime.datetime(2026, 8, 1, tzinfo=datetime.UTC),
-        ),
+def test_report_entry_captures_fire_facts(monkeypatch: pytest.MonkeyPatch) -> None:
+    fire = tests.peri_scribe.report.gathering_helpers.make_fire(
+        "Bug",
+        "2026-casnd-150541",
     )
-
-
-def make_entry(
-    name: str,
-    *,
-    identifier: str | None = None,
-) -> peri_scribe.report.gathering.FireReportEntry:
-    """Return a report entry carrying only the given identity facts.
-
-    Args:
-        name: The fire's name.
-        identifier: The fire's identifier, or None.
-
-    Returns:
-        An active fire entry with no other facts set.
-    """
-    return peri_scribe.report.gathering.FireReportEntry(
-        name=name,
-        identifier=identifier,
-        status=peri_scribe.models.FireStatus.ACTIVE,
-        description=None,
-        growth=None,
-        growth_percent=None,
-        score=None,
-    )
-
-
-def test_report_entry_captures_fire_facts(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    fire = make_fire("Bug", "2026-casnd-150541")
     monkeypatch.setattr(
         peri_scribe.kml.folders,
         "fire_growth",
-        lambda _fire, _reference_time: (
-            50.0 * units.acres,
-            10.0 * units.percent,
-        ),
+        lambda _fire, _reference_time: (50.0 * units.acres, 10.0 * units.percent),
     )
     monkeypatch.setattr(
         peri_scribe.kml.folders,
@@ -198,7 +139,7 @@ def test_gather_report_assembles_each_fire_list(
         "read_layer",
         lambda _path, _layer_name: tests.peri_scribe.kml.kml_helpers.geometry_frame([]),
     )
-    fire = make_fire("Bug", "id-bug")
+    fire = tests.peri_scribe.report.gathering_helpers.make_fire("Bug", "id-bug")
     monkeypatch.setattr(
         peri_scribe.kml.fire_data,
         "fire_geometries",
@@ -241,21 +182,23 @@ def test_gather_report_assembles_each_fire_list(
 
 
 def test_report_details_returns_each_fire_once_sorted_by_name() -> None:
-    bug = make_entry("Bug", identifier="id-bug")
-    fire = make_entry("Fire", identifier="id-fire")
-
-    details = peri_scribe.report.gathering.report_details(
-        (fire, bug),
-        (bug,),
-        (),
+    bug = tests.peri_scribe.report.gathering_helpers.make_entry(
+        "Bug",
+        identifier="id-bug",
     )
+    fire = tests.peri_scribe.report.gathering_helpers.make_entry(
+        "Fire",
+        identifier="id-fire",
+    )
+
+    details = peri_scribe.report.gathering.report_details((fire, bug), (bug,), ())
 
     assert details == (bug, fire)
 
 
 def test_report_details_sorts_case_insensitively() -> None:
-    alpha = make_entry("alpha")
-    beta = make_entry("Beta")
+    alpha = tests.peri_scribe.report.gathering_helpers.make_entry("alpha")
+    beta = tests.peri_scribe.report.gathering_helpers.make_entry("Beta")
 
     details = peri_scribe.report.gathering.report_details((beta, alpha))
 
@@ -263,8 +206,14 @@ def test_report_details_sorts_case_insensitively() -> None:
 
 
 def test_report_details_keeps_same_name_fires_distinct() -> None:
-    first = make_entry("Bug", identifier="id-first")
-    second = make_entry("Bug", identifier="id-second")
+    first = tests.peri_scribe.report.gathering_helpers.make_entry(
+        "Bug",
+        identifier="id-first",
+    )
+    second = tests.peri_scribe.report.gathering_helpers.make_entry(
+        "Bug",
+        identifier="id-second",
+    )
 
     details = peri_scribe.report.gathering.report_details((second, first))
 
@@ -272,16 +221,14 @@ def test_report_details_keeps_same_name_fires_distinct() -> None:
 
 
 def test_report_details_identifies_unnamed_fire_by_name() -> None:
-    bug = make_entry("Bug")
+    bug = tests.peri_scribe.report.gathering_helpers.make_entry("Bug")
 
     details = peri_scribe.report.gathering.report_details((bug, bug))
 
     assert details == (bug,)
 
 
-def test_gather_report_skips_plot_rendering(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_gather_report_skips_plot_rendering(monkeypatch: pytest.MonkeyPatch) -> None:
     year_directory = pathlib.Path("data/2026")
     index = tests.peri_scribe.kml.kml_helpers.fire_index([])
     monkeypatch.setattr(
@@ -311,37 +258,13 @@ def test_gather_report_skips_plot_rendering(
     )
     render_plots_values: list[bool] = []
 
-    def fire_geometries(
-        *_arguments: object,
-        scores: peri_scribe.models.FireScores,
-        render_plots: bool,
-        incident_rows: geopandas.GeoDataFrame | None = None,
-        histories: typing.Mapping[
-            peri_scribe.kml.selection.AreaKey,
-            peri_scribe.areas.PreparedHistory,
-        ]
-        | None = None,
-    ) -> list[peri_scribe.kml.fire_data.FireGeometry]:
-        """Capture report-stage options without constructing fire geometry.
-
-        Args:
-            _arguments: Unused positional geometry inputs.
-            render_plots: Whether the report stage requested image rendering.
-            incident_rows: Optional independent incident rows supplied by the stage.
-            histories: Prepared area and reporting evidence passed through the stage.
-            scores: Saved scores supplied by the report stage.
-
-        Returns:
-            An empty fire list for the isolated report-stage assertion.
-        """
-        render_plots_values.append(render_plots)
-        return []
-
-    monkeypatch.setattr(
-        peri_scribe.kml.fire_data,
-        "fire_geometries",
-        fire_geometries,
+    fire_geometries = (
+        tests.peri_scribe.report.gathering_helpers.make_plot_option_recorder(
+            render_plots_values=render_plots_values,
+        )
     )
+
+    monkeypatch.setattr(peri_scribe.kml.fire_data, "fire_geometries", fire_geometries)
 
     peri_scribe.report.gathering.gather_report(year_directory)
 
@@ -380,74 +303,22 @@ def test_gather_report_uses_empty_scores_when_missing(
     )
     scores_values: list[peri_scribe.models.FireScores] = []
 
-    def fire_geometries(
-        *_arguments: object,
-        scores: peri_scribe.models.FireScores,
-        render_plots: bool,
-        incident_rows: geopandas.GeoDataFrame | None = None,
-        histories: typing.Mapping[
-            peri_scribe.kml.selection.AreaKey,
-            peri_scribe.areas.PreparedHistory,
-        ]
-        | None = None,
-    ) -> list[peri_scribe.kml.fire_data.FireGeometry]:
-        """Capture report-stage options without constructing fire geometry.
-
-        Args:
-            _arguments: Unused positional geometry inputs.
-            render_plots: Whether the report stage requested image rendering.
-            incident_rows: Optional independent incident rows supplied by the stage.
-            histories: Prepared area and reporting evidence passed through the stage.
-            scores: Saved scores supplied by the report stage.
-
-        Returns:
-            An empty fire list for the isolated report-stage assertion.
-        """
-        scores_values.append(scores)
-        return []
-
-    monkeypatch.setattr(
-        peri_scribe.kml.fire_data,
-        "fire_geometries",
-        fire_geometries,
+    fire_geometries = tests.peri_scribe.report.gathering_helpers.make_scores_recorder(
+        scores_values=scores_values,
     )
+
+    monkeypatch.setattr(peri_scribe.kml.fire_data, "fire_geometries", fire_geometries)
 
     peri_scribe.report.gathering.gather_report(year_directory)
 
     assert scores_values == [peri_scribe.models.FireScores(version="", fires=[])]
 
 
-def located_fire(
-    name: str,
-    identifier: str,
-) -> peri_scribe.kml.fire_data.FireGeometry:
-    """Return an active fire with one mapped perimeter.
-
-    Args:
-        name: The fire's name.
-        identifier: The fire's identifier.
-
-    Returns:
-        A fire whose latest perimeter is a non-empty polygon, so its location can be
-        measured from an interior.
-    """
-    return peri_scribe.kml.fire_data.FireGeometry(
-        name=name,
-        status=peri_scribe.models.FireStatus.ACTIVE,
-        point=None,
-        perimeters=(
-            peri_scribe.kml.fire_data.Perimeter(
-                geometry=shapely.geometry.Point(-122.6750, 45.5051).buffer(0.1),
-                observation_time=None,
-            ),
-        ),
-        identifiers=frozenset({identifier}),
-        description=None,
-    )
-
-
 def test_report_entry_captures_location() -> None:
-    fire = make_fire("Bug", "2026-casnd-150541")
+    fire = tests.peri_scribe.report.gathering_helpers.make_fire(
+        "Bug",
+        "2026-casnd-150541",
+    )
 
     entry = peri_scribe.report.gathering.report_entry(
         fire,
@@ -461,7 +332,10 @@ def test_report_entry_captures_location() -> None:
 
 
 def test_fire_identity_prefers_canonical_identifier() -> None:
-    fire = located_fire("Bug", "2026-casnd-150541")
+    fire = tests.peri_scribe.report.gathering_helpers.located_fire(
+        "Bug",
+        "2026-casnd-150541",
+    )
 
     assert peri_scribe.report.gathering.fire_identity(fire) == "2026-casnd-150541"
 
@@ -480,7 +354,10 @@ def test_fire_identity_uses_name_without_identifier() -> None:
 def test_fire_location_formats_nearest_city_phrase(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fire = located_fire("Bug", "2026-casnd-150541")
+    fire = tests.peri_scribe.report.gathering_helpers.located_fire(
+        "Bug",
+        "2026-casnd-150541",
+    )
     nearest = peri_scribe.report.locations.NearestCity(
         name="Portland",
         state_abbreviation="OR",
@@ -502,13 +379,13 @@ def test_fire_location_formats_nearest_city_phrase(
 
 
 def test_fire_location_returns_none_without_geometry() -> None:
-    fire = make_fire("Bug", "2026-casnd-150541")
+    fire = tests.peri_scribe.report.gathering_helpers.make_fire(
+        "Bug",
+        "2026-casnd-150541",
+    )
 
     assert (
-        peri_scribe.report.gathering.fire_location(
-            fire,
-            geopandas.GeoDataFrame(),
-        )
+        peri_scribe.report.gathering.fire_location(fire, geopandas.GeoDataFrame())
         is None
     )
 
@@ -527,22 +404,19 @@ def test_fire_location_returns_none_with_empty_perimeter() -> None:
     )
 
     assert (
-        peri_scribe.report.gathering.fire_location(
-            fire,
-            geopandas.GeoDataFrame(),
-        )
+        peri_scribe.report.gathering.fire_location(fire, geopandas.GeoDataFrame())
         is None
     )
 
 
 def test_fire_location_returns_none_without_cities() -> None:
-    fire = located_fire("Bug", "2026-casnd-150541")
+    fire = tests.peri_scribe.report.gathering_helpers.located_fire(
+        "Bug",
+        "2026-casnd-150541",
+    )
 
     assert (
-        peri_scribe.report.gathering.fire_location(
-            fire,
-            geopandas.GeoDataFrame(),
-        )
+        peri_scribe.report.gathering.fire_location(fire, geopandas.GeoDataFrame())
         is None
     )
 
@@ -560,32 +434,13 @@ def test_fire_location_measures_from_point_without_perimeter(
     )
     measured: list[shapely.Geometry] = []
 
-    def nearest_city(
-        geometry: shapely.Geometry,
-        _cities: geopandas.GeoDataFrame,
-    ) -> peri_scribe.report.locations.NearestCity:
-        """Observe which geometry is used without consulting a city dataset.
-
-        Args:
-            geometry: The fire geometry recorded for the assertion.
-            _cities: Unused city data supplied by the caller.
-
-        Returns:
-            A fixed city location for the report assertions.
-        """
-        measured.append(geometry)
-        return peri_scribe.report.locations.NearestCity(
-            name="Portland",
-            state_abbreviation="OR",
-            distance=14.6 * units.miles,
-            bearing=112.5 * units.degrees,
+    nearest_city = (
+        tests.peri_scribe.report.gathering_helpers.make_city_measurement_recorder(
+            measured=measured,
         )
-
-    monkeypatch.setattr(
-        peri_scribe.report.locations,
-        "nearest_city",
-        nearest_city,
     )
+
+    monkeypatch.setattr(peri_scribe.report.locations, "nearest_city", nearest_city)
 
     location = peri_scribe.report.gathering.fire_location(
         fire,
@@ -614,32 +469,13 @@ def test_fire_location_falls_back_to_point_for_empty_perimeter(
     )
     measured: list[shapely.Geometry] = []
 
-    def nearest_city(
-        geometry: shapely.Geometry,
-        _cities: geopandas.GeoDataFrame,
-    ) -> peri_scribe.report.locations.NearestCity:
-        """Observe which geometry is used without consulting a city dataset.
-
-        Args:
-            geometry: The fire geometry recorded for the assertion.
-            _cities: Unused city data supplied by the caller.
-
-        Returns:
-            A fixed city location for the report assertions.
-        """
-        measured.append(geometry)
-        return peri_scribe.report.locations.NearestCity(
-            name="Portland",
-            state_abbreviation="OR",
-            distance=14.6 * units.miles,
-            bearing=112.5 * units.degrees,
+    nearest_city = (
+        tests.peri_scribe.report.gathering_helpers.make_city_measurement_recorder(
+            measured=measured,
         )
-
-    monkeypatch.setattr(
-        peri_scribe.report.locations,
-        "nearest_city",
-        nearest_city,
     )
+
+    monkeypatch.setattr(peri_scribe.report.locations, "nearest_city", nearest_city)
 
     location = peri_scribe.report.gathering.fire_location(
         fire,
@@ -663,10 +499,7 @@ def test_fire_location_measures_point_to_nearest_city() -> None:
         {
             "NAME": ["Faraway", "Portland"],
             "STATE_ABBR": ["OR", "OR"],
-            "geometry": [
-                shapely.geometry.Point(-123.5, 45.5051),
-                point,
-            ],
+            "geometry": [shapely.geometry.Point(-123.5, 45.5051), point],
         },
         crs="EPSG:4326",
     )
@@ -679,8 +512,14 @@ def test_fire_location_measures_point_to_nearest_city() -> None:
 def test_fire_locations_maps_each_located_fire_once(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    located = located_fire("Bug", "2026-casnd-150541")
-    without_perimeter = make_fire("Fire", "2026-casnd-150542")
+    located = tests.peri_scribe.report.gathering_helpers.located_fire(
+        "Bug",
+        "2026-casnd-150541",
+    )
+    without_perimeter = tests.peri_scribe.report.gathering_helpers.make_fire(
+        "Fire",
+        "2026-casnd-150542",
+    )
     nearest = peri_scribe.report.locations.NearestCity(
         name="Portland",
         state_abbreviation="OR",
@@ -704,7 +543,10 @@ def test_fire_locations_maps_each_located_fire_once(
 def test_located_entries_attach_location_phrases(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fire = located_fire("Bug", "2026-casnd-150541")
+    fire = tests.peri_scribe.report.gathering_helpers.located_fire(
+        "Bug",
+        "2026-casnd-150541",
+    )
     nearest = peri_scribe.report.locations.NearestCity(
         name="Portland",
         state_abbreviation="OR",
@@ -746,21 +588,9 @@ def test_read_cities_layer_reads_stored_layer(
     path.touch()
     calls: list[tuple[pathlib.Path, str]] = []
 
-    def read_layer(
-        path: pathlib.Path,
-        layer_name: str,
-    ) -> geopandas.GeoDataFrame:
-        """Isolate derived-layer reads from persistent geography.
-
-        Args:
-            path: The requested path, without reading its contents.
-            layer_name: The requested history layer.
-
-        Returns:
-            The synthetic history frame used by this scenario.
-        """
-        calls.append((path, layer_name))
-        return geopandas.GeoDataFrame()
+    read_layer = tests.peri_scribe.report.gathering_helpers.make_city_layer_reader(
+        calls=calls,
+    )
 
     monkeypatch.setattr(peri_scribe.geo.reading, "read_layer", read_layer)
 

@@ -13,14 +13,14 @@ import structlog
 
 import peri_scribe.logging
 import peri_scribe.main
+import tests.main_stubs
+import tests.peri_scribe.main_helpers
 from peri_scribe.units import units
 from tests.conftest import CLICK_USAGE_ERROR_EXIT_CODE
 
 
 if typing.TYPE_CHECKING:
     import click.testing
-
-    import tests.main_stubs
 
 
 def test_cli_help(runner: click.testing.CliRunner) -> None:
@@ -43,9 +43,7 @@ def test_cli_requires_subcommand(runner: click.testing.CliRunner) -> None:
     assert "run" in result.output
 
 
-def test_version_prints_installed_version(
-    runner: click.testing.CliRunner,
-) -> None:
+def test_version_prints_installed_version(runner: click.testing.CliRunner) -> None:
     result = runner.invoke(peri_scribe.main.cli, ["version"])
     assert result.exit_code == 0
     assert (
@@ -61,9 +59,9 @@ def test_version_looks_up_the_distribution_named_for_this_package(
 ) -> None:
     looked_up_distributions: list[str] = []
 
-    def record_lookup(name: str) -> str:
-        looked_up_distributions.append(name)
-        return "1.2.3"
+    record_lookup = tests.peri_scribe.main_helpers.make_version_lookup_recorder(
+        looked_up_distributions=looked_up_distributions,
+    )
 
     monkeypatch.setattr(peri_scribe.main, "__package__", "some_other_package")
     monkeypatch.setattr(importlib.metadata, "version", record_lookup)
@@ -77,10 +75,7 @@ def test_version_looks_up_the_distribution_named_for_this_package(
 @pytest.mark.usefixtures("current_year")
 @pytest.mark.parametrize(
     ("arguments", "parameters"),
-    [
-        (["run", "--list-stages"], {"list_stages": True}),
-        (["validate-sources"], {}),
-    ],
+    [(["run", "--list-stages"], {"list_stages": True}), (["validate-sources"], {})],
 )
 def test_cli_logs_command_boundaries_and_elapsed_seconds(
     runner: click.testing.CliRunner,

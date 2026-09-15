@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import dataclasses
 import datetime
 import pathlib
 import time
@@ -16,7 +15,6 @@ import pytest
 import shapely.geometry
 import structlog
 
-import peri_scribe.exceptions
 import peri_scribe.fires.index
 import peri_scribe.geo.data
 import peri_scribe.logging
@@ -25,10 +23,10 @@ import peri_scribe.output
 import peri_scribe.retry
 import peri_scribe.sources.changes
 import peri_scribe.sources.feed_state
-import peri_scribe.sources.feed_types
 import peri_scribe.sources.feeds
 import peri_scribe.sources.fetching
 import peri_scribe.sources.snapshots
+import tests.peri_scribe.sources.fetching_helpers
 from tests.conftest import (
     RATE_LIMIT_ERROR_PAYLOAD,
     SAMPLE_FEED_NAME,
@@ -38,7 +36,6 @@ from tests.conftest import (
 from tests.factories import (
     WGS84_WKID,
     FeatureLayerStub,
-    FeatureLayerStubBase,
     GeoPackageStore,
     change_feed,
     wgs84_feature_set,
@@ -144,12 +141,11 @@ def test_fetch_feed_dataframe_queries_null_modified_rows(
         lambda _directory, _feed: None,
     )
 
-    def capture_where(
-        *_arguments: object,
-        **_keywords: object,
-    ) -> list[int]:
-        captured.append(str(_keywords["where"]))
-        return []
+    capture_where = (
+        tests.peri_scribe.sources.fetching_helpers.make_missing_date_filter_recorder(
+            captured=captured,
+        )
+    )
 
     monkeypatch.setattr(
         peri_scribe.geo.data,
@@ -241,20 +237,11 @@ def test_fetch_feed_dataframe_fetches_stored_active_rows_now_inactive(
     )
     wheres: list[str] = []
 
-    def query_ids(*_arguments: object, **_keywords: object) -> list[int]:
-        where = str(_keywords["where"])
-        wheres.append(where)
-        if where == "1=1":
-            return [1, 2, 3]
-        if "status IN" in where:
-            return [2]
-        return []
-
-    monkeypatch.setattr(
-        peri_scribe.geo.data,
-        "query_object_ids_with_retry",
-        query_ids,
+    query_ids = tests.peri_scribe.sources.fetching_helpers.make_active_object_id_query(
+        wheres=wheres,
     )
+
+    monkeypatch.setattr(peri_scribe.geo.data, "query_object_ids_with_retry", query_ids)
     fetched: dict[str, object] = {}
     monkeypatch.setattr(
         peri_scribe.geo.data,
@@ -480,47 +467,15 @@ def test_fetch_feed_dataframe_full_returns_none_when_dedupe_removes_all(
     assert result is None
 
 
-def complete_fetch_feed(index: int) -> peri_scribe.sources.feed_types.ArcGISFeed:
-    """Return a feed with a name unique to *index*.
-
-    Args:
-        index: The number that distinguishes the feed's name.
-
-    Returns:
-        The feed.
-    """
-    return peri_scribe.sources.feed_types.ArcGISFeed(
-        url=(f"https://example.test/ArcGIS/rest/services/Fires{index}/FeatureServer/0"),
-        fire_name_column="name",
-        status_column="status",
-    )
-
-
-def stub_complete_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Point the complete fetch's file and network boundaries at in-memory stubs.
-
-    Args:
-        monkeypatch: The monkeypatch fixture.
-    """
-    monkeypatch.setattr(peri_scribe.sources.fetching.arcgis.gis, "GIS", object)
-    monkeypatch.setattr(
-        pathlib.Path,
-        "mkdir",
-        lambda *_arguments, **_keywords: None,
-    )
-    monkeypatch.setattr(
-        peri_scribe.output,
-        "write_geopackage",
-        lambda _path, _layers: None,
-    )
-
-
 def test_fetch_all_feeds_complete_writes_each_feed_in_full(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    feeds = [complete_fetch_feed(0), complete_fetch_feed(1)]
+    feeds = [
+        tests.peri_scribe.sources.fetching_helpers.complete_fetch_feed(0),
+        tests.peri_scribe.sources.fetching_helpers.complete_fetch_feed(1),
+    ]
     monkeypatch.setattr(peri_scribe.sources.feeds, "FEEDS", feeds)
-    stub_complete_fetch(monkeypatch)
+    tests.peri_scribe.sources.fetching_helpers.stub_complete_fetch(monkeypatch)
     written: list[tuple[pathlib.Path, list[peri_scribe.models.LayerData]]] = []
     monkeypatch.setattr(
         peri_scribe.output,
@@ -529,17 +484,9 @@ def test_fetch_all_feeds_complete_writes_each_feed_in_full(
     )
     frames = {feed.name: object() for feed in feeds}
 
-    def fetch_feed(
-        feed: peri_scribe.sources.feed_types.Feed,
-        gis: object,
-        existing_source_files: list[peri_scribe.sources.snapshots.SourceFile],
-        source_directory: pathlib.Path,
-    ) -> object:
-        assert existing_source_files == []
-        assert source_directory == pathlib.Path(
-            "/base/data/2026/validation",
-        )
-        return frames[feed.name]
+    fetch_feed = tests.peri_scribe.sources.fetching_helpers.make_complete_feed_reader(
+        frames=frames,
+    )
 
     monkeypatch.setattr(peri_scribe.sources.fetching, "fetch_feed", fetch_feed)
     paths = peri_scribe.sources.fetching.fetch_all_feeds_complete(
@@ -562,12 +509,12 @@ def test_fetch_all_feeds_complete_reports_failures_and_continues(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     feeds = [
-        complete_fetch_feed(0),
-        complete_fetch_feed(1),
-        complete_fetch_feed(2),
+        tests.peri_scribe.sources.fetching_helpers.complete_fetch_feed(0),
+        tests.peri_scribe.sources.fetching_helpers.complete_fetch_feed(1),
+        tests.peri_scribe.sources.fetching_helpers.complete_fetch_feed(2),
     ]
     monkeypatch.setattr(peri_scribe.sources.feeds, "FEEDS", feeds)
-    stub_complete_fetch(monkeypatch)
+    tests.peri_scribe.sources.fetching_helpers.stub_complete_fetch(monkeypatch)
     written: list[pathlib.Path] = []
     monkeypatch.setattr(
         peri_scribe.output,
@@ -575,18 +522,7 @@ def test_fetch_all_feeds_complete_reports_failures_and_continues(
         lambda path, _layers: written.append(path),
     )
 
-    def fetch_feed(
-        feed: peri_scribe.sources.feed_types.Feed,
-        gis: object,
-        existing_source_files: list[peri_scribe.sources.snapshots.SourceFile],
-        source_directory: pathlib.Path,
-    ) -> object:
-        if feed.name == "Fires0_0":
-            message = "Failed to fetch Fires0_0: boom"
-            raise peri_scribe.exceptions.FeedFetchError(message)
-        if feed.name == "Fires2_0":
-            return None
-        return object()
+    fetch_feed = tests.peri_scribe.sources.fetching_helpers.mixed_feed_outcome
 
     monkeypatch.setattr(peri_scribe.sources.fetching, "fetch_feed", fetch_feed)
     with pytest.raises(SystemExit) as raised:
@@ -598,16 +534,18 @@ def test_fetch_all_feeds_complete_reports_failures_and_continues(
         "Failed to fetch Fires0_0: boom\n"
         "Failed to fetch Fires2_0: fetch produced no data"
     )
-    assert written == [
-        pathlib.Path("/base/data/2026/validation/Fires1_0.gpkg"),
-    ]
+    assert written == [pathlib.Path("/base/data/2026/validation/Fires1_0.gpkg")]
 
 
 def test_fetch_all_feeds_complete_defaults_to_working_directory_and_year(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(peri_scribe.sources.feeds, "FEEDS", [complete_fetch_feed(0)])
-    stub_complete_fetch(monkeypatch)
+    monkeypatch.setattr(
+        peri_scribe.sources.feeds,
+        "FEEDS",
+        [tests.peri_scribe.sources.fetching_helpers.complete_fetch_feed(0)],
+    )
+    tests.peri_scribe.sources.fetching_helpers.stub_complete_fetch(monkeypatch)
     monkeypatch.setattr(
         pathlib.Path,
         "cwd",
@@ -623,171 +561,13 @@ def test_fetch_all_feeds_complete_defaults_to_working_directory_and_year(
     assert paths == (pathlib.Path(f"/fetch/data/{year}/validation/Fires0_0.gpkg"),)
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class FeedStub:
-    """Minimal feed stand-in with a fixed current last-edit timestamp."""
-
-    name: str
-    url: str
-    last_edit_timestamp: int | None
-    status_column: str = "status"
-    change_columns: tuple[str, ...] = ("ModifiedOnDateTime_dt",)
-    events: list[str] = dataclasses.field(default_factory=list)
-
-    @property
-    def current_last_edit_timestamp(self) -> int | None:
-        self.events.append("timestamp")
-        return self.last_edit_timestamp
-
-
-class MultiQueryLayerStub(FeatureLayerStubBase):
-    """FeatureLayer stand-in that returns/raises successive results per call."""
-
-    def __init__(
-        self,
-        url: str,
-        gis: object,
-        query_outcomes: list[arcgis.features.FeatureSet | Exception],
-    ) -> None:
-        super().__init__(url, gis)
-        self.query_outcomes = list(query_outcomes)
-        self.call_count = 0
-
-    def query(self) -> arcgis.features.FeatureSet:
-        outcome = self.query_outcomes[self.call_count]
-        self.call_count += 1
-        if isinstance(outcome, Exception):
-            raise outcome
-        return outcome
-
-
-class SequenceFeatureLayerStub(FeatureLayerStubBase):
-    """FeatureLayer stand-in serving successive feature sets per query."""
-
-    def __init__(
-        self,
-        url: str,
-        gis: object,
-        feature_sets: list[arcgis.features.FeatureSet],
-        events: list[str] | None = None,
-    ) -> None:
-        super().__init__(url, gis)
-        self.feature_sets = list(feature_sets)
-        self.call_count = 0
-        self.events = [] if events is None else events
-
-    def query(
-        self,
-        **_parameters: object,
-    ) -> arcgis.features.FeatureSet:
-        self.events.append("download")
-        feature_set = self.feature_sets[
-            min(self.call_count, len(self.feature_sets) - 1)
-        ]
-        self.call_count += 1
-        return feature_set
-
-
-class DeltaFeatureLayerStub(FeatureLayerStubBase):
-    """FeatureLayer stand-in serving a full set, then an incremental delta."""
-
-    def __init__(
-        self,
-        url: str,
-        gis: object,
-        full: arcgis.features.FeatureSet,
-        delta: arcgis.features.FeatureSet,
-    ) -> None:
-        super().__init__(url, gis)
-        self.full = full
-        self.delta = delta
-
-    def query(
-        self,
-        **parameters: object,
-    ) -> arcgis.features.FeatureSet | dict[str, object]:
-        if parameters.get("return_ids_only"):
-            object_ids = [
-                feature.attributes["OBJECTID"] for feature in self.delta.features
-            ]
-            return {"objectIdFieldName": "OBJECTID", "objectIds": object_ids}
-        if parameters.get("object_ids"):
-            return self.delta
-        return self.full
-
-
-class RecordingFeatureLayerStub(FeatureLayerStubBase):
-    """FeatureLayer stand-in that records when its data is downloaded."""
-
-    def __init__(
-        self,
-        url: str,
-        gis: object,
-        feature_set: arcgis.features.FeatureSet,
-        events: list[str],
-    ) -> None:
-        super().__init__(url, gis)
-        self.feature_set = feature_set
-        self.events = events
-
-    def query(self) -> arcgis.features.FeatureSet:
-        self.events.append("download")
-        return self.feature_set
-
-
-@pytest.fixture
-def fetch_all_feeds_stubs(
-    monkeypatch: pytest.MonkeyPatch,
-) -> typing.Callable[
-    [list[FeedStub], typing.Callable[[str, object], object]],
-    None,
-]:
-    """Install feed, GIS, and FeatureLayer stubs for fetch-all-feeds tests.
-
-    Returns:
-        A callable that installs the stubs for one test.
-    """
-
-    def install(
-        feeds: list[FeedStub],
-        layer_factory: typing.Callable[[str, object], object],
-    ) -> None:
-        monkeypatch.setattr(peri_scribe.sources.feeds, "FEEDS", feeds)
-        monkeypatch.setattr(peri_scribe.sources.fetching.arcgis.gis, "GIS", object)
-        monkeypatch.setattr(
-            peri_scribe.sources.fetching.arcgis.features,
-            "FeatureLayer",
-            layer_factory,
-        )
-        monkeypatch.setattr(
-            peri_scribe.fires.index,
-            "index_fire_sources",
-            lambda _year_directory: None,
-        )
-
-    return install
-
-
-def sample_feed_stub() -> FeedStub:
-    """Return the sample feed stub for fetch-all-feeds tests.
-
-    Returns:
-        The sample feed stub.
-    """
-    return FeedStub(
-        name=SAMPLE_FEED_NAME,
-        url=SAMPLE_FEED_URL,
-        last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
-    )
-
-
 def test_fetch_all_feeds_writes_geo_package(
     feature_set_with_geometry: arcgis.features.FeatureSet,
     fetch_all_feeds_stubs: typing.Callable[..., None],
     geo_package_store: GeoPackageStore,
 ) -> None:
     fetch_all_feeds_stubs(
-        [sample_feed_stub()],
+        [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
         lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
     )
     result = peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
@@ -804,7 +584,7 @@ def test_fetch_all_feeds_reports_query_failure(
     geo_package_store: GeoPackageStore,
 ) -> None:
     fetch_all_feeds_stubs(
-        [sample_feed_stub()],
+        [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
         lambda url, gis: FeatureLayerStub(
             url,
             gis,
@@ -812,10 +592,7 @@ def test_fetch_all_feeds_reports_query_failure(
             query_error=RuntimeError("boom"),
         ),
     )
-    with pytest.raises(
-        SystemExit,
-        match=f"Failed to fetch {SAMPLE_FEED_NAME}: boom",
-    ):
+    with pytest.raises(SystemExit, match=f"Failed to fetch {SAMPLE_FEED_NAME}: boom"):
         peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
     assert not geo_package_store.has(snapshot_path())
 
@@ -825,7 +602,7 @@ def test_fetch_all_feeds_reports_empty_layer(
     geo_package_store: GeoPackageStore,
 ) -> None:
     fetch_all_feeds_stubs(
-        [sample_feed_stub()],
+        [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
         lambda url, gis: FeatureLayerStub(url, gis, arcgis.features.FeatureSet([])),
     )
     with pytest.raises(
@@ -853,8 +630,12 @@ def test_fetch_all_feeds_retries_on_rate_limit(
         feature_set_with_geometry,
     ]
     fetch_all_feeds_stubs(
-        [sample_feed_stub()],
-        lambda url, gis: MultiQueryLayerStub(url, gis, outcomes),
+        [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
+        lambda url, gis: tests.peri_scribe.sources.fetching_helpers.MultiQueryLayerStub(
+            url,
+            gis,
+            outcomes,
+        ),
     )
     result = peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
     assert result.changed is True
@@ -878,13 +659,14 @@ def test_fetch_all_feeds_exhausts_retries(
         max_retries + 2
     )
     fetch_all_feeds_stubs(
-        [sample_feed_stub()],
-        lambda url, gis: MultiQueryLayerStub(url, gis, outcomes),
+        [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
+        lambda url, gis: tests.peri_scribe.sources.fetching_helpers.MultiQueryLayerStub(
+            url,
+            gis,
+            outcomes,
+        ),
     )
-    with pytest.raises(
-        SystemExit,
-        match=f"Failed to fetch {SAMPLE_FEED_NAME}: ",
-    ):
+    with pytest.raises(SystemExit, match=f"Failed to fetch {SAMPLE_FEED_NAME}: "):
         peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
     assert sleep_calls == [60.0] * max_retries
     assert not geo_package_store.has(snapshot_path())
@@ -897,12 +679,12 @@ def test_fetch_all_feeds_writes_one_file_per_source(
 ) -> None:
     first_last_edit_timestamp = 1
     second_last_edit_timestamp = 2
-    first = FeedStub(
+    first = tests.peri_scribe.sources.fetching_helpers.FeedStub(
         name="First_Source_0",
         url="https://example.test/first",
         last_edit_timestamp=first_last_edit_timestamp,
     )
-    second = FeedStub(
+    second = tests.peri_scribe.sources.fetching_helpers.FeedStub(
         name="Second_Source_0",
         url="https://example.test/second",
         last_edit_timestamp=second_last_edit_timestamp,
@@ -945,20 +727,24 @@ def test_fetch_all_feeds_increments_serial_number_for_new_timestamp(
 ) -> None:
     first_last_edit_timestamp = 1
     second_last_edit_timestamp = 2
-    full = wgs84_feature_set([
-        (1, "a", 1.0, 2.0),
-        (2, "b", 3.0, 4.0),
-    ])
+    full = wgs84_feature_set([(1, "a", 1.0, 2.0), (2, "b", 3.0, 4.0)])
     delta = wgs84_feature_set([(3, "c", 5.0, 6.0)])
     fetch_all_feeds_stubs(
         [
-            FeedStub(
+            tests.peri_scribe.sources.fetching_helpers.FeedStub(
                 name=SAMPLE_FEED_NAME,
                 url=SAMPLE_FEED_URL,
                 last_edit_timestamp=first_last_edit_timestamp,
             ),
         ],
-        lambda url, gis: DeltaFeatureLayerStub(url, gis, full, delta),
+        lambda url, gis: (
+            tests.peri_scribe.sources.fetching_helpers.DeltaFeatureLayerStub(
+                url,
+                gis,
+                full,
+                delta,
+            )
+        ),
     )
     assert (
         peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026).changed
@@ -966,13 +752,20 @@ def test_fetch_all_feeds_increments_serial_number_for_new_timestamp(
     )
     fetch_all_feeds_stubs(
         [
-            FeedStub(
+            tests.peri_scribe.sources.fetching_helpers.FeedStub(
                 name=SAMPLE_FEED_NAME,
                 url=SAMPLE_FEED_URL,
                 last_edit_timestamp=second_last_edit_timestamp,
             ),
         ],
-        lambda url, gis: DeltaFeatureLayerStub(url, gis, full, delta),
+        lambda url, gis: (
+            tests.peri_scribe.sources.fetching_helpers.DeltaFeatureLayerStub(
+                url,
+                gis,
+                full,
+                delta,
+            )
+        ),
     )
     assert (
         peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026).changed
@@ -992,9 +785,7 @@ def test_fetch_all_feeds_increments_serial_number_for_new_timestamp(
         "a",
         "b",
     ]
-    assert list(geo_package_store.layer(second_path, SAMPLE_FEED_NAME)["name"]) == [
-        "c",
-    ]
+    assert list(geo_package_store.layer(second_path, SAMPLE_FEED_NAME)["name"]) == ["c"]
 
 
 def test_fetch_all_feeds_writes_no_new_file_when_nothing_changed(
@@ -1003,23 +794,22 @@ def test_fetch_all_feeds_writes_no_new_file_when_nothing_changed(
 ) -> None:
     first_last_edit_timestamp = 1
     second_last_edit_timestamp = 2
-    full = wgs84_feature_set([
-        (1, "a", 1.0, 2.0),
-        (2, "b", 3.0, 4.0),
-    ])
+    full = wgs84_feature_set([(1, "a", 1.0, 2.0), (2, "b", 3.0, 4.0)])
     fetch_all_feeds_stubs(
         [
-            FeedStub(
+            tests.peri_scribe.sources.fetching_helpers.FeedStub(
                 name=SAMPLE_FEED_NAME,
                 url=SAMPLE_FEED_URL,
                 last_edit_timestamp=first_last_edit_timestamp,
             ),
         ],
-        lambda url, gis: DeltaFeatureLayerStub(
-            url,
-            gis,
-            full,
-            arcgis.features.FeatureSet([]),
+        lambda url, gis: (
+            tests.peri_scribe.sources.fetching_helpers.DeltaFeatureLayerStub(
+                url,
+                gis,
+                full,
+                arcgis.features.FeatureSet([]),
+            )
         ),
     )
     assert (
@@ -1028,17 +818,19 @@ def test_fetch_all_feeds_writes_no_new_file_when_nothing_changed(
     )
     fetch_all_feeds_stubs(
         [
-            FeedStub(
+            tests.peri_scribe.sources.fetching_helpers.FeedStub(
                 name=SAMPLE_FEED_NAME,
                 url=SAMPLE_FEED_URL,
                 last_edit_timestamp=second_last_edit_timestamp,
             ),
         ],
-        lambda url, gis: DeltaFeatureLayerStub(
-            url,
-            gis,
-            full,
-            arcgis.features.FeatureSet([]),
+        lambda url, gis: (
+            tests.peri_scribe.sources.fetching_helpers.DeltaFeatureLayerStub(
+                url,
+                gis,
+                full,
+                arcgis.features.FeatureSet([]),
+            )
         ),
     )
     second_result = peri_scribe.sources.fetching.fetch_all_feeds(
@@ -1047,16 +839,10 @@ def test_fetch_all_feeds_writes_no_new_file_when_nothing_changed(
     )
     assert second_result.changed is False
     assert geo_package_store.has(
-        snapshot_path(
-            serial_number=0,
-            last_edit_timestamp=first_last_edit_timestamp,
-        ),
+        snapshot_path(serial_number=0, last_edit_timestamp=first_last_edit_timestamp),
     )
     assert not geo_package_store.has(
-        snapshot_path(
-            serial_number=1,
-            last_edit_timestamp=second_last_edit_timestamp,
-        ),
+        snapshot_path(serial_number=1, last_edit_timestamp=second_last_edit_timestamp),
     )
 
 
@@ -1068,7 +854,7 @@ def test_fetch_all_feeds_reuses_serial_number_for_unchanged_timestamp(
     last_edit_timestamp = 1
     fetch_all_feeds_stubs(
         [
-            FeedStub(
+            tests.peri_scribe.sources.fetching_helpers.FeedStub(
                 name=SAMPLE_FEED_NAME,
                 url=SAMPLE_FEED_URL,
                 last_edit_timestamp=last_edit_timestamp,
@@ -1099,7 +885,7 @@ def test_fetch_all_feeds_fails_when_last_edit_timestamp_unavailable(
 ) -> None:
     fetch_all_feeds_stubs(
         [
-            FeedStub(
+            tests.peri_scribe.sources.fetching_helpers.FeedStub(
                 name=SAMPLE_FEED_NAME,
                 url=SAMPLE_FEED_URL,
                 last_edit_timestamp=None,
@@ -1107,10 +893,7 @@ def test_fetch_all_feeds_fails_when_last_edit_timestamp_unavailable(
         ],
         lambda _url, _gis: object(),
     )
-    with pytest.raises(
-        SystemExit,
-        match="no last-edit timestamp could be observed",
-    ):
+    with pytest.raises(SystemExit, match="no last-edit timestamp could be observed"):
         peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
     assert not geo_package_store.has(snapshot_path())
 
@@ -1121,7 +904,7 @@ def test_fetch_all_feeds_observes_timestamp_before_downloading(
     geo_package_store: GeoPackageStore,
 ) -> None:
     events: list[str] = []
-    feed = FeedStub(
+    feed = tests.peri_scribe.sources.fetching_helpers.FeedStub(
         name=SAMPLE_FEED_NAME,
         url=SAMPLE_FEED_URL,
         last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
@@ -1129,11 +912,13 @@ def test_fetch_all_feeds_observes_timestamp_before_downloading(
     )
     fetch_all_feeds_stubs(
         [feed],
-        lambda url, gis: RecordingFeatureLayerStub(
-            url,
-            gis,
-            feature_set_with_geometry,
-            events,
+        lambda url, gis: (
+            tests.peri_scribe.sources.fetching_helpers.RecordingFeatureLayerStub(
+                url,
+                gis,
+                feature_set_with_geometry,
+                events,
+            )
         ),
     )
     peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
@@ -1146,7 +931,7 @@ def test_fetch_all_feeds_skips_download_when_timestamp_present(
     geo_package_store: GeoPackageStore,
 ) -> None:
     events: list[str] = []
-    feed = FeedStub(
+    feed = tests.peri_scribe.sources.fetching_helpers.FeedStub(
         name=SAMPLE_FEED_NAME,
         url=SAMPLE_FEED_URL,
         last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
@@ -1154,11 +939,13 @@ def test_fetch_all_feeds_skips_download_when_timestamp_present(
     )
     fetch_all_feeds_stubs(
         [feed],
-        lambda url, gis: RecordingFeatureLayerStub(
-            url,
-            gis,
-            feature_set_with_geometry,
-            events,
+        lambda url, gis: (
+            tests.peri_scribe.sources.fetching_helpers.RecordingFeatureLayerStub(
+                url,
+                gis,
+                feature_set_with_geometry,
+                events,
+            )
         ),
     )
     # The first fetch downloads and writes the snapshot.
@@ -1189,22 +976,16 @@ def test_fetch_all_feeds_full_downloads_when_timestamp_present(
     fetch_all_feeds_stubs: typing.Callable[..., None],
     geo_package_store: GeoPackageStore,
 ) -> None:
-    first = wgs84_feature_set([
-        (1, "a", 1.0, 2.0),
-        (2, "b", 3.0, 4.0),
-    ])
-    second = wgs84_feature_set([
-        (1, "a-changed", 1.0, 2.0),
-        (2, "b", 3.0, 4.0),
-    ])
+    first = wgs84_feature_set([(1, "a", 1.0, 2.0), (2, "b", 3.0, 4.0)])
+    second = wgs84_feature_set([(1, "a-changed", 1.0, 2.0), (2, "b", 3.0, 4.0)])
     events: list[str] = []
-    feed = FeedStub(
+    feed = tests.peri_scribe.sources.fetching_helpers.FeedStub(
         name=SAMPLE_FEED_NAME,
         url=SAMPLE_FEED_URL,
         last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
         events=events,
     )
-    layer_stub = SequenceFeatureLayerStub(
+    layer_stub = tests.peri_scribe.sources.fetching_helpers.SequenceFeatureLayerStub(
         url=SAMPLE_FEED_URL,
         gis=object(),
         feature_sets=[first, second],
@@ -1218,8 +999,8 @@ def test_fetch_all_feeds_full_downloads_when_timestamp_present(
     )
     assert events == ["timestamp", "download"]
     events.clear()
-    # A full fetch downloads even though the timestamp is unchanged, and writes a
-    # fresh snapshot holding only the changed feature.
+    # A full fetch downloads even though the timestamp is unchanged, and writes a fresh
+    # snapshot holding only the changed feature.
     result = peri_scribe.sources.fetching.fetch_all_feeds(
         BASE_DIRECTORY,
         year=2026,
@@ -1247,16 +1028,16 @@ def test_fetch_all_feeds_full_writes_no_new_file_when_nothing_changed(
     geo_package_store: GeoPackageStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    full = wgs84_feature_set([
-        (1, "a", 1.0, 2.0),
-        (2, "b", 3.0, 4.0),
-    ])
-    layer_stub = SequenceFeatureLayerStub(
+    full = wgs84_feature_set([(1, "a", 1.0, 2.0), (2, "b", 3.0, 4.0)])
+    layer_stub = tests.peri_scribe.sources.fetching_helpers.SequenceFeatureLayerStub(
         url=SAMPLE_FEED_URL,
         gis=object(),
         feature_sets=[full, full],
     )
-    fetch_all_feeds_stubs([sample_feed_stub()], lambda _url, _gis: layer_stub)
+    fetch_all_feeds_stubs(
+        [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
+        lambda _url, _gis: layer_stub,
+    )
     assert (
         peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026).changed
         is True
@@ -1275,16 +1056,10 @@ def test_fetch_all_feeds_full_writes_no_new_file_when_nothing_changed(
     assert full_result.changed is False
     assert index_calls == [BASE_DIRECTORY / "data" / "2026"]
     assert geo_package_store.has(
-        snapshot_path(
-            serial_number=0,
-            last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
-        ),
+        snapshot_path(serial_number=0, last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP),
     )
     assert not geo_package_store.has(
-        snapshot_path(
-            serial_number=1,
-            last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
-        ),
+        snapshot_path(serial_number=1, last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP),
     )
 
 
@@ -1294,7 +1069,7 @@ def test_fetch_all_feeds_writes_current_state_file(
     geo_package_store: GeoPackageStore,
 ) -> None:
     fetch_all_feeds_stubs(
-        [sample_feed_stub()],
+        [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
         lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
     )
     peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
@@ -1318,16 +1093,11 @@ def test_fetch_all_feeds_continues_when_state_update_fails(
     geo_package_store: GeoPackageStore,
 ) -> None:
     fetch_all_feeds_stubs(
-        [sample_feed_stub()],
+        [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
         lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
     )
 
-    def failing_state_update(
-        *_arguments: object,
-        **_keywords: object,
-    ) -> None:
-        message = "state write failed"
-        raise RuntimeError(message)
+    failing_state_update = tests.peri_scribe.sources.fetching_helpers.fail_state_update
 
     monkeypatch.setattr(
         peri_scribe.sources.feed_state,
@@ -1346,15 +1116,11 @@ def test_fetch_all_feeds_reindexes_after_successful_fetch(
     geo_package_store: GeoPackageStore,
 ) -> None:
     fetch_all_feeds_stubs(
-        [sample_feed_stub()],
+        [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
         lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
     )
     indexed: list[pathlib.Path] = []
-    monkeypatch.setattr(
-        peri_scribe.fires.index,
-        "index_fire_sources",
-        indexed.append,
-    )
+    monkeypatch.setattr(peri_scribe.fires.index, "index_fire_sources", indexed.append)
     result = peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
     assert result.changed is True
     assert indexed == [BASE_DIRECTORY / "data" / "2026"]
@@ -1366,34 +1132,27 @@ def test_fetch_all_feeds_reindexes_after_a_feed_fails(
     fetch_all_feeds_stubs: typing.Callable[..., None],
     geo_package_store: GeoPackageStore,
 ) -> None:
-    failing = FeedStub(
+    failing = tests.peri_scribe.sources.fetching_helpers.FeedStub(
         name="Failing_0",
         url="https://example.test/failing",
         last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
     )
-    working = FeedStub(
+    working = tests.peri_scribe.sources.fetching_helpers.FeedStub(
         name="Working_0",
         url="https://example.test/working",
         last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
     )
 
-    def layer_factory(url: str, gis: object) -> FeatureLayerStub:
-        if url == failing.url:
-            return FeatureLayerStub(
-                url,
-                gis,
-                arcgis.features.FeatureSet([]),
-                query_error=RuntimeError("boom"),
-            )
-        return FeatureLayerStub(url, gis, feature_set_with_geometry)
+    layer_factory = (
+        tests.peri_scribe.sources.fetching_helpers.make_failing_feed_layer_factory(
+            failing=failing,
+            feature_set_with_geometry=feature_set_with_geometry,
+        )
+    )
 
     fetch_all_feeds_stubs([failing, working], layer_factory)
     indexed: list[pathlib.Path] = []
-    monkeypatch.setattr(
-        peri_scribe.fires.index,
-        "index_fire_sources",
-        indexed.append,
-    )
+    monkeypatch.setattr(peri_scribe.fires.index, "index_fire_sources", indexed.append)
     with pytest.raises(SystemExit, match=f"Failed to fetch {failing.name}: boom"):
         peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
     assert indexed == [BASE_DIRECTORY / "data" / "2026"]
@@ -1406,7 +1165,7 @@ def test_fetch_all_feeds_does_not_reindex_when_no_feed_succeeds(
     fetch_all_feeds_stubs: typing.Callable[..., None],
 ) -> None:
     fetch_all_feeds_stubs(
-        [sample_feed_stub()],
+        [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
         lambda url, gis: FeatureLayerStub(
             url,
             gis,
@@ -1415,11 +1174,7 @@ def test_fetch_all_feeds_does_not_reindex_when_no_feed_succeeds(
         ),
     )
     indexed: list[pathlib.Path] = []
-    monkeypatch.setattr(
-        peri_scribe.fires.index,
-        "index_fire_sources",
-        indexed.append,
-    )
+    monkeypatch.setattr(peri_scribe.fires.index, "index_fire_sources", indexed.append)
     with pytest.raises(SystemExit, match="Failed to fetch"):
         peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
     assert indexed == []
@@ -1431,13 +1186,9 @@ def test_fetch_all_feeds_defaults_to_working_directory_and_year(
     fetch_all_feeds_stubs: typing.Callable[..., None],
     geo_package_store: GeoPackageStore,
 ) -> None:
-    monkeypatch.setattr(
-        pathlib.Path,
-        "cwd",
-        staticmethod(lambda: BASE_DIRECTORY),
-    )
+    monkeypatch.setattr(pathlib.Path, "cwd", staticmethod(lambda: BASE_DIRECTORY))
     fetch_all_feeds_stubs(
-        [sample_feed_stub()],
+        [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
         lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
     )
     result = peri_scribe.sources.fetching.fetch_all_feeds()
@@ -1462,7 +1213,7 @@ def test_fetch_can_defer_index_without_losing_snapshot_or_current_state(
     geo_package_store: GeoPackageStore,
 ) -> None:
     fetch_all_feeds_stubs(
-        [sample_feed_stub()],
+        [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
         lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
     )
     indexed: list[pathlib.Path] = []

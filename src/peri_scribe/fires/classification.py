@@ -45,9 +45,9 @@ def classify_fire_sources(
 ) -> dict[int, peri_scribe.models.FireClassification]:
     """Classify each non-complex fire relative to the California boundary.
 
-    Each fire's classification is independent, and the geometry work in
-    California Albers releases the GIL, so the fires are classified in parallel
-    and the results are collected in group order.
+    Each fire's classification is independent, and the geometry work in California
+    Albers releases the GIL, so the fires are classified in parallel and the results are
+    collected in group order.
 
     Args:
         record_groups: The grouped fire records.

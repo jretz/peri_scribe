@@ -36,8 +36,8 @@ def coordinate_pair(longitude: float, latitude: float) -> str:
         latitude: The latitude to format.
 
     Returns:
-        ``longitude,latitude`` with each value rounded to
-        :data:`COORDINATE_DECIMALS` decimal places.
+        ``longitude,latitude`` with each value rounded to :data:`COORDINATE_DECIMALS`
+        decimal places.
 
     Examples:
         >>> coordinate_pair(-121.123456, 38.987654)
@@ -104,6 +104,7 @@ class KmlWriter:
     """
 
     def __init__(self) -> None:
+        """Initialize an independent KML document and geometry cache."""
         self.parts: list[str] = []
         self.geometry_cache: dict[int, tuple[str, ...]] = {}
         self.next_folder_id = 0
@@ -129,8 +130,8 @@ class KmlWriter:
 
         Args:
             name: The folder's name.
-            visible: Whether the folder and its children are visible. Hidden folders
-                and every feature beneath them carry a zero visibility.
+            visible: Whether the folder and its children are visible. Hidden folders and
+                every feature beneath them carry a zero visibility.
             list_item_type: The folder's list item type, or None for none.
             item_icon: The folder's list item icon href, or None for none.
 
@@ -157,11 +158,7 @@ class KmlWriter:
         finally:
             parts.append("</Folder>")
 
-    def geometry_xml(
-        self,
-        geometry: shapely.Geometry,
-        draw_order: int,
-    ) -> str:
+    def geometry_xml(self, geometry: shapely.Geometry, draw_order: int) -> str:
         """Return *geometry* as a KML geometry element with *draw_order* applied.
 
         A polygon carries its draw order directly; a multi-geometry carries none of its

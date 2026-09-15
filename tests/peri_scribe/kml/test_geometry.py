@@ -2,19 +2,13 @@
 
 from __future__ import annotations
 
-import typing
-
 import pytest
 import shapely.geometry
-
-
-if typing.TYPE_CHECKING:
-    import xml.etree.ElementTree as ET
-
 
 import peri_scribe.kml.geometry
 import peri_scribe.kml.styles
 import tests.factories
+import tests.peri_scribe.kml.geometry_helpers
 import tests.peri_scribe.kml.kml_helpers
 
 
@@ -67,26 +61,6 @@ def test_polygon_geometry_includes_holes() -> None:
     assert tests.peri_scribe.kml.kml_helpers.draw_order(placemark) == 0
 
 
-def polygon_draw_orders(multi_geometry: ET.Element) -> list[int]:
-    """Return the gx:drawOrder of each polygon in *multi_geometry*.
-
-    Args:
-        multi_geometry: The MultiGeometry element to inspect.
-
-    Returns:
-        The polygons' draw orders, in order.
-    """
-    orders: list[int] = []
-    for polygon in multi_geometry:
-        if polygon.tag != tests.peri_scribe.kml.kml_helpers.kml_tag("Polygon"):
-            continue
-        text = polygon.findtext(tests.peri_scribe.kml.kml_helpers.gx_tag("drawOrder"))
-        if text is None:
-            pytest.fail("MultiGeometry polygon has no gx:drawOrder")
-        orders.append(int(text))
-    return orders
-
-
 def test_multi_polygon_geometry_holds_each_polygon() -> None:
     multi_polygon = shapely.geometry.MultiPolygon([
         shapely.geometry.box(0.0, 0.0, 1.0, 1.0),
@@ -118,7 +92,7 @@ def test_multi_polygon_geometry_holds_each_polygon() -> None:
     ]
     assert len(polygons) == len(multi_polygon.geoms)
     assert geometry.find(tests.peri_scribe.kml.kml_helpers.gx_tag("drawOrder")) is None
-    assert polygon_draw_orders(geometry) == [
+    assert tests.peri_scribe.kml.geometry_helpers.polygon_draw_orders(geometry) == [
         expected_draw_order,
         expected_draw_order,
     ]
@@ -172,7 +146,7 @@ def test_perimeter_geometry_converts_multi_polygon() -> None:
     if geometry is None:
         pytest.fail("Placemark has no MultiGeometry")
     assert geometry.find(tests.peri_scribe.kml.kml_helpers.gx_tag("drawOrder")) is None
-    assert polygon_draw_orders(geometry) == [
+    assert tests.peri_scribe.kml.geometry_helpers.polygon_draw_orders(geometry) == [
         expected_draw_order,
         expected_draw_order,
     ]

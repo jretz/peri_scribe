@@ -56,11 +56,9 @@ def test_tour_wait_scales_days_by_playback_rate() -> None:
         later,
         peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
     ).m_as("seconds") == pytest.approx(3.0)
-    assert peri_scribe.kml.tour.tour_wait(
-        earlier,
-        later,
-        0.5,
-    ).m_as("seconds") == pytest.approx(1.5)
+    assert peri_scribe.kml.tour.tour_wait(earlier, later, 0.5).m_as(
+        "seconds",
+    ) == pytest.approx(1.5)
 
 
 def test_tour_wait_with_missing_observation_time() -> None:
@@ -106,9 +104,9 @@ def test_tour_playback_rate_for_long_fire() -> None:
 
 def test_tour_playback_rate_without_two_observations() -> None:
     observation_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
-    assert peri_scribe.kml.tour.tour_playback_rate(
-        [observation_time],
-    ) == pytest.approx(peri_scribe.kml.tour.TOUR_PLAYBACK_RATE)
+    assert peri_scribe.kml.tour.tour_playback_rate([observation_time]) == pytest.approx(
+        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
+    )
     assert peri_scribe.kml.tour.tour_playback_rate([None]) == pytest.approx(
         peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
     )
@@ -184,15 +182,10 @@ def test_progression_tour_scales_waits_for_long_fire() -> None:
     )
     assert [
         tests.peri_scribe.kml.kml_helpers.wait_duration(wait) for wait in waits
-    ] == pytest.approx([
-        1,
-        4,
-        1,
-    ])
+    ] == pytest.approx([1, 4, 1])
 
 
 def test_progression_tour_assigns_targeted_placemark_ids() -> None:
-    """The tour's targets match the ids assigned to the folder's ring placemarks."""
     observation_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
     writer = peri_scribe.kml.geometry.KmlWriter()
     with writer.folder("Bug") as folder_id:

@@ -115,8 +115,8 @@ def polygonal_area(geometry: shapely.Geometry | None) -> shapely.Geometry | None
         geometry: The geometry to reduce, or None.
 
     Returns:
-        The polygon or multi-polygon area, or None when the geometry is empty or has
-        no polygonal parts.
+        The polygon or multi-polygon area, or None when the geometry is empty or has no
+        polygonal parts.
     """
     if geometry is None or geometry.is_empty:
         return None
@@ -226,17 +226,14 @@ def corrected_geometries(
     return corrected
 
 
-def growth_indices(
-    corrected: typing.Sequence[shapely.Geometry | None],
-) -> list[int]:
+def growth_indices(corrected: typing.Sequence[shapely.Geometry | None]) -> list[int]:
     """Return the indices of *corrected* that add area over their predecessor.
 
     Args:
         corrected: The corrected perimeters for one fire.
 
     Returns:
-        The indices whose corrected geometry adds area over the previous one, in
-        order.
+        The indices whose corrected geometry adds area over the previous one, in order.
     """
     indices: list[int] = []
     previous: shapely.Geometry | None = None
@@ -273,10 +270,7 @@ def representative_indices(
     return representatives
 
 
-def growth_difference(
-    current: object,
-    previous: list[object],
-) -> float | None:
+def growth_difference(current: object, previous: list[object]) -> float | None:
     """Return *current* minus the most recent present value in *previous*.
 
     Args:
@@ -298,10 +292,7 @@ def growth_difference(
     return current_value - subtrahend
 
 
-def row_identity(
-    row: pd.Series,
-    identity_columns: list[str],
-) -> tuple[object, ...]:
+def row_identity(row: pd.Series, identity_columns: list[str]) -> tuple[object, ...]:
     """Return *row*'s identity, with missing values normalized to None.
 
     Args:
@@ -359,9 +350,7 @@ def group_records(
     geometries: list[shapely.Geometry | None] = []
     for position in positions:
         row = frame.iloc[position]
-        attributes.append(
-            {column: row[column] for column in ATTRIBUTE_COLUMNS},
-        )
+        attributes.append({column: row[column] for column in ATTRIBUTE_COLUMNS})
         geometries.append(frame.geometry.iloc[position])
     return attributes, geometries
 

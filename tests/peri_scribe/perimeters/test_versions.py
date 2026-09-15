@@ -63,8 +63,8 @@ def test_effective_time_prefers_observation_time() -> None:
 
 def test_effective_time_prefers_as_of_date_over_capture_date() -> None:
     # The WFIGS perimeter feed reads poly_DateCurrent (the as-of date) as its
-    # observation column; the capture date (poly_PolygonDateTime) describes the
-    # record's original mapping and must not shadow the per-version as-of date.
+    # observation column; the capture date (poly_PolygonDateTime) describes the record's
+    # original mapping and must not shadow the per-version as-of date.
     as_of = tests.factories.utc(2026, 8, 16, 22, 26)
     observed = tests.factories.observation(
         observation_time=as_of,
@@ -174,9 +174,10 @@ def test_collapse_identical_consecutive_perimeters_collapses_runs() -> None:
         attributes={"area_acres": 11},
     )
     versions = (
-        peri_scribe.perimeters.versions.collapse_identical_consecutive_perimeters(
-            [older, newer],
-        )
+        peri_scribe.perimeters.versions.collapse_identical_consecutive_perimeters([
+            older,
+            newer,
+        ])
     )
     assert versions == [newer]
 
@@ -193,9 +194,10 @@ def test_collapse_identical_consecutive_perimeters_keeps_distinct_geometries() -
         observation_time=tests.factories.utc(2026, 8, 16, 1, 10),
     )
     versions = (
-        peri_scribe.perimeters.versions.collapse_identical_consecutive_perimeters(
-            [first_observation, second_observation],
-        )
+        peri_scribe.perimeters.versions.collapse_identical_consecutive_perimeters([
+            first_observation,
+            second_observation,
+        ])
     )
     assert versions == [first_observation, second_observation]
 
@@ -441,25 +443,27 @@ def test_geometry_area_returns_area_for_polygon() -> None:
 def test_geometry_area_returns_none_without_geometry() -> None:
     assert peri_scribe.perimeters.size_filtering.geometry_area(None) is None
     assert (
-        peri_scribe.perimeters.size_filtering.geometry_area(
-            shapely.geometry.Polygon(),
-        )
+        peri_scribe.perimeters.size_filtering.geometry_area(shapely.geometry.Polygon())
         is None
     )
 
 
 def test_computed_area_returns_first_positive_value() -> None:
-    area = peri_scribe.perimeters.size_filtering.computed_area(
-        {"poly_Acres_AutoCalc": 123, "poly_GISAcres": 456, "area_acres": 789},
-    )
+    area = peri_scribe.perimeters.size_filtering.computed_area({
+        "poly_Acres_AutoCalc": 123,
+        "poly_GISAcres": 456,
+        "area_acres": 789,
+    })
     assert area is not None
     assert area.m_as("acres") == pytest.approx(123)
 
 
 def test_computed_area_skips_missing_and_nonpositive() -> None:
-    area = peri_scribe.perimeters.size_filtering.computed_area(
-        {"poly_Acres_AutoCalc": 0, "poly_GISAcres": None, "area_acres": 456},
-    )
+    area = peri_scribe.perimeters.size_filtering.computed_area({
+        "poly_Acres_AutoCalc": 0,
+        "poly_GISAcres": None,
+        "area_acres": 456,
+    })
     assert area is not None
     assert area.m_as("acres") == pytest.approx(456)
 
@@ -469,17 +473,19 @@ def test_computed_area_returns_none_without_sizes() -> None:
 
 
 def test_incident_size_returns_first_positive_value() -> None:
-    size = peri_scribe.perimeters.size_filtering.incident_size(
-        {"attr_IncidentSize": 100, "attr_FinalAcres": 200},
-    )
+    size = peri_scribe.perimeters.size_filtering.incident_size({
+        "attr_IncidentSize": 100,
+        "attr_FinalAcres": 200,
+    })
     assert size is not None
     assert size.m_as("acres") == pytest.approx(100)
 
 
 def test_incident_size_skips_missing_and_nonpositive() -> None:
-    size = peri_scribe.perimeters.size_filtering.incident_size(
-        {"attr_IncidentSize": np.nan, "attr_FinalAcres": 200},
-    )
+    size = peri_scribe.perimeters.size_filtering.incident_size({
+        "attr_IncidentSize": np.nan,
+        "attr_FinalAcres": 200,
+    })
     assert size is not None
     assert size.m_as("acres") == pytest.approx(200)
 
@@ -571,10 +577,7 @@ def test_attributes_are_equal_compares_keys_and_values() -> None:
         {"a": 1},
         {"a": 1, "b": 2},
     )
-    assert not peri_scribe.perimeters.versions.attributes_are_equal(
-        {"a": 1},
-        {"a": 2},
-    )
+    assert not peri_scribe.perimeters.versions.attributes_are_equal({"a": 1}, {"a": 2})
 
 
 def test_point_versions_folds_geometry_move() -> None:
@@ -612,29 +615,6 @@ def test_point_versions_creates_version_on_attribute_change() -> None:
     )
     versions = peri_scribe.perimeters.versions.point_versions([first, second])
     assert versions == [first, second]
-
-
-@pytest.fixture
-def revision_observations() -> list[peri_scribe.perimeters.versions.SourceObservation]:
-    """Provide a close mapping pair whose metadata corroborates a minor revision.
-
-    Returns:
-        Consecutive flight-source observations with nearly identical footprints and
-        separate source references for checking retained provenance.
-    """
-    return [
-        tests.factories.observation(
-            geometry=shapely.geometry.box(0, 0, 1 + minute / 1000, 1),
-            observation_time=tests.factories.utc(2026, 9, 7, 20, minute),
-            serial_number=minute,
-            source_file=f"{minute}.gpkg",
-            attributes={
-                "source": "CAL FIRE INTEL FLIGHT DATA",
-                "type": "Heat Perimeter",
-            },
-        )
-        for minute in (24, 25)
-    ]
 
 
 def test_collapse_mapping_revisions_keeps_latest_publication_with_provenance(
@@ -800,44 +780,6 @@ def test_drop_losing_source_versions_preserves_undated_and_single_source_records
     )
 
 
-@pytest.fixture
-def delayed_mapping_pair() -> tuple[
-    peri_scribe.perimeters.versions.SourceObservation,
-    peri_scribe.perimeters.versions.SourceObservation,
-]:
-    """Expose a length spike caused by delayed publication of an older survey.
-
-    Returns:
-        A preferred flight mapping and a later-published, earlier-captured WFIGS
-        footprint with a narrow notch that adds length without much area change.
-    """
-    flight = tests.factories.observation(
-        source_kind=tests.factories.FIRIS_PERIMETER,
-        geometry=shapely.geometry.box(0, 0, 1, 1),
-        observation_time=tests.factories.utc(2026, 9, 1, 21, 32),
-        source_file="flight.gpkg",
-        object_id=1,
-    )
-    delayed = tests.factories.observation(
-        source_kind=tests.factories.WFIGS_PERIMETER,
-        geometry=shapely.geometry.Polygon([
-            (0, 0),
-            (1, 0),
-            (1, 1),
-            (0.51, 1),
-            (0.51, 0.1),
-            (0.49, 0.1),
-            (0.49, 1),
-            (0, 1),
-        ]),
-        observation_time=tests.factories.utc(2026, 9, 2, 13, 25),
-        source_file="delayed.gpkg",
-        object_id=2,
-        attributes={"poly_PolygonDateTime": tests.factories.utc(2026, 9, 1, 16, 48)},
-    )
-    return flight, delayed
-
-
 def test_reconcile_perimeter_versions_rejects_delayed_older_survey_spike(
     delayed_mapping_pair: tuple[
         peri_scribe.perimeters.versions.SourceObservation,
@@ -864,9 +806,7 @@ def test_reconcile_perimeter_versions_rejects_delayed_older_survey_spike(
         "2026-08-01T00:00:00",
     ],
 )
-def test_credible_capture_time_rejects_unreliable_dates(
-    capture: str | None,
-) -> None:
+def test_credible_capture_time_rejects_unreliable_dates(capture: str | None) -> None:
     observation = tests.factories.observation(
         observation_time=tests.factories.utc(2026, 9, 2, 13, 25),
         attributes={"poly_PolygonDateTime": capture},
@@ -911,10 +851,7 @@ def test_mapping_is_superseded_respects_new_surveys_and_changed_footprints(
         attributes={"poly_PolygonDateTime": capture},
     )
     assert (
-        peri_scribe.perimeters.versions.mapping_is_superseded(
-            observation,
-            flight,
-        )
+        peri_scribe.perimeters.versions.mapping_is_superseded(observation, flight)
         is superseded
     )
 

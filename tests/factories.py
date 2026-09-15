@@ -51,7 +51,15 @@ class StubFireReader(typing.Protocol):
             list[peri_scribe.models.ComplexMembership],
         ]
         | None = None,
-    ) -> None: ...
+    ) -> None:
+        """Install the observations and memberships a reader test requires.
+
+        Args:
+            records_by_path: Fire observations to serve for each GeoPackage path.
+            memberships_by_path: Complex memberships to serve per path, or None for no
+                memberships.
+        """
+        ...
 
 
 def fire_record(
@@ -123,10 +131,7 @@ def change_dataframe(
         The GeoDataFrame.
     """
     return geopandas.GeoDataFrame(
-        {
-            "OBJECTID": [row[0] for row in rows],
-            "name": [row[1] for row in rows],
-        },
+        {"OBJECTID": [row[0] for row in rows], "name": [row[1] for row in rows]},
         geometry=[shapely.geometry.Point(row[2]) for row in rows],
         crs=pyproj.CRS.from_epsg(4326),
     )
@@ -155,6 +160,15 @@ def raising_stub(error: BaseException) -> typing.Callable[..., typing.Never]:
     """
 
     def raise_error(*_arguments: object, **_keywords: object) -> typing.Never:
+        """Raise the configured failure for an isolated dependency call.
+
+        Args:
+            _arguments: Positional arguments accepted by the substituted dependency.
+            _keywords: Keyword arguments accepted by the substituted dependency.
+
+        Raises:
+            The exception selected by the enclosing factory, on every call.
+        """
         raise error
 
     return raise_error
@@ -173,11 +187,7 @@ def geo_frame(
     Returns:
         The frame.
     """
-    return geopandas.GeoDataFrame(
-        columns,
-        geometry=geometry,
-        crs="EPSG:4326",
-    )
+    return geopandas.GeoDataFrame(columns, geometry=geometry, crs="EPSG:4326")
 
 
 def polygon(*points: tuple[float, float]) -> shapely.geometry.Polygon:
@@ -334,10 +344,20 @@ class LayerStub(arcgis.features.FeatureLayer):
     """Minimal stand-in for an ArcGIS FeatureLayer exposing properties."""
 
     def __init__(self, properties: dict[str, object]) -> None:
+        """Initialize a layer with controlled ArcGIS metadata.
+
+        Args:
+            properties: ArcGIS metadata exposed by the layer's properties accessor.
+        """
         self.layer_properties = properties
 
     @property
     def properties(self) -> dict[str, object]:
+        """The ArcGIS metadata supplied to this layer stub.
+
+        Returns:
+            The configured layer properties.
+        """
         return self.layer_properties
 
 
@@ -345,10 +365,20 @@ class FeatureSetStub(arcgis.features.FeatureSet):
     """Minimal stand-in for an ArcGIS FeatureSet exposing spatial_reference."""
 
     def __init__(self, spatial_reference: object) -> None:
+        """Initialize a feature set with a controlled spatial reference.
+
+        Args:
+            spatial_reference: Spatial-reference value exposed by the feature-set stub.
+        """
         self.stored_spatial_reference = spatial_reference
 
     @property
     def spatial_reference(self) -> object:
+        """The spatial reference supplied to this feature-set stub.
+
+        Returns:
+            The configured spatial-reference value.
+        """
         return self.stored_spatial_reference
 
 
@@ -356,6 +386,12 @@ class FeatureLayerStubBase:
     """Base stand-in for an ArcGIS FeatureLayer exposing WGS84 properties."""
 
     def __init__(self, url: str, gis: object) -> None:
+        """Initialize a layer stub with WGS84 metadata and its connection inputs.
+
+        Args:
+            url: ArcGIS layer or download URL supplied by the caller.
+            gis: GIS connection object supplied to the layer constructor.
+        """
         self.url = url
         self.gis = gis
         self.layer_properties: dict[str, object] = {
@@ -364,6 +400,11 @@ class FeatureLayerStubBase:
 
     @property
     def properties(self) -> dict[str, object]:
+        """The layer metadata exposed to spatial-reference selection.
+
+        Returns:
+            The configured properties, including the WGS84 reference.
+        """
         return self.layer_properties
 
 
@@ -377,6 +418,15 @@ class FeatureLayerStub(FeatureLayerStubBase):
         feature_set: arcgis.features.FeatureSet,
         query_error: Exception | None = None,
     ) -> None:
+        """Initialize a layer with a fixed query result or failure.
+
+        Args:
+            url: ArcGIS layer or download URL supplied by the caller.
+            gis: GIS connection object supplied to the layer constructor.
+            feature_set: Feature set returned by the controlled query.
+            query_error: Exception to raise during queries, or None for a successful
+                response.
+        """
         super().__init__(url, gis)
         self.feature_set = feature_set
         self.query_error = query_error
@@ -385,6 +435,17 @@ class FeatureLayerStub(FeatureLayerStubBase):
         self,
         **parameters: object,
     ) -> arcgis.features.FeatureSet | dict[str, object]:
+        """Serve the configured query result for isolated ArcGIS tests.
+
+        Args:
+            parameters: Parameters supplied to the intercepted query or command.
+
+        Returns:
+            The fixed object identifiers for ID-only queries, otherwise the feature set.
+
+        Raises:
+            The configured query error, when one was supplied to the constructor.
+        """
         if self.query_error is not None:
             raise self.query_error
         if parameters.get("return_ids_only"):
@@ -396,10 +457,16 @@ class FailingTransformer:
     """Transformer stand-in whose corner transforms always fail."""
 
     @staticmethod
-    def transform(
-        longitude: float,
-        latitude: float,
-    ) -> tuple[float, float]:
+    def transform(longitude: float, latitude: float) -> tuple[float, float]:
+        """Simulate a projection failure at the requested coordinate.
+
+        Args:
+            longitude: Longitude in degrees for the simulated coordinate conversion.
+            latitude: Latitude in degrees for the simulated coordinate conversion.
+
+        Raises:
+            pyproj.exceptions.ProjError: Always, to exercise coordinate-domain fallback.
+        """
         message = f"transform failed at ({longitude}, {latitude})"
         raise pyproj.exceptions.ProjError(message)
 
@@ -410,6 +477,16 @@ def failing_from_crs(
     *,
     always_xy: bool = True,
 ) -> FailingTransformer:
+    """Provide a transformer that exercises projection failure handling.
+
+    Args:
+        crs_from: Source coordinate reference accepted by the transformer factory.
+        crs_to: Destination coordinate reference accepted by the transformer factory.
+        always_xy: Axis-order option accepted for transformer compatibility.
+
+    Returns:
+        A transformer whose coordinate conversions raise projection errors.
+    """
     return FailingTransformer()
 
 
@@ -419,8 +496,8 @@ def wgs84_feature_set(
     """Build a WGS84 FeatureSet from (OBJECTID, name, x, y) point rows.
 
     Args:
-        points: The OBJECTID (None to omit it), name, longitude, and latitude of
-            each feature.
+        points: The OBJECTID (None to omit it), name, longitude, and latitude of each
+            feature.
 
     Returns:
         The FeatureSet.
@@ -432,11 +509,7 @@ def wgs84_feature_set(
             attributes["OBJECTID"] = object_id
         features.append(
             arcgis.features.Feature(
-                geometry={
-                    "x": x,
-                    "y": y,
-                    "spatialReference": {"wkid": WGS84_WKID},
-                },
+                geometry={"x": x, "y": y, "spatialReference": {"wkid": WGS84_WKID}},
                 attributes=attributes,
             ),
         )
@@ -451,17 +524,20 @@ class GeoPackageStore:
     """
 
     def __init__(self) -> None:
-        self.layers: dict[
-            tuple[pathlib.Path, str],
-            geopandas.GeoDataFrame,
-        ] = {}
+        """Initialize an empty GeoPackage store for isolated file tests."""
+        self.layers: dict[tuple[pathlib.Path, str], geopandas.GeoDataFrame] = {}
 
     def write(
         self,
         path: pathlib.Path,
         layers: list[peri_scribe.models.LayerData],
     ) -> None:
-        """Record *layers* as the contents of the GeoPackage at *path*."""
+        """Record *layers* as the contents of the GeoPackage at *path*.
+
+        Args:
+            path: Path supplied to the intercepted file operation.
+            layers: Named layers to store in the GeoPackage.
+        """
         for layer_data in layers:
             self.layers[path, layer_data.name] = layer_data.dataframe
 
@@ -473,6 +549,9 @@ class GeoPackageStore:
 
         Files that do not encode a snapshot serial number and timestamp (the
         current-state files) are skipped, mirroring ``existing_source_files``.
+
+        Args:
+            directory: Directory supplied to the intercepted storage operation.
 
         Returns:
             The stored source files, sorted by serial number.
@@ -496,17 +575,21 @@ class GeoPackageStore:
     ) -> geopandas.GeoDataFrame:
         """Return the layer for *feed* stored in the GeoPackage at *path*.
 
+        Args:
+            path: Path supplied to the intercepted file operation.
+            feed: Feed configuration used to interpret the source observations.
+
         Returns:
             The feed's layer dataframe.
         """
         return self.layers[path, feed.name]
 
-    def layer(
-        self,
-        path: pathlib.Path,
-        layer_name: str,
-    ) -> geopandas.GeoDataFrame:
+    def layer(self, path: pathlib.Path, layer_name: str) -> geopandas.GeoDataFrame:
         """Return the layer named *layer_name* stored at *path*.
+
+        Args:
+            path: Path supplied to the intercepted file operation.
+            layer_name: Name of the layer to select within the GeoPackage.
 
         Returns:
             The layer dataframe.
@@ -515,6 +598,9 @@ class GeoPackageStore:
 
     def has(self, path: pathlib.Path) -> bool:
         """Return whether any layer has been stored at *path*.
+
+        Args:
+            path: Path supplied to the intercepted file operation.
 
         Returns:
             True when a layer has been stored at *path*.

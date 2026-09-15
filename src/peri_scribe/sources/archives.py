@@ -39,6 +39,7 @@ class DownloadLinksParser(HTMLParser):
     """
 
     def __init__(self) -> None:
+        """Initialize the parser to collect download links under state headings."""
         super().__init__()
         self.links: dict[str, str] = {}
         self.heading_level: str | None = None
@@ -47,11 +48,7 @@ class DownloadLinksParser(HTMLParser):
         self.anchor_href: str | None = None
         self.anchor_text: list[str] = []
 
-    def handle_starttag(
-        self,
-        tag: str,
-        attrs: list[tuple[str, str | None]],
-    ) -> None:
+    def handle_starttag(self, tag: str, attrs: list[tuple[str, str | None]]) -> None:
         """Track headings and links so downloads are collected from the right section.
 
         Args:
@@ -168,10 +165,7 @@ def extract_archive(
         raise peri_scribe.exceptions.ExternalDataError(message) from error
 
 
-def find_geodata_path(
-    directory: pathlib.Path,
-    suffix: str,
-) -> pathlib.Path:
+def find_geodata_path(directory: pathlib.Path, suffix: str) -> pathlib.Path:
     """Return the first vector data path ending in *suffix* under *directory*.
 
     The suffix names either a data file (``.geojson``, ``.shp``) or a file geodatabase

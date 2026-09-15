@@ -78,9 +78,9 @@ def records_span_distant_locations(
     """Return whether a record in *group* disagrees with the rest on location.
 
     A record disagrees when the rest of the group has a geometry and the record has
-    none, or when none of the other records' geometries is within the outlier
-    tolerance; the distance from a record to the union of the others is the minimum
-    distance to any one of them.
+    none, or when none of the other records' geometries is within the outlier tolerance;
+    the distance from a record to the union of the others is the minimum distance to any
+    one of them.
 
     Args:
         records: The records that were grouped.
@@ -142,9 +142,7 @@ def matched_within_outlier_tolerance(
     for position, (index, geometry) in enumerate(representatives):
         if index in matched_indices:
             continue
-        for other_position, (other_index, other_geometry) in enumerate(
-            representatives,
-        ):
+        for other_position, (other_index, other_geometry) in enumerate(representatives):
             if position == other_position:
                 continue
             if shapely.dwithin(
@@ -326,8 +324,8 @@ def fire_complexes(
 
     Args:
         memberships: The observed complex memberships.
-        fires_by_identifier: The identified fires, keyed by every identifier
-            each fire is known by.
+        fires_by_identifier: The identified fires, keyed by every identifier each fire
+            is known by.
 
     Returns:
         The complexes, in the order first encountered.
@@ -343,10 +341,7 @@ def fire_complexes(
                 complex_identifier=membership.complex_identifier,
             )
             continue
-        fires_by_complex.setdefault(
-            membership.complex_identifier,
-            set(),
-        ).add(fire)
+        fires_by_complex.setdefault(membership.complex_identifier, set()).add(fire)
         names_by_complex.setdefault(
             membership.complex_identifier,
             membership.complex_name,

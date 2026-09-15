@@ -332,7 +332,7 @@ class PlotLayout:
 
     @property
     def plot_width(self) -> float:
-        """Return the plot area's width.
+        """The plot area's width in pixels.
 
         Returns:
             The width in pixels.
@@ -341,7 +341,7 @@ class PlotLayout:
 
     @property
     def plot_height(self) -> float:
-        """Return the plot area's height.
+        """The plot area's height in pixels.
 
         Returns:
             The height in pixels.
@@ -727,8 +727,8 @@ def draw_plot(
     """Draw *series_list* as an SVG document and return its bytes.
 
     Args:
-        series_list: The lines to draw, each already known to span enough
-            observation times.
+        series_list: The lines to draw, each already known to span enough observation
+            times.
         y_axis_label: The unit shown at the plot's y-axis.
 
     Returns:
@@ -752,10 +752,7 @@ def draw_plot(
         *frame_elements(layout),
         *series_elements(series_list, layout),
         *label_elements(layout, y_axis_label),
-        *legend_elements(
-            legend_entries(series_list),
-            layout.width,
-        ),
+        *legend_elements(legend_entries(series_list), layout.width),
         "</svg>",
     ]
     return ("\n".join(elements) + "\n").encode()

@@ -81,10 +81,7 @@ def segment_indexes(ring_bounds: np.ndarray) -> SegmentIndexes:
         segment_counts.astype(np.int32),
     )
     segment_indices = (
-        np.repeat(
-            ring_starts.astype(np.int32),
-            segment_counts.astype(np.int32),
-        )
+        np.repeat(ring_starts.astype(np.int32), segment_counts.astype(np.int32))
         + segment_in_ring
     )
     ring_of_segment = np.repeat(
@@ -120,22 +117,17 @@ def ring_shoelace_sums(
     end_x = x[indexes.segment_indices + 1] - offsets[indexes.ring_of_segment, 0]
     end_y = y[indexes.segment_indices + 1] - offsets[indexes.ring_of_segment, 1]
     cross_products = segment_x * end_y - end_x * segment_y
-    numerators = np.column_stack(
-        [
-            np.add.reduceat(
-                (segment_x + end_x) * cross_products,
-                indexes.ring_segment_starts,
-            ),
-            np.add.reduceat(
-                (segment_y + end_y) * cross_products,
-                indexes.ring_segment_starts,
-            ),
-        ],
-    )
-    return (
-        np.add.reduceat(cross_products, indexes.ring_segment_starts),
-        numerators,
-    )
+    numerators = np.column_stack([
+        np.add.reduceat(
+            (segment_x + end_x) * cross_products,
+            indexes.ring_segment_starts,
+        ),
+        np.add.reduceat(
+            (segment_y + end_y) * cross_products,
+            indexes.ring_segment_starts,
+        ),
+    ])
+    return (np.add.reduceat(cross_products, indexes.ring_segment_starts), numerators)
 
 
 def ring_centroid_sums(
@@ -158,12 +150,7 @@ def ring_centroid_sums(
     y = coordinates[:, 1]
     indexes = segment_indexes(ring_bounds)
     offsets = coordinates[ring_bounds[:, 0]]
-    ring_cross_sums, numerators = ring_shoelace_sums(
-        x,
-        y,
-        offsets,
-        indexes,
-    )
+    ring_cross_sums, numerators = ring_shoelace_sums(x, y, offsets, indexes)
     signs = np.sign(ring_cross_sums)
     signed_numerators = signs[:, None] * numerators
     absolute_double_areas = np.abs(ring_cross_sums)
@@ -294,10 +281,7 @@ def polygon_centroids(
         The ``(F, 2)`` centroid longitudes and latitudes.
     """
     projected = np.column_stack(
-        TO_WEB_MERCATOR.transform(
-            chunk.coordinates[:, 0],
-            chunk.coordinates[:, 1],
-        ),
+        TO_WEB_MERCATOR.transform(chunk.coordinates[:, 0], chunk.coordinates[:, 1]),
     )
     sums = ring_centroid_sums(projected, chunk.ring_bounds)
     centroids_3857 = projected_centroids(projected, chunk, sums)

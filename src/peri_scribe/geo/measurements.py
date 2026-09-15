@@ -18,16 +18,13 @@ AREA_COLUMN = "geometry_area_square_meters"
 EXTERIOR_COLUMN = "exterior_perimeter_meters"
 
 
-def area(
-    geometry: shapely.Geometry,
-    stored: object = None,
-) -> pint.Quantity[float]:
+def area(geometry: shapely.Geometry, stored: object = None) -> pint.Quantity[float]:
     """Use the persisted measurement when available, otherwise measure the shape.
 
     Args:
         geometry: The geometry described by the stored area.
-        stored: The stored area in square meters, or a missing or nonnumeric value
-            when the geometry must be measured.
+        stored: The stored area in square meters, or a missing or nonnumeric value when
+            the geometry must be measured.
 
     Returns:
         The geometry's geodesic area.
@@ -46,8 +43,8 @@ def exterior_perimeter(
 
     Args:
         geometry: The geometry described by the stored length, or None.
-        stored: The stored exterior length in meters, or a missing or nonnumeric
-            value when the geometry must be measured.
+        stored: The stored exterior length in meters, or a missing or nonnumeric value
+            when the geometry must be measured.
 
     Returns:
         The exterior length, or None for a geometry without an exterior.

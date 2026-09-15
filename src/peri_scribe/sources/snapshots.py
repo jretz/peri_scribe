@@ -37,15 +37,14 @@ class SourceFile:
 
     @property
     def relative_path(self) -> pathlib.Path:
-        """Return the file's path relative to its source directory.
+        """The snapshot path relative to its source directory.
 
         Returns:
             The bucket subdirectory and filename, relative to the source directory.
 
         Examples:
             >>> SourceFile(
-            ...     serial_number=1234,
-            ...     last_edit_timestamp=1_700_000_000_000,
+            ...     serial_number=1234, last_edit_timestamp=1_700_000_000_000
             ... ).relative_path
             PosixPath('001___/001234,lastEdit=1700000000000.gpkg')
         """
@@ -98,15 +97,15 @@ def next_serial_number(
     and otherwise is one greater than the largest serial number among *existing*, so the
     first snapshot for a source is numbered 0.
 
-    A full fetch writes a new snapshot even when the observed timestamp is unchanged,
-    so its caller passes *reuse_same_timestamp* as false to keep the new snapshot from
+    A full fetch writes a new snapshot even when the observed timestamp is unchanged, so
+    its caller passes *reuse_same_timestamp* as false to keep the new snapshot from
     overwriting the existing snapshot for the same timestamp.
 
     Args:
         existing: The source's existing source files.
         last_edit_timestamp: The last-edit timestamp to name the new snapshot with.
-        reuse_same_timestamp: Whether to reuse the serial number of an existing
-            snapshot for the same timestamp.
+        reuse_same_timestamp: Whether to reuse the serial number of an existing snapshot
+            for the same timestamp.
 
     Returns:
         The serial number for the new snapshot.
@@ -274,9 +273,7 @@ def current_state_file_paths(
     return sorted(state_files)
 
 
-def record_cache_database_path(
-    source_directory: pathlib.Path,
-) -> pathlib.Path:
+def record_cache_database_path(source_directory: pathlib.Path) -> pathlib.Path:
     """Return the record cache database path for *source_directory*'s feed.
 
     One SQLite database holds every snapshot's parsed records for a feed, so the cache
@@ -318,8 +315,9 @@ def source_geopackage_path(
 ) -> pathlib.Path:
     """Return the path where *source_name*'s snapshot is stored.
 
-    Snapshots are stored under
-    ``base_dir/data/{year}/sources/{source_name}/{serial//1000:03d}___/{serial},lastEdit={timestamp}.gpkg``.
+    Snapshots are stored under ``base_dir/data/{year}/sources/{source_name}``, in a
+    bucket named ``{serial//1000:03d}___``. The filename is
+    ``{serial},lastEdit={timestamp}.gpkg``.
 
     Args:
         base_dir: The base directory that holds the ``data`` directory.
@@ -350,8 +348,8 @@ def source_name_from_snapshot_path(path: pathlib.Path) -> str:
     Examples:
         >>> source_name_from_snapshot_path(
         ...     pathlib.Path(
-        ...         "data/2025/sources/incidents/000___/000012,lastEdit=1.gpkg",
-        ...     ),
+        ...         "data/2025/sources/incidents/000___/000012,lastEdit=1.gpkg"
+        ...     )
         ... )
         'incidents'
     """
@@ -387,13 +385,11 @@ def year_for_year_directory(year_directory: pathlib.Path) -> int:
     return int(year_directory.name)
 
 
-def base_directory_for_year_directory(
-    year_directory: pathlib.Path,
-) -> pathlib.Path:
+def base_directory_for_year_directory(year_directory: pathlib.Path) -> pathlib.Path:
     """Return the base directory that *year_directory* sits under.
 
-    A year directory is stored as ``base_directory/data/{year}``, so the base
-    directory is two levels above it.
+    A year directory is stored as ``base_directory/data/{year}``, so the base directory
+    is two levels above it.
 
     Args:
         year_directory: The year directory.
@@ -424,9 +420,7 @@ def sources_directory_path(year_directory: pathlib.Path) -> pathlib.Path:
     return year_directory / SOURCES_DIRECTORY_NAME
 
 
-def validation_directory_path(
-    year_directory: pathlib.Path,
-) -> pathlib.Path:
+def validation_directory_path(year_directory: pathlib.Path) -> pathlib.Path:
     """Return the validation directory inside *year_directory*.
 
     The directory holds one full snapshot per source, fetched fresh for validation

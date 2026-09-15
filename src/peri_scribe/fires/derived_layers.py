@@ -80,14 +80,8 @@ def read_derived_layers(
     )
     return DerivedLayers(
         incidents=read_incident_layer(history_path),
-        perimeters=read(
-            history_path,
-            peri_scribe.fires.files.PERIMETER_LAYER_NAME,
-        ),
-        points=read(
-            history_path,
-            peri_scribe.fires.files.POINT_LAYER_NAME,
-        ),
+        perimeters=read(history_path, peri_scribe.fires.files.PERIMETER_LAYER_NAME),
+        points=read(history_path, peri_scribe.fires.files.POINT_LAYER_NAME),
         differential_perimeters=read(
             differential_path,
             peri_scribe.fires.files.PERIMETER_LAYER_NAME,

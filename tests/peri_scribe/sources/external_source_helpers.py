@@ -23,6 +23,11 @@ class FakeResponse:
     """Stand-in for a requests response with a fixed body."""
 
     def __init__(self, body: bytes) -> None:
+        """Initialize an HTTP response with controlled content.
+
+        Args:
+            body: HTTP response content in bytes.
+        """
         self.body = body
 
     def raise_for_status(self) -> None:
@@ -30,7 +35,11 @@ class FakeResponse:
 
     @property
     def text(self) -> str:
-        """The response body decoded as text."""
+        """The response body decoded as text.
+
+        Returns:
+            The response bytes decoded as UTF-8 text.
+        """
         return self.body.decode("utf-8")
 
     def iter_content(self, chunk_size: int) -> typing.Iterator[bytes]:
@@ -51,8 +60,8 @@ def buildings_page_html(links: dict[str, str]) -> str:
 
     The page mirrors the README rendering GitHub serves for the repository page: a
     "Download links" heading followed by a table whose rows link each state to its
-    archive, bracketed by other headings and a link so the parser must select the
-    right table.
+    archive, bracketed by other headings and a link so the parser must select the right
+    table.
 
     Args:
         links: The state-to-archive-URL pairs the table should hold.
@@ -106,10 +115,7 @@ def sample_arcgis_dataframe() -> geopandas.GeoDataFrame:
     """
     return tests.factories.geo_frame(
         {"OBJECTID": [1, 2]},
-        [
-            shapely.geometry.Point(1.0, 2.0),
-            shapely.geometry.Point(3.0, 4.0),
-        ],
+        [shapely.geometry.Point(1.0, 2.0), shapely.geometry.Point(3.0, 4.0)],
     )
 
 
@@ -160,9 +166,9 @@ def building_dataframe() -> geopandas.GeoDataFrame:
 def per_state_template_source() -> peri_scribe.sources.external_sources.ExternalSource:
     """Return the buildings source without its page, using a URL template.
 
-    The real buildings source reads its per-state links from the repository page;
-    the generic download path (a ``{state}`` URL template) is exercised with this
-    source so that download and conversion failures can be tested directly.
+    The real buildings source reads its per-state links from the repository page; the
+    generic download path (a ``{state}`` URL template) is exercised with this source so
+    that download and conversion failures can be tested directly.
 
     Returns:
         A per-state download source named after the buildings source.
@@ -180,8 +186,8 @@ def per_state_template_source() -> peri_scribe.sources.external_sources.External
 def single_archive_source() -> peri_scribe.sources.external_sources.ExternalSource:
     """Return the buildings source as a single archive instead of per state.
 
-    The generic single-archive download path is exercised with this source so that
-    the skip-when-present behavior can be tested without the per-state machinery.
+    The generic single-archive download path is exercised with this source so that the
+    skip-when-present behavior can be tested without the per-state machinery.
 
     Returns:
         A single-archive download source named after the buildings source.

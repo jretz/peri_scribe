@@ -5,49 +5,10 @@ from __future__ import annotations
 import datetime
 
 import pytest
-import shapely.geometry
 
 import peri_scribe.kml.colormap
-import peri_scribe.perimeters.progression
+import tests.peri_scribe.kml.colormap_helpers
 from peri_scribe.units import units
-
-
-def ring(
-    side: float,
-    observation_time: datetime.datetime | None = None,
-    *,
-    area: float = 0.0,
-) -> peri_scribe.perimeters.progression.Ring:
-    """Build a square growth ring of the given side at *observation_time*.
-
-    Args:
-        side: The ring's side length.
-        observation_time: The ring's observation time, or None.
-        area: The ring's area in square meters.
-
-    Returns:
-        The ring.
-    """
-    half = side / 2
-    return peri_scribe.perimeters.progression.Ring(
-        geometry=shapely.geometry.box(-half, -half, half, half),
-        observation_time=observation_time,
-        area=area * units.meters**2,
-    )
-
-
-def utc(year: int, month: int, day: int) -> datetime.datetime:
-    """Return an aware UTC datetime for the given calendar date.
-
-    Args:
-        year: The year.
-        month: The month.
-        day: The day.
-
-    Returns:
-        The datetime at 20:00 UTC.
-    """
-    return datetime.datetime(year, month, day, 20, 0, tzinfo=datetime.UTC)
 
 
 def test_turbo_colormap_keeps_the_full_table() -> None:
@@ -56,11 +17,7 @@ def test_turbo_colormap_keeps_the_full_table() -> None:
         + len(peri_scribe.kml.colormap.TURBO_RAMP)
         + peri_scribe.kml.colormap.TURBO_TRIM_FROM_END
     )
-    assert peri_scribe.kml.colormap.turbo_colormap_256[0] == (
-        0.18995,
-        0.07176,
-        0.23217,
-    )
+    assert peri_scribe.kml.colormap.turbo_colormap_256[0] == (0.18995, 0.07176, 0.23217)
     assert peri_scribe.kml.colormap.turbo_colormap_256[-1] == (
         0.47960,
         0.01583,
@@ -119,9 +76,7 @@ def test_sample_turbo_bounds_the_ramp() -> None:
 
 
 def test_color_hex_converts_to_rrggbb() -> None:
-    assert peri_scribe.kml.colormap.color_hex((0.18995, 0.07176, 0.23217)) == (
-        "#30123b"
-    )
+    assert peri_scribe.kml.colormap.color_hex((0.18995, 0.07176, 0.23217)) == "#30123b"
     assert peri_scribe.kml.colormap.color_hex((0.0, 0.5, 1.0)) == "#0080ff"
 
 
@@ -144,38 +99,31 @@ def test_cool_fraction_anchors_short_fires_partway() -> None:
 
 def test_active_ring_window_keeps_the_single_qualifying_ring() -> None:
     assert peri_scribe.kml.colormap.active_ring_window(
-        [
-            5.0 * units.meters**2,
-            1.0 * units.meters**2,
-        ],
+        [5.0 * units.meters**2, 1.0 * units.meters**2],
         4.0 * units.meters**2,
     ) == (0, 0)
 
 
 def test_active_ring_window_drops_trivial_edges() -> None:
     assert peri_scribe.kml.colormap.active_ring_window(
-        [
-            0.1 * units.meters**2,
-            10.0 * units.meters**2,
-            0.1 * units.meters**2,
-        ],
+        [0.1 * units.meters**2, 10.0 * units.meters**2, 0.1 * units.meters**2],
         9.9 * units.meters**2,
     ) == (1, 1)
 
 
 def test_active_ring_window_keeps_the_larger_boundary_ring_on_a_tie() -> None:
     assert peri_scribe.kml.colormap.active_ring_window(
-        [
-            1.0 * units.meters**2,
-            100.0 * units.meters**2,
-            5.0 * units.meters**2,
-        ],
+        [1.0 * units.meters**2, 100.0 * units.meters**2, 5.0 * units.meters**2],
         101.0 * units.meters**2,
     ) == (1, 2)
 
 
 def test_progression_ring_colors_single_ring_is_hottest() -> None:
-    only = ring(1.0, utc(2026, 8, 15), area=100.0)
+    only = tests.peri_scribe.kml.colormap_helpers.ring(
+        1.0,
+        tests.peri_scribe.kml.colormap_helpers.utc(2026, 8, 15),
+        area=100.0,
+    )
     assert peri_scribe.kml.colormap.progression_ring_colors((only,)) == (
         (only, peri_scribe.kml.colormap.TURBO_RAMP[-1]),
     )
@@ -183,8 +131,16 @@ def test_progression_ring_colors_single_ring_is_hottest() -> None:
 
 def test_progression_ring_colors_hottest_for_shared_timestamp() -> None:
     rings = (
-        ring(1.0, utc(2026, 8, 15), area=100.0),
-        ring(1.0, utc(2026, 8, 15), area=100.0),
+        tests.peri_scribe.kml.colormap_helpers.ring(
+            1.0,
+            tests.peri_scribe.kml.colormap_helpers.utc(2026, 8, 15),
+            area=100.0,
+        ),
+        tests.peri_scribe.kml.colormap_helpers.ring(
+            1.0,
+            tests.peri_scribe.kml.colormap_helpers.utc(2026, 8, 15),
+            area=100.0,
+        ),
     )
     colored = peri_scribe.kml.colormap.progression_ring_colors(rings)
     assert [rgb for _ring, rgb in colored] == [
@@ -196,9 +152,17 @@ def test_progression_ring_colors_hottest_for_shared_timestamp() -> None:
 def test_progression_ring_colors_interpolates_by_timestamp() -> None:
     base = datetime.datetime(2026, 8, 13, 0, 0, tzinfo=datetime.UTC)
     rings = (
-        ring(1.0, base, area=100.0),
-        ring(1.0, base + datetime.timedelta(hours=6), area=100.0),
-        ring(1.0, base + datetime.timedelta(hours=24), area=100.0),
+        tests.peri_scribe.kml.colormap_helpers.ring(1.0, base, area=100.0),
+        tests.peri_scribe.kml.colormap_helpers.ring(
+            1.0,
+            base + datetime.timedelta(hours=6),
+            area=100.0,
+        ),
+        tests.peri_scribe.kml.colormap_helpers.ring(
+            1.0,
+            base + datetime.timedelta(hours=24),
+            area=100.0,
+        ),
     )
     colored = peri_scribe.kml.colormap.progression_ring_colors(rings)
     cool = peri_scribe.kml.colormap.cool_fraction(3)
@@ -216,10 +180,26 @@ def test_progression_ring_colors_interpolates_by_timestamp() -> None:
 
 def test_progression_ring_colors_clamps_smolder_to_the_hottest() -> None:
     rings = (
-        ring(1.0, utc(2026, 8, 13), area=100.0),
-        ring(1.0, utc(2026, 8, 14), area=100.0),
-        ring(1.0, utc(2026, 8, 15), area=100.0),
-        ring(1.0, utc(2026, 8, 23), area=0.1),
+        tests.peri_scribe.kml.colormap_helpers.ring(
+            1.0,
+            tests.peri_scribe.kml.colormap_helpers.utc(2026, 8, 13),
+            area=100.0,
+        ),
+        tests.peri_scribe.kml.colormap_helpers.ring(
+            1.0,
+            tests.peri_scribe.kml.colormap_helpers.utc(2026, 8, 14),
+            area=100.0,
+        ),
+        tests.peri_scribe.kml.colormap_helpers.ring(
+            1.0,
+            tests.peri_scribe.kml.colormap_helpers.utc(2026, 8, 15),
+            area=100.0,
+        ),
+        tests.peri_scribe.kml.colormap_helpers.ring(
+            1.0,
+            tests.peri_scribe.kml.colormap_helpers.utc(2026, 8, 23),
+            area=0.1,
+        ),
     )
     colored = peri_scribe.kml.colormap.progression_ring_colors(rings)
     assert colored[2][1] == peri_scribe.kml.colormap.TURBO_RAMP[-1]
@@ -228,9 +208,21 @@ def test_progression_ring_colors_clamps_smolder_to_the_hottest() -> None:
 
 def test_progression_ring_colors_clamps_slow_start_to_the_coolest() -> None:
     rings = (
-        ring(1.0, utc(2026, 8, 1), area=0.1),
-        ring(1.0, utc(2026, 8, 10), area=100.0),
-        ring(1.0, utc(2026, 8, 11), area=100.0),
+        tests.peri_scribe.kml.colormap_helpers.ring(
+            1.0,
+            tests.peri_scribe.kml.colormap_helpers.utc(2026, 8, 1),
+            area=0.1,
+        ),
+        tests.peri_scribe.kml.colormap_helpers.ring(
+            1.0,
+            tests.peri_scribe.kml.colormap_helpers.utc(2026, 8, 10),
+            area=100.0,
+        ),
+        tests.peri_scribe.kml.colormap_helpers.ring(
+            1.0,
+            tests.peri_scribe.kml.colormap_helpers.utc(2026, 8, 11),
+            area=100.0,
+        ),
     )
     colored = peri_scribe.kml.colormap.progression_ring_colors(rings)
     cool = peri_scribe.kml.colormap.cool_fraction(2)
@@ -241,69 +233,20 @@ def test_progression_ring_colors_clamps_slow_start_to_the_coolest() -> None:
 
 
 def test_progression_ring_colors_skips_undated_rings() -> None:
-    colored = peri_scribe.kml.colormap.progression_ring_colors(
-        (ring(1.0), ring(2.0, utc(2026, 8, 15), area=100.0)),
-    )
+    colored = peri_scribe.kml.colormap.progression_ring_colors((
+        tests.peri_scribe.kml.colormap_helpers.ring(1.0),
+        tests.peri_scribe.kml.colormap_helpers.ring(
+            2.0,
+            tests.peri_scribe.kml.colormap_helpers.utc(2026, 8, 15),
+            area=100.0,
+        ),
+    ))
     assert len(colored) == 1
     assert colored[0][0].observation_time is not None
 
 
 def test_progression_ring_colors_returns_nothing_without_rings() -> None:
     assert peri_scribe.kml.colormap.progression_ring_colors(()) == ()
-
-
-MAX_COLOR_CHANNEL_ERROR = 6
-
-
-def expected_rgb(rgb: tuple[float, float, float]) -> tuple[int, int, int]:
-    """Return *rgb* on a 0 to 1 scale rounded to 8-bit components.
-
-    Args:
-        rgb: The color as (red, green, blue) components from 0 to 1.
-
-    Returns:
-        The color as (red, green, blue) components from 0 to 255.
-    """
-    return (
-        round(rgb[0] * 255),
-        round(rgb[1] * 255),
-        round(rgb[2] * 255),
-    )
-
-
-def tick_labels(strip: str) -> dict[int, int]:
-    """Return each row's index and the tick label printed to its left.
-
-    Args:
-        strip: The colormap strip.
-
-    Returns:
-        The labelled rows' indices mapped to the values printed on them.
-    """
-    labels = {}
-    for index, line in enumerate(strip.splitlines()):
-        text = line.split("\x1b", 1)[0].strip()
-        if text:
-            labels[index] = int(text)
-    return labels
-
-
-def range_labels(strip: str) -> dict[int, int]:
-    """Return each row's index and the used-range label printed to its right.
-
-    Args:
-        strip: The colormap strip.
-
-    Returns:
-        The labelled rows' indices mapped to the values printed on them.
-    """
-    labels = {}
-    for index, line in enumerate(strip.splitlines()):
-        suffix = line.rsplit(peri_scribe.kml.colormap.ANSI_RESET, 1)[-1]
-        text = suffix.replace(peri_scribe.kml.colormap.USED_RANGE_MARKER, "").strip()
-        if text:
-            labels[index] = int(text)
-    return labels
 
 
 def test_turbo_colormap_ansi_marks_the_used_ramp_by_default() -> None:
@@ -346,9 +289,9 @@ def test_turbo_colormap_ansi_previews_a_trim() -> None:
 
 
 def test_turbo_colormap_ansi_labels_the_tick_indices() -> None:
-    assert tick_labels(peri_scribe.kml.colormap.turbo_colormap_ansi()) == {
-        index: index for index in peri_scribe.kml.colormap.COLORMAP_TICK_INDICES
-    }
+    assert tests.peri_scribe.kml.colormap_helpers.tick_labels(
+        peri_scribe.kml.colormap.turbo_colormap_ansi(),
+    ) == {index: index for index in peri_scribe.kml.colormap.COLORMAP_TICK_INDICES}
 
 
 def test_turbo_colormap_ansi_labels_the_ends_of_the_used_range() -> None:
@@ -358,7 +301,10 @@ def test_turbo_colormap_ansi_labels_the_ends_of_the_used_range() -> None:
         trim_start=first_used,
         trim_end=len(peri_scribe.kml.colormap.turbo_colormap_256) - 1 - last_used,
     )
-    assert range_labels(strip) == {first_used: first_used, last_used: last_used}
+    assert tests.peri_scribe.kml.colormap_helpers.range_labels(strip) == {
+        first_used: first_used,
+        last_used: last_used,
+    }
 
 
 def test_turbo_colormap_ansi_clamps_the_used_range_to_the_table() -> None:
@@ -369,7 +315,10 @@ def test_turbo_colormap_ansi_clamps_the_used_range_to_the_table() -> None:
         - peri_scribe.kml.colormap.TURBO_TRIM_FROM_END
     )
     strip = peri_scribe.kml.colormap.turbo_colormap_ansi(trim_start=trim_start)
-    assert range_labels(strip) == {0: 0, last_used: last_used}
+    assert tests.peri_scribe.kml.colormap_helpers.range_labels(strip) == {
+        0: 0,
+        last_used: last_used,
+    }
 
 
 def test_turbo_colormap_ansi_labels_no_used_range_when_the_trims_overlap() -> None:
@@ -379,7 +328,7 @@ def test_turbo_colormap_ansi_labels_no_used_range_when_the_trims_overlap() -> No
         trim_start=first_used,
         trim_end=len(peri_scribe.kml.colormap.turbo_colormap_256) - 1 - last_used,
     )
-    assert range_labels(strip) == {}
+    assert tests.peri_scribe.kml.colormap_helpers.range_labels(strip) == {}
     assert peri_scribe.kml.colormap.USED_RANGE_MARKER not in strip
 
 

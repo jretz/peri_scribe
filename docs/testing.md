@@ -15,6 +15,7 @@ apply to testing code.
   should appear immediately after `test_` in the test function name. For example, if the
   class `MyClass` has a method `my_method`, then a test function for that method should
   be named `test_my_class_my_method`.
+- `test_*.py` files should only contain actual tests, not helpers or fixtures
 
 ## Input/Output
 

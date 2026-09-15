@@ -24,8 +24,8 @@ if typing.TYPE_CHECKING:
     import pint
 
 
-# Google Earth shows observation times in the output placemark names, and those
-# times are written in California local time.
+# Google Earth shows observation times in the output placemark names, and those times
+# are written in California local time.
 CALIFORNIA_TIME_ZONE = zoneinfo.ZoneInfo("America/Los_Angeles")
 
 MINIMUM_RING_AREA = 1.0 * units.meters**2

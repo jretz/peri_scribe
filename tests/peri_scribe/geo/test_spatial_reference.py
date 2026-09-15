@@ -1,3 +1,5 @@
+"""Verify coordinate-reference selection against metadata and geometry."""
+
 import pyproj
 import pytest
 import shapely
@@ -40,17 +42,15 @@ def test_spatial_reference_wkids_empty_dict_is_empty() -> None:
 
 
 def test_spatial_reference_wkids_integer_wkid() -> None:
-    assert peri_scribe.geo.spatial_reference.spatial_reference_wkids(
-        {"wkid": WGS84_WKID},
-    ) == {
-        WGS84_WKID,
-    }
+    assert peri_scribe.geo.spatial_reference.spatial_reference_wkids({
+        "wkid": WGS84_WKID,
+    }) == {WGS84_WKID}
 
 
 def test_spatial_reference_wkids_numeric_string_wkid() -> None:
-    assert peri_scribe.geo.spatial_reference.spatial_reference_wkids(
-        {"wkid": "102100"},
-    ) == {102100}
+    assert peri_scribe.geo.spatial_reference.spatial_reference_wkids({
+        "wkid": "102100",
+    }) == {102100}
 
 
 def test_spatial_reference_wkids_non_numeric_string_ignored() -> None:
@@ -61,26 +61,26 @@ def test_spatial_reference_wkids_non_numeric_string_ignored() -> None:
 
 
 def test_spatial_reference_wkids_latest_wkid() -> None:
-    assert peri_scribe.geo.spatial_reference.spatial_reference_wkids(
-        {"latestWkid": WEB_MERCATOR_WKID},
-    ) == {
-        WEB_MERCATOR_WKID,
-    }
+    assert peri_scribe.geo.spatial_reference.spatial_reference_wkids({
+        "latestWkid": WEB_MERCATOR_WKID,
+    }) == {WEB_MERCATOR_WKID}
 
 
 def test_spatial_reference_wkids_ignores_other_value_types() -> None:
     assert (
-        peri_scribe.geo.spatial_reference.spatial_reference_wkids(
-            {"wkid": 1.5, "latestWkid": None},
-        )
+        peri_scribe.geo.spatial_reference.spatial_reference_wkids({
+            "wkid": 1.5,
+            "latestWkid": None,
+        })
         == set()
     )
 
 
 def test_spatial_reference_wkids_unions_both_keys() -> None:
-    assert peri_scribe.geo.spatial_reference.spatial_reference_wkids(
-        {"wkid": WGS84_WKID, "latestWkid": WEB_MERCATOR_WKID},
-    ) == {WGS84_WKID, WEB_MERCATOR_WKID}
+    assert peri_scribe.geo.spatial_reference.spatial_reference_wkids({
+        "wkid": WGS84_WKID,
+        "latestWkid": WEB_MERCATOR_WKID,
+    }) == {WGS84_WKID, WEB_MERCATOR_WKID}
 
 
 def test_layer_wkids_no_reported_references_is_empty() -> None:
@@ -123,9 +123,7 @@ def test_bounds_of_all_null_geometries_is_none() -> None:
 
 
 def test_bounds_of_single_point() -> None:
-    geometries: list[shapely.Geometry | None] = [
-        shapely.geometry.Point(1.0, 2.0),
-    ]
+    geometries: list[shapely.Geometry | None] = [shapely.geometry.Point(1.0, 2.0)]
     assert peri_scribe.geo.spatial_reference.bounds_of(geometries) == (
         1.0,
         1.0,
@@ -162,9 +160,12 @@ def test_bounds_of_ignores_null_geometries() -> None:
 
 
 def test_bounds_of_polygon() -> None:
-    polygon = shapely.geometry.Polygon(
-        [(0.0, 0.0), (10.0, 0.0), (10.0, 5.0), (0.0, 5.0)],
-    )
+    polygon = shapely.geometry.Polygon([
+        (0.0, 0.0),
+        (10.0, 0.0),
+        (10.0, 5.0),
+        (0.0, 5.0),
+    ])
     geometries: list[shapely.Geometry | None] = [polygon]
     assert peri_scribe.geo.spatial_reference.bounds_of(geometries) == (
         0.0,
@@ -178,9 +179,7 @@ def test_projected_maximum_magnitude_in_crs_units_web_mercator() -> None:
     crs = pyproj.CRS.from_epsg(WEB_MERCATOR_WKID)
     assert peri_scribe.geo.spatial_reference.projected_maximum_magnitude_in_crs_units(
         crs,
-    ) == pytest.approx(
-        WEB_MERCATOR_MAXIMUM_MAGNITUDE,
-    )
+    ) == pytest.approx(WEB_MERCATOR_MAXIMUM_MAGNITUDE)
 
 
 def test_projected_maximum_magnitude_in_crs_units_fallback_without_area_of_use() -> (
@@ -366,10 +365,7 @@ def test_coordinates_in_area_unknown_area_of_use_matches() -> None:
 
 def test_coordinates_in_area_inside_california_albers() -> None:
     crs = pyproj.CRS.from_epsg(CALIFORNIA_ALBERS_WKID)
-    assert peri_scribe.geo.spatial_reference.coordinates_in_area(
-        crs,
-        CALIFORNIA_BOUNDS,
-    )
+    assert peri_scribe.geo.spatial_reference.coordinates_in_area(crs, CALIFORNIA_BOUNDS)
 
 
 def test_coordinates_in_area_outside_california_albers() -> None:
@@ -490,31 +486,19 @@ def test_choose_spatial_reference_id_single_match_without_exclusions_is_quiet() 
     ("properties", "bounds", "expected_substrings"),
     [
         pytest.param(
-            {
-                "spatialReference": {
-                    "wkid": WGS84_WKID,
-                    "latestWkid": WEB_MERCATOR_WKID,
-                },
-            },
+            {"spatialReference": {"wkid": WGS84_WKID, "latestWkid": WEB_MERCATOR_WKID}},
             CALIFORNIA_BOUNDS,
             ["picked spatial reference EPSG:4326", "excluded 3857"],
             id="projected",
         ),
         pytest.param(
-            {
-                "spatialReference": {"wkid": WGS84_WKID, "latestWkid": NAD83_WKID},
-            },
+            {"spatialReference": {"wkid": WGS84_WKID, "latestWkid": NAD83_WKID}},
             (150.0, 151.0, -35.0, -34.0),
             ["excluded 4269", "coordinates outside its area of use"],
             id="out_of_area",
         ),
         pytest.param(
-            {
-                "spatialReference": {
-                    "wkid": WGS84_WKID,
-                    "latestWkid": UNKNOWN_WKID,
-                },
-            },
+            {"spatialReference": {"wkid": WGS84_WKID, "latestWkid": UNKNOWN_WKID}},
             CALIFORNIA_BOUNDS,
             ["no expected coordinate range known"],
             id="unknown_wkid",

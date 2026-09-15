@@ -8,8 +8,9 @@
 
 - [Development Tools](docs/development_tools.md) — Tools and setup for development.
 - [Conventions](docs/conventions.md) — Coding conventions and style guide for the
-  project.
-- [Testing](docs/testing.md) — Testing guidelines and instructions for the project.
+  project. These must be read and adhered to when writing code.
+- [Testing](docs/testing.md) — Testing guidelines and instructions for the
+  project. These must be read and adhered to when writing code.
 - [Architecture](docs/architecture.md) — Architecture and design of the project.
 
 ## Environment and Tooling
@@ -37,6 +38,7 @@ when appropriate.
 Do not modify any of the following files. Tell me when you need a change and I will make
 it for you.
 
+- .gitignore
 - pyproject.toml
 - uv.lock
 - mise.toml

@@ -13,10 +13,7 @@ import peri_scribe.geo.parsing
 import peri_scribe.sources.changes
 
 
-def attribute_value(
-    attributes: dict[str, object],
-    *column_names: str,
-) -> object | None:
+def attribute_value(attributes: dict[str, object], *column_names: str) -> object | None:
     """Return the first present value among *column_names*, or None.
 
     Args:
@@ -38,10 +35,7 @@ def attribute_value(
     return None
 
 
-def text_attribute(
-    attributes: dict[str, object],
-    *column_names: str,
-) -> str | None:
+def text_attribute(attributes: dict[str, object], *column_names: str) -> str | None:
     """Return the first present text value among *column_names*, or None.
 
     Args:
@@ -62,10 +56,7 @@ def text_attribute(
     return text or None
 
 
-def float_attribute(
-    attributes: dict[str, object],
-    *column_names: str,
-) -> float | None:
+def float_attribute(attributes: dict[str, object], *column_names: str) -> float | None:
     """Return the first present numeric value among *column_names*, or None.
 
     Args:

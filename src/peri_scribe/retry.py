@@ -66,17 +66,17 @@ def rate_limit_from_payload(payload: dict[str, object]) -> pint.Quantity[float] 
     """Return the delay encoded in an ArcGIS rate-limit payload, or None.
 
     Args:
-        payload: The error payload dict whose ``error`` key carries the 429 code
-            and, when present, a "Retry after N sec" detail.
+        payload: The error payload dict whose ``error`` key carries the 429 code and,
+            when present, a "Retry after N sec" detail.
 
     Returns:
         The server-suggested retry-after delay, the fallback delay when the payload has
         no retry-after hint, or None when the payload is not a rate-limit error.
 
     Examples:
-        >>> rate_limit_from_payload(
-        ...     {"error": {"code": 429, "details": ["Retry after 8 sec"]}},
-        ... )
+        >>> rate_limit_from_payload({
+        ...     "error": {"code": 429, "details": ["Retry after 8 sec"]}
+        ... })
         <Quantity(8, 'second')>
 
         >>> rate_limit_from_payload({}) is None
@@ -104,8 +104,8 @@ def rate_limit_retry(error: BaseException) -> pint.Quantity[float] | None:
     Rate-limit responses arrive in two forms. ArcGIS query errors are ``ValueError``
     instances whose first argument is the error payload dict (with ``error.code`` 429
     and a "Retry after N sec" detail). The requests-based last-edit timestamp check
-    raises ``requests.exceptions.HTTPError`` carrying a 429 response. A string
-    fallback handles any other error that carries a 429 code.
+    raises ``requests.exceptions.HTTPError`` carrying a 429 response. A string fallback
+    handles any other error that carries a 429 code.
 
     Args:
         error: The exception raised by the failed attempt.
@@ -144,8 +144,8 @@ def is_transient_error(error: BaseException) -> bool:
         error: The exception raised by the failed attempt.
 
     Returns:
-        True when the error is a requests connection, timeout, or chunked-encoding
-        error — the exception types requests raises for transient failures.
+        True when the error is a requests connection, timeout, or chunked-encoding error
+        — the exception types requests raises for transient failures.
     """
     return isinstance(error, TRANSIENT_EXCEPTIONS)
 
@@ -211,8 +211,8 @@ def retry_wait(retry_state: tenacity.RetryCallState) -> float:
     plain number of seconds.
 
     Args:
-        retry_state: The tenacity retry state holding the failed attempt's
-            exception and attempt number.
+        retry_state: The tenacity retry state holding the failed attempt's exception and
+            attempt number.
 
     Returns:
         The delay before the next attempt, in seconds.

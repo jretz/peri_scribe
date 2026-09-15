@@ -24,11 +24,11 @@ if typing.TYPE_CHECKING:
 class FeedValidationResult:
     """The outcome of validating one feed's stored snapshots.
 
-    The stored snapshots are expected to cover the complete snapshot: every feature
-    in the complete snapshot should be present in the stored snapshots with matching
+    The stored snapshots are expected to cover the complete snapshot: every feature in
+    the complete snapshot should be present in the stored snapshots with matching
     attributes and geometry, and the stored snapshots should carry every attribute
-    column the complete snapshot carries. Stored snapshots may hold additional
-    features and columns without being flagged.
+    column the complete snapshot carries. Stored snapshots may hold additional features
+    and columns without being flagged.
     """
 
     feed_name: str
@@ -39,7 +39,11 @@ class FeedValidationResult:
 
     @property
     def has_problems(self) -> bool:
-        """Return True when stored snapshots do not fully cover the complete one."""
+        """Whether stored snapshots leave any complete-snapshot content uncovered.
+
+        Returns:
+            Whether any features or attributes are missing or mismatched.
+        """
         return bool(
             self.missing_object_ids
             or self.mismatched_object_ids
@@ -112,11 +116,11 @@ def validate_feed(
 ) -> FeedValidationResult:
     """Compare one feed's stored snapshots against its complete snapshot.
 
-    A feature is missing when its OBJECTID appears in the complete snapshot but not
-    in the stored snapshots, and mismatched when its stored attributes or geometry
-    differ from the complete snapshot's. Attribute columns that the complete snapshot
-    carries but the stored snapshots lack are reported separately, since a value
-    comparison cannot cover them.
+    A feature is missing when its OBJECTID appears in the complete snapshot but not in
+    the stored snapshots, and mismatched when its stored attributes or geometry differ
+    from the complete snapshot's. Attribute columns that the complete snapshot carries
+    but the stored snapshots lack are reported separately, since a value comparison
+    cannot cover them.
 
     Args:
         feed: The feed both snapshots came from.
@@ -183,8 +187,8 @@ def validate_complete_sources(
     against the latest stored feature per OBJECTID in the sources directory.
 
     Args:
-        year_directory: The year directory holding both the sources and
-            validation directories.
+        year_directory: The year directory holding both the sources and validation
+            directories.
         feeds: The feeds to validate.
 
     Returns:

@@ -15,6 +15,7 @@ import peri_scribe.output
 import peri_scribe.sources.digests
 import peri_scribe.sources.external_sources
 import tests.factories
+import tests.peri_scribe.sources.digests_helpers
 import tests.peri_scribe.sources.external_source_helpers
 
 
@@ -36,11 +37,8 @@ def test_dataframe_digest_differs_for_different_geometry() -> None:
 
 
 def test_dataframe_digest_treats_missing_values_equally() -> None:
-    def frame(missing: object) -> geopandas.GeoDataFrame:
-        return tests.factories.geo_frame(
-            {"value": pd.array([1, missing], dtype=object)},
-            [shapely.geometry.Point(0.0, 0.0), shapely.geometry.Point(1.0, 1.0)],
-        )
+
+    frame = tests.peri_scribe.sources.digests_helpers.missing_value_frame
 
     digest = peri_scribe.sources.digests.dataframe_digest
     baseline = digest(frame(None))
@@ -56,21 +54,12 @@ def test_dataframe_digest_covers_every_attribute_kind() -> None:
             "b": [True, False],
             "c": [1.5, 2.5],
             "d": [1, 2],
-            "e": [
-                datetime.datetime(2026, 1, 1),
-                datetime.datetime(2026, 1, 2),
-            ],
+            "e": [datetime.datetime(2026, 1, 1), datetime.datetime(2026, 1, 2)],
             "f": [b"\x01", b"\x02"],
-            "g": [
-                shapely.geometry.Point(5.0, 5.0),
-                shapely.geometry.Point(6.0, 6.0),
-            ],
+            "g": [shapely.geometry.Point(5.0, 5.0), shapely.geometry.Point(6.0, 6.0)],
             "h": [{"k": 1}, {"k": 2}],
         },
-        [
-            shapely.geometry.Point(0.0, 0.0),
-            shapely.geometry.Point(1.0, 1.0),
-        ],
+        [shapely.geometry.Point(0.0, 0.0), shapely.geometry.Point(1.0, 1.0)],
     )
     digest = peri_scribe.sources.digests.dataframe_digest(dataframe)
     assert isinstance(digest, str)
@@ -92,33 +81,26 @@ def test_stored_geopackage_digest_returns_none_when_file_unreadable(
 ) -> None:
     path = tmp_path / "bad.gpkg"
     path.write_bytes(b"not a geopackage")
-    digest = peri_scribe.sources.digests.stored_geopackage_digest(
-        path,
-        "evacuations",
-    )
+    digest = peri_scribe.sources.digests.stored_geopackage_digest(path, "evacuations")
     assert digest is None
 
 
-def test_stored_geopackage_digest_digests_file_contents(
-    tmp_path: pathlib.Path,
-) -> None:
+def test_stored_geopackage_digest_digests_file_contents(tmp_path: pathlib.Path) -> None:
     output = peri_scribe.sources.external_sources.output_path(
         tmp_path,
         peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
     )
     output.parent.mkdir(parents=True, exist_ok=True)
+    frame = tests.peri_scribe.sources.external_source_helpers.sample_arcgis_dataframe()
     peri_scribe.output.write_geopackage(
         output,
         [
             peri_scribe.models.LayerData(
                 name="evacuations",
-                dataframe=tests.peri_scribe.sources.external_source_helpers.sample_arcgis_dataframe(),
+                dataframe=frame,
             ),
         ],
     )
-    digest = peri_scribe.sources.digests.stored_geopackage_digest(
-        output,
-        "evacuations",
-    )
+    digest = peri_scribe.sources.digests.stored_geopackage_digest(output, "evacuations")
     stored = geopandas.read_file(output, layer="evacuations")
     assert digest == peri_scribe.sources.digests.dataframe_digest(stored)

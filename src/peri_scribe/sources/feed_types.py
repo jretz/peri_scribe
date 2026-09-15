@@ -61,11 +61,7 @@ def observe_layer_last_edit_timestamp(url: str, name: str) -> int | None:
             lambda: fetch_layer_metadata(url),
         )
     except (requests.exceptions.RequestException, ValueError) as error:
-        logger.warning(
-            "Last-edit timestamp check failed",
-            url=url,
-            error=str(error),
-        )
+        logger.warning("Last-edit timestamp check failed", url=url, error=str(error))
         return None
     if not isinstance(payload, dict):
         logger.warning(
@@ -99,72 +95,128 @@ class Feed(typing.Protocol):
 
     @property
     def name(self) -> str:
-        """The feed's name."""
+        """The feed's name.
+
+        Returns:
+            The feed's name.
+        """
         ...
 
     @property
     def url(self) -> str:
-        """The feed's layer REST endpoint URL."""
+        """The feed's layer REST endpoint URL.
+
+        Returns:
+            The feed's layer REST endpoint URL.
+        """
         ...
 
     @property
     def fire_name_column(self) -> str:
-        """The column holding each fire's name."""
+        """The column holding each fire's name.
+
+        Returns:
+            The column holding each fire's name.
+        """
         ...
 
     @property
     def status_column(self) -> str:
-        """The column holding each fire's status."""
+        """The column holding each fire's status.
+
+        Returns:
+            The column holding each fire's status.
+        """
         ...
 
     @property
     def fire_identifier_columns(self) -> tuple[str, ...]:
-        """The columns holding each fire's identifiers, primary first."""
+        """The columns holding each fire's identifiers, primary first.
+
+        Returns:
+            The columns holding each fire's identifiers, primary first.
+        """
         ...
 
     @property
     def mission_column(self) -> str | None:
-        """The column holding each feature's mapping mission code, or None."""
+        """The column holding each feature's mapping mission code, or None.
+
+        Returns:
+            The column holding each feature's mapping mission code, or None.
+        """
         ...
 
     @property
     def observation_time_column(self) -> str | None:
-        """The column holding each feature's observation time, or None."""
+        """The column holding each feature's observation time, or None.
+
+        Returns:
+            The column holding each feature's observation time, or None.
+        """
         ...
 
     @property
     def point_of_origin_state_column(self) -> str | None:
-        """The column holding each feature's point of origin state, or None."""
+        """The column holding each feature's point of origin state, or None.
+
+        Returns:
+            The column holding each feature's point of origin state, or None.
+        """
         ...
 
     @property
     def point_of_origin_fips_column(self) -> str | None:
-        """The column holding each feature's point of origin FIPS code, or None."""
+        """The column holding each feature's point of origin FIPS code, or None.
+
+        Returns:
+            The column holding each feature's point of origin FIPS code, or None.
+        """
         ...
 
     @property
     def complex_identifier_column(self) -> str | None:
-        """The column holding each fire's complex identifier, or None."""
+        """The column holding each fire's complex identifier, or None.
+
+        Returns:
+            The column holding each fire's complex identifier, or None.
+        """
         ...
 
     @property
     def complex_name_column(self) -> str | None:
-        """The column holding each fire's complex name, or None."""
+        """The column holding each fire's complex name, or None.
+
+        Returns:
+            The column holding each fire's complex name, or None.
+        """
         ...
 
     @property
     def is_complex_child_column(self) -> str | None:
-        """The column marking complex children, or None."""
+        """The column marking complex children, or None.
+
+        Returns:
+            The column marking complex children, or None.
+        """
         ...
 
     @property
     def change_columns(self) -> tuple[str, ...]:
-        """The timestamp columns that change when a feature is edited."""
+        """The timestamp columns that change when a feature is edited.
+
+        Returns:
+            The timestamp columns that change when a feature is edited.
+        """
         ...
 
     @property
     def current_last_edit_timestamp(self) -> int | None:
-        """The last-edit timestamp currently observed for this feed's layer."""
+        """The last-edit timestamp currently observed for this feed's layer.
+
+        Returns:
+            The last-edit timestamp currently observed for this feed's layer.
+        """
         ...
 
 
@@ -186,6 +238,11 @@ class ArcGISFeed(pydantic.BaseModel):
 
     @property
     def path_segments(self) -> list[str]:
+        """The nonempty URL path segments identifying the ArcGIS layer.
+
+        Returns:
+            The service path components, with empty segments omitted.
+        """
         return [
             segment
             for segment in urllib.parse.urlsplit(self.url).path.split("/")
@@ -194,19 +251,34 @@ class ArcGISFeed(pydantic.BaseModel):
 
     @property
     def service_name(self) -> str:
+        """The ArcGIS service name used to identify the feed.
+
+        Returns:
+            The service component of the layer URL.
+        """
         return self.path_segments[-3]
 
     @property
     def layer_id(self) -> int:
+        """The numeric layer identifier within the ArcGIS service.
+
+        Returns:
+            The layer number from the final URL segment.
+        """
         return int(self.path_segments[-1])
 
     @property
     def name(self) -> str:
+        """The service and layer name used for stored snapshots.
+
+        Returns:
+            The service name and layer number joined with an underscore.
+        """
         return f"{self.service_name}_{self.layer_id}"
 
     @property
     def current_last_edit_timestamp(self) -> int | None:
-        """Observe and return the last-edit timestamp for this feed's layer.
+        """The last-edit timestamp currently observed for this feed's layer.
 
         Returns:
             The observed last-edit timestamp, or None when an observation fails.

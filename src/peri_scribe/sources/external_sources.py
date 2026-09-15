@@ -30,15 +30,15 @@ constructed from a URL pattern; they are read from the "Download links" table on
 dataset's repository page whenever the archives are downloaded, so a change in the link
 scheme is picked up automatically.
 
-The buildings source stores its data as the compact buildings SQLite database instead
-of a GeoPackage: a dedicated converter (``peri_scribe.sources.buildings``) streams every
+The buildings source stores its data as the compact buildings SQLite database instead of
+a GeoPackage: a dedicated converter (``peri_scribe.sources.buildings``) streams every
 state's archive directly into the database, so the archives and their GeoJSON are never
 written to disk, and the stored file holds only quantized centroid records in compressed
-0.5° tiles with no attributes. The database is regenerated only when it is
-missing or no longer matches the expected format.
+0.5° tiles with no attributes. The database is regenerated only when it is missing or no
+longer matches the expected format.
 
-The fire-source reader skips these files, so their GeoPackages are never mistaken
-for fire snapshots.
+The fire-source reader skips these files, so their GeoPackages are never mistaken for
+fire snapshots.
 """
 
 from __future__ import annotations
@@ -147,8 +147,8 @@ def buildings_state_urls() -> dict[str, str]:
         The mapping from state name to archive URL.
 
     Raises:
-        ExternalDataError: If the page cannot be downloaded, holds no download links,
-            or is missing a link for one of the states.
+        ExternalDataError: If the page cannot be downloaded, holds no download links, or
+            is missing a link for one of the states.
     """
     html_text = peri_scribe.sources.archives.fetch_page_text(BUILDINGS_SOURCE.url)
     links = peri_scribe.sources.archives.download_links(html_text)
@@ -191,11 +191,7 @@ MAJOR_CITIES_SOURCE = ExternalSource(
     layer_name="major_cities",
 )
 
-EXTERNAL_SOURCES = (
-    BUILDINGS_SOURCE,
-    EVACUATIONS_SOURCE,
-    MAJOR_CITIES_SOURCE,
-)
+EXTERNAL_SOURCES = (BUILDINGS_SOURCE, EVACUATIONS_SOURCE, MAJOR_CITIES_SOURCE)
 
 
 def external_source_directory_path(
@@ -315,8 +311,8 @@ def fetch_arcgis_source(
         The path of the stored GeoPackage.
 
     Raises:
-        ExternalDataError: If the layer cannot be retrieved and no current version
-            is stored.
+        ExternalDataError: If the layer cannot be retrieved and no current version is
+            stored.
     """
     layer_name = source.layer_name or source.name
     output = output_path(year_directory, source)
@@ -341,23 +337,14 @@ def fetch_arcgis_source(
             else None
         ),
     ):
-        logger.debug(
-            "External source unchanged",
-            source=source.name,
-            path=output,
-        )
+        logger.debug("External source unchanged", source=source.name, path=output)
         return output
     temporary = output.with_name(f"{output.stem}.tmp.gpkg")
     output.parent.mkdir(parents=True, exist_ok=True)
     try:
         peri_scribe.output.write_geopackage(
             temporary,
-            [
-                peri_scribe.models.LayerData(
-                    name=layer_name,
-                    dataframe=geodataframe,
-                ),
-            ],
+            [peri_scribe.models.LayerData(name=layer_name, dataframe=geodataframe)],
         )
         temporary.replace(output)
     finally:

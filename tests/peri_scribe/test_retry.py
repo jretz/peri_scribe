@@ -9,6 +9,7 @@ import requests
 import tenacity
 
 import peri_scribe.retry
+import tests.peri_scribe.retry_helpers
 from peri_scribe.units import units
 from tests.conftest import (
     LOOSE_429_ERROR_PAYLOAD,
@@ -21,33 +22,8 @@ if typing.TYPE_CHECKING:
     import structlog.testing
 
 
-RETRY_AFTER_HEADER_IN_SECONDS = 7
-
 # JSON wire-format strings of the payloads, used to exercise the string fallback
 # classification.
-RATE_LIMIT_ERROR_STRING = json.dumps(RATE_LIMIT_ERROR_PAYLOAD)
-LOOSE_429_ERROR_STRING = json.dumps(LOOSE_429_ERROR_PAYLOAD)
-
-
-def http_error(
-    status_code: int,
-    *,
-    retry_after: str | None = None,
-) -> requests.exceptions.HTTPError:
-    """Build an HTTPError whose response has the given status and header.
-
-    Args:
-        status_code: The response status code.
-        retry_after: The Retry-After header value, if any.
-
-    Returns:
-        The HTTPError.
-    """
-    response = requests.Response()
-    response.status_code = status_code
-    if retry_after is not None:
-        response.headers["Retry-After"] = retry_after
-    return requests.exceptions.HTTPError("boom", response=response)
 
 
 def test_rate_limit_retry_uses_server_hint() -> None:
@@ -61,38 +37,45 @@ def test_rate_limit_retry_uses_fallback_for_loose_429() -> None:
 
 
 def test_rate_limit_retry_uses_server_hint_from_string() -> None:
-    error = ValueError(RATE_LIMIT_ERROR_STRING)
+    error = ValueError(tests.peri_scribe.retry_helpers.RATE_LIMIT_ERROR_STRING)
     assert peri_scribe.retry.rate_limit_retry(error) == RATE_LIMIT_RETRY_AFTER
 
 
 def test_rate_limit_retry_uses_fallback_for_loose_429_string() -> None:
-    error = ValueError(LOOSE_429_ERROR_STRING)
+    error = ValueError(tests.peri_scribe.retry_helpers.LOOSE_429_ERROR_STRING)
     assert peri_scribe.retry.rate_limit_retry(error) == peri_scribe.retry.FALLBACK_RETRY
 
 
 def test_rate_limit_retry_uses_retry_after_header() -> None:
-    error = http_error(
+    error = tests.peri_scribe.retry_helpers.http_error(
         http.HTTPStatus.TOO_MANY_REQUESTS,
-        retry_after=str(RETRY_AFTER_HEADER_IN_SECONDS),
+        retry_after=str(tests.peri_scribe.retry_helpers.RETRY_AFTER_HEADER_IN_SECONDS),
     )
     assert (
         peri_scribe.retry.rate_limit_retry(error)
-        == RETRY_AFTER_HEADER_IN_SECONDS * units.second
+        == tests.peri_scribe.retry_helpers.RETRY_AFTER_HEADER_IN_SECONDS * units.second
     )
 
 
 def test_rate_limit_retry_uses_fallback_without_retry_after_header() -> None:
-    error = http_error(http.HTTPStatus.TOO_MANY_REQUESTS)
+    error = tests.peri_scribe.retry_helpers.http_error(
+        http.HTTPStatus.TOO_MANY_REQUESTS,
+    )
     assert peri_scribe.retry.rate_limit_retry(error) == peri_scribe.retry.FALLBACK_RETRY
 
 
 def test_rate_limit_retry_uses_fallback_for_non_numeric_header() -> None:
-    error = http_error(http.HTTPStatus.TOO_MANY_REQUESTS, retry_after="later")
+    error = tests.peri_scribe.retry_helpers.http_error(
+        http.HTTPStatus.TOO_MANY_REQUESTS,
+        retry_after="later",
+    )
     assert peri_scribe.retry.rate_limit_retry(error) == peri_scribe.retry.FALLBACK_RETRY
 
 
 def test_rate_limit_retry_returns_none_for_other_http_errors() -> None:
-    error = http_error(http.HTTPStatus.INTERNAL_SERVER_ERROR)
+    error = tests.peri_scribe.retry_helpers.http_error(
+        http.HTTPStatus.INTERNAL_SERVER_ERROR,
+    )
     assert peri_scribe.retry.rate_limit_retry(error) is None
 
 
@@ -112,23 +95,16 @@ def test_rate_limit_retry_returns_none_for_non_rate_limit_code() -> None:
 
 
 def test_rate_limit_retry_uses_fallback_for_non_list_details() -> None:
-    error = ValueError(
-        {
-            "error": {
-                "code": http.HTTPStatus.TOO_MANY_REQUESTS,
-                "details": "oops",
-            },
-        },
-    )
+    error = ValueError({
+        "error": {"code": http.HTTPStatus.TOO_MANY_REQUESTS, "details": "oops"},
+    })
     assert peri_scribe.retry.rate_limit_retry(error) == peri_scribe.retry.FALLBACK_RETRY
 
 
 @pytest.mark.parametrize(
     "error",
     [
-        requests.exceptions.ConnectionError(
-            "Connection broken: IncompleteRead(…)",
-        ),
+        requests.exceptions.ConnectionError("Connection broken: IncompleteRead(…)"),
         requests.exceptions.ConnectionError("Connection reset by peer"),
         requests.exceptions.ConnectionError("Connection aborted."),
         requests.exceptions.ConnectionError(
@@ -152,22 +128,6 @@ def test_is_transient_error_matches_transient_exception_types(
 def test_is_transient_error_does_not_match_normal_errors() -> None:
     error = ValueError(RATE_LIMIT_ERROR_PAYLOAD)
     assert peri_scribe.retry.is_transient_error(error) is False
-
-
-def failed_retry_state(error: Exception) -> tenacity.RetryCallState:
-    """Build the retry state of a single failed attempt raising *error*.
-
-    Returns:
-        A retry state whose latest attempt raised *error*.
-    """
-    retry_state = tenacity.RetryCallState(
-        retry_object=tenacity.Retrying(),
-        fn=None,
-        args=(),
-        kwargs={},
-    )
-    retry_state.set_exception((type(error), error, error.__traceback__))
-    return retry_state
 
 
 def test_is_retryable_error_retries_rate_limit() -> None:
@@ -202,21 +162,25 @@ def test_retry_reason_describes_transient() -> None:
 
 
 def test_retry_wait_uses_server_hint() -> None:
-    retry_state = failed_retry_state(ValueError(RATE_LIMIT_ERROR_PAYLOAD))
+    retry_state = tests.peri_scribe.retry_helpers.failed_retry_state(
+        ValueError(RATE_LIMIT_ERROR_PAYLOAD),
+    )
     assert peri_scribe.retry.retry_wait(retry_state) == RATE_LIMIT_RETRY_AFTER.m_as(
         "second",
     )
 
 
 def test_retry_wait_uses_fallback_for_loose_429() -> None:
-    retry_state = failed_retry_state(ValueError(LOOSE_429_ERROR_PAYLOAD))
+    retry_state = tests.peri_scribe.retry_helpers.failed_retry_state(
+        ValueError(LOOSE_429_ERROR_PAYLOAD),
+    )
     assert peri_scribe.retry.retry_wait(
         retry_state,
     ) == peri_scribe.retry.FALLBACK_RETRY.m_as("seconds")
 
 
 def test_retry_wait_uses_exponential_backoff() -> None:
-    retry_state = failed_retry_state(
+    retry_state = tests.peri_scribe.retry_helpers.failed_retry_state(
         requests.exceptions.ConnectionError("Connection broken"),
     )
     retry_state.attempt_number = 3
@@ -226,7 +190,7 @@ def test_retry_wait_uses_exponential_backoff() -> None:
 
 
 def test_retry_wait_caps_backoff_at_maximum() -> None:
-    retry_state = failed_retry_state(
+    retry_state = tests.peri_scribe.retry_helpers.failed_retry_state(
         requests.exceptions.ConnectionError("Connection broken"),
     )
     retry_state.attempt_number = 20
@@ -237,7 +201,12 @@ def test_retry_wait_caps_backoff_at_maximum() -> None:
 
 def test_last_error_returns_failed_exception() -> None:
     error = ValueError("boom")
-    assert peri_scribe.retry.last_error(failed_retry_state(error)) is error
+    assert (
+        peri_scribe.retry.last_error(
+            tests.peri_scribe.retry_helpers.failed_retry_state(error),
+        )
+        is error
+    )
 
 
 def test_last_error_raises_without_outcome() -> None:
@@ -254,9 +223,8 @@ def test_last_error_raises_without_outcome() -> None:
 def test_run_with_retry_logs_serializable_traceback_on_exhaustion(
     log_output: structlog.testing.LogCapture,
 ) -> None:
-    def failing_query() -> None:
-        message = "Disconnected"
-        raise requests.exceptions.ConnectionError(message)
+
+    failing_query = tests.peri_scribe.retry_helpers.raise_disconnected_query
 
     with pytest.raises(requests.exceptions.ConnectionError, match="Disconnected"):
         peri_scribe.retry.run_with_retry("example", failing_query, max_retries=0)

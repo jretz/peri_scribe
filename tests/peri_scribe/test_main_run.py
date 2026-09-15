@@ -23,12 +23,10 @@ import peri_scribe.sources.external_sources
 import peri_scribe.sources.fetching
 import peri_scribe.sources.full_fetch_state
 import tests.factories
+import tests.peri_scribe.main_run_helpers
 from peri_scribe.units import units
 from tests.conftest import CLICK_USAGE_ERROR_EXIT_CODE
-from tests.main_stubs import (
-    BASE_DIRECTORY,
-    RunStubs,
-)
+from tests.main_stubs import BASE_DIRECTORY, RunStubs
 
 
 if typing.TYPE_CHECKING:
@@ -137,10 +135,7 @@ def test_run_runs_all_stages_when_fetch_changed(
     stubs = run_stubs(changed=True)
     year_directory = tmp_path / "data" / "2026"
     year_directory.mkdir(parents=True)
-    result = runner.invoke(
-        peri_scribe.main.cli,
-        ["run", str(year_directory)],
-    )
+    result = runner.invoke(peri_scribe.main.cli, ["run", str(year_directory)])
     assert result.exit_code == 0
     assert stubs.external_calls == [
         (source, year_directory)
@@ -226,21 +221,16 @@ def test_stored_evacuations_digest_uses_evacuations_output(
     )
     digests: list[tuple[pathlib.Path, str]] = []
 
-    def stored_geopackage_digest(
-        path: pathlib.Path,
-        layer_name: str,
-    ) -> str | None:
-        digests.append((path, layer_name))
-        return "digest"
+    stored_geopackage_digest = tests.peri_scribe.main_run_helpers.make_digest_recorder(
+        digests=digests,
+    )
 
     monkeypatch.setattr(
         peri_scribe.sources.digests,
         "stored_geopackage_digest",
         stored_geopackage_digest,
     )
-    result = peri_scribe.main.stored_evacuations_digest(
-        pathlib.Path("/data/2026"),
-    )
+    result = peri_scribe.main.stored_evacuations_digest(pathlib.Path("/data/2026"))
     assert result == "digest"
     assert digests == [(output, "evacuations")]
 
@@ -251,10 +241,7 @@ def test_run_unconditional_runs_stages_when_unchanged(
     run_stubs: typing.Callable[..., RunStubs],
 ) -> None:
     stubs = run_stubs(changed=False)
-    result = runner.invoke(
-        peri_scribe.main.cli,
-        ["run", "--unconditional"],
-    )
+    result = runner.invoke(peri_scribe.main.cli, ["run", "--unconditional"])
     assert result.exit_code == 0
     year_directory = BASE_DIRECTORY / "data" / "2026"
     assert stubs.fetch_calls == [(BASE_DIRECTORY, 2026, False)]
@@ -272,10 +259,7 @@ def test_run_full_fetch_interval_zero_hours_fetches_in_full_and_records_state(
     run_stubs: typing.Callable[..., RunStubs],
 ) -> None:
     stubs = run_stubs(changed=False)
-    result = runner.invoke(
-        peri_scribe.main.cli,
-        ["run", "--full-fetch-interval", "0h"],
-    )
+    result = runner.invoke(peri_scribe.main.cli, ["run", "--full-fetch-interval", "0h"])
     assert result.exit_code == 0
     year_directory = BASE_DIRECTORY / "data" / "2026"
     assert stubs.fetch_calls == [(BASE_DIRECTORY, 2026, True)]
@@ -294,10 +278,7 @@ def test_run_full_fetch_interval_zero_days_fetches_in_full(
     run_stubs: typing.Callable[..., RunStubs],
 ) -> None:
     stubs = run_stubs(changed=False)
-    result = runner.invoke(
-        peri_scribe.main.cli,
-        ["run", "--full-fetch-interval", "0d"],
-    )
+    result = runner.invoke(peri_scribe.main.cli, ["run", "--full-fetch-interval", "0d"])
     assert result.exit_code == 0
     assert stubs.fetch_calls == [(BASE_DIRECTORY, 2026, True)]
 
@@ -389,10 +370,7 @@ def test_run_full_fetch_interval_accepts_days(
             ),
         ),
     )
-    result = runner.invoke(
-        peri_scribe.main.cli,
-        ["run", "--full-fetch-interval", "1d"],
-    )
+    result = runner.invoke(peri_scribe.main.cli, ["run", "--full-fetch-interval", "1d"])
     assert result.exit_code == 0
     assert stubs.fetch_calls == [(BASE_DIRECTORY, 2026, False)]
     assert stubs.write_state_calls == []
@@ -544,10 +522,7 @@ def test_run_full_fetch_interval_does_not_record_state_when_fetch_fails(
 
     stubs = run_stubs(changed=True)
     monkeypatch.setattr(peri_scribe.sources.fetching, "fetch_all_feeds", fail)
-    result = runner.invoke(
-        peri_scribe.main.cli,
-        ["run", "--full-fetch-interval", "0h"],
-    )
+    result = runner.invoke(peri_scribe.main.cli, ["run", "--full-fetch-interval", "0h"])
     assert result.exit_code == 1
     assert "boom" in result.output
     assert stubs.write_state_calls == []
@@ -559,16 +534,11 @@ def test_run_stops_when_fetch_state_is_malformed(
     runner: click.testing.CliRunner,
     run_stubs: typing.Callable[..., RunStubs],
 ) -> None:
-    def read_state(_path: pathlib.Path) -> typing.Never:
-        message = "boom"
-        raise ValueError(message)
+
+    read_state = tests.peri_scribe.main_run_helpers.raise_malformed_state
 
     stubs = run_stubs(changed=True)
-    monkeypatch.setattr(
-        peri_scribe.sources.full_fetch_state,
-        "read_state",
-        read_state,
-    )
+    monkeypatch.setattr(peri_scribe.sources.full_fetch_state, "read_state", read_state)
     result = runner.invoke(
         peri_scribe.main.cli,
         ["run", "--full-fetch-interval", "12h"],
@@ -607,10 +577,7 @@ def test_duration_rejects_out_of_range_durations() -> None:
         duration.convert("9999999999999h", None, None)
 
 
-@pytest.mark.parametrize(
-    "value",
-    ["-1h", "1.5h", "12", "1w", "1d12h", "1H", "h", ""],
-)
+@pytest.mark.parametrize("value", ["-1h", "1.5h", "12", "1w", "1d12h", "1H", "h", ""])
 def test_run_rejects_invalid_full_fetch_intervals(
     runner: click.testing.CliRunner,
     value: str,
@@ -642,10 +609,7 @@ def test_run_stops_when_fetch_fails(
 
     stubs = run_stubs(changed=True)
     monkeypatch.setattr(peri_scribe.sources.fetching, "fetch_all_feeds", fail)
-    result = runner.invoke(
-        peri_scribe.main.cli,
-        ["run", "--unconditional"],
-    )
+    result = runner.invoke(peri_scribe.main.cli, ["run", "--unconditional"])
     assert result.exit_code == 1
     assert "boom" in result.output
     assert stubs.external_calls == []
@@ -842,9 +806,7 @@ def test_run_to_fetch_short_circuits_without_later_stages(
     assert stubs.report_calls == []
 
 
-def test_run_only_conflicts_with_from(
-    runner: click.testing.CliRunner,
-) -> None:
+def test_run_only_conflicts_with_from(runner: click.testing.CliRunner) -> None:
     result = runner.invoke(
         peri_scribe.main.cli,
         ["run", "--only", "geography", "--from", "score"],
@@ -853,9 +815,7 @@ def test_run_only_conflicts_with_from(
     assert "--only cannot be combined with --from or --to" in result.output
 
 
-def test_run_rejects_from_after_to(
-    runner: click.testing.CliRunner,
-) -> None:
+def test_run_rejects_from_after_to(runner: click.testing.CliRunner) -> None:
     result = runner.invoke(
         peri_scribe.main.cli,
         ["run", "--from", "kmz", "--to", "fetch"],
@@ -883,9 +843,7 @@ def test_run_list_stages_prints_descriptions_without_running(
         assert stage.description in result.output
 
 
-def test_run_help_names_current_year_default(
-    runner: click.testing.CliRunner,
-) -> None:
+def test_run_help_names_current_year_default(runner: click.testing.CliRunner) -> None:
     result = runner.invoke(peri_scribe.main.cli, ["run", "--help"])
     assert result.exit_code == 0
     assert (
@@ -894,20 +852,13 @@ def test_run_help_names_current_year_default(
     assert "data/<current year>" not in result.output
 
 
-def test_run_rejects_missing_directory(
-    runner: click.testing.CliRunner,
-) -> None:
-    result = runner.invoke(
-        peri_scribe.main.cli,
-        ["run", "no-such-directory"],
-    )
+def test_run_rejects_missing_directory(runner: click.testing.CliRunner) -> None:
+    result = runner.invoke(peri_scribe.main.cli, ["run", "no-such-directory"])
     assert result.exit_code == CLICK_USAGE_ERROR_EXIT_CODE
     assert "does not exist" in result.output
 
 
-def test_cli_help_lists_run(
-    runner: click.testing.CliRunner,
-) -> None:
+def test_cli_help_lists_run(runner: click.testing.CliRunner) -> None:
     result = runner.invoke(peri_scribe.main.cli, ["--help"])
     assert result.exit_code == 0
     assert "run" in result.output

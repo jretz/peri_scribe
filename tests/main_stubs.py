@@ -14,8 +14,8 @@ if typing.TYPE_CHECKING:
 
 SAMPLE_LAST_EDIT_TIMESTAMP = 2
 
-# The base directory fetch resolves from ``pathlib.Path.cwd()``, which is mocked to
-# this value so snapshots never touch the real filesystem.
+# The base directory fetch resolves from ``pathlib.Path.cwd()``, which is mocked to this
+# value so snapshots never touch the real filesystem.
 BASE_DIRECTORY = pathlib.Path("/fetch")
 
 

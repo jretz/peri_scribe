@@ -95,10 +95,7 @@ def share_decades(smallest_share: float) -> int:
     """
     if smallest_share >= 1.0:
         return CCDF_MINIMUM_DECADES
-    return max(
-        CCDF_MINIMUM_DECADES,
-        math.ceil(-math.log10(smallest_share)),
-    )
+    return max(CCDF_MINIMUM_DECADES, math.ceil(-math.log10(smallest_share)))
 
 
 def share_tick_text(value: float) -> str:
@@ -227,7 +224,7 @@ class CcdfLayout:
 
     @property
     def plot_width(self) -> float:
-        """Return the plot area's width.
+        """The plot area's width in pixels.
 
         Returns:
             The width in pixels.
@@ -236,7 +233,7 @@ class CcdfLayout:
 
     @property
     def plot_height(self) -> float:
-        """Return the plot area's height.
+        """The plot area's height in pixels.
 
         Returns:
             The height in pixels.
@@ -310,11 +307,7 @@ def ccdf_layout(scores: list[int]) -> CcdfLayout:
     )
 
 
-def ccdf_curve_path(
-    values: np.ndarray,
-    shares: np.ndarray,
-    layout: CcdfLayout,
-) -> str:
+def ccdf_curve_path(values: np.ndarray, shares: np.ndarray, layout: CcdfLayout) -> str:
     """Return the SVG path data drawing the complementary CDF as a step curve.
 
     The curve steps rather than slopes: scores between the ones that occur hold their
@@ -379,10 +372,7 @@ def ccdf_grid_elements(layout: CcdfLayout) -> list[str]:
     ]
 
 
-def ccdf_knee_elements(
-    scores: list[int],
-    layout: CcdfLayout,
-) -> list[str]:
+def ccdf_knee_elements(scores: list[int], layout: CcdfLayout) -> list[str]:
     """Return the knee labels for the chart.
 
     A failure to find or label the knees leaves the chart unlabelled rather than failing
@@ -409,19 +399,17 @@ def ccdf_knee_elements(
         x = layout.x_of(float(score))
         y = layout.y_of(share)
         percentile = (1 - share) * 100
-        elements.extend(
+        elements.extend((
             (
-                (
-                    f'<line x1="{x:.1f}" y1="{y:.1f}" x2="{x + 24:.1f}" '
-                    f'y2="{y:.1f}" stroke="{CCDF_KNEE_COLOR}" stroke-width="1"/>'
-                ),
-                f'<text x="{x + 30:.1f}" y="{y - 6:.1f}" {font}>score {score}</text>',
-                (
-                    f'<text x="{x + 30:.1f}" y="{y + 18:.1f}" {font}>'
-                    f"percentile {percentile:.1f}</text>"
-                ),
+                f'<line x1="{x:.1f}" y1="{y:.1f}" x2="{x + 24:.1f}" '
+                f'y2="{y:.1f}" stroke="{CCDF_KNEE_COLOR}" stroke-width="1"/>'
             ),
-        )
+            f'<text x="{x + 30:.1f}" y="{y - 6:.1f}" {font}>score {score}</text>',
+            (
+                f'<text x="{x + 30:.1f}" y="{y + 18:.1f}" {font}>'
+                f"percentile {percentile:.1f}</text>"
+            ),
+        ))
     return elements
 
 
@@ -468,21 +456,19 @@ def ccdf_svg(document: peri_scribe.models.FireScores) -> str:
             f'stroke-linejoin="round"/>',
         )
     elements.extend(ccdf_knee_elements(scores, layout))
-    elements.extend(
+    elements.extend((
         (
-            (
-                f'<text x="{layout.left + layout.plot_width / 2:.1f}" '
-                f'y="{layout.height - 22:.1f}" {label_font} text-anchor="middle">'
-                f"{html.escape(CCDF_X_AXIS_LABEL)}</text>"
-            ),
-            (
-                f'<text x="0" y="0" '
-                f'transform="translate({CCDF_PAD_LEFT / 3:.1f},'
-                f'{(layout.top + layout.bottom) / 2:.1f}) rotate(-90)" {label_font} '
-                f'text-anchor="middle">{html.escape(CCDF_Y_AXIS_LABEL)}</text>'
-            ),
+            f'<text x="{layout.left + layout.plot_width / 2:.1f}" '
+            f'y="{layout.height - 22:.1f}" {label_font} text-anchor="middle">'
+            f"{html.escape(CCDF_X_AXIS_LABEL)}</text>"
         ),
-    )
+        (
+            f'<text x="0" y="0" '
+            f'transform="translate({CCDF_PAD_LEFT / 3:.1f},'
+            f'{(layout.top + layout.bottom) / 2:.1f}) rotate(-90)" {label_font} '
+            f'text-anchor="middle">{html.escape(CCDF_Y_AXIS_LABEL)}</text>'
+        ),
+    ))
     elements.append("</svg>")
     return "\n".join(elements) + "\n"
 

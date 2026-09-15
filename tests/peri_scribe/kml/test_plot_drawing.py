@@ -11,6 +11,7 @@ import pytest
 import peri_scribe.kml.plot_data
 import peri_scribe.kml.plot_drawing
 import tests.peri_scribe.kml.kml_plot_helpers
+import tests.peri_scribe.kml.plot_drawing_helpers
 
 
 def test_format_tick_uses_thousands_for_large_values() -> None:
@@ -136,21 +137,9 @@ def test_x_axis_ticks_does_not_force_the_last_day() -> None:
     )
 
 
-def one_series_plot() -> tuple[peri_scribe.kml.plot_data.PlotSeries, ...]:
-    return (
-        peri_scribe.kml.plot_data.PlotSeries(
-            label="Area",
-            points=(
-                tests.peri_scribe.kml.kml_plot_helpers.series_point(1, 10.0),
-                tests.peri_scribe.kml.kml_plot_helpers.series_point(2, 20.0),
-            ),
-        ),
-    )
-
-
 def test_draw_plot_returns_well_formed_svg_for_one_series() -> None:
     content = peri_scribe.kml.plot_drawing.draw_plot(
-        one_series_plot(),
+        tests.peri_scribe.kml.plot_drawing_helpers.one_series_plot(),
         y_axis_label="Thousands of acres",
     )
     assert content.startswith(b"<svg")
@@ -159,7 +148,9 @@ def test_draw_plot_returns_well_formed_svg_for_one_series() -> None:
 
 
 def test_draw_plot_uses_the_configured_chart_size() -> None:
-    content = peri_scribe.kml.plot_drawing.draw_plot(one_series_plot())
+    content = peri_scribe.kml.plot_drawing.draw_plot(
+        tests.peri_scribe.kml.plot_drawing_helpers.one_series_plot(),
+    )
     width = int(peri_scribe.kml.plot_drawing.CHART_WIDTH.magnitude)
     height = int(peri_scribe.kml.plot_drawing.CHART_HEIGHT.magnitude)
     assert f'width="{width}" height="{height}"'.encode() in content
@@ -168,7 +159,7 @@ def test_draw_plot_uses_the_configured_chart_size() -> None:
 def test_draw_plot_labels_every_series_in_the_legend() -> None:
     content = peri_scribe.kml.plot_drawing.draw_plot(
         (
-            *one_series_plot(),
+            *tests.peri_scribe.kml.plot_drawing_helpers.one_series_plot(),
             peri_scribe.kml.plot_data.PlotSeries(
                 label="Contained perimeter",
                 points=(
@@ -183,35 +174,6 @@ def test_draw_plot_labels_every_series_in_the_legend() -> None:
     assert b">Contained perimeter<" in content
 
 
-def plot_legend(content: bytes) -> tuple[tuple[str, str, str], ...]:
-    """Check legend meaning and styling through the rendered SVG contract.
-
-    Args:
-        content: A rendered chart containing a legend.
-
-    Returns:
-        Legend labels, stroke colors, and dash patterns in display order.
-    """
-    drawing = defusedxml.minidom.parseString(content)
-    legend = next(
-        group
-        for group in drawing.getElementsByTagName("g")
-        if group.getElementsByTagName("line") and group.getElementsByTagName("text")
-    )
-    return tuple(
-        (
-            label.firstChild.data,
-            swatch.getAttribute("stroke"),
-            swatch.getAttribute("stroke-dasharray"),
-        )
-        for label, swatch in zip(
-            legend.getElementsByTagName("text"),
-            legend.getElementsByTagName("line"),
-            strict=True,
-        )
-    )
-
-
 @pytest.mark.parametrize(
     ("reported", "expected"),
     [
@@ -221,10 +183,7 @@ def plot_legend(content: bytes) -> tuple[tuple[str, str, str], ...]:
             (False, False, True, True, False),
             [("Mapped area", ""), ("Reported Area", "5 3")],
         ),
-        (
-            (True, True, False, False),
-            [("Mapped area", ""), ("Reported Area", "5 3")],
-        ),
+        ((True, True, False, False), [("Mapped area", ""), ("Reported Area", "5 3")]),
         ((False, True), [("Reported Area", "5 3")]),
         ((True, False), [("Mapped area", "")]),
     ],
@@ -245,7 +204,7 @@ def test_draw_plot_legend_identifies_visible_area_sources(
         ),
     )
     content = peri_scribe.kml.plot_drawing.draw_plot((series,))
-    legend = plot_legend(content)
+    legend = tests.peri_scribe.kml.plot_drawing_helpers.plot_legend(content)
     assert [(label, dash) for label, _color, dash in legend] == expected
     assert {color for _label, color, _dash in legend} == {"#4c72b0"}
 
@@ -265,7 +224,7 @@ def test_draw_plot_legend_omits_series_without_lines(
     missing_label: str,
     point_count: int,
 ) -> None:
-    points = one_series_plot()[0].points
+    points = tests.peri_scribe.kml.plot_drawing_helpers.one_series_plot()[0].points
     content = peri_scribe.kml.plot_drawing.draw_plot((
         peri_scribe.kml.plot_data.PlotSeries(
             label=missing_label,
@@ -273,7 +232,7 @@ def test_draw_plot_legend_omits_series_without_lines(
         ),
         peri_scribe.kml.plot_data.PlotSeries(label=visible_label, points=points),
     ))
-    legend = plot_legend(content)
+    legend = tests.peri_scribe.kml.plot_drawing_helpers.plot_legend(content)
     assert [label for label, _color, _dash in legend] == [visible_label]
     drawing = defusedxml.minidom.parseString(content)
     assert len(drawing.getElementsByTagName("path")) == 1
@@ -290,14 +249,18 @@ def test_draw_plot_legend_includes_zero_valued_personnel() -> None:
             for day in (1, 2)
         ),
     )
-    legend = plot_legend(peri_scribe.kml.plot_drawing.draw_plot((series,)))
+    legend = tests.peri_scribe.kml.plot_drawing_helpers.plot_legend(
+        peri_scribe.kml.plot_drawing.draw_plot((series,)),
+    )
     assert [label for label, _color, _dash in legend] == ["Personnel"]
 
 
 def test_draw_plot_omits_legend_for_isolated_observation() -> None:
     series = peri_scribe.kml.plot_data.PlotSeries(
         label="Personnel",
-        points=one_series_plot()[0].points[:1],
+        points=tests.peri_scribe.kml.plot_drawing_helpers.one_series_plot()[0].points[
+            :1
+        ],
     )
     content = peri_scribe.kml.plot_drawing.draw_plot((series,))
     assert b">Personnel<" not in content
@@ -306,7 +269,7 @@ def test_draw_plot_omits_legend_for_isolated_observation() -> None:
 
 def test_draw_plot_escapes_the_axis_label() -> None:
     content = peri_scribe.kml.plot_drawing.draw_plot(
-        one_series_plot(),
+        tests.peri_scribe.kml.plot_drawing_helpers.one_series_plot(),
         y_axis_label='Millions of $ & "<cost>"',
     )
     defusedxml.minidom.parseString(content)
@@ -316,11 +279,11 @@ def test_draw_plot_escapes_the_axis_label() -> None:
 
 def test_draw_plot_is_deterministic() -> None:
     first = peri_scribe.kml.plot_drawing.draw_plot(
-        one_series_plot(),
+        tests.peri_scribe.kml.plot_drawing_helpers.one_series_plot(),
         y_axis_label="Thousands of acres",
     )
     second = peri_scribe.kml.plot_drawing.draw_plot(
-        one_series_plot(),
+        tests.peri_scribe.kml.plot_drawing_helpers.one_series_plot(),
         y_axis_label="Thousands of acres",
     )
     assert first == second
@@ -372,45 +335,18 @@ def test_plot_layout_spans_the_x_axis_past_the_last_observation() -> None:
     assert layout.day_span == last_observed_day - first_observed_day + 1
     assert (
         layout.x_of(
-            tests.peri_scribe.kml.kml_plot_helpers.observation_time(
-                last_observed_day,
-            ),
+            tests.peri_scribe.kml.kml_plot_helpers.observation_time(last_observed_day),
         )
         < layout.plot_right
     )
 
 
 def test_plot_layout_keeps_the_chart_inside_the_canvas() -> None:
-    layout = peri_scribe.kml.plot_drawing.plot_layout(one_series_plot())
+    layout = peri_scribe.kml.plot_drawing.plot_layout(
+        tests.peri_scribe.kml.plot_drawing_helpers.one_series_plot(),
+    )
     assert 0 < layout.plot_left < layout.plot_right < layout.width
     assert 0 < layout.plot_top < layout.plot_bottom < layout.height
-
-
-@pytest.fixture
-def intraday_series() -> tuple[peri_scribe.kml.plot_data.PlotSeries, ...]:
-    """Expose date truncation through distinct, equally spaced readings within one day.
-
-    Returns:
-        One area series with morning, midday, and evening observations.
-    """
-    return (
-        peri_scribe.kml.plot_data.PlotSeries(
-            label="Area",
-            points=tuple(
-                peri_scribe.kml.plot_data.SeriesPoint(
-                    observation_time=datetime.datetime(
-                        2026,
-                        9,
-                        3,
-                        hour,
-                        tzinfo=datetime.UTC,
-                    ),
-                    value=value,
-                )
-                for hour, value in ((6, 100.0), (12, 500.0), (18, 200.0))
-            ),
-        ),
-    )
 
 
 def test_draw_plot_separates_intraday_readings(
@@ -424,10 +360,7 @@ def test_draw_plot_separates_intraday_readings(
     layout = peri_scribe.kml.plot_drawing.plot_layout(intraday_series)
     assert layout.plot_left < positions[0] < positions[1] < positions[2]
     assert positions[2] < layout.plot_right
-    assert positions[1] == pytest.approx(
-        (positions[0] + positions[2]) / 2,
-        abs=0.1,
-    )
+    assert positions[1] == pytest.approx((positions[0] + positions[2]) / 2, abs=0.1)
 
 
 def test_plot_layout_x_of_keeps_elapsed_time_across_midnight(
@@ -455,9 +388,7 @@ def test_plot_layout_uses_utc_days_for_offset_timestamps() -> None:
     )
     layout = peri_scribe.kml.plot_drawing.plot_layout((series,))
     assert layout.first_day == datetime.date(2026, 9, 4)
-    assert layout.x_of(observation) == layout.x_of(
-        observation.astimezone(datetime.UTC),
-    )
+    assert layout.x_of(observation) == layout.x_of(observation.astimezone(datetime.UTC))
     assert layout.x_of(observation) == pytest.approx(
         layout.plot_left + layout.plot_width / 4,
     )

@@ -48,10 +48,7 @@ def render_plot_request(request: PlotRequest) -> PlotImage:
         The rendered image.
     """
     return PlotImage(
-        filename=plot_filename(
-            request.filename_prefix,
-            request.filename_suffix,
-        ),
+        filename=plot_filename(request.filename_prefix, request.filename_suffix),
         content=peri_scribe.kml.plot_drawing.draw_plot(
             request.series,
             y_axis_label=request.y_axis_label,
@@ -106,8 +103,8 @@ def plot_image_bundles(
         before_rendering: Work for the caller to run before rendering, or None.
 
     Returns:
-        Each fire's rendered images, in the input fire order and in each fire's
-        plot order.
+        Each fire's rendered images, in the input fire order and in each fire's plot
+        order.
     """
     requests = plot_requests(fire_bundles)
     images_by_fire: list[list[PlotImage]] = [[] for _fire in fire_bundles]

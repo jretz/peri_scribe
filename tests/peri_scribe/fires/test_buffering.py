@@ -31,18 +31,16 @@ def test_union_geometry_unions_multiple_geometries() -> None:
 
 def test_union_geometry_returns_none_for_all_empty() -> None:
     result = peri_scribe.fires.buffering.union_geometry(
-        geopandas.GeoSeries(
-            [shapely.geometry.Polygon(), None],
-            crs="EPSG:4326",
-        ),
+        geopandas.GeoSeries([shapely.geometry.Polygon(), None], crs="EPSG:4326"),
     )
     assert result is None
 
 
 def test_buffered_fire_geometries_buffers_each_geometry() -> None:
-    buffered = peri_scribe.fires.buffering.buffered_fire_geometries(
-        [tests.factories.point(0, 0), None],
-    )
+    buffered = peri_scribe.fires.buffering.buffered_fire_geometries([
+        tests.factories.point(0, 0),
+        None,
+    ])
     assert buffered[0] is not None
     assert buffered[0].geom_type == "Polygon"
     assert buffered[0].contains(tests.factories.point(0, 0))

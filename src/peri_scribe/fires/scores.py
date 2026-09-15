@@ -203,9 +203,7 @@ def perimeter_metrics_for(
             geometry=None,
         )
     row = metrics.loc[key]
-    first_mapping_value = peri_scribe.geo.parsing.numeric_value(
-        first_mapping.get(key),
-    )
+    first_mapping_value = peri_scribe.geo.parsing.numeric_value(first_mapping.get(key))
     return peri_scribe.fires.scoring.PerimeterMetrics(
         area=area,
         growth=None if pd.isna(row.max_growth) else row.max_growth * units.acres,
@@ -371,9 +369,7 @@ def fire_metrics(
     else:
         area_column = "area_acres"
         growth_column = "area_acres_differential"
-    metrics = keyed.groupby("key", sort=False).agg(
-        max_growth=(growth_column, "max"),
-    )
+    metrics = keyed.groupby("key", sort=False).agg(max_growth=(growth_column, "max"))
     first_mapping = (
         keyed
         .sort_values("observation_time")

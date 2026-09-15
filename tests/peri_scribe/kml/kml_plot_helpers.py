@@ -107,12 +107,7 @@ def perimeter_frame_from_observations(
 
 def point_frame_from_observations(
     observations: list[
-        tuple[
-            datetime.datetime | None,
-            float | None,
-            float | None,
-            float | None,
-        ]
+        tuple[datetime.datetime | None, float | None, float | None, float | None]
     ],
 ) -> geopandas.GeoDataFrame:
     """Build a point history frame.

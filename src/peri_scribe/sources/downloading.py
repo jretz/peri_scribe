@@ -76,8 +76,8 @@ def state_download_url(
     Args:
         source: The download-backed external source.
         state: The state whose archive is fetched, or None for a single archive.
-        state_urls: The state-to-URL mapping read from the source's page, or None
-            when the source has no page of links.
+        state_urls: The state-to-URL mapping read from the source's page, or None when
+            the source has no page of links.
 
     Returns:
         The archive's URL.
@@ -161,16 +161,12 @@ def stream_combined_source(
         The path of the combined GeoPackage.
 
     Raises:
-        ValueError: If the source is not configured to reduce to centroid points
-            with no attributes, which the streaming conversion requires.
+        ValueError: If the source is not configured to reduce to centroid points with no
+            attributes, which the streaming conversion requires.
     """
     output = peri_scribe.sources.external_sources.output_path(year_directory, source)
     if output.is_file():
-        logger.debug(
-            "External source already present",
-            source=source.name,
-            path=output,
-        )
+        logger.debug("External source already present", source=source.name, path=output)
         return output
     if not source.centroids or source.keep_attributes:
         message = (
@@ -185,19 +181,10 @@ def stream_combined_source(
     wrote_any = False
     for state in source.states:
         url = state_download_url(source, state, state_urls)
-        count = stream_download_and_convert(
-            url,
-            output,
-            layer_name,
-            append=wrote_any,
-        )
+        count = stream_download_and_convert(url, output, layer_name, append=wrote_any)
         wrote_any = wrote_any or count > 0
         feature_count += count
-    logger.debug(
-        "Combined external source",
-        path=output,
-        features=feature_count,
-    )
+    logger.debug("Combined external source", path=output, features=feature_count)
     return output
 
 
@@ -256,11 +243,7 @@ def combine_downloaded_source(
     """
     output = peri_scribe.sources.external_sources.output_path(year_directory, source)
     if output.is_file():
-        logger.debug(
-            "External source already present",
-            source=source.name,
-            path=output,
-        )
+        logger.debug("External source already present", source=source.name, path=output)
         return output
     state_urls = source.state_urls() if source.state_urls is not None else None
     layer_name = source.layer_name or source.name
@@ -289,11 +272,7 @@ def combine_downloaded_source(
                 )
                 wrote_any = True
                 feature_count += len(dataframe)
-    logger.debug(
-        "Combined external source",
-        path=output,
-        features=feature_count,
-    )
+    logger.debug("Combined external source", path=output, features=feature_count)
     return output
 
 

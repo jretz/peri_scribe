@@ -380,12 +380,8 @@ def fire_kml(
                 ),
             ),
         )
-    writer.parts.append(
-        f"<name>{peri_scribe.kml.geometry.escape_text(name)}</name>",
-    )
-    writer.parts.append(
-        f"<description>{ROOT_DOCUMENT_ATTRIBUTION}</description>",
-    )
+    writer.parts.append(f"<name>{peri_scribe.kml.geometry.escape_text(name)}</name>")
+    writer.parts.append(f"<description>{ROOT_DOCUMENT_ATTRIBUTION}</description>")
 
     # The top-level folder holds the fire views as radio options, each created only when
     # it holds fires. Google Earth checks the last radio option that has any visible
@@ -560,9 +556,7 @@ def ring_style_urls_for(
         The style URL for each ring color.
     """
     colors = {
-        peri_scribe.kml.colormap.color_hex(
-            peri_scribe.kml.colormap.TURBO_RAMP[-1],
-        ),
+        peri_scribe.kml.colormap.color_hex(peri_scribe.kml.colormap.TURBO_RAMP[-1]),
     }
     for fire in fires:
         colors.update(

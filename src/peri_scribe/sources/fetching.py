@@ -49,13 +49,13 @@ def fetch_feed_dataframe(
     """Fetch a feed's new or changed features, or None when there are none.
 
     When *full* is true the whole layer is fetched and features already stored
-    identically are dropped, so the fetch stores only new or changed features and
-    writes nothing when the stored snapshots already cover the layer. Otherwise,
-    when *existing_source_files* is empty the whole layer is fetched in full; when
-    the store holds data, features modified since the stored data, minus a small
-    overlap, are fetched, plus features that are present in the layer but never
-    stored, plus stored-active features whose status flipped to inactive, and
-    features already stored identically are dropped.
+    identically are dropped, so the fetch stores only new or changed features and writes
+    nothing when the stored snapshots already cover the layer. Otherwise, when
+    *existing_source_files* is empty the whole layer is fetched in full; when the store
+    holds data, features modified since the stored data, minus a small overlap, are
+    fetched, plus features that are present in the layer but never stored, plus
+    stored-active features whose status flipped to inactive, and features already stored
+    identically are dropped.
 
     Args:
         feed: The feed to fetch.
@@ -68,8 +68,7 @@ def fetch_feed_dataframe(
         The GeoDataFrame of features to write, or None when nothing changed.
 
     Raises:
-        ValueError: If the feed has no change columns configured and *full* is
-            false.
+        ValueError: If the feed has no change columns configured and *full* is false.
     """
     if not existing_source_files:
         feature_set = peri_scribe.geo.data.query_with_retry(feed.name, layer)
@@ -114,11 +113,7 @@ def fetch_feed_dataframe(
     # the layer's full OBJECTID set against the stored set to catch them.
     stored_ids = peri_scribe.sources.feed_state.stored_object_ids(existing)
     layer_ids = set(
-        peri_scribe.geo.data.query_object_ids_with_retry(
-            feed.name,
-            layer,
-            where="1=1",
-        ),
+        peri_scribe.geo.data.query_object_ids_with_retry(feed.name, layer, where="1=1"),
     )
     missing_ids = sorted(layer_ids - stored_ids)
     if missing_ids:
@@ -139,8 +134,8 @@ def fetch_feed_dataframe(
     )
     flipped_ids: list[int] = []
     if active_ids and inactive_literals:
-        # A source may flip a stored feature's status to inactive without updating
-        # its modified timestamp, so re-check the stored-active features' statuses.
+        # A source may flip a stored feature's status to inactive without updating its
+        # modified timestamp, so re-check the stored-active features' statuses.
         flipped_ids = peri_scribe.geo.data.query_object_ids_with_retry(
             feed.name,
             layer,
@@ -165,11 +160,7 @@ def fetch_feed_dataframe(
         layer,
         parameters={"object_ids": ",".join(str(i) for i in object_ids)},
     )
-    geodataframe = peri_scribe.geo.data.dataframe_for_layer(
-        feed,
-        layer,
-        feature_set,
-    )
+    geodataframe = peri_scribe.geo.data.dataframe_for_layer(feed, layer, feature_set)
     geodataframe = peri_scribe.sources.changes.drop_features_already_present(
         geodataframe,
         existing,
@@ -229,15 +220,15 @@ def fetch_all_feeds(
 ) -> FetchResult:
     """Fetch each configured feed into its own GeoPackage snapshot.
 
-    A feed with no stored snapshots is fetched in full. When *full* is true every
-    feed is fetched in full, and only new or changed features are stored, so a full
-    fetch writes nothing when the stored snapshots already cover the layer. This
-    catches source edits that change features without moving their modified
-    timestamps, which the incremental fetch would miss, and never modifies existing
-    snapshots. Otherwise a feed that already has snapshots is fetched incrementally:
-    only new or changed features are downloaded and written to a new snapshot. When a
-    snapshot for the observed last-edit timestamp already exists, the feed is skipped
-    entirely because the data is already present; a full fetch bypasses that skip.
+    A feed with no stored snapshots is fetched in full. When *full* is true every feed
+    is fetched in full, and only new or changed features are stored, so a full fetch
+    writes nothing when the stored snapshots already cover the layer. This catches
+    source edits that change features without moving their modified timestamps, which
+    the incremental fetch would miss, and never modifies existing snapshots. Otherwise a
+    feed that already has snapshots is fetched incrementally: only new or changed
+    features are downloaded and written to a new snapshot. When a snapshot for the
+    observed last-edit timestamp already exists, the feed is skipped entirely because
+    the data is already present; a full fetch bypasses that skip.
 
     A feed that fails does not stop the other feeds from being fetched. When at least
     one feed writes a new snapshot, the fire source index is rebuilt so that it reflects
@@ -245,23 +236,23 @@ def fetch_all_feeds(
     together after the remaining feeds and the re-index have been attempted.
 
     Args:
-        base_dir: Directory under which the ``data`` directory tree is created.
-            Defaults to the current working directory.
+        base_dir: Directory under which the ``data`` directory tree is created. Defaults
+            to the current working directory.
         year: Year to group the snapshots under. Defaults to the current year.
         full: Fetch every feed in full instead of incrementally.
         build_index: Refresh the derived source index before returning. A publication
             gate can defer this work until it accepts the saved changes.
 
     Returns:
-        The outcome of the fetch: the paths to the GeoPackage files holding each
-        feed's data, one per feed, in feed order, and whether any feed wrote a new
-        snapshot. A feed that produced no new snapshot contributes its most recent
-        existing snapshot path instead.
+        The outcome of the fetch: the paths to the GeoPackage files holding each feed's
+        data, one per feed, in feed order, and whether any feed wrote a new snapshot. A
+        feed that produced no new snapshot contributes its most recent existing snapshot
+        path instead.
 
     Raises:
         SystemExit: If any feed is unreachable, returns no features, cannot observe a
-            last-edit timestamp, or lacks change columns for an incremental fetch.
-            The message lists every feed that failed.
+            last-edit timestamp, or lacks change columns for an incremental fetch. The
+            message lists every feed that failed.
     """
     if base_dir is None:
         base_dir = pathlib.Path.cwd()
@@ -276,8 +267,8 @@ def fetch_all_feeds(
         last_edit_timestamp = feed.current_last_edit_timestamp
         if last_edit_timestamp is None:
             errors.append(
-                f"Failed to fetch {feed.name}: "
-                "no last-edit timestamp could be observed",
+                f"Failed to fetch {feed.name}: no last-edit timestamp "
+                "could be observed",
             )
             continue
         source_directory = peri_scribe.sources.snapshots.source_directory_path(
@@ -348,12 +339,7 @@ def fetch_all_feeds(
         logger.debug("Writing layer", feed=feed.name, path=output_path)
         peri_scribe.output.write_geopackage(
             output_path,
-            [
-                peri_scribe.models.LayerData(
-                    name=feed.name,
-                    dataframe=geodataframe,
-                ),
-            ],
+            [peri_scribe.models.LayerData(name=feed.name, dataframe=geodataframe)],
         )
         try:
             peri_scribe.sources.feed_state.write_current_state(
@@ -378,10 +364,7 @@ def fetch_all_feeds(
     if errors:
         raise SystemExit("\n".join(errors))
     logger.debug("Done")
-    return FetchResult(
-        snapshot_paths=tuple(snapshot_paths),
-        changed=wrote_snapshot,
-    )
+    return FetchResult(snapshot_paths=tuple(snapshot_paths), changed=wrote_snapshot)
 
 
 def fetch_all_feeds_complete(
@@ -397,8 +380,8 @@ def fetch_all_feeds_complete(
     after the remaining feeds have been attempted.
 
     Args:
-        base_dir: Directory under which the ``data`` directory tree is created.
-            Defaults to the current working directory.
+        base_dir: Directory under which the ``data`` directory tree is created. Defaults
+            to the current working directory.
         year: Year to group the snapshots under. Defaults to the current year.
 
     Returns:
@@ -406,8 +389,8 @@ def fetch_all_feeds_complete(
         feed, in feed order.
 
     Raises:
-        SystemExit: If any feed is unreachable or returns no features. The message
-            lists every feed that failed.
+        SystemExit: If any feed is unreachable or returns no features. The message lists
+            every feed that failed.
     """
     if base_dir is None:
         base_dir = pathlib.Path.cwd()
@@ -424,9 +407,7 @@ def fetch_all_feeds_complete(
                 feed,
                 gis,
                 [],
-                peri_scribe.sources.snapshots.validation_directory_path(
-                    year_directory,
-                ),
+                peri_scribe.sources.snapshots.validation_directory_path(year_directory),
             )
         except peri_scribe.exceptions.FeedFetchError as error:
             errors.append(str(error))
@@ -442,12 +423,7 @@ def fetch_all_feeds_complete(
         logger.debug("Writing layer", feed=feed.name, path=output_path)
         peri_scribe.output.write_geopackage(
             output_path,
-            [
-                peri_scribe.models.LayerData(
-                    name=feed.name,
-                    dataframe=geodataframe,
-                ),
-            ],
+            [peri_scribe.models.LayerData(name=feed.name, dataframe=geodataframe)],
         )
         snapshot_paths.append(output_path)
     if errors:

@@ -59,10 +59,7 @@ def log_value(value: object) -> object:
         value = value.total_seconds() * units.seconds
     if isinstance(value, pint.Quantity):
         unit_name = str(value.units)
-        return {
-            "value": float(value.magnitude),
-            "units": unit_name,
-        }
+        return {"value": float(value.magnitude), "units": unit_name}
     if isinstance(value, (enum.StrEnum, pathlib.PurePath, pyproj.CRS)):
         return str(value)
     if isinstance(value, (datetime.date, datetime.time)):
@@ -308,6 +305,10 @@ def log_command[**Parameters, Result](
     @functools.wraps(callback)
     def invoke(*args: Parameters.args, **kwargs: Parameters.kwargs) -> Result:
         """Keep command logs outside any nested pipeline phase logs.
+
+        Args:
+            args: Positional arguments forwarded to the wrapped command callback.
+            kwargs: Keyword arguments forwarded to the wrapped command callback.
 
         Returns:
             The command callback's result.

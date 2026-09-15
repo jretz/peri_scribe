@@ -162,11 +162,7 @@ def malformed_state_error(path: pathlib.Path, error: Exception) -> typing.Never:
     raise ValueError(message) from error
 
 
-def write_state(
-    path: pathlib.Path,
-    *,
-    last_full_fetch: datetime.datetime,
-) -> None:
+def write_state(path: pathlib.Path, *, last_full_fetch: datetime.datetime) -> None:
     """Atomically store *last_full_fetch* as the fetch state at *path*.
 
     The JSON is written to a temporary file next to *path* and moved into place, so an

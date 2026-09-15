@@ -328,10 +328,10 @@ def decode_payload(payload: bytes) -> np.ndarray:
     Returns:
         The decoded encoded coordinate pairs.
     """
-    return np.frombuffer(
-        compression.zstd.decompress(payload),
-        dtype="<i4",
-    ).reshape(-1, 2)
+    return np.frombuffer(compression.zstd.decompress(payload), dtype="<i4").reshape(
+        -1,
+        2,
+    )
 
 
 class PartitionFiles:
@@ -375,8 +375,8 @@ class PartitionFiles:
         """Release nothing; the files are appended and closed per write.
 
         Args:
-            _type: The exception type supplied by the context manager, or None;
-                unused because no handles remain open.
+            _type: The exception type supplied by the context manager, or None; unused
+                because no handles remain open.
             _value: The exception instance, or None; unused and not suppressed.
             _traceback: The exception traceback, or None; unused.
         """
@@ -466,10 +466,7 @@ def stream_zip_members_to_partitions(
     return feature_count, wrote_any
 
 
-def stream_state_archive(
-    url: str,
-    partition_files: PartitionFiles,
-) -> int:
+def stream_state_archive(url: str, partition_files: PartitionFiles) -> int:
     """Stream *url*'s archive and convert its records at *partition_files*.
 
     The archive's bytes are read from the response as they arrive and converted without
@@ -699,11 +696,7 @@ def fetch_buildings_database(
     """
     output = peri_scribe.sources.external_sources.output_path(year_directory, source)
     if is_valid_database(output):
-        logger.debug(
-            "External source already present",
-            source=source.name,
-            path=output,
-        )
+        logger.debug("External source already present", source=source.name, path=output)
         return (output,)
     output.parent.mkdir(parents=True, exist_ok=True)
     state_urls = source.state_urls() if source.state_urls is not None else None
@@ -734,10 +727,7 @@ def fetch_buildings_database(
     return (output,)
 
 
-def read_tile_points(
-    connection: sqlite3.Connection,
-    tile_id: int,
-) -> np.ndarray | None:
+def read_tile_points(connection: sqlite3.Connection, tile_id: int) -> np.ndarray | None:
     """Return a tile's decoded points from *connection*, or None when absent.
 
     Args:
@@ -745,8 +735,8 @@ def read_tile_points(
         tile_id: The tile id to read.
 
     Returns:
-        The tile's ``(n, 2)`` int32 encoded coordinate pairs, or None when the
-        database holds no row for the tile.
+        The tile's ``(n, 2)`` int32 encoded coordinate pairs, or None when the database
+        holds no row for the tile.
     """
     row = connection.execute(
         "SELECT payload FROM tiles WHERE tile_id = ?",

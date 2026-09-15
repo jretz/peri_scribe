@@ -8,6 +8,7 @@ import typing
 import peri_scribe.main
 import peri_scribe.report.gathering
 import peri_scribe.report.markdown
+import tests.peri_scribe.main_write_reports_helpers
 
 
 if typing.TYPE_CHECKING:
@@ -28,18 +29,17 @@ def test_write_reports_gathers_and_renders(monkeypatch: pytest.MonkeyPatch) -> N
     gathered: list[pathlib.Path] = []
     rendered: list[tuple[peri_scribe.report.gathering.FireReport, pathlib.Path]] = []
 
-    def gather_report(
-        directory: pathlib.Path,
-    ) -> peri_scribe.report.gathering.FireReport:
-        gathered.append(directory)
-        return report
+    gather_report = tests.peri_scribe.main_write_reports_helpers.make_report_gatherer(
+        gathered=gathered,
+        report=report,
+    )
 
-    def render_markdown_report(
-        gathered_report: peri_scribe.report.gathering.FireReport,
-        directory: pathlib.Path,
-    ) -> pathlib.Path:
-        rendered.append((gathered_report, directory))
-        return output
+    render_markdown_report = (
+        tests.peri_scribe.main_write_reports_helpers.make_report_renderer(
+            rendered=rendered,
+            output=output,
+        )
+    )
 
     monkeypatch.setattr(peri_scribe.report.gathering, "gather_report", gather_report)
     monkeypatch.setattr(

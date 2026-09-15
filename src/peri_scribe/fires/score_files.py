@@ -49,10 +49,7 @@ def load_fire_scores(
     path = fire_scores_path(year_directory)
     if not path.is_file():
         return None
-    return peri_scribe.output.read_document(
-        path,
-        peri_scribe.models.FireScores,
-    )
+    return peri_scribe.output.read_document(path, peri_scribe.models.FireScores)
 
 
 def fire_scores_ccdf_path(year_directory: pathlib.Path) -> pathlib.Path:

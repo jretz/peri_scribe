@@ -5,6 +5,7 @@ import pathlib
 import pytest
 
 import peri_scribe.pipeline_state
+import tests.peri_scribe.pipeline_state_helpers
 
 
 def test_read_state_starts_without_pending_work(tmp_path: pathlib.Path) -> None:
@@ -71,13 +72,12 @@ def test_complete_stage_requires_prerequisites(tmp_path: pathlib.Path) -> None:
 def test_run_lock_excludes_another_writer_and_releases_on_failure(
     tmp_path: pathlib.Path,
 ) -> None:
-    def interrupted_run() -> None:
-        with peri_scribe.pipeline_state.run_lock(tmp_path) as first:
-            assert first
-            with peri_scribe.pipeline_state.run_lock(tmp_path) as second:
-                assert not second
-            message = "interrupted"
-            raise ValueError(message)
+
+    interrupted_run = (
+        tests.peri_scribe.pipeline_state_helpers.make_interrupted_locked_run(
+            tmp_path=tmp_path,
+        )
+    )
 
     with pytest.raises(ValueError, match="interrupted"):
         interrupted_run()
@@ -95,9 +95,7 @@ def test_write_state_retains_previous_marker_when_publish_fails(
     )
     peri_scribe.pipeline_state.write_state(tmp_path, original)
 
-    def fail_replace(_self: pathlib.Path, _target: pathlib.Path) -> None:
-        message = "interrupted"
-        raise OSError(message)
+    fail_replace = tests.peri_scribe.pipeline_state_helpers.fail_marker_replacement
 
     monkeypatch.setattr(pathlib.Path, "replace", fail_replace)
     with pytest.raises(OSError, match="interrupted"):

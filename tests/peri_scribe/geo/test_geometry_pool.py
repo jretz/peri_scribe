@@ -32,10 +32,7 @@ def test_geometry_pool_from_wkb_shares_identical_geometries(
         (shapely.Point(1, 2, 3), shapely.Point(1, 2, 4)),
         (shapely.Point(1, 2), shapely.Point(1, 2, 3)),
         (shapely.box(0, 0, 1, 1), shapely.reverse(shapely.box(0, 0, 1, 1))),
-        (
-            shapely.set_srid(shapely.Point(1, 2), 4326),
-            shapely.Point(1, 2),
-        ),
+        (shapely.set_srid(shapely.Point(1, 2), 4326), shapely.Point(1, 2)),
         (shapely.Point(), shapely.Polygon()),
     ],
 )

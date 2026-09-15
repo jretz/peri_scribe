@@ -43,8 +43,8 @@ def geometry_signal(
         config: The classification thresholds.
 
     Returns:
-        The distance, area measurements, and whether the geometry crosses or is near
-        the border, and whether it is inside California.
+        The distance, area measurements, and whether the geometry crosses or is near the
+        border, and whether it is inside California.
     """
     if union is None or union.is_empty:
         return peri_scribe.perimeters.border_classification.GeometrySignal(
@@ -257,9 +257,7 @@ def extent_signal(
             wfigs_to_firis_area_ratio=ratio,
             disagrees=False,
         )
-    symmetric_difference_area = wfigs_geometry.symmetric_difference(
-        firis_geometry,
-    ).area
+    symmetric_difference_area = wfigs_geometry.symmetric_difference(firis_geometry).area
     disagrees = wfigs_area > firis_area * config.extent_ratio_threshold or (
         wfigs_area > firis_area
         and symmetric_difference_area
@@ -359,10 +357,7 @@ def identifier_signal(
         home.
     """
     for observation in observations:
-        if out_of_california_unit_from(
-            observation.identifiers,
-            observation.mission,
-        ):
+        if out_of_california_unit_from(observation.identifiers, observation.mission):
             return True
         if (
             observation.point_of_origin_state is not None

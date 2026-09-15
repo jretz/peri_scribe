@@ -69,9 +69,7 @@ def test_write_state_round_trip(tmp_path: pathlib.Path) -> None:
     )
 
 
-def test_write_state_stores_version_and_utc_timestamp(
-    tmp_path: pathlib.Path,
-) -> None:
+def test_write_state_stores_version_and_utc_timestamp(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "sources" / "fetch_state.json"
     peri_scribe.sources.full_fetch_state.write_state(
         path,
@@ -125,12 +123,7 @@ def test_read_state_rejects_non_object_state(tmp_path: pathlib.Path) -> None:
 def test_read_state_rejects_unknown_version(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "fetch_state.json"
     path.write_text(
-        json.dumps(
-            {
-                "version": "other",
-                "last_full_fetch": "2026-09-06T18:42:00Z",
-            },
-        ),
+        json.dumps({"version": "other", "last_full_fetch": "2026-09-06T18:42:00Z"}),
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="Malformed fetch state"):
@@ -160,9 +153,7 @@ def test_read_state_rejects_unparseable_timestamp(tmp_path: pathlib.Path) -> Non
 def test_read_state_rejects_naive_timestamp(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "fetch_state.json"
     path.write_text(
-        json.dumps(
-            {"version": "2026-09-06", "last_full_fetch": "2026-09-06T18:42:00"},
-        ),
+        json.dumps({"version": "2026-09-06", "last_full_fetch": "2026-09-06T18:42:00"}),
         encoding="utf-8",
     )
     with pytest.raises(ValueError, match="Malformed fetch state"):

@@ -418,8 +418,8 @@ def turbo_at(position: float) -> tuple[float, float, float]:
     The continuous colormap interpolates linearly between the ramp's entries.
 
     Args:
-        position: The position from 0 (the ramp's first color) to
-            ``len(TURBO_RAMP) - 1`` (its last color).
+        position: The position from 0 (the ramp's first color) to ``len(TURBO_RAMP) -
+            1`` (its last color).
 
     Returns:
         The (red, green, blue) components on a 0 to 1 scale.

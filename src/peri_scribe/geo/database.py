@@ -96,12 +96,7 @@ def write_snapshot(
     """
     conn.execute(
         "INSERT OR REPLACE INTO snapshots VALUES (?, ?, ?, ?)",
-        (
-            source_file.serial_number,
-            source_file.last_edit_timestamp,
-            size,
-            mtime_ns,
-        ),
+        (source_file.serial_number, source_file.last_edit_timestamp, size, mtime_ns),
     )
     conn.execute("DELETE FROM rows WHERE serial = ?", (source_file.serial_number,))
     conn.execute(
@@ -165,10 +160,7 @@ def snapshot_directories_signature(
     return tuple(sorted(bucket_mtime_ns))
 
 
-def sync_database(
-    conn: sqlite3.Connection,
-    source_directory: pathlib.Path,
-) -> None:
+def sync_database(conn: sqlite3.Connection, source_directory: pathlib.Path) -> None:
     """Bring *conn*'s snapshot rows in line with *source_directory*'s files.
 
     Snapshots that are new or whose file size or modification time changed are read and
@@ -212,10 +204,7 @@ def sync_database(
     conn.commit()
 
 
-def open_and_sync(
-    db_path: pathlib.Path,
-    source_directory: pathlib.Path,
-) -> None:
+def open_and_sync(db_path: pathlib.Path, source_directory: pathlib.Path) -> None:
     """Open the record cache database and bring it in line with the snapshots.
 
     A database with an outdated or missing schema is rebuilt before the snapshot rows
@@ -261,10 +250,7 @@ def ensure_database_current(
     try:
         open_and_sync(db_path, source_directory)
     except sqlite3.DatabaseError:
-        logger.debug(
-            "Record cache database unusable; rebuilding",
-            path=str(db_path),
-        )
+        logger.debug("Record cache database unusable; rebuilding", path=str(db_path))
         with contextlib.suppress(OSError):
             db_path.unlink()
         open_and_sync(db_path, source_directory)

@@ -15,10 +15,7 @@ import peri_scribe.sources.snapshots
 import peri_scribe.sources.validation
 import tests.factories
 from tests.conftest import CLICK_USAGE_ERROR_EXIT_CODE
-from tests.main_stubs import (
-    BASE_DIRECTORY,
-    ValidateSourcesStubs,
-)
+from tests.main_stubs import BASE_DIRECTORY, ValidateSourcesStubs
 
 
 if typing.TYPE_CHECKING:
@@ -93,11 +90,7 @@ def test_validate_sources_stops_when_complete_fetch_fails(
 
     fail = tests.factories.raising_stub(SystemExit("boom"))
 
-    monkeypatch.setattr(
-        peri_scribe.sources.fetching,
-        "fetch_all_feeds_complete",
-        fail,
-    )
+    monkeypatch.setattr(peri_scribe.sources.fetching, "fetch_all_feeds_complete", fail)
     result = runner.invoke(peri_scribe.main.cli, ["validate-sources"])
     assert result.exit_code == 1
     assert "boom" in result.output
@@ -120,11 +113,7 @@ def test_validate_sources_stops_when_incremental_fetch_fails(
 
     fail = tests.factories.raising_stub(SystemExit("boom"))
 
-    monkeypatch.setattr(
-        peri_scribe.sources.fetching,
-        "fetch_all_feeds",
-        fail,
-    )
+    monkeypatch.setattr(peri_scribe.sources.fetching, "fetch_all_feeds", fail)
     result = runner.invoke(peri_scribe.main.cli, ["validate-sources"])
     assert result.exit_code == 1
     assert "boom" in result.output
@@ -159,9 +148,7 @@ def test_validate_sources_rejects_missing_directory(
     assert "does not exist" in result.output
 
 
-def test_cli_help_lists_validate_sources(
-    runner: click.testing.CliRunner,
-) -> None:
+def test_cli_help_lists_validate_sources(runner: click.testing.CliRunner) -> None:
     result = runner.invoke(peri_scribe.main.cli, ["--help"])
     assert result.exit_code == 0
     assert "validate-sources" in result.output

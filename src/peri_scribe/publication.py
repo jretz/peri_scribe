@@ -247,7 +247,7 @@ def read_state[State: pydantic.BaseModel](
 
 
 def write_state(path: pathlib.Path, state: pydantic.BaseModel) -> None:
-    """A failed state write must leave the last complete checkpoint intact.
+    """Preserve the last complete checkpoint if a state write fails.
 
     Args:
         path: The destination of the complete state file.
@@ -284,7 +284,7 @@ def read_publication(
 
 
 def mapping_order(mapping: Mapping) -> tuple[datetime.datetime, int, int]:
-    """A late download of an older observation must not displace a newer mapping.
+    """Order mappings by observation time to preserve newer surveys.
 
     Args:
         mapping: The source observation to order relative to other mappings.
@@ -306,8 +306,8 @@ def shape_measurement(geometry: shapely.Geometry | None) -> tuple[str, float | N
         geometry: The raw mapping geometry in WGS84, or None when unavailable.
 
     Returns:
-        The normalized shape digest and area in square meters. Missing or empty
-        geometry has an empty digest; an unmeasurable area is None.
+        The normalized shape digest and area in square meters. Missing or empty geometry
+        has an empty digest; an unmeasurable area is None.
     """
     if geometry is None or geometry.is_empty:
         return "", None
@@ -562,8 +562,8 @@ def mapping_decision(
     """Compare the latest mapping with its published source on the same area basis.
 
     Args:
-        candidates: Latest mappings paired with their published fire, or None when
-            fire identity is ambiguous. A missing published fire has a zero baseline.
+        candidates: Latest mappings paired with their published fire, or None when fire
+            identity is ambiguous. A missing published fire has a zero baseline.
         threshold: The policy supplying the minimum absolute mapped-area change.
 
     Returns:

@@ -27,11 +27,7 @@ def test_column_value_returns_none_for_missing_row_or_column() -> None:
 
 def test_text_value_returns_none_for_blank() -> None:
     frame = tests.factories.geo_frame(
-        {
-            "fire_identifier": ["id-a"],
-            "fire_name": ["Bug"],
-            "mission": ["  "],
-        },
+        {"fire_identifier": ["id-a"], "fire_name": ["Bug"], "mission": ["  "]},
         [tests.factories.square(1.0)],
     )
     row = frame.iloc[0]
@@ -171,12 +167,10 @@ def test_numbered_source_text_orders_by_slot_number_and_dedupes() -> None:
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
             "source_attributes": [
-                json.dumps(
-                    {
-                        "attr_FireBehaviorGeneral": "Active",
-                        "attr_FireBehaviorGeneral2": "Running",
-                    },
-                ),
+                json.dumps({
+                    "attr_FireBehaviorGeneral": "Active",
+                    "attr_FireBehaviorGeneral2": "Running",
+                }),
             ],
         },
         [tests.factories.square(1.0)],
@@ -186,12 +180,10 @@ def test_numbered_source_text_orders_by_slot_number_and_dedupes() -> None:
             "fire_identifier": ["id-a"],
             "fire_name": ["Bug"],
             "source_attributes": [
-                json.dumps(
-                    {
-                        "FireBehaviorGeneral2": "Running",
-                        "FireBehaviorGeneral3": "Smoldering",
-                    },
-                ),
+                json.dumps({
+                    "FireBehaviorGeneral2": "Running",
+                    "FireBehaviorGeneral3": "Smoldering",
+                }),
             ],
         },
         [shapely.geometry.Point(1.0, 1.0)],
@@ -236,9 +228,9 @@ def test_source_attributes_dictionary_parses_json_strings() -> None:
 
 
 def test_source_attributes_dictionary_accepts_decoded_dict() -> None:
-    assert peri_scribe.kml.row_values.source_attributes_dictionary(
-        {"TotalIncidentPersonnel": 400},
-    ) == {"TotalIncidentPersonnel": 400}
+    assert peri_scribe.kml.row_values.source_attributes_dictionary({
+        "TotalIncidentPersonnel": 400,
+    }) == {"TotalIncidentPersonnel": 400}
 
 
 def test_source_attributes_dictionary_rejects_missing_or_invalid_values() -> None:
@@ -323,13 +315,7 @@ def test_first_source_number_falls_back_to_perimeter_feed() -> None:
 
 def test_first_source_number_returns_none_without_keys() -> None:
     assert (
-        peri_scribe.kml.row_values.first_source_number(
-            None,
-            None,
-            None,
-            None,
-        )
-        is None
+        peri_scribe.kml.row_values.first_source_number(None, None, None, None) is None
     )
 
 

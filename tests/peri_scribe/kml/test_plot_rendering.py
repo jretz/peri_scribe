@@ -11,6 +11,7 @@ import pytest
 import peri_scribe.kml.plot_data
 import peri_scribe.kml.plot_rendering
 import tests.peri_scribe.kml.kml_plot_helpers
+import tests.peri_scribe.kml.plot_rendering_helpers
 
 
 def test_plot_filename_joins_prefix_and_suffix() -> None:
@@ -84,12 +85,10 @@ def test_plot_image_bundles_renders_each_fire_in_order() -> None:
         ),
         y_axis_label="Millions of $",
     )
-    bundles = peri_scribe.kml.plot_rendering.plot_image_bundles(
-        (
-            ("id-bug", (area_plot, perimeter_plot, single_observation_plot)),
-            ("id-alta", (area_plot,)),
-        ),
-    )
+    bundles = peri_scribe.kml.plot_rendering.plot_image_bundles((
+        ("id-bug", (area_plot, perimeter_plot, single_observation_plot)),
+        ("id-alta", (area_plot,)),
+    ))
     assert [image.filename for image in bundles[0]] == [
         "id-bug-area.svg",
         "id-bug-perimeter.svg",
@@ -116,8 +115,9 @@ def test_plot_image_bundles_runs_before_rendering() -> None:
     )
     calls: list[str] = []
 
-    def record() -> None:
-        calls.append("before")
+    record = tests.peri_scribe.kml.plot_rendering_helpers.make_pre_render_recorder(
+        calls=calls,
+    )
 
     bundles = peri_scribe.kml.plot_rendering.plot_image_bundles(
         (("id-one", (plot,)),),
@@ -138,29 +138,13 @@ def test_plot_image_bundles_returns_empty_bundles_without_requests() -> None:
         ),
         y_axis_label="Thousands of acres",
     )
-    assert peri_scribe.kml.plot_rendering.plot_image_bundles(
-        (("id-bug", (single_observation_plot,)),),
-    ) == ((),)
+    assert peri_scribe.kml.plot_rendering.plot_image_bundles((
+        ("id-bug", (single_observation_plot,)),
+    )) == ((),)
 
 
 def test_plot_image_bundles_returns_empty_for_no_fires() -> None:
     assert peri_scribe.kml.plot_rendering.plot_image_bundles(()) == ()
-
-
-def two_point_series() -> peri_scribe.kml.plot_data.PlotSeries:
-    return peri_scribe.kml.plot_data.PlotSeries(
-        label="Area",
-        points=(
-            peri_scribe.kml.plot_data.SeriesPoint(
-                observation_time=datetime.datetime(2026, 7, 8, tzinfo=datetime.UTC),
-                value=1.0,
-            ),
-            peri_scribe.kml.plot_data.SeriesPoint(
-                observation_time=datetime.datetime(2026, 7, 10, tzinfo=datetime.UTC),
-                value=2.0,
-            ),
-        ),
-    )
 
 
 def test_render_plot_request_returns_the_rendered_svg() -> None:
@@ -170,7 +154,7 @@ def test_render_plot_request_returns_the_rendered_svg() -> None:
             filename_prefix="id-bug",
             filename_suffix="area",
             y_axis_label="Thousands of acres",
-            series=(two_point_series(),),
+            series=(tests.peri_scribe.kml.plot_rendering_helpers.two_point_series(),),
         ),
     )
     assert image.filename == "id-bug-area.svg"
@@ -191,7 +175,7 @@ def test_plot_image_bundles_keeps_colors_when_primary_series_is_missing(
     secondary_label: str,
     primary_point_count: int,
 ) -> None:
-    source = two_point_series()
+    source = tests.peri_scribe.kml.plot_rendering_helpers.two_point_series()
     plot = peri_scribe.kml.plot_data.FirePlot(
         filename_suffix=suffix,
         y_axis_label="",
@@ -237,11 +221,12 @@ def test_plot_requests_indexes_each_plot_by_its_fire() -> None:
     plot = peri_scribe.kml.plot_data.FirePlot(
         filename_suffix="area",
         y_axis_label="Thousands of acres",
-        series=(two_point_series(),),
+        series=(tests.peri_scribe.kml.plot_rendering_helpers.two_point_series(),),
     )
-    requests = peri_scribe.kml.plot_rendering.plot_requests(
-        (("id-one", (plot,)), ("id-two", (plot, plot))),
-    )
+    requests = peri_scribe.kml.plot_rendering.plot_requests((
+        ("id-one", (plot,)),
+        ("id-two", (plot, plot)),
+    ))
     assert [request.fire_index for request in requests] == [0, 1, 1]
     assert [request.filename_prefix for request in requests] == [
         "id-one",

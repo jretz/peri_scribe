@@ -129,9 +129,7 @@ def ensure_administrative_boundaries(
             arcgis.features.FeatureLayer(NEIGHBOR_LAYER_URL, gis),
         )
         california = peri_scribe.sources.borders.california_geometry_from_states(states)
-        neighbors = peri_scribe.sources.borders.neighbor_geometries_from_states(
-            states,
-        )
+        neighbors = peri_scribe.sources.borders.neighbor_geometries_from_states(states)
     except Exception as error:
         message = f"Failed to build administrative boundaries: {error}"
         raise peri_scribe.exceptions.AdministrativeBoundariesError(message) from error
@@ -139,12 +137,7 @@ def ensure_administrative_boundaries(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     peri_scribe.output.write_geopackage(
         output_path,
-        [
-            peri_scribe.models.LayerData(
-                name=OUTPUT_LAYER_NAME,
-                dataframe=border,
-            ),
-        ],
+        [peri_scribe.models.LayerData(name=OUTPUT_LAYER_NAME, dataframe=border)],
     )
     logger.debug(
         "Wrote administrative boundaries",
@@ -154,13 +147,11 @@ def ensure_administrative_boundaries(
     return output_path
 
 
-def load_border_geometry(
-    year_directory: pathlib.Path,
-) -> shapely.Geometry:
+def load_border_geometry(year_directory: pathlib.Path) -> shapely.Geometry:
     """Return the California border lines from the stored GeoPackage.
 
-    The three neighbor borders are returned as a single MultiLineString (or a
-    LineString when they collapse into one part), in WGS84.
+    The three neighbor borders are returned as a single MultiLineString (or a LineString
+    when they collapse into one part), in WGS84.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.

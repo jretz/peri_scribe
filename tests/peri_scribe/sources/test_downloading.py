@@ -13,6 +13,7 @@ import peri_scribe.exceptions
 import peri_scribe.sources.downloading
 import peri_scribe.sources.external_sources
 import tests.factories
+import tests.peri_scribe.sources.downloading_helpers
 import tests.peri_scribe.sources.external_source_helpers
 
 
@@ -54,11 +55,7 @@ def test_download_source_raises_when_download_fails(
         peri_scribe.sources.downloading.requests.exceptions.RequestException("boom"),
     )
 
-    monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
-        "get",
-        fail,
-    )
+    monkeypatch.setattr(peri_scribe.sources.downloading.requests, "get", fail)
     with pytest.raises(
         peri_scribe.exceptions.ExternalDataError,
         match="Failed to download",
@@ -122,7 +119,9 @@ def test_download_source_skips_when_output_present(
     )
     archive = tests.peri_scribe.sources.external_source_helpers.archive_zip_bytes(
         filename="California.geojson",
-        dataframe=tests.peri_scribe.sources.external_source_helpers.building_dataframe(),
+        dataframe=(
+            tests.peri_scribe.sources.external_source_helpers.building_dataframe()
+        ),
         driver="GeoJSON",
     )
     calls: list[str] = []
@@ -152,7 +151,9 @@ def test_download_source_skips_when_single_archive_output_present(
     source = tests.peri_scribe.sources.external_source_helpers.single_archive_source()
     archive = tests.peri_scribe.sources.external_source_helpers.archive_zip_bytes(
         filename="buildings.geojson",
-        dataframe=tests.peri_scribe.sources.external_source_helpers.building_dataframe(),
+        dataframe=(
+            tests.peri_scribe.sources.external_source_helpers.building_dataframe()
+        ),
         driver="GeoJSON",
     )
     calls: list[str] = []
@@ -212,24 +213,11 @@ def test_stream_download_and_convert_raises_when_download_fails(
     }
     page = tests.peri_scribe.sources.external_source_helpers.buildings_page_html(links)
 
-    def get(
-        url: str,
-        **_kwargs: object,
-    ) -> tests.peri_scribe.sources.external_source_helpers.FakeResponse:
-        if url == peri_scribe.sources.external_sources.BUILDINGS_SOURCE.url:
-            return tests.peri_scribe.sources.external_source_helpers.FakeResponse(
-                page.encode("utf-8"),
-            )
-        message = "boom"
-        raise peri_scribe.sources.downloading.requests.exceptions.RequestException(
-            message,
-        )
-
-    monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
-        "get",
-        get,
+    get = tests.peri_scribe.sources.downloading_helpers.make_failing_archive_responder(
+        page=page,
     )
+
+    monkeypatch.setattr(peri_scribe.sources.downloading.requests, "get", get)
     with pytest.raises(
         peri_scribe.exceptions.ExternalDataError,
         match="Failed to download",

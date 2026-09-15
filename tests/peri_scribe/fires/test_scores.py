@@ -18,6 +18,7 @@ import peri_scribe.sources.external_sources
 import peri_scribe.units
 import tests.factories
 import tests.peri_scribe.fires.fire_helpers
+import tests.peri_scribe.fires.scores_helpers
 from peri_scribe.units import units
 
 
@@ -42,9 +43,7 @@ def test_latest_snapshot_layer_returns_none_without_snapshot(
     monkeypatch.setattr(
         peri_scribe.sources.external_sources,
         "output_path",
-        lambda _year_directory, _source: pathlib.Path(
-            "/sources/evacuations.gpkg",
-        ),
+        lambda _year_directory, _source: pathlib.Path("/sources/evacuations.gpkg"),
     )
     assert (
         peri_scribe.fires.scores.latest_snapshot_layer(
@@ -118,10 +117,7 @@ def test_score_fires_writes_current_scores(
     assert document.fires[0].name == "Bug"
     assert document.fires[0].score == pytest.approx(168)
     assert stubs.ccdf_writes == [
-        (
-            pathlib.Path("data/2026/derived/fire_scores_ccdf.html"),
-            document,
-        ),
+        (pathlib.Path("data/2026/derived/fire_scores_ccdf.html"), document),
     ]
 
 
@@ -157,9 +153,9 @@ def test_score_fires_streams_external_signals(
             {
                 "fire_name": "Bug",
                 "fire_identifier": "2026-a",
-                "source_attributes": json.dumps(
-                    {"IncidentComplexityLevel": "Type 2 Incident"},
-                ),
+                "source_attributes": json.dumps({
+                    "IncidentComplexityLevel": "Type 2 Incident",
+                }),
             },
         ],
         [tests.factories.point(0, 0)],
@@ -187,23 +183,9 @@ def test_score_fires_streams_external_signals(
         [tests.factories.square(1.0)],
     ).to_file(snapshot, layer="evacuations")
 
-    def output_path(
-        _year_directory: pathlib.Path,
-        source: peri_scribe.sources.external_sources.ExternalSource,
-        **_keywords: object,
-    ) -> pathlib.Path:
-        """Keep external-source reads inside the test directory.
-
-        Args:
-            _year_directory: Unused production year directory.
-            source: The source whose storage format determines the suffix.
-            _keywords: Unused source path options.
-
-        Returns:
-            The isolated SQLite or GeoPackage source path.
-        """
-        suffix = ".sqlite" if source.compact_database else ".gpkg"
-        return tmp_path / "sources" / source.name / f"{source.name}{suffix}"
+    output_path = tests.peri_scribe.fires.scores_helpers.make_external_output_path(
+        tmp_path=tmp_path,
+    )
 
     stubs = score_fires_stubs(
         perimeters=perimeters,

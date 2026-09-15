@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import typing
 
-import pytest
-
 import peri_scribe.kml.selection
 import tests.factories
 from peri_scribe.units import units
@@ -13,24 +11,6 @@ from peri_scribe.units import units
 
 if typing.TYPE_CHECKING:
     import geopandas
-
-
-@pytest.fixture
-def mapped_fire() -> geopandas.GeoDataFrame:
-    """Provide a measured perimeter without supplied acreage for qualification tests.
-
-    Returns:
-        A dated, 100-acre mapping with its canonical fire identity.
-    """
-    return tests.factories.geo_frame(
-        {
-            "fire_name": ["Example"],
-            "fire_identifier": ["example"],
-            "observation_time": [tests.factories.utc(2026, 9, 1, 0)],
-            "geometry_area_square_meters": [(100 * units.acres).m_as("meters**2")],
-        },
-        [tests.factories.square(0.01)],
-    )
 
 
 def test_fires_with_qualifying_area_includes_geometry_without_reported_acres(

@@ -19,15 +19,23 @@ they are not important (e.g., only cosmetic).
 
 Do not leave dead code in the codebase.
 
+Code must be wrapped to fit in 88 columns. But do not wrap code that will fit in 88
+columns.
+
 ## Comments and Docstrings
 
-All classes, functions, methods, test fixtures, and test helpers should have docstrings
-with the exception of pure test functions in the tests directory. Where applicable, they
-should have "Args", "Returns", "Yields", and "Raises" sections.
+All classes, functions, and methods should have docstrings. Where applicable, they
+should have "Args", "Returns", "Yields", and "Raises" sections. The exception is pure
+tests (named test_*, and appearing in test_*.py files). They should not have docstrings,
+and their name should make clear exactly what is being tested.
 
 All English prose in code, whether in comments or docstrings, should be about "why", not
 "how". The code is the truth about how. Such prose should be about the current code, and
 should not contrast the current code with past code.
+
+All English prose in code, whether in comments or docstrings, should be wrapped to fit
+in 88 columns. If the first word on the next line (with any adjacent punctuation) will
+fit on the previous line, it must be moved there.
 
 ## Import Style
 

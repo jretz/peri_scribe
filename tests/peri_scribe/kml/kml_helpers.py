@@ -1,7 +1,7 @@
 """Shared helpers for the KML test modules.
 
-These helpers build fire geometry and parse the generated KML back into
-ElementTree so each test can assert on the document.
+These helpers build fire geometry and parse the generated KML back into ElementTree so
+each test can assert on the document.
 """
 
 from __future__ import annotations
@@ -83,8 +83,8 @@ def geometry_frame(
 
     Args:
         rows: The identifier, name, and geometry of each row.
-        observation_times: The observation time of each row, or None for every
-            row when omitted.
+        observation_times: The observation time of each row, or None for every row when
+            omitted.
         area_acres: The computed area of each row, or None to omit the column.
 
     Returns:
@@ -144,10 +144,7 @@ def fire_index(
     Returns:
         The fire index.
     """
-    return peri_scribe.models.FireIndex(
-        version="2026-08-18",
-        fires=entries,
-    )
+    return peri_scribe.models.FireIndex(version="2026-08-18", fires=entries)
 
 
 def document_from(kml_text: str) -> ET.Element:
@@ -166,13 +163,11 @@ def document_from(kml_text: str) -> ET.Element:
     return document
 
 
-def document_from_writer(
-    writer: peri_scribe.kml.geometry.KmlWriter,
-) -> ET.Element:
+def document_from_writer(writer: peri_scribe.kml.geometry.KmlWriter) -> ET.Element:
     """Parse *writer*'s accumulated KML fragments into a document element.
 
-    The writer holds document content without the enclosing ``<kml>`` and
-    ``<Document>`` wrapper, so the wrapper is added here before parsing.
+    The writer holds document content without the enclosing ``<kml>`` and ``<Document>``
+    wrapper, so the wrapper is added here before parsing.
 
     Args:
         writer: The writer holding the KML content.
@@ -187,10 +182,7 @@ def document_from_writer(
     return document_from(kml_text)
 
 
-def folder_named(
-    container: ET.Element,
-    name: str,
-) -> ET.Element:
+def folder_named(container: ET.Element, name: str) -> ET.Element:
     """Return the folder named *name* inside *container*.
 
     Args:
@@ -261,8 +253,8 @@ def description_text(placemark: ET.Element) -> str:
 def draw_order(placemark: ET.Element) -> int:
     """Return the gx:drawOrder of *placemark*'s geometry.
 
-    A multi-geometry's order is set on each geometry it contains rather than on
-    the multi-geometry itself, so the order is read from the first polygon.
+    A multi-geometry's order is set on each geometry it contains rather than on the
+    multi-geometry itself, so the order is read from the first polygon.
 
     Args:
         placemark: The placemark to inspect.
@@ -312,15 +304,11 @@ def assert_tree_invisible(container: ET.Element) -> None:
         container: The folder whose whole tree must be invisible.
     """
     for feature in container.iter():
-        if feature.tag not in {
-            kml_tag("Folder"),
-            kml_tag("Placemark"),
-            gx_tag("Tour"),
-        }:
+        if feature.tag not in {kml_tag("Folder"), kml_tag("Placemark"), gx_tag("Tour")}:
             continue
-        # Tour update instructions reuse Placemark and Folder tags but carry a
-        # targetId rather than being real features, so they are not part of the
-        # tree whose visibility is asserted here.
+        # Tour update instructions reuse Placemark and Folder tags but carry a targetId
+        # rather than being real features, so they are not part of the tree whose
+        # visibility is asserted here.
         if feature.get("targetId") is not None:
             continue
         assert visibility(feature) == 0, feature.findtext(kml_tag("name"))
@@ -333,15 +321,11 @@ def assert_tree_visible(container: ET.Element) -> None:
         container: The folder whose whole tree must be visible.
     """
     for feature in container.iter():
-        if feature.tag not in {
-            kml_tag("Folder"),
-            kml_tag("Placemark"),
-            gx_tag("Tour"),
-        }:
+        if feature.tag not in {kml_tag("Folder"), kml_tag("Placemark"), gx_tag("Tour")}:
             continue
-        # Tour update instructions reuse Placemark and Folder tags but carry a
-        # targetId rather than being real features, so they are not part of the
-        # tree whose visibility is asserted here.
+        # Tour update instructions reuse Placemark and Folder tags but carry a targetId
+        # rather than being real features, so they are not part of the tree whose
+        # visibility is asserted here.
         if feature.get("targetId") is not None:
             continue
         assert visibility(feature) is None, feature.findtext(kml_tag("name"))
@@ -525,12 +509,10 @@ def png_pixel_rows(content: bytes) -> list[list[tuple[int, int, int, int]]]:
     rows: list[list[tuple[int, int, int, int]]] = []
     for row_start in range(0, len(raw), row_size):
         assert raw[row_start] == 0
-        rows.append(
-            [
-                struct.unpack(">BBBB", raw[pixel_start : pixel_start + 4])
-                for pixel_start in range(row_start + 1, row_start + row_size, 4)
-            ],
-        )
+        rows.append([
+            struct.unpack(">BBBB", raw[pixel_start : pixel_start + 4])
+            for pixel_start in range(row_start + 1, row_start + row_size, 4)
+        ])
     return rows
 
 

@@ -33,7 +33,11 @@ class SignalTier(abc.ABC):
     @property
     @abc.abstractmethod
     def description(self) -> str:
-        """Return the tier's English description."""
+        """The tier's English description for score explanations.
+
+        Returns:
+            The tier's contribution phrased for a score explanation.
+        """
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -42,7 +46,11 @@ class SizeTier(SignalTier):
 
     @property
     def description(self) -> str:
-        """Return the tier's English description."""
+        """The tier's English description for score explanations.
+
+        Returns:
+            The tier's contribution phrased for a score explanation.
+        """
         return f"over {self.threshold:,.0f} acres"
 
 
@@ -52,7 +60,11 @@ class GrowthTier(SignalTier):
 
     @property
     def description(self) -> str:
-        """Return the tier's English description."""
+        """The tier's English description for score explanations.
+
+        Returns:
+            The tier's contribution phrased for a score explanation.
+        """
         return f"a single growth step over {self.threshold:,.0f} acres"
 
 
@@ -62,7 +74,11 @@ class FirstMappingTier(SignalTier):
 
     @property
     def description(self) -> str:
-        """Return the tier's English description."""
+        """The tier's English description for score explanations.
+
+        Returns:
+            The tier's contribution phrased for a score explanation.
+        """
         return f"already over {self.threshold:,.0f} acres when first mapped"
 
 
@@ -72,7 +88,11 @@ class BuildingCountTier(SignalTier):
 
     @property
     def description(self) -> str:
-        """Return the tier's English description."""
+        """The tier's English description for score explanations.
+
+        Returns:
+            The tier's contribution phrased for a score explanation.
+        """
         return f"over {self.threshold:,.0f} structures within a mile"
 
 
@@ -143,10 +163,7 @@ EVACUATION_WEIGHT = 11
 IMPORTANCE_WEIGHT = 120
 
 
-def tiered_points(
-    value: float | None,
-    tiers: tuple[SignalTier, ...],
-) -> int:
+def tiered_points(value: float | None, tiers: tuple[SignalTier, ...]) -> int:
     """Return the points for the first tier *value* meets, or zero.
 
     Args:
@@ -177,8 +194,8 @@ def signal_description(
         tiers: The signal's tiers, ordered from largest threshold down.
 
     Returns:
-        The description for the signal's tier, or None when the signal
-        contributed no points or no tier matches.
+        The description for the signal's tier, or None when the signal contributed no
+        points or no tier matches.
     """
     if points == 0:
         return None
@@ -196,8 +213,8 @@ def importance_description(points: int) -> str | None:
         points: The signal's weighted points.
 
     Returns:
-        The description for the importance level, or None when the signal
-        contributed no points.
+        The description for the importance level, or None when the signal contributed no
+        points.
     """
     if points == 0:
         return None
@@ -334,7 +351,11 @@ class FireScore:
 
     @property
     def total(self) -> int:
-        """Return the fire's total score."""
+        """The fire's combined score across all contributing signals.
+
+        Returns:
+            The sum of all points assigned to this fire.
+        """
         return (
             self.size_points
             + self.growth_points
@@ -463,7 +484,4 @@ def fire_scores_document(
     Returns:
         The validated fire-scores document.
     """
-    return peri_scribe.models.FireScores(
-        version=FIRE_SCORES_VERSION,
-        fires=entries,
-    )
+    return peri_scribe.models.FireScores(version=FIRE_SCORES_VERSION, fires=entries)

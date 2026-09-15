@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import datetime
 import pathlib
-import typing
 import zipfile
 
 import pytest
@@ -16,102 +15,13 @@ import peri_scribe.fires.index
 import peri_scribe.fires.score_files
 import peri_scribe.geo.reading
 import peri_scribe.kml.builder
-import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.icons
 import peri_scribe.models
 import peri_scribe.publication
 import tests.factories
+import tests.peri_scribe.kml.builder_helpers
 import tests.peri_scribe.kml.kml_helpers
-
-
-if typing.TYPE_CHECKING:
-    import geopandas
-
-
-def recording_archive_factory(
-    archives: list[FakeArchive],
-) -> typing.Callable[..., FakeArchive]:
-    """Return a zipfile stand-in that records every archive it opens.
-
-    Args:
-        archives: The list each opened archive is appended to.
-
-    Returns:
-        The stand-in for ``zipfile.ZipFile``.
-    """
-
-    def fake_zipfile(
-        *arguments: object,
-        **keywords: object,
-    ) -> FakeArchive:
-        """Capture archive construction and writes without creating a KMZ.
-
-        Args:
-            arguments: Positional archive constructor arguments.
-            keywords: Named archive constructor options.
-
-        Returns:
-            The recorded in-memory archive.
-        """
-        archive = FakeArchive(*arguments, **keywords)
-        archives.append(archive)
-        return archive
-
-    return fake_zipfile
-
-
-class FakeArchive:
-    """In-memory zip archive stand-in that records its writes."""
-
-    def __init__(self, *arguments: object, **keywords: object) -> None:
-        """Retain archive options so compression choices can be asserted.
-
-        Args:
-            arguments: Positional archive constructor arguments.
-            keywords: Named archive constructor options.
-        """
-        self.arguments = arguments
-        self.keywords = keywords
-        self.writes: list[tuple[str, str | bytes, int | None]] = []
-
-    def __enter__(self) -> typing.Self:
-        """Expose the in-memory archive to the writer context.
-
-        Returns:
-            This archive recorder.
-        """
-        return self
-
-    def __exit__(
-        self,
-        _exc_type: object,
-        _exc_value: object,
-        _traceback: object,
-    ) -> None:
-        """Let writer exceptions propagate out of the archive context.
-
-        Args:
-            _exc_type: Unused exception type from the context.
-            _exc_value: Unused exception instance from the context.
-            _traceback: Unused traceback from the context.
-        """
-        return
-
-    def writestr(
-        self,
-        name: str,
-        data: str | bytes,
-        compress_type: int | None = None,
-    ) -> None:
-        """Record archive contents and compression choices for assertions.
-
-        Args:
-            name: The member filename inside the KMZ.
-            data: The member content supplied by the writer.
-            compress_type: The optional per-member compression override.
-        """
-        self.writes.append((name, data, compress_type))
 
 
 def test_kmz_filename_names_year() -> None:
@@ -220,65 +130,9 @@ def test_fire_kml_puts_top_fires_before_status_folders() -> None:
     ]
 
 
-SCENARIO_TIME = datetime.datetime(2026, 8, 20, 12, 0, tzinfo=datetime.UTC)
-
-
-def new_folder_scenario() -> tuple[
-    list[peri_scribe.kml.fire_data.FireGeometry],
-    peri_scribe.models.FireScores,
-]:
-    """Return one fire that qualifies for every new top-level folder.
-
-    Returns:
-        The fire and its score.
-    """
-    fire = peri_scribe.kml.fire_data.FireGeometry(
-        name="Alpha",
-        status=peri_scribe.models.FireStatus.ACTIVE,
-        point=shapely.geometry.Point(0.0, 0.0),
-        perimeters=(
-            peri_scribe.kml.fire_data.Perimeter(
-                geometry=tests.factories.square(0.02),
-                observation_time=SCENARIO_TIME - datetime.timedelta(hours=48),
-            ),
-            peri_scribe.kml.fire_data.Perimeter(
-                geometry=tests.factories.square(0.03),
-                observation_time=SCENARIO_TIME,
-            ),
-        ),
-        description=peri_scribe.kml.descriptions.FireDescription(
-            discovery_time=SCENARIO_TIME - datetime.timedelta(days=1),
-            observation_time=SCENARIO_TIME,
-            total_personnel=50.0,
-        ),
-        type_one=True,
-    )
-    scores = peri_scribe.models.FireScores(
-        version="test",
-        fires=[
-            peri_scribe.models.FireScoreEntry(
-                name="Alpha",
-                score=10,
-                explanation="No notable size, growth, threat, or "
-                "official-importance signals.",
-            ),
-        ],
-    )
-    return [fire], scores
-
-
-NEW_FOLDER_NAMES = [
-    "New, Notable Fires",
-    "Type 1 Fires",
-    "Fast Growing Fires (acres)",
-    "Fast Growing Fires (%)",
-    "Fires with Most Personnel",
-]
-
-
 def test_fire_kml_puts_new_folders_before_top_fires() -> None:
-    fires, scores = new_folder_scenario()
-    with time_machine.travel(SCENARIO_TIME):
+    fires, scores = tests.peri_scribe.kml.builder_helpers.new_folder_scenario()
+    with time_machine.travel(tests.peri_scribe.kml.builder_helpers.SCENARIO_TIME):
         document = tests.peri_scribe.kml.kml_helpers.document_from(
             peri_scribe.kml.builder.fire_kml(fires, "test", scores),
         )
@@ -297,8 +151,8 @@ def test_fire_kml_puts_new_folders_before_top_fires() -> None:
 
 
 def test_fire_kml_loads_new_folders_unchecked() -> None:
-    fires, scores = new_folder_scenario()
-    with time_machine.travel(SCENARIO_TIME):
+    fires, scores = tests.peri_scribe.kml.builder_helpers.new_folder_scenario()
+    with time_machine.travel(tests.peri_scribe.kml.builder_helpers.SCENARIO_TIME):
         document = tests.peri_scribe.kml.kml_helpers.document_from(
             peri_scribe.kml.builder.fire_kml(fires, "test", scores),
         )
@@ -308,14 +162,11 @@ def test_fire_kml_loads_new_folders_unchecked() -> None:
         top_level,
         "Top Fires by Name",
     )
-    active = tests.peri_scribe.kml.kml_helpers.folder_named(
-        top_level,
-        "Active Fires",
-    )
+    active = tests.peri_scribe.kml.kml_helpers.folder_named(top_level, "Active Fires")
     # The new folders hold their fires directly and load unchecked, so "Top Fires by
     # Name" stays the last radio option with visible content and loads checked; the
     # status folders stay unchecked beneath it.
-    for name in NEW_FOLDER_NAMES:
+    for name in tests.peri_scribe.kml.builder_helpers.NEW_FOLDER_NAMES:
         folder = tests.peri_scribe.kml.kml_helpers.folder_named(top_level, name)
         assert tests.peri_scribe.kml.kml_helpers.visibility(folder) == 0
         tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(folder)
@@ -343,14 +194,8 @@ def test_fire_kml_lists_type_one_fires_by_name() -> None:
     )
 
     top_level = tests.peri_scribe.kml.kml_helpers.folder_named(document, "test")
-    type_one = tests.peri_scribe.kml.kml_helpers.folder_named(
-        top_level,
-        "Type 1 Fires",
-    )
-    assert tests.peri_scribe.kml.kml_helpers.folder_names(type_one) == [
-        "Alpha",
-        "Zulu",
-    ]
+    type_one = tests.peri_scribe.kml.kml_helpers.folder_named(top_level, "Type 1 Fires")
+    assert tests.peri_scribe.kml.kml_helpers.folder_names(type_one) == ["Alpha", "Zulu"]
     tests.peri_scribe.kml.kml_helpers.assert_tree_invisible(type_one)
 
 
@@ -394,14 +239,11 @@ def test_fire_kml_loads_top_fires_by_name_checked() -> None:
         top_level,
         "Top Fires by Score",
     )
-    active = tests.peri_scribe.kml.kml_helpers.folder_named(
-        top_level,
-        "Active Fires",
-    )
-    # The top-level radios load with only "Top Fires by Name" checked, so its fires
-    # are the default view on load. The unchecked top-level radios hide their whole
-    # trees, so they carry no visible content and their radio buttons load off instead
-    # of being selected. A status folder with no fires is omitted.
+    active = tests.peri_scribe.kml.kml_helpers.folder_named(top_level, "Active Fires")
+    # The top-level radios load with only "Top Fires by Name" checked, so its fires are
+    # the default view on load. The unchecked top-level radios hide their whole trees,
+    # so they carry no visible content and their radio buttons load off instead of being
+    # selected. A status folder with no fires is omitted.
     assert tests.peri_scribe.kml.kml_helpers.folder_names(top_level) == [
         "Top Fires by Name",
         "Top Fires by Score",
@@ -416,9 +258,9 @@ def test_fire_kml_loads_top_fires_by_name_checked() -> None:
 
 
 def test_fire_kml_checks_active_fires_without_top_fires() -> None:
-    fires, _scores = new_folder_scenario()
+    fires, _scores = tests.peri_scribe.kml.builder_helpers.new_folder_scenario()
     empty_scores = peri_scribe.models.FireScores(version="test", fires=[])
-    with time_machine.travel(SCENARIO_TIME):
+    with time_machine.travel(tests.peri_scribe.kml.builder_helpers.SCENARIO_TIME):
         document = tests.peri_scribe.kml.kml_helpers.document_from(
             peri_scribe.kml.builder.fire_kml(fires, "test", empty_scores),
         )
@@ -431,10 +273,7 @@ def test_fire_kml_checks_active_fires_without_top_fires() -> None:
         "Fires with Most Personnel",
         "Active Fires",
     ]
-    active = tests.peri_scribe.kml.kml_helpers.folder_named(
-        top_level,
-        "Active Fires",
-    )
+    active = tests.peri_scribe.kml.kml_helpers.folder_named(top_level, "Active Fires")
     # Without any top fires the active fires folder is the last radio option with
     # visible content, so it loads checked.
     assert tests.peri_scribe.kml.kml_helpers.visibility(active) is None
@@ -593,16 +432,10 @@ def test_fire_kml_builds_active_and_inactive_folders() -> None:
     assert tests.peri_scribe.kml.kml_helpers.placemark_names(bug_folder) == ["Bug"]
     assert tests.peri_scribe.kml.kml_helpers.placemark_names(
         tests.peri_scribe.kml.kml_helpers.folder_named(bug_folder, "Perimeters"),
-    ) == [
-        "08/05 13:30 Perimeter",
-        "08/04 09:15 Perimeter",
-        "08/03 16:00 Perimeter",
-    ]
+    ) == ["08/05 13:30 Perimeter", "08/04 09:15 Perimeter", "08/03 16:00 Perimeter"]
     assert tests.peri_scribe.kml.kml_helpers.placemark_names(
         tests.peri_scribe.kml.kml_helpers.folder_named(bug_folder, "Interior"),
-    ) == [
-        "08/05 13:30 Interior",
-    ]
+    ) == ["08/05 13:30 Interior"]
     inactive = tests.peri_scribe.kml.kml_helpers.folder_named(
         top_level,
         "Inactive Fires",
@@ -728,9 +561,13 @@ def test_write_archive_writes_compressed_document(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     path = pathlib.Path("/maps/PeriScribe Fires 2026.kmz")
-    archives: list[FakeArchive] = []
+    archives: list[tests.peri_scribe.kml.builder_helpers.FakeArchive] = []
 
-    monkeypatch.setattr(zipfile, "ZipFile", recording_archive_factory(archives))
+    monkeypatch.setattr(
+        zipfile,
+        "ZipFile",
+        tests.peri_scribe.kml.builder_helpers.recording_archive_factory(archives),
+    )
 
     peri_scribe.kml.builder.write_archive(path, "<kml/>", None)
 
@@ -745,13 +582,15 @@ def test_write_archive_writes_compressed_document(
     assert archive.writes == [("doc.kml", "<kml/>", None)]
 
 
-def test_write_archive_writes_images(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
+def test_write_archive_writes_images(monkeypatch: pytest.MonkeyPatch) -> None:
     path = pathlib.Path("/maps/PeriScribe Fires 2026.kmz")
-    archives: list[FakeArchive] = []
+    archives: list[tests.peri_scribe.kml.builder_helpers.FakeArchive] = []
 
-    monkeypatch.setattr(zipfile, "ZipFile", recording_archive_factory(archives))
+    monkeypatch.setattr(
+        zipfile,
+        "ZipFile",
+        tests.peri_scribe.kml.builder_helpers.recording_archive_factory(archives),
+    )
 
     image_content = b"\x89PNG\r\n\x1a\n"
     svg_content = b"<svg/>"
@@ -804,20 +643,10 @@ def test_create_kmz_reads_history_and_writes_kmz(
         ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
     ])
 
-    def read_layer(
-        _path: pathlib.Path,
-        layer_name: str,
-    ) -> geopandas.GeoDataFrame:
-        """Isolate derived-layer reads from persistent geography.
-
-        Args:
-            _path: The requested path, without reading its contents.
-            layer_name: The requested history layer.
-
-        Returns:
-            The synthetic history frame used by this scenario.
-        """
-        return perimeters if layer_name == "perimeter_history" else points
+    read_layer = tests.peri_scribe.kml.builder_helpers.make_history_layer_reader(
+        perimeters=perimeters,
+        points=points,
+    )
 
     monkeypatch.setattr(peri_scribe.geo.reading, "read_layer", read_layer)
     writes: list[tuple[pathlib.Path, str, dict[str, bytes]]] = []
@@ -882,20 +711,10 @@ def test_create_kmz_excludes_fires_without_qualifying_area(
     )
     points = tests.peri_scribe.kml.kml_helpers.geometry_frame([])
 
-    def read_layer(
-        _path: pathlib.Path,
-        layer_name: str,
-    ) -> geopandas.GeoDataFrame:
-        """Isolate derived-layer reads from persistent geography.
-
-        Args:
-            _path: The requested path, without reading its contents.
-            layer_name: The requested history layer.
-
-        Returns:
-            The synthetic history frame used by this scenario.
-        """
-        return perimeters if layer_name == "perimeter_history" else points
+    read_layer = tests.peri_scribe.kml.builder_helpers.make_history_layer_reader(
+        perimeters=perimeters,
+        points=points,
+    )
 
     monkeypatch.setattr(peri_scribe.geo.reading, "read_layer", read_layer)
     writes: list[tuple[pathlib.Path, str, dict[str, bytes]]] = []
@@ -946,25 +765,12 @@ def test_kmz_atomic_replacement_and_failed_write_preserve_complete_file(
     peri_scribe.kml.builder.write_kmz(output, "<kml>old</kml>")
     previous = output.read_bytes()
 
-    def fail_after_partial_write(
-        path: pathlib.Path,
-        _text: str,
-        _images: object,
-    ) -> None:
-        """Simulate a disk failure while the archive is incomplete.
-
-        Args:
-            path: The temporary archive path where the partial write occurs.
-            _text: The KML document accepted to match the writer's signature; unused.
-            _images: The plot images accepted to match the writer's signature; unused.
-
-        Raises:
-            OSError: After the incomplete archive is written.
-        """
-        path.write_bytes(b"partial archive")
-        assert output.read_bytes() == previous
-        message = "disk failure"
-        raise OSError(message)
+    fail_after_partial_write = (
+        tests.peri_scribe.kml.builder_helpers.make_interrupted_archive_writer(
+            output=output,
+            previous=previous,
+        )
+    )
 
     with monkeypatch.context() as patch:
         patch.setattr(

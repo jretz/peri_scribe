@@ -26,10 +26,7 @@ def test_geojson_feature_chunks_streams_features_in_chunks(
     dataframe.to_file(path, driver="GeoJSON")
 
     chunks = list(
-        peri_scribe.sources.conversion.geojson_feature_chunks(
-            path,
-            chunk_size=2,
-        ),
+        peri_scribe.sources.conversion.geojson_feature_chunks(path, chunk_size=2),
     )
 
     assert [len(chunk) for chunk in chunks] == [2, 2, 1]
@@ -40,30 +37,19 @@ def test_geojson_feature_chunks_streams_features_in_chunks(
     )
 
 
-def test_geojson_feature_chunks_keeps_missing_geometry(
-    tmp_path: pathlib.Path,
-) -> None:
+def test_geojson_feature_chunks_keeps_missing_geometry(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "features.geojson"
     path.write_text(
-        json.dumps(
-            {
-                "type": "FeatureCollection",
-                "features": [
-                    {
-                        "type": "Feature",
-                        "properties": {"OBJECTID": 1},
-                        "geometry": None,
-                    },
-                ],
-            },
-        ),
+        json.dumps({
+            "type": "FeatureCollection",
+            "features": [
+                {"type": "Feature", "properties": {"OBJECTID": 1}, "geometry": None},
+            ],
+        }),
     )
 
     chunks = list(
-        peri_scribe.sources.conversion.geojson_feature_chunks(
-            path,
-            chunk_size=2,
-        ),
+        peri_scribe.sources.conversion.geojson_feature_chunks(path, chunk_size=2),
     )
 
     assert len(chunks) == 1
@@ -72,10 +58,7 @@ def test_geojson_feature_chunks_keeps_missing_geometry(
 
 def test_geojson_chunk_dataframe_unions_property_columns() -> None:
     frame = peri_scribe.sources.conversion.geojson_chunk_dataframe(
-        [
-            shapely.geometry.Point(0.0, 0.0),
-            shapely.geometry.Point(1.0, 1.0),
-        ],
+        [shapely.geometry.Point(0.0, 0.0), shapely.geometry.Point(1.0, 1.0)],
         [{"a": 1}, {"b": 2}],
     )
 
@@ -84,9 +67,7 @@ def test_geojson_chunk_dataframe_unions_property_columns() -> None:
     assert bool(pd.isna(frame.iloc[1]["a"]))
 
 
-def test_geodata_chunks_reads_non_geojson_in_chunks(
-    tmp_path: pathlib.Path,
-) -> None:
+def test_geodata_chunks_reads_non_geojson_in_chunks(tmp_path: pathlib.Path) -> None:
     dataframe = tests.factories.geo_frame(
         {"a": [1, 2, 3]},
         [shapely.geometry.Point(index, 0) for index in range(3)],
@@ -94,12 +75,7 @@ def test_geodata_chunks_reads_non_geojson_in_chunks(
     path = tmp_path / "features.gpkg"
     dataframe.to_file(path, layer="features")
 
-    chunks = list(
-        peri_scribe.sources.conversion.geodata_chunks(
-            path,
-            chunk_size=2,
-        ),
-    )
+    chunks = list(peri_scribe.sources.conversion.geodata_chunks(path, chunk_size=2))
 
     assert [len(chunk) for chunk in chunks] == [2, 1]
     assert [chunk.iloc[0]["a"] for chunk in chunks] == [1, 3]
@@ -109,11 +85,7 @@ def test_convert_to_geopackage_streams_centroids_in_chunks(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        peri_scribe.sources.conversion,
-        "CONVERSION_CHUNK_SIZE",
-        2,
-    )
+    monkeypatch.setattr(peri_scribe.sources.conversion, "CONVERSION_CHUNK_SIZE", 2)
     dataframe = tests.factories.geo_frame(
         {"OBJECTID": [1, 2, 3, 4, 5]},
         [
@@ -136,20 +108,14 @@ def test_convert_to_geopackage_streams_centroids_in_chunks(
     converted = geopandas.read_file(output, layer="buildings")
     assert list(converted.columns) == ["geometry"]
     assert list(converted.geometry.geom_type) == ["Point"] * 5
-    assert sorted(converted.geometry.x) == pytest.approx(
-        [0.5, 1.5, 2.5, 3.5, 4.5],
-    )
+    assert sorted(converted.geometry.x) == pytest.approx([0.5, 1.5, 2.5, 3.5, 4.5])
 
 
 def test_convert_to_geopackage_keeps_attributes_across_chunks(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(
-        peri_scribe.sources.conversion,
-        "CONVERSION_CHUNK_SIZE",
-        2,
-    )
+    monkeypatch.setattr(peri_scribe.sources.conversion, "CONVERSION_CHUNK_SIZE", 2)
     dataframe = tests.factories.geo_frame(
         {"OBJECTID": [1, 2, 3]},
         [
@@ -178,9 +144,7 @@ def test_convert_to_geopackage_writes_empty_layer_for_empty_source(
     tmp_path: pathlib.Path,
 ) -> None:
     geodata_path = tmp_path / "empty.geojson"
-    geodata_path.write_text(
-        json.dumps({"type": "FeatureCollection", "features": []}),
-    )
+    geodata_path.write_text(json.dumps({"type": "FeatureCollection", "features": []}))
     output = tmp_path / "buildings.gpkg"
 
     peri_scribe.sources.conversion.convert_to_geopackage(

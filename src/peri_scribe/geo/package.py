@@ -138,12 +138,10 @@ class FireRowRecord:
             record.mission,
             record.point_of_origin_state,
             record.point_of_origin_fips,
-            json.dumps(
-                {
-                    key: peri_scribe.geo.parsing.json_native_value(value)
-                    for key, value in self.attributes.items()
-                },
-            ),
+            json.dumps({
+                key: peri_scribe.geo.parsing.json_native_value(value)
+                for key, value in self.attributes.items()
+            }),
         )
 
 
