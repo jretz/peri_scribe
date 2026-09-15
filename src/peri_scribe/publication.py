@@ -18,6 +18,7 @@ import structlog
 import peri_scribe.geo.package
 import peri_scribe.geo.parsing
 import peri_scribe.models
+import peri_scribe.perimeters.size_filtering
 import peri_scribe.perimeters.versions
 import peri_scribe.sources.external_sources
 import peri_scribe.sources.feeds
@@ -73,6 +74,7 @@ class Mapping(pydantic.BaseModel):
         serial: The source snapshot's serial number.
         shape: The normalized geometry digest, or an empty string for missing geometry.
         area_square_meters: The raw geodesic area, or None when it cannot be measured.
+        collapsed: Whether the measured geometry fails the shared perimeter size filter.
     """
 
     model_config = pydantic.ConfigDict(extra="forbid", frozen=True)
@@ -85,6 +87,7 @@ class Mapping(pydantic.BaseModel):
     serial: int
     shape: str
     area_square_meters: float | None = pydantic.Field(ge=0, allow_inf_nan=False)
+    collapsed: bool = False
 
     @property
     def area(self) -> pint.Quantity[float] | None:
@@ -110,7 +113,7 @@ class Collection(pydantic.BaseModel):
     """
 
     model_config = pydantic.ConfigDict(extra="forbid", frozen=True)
-    version: typing.Literal[1] = 1
+    version: typing.Literal[2] = 2
     files: dict[str, FileStamp] = pydantic.Field(default_factory=dict)
     mappings: dict[str, tuple[Mapping, ...]] = pydantic.Field(default_factory=dict)
     evacuations: FileStamp | None = None
@@ -370,6 +373,12 @@ def snapshot_mappings(
                     serial=source.serial_number,
                     shape=shape,
                     area_square_meters=area,
+                    collapsed=(
+                        peri_scribe.perimeters.size_filtering.area_is_implausibly_small(
+                            None if area is None else area * units.meters**2,
+                            source.attributes,
+                        )
+                    ),
                 ),
             )
     return tuple(measurements)
@@ -471,12 +480,16 @@ def candidate_fires(
 ) -> dict[str, tuple[Mapping, PublishedFire | None]] | None:
     """Shared identifiers permit cheap grouping; ambiguity requires a build.
 
+    Collapsed polygons cannot become published mappings, so they must not displace
+    acceptable candidates or trigger area-based publication.
+
     Args:
         mappings: Unpublished source observations to compare with the baselines.
         published: The completed publication supplying fire identities and baselines.
 
     Returns:
-        Latest candidates and their published baselines, or None for ambiguity.
+        Latest acceptable candidates and their published baselines, or None for
+        ambiguity.
     """
     aliases = {
         identifier: key
@@ -485,6 +498,8 @@ def candidate_fires(
     }
     candidates: dict[str, tuple[Mapping, PublishedFire | None]] = {}
     for mapping in mappings:
+        if mapping.collapsed:
+            continue
         matches = {aliases[i] for i in mapping.identifiers if i in aliases}
         if not mapping.identifiers or len(matches) > 1:
             return None

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import datetime
+import json
 import pathlib
+import unittest.mock
 
 import geopandas
 import pytest
@@ -101,6 +103,46 @@ def publication(
             ),
         },
     )
+
+
+def write_perimeter_snapshot(
+    sources_directory: pathlib.Path,
+    geometry: shapely.Geometry | None,
+    attributes: dict[str, object],
+    *,
+    serial: int = 1,
+) -> pathlib.Path:
+    """Exercise collection with source attributes preserved through real storage.
+
+    Args:
+        sources_directory: The isolated directory containing the source snapshots.
+        geometry: The source perimeter in WGS84, or None when unavailable.
+        attributes: Reported sizes and other attributes to include in the source row.
+        serial: The snapshot number used to order observations.
+
+    Returns:
+        The stored perimeter snapshot path.
+    """
+    feed = peri_scribe.sources.feeds.WFIGS_PERIMETERS_FEED
+    values = {
+        "attr_IncidentName": "Example",
+        "attr_ActiveFireCandidate": 1,
+        "poly_IRWINID": "{A}",
+        "attr_UniqueFireIdentifier": None,
+        "attr_POOState": None,
+        "attr_POOFips": None,
+        "poly_DateCurrent": NOW + datetime.timedelta(minutes=serial),
+        "OBJECTID": 123,
+        **attributes,
+    }
+    frame = tests.factories.geo_frame(
+        {name: [value] for name, value in values.items()},
+        [geometry],
+    )
+    path = sources_directory / feed.name / f"000___/{serial:06d},lastEdit=1.gpkg"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_file(path, layer=feed.name, driver="GPKG")
+    return path
 
 
 @pytest.mark.parametrize(
@@ -335,7 +377,7 @@ def test_checkpoint_requires_matching_completed_output(tmp_path: pathlib.Path) -
 
 def test_corrupt_state_cannot_authorize_skip(tmp_path: pathlib.Path) -> None:
     state = tmp_path / "state.json"
-    state.write_text('{"version": 2}')
+    state.write_text('{"version": "invalid"}')
     assert (
         peri_scribe.publication.read_state(state, peri_scribe.publication.Collection)
         is None
@@ -447,6 +489,175 @@ def test_snapshot_reader_reprojects_and_ignores_incident_rows(
     assert observed.source_file == str(path.relative_to(tmp_path))
     assert observed.area is not None
     assert observed.area > THRESHOLD.area
+
+
+@pytest.mark.parametrize(
+    "column",
+    [
+        "poly_Acres_AutoCalc",
+        "poly_GISAcres",
+        "area_acres",
+        "attr_IncidentSize",
+        "attr_FinalAcres",
+    ],
+)
+def test_snapshot_mappings_classifies_collapse_without_discarding_measurements(
+    tmp_path: pathlib.Path,
+    column: str,
+) -> None:
+    path = write_perimeter_snapshot(
+        tmp_path,
+        shapely.box(-121, 40, -120.9999, 40.0001),
+        {column: 4000.0},
+    )
+    (observed,) = peri_scribe.publication.snapshot_mappings(path, tmp_path, NOW)
+    assert observed.collapsed
+    assert observed.area is not None
+    assert observed.area > 0 * units.acres
+    assert observed.shape
+
+
+@pytest.mark.parametrize("change", [-100.0, 100.0])
+def test_decide_preserves_valid_area_changes_after_collapse_check(
+    tmp_path: pathlib.Path,
+    change: float,
+) -> None:
+    geometry = shapely.box(-121, 40, -120.99, 40.01)
+    path = write_perimeter_snapshot(
+        tmp_path,
+        geometry,
+        {"poly_Acres_AutoCalc": peri_scribe.units.area(geometry).m_as("acres")},
+        serial=2,
+    )
+    (observed,) = peri_scribe.publication.snapshot_mappings(path, tmp_path, NOW)
+    assert not observed.collapsed
+    assert observed.area is not None
+    baseline = mapping(observed.area.m_as("acres") - change)
+    decision = peri_scribe.publication.decide(
+        collection(baseline, observed),
+        publication(baseline),
+        THRESHOLD,
+        NOW,
+    )
+    assert decision.reason == peri_scribe.publication.Reason.AREA
+    assert decision.change.m_as("acres") == pytest.approx(change)
+
+
+@pytest.mark.parametrize(
+    "geometry",
+    [None, shapely.Polygon([(0, 0), (1, 1), (0, 1), (1, 0), (0, 0)])],
+)
+def test_snapshot_mappings_keeps_unknown_geometry_distinct_from_collapse(
+    tmp_path: pathlib.Path,
+    geometry: shapely.Geometry | None,
+) -> None:
+    path = write_perimeter_snapshot(tmp_path, geometry, {"attr_IncidentSize": 4000.0})
+    (observed,) = peri_scribe.publication.snapshot_mappings(path, tmp_path, NOW)
+    assert observed.area is None
+    assert not observed.collapsed
+
+
+@pytest.mark.parametrize("identifiers", [("a",), ()])
+def test_candidate_fires_uses_latest_acceptable_mapping(
+    identifiers: tuple[str, ...],
+) -> None:
+    baseline = mapping(100)
+    acceptable = mapping(140, serial=2)
+    collapsed = mapping(0.05, serial=3, identifiers=identifiers).model_copy(
+        update={"collapsed": True},
+    )
+    candidates = peri_scribe.publication.candidate_fires(
+        [collapsed, acceptable],
+        publication(baseline),
+    )
+    assert candidates is not None
+    assert candidates["id:a"][0] == acceptable
+    decision = peri_scribe.publication.mapping_decision(candidates, THRESHOLD)
+    assert decision.reason == peri_scribe.publication.Reason.AREA
+    assert decision.change.m_as("acres") == pytest.approx(40)
+
+
+@pytest.mark.parametrize("override", ["none", "timer", "evacuations"])
+def test_decide_collapsed_updates_retain_timer_and_evacuation_overrides(
+    override: str,
+) -> None:
+    baseline = mapping(4000)
+    collapsed = mapping(0.05, serial=2).model_copy(update={"collapsed": True})
+    saved = collection(baseline, collapsed)
+    if override == "evacuations":
+        saved = saved.model_copy(update={"evacuations": STAMP})
+    decision = peri_scribe.publication.decide(
+        saved,
+        publication(baseline),
+        THRESHOLD,
+        NOW + THRESHOLD.interval if override == "timer" else NOW,
+    )
+    assert (
+        decision.reason
+        == {
+            "none": peri_scribe.publication.Reason.BELOW_THRESHOLD,
+            "timer": peri_scribe.publication.Reason.TIMER,
+            "evacuations": peri_scribe.publication.Reason.EVACUATIONS,
+        }[override]
+    )
+    assert decision.proceed is (override != "none")
+
+
+def test_collect_refreshes_stale_cache_once_and_preserves_published_checkpoint(
+    tmp_path: pathlib.Path,
+) -> None:
+    sources = tmp_path / "sources"
+    write_perimeter_snapshot(
+        sources,
+        shapely.box(-121, 40, -120.99, 40.01),
+        {"attr_IncidentSize": 4000.0},
+    )
+    initial = peri_scribe.publication.collect(tmp_path)
+    (baseline,) = next(iter(initial.mappings.values()))
+    output = tmp_path / "output.kmz"
+    output.write_bytes(b"completed KMZ")
+    peri_scribe.publication.commit(
+        tmp_path,
+        output,
+        initial,
+        publication(baseline).fires,
+    )
+    checkpoint_path = peri_scribe.publication.publication_path(tmp_path)
+    checkpoint = json.loads(checkpoint_path.read_bytes())
+    checkpoint["fires"]["id:a"]["mapping"].pop("collapsed")
+    checkpoint_path.write_text(json.dumps(checkpoint))
+    checkpoint_bytes = checkpoint_path.read_bytes()
+    collapsed_path = write_perimeter_snapshot(
+        sources,
+        shapely.box(-121, 40, -120.9999, 40.0001),
+        {"attr_IncidentSize": 4000.0},
+        serial=2,
+    )
+    raw_bytes = collapsed_path.read_bytes()
+    outdated = peri_scribe.publication.collect(tmp_path).model_dump(mode="json")
+    outdated["version"] = 1
+    for observations in outdated["mappings"].values():
+        for observation in observations:
+            observation.pop("collapsed")
+    peri_scribe.publication.collection_path(tmp_path).write_text(json.dumps(outdated))
+    with unittest.mock.patch.object(
+        peri_scribe.publication,
+        "snapshot_mappings",
+        wraps=peri_scribe.publication.snapshot_mappings,
+    ) as reader:
+        refreshed = peri_scribe.publication.collect(tmp_path)
+        assert peri_scribe.publication.collect(tmp_path) == refreshed
+    assert reader.call_count == len(refreshed.files)
+    relative = str(collapsed_path.relative_to(sources))
+    assert refreshed.mappings[relative][0].collapsed
+    assert collapsed_path.read_bytes() == raw_bytes
+    assert checkpoint_path.read_bytes() == checkpoint_bytes
+    published = peri_scribe.publication.read_publication(tmp_path, output)
+    assert published is not None
+    assert published.fires["id:a"].mapping == baseline
+    decision = peri_scribe.publication.decide(refreshed, published, THRESHOLD, NOW)
+    assert decision.reason == peri_scribe.publication.Reason.BELOW_THRESHOLD
+    assert not decision.proceed
 
 
 def test_collection_reuses_measurements_and_retains_skipped_snapshots(

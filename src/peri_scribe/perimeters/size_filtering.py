@@ -126,11 +126,32 @@ def perimeter_is_implausibly_small(
         True when the geometry has area but is smaller than one of the configured
         fractions of the row's reported sizes.
     """
-    measured = geometry_area(observation.geometry)
+    return area_is_implausibly_small(
+        geometry_area(observation.geometry),
+        observation.attributes,
+        config,
+    )
+
+
+def area_is_implausibly_small(
+    measured: pint.Quantity[float] | None,
+    attributes: dict[str, object],
+    config: PerimeterSizeFilterConfig = DEFAULT_SIZE_FILTER_CONFIG,
+) -> bool:
+    """Share collapse thresholds with callers that already measured the geometry.
+
+    Args:
+        measured: The measured perimeter area, or None when it is unavailable.
+        attributes: The source row's reported polygon and incident sizes.
+        config: The size-filter thresholds.
+
+    Returns:
+        Whether the measured area is implausibly small relative to a reported size.
+    """
     if measured is None:
         return False
-    computed = computed_area(observation.attributes)
-    incident = incident_size(observation.attributes)
+    computed = computed_area(attributes)
+    incident = incident_size(attributes)
     return (
         computed is not None
         and measured < config.minimum_computed_area_fraction * computed
