@@ -1,11 +1,14 @@
 """Output operations for peri_scribe."""
 
+from __future__ import annotations
+
 import dataclasses
 import html
 import json
 import math
 import pathlib
 import shutil
+import typing
 
 import numpy as np
 import pydantic
@@ -14,6 +17,10 @@ import structlog
 import peri_scribe.models
 import peri_scribe.svg
 from peri_scribe.units import units
+
+
+if typing.TYPE_CHECKING:
+    import geopandas
 
 
 logger = structlog.get_logger()
@@ -120,34 +127,6 @@ def share_tick_text(value: float) -> str:
     if exponent >= 0:
         return "1"
     return f"{value:.{-exponent}f}"
-
-
-def nice_step(span: float, target_intervals: int) -> float:
-    """Return a 1/2/2.5/5/10 x 10**n axis step covering *span* in even intervals.
-
-    Args:
-        span: The data range the axis must cover.
-        target_intervals: The approximate number of intervals wanted.
-
-    Returns:
-        The step between ticks.
-
-    Examples:
-        >>> round(nice_step(500.0, 8), 3)
-        100.0
-        >>> round(nice_step(1.0, 8), 3)
-        0.2
-    """
-    if span <= 0:
-        return 1.0
-    raw = span / target_intervals
-    magnitude = 10.0 ** math.floor(math.log10(raw))
-    # Dividing by the decade's magnitude always leaves a value below ten, and the ladder
-    # ends at ten, so one rung always covers *raw*.
-    for multiple in (1.0, 2.0, 2.5, 5.0, 10.0):
-        if raw <= multiple * magnitude:
-            break
-    return multiple * magnitude
 
 
 def curve_knees(scores: list[int]) -> list[tuple[int, float]]:
@@ -269,7 +248,10 @@ class CcdfLayout:
         Returns:
             The tick values from zero to the axis top.
         """
-        step = nice_step(self.highest_score, CCDF_TARGET_SCORE_INTERVALS)
+        step = peri_scribe.svg.nice_step(
+            self.highest_score,
+            CCDF_TARGET_SCORE_INTERVALS,
+        )
         return tuple(
             index * step for index in range(round(self.highest_score / step) + 1)
         )
@@ -584,3 +566,28 @@ def write_fire_scores_ccdf(
     """
     path.write_text(ccdf_html(document), encoding="utf-8")
     logger.debug("Wrote fire scores ccdf", path=path.name)
+
+
+def append_geopackage_chunk(
+    output: pathlib.Path,
+    layer_name: str,
+    dataframe: geopandas.GeoDataFrame,
+    *,
+    replace: bool,
+) -> None:
+    """Append *dataframe* to the GeoPackage at *output*.
+
+    Args:
+        output: The GeoPackage path to write.
+        layer_name: The layer to append to.
+        dataframe: The chunk's features to write.
+        replace: Whether to replace any existing file at *output*.
+    """
+    if replace:
+        output.unlink(missing_ok=True)
+    dataframe.to_file(
+        output,
+        driver="GPKG",
+        layer=layer_name,
+        mode="w" if replace else "a",
+    )

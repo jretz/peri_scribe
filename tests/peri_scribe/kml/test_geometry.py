@@ -38,7 +38,6 @@ def test_polygon_geometry_includes_holes() -> None:
         "#perimeter-fill",
         polygon,
         0,
-        description=None,
     )
     placemark = tests.peri_scribe.kml.kml_helpers.placemark_named(
         tests.peri_scribe.kml.kml_helpers.document_from_writer(writer),
@@ -74,7 +73,6 @@ def test_multi_polygon_geometry_holds_each_polygon() -> None:
         "#perimeter-fill",
         multi_polygon,
         expected_draw_order,
-        description=None,
     )
     placemark = tests.peri_scribe.kml.kml_helpers.placemark_named(
         tests.peri_scribe.kml.kml_helpers.document_from_writer(writer),
@@ -109,7 +107,6 @@ def test_perimeter_geometry_converts_polygon() -> None:
         "#perimeter-fill",
         tests.factories.square(1.0),
         0,
-        description=None,
     )
     placemark = tests.peri_scribe.kml.kml_helpers.placemark_named(
         tests.peri_scribe.kml.kml_helpers.document_from_writer(writer),
@@ -134,7 +131,6 @@ def test_perimeter_geometry_converts_multi_polygon() -> None:
         "#perimeter-fill",
         multi_polygon,
         expected_draw_order,
-        description=None,
     )
     placemark = tests.peri_scribe.kml.kml_helpers.placemark_named(
         tests.peri_scribe.kml.kml_helpers.document_from_writer(writer),
@@ -165,7 +161,6 @@ def test_point_placemark_names_and_styles_point() -> None:
         "#point-icon",
         point,
         expected_draw_order,
-        description=None,
     )
     placemark = tests.peri_scribe.kml.kml_helpers.placemark_named(
         tests.peri_scribe.kml.kml_helpers.document_from_writer(writer),
@@ -189,7 +184,6 @@ def test_point_placemark_coordinates_round_and_omit_altitude() -> None:
         "#point-icon",
         shapely.geometry.Point(1.23456789, -2.98765432),
         0,
-        description=None,
     )
     placemark = tests.peri_scribe.kml.kml_helpers.placemark_named(
         tests.peri_scribe.kml.kml_helpers.document_from_writer(writer),
@@ -211,7 +205,6 @@ def test_perimeter_placemark_names_and_styles_polygon() -> None:
         "#perimeter-fill",
         tests.factories.square(1.0),
         0,
-        description=None,
     )
     placemark = tests.peri_scribe.kml.kml_helpers.placemark_named(
         tests.peri_scribe.kml.kml_helpers.document_from_writer(writer),

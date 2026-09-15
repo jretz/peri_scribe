@@ -8,14 +8,13 @@ import enum
 import pathlib
 import re
 import typing
-from typing import TYPE_CHECKING
 
 import pydantic
 
 from peri_scribe.units import units
 
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     import geopandas
     import pyproj
     import shapely
@@ -365,7 +364,7 @@ class FireScores(pydantic.BaseModel):
     fires: list[FireScoreEntry]
 
 
-@dataclasses.dataclass(frozen=True)
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class SpatialReferenceDomain:
     """Plausible coordinate magnitude bands for a spatial reference."""
 

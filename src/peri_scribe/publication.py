@@ -20,6 +20,7 @@ import peri_scribe.geo.parsing
 import peri_scribe.models
 import peri_scribe.perimeters.size_filtering
 import peri_scribe.perimeters.versions
+import peri_scribe.sources.external_data
 import peri_scribe.sources.external_sources
 import peri_scribe.sources.feeds
 import peri_scribe.sources.snapshots
@@ -401,7 +402,7 @@ def collect(year_directory: pathlib.Path) -> Collection:
         for path in peri_scribe.sources.snapshots.geo_package_files(sources_directory)
     }
     cached = read_state(collection_path(year_directory), Collection) or Collection()
-    evacuation_path = peri_scribe.sources.external_sources.output_path(
+    evacuation_path = peri_scribe.sources.external_data.output_path(
         year_directory,
         peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
     )

@@ -21,30 +21,18 @@ import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.retry
-import peri_scribe.sources.changes
 import peri_scribe.sources.feed_state
 import peri_scribe.sources.feeds
 import peri_scribe.sources.fetching
 import peri_scribe.sources.snapshots
+import tests.conftest
+import tests.factories
+import tests.main_stubs
 import tests.peri_scribe.sources.fetching_helpers
-from tests.conftest import (
-    RATE_LIMIT_ERROR_PAYLOAD,
-    SAMPLE_FEED_NAME,
-    SAMPLE_FEED_URL,
-    snapshot_path,
-)
-from tests.factories import (
-    WGS84_WKID,
-    FeatureLayerStub,
-    GeoPackageStore,
-    change_feed,
-    wgs84_feature_set,
-)
-from tests.main_stubs import BASE_DIRECTORY, SAMPLE_LAST_EDIT_TIMESTAMP
 
 
 def test_fetch_feed_dataframe_raises_without_change_columns() -> None:
-    feed = change_feed(change_columns=())
+    feed = tests.factories.change_feed(change_columns=())
     with pytest.raises(ValueError, match="no change columns"):
         peri_scribe.sources.fetching.fetch_feed_dataframe(
             feed,
@@ -62,7 +50,7 @@ def test_fetch_feed_dataframe_raises_without_change_columns() -> None:
 def test_fetch_feed_dataframe_returns_none_without_changed_ids(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    feed = change_feed()
+    feed = tests.factories.change_feed()
     monkeypatch.setattr(
         peri_scribe.sources.feed_state,
         "existing_features",
@@ -71,7 +59,7 @@ def test_fetch_feed_dataframe_returns_none_without_changed_ids(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "query_object_ids_with_retry",
-        lambda *_arguments, **_keywords: [],
+        lambda *_args, **_kwargs: [],
     )
     result = peri_scribe.sources.fetching.fetch_feed_dataframe(
         feed,
@@ -90,7 +78,7 @@ def test_fetch_feed_dataframe_returns_none_without_changed_ids(
 def test_fetch_feed_dataframe_returns_none_when_dedupe_removes_all(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    feed = change_feed()
+    feed = tests.factories.change_feed()
     monkeypatch.setattr(
         peri_scribe.sources.feed_state,
         "existing_features",
@@ -99,12 +87,12 @@ def test_fetch_feed_dataframe_returns_none_when_dedupe_removes_all(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "query_object_ids_with_retry",
-        lambda *_arguments, **_keywords: [1],
+        lambda *_args, **_kwargs: [1],
     )
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "query_with_retry",
-        lambda *_arguments, **_keywords: "feature_set",
+        lambda *_args, **_kwargs: "feature_set",
     )
     empty = geopandas.GeoDataFrame(
         {"OBJECTID": pd.Series([], dtype="int64"), "name": []},
@@ -114,7 +102,7 @@ def test_fetch_feed_dataframe_returns_none_when_dedupe_removes_all(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "dataframe_for_layer",
-        lambda *_arguments, **_keywords: empty,
+        lambda *_args, **_kwargs: empty,
     )
     result = peri_scribe.sources.fetching.fetch_feed_dataframe(
         feed,
@@ -133,7 +121,7 @@ def test_fetch_feed_dataframe_returns_none_when_dedupe_removes_all(
 def test_fetch_feed_dataframe_queries_null_modified_rows(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    feed = change_feed()
+    feed = tests.factories.change_feed()
     captured: list[str] = []
     monkeypatch.setattr(
         peri_scribe.sources.feed_state,
@@ -171,7 +159,7 @@ def test_fetch_feed_dataframe_queries_null_modified_rows(
 def test_fetch_feed_dataframe_fetches_ids_present_but_not_stored(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    feed = change_feed()
+    feed = tests.factories.change_feed()
     existing = geopandas.GeoDataFrame(
         {"OBJECTID": [1, 2]},
         geometry=[shapely.geometry.Point(0.0, 0.0) for _ in (1, 2)],
@@ -187,13 +175,13 @@ def test_fetch_feed_dataframe_fetches_ids_present_but_not_stored(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "query_object_ids_with_retry",
-        lambda *_arguments, **_keywords: [] if _keywords["where"] != "1=1" else [3],
+        lambda *_args, **kwargs: [] if kwargs["where"] != "1=1" else [3],
     )
     fetched: dict[str, object] = {}
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "query_with_retry",
-        lambda *_arguments, **_keywords: fetched.update(_keywords) or "feature_set",
+        lambda *_args, **kwargs: fetched.update(kwargs) or "feature_set",
     )
     sentinel = geopandas.GeoDataFrame(
         {"OBJECTID": [3], "name": ["c"]},
@@ -203,7 +191,7 @@ def test_fetch_feed_dataframe_fetches_ids_present_but_not_stored(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "dataframe_for_layer",
-        lambda *_arguments, **_keywords: sentinel,
+        lambda *_args, **_kwargs: sentinel,
     )
     result = peri_scribe.sources.fetching.fetch_feed_dataframe(
         feed,
@@ -224,7 +212,7 @@ def test_fetch_feed_dataframe_fetches_ids_present_but_not_stored(
 def test_fetch_feed_dataframe_fetches_stored_active_rows_now_inactive(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    feed = change_feed()
+    feed = tests.factories.change_feed()
     existing = geopandas.GeoDataFrame(
         {"OBJECTID": [1, 2, 3], "status": ["Active", "Active", "Inactive"]},
         geometry=[shapely.geometry.Point(x, 0.0) for x in (0.0, 1.0, 2.0)],
@@ -246,7 +234,7 @@ def test_fetch_feed_dataframe_fetches_stored_active_rows_now_inactive(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "query_with_retry",
-        lambda *_arguments, **_keywords: fetched.update(_keywords) or "feature_set",
+        lambda *_args, **kwargs: fetched.update(kwargs) or "feature_set",
     )
     flipped = geopandas.GeoDataFrame(
         {"OBJECTID": [2], "status": ["Inactive"]},
@@ -256,7 +244,7 @@ def test_fetch_feed_dataframe_fetches_stored_active_rows_now_inactive(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "dataframe_for_layer",
-        lambda *_arguments, **_keywords: flipped,
+        lambda *_args, **_kwargs: flipped,
     )
     result = peri_scribe.sources.fetching.fetch_feed_dataframe(
         feed,
@@ -281,7 +269,7 @@ def test_fetch_feed_dataframe_fetches_stored_active_rows_now_inactive(
 def test_fetch_feed_dataframe_returns_none_when_flip_candidates_are_unchanged(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    feed = change_feed()
+    feed = tests.factories.change_feed()
     existing = geopandas.GeoDataFrame(
         {"OBJECTID": [1, 2], "status": ["Active", "Inactive"]},
         geometry=[shapely.geometry.Point(x, 0.0) for x in (0.0, 1.0)],
@@ -295,7 +283,7 @@ def test_fetch_feed_dataframe_returns_none_when_flip_candidates_are_unchanged(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "query_object_ids_with_retry",
-        lambda *_arguments, **_keywords: [1, 2] if _keywords["where"] == "1=1" else [],
+        lambda *_args, **kwargs: [1, 2] if kwargs["where"] == "1=1" else [],
     )
     result = peri_scribe.sources.fetching.fetch_feed_dataframe(
         feed,
@@ -314,7 +302,7 @@ def test_fetch_feed_dataframe_returns_none_when_flip_candidates_are_unchanged(
 def test_fetch_feed_dataframe_skips_flip_query_without_stored_inactive(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    feed = change_feed()
+    feed = tests.factories.change_feed()
     existing = geopandas.GeoDataFrame(
         {"OBJECTID": [1, 2], "status": ["Active", "Active"]},
         geometry=[shapely.geometry.Point(x, 0.0) for x in (0.0, 1.0)],
@@ -329,9 +317,9 @@ def test_fetch_feed_dataframe_skips_flip_query_without_stored_inactive(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "query_object_ids_with_retry",
-        lambda *_arguments, **_keywords: (
-            wheres.append(str(_keywords["where"]))
-            or ([1, 2] if _keywords["where"] == "1=1" else [])
+        lambda *_args, **kwargs: (
+            wheres.append(str(kwargs["where"]))
+            or ([1, 2] if kwargs["where"] == "1=1" else [])
         ),
     )
     result = peri_scribe.sources.fetching.fetch_feed_dataframe(
@@ -352,17 +340,17 @@ def test_fetch_feed_dataframe_skips_flip_query_without_stored_inactive(
 def test_fetch_feed_dataframe_fetches_full_when_directory_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    feed = change_feed()
+    feed = tests.factories.change_feed()
     sentinel = object()
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "query_with_retry",
-        lambda *_arguments, **_keywords: "feature_set",
+        lambda *_args, **_kwargs: "feature_set",
     )
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "dataframe_for_layer",
-        lambda *_arguments, **_keywords: sentinel,
+        lambda *_args, **_kwargs: sentinel,
     )
     result = peri_scribe.sources.fetching.fetch_feed_dataframe(
         feed,
@@ -371,100 +359,6 @@ def test_fetch_feed_dataframe_fetches_full_when_directory_empty(
         pathlib.Path("/sources"),
     )
     assert result is sentinel
-
-
-def test_fetch_feed_dataframe_full_fetches_whole_layer_and_dedupes(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    feed = change_feed(change_columns=())
-    query_keywords: list[dict[str, object]] = []
-    feature_set = object()
-    monkeypatch.setattr(
-        peri_scribe.geo.data,
-        "query_with_retry",
-        lambda *_arguments, **_keywords: (
-            query_keywords.append(_keywords) or feature_set
-        ),
-    )
-    fetched = object()
-    monkeypatch.setattr(
-        peri_scribe.geo.data,
-        "dataframe_for_layer",
-        lambda *_arguments, **_keywords: fetched,
-    )
-    existing = object()
-    monkeypatch.setattr(
-        peri_scribe.sources.feed_state,
-        "existing_features",
-        lambda _directory, _feed: existing,
-    )
-    dedupe_calls: list[tuple[object, object]] = []
-    deduped = geopandas.GeoDataFrame(
-        {"OBJECTID": pd.Series([1], dtype="int64"), "name": ["a"]},
-        geometry=[shapely.geometry.Point(0.0, 0.0)],
-        crs=pyproj.CRS.from_epsg(4326),
-    )
-    monkeypatch.setattr(
-        peri_scribe.sources.changes,
-        "drop_features_already_present",
-        lambda new, existing_dataframe: (
-            dedupe_calls.append((new, existing_dataframe)) or deduped
-        ),
-    )
-    result = peri_scribe.sources.fetching.fetch_feed_dataframe(
-        feed,
-        typing.cast("arcgis.features.FeatureLayer", object()),
-        [
-            peri_scribe.sources.snapshots.SourceFile(
-                serial_number=0,
-                last_edit_timestamp=0,
-            ),
-        ],
-        pathlib.Path("/sources"),
-        full=True,
-    )
-    assert result is deduped
-    assert query_keywords == [{}]
-    assert dedupe_calls == [(fetched, existing)]
-
-
-def test_fetch_feed_dataframe_full_returns_none_when_dedupe_removes_all(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    feed = change_feed()
-    monkeypatch.setattr(
-        peri_scribe.geo.data,
-        "query_with_retry",
-        lambda *_arguments, **_keywords: "feature_set",
-    )
-    empty = geopandas.GeoDataFrame(
-        {"OBJECTID": pd.Series([], dtype="int64"), "name": []},
-        geometry=[],
-        crs=pyproj.CRS.from_epsg(4326),
-    )
-    monkeypatch.setattr(
-        peri_scribe.geo.data,
-        "dataframe_for_layer",
-        lambda *_arguments, **_keywords: empty,
-    )
-    monkeypatch.setattr(
-        peri_scribe.sources.feed_state,
-        "existing_features",
-        lambda _directory, _feed: None,
-    )
-    result = peri_scribe.sources.fetching.fetch_feed_dataframe(
-        feed,
-        typing.cast("arcgis.features.FeatureLayer", object()),
-        [
-            peri_scribe.sources.snapshots.SourceFile(
-                serial_number=0,
-                last_edit_timestamp=0,
-            ),
-        ],
-        pathlib.Path("/sources"),
-        full=True,
-    )
-    assert result is None
 
 
 def test_fetch_all_feeds_complete_writes_each_feed_in_full(
@@ -554,7 +448,7 @@ def test_fetch_all_feeds_complete_defaults_to_working_directory_and_year(
     monkeypatch.setattr(
         peri_scribe.sources.fetching,
         "fetch_feed",
-        lambda *_arguments, **_keywords: object(),
+        lambda *_args, **_kwargs: object(),
     )
     year = datetime.date.today().year
     paths = peri_scribe.sources.fetching.fetch_all_feeds_complete()
@@ -564,67 +458,88 @@ def test_fetch_all_feeds_complete_defaults_to_working_directory_and_year(
 def test_fetch_all_feeds_writes_geo_package(
     feature_set_with_geometry: arcgis.features.FeatureSet,
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     fetch_all_feeds_stubs(
         [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
-        lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
+        lambda url, gis: tests.factories.FeatureLayerStub(
+            url,
+            gis,
+            feature_set_with_geometry,
+        ),
     )
-    result = peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
+    result = peri_scribe.sources.fetching.fetch_all_feeds(
+        tests.main_stubs.BASE_DIRECTORY,
+        year=2026,
+    )
     assert result.changed is True
-    output_path = snapshot_path()
+    output_path = tests.conftest.snapshot_path()
     assert geo_package_store.has(output_path)
-    written = geo_package_store.layer(output_path, SAMPLE_FEED_NAME)
+    written = geo_package_store.layer(output_path, tests.conftest.SAMPLE_FEED_NAME)
     assert list(written["name"]) == ["a", "b"]
-    assert written.crs == pyproj.CRS.from_epsg(WGS84_WKID)
+    assert written.crs == pyproj.CRS.from_epsg(tests.factories.WGS84_WKID)
 
 
 def test_fetch_all_feeds_reports_query_failure(
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     fetch_all_feeds_stubs(
         [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
-        lambda url, gis: FeatureLayerStub(
+        lambda url, gis: tests.factories.FeatureLayerStub(
             url,
             gis,
             arcgis.features.FeatureSet([]),
             query_error=RuntimeError("boom"),
         ),
     )
-    with pytest.raises(SystemExit, match=f"Failed to fetch {SAMPLE_FEED_NAME}: boom"):
-        peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
-    assert not geo_package_store.has(snapshot_path())
+    with pytest.raises(
+        SystemExit,
+        match=f"Failed to fetch {tests.conftest.SAMPLE_FEED_NAME}: boom",
+    ):
+        peri_scribe.sources.fetching.fetch_all_feeds(
+            tests.main_stubs.BASE_DIRECTORY,
+            year=2026,
+        )
+    assert not geo_package_store.has(tests.conftest.snapshot_path())
 
 
 def test_fetch_all_feeds_reports_empty_layer(
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     fetch_all_feeds_stubs(
         [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
-        lambda url, gis: FeatureLayerStub(url, gis, arcgis.features.FeatureSet([])),
+        lambda url, gis: tests.factories.FeatureLayerStub(
+            url,
+            gis,
+            arcgis.features.FeatureSet([]),
+        ),
     )
     with pytest.raises(
         SystemExit,
         match=(
-            f"Failed to fetch {SAMPLE_FEED_NAME}: Feed {SAMPLE_FEED_NAME} "
+            f"Failed to fetch {tests.conftest.SAMPLE_FEED_NAME}: "
+            f"Feed {tests.conftest.SAMPLE_FEED_NAME} "
             "returned no features; no output was written"
         ),
     ):
-        peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
-    assert not geo_package_store.has(snapshot_path())
+        peri_scribe.sources.fetching.fetch_all_feeds(
+            tests.main_stubs.BASE_DIRECTORY,
+            year=2026,
+        )
+    assert not geo_package_store.has(tests.conftest.snapshot_path())
 
 
 def test_fetch_all_feeds_retries_on_rate_limit(
     monkeypatch: pytest.MonkeyPatch,
     feature_set_with_geometry: arcgis.features.FeatureSet,
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     sleep_calls: list[float] = []
     monkeypatch.setattr(time, "sleep", sleep_calls.append)
-    rate_limit_error = ValueError(RATE_LIMIT_ERROR_PAYLOAD)
+    rate_limit_error = ValueError(tests.conftest.RATE_LIMIT_ERROR_PAYLOAD)
     outcomes: list[arcgis.features.FeatureSet | Exception] = [
         rate_limit_error,
         feature_set_with_geometry,
@@ -637,26 +552,29 @@ def test_fetch_all_feeds_retries_on_rate_limit(
             outcomes,
         ),
     )
-    result = peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
+    result = peri_scribe.sources.fetching.fetch_all_feeds(
+        tests.main_stubs.BASE_DIRECTORY,
+        year=2026,
+    )
     assert result.changed is True
-    output_path = snapshot_path()
+    output_path = tests.conftest.snapshot_path()
     assert geo_package_store.has(output_path)
     assert sleep_calls == [60.0]
-    written = geo_package_store.layer(output_path, SAMPLE_FEED_NAME)
+    written = geo_package_store.layer(output_path, tests.conftest.SAMPLE_FEED_NAME)
     assert list(written["name"]) == ["a", "b"]
 
 
 def test_fetch_all_feeds_exhausts_retries(
     monkeypatch: pytest.MonkeyPatch,
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     sleep_calls: list[float] = []
     monkeypatch.setattr(time, "sleep", sleep_calls.append)
-    rate_limit_error = ValueError(RATE_LIMIT_ERROR_PAYLOAD)
-    max_retries = peri_scribe.retry.DEFAULT_MAX_RETRIES
+    rate_limit_error = ValueError(tests.conftest.RATE_LIMIT_ERROR_PAYLOAD)
+    maximum_retries = peri_scribe.retry.DEFAULT_MAXIMUM_RETRIES
     outcomes: list[arcgis.features.FeatureSet | Exception] = [rate_limit_error] * (
-        max_retries + 2
+        maximum_retries + 2
     )
     fetch_all_feeds_stubs(
         [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
@@ -666,16 +584,22 @@ def test_fetch_all_feeds_exhausts_retries(
             outcomes,
         ),
     )
-    with pytest.raises(SystemExit, match=f"Failed to fetch {SAMPLE_FEED_NAME}: "):
-        peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
-    assert sleep_calls == [60.0] * max_retries
-    assert not geo_package_store.has(snapshot_path())
+    with pytest.raises(
+        SystemExit,
+        match=f"Failed to fetch {tests.conftest.SAMPLE_FEED_NAME}: ",
+    ):
+        peri_scribe.sources.fetching.fetch_all_feeds(
+            tests.main_stubs.BASE_DIRECTORY,
+            year=2026,
+        )
+    assert sleep_calls == [60.0] * maximum_retries
+    assert not geo_package_store.has(tests.conftest.snapshot_path())
 
 
 def test_fetch_all_feeds_writes_one_file_per_source(
     feature_set_with_geometry: arcgis.features.FeatureSet,
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     first_last_edit_timestamp = 1
     second_last_edit_timestamp = 2
@@ -691,25 +615,42 @@ def test_fetch_all_feeds_writes_one_file_per_source(
     )
     fetch_all_feeds_stubs(
         [first, second],
-        lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
+        lambda url, gis: tests.factories.FeatureLayerStub(
+            url,
+            gis,
+            feature_set_with_geometry,
+        ),
     )
-    result = peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
+    result = peri_scribe.sources.fetching.fetch_all_feeds(
+        tests.main_stubs.BASE_DIRECTORY,
+        year=2026,
+    )
     assert result.changed is True
-    first_path = snapshot_path(
+    first_path = tests.conftest.snapshot_path(
         feed_name=first.name,
         last_edit_timestamp=first_last_edit_timestamp,
     )
-    second_path = snapshot_path(
+    second_path = tests.conftest.snapshot_path(
         feed_name=second.name,
         last_edit_timestamp=second_last_edit_timestamp,
     )
     assert geo_package_store.has(first_path)
     assert geo_package_store.has(second_path)
     assert first_path.parent == (
-        BASE_DIRECTORY / "data" / "2026" / "sources" / "First_Source_0" / "000___"
+        tests.main_stubs.BASE_DIRECTORY
+        / "data"
+        / "2026"
+        / "sources"
+        / "First_Source_0"
+        / "000___"
     )
     assert second_path.parent == (
-        BASE_DIRECTORY / "data" / "2026" / "sources" / "Second_Source_0" / "000___"
+        tests.main_stubs.BASE_DIRECTORY
+        / "data"
+        / "2026"
+        / "sources"
+        / "Second_Source_0"
+        / "000___"
     )
     assert list(geo_package_store.layer(first_path, "First_Source_0")["name"]) == [
         "a",
@@ -723,17 +664,17 @@ def test_fetch_all_feeds_writes_one_file_per_source(
 
 def test_fetch_all_feeds_increments_serial_number_for_new_timestamp(
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     first_last_edit_timestamp = 1
     second_last_edit_timestamp = 2
-    full = wgs84_feature_set([(1, "a", 1.0, 2.0), (2, "b", 3.0, 4.0)])
-    delta = wgs84_feature_set([(3, "c", 5.0, 6.0)])
+    full = tests.factories.wgs84_feature_set([(1, "a", 1.0, 2.0), (2, "b", 3.0, 4.0)])
+    delta = tests.factories.wgs84_feature_set([(3, "c", 5.0, 6.0)])
     fetch_all_feeds_stubs(
         [
             tests.peri_scribe.sources.fetching_helpers.FeedStub(
-                name=SAMPLE_FEED_NAME,
-                url=SAMPLE_FEED_URL,
+                name=tests.conftest.SAMPLE_FEED_NAME,
+                url=tests.conftest.SAMPLE_FEED_URL,
                 last_edit_timestamp=first_last_edit_timestamp,
             ),
         ],
@@ -747,14 +688,17 @@ def test_fetch_all_feeds_increments_serial_number_for_new_timestamp(
         ),
     )
     assert (
-        peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026).changed
+        peri_scribe.sources.fetching.fetch_all_feeds(
+            tests.main_stubs.BASE_DIRECTORY,
+            year=2026,
+        ).changed
         is True
     )
     fetch_all_feeds_stubs(
         [
             tests.peri_scribe.sources.fetching_helpers.FeedStub(
-                name=SAMPLE_FEED_NAME,
-                url=SAMPLE_FEED_URL,
+                name=tests.conftest.SAMPLE_FEED_NAME,
+                url=tests.conftest.SAMPLE_FEED_URL,
                 last_edit_timestamp=second_last_edit_timestamp,
             ),
         ],
@@ -768,38 +712,44 @@ def test_fetch_all_feeds_increments_serial_number_for_new_timestamp(
         ),
     )
     assert (
-        peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026).changed
+        peri_scribe.sources.fetching.fetch_all_feeds(
+            tests.main_stubs.BASE_DIRECTORY,
+            year=2026,
+        ).changed
         is True
     )
-    first_path = snapshot_path(
-        serial_number=0,
+    first_path = tests.conftest.snapshot_path(
         last_edit_timestamp=first_last_edit_timestamp,
     )
-    second_path = snapshot_path(
+    second_path = tests.conftest.snapshot_path(
         serial_number=1,
         last_edit_timestamp=second_last_edit_timestamp,
     )
     assert geo_package_store.has(first_path)
     assert geo_package_store.has(second_path)
-    assert list(geo_package_store.layer(first_path, SAMPLE_FEED_NAME)["name"]) == [
+    assert list(
+        geo_package_store.layer(first_path, tests.conftest.SAMPLE_FEED_NAME)["name"],
+    ) == [
         "a",
         "b",
     ]
-    assert list(geo_package_store.layer(second_path, SAMPLE_FEED_NAME)["name"]) == ["c"]
+    assert list(
+        geo_package_store.layer(second_path, tests.conftest.SAMPLE_FEED_NAME)["name"],
+    ) == ["c"]
 
 
 def test_fetch_all_feeds_writes_no_new_file_when_nothing_changed(
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     first_last_edit_timestamp = 1
     second_last_edit_timestamp = 2
-    full = wgs84_feature_set([(1, "a", 1.0, 2.0), (2, "b", 3.0, 4.0)])
+    full = tests.factories.wgs84_feature_set([(1, "a", 1.0, 2.0), (2, "b", 3.0, 4.0)])
     fetch_all_feeds_stubs(
         [
             tests.peri_scribe.sources.fetching_helpers.FeedStub(
-                name=SAMPLE_FEED_NAME,
-                url=SAMPLE_FEED_URL,
+                name=tests.conftest.SAMPLE_FEED_NAME,
+                url=tests.conftest.SAMPLE_FEED_URL,
                 last_edit_timestamp=first_last_edit_timestamp,
             ),
         ],
@@ -813,14 +763,17 @@ def test_fetch_all_feeds_writes_no_new_file_when_nothing_changed(
         ),
     )
     assert (
-        peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026).changed
+        peri_scribe.sources.fetching.fetch_all_feeds(
+            tests.main_stubs.BASE_DIRECTORY,
+            year=2026,
+        ).changed
         is True
     )
     fetch_all_feeds_stubs(
         [
             tests.peri_scribe.sources.fetching_helpers.FeedStub(
-                name=SAMPLE_FEED_NAME,
-                url=SAMPLE_FEED_URL,
+                name=tests.conftest.SAMPLE_FEED_NAME,
+                url=tests.conftest.SAMPLE_FEED_URL,
                 last_edit_timestamp=second_last_edit_timestamp,
             ),
         ],
@@ -834,80 +787,96 @@ def test_fetch_all_feeds_writes_no_new_file_when_nothing_changed(
         ),
     )
     second_result = peri_scribe.sources.fetching.fetch_all_feeds(
-        BASE_DIRECTORY,
+        tests.main_stubs.BASE_DIRECTORY,
         year=2026,
     )
     assert second_result.changed is False
     assert geo_package_store.has(
-        snapshot_path(serial_number=0, last_edit_timestamp=first_last_edit_timestamp),
+        tests.conftest.snapshot_path(last_edit_timestamp=first_last_edit_timestamp),
     )
     assert not geo_package_store.has(
-        snapshot_path(serial_number=1, last_edit_timestamp=second_last_edit_timestamp),
+        tests.conftest.snapshot_path(
+            serial_number=1,
+            last_edit_timestamp=second_last_edit_timestamp,
+        ),
     )
 
 
 def test_fetch_all_feeds_reuses_serial_number_for_unchanged_timestamp(
     feature_set_with_geometry: arcgis.features.FeatureSet,
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     last_edit_timestamp = 1
     fetch_all_feeds_stubs(
         [
             tests.peri_scribe.sources.fetching_helpers.FeedStub(
-                name=SAMPLE_FEED_NAME,
-                url=SAMPLE_FEED_URL,
+                name=tests.conftest.SAMPLE_FEED_NAME,
+                url=tests.conftest.SAMPLE_FEED_URL,
                 last_edit_timestamp=last_edit_timestamp,
             ),
         ],
-        lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
+        lambda url, gis: tests.factories.FeatureLayerStub(
+            url,
+            gis,
+            feature_set_with_geometry,
+        ),
     )
     assert (
-        peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026).changed
+        peri_scribe.sources.fetching.fetch_all_feeds(
+            tests.main_stubs.BASE_DIRECTORY,
+            year=2026,
+        ).changed
         is True
     )
     second_result = peri_scribe.sources.fetching.fetch_all_feeds(
-        BASE_DIRECTORY,
+        tests.main_stubs.BASE_DIRECTORY,
         year=2026,
     )
     assert second_result.changed is False
     assert geo_package_store.has(
-        snapshot_path(serial_number=0, last_edit_timestamp=last_edit_timestamp),
+        tests.conftest.snapshot_path(last_edit_timestamp=last_edit_timestamp),
     )
     assert not geo_package_store.has(
-        snapshot_path(serial_number=1, last_edit_timestamp=last_edit_timestamp),
+        tests.conftest.snapshot_path(
+            serial_number=1,
+            last_edit_timestamp=last_edit_timestamp,
+        ),
     )
 
 
 def test_fetch_all_feeds_fails_when_last_edit_timestamp_unavailable(
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     fetch_all_feeds_stubs(
         [
             tests.peri_scribe.sources.fetching_helpers.FeedStub(
-                name=SAMPLE_FEED_NAME,
-                url=SAMPLE_FEED_URL,
+                name=tests.conftest.SAMPLE_FEED_NAME,
+                url=tests.conftest.SAMPLE_FEED_URL,
                 last_edit_timestamp=None,
             ),
         ],
         lambda _url, _gis: object(),
     )
     with pytest.raises(SystemExit, match="no last-edit timestamp could be observed"):
-        peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
-    assert not geo_package_store.has(snapshot_path())
+        peri_scribe.sources.fetching.fetch_all_feeds(
+            tests.main_stubs.BASE_DIRECTORY,
+            year=2026,
+        )
+    assert not geo_package_store.has(tests.conftest.snapshot_path())
 
 
 def test_fetch_all_feeds_observes_timestamp_before_downloading(
     feature_set_with_geometry: arcgis.features.FeatureSet,
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     events: list[str] = []
     feed = tests.peri_scribe.sources.fetching_helpers.FeedStub(
-        name=SAMPLE_FEED_NAME,
-        url=SAMPLE_FEED_URL,
-        last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
+        name=tests.conftest.SAMPLE_FEED_NAME,
+        url=tests.conftest.SAMPLE_FEED_URL,
+        last_edit_timestamp=tests.main_stubs.SAMPLE_LAST_EDIT_TIMESTAMP,
         events=events,
     )
     fetch_all_feeds_stubs(
@@ -921,20 +890,23 @@ def test_fetch_all_feeds_observes_timestamp_before_downloading(
             )
         ),
     )
-    peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
+    peri_scribe.sources.fetching.fetch_all_feeds(
+        tests.main_stubs.BASE_DIRECTORY,
+        year=2026,
+    )
     assert events == ["timestamp", "download"]
 
 
 def test_fetch_all_feeds_skips_download_when_timestamp_present(
     feature_set_with_geometry: arcgis.features.FeatureSet,
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     events: list[str] = []
     feed = tests.peri_scribe.sources.fetching_helpers.FeedStub(
-        name=SAMPLE_FEED_NAME,
-        url=SAMPLE_FEED_URL,
-        last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
+        name=tests.conftest.SAMPLE_FEED_NAME,
+        url=tests.conftest.SAMPLE_FEED_URL,
+        last_edit_timestamp=tests.main_stubs.SAMPLE_LAST_EDIT_TIMESTAMP,
         events=events,
     )
     fetch_all_feeds_stubs(
@@ -950,7 +922,10 @@ def test_fetch_all_feeds_skips_download_when_timestamp_present(
     )
     # The first fetch downloads and writes the snapshot.
     assert (
-        peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026).changed
+        peri_scribe.sources.fetching.fetch_all_feeds(
+            tests.main_stubs.BASE_DIRECTORY,
+            year=2026,
+        ).changed
         is True
     )
     assert events == ["timestamp", "download"]
@@ -959,7 +934,10 @@ def test_fetch_all_feeds_skips_download_when_timestamp_present(
     with structlog.testing.capture_logs(
         processors=[peri_scribe.logging.serialize_log_values],
     ) as captured:
-        result = peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
+        result = peri_scribe.sources.fetching.fetch_all_feeds(
+            tests.main_stubs.BASE_DIRECTORY,
+            year=2026,
+        )
     assert result.changed is False
     assert events == ["timestamp"]
     (skip_event,) = [
@@ -967,26 +945,31 @@ def test_fetch_all_feeds_skips_download_when_timestamp_present(
         for event in captured
         if event["event"] == "Skipping fetch; data already present"
     ]
-    assert skip_event["feed"] == SAMPLE_FEED_NAME
-    assert skip_event["last_edit_timestamp"] == SAMPLE_LAST_EDIT_TIMESTAMP
-    assert skip_event["path"] == str(snapshot_path())
+    assert skip_event["feed"] == tests.conftest.SAMPLE_FEED_NAME
+    assert (
+        skip_event["last_edit_timestamp"] == tests.main_stubs.SAMPLE_LAST_EDIT_TIMESTAMP
+    )
+    assert skip_event["path"] == str(tests.conftest.snapshot_path())
 
 
 def test_fetch_all_feeds_full_downloads_when_timestamp_present(
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
-    first = wgs84_feature_set([(1, "a", 1.0, 2.0), (2, "b", 3.0, 4.0)])
-    second = wgs84_feature_set([(1, "a-changed", 1.0, 2.0), (2, "b", 3.0, 4.0)])
+    first = tests.factories.wgs84_feature_set([(1, "a", 1.0, 2.0), (2, "b", 3.0, 4.0)])
+    second = tests.factories.wgs84_feature_set([
+        (1, "a-changed", 1.0, 2.0),
+        (2, "b", 3.0, 4.0),
+    ])
     events: list[str] = []
     feed = tests.peri_scribe.sources.fetching_helpers.FeedStub(
-        name=SAMPLE_FEED_NAME,
-        url=SAMPLE_FEED_URL,
-        last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
+        name=tests.conftest.SAMPLE_FEED_NAME,
+        url=tests.conftest.SAMPLE_FEED_URL,
+        last_edit_timestamp=tests.main_stubs.SAMPLE_LAST_EDIT_TIMESTAMP,
         events=events,
     )
     layer_stub = tests.peri_scribe.sources.fetching_helpers.SequenceFeatureLayerStub(
-        url=SAMPLE_FEED_URL,
+        url=tests.conftest.SAMPLE_FEED_URL,
         gis=object(),
         feature_sets=[first, second],
         events=events,
@@ -994,7 +977,10 @@ def test_fetch_all_feeds_full_downloads_when_timestamp_present(
     fetch_all_feeds_stubs([feed], lambda _url, _gis: layer_stub)
     # The first fetch downloads and writes the snapshot.
     assert (
-        peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026).changed
+        peri_scribe.sources.fetching.fetch_all_feeds(
+            tests.main_stubs.BASE_DIRECTORY,
+            year=2026,
+        ).changed
         is True
     )
     assert events == ["timestamp", "download"]
@@ -1002,35 +988,36 @@ def test_fetch_all_feeds_full_downloads_when_timestamp_present(
     # A full fetch downloads even though the timestamp is unchanged, and writes a fresh
     # snapshot holding only the changed feature.
     result = peri_scribe.sources.fetching.fetch_all_feeds(
-        BASE_DIRECTORY,
+        tests.main_stubs.BASE_DIRECTORY,
         year=2026,
         full=True,
     )
     assert result.changed is True
     assert events == ["timestamp", "download"]
-    first_path = snapshot_path(
-        serial_number=0,
-        last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
+    first_path = tests.conftest.snapshot_path(
+        last_edit_timestamp=tests.main_stubs.SAMPLE_LAST_EDIT_TIMESTAMP,
     )
-    second_path = snapshot_path(
+    second_path = tests.conftest.snapshot_path(
         serial_number=1,
-        last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
+        last_edit_timestamp=tests.main_stubs.SAMPLE_LAST_EDIT_TIMESTAMP,
     )
     assert geo_package_store.has(first_path)
     assert geo_package_store.has(second_path)
-    assert list(geo_package_store.layer(second_path, SAMPLE_FEED_NAME)["name"]) == [
+    assert list(
+        geo_package_store.layer(second_path, tests.conftest.SAMPLE_FEED_NAME)["name"],
+    ) == [
         "a-changed",
     ]
 
 
 def test_fetch_all_feeds_full_writes_no_new_file_when_nothing_changed(
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    full = wgs84_feature_set([(1, "a", 1.0, 2.0), (2, "b", 3.0, 4.0)])
+    full = tests.factories.wgs84_feature_set([(1, "a", 1.0, 2.0), (2, "b", 3.0, 4.0)])
     layer_stub = tests.peri_scribe.sources.fetching_helpers.SequenceFeatureLayerStub(
-        url=SAMPLE_FEED_URL,
+        url=tests.conftest.SAMPLE_FEED_URL,
         gis=object(),
         feature_sets=[full, full],
     )
@@ -1039,7 +1026,10 @@ def test_fetch_all_feeds_full_writes_no_new_file_when_nothing_changed(
         lambda _url, _gis: layer_stub,
     )
     assert (
-        peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026).changed
+        peri_scribe.sources.fetching.fetch_all_feeds(
+            tests.main_stubs.BASE_DIRECTORY,
+            year=2026,
+        ).changed
         is True
     )
     index_calls: list[pathlib.Path] = []
@@ -1049,40 +1039,52 @@ def test_fetch_all_feeds_full_writes_no_new_file_when_nothing_changed(
         index_calls.append,
     )
     full_result = peri_scribe.sources.fetching.fetch_all_feeds(
-        BASE_DIRECTORY,
+        tests.main_stubs.BASE_DIRECTORY,
         year=2026,
         full=True,
     )
     assert full_result.changed is False
-    assert index_calls == [BASE_DIRECTORY / "data" / "2026"]
+    assert index_calls == [tests.main_stubs.BASE_DIRECTORY / "data" / "2026"]
     assert geo_package_store.has(
-        snapshot_path(serial_number=0, last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP),
+        tests.conftest.snapshot_path(
+            last_edit_timestamp=tests.main_stubs.SAMPLE_LAST_EDIT_TIMESTAMP,
+        ),
     )
     assert not geo_package_store.has(
-        snapshot_path(serial_number=1, last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP),
+        tests.conftest.snapshot_path(
+            serial_number=1,
+            last_edit_timestamp=tests.main_stubs.SAMPLE_LAST_EDIT_TIMESTAMP,
+        ),
     )
 
 
 def test_fetch_all_feeds_writes_current_state_file(
     feature_set_with_geometry: arcgis.features.FeatureSet,
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     fetch_all_feeds_stubs(
         [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
-        lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
+        lambda url, gis: tests.factories.FeatureLayerStub(
+            url,
+            gis,
+            feature_set_with_geometry,
+        ),
     )
-    peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
+    peri_scribe.sources.fetching.fetch_all_feeds(
+        tests.main_stubs.BASE_DIRECTORY,
+        year=2026,
+    )
     state_path = peri_scribe.sources.snapshots.current_state_path(
         peri_scribe.sources.snapshots.source_directory_path(
-            BASE_DIRECTORY,
+            tests.main_stubs.BASE_DIRECTORY,
             2026,
-            SAMPLE_FEED_NAME,
+            tests.conftest.SAMPLE_FEED_NAME,
         ),
         0,
     )
     assert geo_package_store.has(state_path)
-    written = geo_package_store.layer(state_path, SAMPLE_FEED_NAME)
+    written = geo_package_store.layer(state_path, tests.conftest.SAMPLE_FEED_NAME)
     assert list(written["name"]) == ["a", "b"]
 
 
@@ -1090,11 +1092,15 @@ def test_fetch_all_feeds_continues_when_state_update_fails(
     monkeypatch: pytest.MonkeyPatch,
     feature_set_with_geometry: arcgis.features.FeatureSet,
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     fetch_all_feeds_stubs(
         [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
-        lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
+        lambda url, gis: tests.factories.FeatureLayerStub(
+            url,
+            gis,
+            feature_set_with_geometry,
+        ),
     )
 
     failing_state_update = tests.peri_scribe.sources.fetching_helpers.fail_state_update
@@ -1104,43 +1110,53 @@ def test_fetch_all_feeds_continues_when_state_update_fails(
         "write_current_state",
         failing_state_update,
     )
-    result = peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
+    result = peri_scribe.sources.fetching.fetch_all_feeds(
+        tests.main_stubs.BASE_DIRECTORY,
+        year=2026,
+    )
     assert result.changed is True
-    assert geo_package_store.has(snapshot_path())
+    assert geo_package_store.has(tests.conftest.snapshot_path())
 
 
 def test_fetch_all_feeds_reindexes_after_successful_fetch(
     monkeypatch: pytest.MonkeyPatch,
     feature_set_with_geometry: arcgis.features.FeatureSet,
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     fetch_all_feeds_stubs(
         [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
-        lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
+        lambda url, gis: tests.factories.FeatureLayerStub(
+            url,
+            gis,
+            feature_set_with_geometry,
+        ),
     )
     indexed: list[pathlib.Path] = []
     monkeypatch.setattr(peri_scribe.fires.index, "index_fire_sources", indexed.append)
-    result = peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
+    result = peri_scribe.sources.fetching.fetch_all_feeds(
+        tests.main_stubs.BASE_DIRECTORY,
+        year=2026,
+    )
     assert result.changed is True
-    assert indexed == [BASE_DIRECTORY / "data" / "2026"]
+    assert indexed == [tests.main_stubs.BASE_DIRECTORY / "data" / "2026"]
 
 
 def test_fetch_all_feeds_reindexes_after_a_feed_fails(
     monkeypatch: pytest.MonkeyPatch,
     feature_set_with_geometry: arcgis.features.FeatureSet,
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     failing = tests.peri_scribe.sources.fetching_helpers.FeedStub(
         name="Failing_0",
         url="https://example.test/failing",
-        last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
+        last_edit_timestamp=tests.main_stubs.SAMPLE_LAST_EDIT_TIMESTAMP,
     )
     working = tests.peri_scribe.sources.fetching_helpers.FeedStub(
         name="Working_0",
         url="https://example.test/working",
-        last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
+        last_edit_timestamp=tests.main_stubs.SAMPLE_LAST_EDIT_TIMESTAMP,
     )
 
     layer_factory = (
@@ -1154,10 +1170,15 @@ def test_fetch_all_feeds_reindexes_after_a_feed_fails(
     indexed: list[pathlib.Path] = []
     monkeypatch.setattr(peri_scribe.fires.index, "index_fire_sources", indexed.append)
     with pytest.raises(SystemExit, match=f"Failed to fetch {failing.name}: boom"):
-        peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
-    assert indexed == [BASE_DIRECTORY / "data" / "2026"]
-    assert geo_package_store.has(snapshot_path(feed_name=working.name))
-    assert not geo_package_store.has(snapshot_path(feed_name=failing.name))
+        peri_scribe.sources.fetching.fetch_all_feeds(
+            tests.main_stubs.BASE_DIRECTORY,
+            year=2026,
+        )
+    assert indexed == [tests.main_stubs.BASE_DIRECTORY / "data" / "2026"]
+    assert geo_package_store.has(tests.conftest.snapshot_path(feed_name=working.name))
+    assert not geo_package_store.has(
+        tests.conftest.snapshot_path(feed_name=failing.name),
+    )
 
 
 def test_fetch_all_feeds_does_not_reindex_when_no_feed_succeeds(
@@ -1166,7 +1187,7 @@ def test_fetch_all_feeds_does_not_reindex_when_no_feed_succeeds(
 ) -> None:
     fetch_all_feeds_stubs(
         [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
-        lambda url, gis: FeatureLayerStub(
+        lambda url, gis: tests.factories.FeatureLayerStub(
             url,
             gis,
             arcgis.features.FeatureSet([]),
@@ -1176,7 +1197,10 @@ def test_fetch_all_feeds_does_not_reindex_when_no_feed_succeeds(
     indexed: list[pathlib.Path] = []
     monkeypatch.setattr(peri_scribe.fires.index, "index_fire_sources", indexed.append)
     with pytest.raises(SystemExit, match="Failed to fetch"):
-        peri_scribe.sources.fetching.fetch_all_feeds(BASE_DIRECTORY, year=2026)
+        peri_scribe.sources.fetching.fetch_all_feeds(
+            tests.main_stubs.BASE_DIRECTORY,
+            year=2026,
+        )
     assert indexed == []
 
 
@@ -1184,23 +1208,31 @@ def test_fetch_all_feeds_defaults_to_working_directory_and_year(
     monkeypatch: pytest.MonkeyPatch,
     feature_set_with_geometry: arcgis.features.FeatureSet,
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
-    monkeypatch.setattr(pathlib.Path, "cwd", staticmethod(lambda: BASE_DIRECTORY))
+    monkeypatch.setattr(
+        pathlib.Path,
+        "cwd",
+        staticmethod(lambda: tests.main_stubs.BASE_DIRECTORY),
+    )
     fetch_all_feeds_stubs(
         [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
-        lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
+        lambda url, gis: tests.factories.FeatureLayerStub(
+            url,
+            gis,
+            feature_set_with_geometry,
+        ),
     )
     result = peri_scribe.sources.fetching.fetch_all_feeds()
     assert result.changed is True
     year = datetime.date.today().year
     output_path = peri_scribe.sources.snapshots.source_geopackage_path(
-        BASE_DIRECTORY,
+        tests.main_stubs.BASE_DIRECTORY,
         year,
-        SAMPLE_FEED_NAME,
+        tests.conftest.SAMPLE_FEED_NAME,
         peri_scribe.sources.snapshots.SourceFile(
             serial_number=0,
-            last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
+            last_edit_timestamp=tests.main_stubs.SAMPLE_LAST_EDIT_TIMESTAMP,
         ),
     )
     assert geo_package_store.has(output_path)
@@ -1210,32 +1242,73 @@ def test_fetch_can_defer_index_without_losing_snapshot_or_current_state(
     monkeypatch: pytest.MonkeyPatch,
     feature_set_with_geometry: arcgis.features.FeatureSet,
     fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: GeoPackageStore,
+    geo_package_store: tests.factories.GeoPackageStore,
 ) -> None:
     fetch_all_feeds_stubs(
         [tests.peri_scribe.sources.fetching_helpers.sample_feed_stub()],
-        lambda url, gis: FeatureLayerStub(url, gis, feature_set_with_geometry),
+        lambda url, gis: tests.factories.FeatureLayerStub(
+            url,
+            gis,
+            feature_set_with_geometry,
+        ),
     )
     indexed: list[pathlib.Path] = []
     monkeypatch.setattr(peri_scribe.fires.index, "index_fire_sources", indexed.append)
     result = peri_scribe.sources.fetching.fetch_all_feeds(
-        BASE_DIRECTORY,
+        tests.main_stubs.BASE_DIRECTORY,
         year=2026,
         build_index=False,
     )
     assert result.changed
-    assert geo_package_store.has(snapshot_path())
+    assert geo_package_store.has(tests.conftest.snapshot_path())
     state_path = peri_scribe.sources.snapshots.current_state_path(
         peri_scribe.sources.snapshots.source_directory_path(
-            BASE_DIRECTORY,
+            tests.main_stubs.BASE_DIRECTORY,
             2026,
-            SAMPLE_FEED_NAME,
+            tests.conftest.SAMPLE_FEED_NAME,
         ),
         0,
     )
     assert geo_package_store.has(state_path)
-    assert list(geo_package_store.layer(state_path, SAMPLE_FEED_NAME)["name"]) == [
+    assert list(
+        geo_package_store.layer(state_path, tests.conftest.SAMPLE_FEED_NAME)["name"],
+    ) == [
         "a",
         "b",
     ]
     assert indexed == []
+
+
+@pytest.mark.parametrize(
+    ("rows", "expected_identifier", "expected_name", "expected_coordinates"),
+    [
+        ([(1, "stored", 0.0, 0.0), (2, "new", 2.0, 3.0)], 2, "new", (2.0, 3.0)),
+        ([(1, "edited", 0.0, 0.0)], 1, "edited", (0.0, 0.0)),
+        ([(1, "stored", 1.0, 2.0)], 1, "stored", (1.0, 2.0)),
+    ],
+)
+def test_fetch_feed_dataframe_full_returns_new_or_changed_features(
+    full_fetch: typing.Callable[
+        [list[tuple[int, str, float, float]]],
+        geopandas.GeoDataFrame | None,
+    ],
+    rows: list[tuple[int, str, float, float]],
+    expected_identifier: int,
+    expected_name: str,
+    expected_coordinates: tuple[float, float],
+) -> None:
+    result = full_fetch(rows)
+    assert result is not None
+    assert list(zip(result["OBJECTID"], result["name"], strict=True)) == [
+        (expected_identifier, expected_name),
+    ]
+    assert result.geometry.iloc[0].equals(shapely.Point(expected_coordinates))
+
+
+def test_fetch_feed_dataframe_full_returns_none_for_unchanged_features(
+    full_fetch: typing.Callable[
+        [list[tuple[int, str, float, float]]],
+        geopandas.GeoDataFrame | None,
+    ],
+) -> None:
+    assert full_fetch([(1, "stored", 0.0, 0.0)]) is None

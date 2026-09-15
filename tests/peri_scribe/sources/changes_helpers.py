@@ -14,7 +14,7 @@ import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.snapshots
-from tests.factories import change_dataframe
+import tests.factories
 
 
 UTC = datetime.UTC
@@ -105,7 +105,7 @@ def write_snapshot(
         [
             peri_scribe.models.LayerData(
                 name=feed.name,
-                dataframe=change_dataframe(rows),
+                dataframe=tests.factories.change_dataframe(rows),
             ),
         ],
     )

@@ -14,7 +14,7 @@ import peri_scribe.exceptions
 import peri_scribe.geo.reading
 import peri_scribe.geo.spatial_reference
 import peri_scribe.models
-import peri_scribe.sources.downloading
+import peri_scribe.output
 
 
 logger = structlog.get_logger()
@@ -145,7 +145,7 @@ def convert_to_geopackage(
                 centroids=centroids,
                 keep_attributes=keep_attributes,
             )
-            peri_scribe.sources.downloading.append_geopackage_chunk(
+            peri_scribe.output.append_geopackage_chunk(
                 output,
                 layer_name,
                 dataframe,
@@ -157,7 +157,7 @@ def convert_to_geopackage(
         message = f"Failed to read {geodata_path}: {error}"
         raise peri_scribe.exceptions.ExternalDataError(message) from error
     if not wrote_any:
-        peri_scribe.sources.downloading.append_geopackage_chunk(
+        peri_scribe.output.append_geopackage_chunk(
             output,
             layer_name,
             geopandas.GeoDataFrame(

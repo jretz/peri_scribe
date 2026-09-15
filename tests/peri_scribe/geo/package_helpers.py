@@ -181,12 +181,12 @@ def make_bucket_directory_stat_failure(
     return failing_stat
 
 
-def fail_cache_synchronization(*_arguments: object, **_keywords: object) -> None:
+def fail_cache_synchronization(*args: object, **kwargs: object) -> None:
     """Simulate an unusable cache during synchronization.
 
     Args:
-        _arguments: Positional arguments accepted by the substituted dependency.
-        _keywords: Keyword arguments accepted by the substituted dependency.
+        args: Positional arguments accepted by the substituted dependency.
+        kwargs: Keyword arguments accepted by the substituted dependency.
 
     Raises:
         sqlite3.OperationalError: Always, to exercise direct GeoPackage reading.
@@ -229,12 +229,12 @@ def make_snapshot_stat_failure(
     return failing_stat
 
 
-def fail_cache_read(*_arguments: object, **_keywords: object) -> object:
+def fail_cache_read(*args: object, **kwargs: object) -> object:
     """Simulate a cache read failure after synchronization succeeds.
 
     Args:
-        _arguments: Positional arguments accepted by the substituted dependency.
-        _keywords: Keyword arguments accepted by the substituted dependency.
+        args: Positional arguments accepted by the substituted dependency.
+        kwargs: Keyword arguments accepted by the substituted dependency.
 
     Raises:
         sqlite3.OperationalError: Always, to exercise direct GeoPackage reading.

@@ -7,7 +7,7 @@ import typing
 import peri_scribe.areas
 import peri_scribe.geo.measurements
 import peri_scribe.geo.parsing
-import peri_scribe.kml.fire_data
+import peri_scribe.kml.perimeters
 import peri_scribe.kml.plot_rendering
 import peri_scribe.models
 import peri_scribe.perimeters.progression
@@ -225,8 +225,8 @@ def fire_qualifies(
 def perimeter_groups(
     perimeters: geopandas.GeoDataFrame,
 ) -> tuple[
-    dict[str, list[peri_scribe.kml.fire_data.Perimeter]],
-    dict[str, list[peri_scribe.kml.fire_data.Perimeter]],
+    dict[str, list[peri_scribe.kml.perimeters.Perimeter]],
+    dict[str, list[peri_scribe.kml.perimeters.Perimeter]],
 ]:
     """Group perimeters by fire, preserving chronological order.
 
@@ -239,8 +239,8 @@ def perimeter_groups(
     Returns:
         Perimeters keyed by identifier and by name.
     """
-    by_identifier: dict[str, list[peri_scribe.kml.fire_data.Perimeter]] = {}
-    by_name: dict[str, list[peri_scribe.kml.fire_data.Perimeter]] = {}
+    by_identifier: dict[str, list[peri_scribe.kml.perimeters.Perimeter]] = {}
+    by_name: dict[str, list[peri_scribe.kml.perimeters.Perimeter]] = {}
     areas = perimeters.get(
         peri_scribe.geo.measurements.AREA_COLUMN,
         [None] * len(perimeters),
@@ -273,7 +273,7 @@ def perimeter_groups(
     ):
         area = peri_scribe.geo.parsing.numeric_value(stored_area)
         added = peri_scribe.geo.parsing.numeric_value(stored_added)
-        perimeter = peri_scribe.kml.fire_data.Perimeter(
+        perimeter = peri_scribe.kml.perimeters.Perimeter(
             geometry=geometry,
             observation_time=peri_scribe.geo.parsing.observation_time_from(
                 observation_time,
@@ -373,7 +373,7 @@ def fire_point_location(
     entry_name: str,
     point_by_identifier: dict[str, shapely.Point],
     point_by_name: dict[str, shapely.Point],
-    perimeters: tuple[peri_scribe.kml.fire_data.Perimeter, ...],
+    perimeters: tuple[peri_scribe.kml.perimeters.Perimeter, ...],
 ) -> shapely.Point | None:
     """Return the point location to show for one fire, or None.
 

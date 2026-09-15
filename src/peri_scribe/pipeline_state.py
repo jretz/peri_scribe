@@ -11,19 +11,25 @@ import typing
 import pydantic
 import structlog
 
+import peri_scribe.pipeline_stages
+
 
 logger = structlog.get_logger()
-type DerivedStage = typing.Literal["geography", "score", "kmz", "reports"]
-DERIVED_STAGES: tuple[DerivedStage, ...] = ("geography", "score", "kmz", "reports")
+DERIVED_STAGES: tuple[peri_scribe.pipeline_stages.Stage, ...] = (
+    peri_scribe.pipeline_stages.Stage.GEOGRAPHY,
+    peri_scribe.pipeline_stages.Stage.SCORE,
+    peri_scribe.pipeline_stages.Stage.KMZ,
+    peri_scribe.pipeline_stages.Stage.REPORTS,
+)
 
 
 class PendingRun(pydantic.BaseModel):
     """Validated recovery requirements for an unfinished pipeline run."""
 
-    model_config = pydantic.ConfigDict(extra="forbid")
+    model_config = pydantic.ConfigDict(extra="forbid", frozen=True)
 
     version: typing.Literal[1] = 1
-    remaining: tuple[DerivedStage, ...] = ()
+    remaining: tuple[peri_scribe.pipeline_stages.Stage, ...] = ()
     unconditional: bool = False
 
 
@@ -91,7 +97,7 @@ def write_state(year_directory: pathlib.Path, state: PendingRun) -> None:
 
 def require_stages(
     year_directory: pathlib.Path,
-    stages: tuple[DerivedStage, ...],
+    stages: tuple[peri_scribe.pipeline_stages.Stage, ...],
     *,
     unconditional: bool = False,
 ) -> None:
@@ -116,7 +122,10 @@ def require_stages(
     )
 
 
-def complete_stage(year_directory: pathlib.Path, stage: str) -> None:
+def complete_stage(
+    year_directory: pathlib.Path,
+    stage: peri_scribe.pipeline_stages.Stage,
+) -> None:
     """Only a completed prerequisite allows downstream results to count as current.
 
     Args:

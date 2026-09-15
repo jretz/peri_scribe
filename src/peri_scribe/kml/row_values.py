@@ -52,22 +52,6 @@ def text_value(row: pd.Series | None, column: str) -> str | None:
     return text or None
 
 
-def float_value(row: pd.Series | None, column: str) -> float | None:
-    """Return *row*'s numeric value in *column*, or None when it is missing.
-
-    Args:
-        row: A history row, or None.
-        column: The column to read.
-
-    Returns:
-        The column's numeric value, or None when it cannot be read as a number.
-    """
-    value = column_value(row, column)
-    if value is None:
-        return None
-    return peri_scribe.geo.parsing.numeric_value(value)
-
-
 def as_datetime(value: object) -> datetime.datetime | None:
     """Return *value* as an aware datetime, or None when it is not one.
 

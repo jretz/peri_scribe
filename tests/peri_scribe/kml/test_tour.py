@@ -98,7 +98,7 @@ def test_tour_playback_rate_for_long_fire() -> None:
     assert rate == pytest.approx(0.2)
     total_in_days = (second - first).total_seconds() / 86_400
     assert total_in_days * rate == pytest.approx(
-        peri_scribe.kml.tour.MAX_TOUR_PLAYBACK.m_as("seconds"),
+        peri_scribe.kml.tour.MAXIMUM_TOUR_PLAYBACK.m_as("seconds"),
     )
 
 

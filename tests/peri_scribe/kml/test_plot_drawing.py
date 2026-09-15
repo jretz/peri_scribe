@@ -289,10 +289,6 @@ def test_draw_plot_is_deterministic() -> None:
     assert first == second
 
 
-def test_nice_step_handles_an_empty_span() -> None:
-    assert peri_scribe.kml.plot_drawing.nice_step(0.0) == pytest.approx(1.0)
-
-
 def test_y_axis_ticks_covers_a_peak_of_zero() -> None:
     flat = (
         peri_scribe.kml.plot_data.PlotSeries(

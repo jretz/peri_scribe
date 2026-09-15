@@ -33,21 +33,14 @@ import peri_scribe.sources.fetching
 import peri_scribe.sources.full_fetch_state
 import peri_scribe.sources.snapshots
 import peri_scribe.sources.validation
+import tests.factories
+import tests.main_stubs
 from peri_scribe.units import units
-from tests.factories import WGS84_WKID, GeoPackageStore, wgs84_feature_set
-from tests.main_stubs import (
-    BASE_DIRECTORY,
-    SAMPLE_LAST_EDIT_TIMESTAMP,
-    RunStubs,
-    ValidateSourcesStubs,
-)
 
 
 if typing.TYPE_CHECKING:
     import arcgis.features
     import pandas as pd
-
-    import tests.factories
 
 
 WEB_MERCATOR_WKID = 3857
@@ -147,7 +140,7 @@ def cli_log_output(
     monkeypatch.setattr(
         peri_scribe.logging,
         "configure_logging",
-        lambda *_arguments, **_keywords: None,
+        lambda *_args, **_kwargs: None,
     )
     return log_output
 
@@ -174,7 +167,7 @@ def sample_geo_dataframe() -> geopandas.GeoDataFrame:
     return geopandas.GeoDataFrame(
         {"name": ["a", "b"]},
         geometry=[shapely.geometry.Point(1.0, 2.0), shapely.geometry.Point(3.0, 4.0)],
-        crs=pyproj.CRS.from_epsg(WGS84_WKID),
+        crs=pyproj.CRS.from_epsg(tests.factories.WGS84_WKID),
     )
 
 
@@ -283,7 +276,10 @@ def feature_set_with_geometry() -> arcgis.features.FeatureSet:
     Returns:
         A FeatureSet with two point features in WGS84.
     """
-    return wgs84_feature_set([(None, "a", 1.0, 2.0), (None, "b", 3.0, 4.0)])
+    return tests.factories.wgs84_feature_set([
+        (None, "a", 1.0, 2.0),
+        (None, "b", 3.0, 4.0),
+    ])
 
 
 @pytest.fixture
@@ -541,7 +537,9 @@ def layer_data_factory() -> typing.Callable[[str], peri_scribe.models.LayerData]
 
 
 @pytest.fixture
-def geo_package_store(monkeypatch: pytest.MonkeyPatch) -> GeoPackageStore:
+def geo_package_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> tests.factories.GeoPackageStore:
     """Install an in-memory stand-in for the fetch command's file storage.
 
     Args:
@@ -550,7 +548,7 @@ def geo_package_store(monkeypatch: pytest.MonkeyPatch) -> GeoPackageStore:
     Returns:
         The store recording written GeoPackage layers.
     """
-    store = GeoPackageStore()
+    store = tests.factories.GeoPackageStore()
     monkeypatch.setattr(peri_scribe.output, "write_geopackage", store.write)
     monkeypatch.setattr(
         peri_scribe.sources.snapshots,
@@ -562,7 +560,7 @@ def geo_package_store(monkeypatch: pytest.MonkeyPatch) -> GeoPackageStore:
         "read_layer_dataframe",
         store.read_layer,
     )
-    monkeypatch.setattr(pathlib.Path, "mkdir", lambda *_arguments, **_keywords: None)
+    monkeypatch.setattr(pathlib.Path, "mkdir", lambda *_args, **_kwargs: None)
     return store
 
 
@@ -570,7 +568,7 @@ def snapshot_path(
     *,
     feed_name: str = SAMPLE_FEED_NAME,
     serial_number: int = 0,
-    last_edit_timestamp: int = SAMPLE_LAST_EDIT_TIMESTAMP,
+    last_edit_timestamp: int = tests.main_stubs.SAMPLE_LAST_EDIT_TIMESTAMP,
 ) -> pathlib.Path:
     """Return the snapshot path fetch writes for a feed and last-edit timestamp.
 
@@ -583,7 +581,7 @@ def snapshot_path(
         The snapshot path for the 2026 test year and supplied feed metadata.
     """
     return peri_scribe.sources.snapshots.source_geopackage_path(
-        BASE_DIRECTORY,
+        tests.main_stubs.BASE_DIRECTORY,
         2026,
         feed_name,
         peri_scribe.sources.snapshots.SourceFile(
@@ -607,7 +605,11 @@ def current_year(
     Yields:
         Control while the working directory and current year are isolated.
     """
-    monkeypatch.setattr(pathlib.Path, "cwd", staticmethod(lambda: BASE_DIRECTORY))
+    monkeypatch.setattr(
+        pathlib.Path,
+        "cwd",
+        staticmethod(lambda: tests.main_stubs.BASE_DIRECTORY),
+    )
     append_monthly_log = peri_scribe.logging.append_monthly_log
     monkeypatch.setattr(
         peri_scribe.logging,
@@ -625,7 +627,7 @@ def current_year(
 def run_stubs(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: pathlib.Path,
-) -> typing.Callable[..., RunStubs]:
+) -> typing.Callable[..., tests.main_stubs.RunStubs]:
     """Install step stubs for the run command.
 
     Args:
@@ -645,7 +647,7 @@ def run_stubs(
         stored_state: (
             peri_scribe.sources.full_fetch_state.FullFetchState | None
         ) = None,
-    ) -> RunStubs:
+    ) -> tests.main_stubs.RunStubs:
         """Isolate pipeline stages and capture their invocations.
 
         Args:
@@ -667,7 +669,7 @@ def run_stubs(
             "lock_path",
             lambda _year: tmp_path / ".run.lock",
         )
-        stubs = RunStubs(
+        stubs = tests.main_stubs.RunStubs(
             fetch_result=peri_scribe.sources.fetching.FetchResult(
                 snapshot_paths=(),
                 changed=changed,
@@ -817,7 +819,7 @@ def validate_sources_stubs(
     monkeypatch: pytest.MonkeyPatch,
 ) -> typing.Callable[
     [tuple[peri_scribe.sources.validation.FeedValidationResult, ...]],
-    ValidateSourcesStubs,
+    tests.main_stubs.ValidateSourcesStubs,
 ]:
     """Install step stubs for the validate-sources command.
 
@@ -831,7 +833,7 @@ def validate_sources_stubs(
 
     def install(
         results: tuple[peri_scribe.sources.validation.FeedValidationResult, ...],
-    ) -> ValidateSourcesStubs:
+    ) -> tests.main_stubs.ValidateSourcesStubs:
         """Isolate validation stages and capture their invocations.
 
         Args:
@@ -840,7 +842,7 @@ def validate_sources_stubs(
         Returns:
             The captured complete fetch, incremental fetch, and validation calls.
         """
-        stubs = ValidateSourcesStubs(
+        stubs = tests.main_stubs.ValidateSourcesStubs(
             fetch_complete_calls=[],
             fetch_incremental_calls=[],
             validate_calls=[],

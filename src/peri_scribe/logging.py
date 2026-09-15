@@ -237,21 +237,21 @@ def command_file_logging(context: click.Context) -> typing.Generator[None]:
 def log_execution(
     kind: typing.Literal["command", "phase"],
     name: str,
-    **start_fields: object,
+    **kwargs: object,
 ) -> typing.Generator[None]:
     """Make execution boundaries and elapsed time visible, including failed work.
 
     Args:
         kind: Whether the operation is a CLI command or a pipeline phase.
         name: The operation's CLI or phase name.
-        start_fields: Additional context to include in the start log entry.
+        kwargs: Additional context to include in the start log entry.
 
     Yields:
         Control to the operation being timed.
     """
     started_at = time.perf_counter() * units.seconds
     context = {kind: name}
-    logger.info("Starting %s", kind, **context, **start_fields)
+    logger.info("Starting %s", kind, **context, **kwargs)
     status = "failed"
     try:
         yield

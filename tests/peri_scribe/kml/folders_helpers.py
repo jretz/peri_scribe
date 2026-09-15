@@ -7,6 +7,7 @@ import datetime
 import peri_scribe.kml.builder
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
+import peri_scribe.kml.perimeters
 import peri_scribe.models
 import tests.factories
 
@@ -68,7 +69,7 @@ def active_fire(
     name: str,
     *,
     description: peri_scribe.kml.descriptions.FireDescription | None = None,
-    perimeters: tuple[peri_scribe.kml.fire_data.Perimeter, ...] = (),
+    perimeters: tuple[peri_scribe.kml.perimeters.Perimeter, ...] = (),
     identifiers: frozenset[str] = frozenset(),
 ) -> peri_scribe.kml.fire_data.FireGeometry:
     """Return an active fire with the given description and perimeters.
@@ -115,11 +116,11 @@ def growing_fire(
     return active_fire(
         name,
         perimeters=(
-            peri_scribe.kml.fire_data.Perimeter(
+            peri_scribe.kml.perimeters.Perimeter(
                 geometry=tests.factories.square(baseline_side),
                 observation_time=reference_time - datetime.timedelta(hours=48),
             ),
-            peri_scribe.kml.fire_data.Perimeter(
+            peri_scribe.kml.perimeters.Perimeter(
                 geometry=tests.factories.square(latest_side),
                 observation_time=reference_time,
             ),

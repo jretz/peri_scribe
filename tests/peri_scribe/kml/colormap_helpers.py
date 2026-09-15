@@ -49,7 +49,7 @@ def utc(year: int, month: int, day: int) -> datetime.datetime:
     return datetime.datetime(year, month, day, 20, 0, tzinfo=datetime.UTC)
 
 
-MAX_COLOR_CHANNEL_ERROR = 6
+MAXIMUM_COLOR_CHANNEL_ERROR = 6
 
 
 def expected_rgb(rgb: tuple[float, float, float]) -> tuple[int, int, int]:

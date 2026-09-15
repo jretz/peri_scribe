@@ -10,6 +10,7 @@ import shapely.geometry
 
 import peri_scribe.models
 import peri_scribe.perimeters.border_classification
+import peri_scribe.perimeters.classification_data
 import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.borders
 import tests.peri_scribe.perimeters.border_helpers
@@ -59,30 +60,6 @@ def test_snapshot_serial_number_parses_leading_serial() -> None:
     )
 
 
-def test_reproject_to_california_albers_returns_projected_geometry() -> None:
-    point = shapely.geometry.Point(-120.0, 39.0)
-    result = (
-        peri_scribe.perimeters.border_classification.reproject_to_california_albers(
-            point,
-            4326,
-        )
-    )
-    assert isinstance(result, shapely.geometry.Point)
-    assert result != point
-
-
-def test_reproject_to_california_albers_preserves_z_coordinates() -> None:
-    point = shapely.geometry.Point(-120.0, 39.0, 123.0)
-    result = (
-        peri_scribe.perimeters.border_classification.reproject_to_california_albers(
-            point,
-            4326,
-        )
-    )
-    assert isinstance(result, shapely.geometry.Point)
-    assert result.z == pytest.approx(123.0)
-
-
 def test_load_boundaries_builds_box_and_reprojects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -108,7 +85,7 @@ def test_load_boundaries_builds_box_and_reprojects(
 
 
 def test_unioned_observation_geometry_returns_none_without_geometries(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     assert (
         peri_scribe.perimeters.border_classification.unioned_observation_geometry(
@@ -120,7 +97,7 @@ def test_unioned_observation_geometry_returns_none_without_geometries(
 
 
 def test_unioned_observation_geometry_skips_missing_and_empty_geometries(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     observations = [
         tests.peri_scribe.perimeters.border_helpers.observation(
@@ -144,7 +121,7 @@ def test_unioned_observation_geometry_skips_missing_and_empty_geometries(
 
 
 def test_unioned_observation_geometry_returns_single_geometry_directly(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     location = shapely.geometry.Point(-120.0, 39.0)
@@ -163,7 +140,7 @@ def test_unioned_observation_geometry_returns_single_geometry_directly(
         boundaries,
     )
     assert union == (
-        peri_scribe.perimeters.border_classification.reproject_to_california_albers(
+        peri_scribe.perimeters.classification_data.reproject_to_california_albers(
             location,
             peri_scribe.models.NAD83_SPATIAL_REFERENCE_ID,
         )
@@ -171,7 +148,7 @@ def test_unioned_observation_geometry_returns_single_geometry_directly(
 
 
 def test_unioned_observation_geometry_dedupes_identical_observations(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     # One observation inside the California box and one outside, so the parts straddle
@@ -191,7 +168,7 @@ def test_unioned_observation_geometry_dedupes_identical_observations(
 
     monkeypatch.setattr(shapely, "union_all", recording_union_all)
     monkeypatch.setattr(
-        peri_scribe.perimeters.border_classification,
+        peri_scribe.perimeters.classification_data,
         "reproject_to_california_albers",
         lambda geometry, _wkid: geometry,
     )
@@ -218,11 +195,11 @@ def test_unioned_observation_geometry_dedupes_identical_observations(
 
 
 def test_unioned_observation_geometry_skips_union_for_one_sided_fire(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        peri_scribe.perimeters.border_classification,
+        peri_scribe.perimeters.classification_data,
         "reproject_to_california_albers",
         lambda geometry, _wkid: geometry,
     )
@@ -258,17 +235,15 @@ def test_unioned_observation_geometry_skips_union_for_one_sided_fire(
 
 
 def test_unioned_observation_geometry_keeps_identical_geometries_from_different_sources(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     location = shapely.geometry.Point(5.0, 5.0)
     reprojected: list[tuple[int, bytes]] = []
-    original = (
-        peri_scribe.perimeters.border_classification.reproject_to_california_albers
-    )
+    original = peri_scribe.perimeters.classification_data.reproject_to_california_albers
 
     monkeypatch.setattr(
-        peri_scribe.perimeters.border_classification,
+        peri_scribe.perimeters.classification_data,
         "reproject_to_california_albers",
         tests.peri_scribe.perimeters.classification_helpers.make_reproject_recorder(
             reprojected=reprojected,
@@ -421,7 +396,7 @@ def test_classify_identifier_alone_stays_inside_california() -> None:
 
 
 def test_classify_fire_classifies_cross_border_fire(
-    wgs84_boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    wgs84_boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     records = [
         tests.peri_scribe.perimeters.classification_helpers.classifiable_record(
@@ -447,7 +422,7 @@ def test_classify_fire_classifies_cross_border_fire(
 
 
 def test_classify_fire_classifies_inside_california_fire(
-    wgs84_boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    wgs84_boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     records = [
         tests.peri_scribe.perimeters.classification_helpers.classifiable_record(
@@ -473,7 +448,7 @@ def test_classify_fire_classifies_inside_california_fire(
 
 
 def test_classify_fire_classifies_outside_california_fire(
-    wgs84_boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    wgs84_boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     records = [
         tests.peri_scribe.perimeters.classification_helpers.classifiable_record(
@@ -498,7 +473,7 @@ def test_classify_fire_classifies_outside_california_fire(
 
 
 def test_classify_fire_captures_identifier_signal(
-    wgs84_boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    wgs84_boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     records = [
         tests.peri_scribe.perimeters.classification_helpers.classifiable_record(
@@ -521,7 +496,7 @@ def test_classify_fire_captures_identifier_signal(
 
 
 def test_classify_fire_keeps_coastal_fire_inside(
-    wgs84_boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    wgs84_boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     records = [
         tests.peri_scribe.perimeters.classification_helpers.classifiable_record(

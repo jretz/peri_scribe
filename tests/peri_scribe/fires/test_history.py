@@ -9,10 +9,7 @@ import pathlib
 import geopandas
 import pytest
 
-import peri_scribe.fires.classification
-import peri_scribe.fires.files
 import peri_scribe.fires.history
-import peri_scribe.fires.reuse
 import peri_scribe.fires.sources
 import peri_scribe.geo.package
 import peri_scribe.models
@@ -93,12 +90,12 @@ def test_perimeter_row_falls_back_to_modified_time() -> None:
 def test_point_row_builds_fields_and_geometry() -> None:
     geometry = tests.factories.point(0, 0)
     incident_size = 100
-    modified_time = tests.factories.utc(2026, 8, 17, 1, 0)
+    modified_time = tests.factories.utc(2026, 8, 17, 1)
     version = tests.factories.observation(
         source_kind=tests.factories.WFIGS_LOCATION,
         geometry=geometry,
         observation_time=modified_time,
-        snapshot_time=tests.factories.utc(2026, 8, 17, 6, 0),
+        snapshot_time=tests.factories.utc(2026, 8, 17, 6),
         attributes={"IncidentSize": incident_size},
     )
     row = peri_scribe.fires.history.point_row(tests.factories.fire(), None, version)
@@ -110,7 +107,7 @@ def test_point_row_builds_fields_and_geometry() -> None:
 
 def test_point_row_falls_back_to_snapshot_time() -> None:
     geometry = tests.factories.point(0, 0)
-    snapshot_time = tests.factories.utc(2026, 8, 17, 6, 0)
+    snapshot_time = tests.factories.utc(2026, 8, 17, 6)
     version = tests.factories.observation(
         source_kind=tests.factories.WFIGS_LOCATION,
         geometry=geometry,
@@ -231,7 +228,7 @@ def test_history_layer_rows_skips_complex_parents(
     monkeypatch.setattr(
         peri_scribe.fires.sources,
         "fire_is_complex_parent",
-        lambda *_arguments: True,
+        lambda *_args: True,
     )
     perimeter_rows, point_rows = peri_scribe.fires.history.history_layer_rows(
         record_groups,
@@ -323,53 +320,3 @@ def test_history_layer_rows_propagates_worker_exception(
             paths,
             sources_directory,
         )
-
-
-def test_history_geopackage_path_names_output() -> None:
-    assert peri_scribe.fires.files.history_geopackage_path(
-        pathlib.Path("data/2026"),
-    ) == pathlib.Path("data/2026/derived/history_of_full_geography.gpkg")
-
-
-def test_write_history_of_full_geography_writes_geography_and_incidents(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: pathlib.Path,
-) -> None:
-    record_groups = peri_scribe.fires.sources.FireRecordGroups(
-        records=(),
-        record_paths=(),
-        fires=(tests.factories.fire(),),
-        groups=((),),
-        complex_identifiers=frozenset(),
-    )
-    read = peri_scribe.fires.sources.ReadFireSources(rows=(), paths=(), memberships=())
-    monkeypatch.setattr(
-        peri_scribe.fires.sources,
-        "read_fire_sources",
-        lambda _directory: read,
-    )
-    monkeypatch.setattr(
-        peri_scribe.fires.sources,
-        "group_fire_sources",
-        lambda _read: record_groups,
-    )
-    monkeypatch.setattr(
-        peri_scribe.fires.classification,
-        "classify_fire_sources",
-        lambda *_arguments: {},
-    )
-    written: list[tuple[pathlib.Path, list[peri_scribe.models.LayerData]]] = []
-    monkeypatch.setattr(
-        peri_scribe.fires.reuse,
-        "write_layers",
-        lambda path, layers: written.append((path, layers)),
-    )
-    result = peri_scribe.fires.files.write_history_of_full_geography(tmp_path)
-    assert result == tmp_path / "derived/history_of_full_geography.gpkg"
-    assert len(written) == 1
-    _path, layers = written[0]
-    assert [layer.name for layer in layers] == [
-        peri_scribe.fires.files.PERIMETER_LAYER_NAME,
-        peri_scribe.fires.files.POINT_LAYER_NAME,
-        "incident_history",
-    ]

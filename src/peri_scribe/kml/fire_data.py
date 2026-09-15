@@ -8,7 +8,6 @@ together with its rendered plot images.
 from __future__ import annotations
 
 import dataclasses
-import datetime
 import functools
 import typing
 
@@ -17,45 +16,19 @@ import peri_scribe.fires.scoring
 import peri_scribe.kml.colormap
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.history_index
+import peri_scribe.kml.perimeters
 import peri_scribe.kml.plot_data
 import peri_scribe.kml.plot_rendering
 import peri_scribe.kml.selection
 import peri_scribe.kml.text
 import peri_scribe.models
 import peri_scribe.perimeters.progression
-import peri_scribe.units
 
 
 if typing.TYPE_CHECKING:
     import geopandas
     import pint
     import shapely
-
-
-# The smallest computed or reported area that keeps a fire in the KMZ output. Fires
-# whose every area indication is missing or below this are the season's long tail of
-# tiny incidents, which clutter Google Earth without adding information.
-
-
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class Perimeter:
-    """One perimeter geometry and the time it was observed."""
-
-    geometry: shapely.Geometry
-    observation_time: datetime.datetime | None
-    area: pint.Quantity[float] | None = None
-    added_area: pint.Quantity[float] | None = None
-    sequence_digest: str | None = None
-
-    @property
-    def measured_area(self) -> pint.Quantity[float]:
-        """Share stored measurements while supporting standalone history layers.
-
-        Returns:
-            The perimeter area as a unit-aware quantity, using stored measurements when
-            available.
-        """
-        return peri_scribe.units.area(self.geometry) if self.area is None else self.area
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -70,7 +43,7 @@ class FireGeometry:
     name: str
     status: peri_scribe.models.FireStatus
     point: shapely.Point | None
-    perimeters: tuple[Perimeter, ...]
+    perimeters: tuple[peri_scribe.kml.perimeters.Perimeter, ...]
     progression_rings: tuple[peri_scribe.perimeters.progression.Ring, ...] = ()
     description: peri_scribe.kml.descriptions.FireDescription | None = None
     images: tuple[peri_scribe.kml.plot_rendering.PlotImage, ...] = ()
@@ -127,7 +100,7 @@ MINIMUM_RING_AREA = peri_scribe.perimeters.progression.MINIMUM_RING_AREA
 
 
 def progression_ring(
-    perimeter: Perimeter,
+    perimeter: peri_scribe.kml.perimeters.Perimeter,
 ) -> peri_scribe.perimeters.progression.Ring | None:
     """Return *perimeter* as a growth ring, or None when it is too small.
 
@@ -205,7 +178,7 @@ def ring_added_areas(
 
 def interior_ring_colors(
     rings: typing.Sequence[peri_scribe.perimeters.progression.Ring],
-    perimeters: typing.Sequence[Perimeter],
+    perimeters: typing.Sequence[peri_scribe.kml.perimeters.Perimeter],
 ) -> tuple[tuple[peri_scribe.perimeters.progression.Ring, str], ...]:
     """Return the (ring, color) pairs a fire's interior folder draws.
 
@@ -253,9 +226,9 @@ def interior_ring_colors(
 def fire_perimeters(
     fire_identifiers: frozenset[str],
     entry_name: str,
-    perimeter_by_identifier: dict[str, list[Perimeter]],
-    perimeter_by_name: dict[str, list[Perimeter]],
-) -> tuple[Perimeter, ...]:
+    perimeter_by_identifier: dict[str, list[peri_scribe.kml.perimeters.Perimeter]],
+    perimeter_by_name: dict[str, list[peri_scribe.kml.perimeters.Perimeter]],
+) -> tuple[peri_scribe.kml.perimeters.Perimeter, ...]:
     """Return one fire's perimeters in chronological order.
 
     Args:
@@ -267,7 +240,7 @@ def fire_perimeters(
     Returns:
         The fire's perimeters, oldest first.
     """
-    perimeters: list[Perimeter] = []
+    perimeters: list[peri_scribe.kml.perimeters.Perimeter] = []
     for identifier in sorted(fire_identifiers):
         perimeters.extend(perimeter_by_identifier.get(identifier, []))
     if not fire_identifiers:
@@ -291,7 +264,7 @@ class PendingFire:
 
     entry: peri_scribe.models.FireIndexEntry
     identifiers: frozenset[str]
-    perimeters: tuple[Perimeter, ...]
+    perimeters: tuple[peri_scribe.kml.perimeters.Perimeter, ...]
     progression_rings: tuple[peri_scribe.perimeters.progression.Ring, ...]
     perimeter_positions: tuple[int, ...]
     point_positions: tuple[int, ...]
@@ -307,10 +280,10 @@ def prepare_fire_bundles(
     index: peri_scribe.models.FireIndex,
     perimeters: geopandas.GeoDataFrame,
     points: geopandas.GeoDataFrame,
-    perimeter_by_identifier: dict[str, list[Perimeter]],
-    perimeter_by_name: dict[str, list[Perimeter]],
-    ring_by_identifier: dict[str, list[Perimeter]],
-    ring_by_name: dict[str, list[Perimeter]],
+    perimeter_by_identifier: dict[str, list[peri_scribe.kml.perimeters.Perimeter]],
+    perimeter_by_name: dict[str, list[peri_scribe.kml.perimeters.Perimeter]],
+    ring_by_identifier: dict[str, list[peri_scribe.kml.perimeters.Perimeter]],
+    ring_by_name: dict[str, list[peri_scribe.kml.perimeters.Perimeter]],
     incident_rows: geopandas.GeoDataFrame | None = None,
     histories: typing.Mapping[
         peri_scribe.kml.selection.AreaKey,

@@ -176,13 +176,13 @@ def make_state_archive_responder(
 
     def get(
         url: str,
-        **_kwargs: object,
+        **kwargs: object,
     ) -> tests.peri_scribe.sources.external_source_helpers.FakeResponse:
         """Serve the buildings index or matching state archive without HTTP access.
 
         Args:
             url: ArcGIS layer or download URL supplied by the caller.
-            _kwargs: HTTP request options accepted by the response substitute.
+            kwargs: HTTP request options accepted by the response substitute.
 
         Returns:
             The index page or state archive selected by the URL.

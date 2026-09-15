@@ -25,6 +25,7 @@ import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
 import peri_scribe.models
 import peri_scribe.report.locations
+import peri_scribe.sources.external_data
 import peri_scribe.sources.external_sources
 
 
@@ -100,7 +101,7 @@ def read_cities_layer(year_directory: pathlib.Path) -> geopandas.GeoDataFrame:
         The major cities layer's features, or an empty frame when the layer is absent.
     """
     source = peri_scribe.sources.external_sources.MAJOR_CITIES_SOURCE
-    path = peri_scribe.sources.external_sources.output_path(year_directory, source)
+    path = peri_scribe.sources.external_data.output_path(year_directory, source)
     if not path.is_file():
         return geopandas.GeoDataFrame()
     return peri_scribe.geo.reading.read_layer(path, source.layer_name or source.name)
@@ -279,23 +280,21 @@ def located_entries(
     )
 
 
-def report_details(
-    *sections: tuple[FireReportEntry, ...],
-) -> tuple[FireReportEntry, ...]:
-    """Return one entry per distinct fire across *sections*, sorted by name.
+def report_details(*args: tuple[FireReportEntry, ...]) -> tuple[FireReportEntry, ...]:
+    """Return one entry per distinct fire across *args*, sorted by name.
 
     A fire is identified by its canonical identifier when it has one, and by its name
     otherwise, mirroring how the KMZ matches a fire to its saved score, so a fire
     mentioned in several sections appears once in the returned details.
 
     Args:
-        sections: The report's fire lists.
+        args: The report's fire lists.
 
     Returns:
         One entry per distinct fire, ordered by name.
     """
     entries_by_identity: dict[str, FireReportEntry] = {}
-    for section in sections:
+    for section in args:
         for entry in section:
             identity = entry.identifier if entry.identifier is not None else entry.name
             entries_by_identity.setdefault(identity, entry)

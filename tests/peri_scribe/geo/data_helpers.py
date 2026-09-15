@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import typing
 
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     import arcgis.features
 
 
@@ -48,11 +48,11 @@ class IdQueryStub:
         """
         self.result = result
 
-    def query(self, **_parameters: object) -> dict[str, object]:
+    def query(self, **_kwargs: object) -> dict[str, object]:
         """Serve the configured object-ID response without a remote query.
 
         Args:
-            _parameters: Query options accepted for compatibility with ArcGIS callers.
+            _kwargs: Query options accepted for compatibility with ArcGIS callers.
 
         Returns:
             The configured object-ID response dictionary.

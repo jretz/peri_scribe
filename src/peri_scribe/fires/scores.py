@@ -41,6 +41,7 @@ import peri_scribe.fires.scoring
 import peri_scribe.geo.parsing
 import peri_scribe.output
 import peri_scribe.sources.buildings
+import peri_scribe.sources.external_data
 import peri_scribe.sources.external_sources
 from peri_scribe.units import units
 
@@ -53,7 +54,7 @@ if typing.TYPE_CHECKING:
 
 def latest_snapshot_layer(
     year_directory: pathlib.Path,
-    source: peri_scribe.sources.external_sources.ExternalSource,
+    source: peri_scribe.sources.external_data.ExternalSource,
 ) -> tuple[pathlib.Path, str] | None:
     """Return the path and layer name of a live source's GeoPackage, or None.
 
@@ -70,7 +71,7 @@ def latest_snapshot_layer(
     """
     if source.layer_name is None:
         return None
-    path = peri_scribe.sources.external_sources.output_path(year_directory, source)
+    path = peri_scribe.sources.external_data.output_path(year_directory, source)
     if not path.is_file():
         return None
     return path, source.layer_name
@@ -107,7 +108,7 @@ def external_signals(
     Returns:
         The external signals for the fires.
     """
-    buildings_path = peri_scribe.sources.external_sources.output_path(
+    buildings_path = peri_scribe.sources.external_data.output_path(
         year_directory,
         peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
     )

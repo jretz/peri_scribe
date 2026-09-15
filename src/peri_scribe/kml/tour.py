@@ -22,9 +22,10 @@ if typing.TYPE_CHECKING:
 
 # A tour advances through fire time at one second of playback per day, and holds the
 # final frame for two seconds. Fires spanning more than the base-rate span play faster
-# so the whole progression takes about MAX_TOUR_PLAYBACK instead of one second per day.
+# so the whole progression takes about MAXIMUM_TOUR_PLAYBACK instead of one second per
+# day.
 TOUR_PLAYBACK_RATE = 1.0
-MAX_TOUR_PLAYBACK = 5.0 * units.seconds
+MAXIMUM_TOUR_PLAYBACK = 5.0 * units.seconds
 FINAL_TOUR_WAIT = 1.0 * units.seconds
 
 MAPPING_NAME = "Perimeter"
@@ -119,7 +120,7 @@ def tour_playback_rate(ring_times: typing.Sequence[datetime.datetime | None]) ->
 
     Fires spanning at most the base-rate span play at TOUR_PLAYBACK_RATE so every day
     stays visible; longer fires play proportionally faster so the whole progression
-    takes about MAX_TOUR_PLAYBACK. The rate is a plain number because pint reduces a
+    takes about MAXIMUM_TOUR_PLAYBACK. The rate is a plain number because pint reduces a
     seconds-per-day ratio to dimensionless.
 
     Args:
@@ -137,10 +138,10 @@ def tour_playback_rate(ring_times: typing.Sequence[datetime.datetime | None]) ->
         return TOUR_PLAYBACK_RATE
     span = observed_times[-1] - observed_times[0]
     span_in_days = span / datetime.timedelta(days=1)
-    base_rate_span_in_days = MAX_TOUR_PLAYBACK.m_as("seconds") / TOUR_PLAYBACK_RATE
+    base_rate_span_in_days = MAXIMUM_TOUR_PLAYBACK.m_as("seconds") / TOUR_PLAYBACK_RATE
     if span_in_days <= base_rate_span_in_days:
         return TOUR_PLAYBACK_RATE
-    return MAX_TOUR_PLAYBACK.m_as("seconds") / span_in_days
+    return MAXIMUM_TOUR_PLAYBACK.m_as("seconds") / span_in_days
 
 
 def tour_wait(
@@ -206,9 +207,9 @@ def progression_tour(
     observations at the tour's playback rate before revealing each next ring, and holds
     the final frame for two seconds. The playback rate is one second per day for fires
     spanning at most the base-rate span, and faster for longer fires so the whole
-    progression takes about MAX_TOUR_PLAYBACK. Callers place it where they want it in
-    the folder; it targets the rings by their placemark ids, so the rings' listing order
-    does not affect it.
+    progression takes about MAXIMUM_TOUR_PLAYBACK. Callers place it where they want it
+    in the folder; it targets the rings by their placemark ids, so the rings' listing
+    order does not affect it.
 
     Args:
         writer: The writer to append to.

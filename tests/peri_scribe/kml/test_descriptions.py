@@ -17,7 +17,7 @@ def test_format_number_returns_none_for_none() -> None:
 
 
 def test_format_number_rounds_to_whole_number() -> None:
-    assert peri_scribe.kml.descriptions.format_number(1234567.89, 0) == "1,234,568"
+    assert peri_scribe.kml.descriptions.format_number(1234567.89) == "1,234,568"
 
 
 def test_format_number_keeps_decimal_places_and_separators() -> None:

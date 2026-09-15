@@ -67,6 +67,6 @@ def exterior_perimeter(
     ]
     if not exteriors:
         return None
-    geod = pyproj.Geod(ellps="WGS84")
-    length = sum(geod.geometry_length(exterior) for exterior in exteriors)
+    geodesic = pyproj.Geod(ellps="WGS84")
+    length = sum(geodesic.geometry_length(exterior) for exterior in exteriors)
     return length * units.meters

@@ -62,19 +62,19 @@ def mapping(
 
 
 def collection(
-    *mappings: peri_scribe.publication.Mapping,
+    *args: peri_scribe.publication.Mapping,
 ) -> peri_scribe.publication.Collection:
     """Retain each downloaded snapshot independently of publication.
 
     Args:
-        *mappings: Source observations to include in the downloaded inventory.
+        *args: Source observations to include in the downloaded inventory.
 
     Returns:
         A complete source inventory containing these observations.
     """
     return peri_scribe.publication.Collection(
-        files={item.source_file: STAMP for item in mappings},
-        mappings={item.source_file: (item,) for item in mappings},
+        files={item.source_file: STAMP for item in args},
+        mappings={item.source_file: (item,) for item in args},
     )
 
 

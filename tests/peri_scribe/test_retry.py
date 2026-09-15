@@ -9,13 +9,9 @@ import requests
 import tenacity
 
 import peri_scribe.retry
+import tests.conftest
 import tests.peri_scribe.retry_helpers
 from peri_scribe.units import units
-from tests.conftest import (
-    LOOSE_429_ERROR_PAYLOAD,
-    RATE_LIMIT_ERROR_PAYLOAD,
-    RATE_LIMIT_RETRY_AFTER,
-)
 
 
 if typing.TYPE_CHECKING:
@@ -27,18 +23,24 @@ if typing.TYPE_CHECKING:
 
 
 def test_rate_limit_retry_uses_server_hint() -> None:
-    error = ValueError(RATE_LIMIT_ERROR_PAYLOAD)
-    assert peri_scribe.retry.rate_limit_retry(error) == RATE_LIMIT_RETRY_AFTER
+    error = ValueError(tests.conftest.RATE_LIMIT_ERROR_PAYLOAD)
+    assert (
+        peri_scribe.retry.rate_limit_retry(error)
+        == tests.conftest.RATE_LIMIT_RETRY_AFTER
+    )
 
 
 def test_rate_limit_retry_uses_fallback_for_loose_429() -> None:
-    error = ValueError(LOOSE_429_ERROR_PAYLOAD)
+    error = ValueError(tests.conftest.LOOSE_429_ERROR_PAYLOAD)
     assert peri_scribe.retry.rate_limit_retry(error) == peri_scribe.retry.FALLBACK_RETRY
 
 
 def test_rate_limit_retry_uses_server_hint_from_string() -> None:
     error = ValueError(tests.peri_scribe.retry_helpers.RATE_LIMIT_ERROR_STRING)
-    assert peri_scribe.retry.rate_limit_retry(error) == RATE_LIMIT_RETRY_AFTER
+    assert (
+        peri_scribe.retry.rate_limit_retry(error)
+        == tests.conftest.RATE_LIMIT_RETRY_AFTER
+    )
 
 
 def test_rate_limit_retry_uses_fallback_for_loose_429_string() -> None:
@@ -126,12 +128,12 @@ def test_is_transient_error_matches_transient_exception_types(
 
 
 def test_is_transient_error_does_not_match_normal_errors() -> None:
-    error = ValueError(RATE_LIMIT_ERROR_PAYLOAD)
+    error = ValueError(tests.conftest.RATE_LIMIT_ERROR_PAYLOAD)
     assert peri_scribe.retry.is_transient_error(error) is False
 
 
 def test_is_retryable_error_retries_rate_limit() -> None:
-    error = ValueError(RATE_LIMIT_ERROR_PAYLOAD)
+    error = ValueError(tests.conftest.RATE_LIMIT_ERROR_PAYLOAD)
     assert peri_scribe.retry.is_retryable_error(error) is True
 
 
@@ -146,7 +148,7 @@ def test_is_retryable_error_rejects_other_errors() -> None:
 
 
 def test_retry_reason_describes_rate_limit() -> None:
-    error = ValueError(RATE_LIMIT_ERROR_PAYLOAD)
+    error = ValueError(tests.conftest.RATE_LIMIT_ERROR_PAYLOAD)
     assert (
         peri_scribe.retry.retry_reason(error)
         == "Rate-limited; retrying after server-suggested delay"
@@ -163,16 +165,18 @@ def test_retry_reason_describes_transient() -> None:
 
 def test_retry_wait_uses_server_hint() -> None:
     retry_state = tests.peri_scribe.retry_helpers.failed_retry_state(
-        ValueError(RATE_LIMIT_ERROR_PAYLOAD),
+        ValueError(tests.conftest.RATE_LIMIT_ERROR_PAYLOAD),
     )
-    assert peri_scribe.retry.retry_wait(retry_state) == RATE_LIMIT_RETRY_AFTER.m_as(
+    assert peri_scribe.retry.retry_wait(
+        retry_state,
+    ) == tests.conftest.RATE_LIMIT_RETRY_AFTER.m_as(
         "second",
     )
 
 
 def test_retry_wait_uses_fallback_for_loose_429() -> None:
     retry_state = tests.peri_scribe.retry_helpers.failed_retry_state(
-        ValueError(LOOSE_429_ERROR_PAYLOAD),
+        ValueError(tests.conftest.LOOSE_429_ERROR_PAYLOAD),
     )
     assert peri_scribe.retry.retry_wait(
         retry_state,
@@ -227,7 +231,7 @@ def test_run_with_retry_logs_serializable_traceback_on_exhaustion(
     failing_query = tests.peri_scribe.retry_helpers.raise_disconnected_query
 
     with pytest.raises(requests.exceptions.ConnectionError, match="Disconnected"):
-        peri_scribe.retry.run_with_retry("example", failing_query, max_retries=0)
+        peri_scribe.retry.run_with_retry("example", failing_query, maximum_retries=0)
 
     entry = json.loads(json.dumps(log_output.entries[0]))
     assert entry["event"] == "Retries exhausted"

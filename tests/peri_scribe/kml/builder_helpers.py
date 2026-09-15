@@ -10,6 +10,7 @@ import shapely.geometry
 
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
+import peri_scribe.kml.perimeters
 import peri_scribe.models
 import tests.factories
 
@@ -30,17 +31,17 @@ def recording_archive_factory(
         The stand-in for ``zipfile.ZipFile``.
     """
 
-    def fake_zipfile(*arguments: object, **keywords: object) -> FakeArchive:
+    def fake_zipfile(*args: object, **kwargs: object) -> FakeArchive:
         """Capture archive construction and writes without creating a KMZ.
 
         Args:
-            arguments: Positional archive constructor arguments.
-            keywords: Named archive constructor options.
+            args: Positional archive constructor arguments.
+            kwargs: Named archive constructor options.
 
         Returns:
             The recorded in-memory archive.
         """
-        archive = FakeArchive(*arguments, **keywords)
+        archive = FakeArchive(*args, **kwargs)
         archives.append(archive)
         return archive
 
@@ -50,15 +51,15 @@ def recording_archive_factory(
 class FakeArchive:
     """In-memory zip archive stand-in that records its writes."""
 
-    def __init__(self, *arguments: object, **keywords: object) -> None:
+    def __init__(self, *args: object, **kwargs: object) -> None:
         """Retain archive options so compression choices can be asserted.
 
         Args:
-            arguments: Positional archive constructor arguments.
-            keywords: Named archive constructor options.
+            args: Positional archive constructor arguments.
+            kwargs: Named archive constructor options.
         """
-        self.arguments = arguments
-        self.keywords = keywords
+        self.args = args
+        self.kwargs = kwargs
         self.writes: list[tuple[str, str | bytes, int | None]] = []
 
     def __enter__(self) -> typing.Self:
@@ -117,11 +118,11 @@ def new_folder_scenario() -> tuple[
         status=peri_scribe.models.FireStatus.ACTIVE,
         point=shapely.geometry.Point(0.0, 0.0),
         perimeters=(
-            peri_scribe.kml.fire_data.Perimeter(
+            peri_scribe.kml.perimeters.Perimeter(
                 geometry=tests.factories.square(0.02),
                 observation_time=SCENARIO_TIME - datetime.timedelta(hours=48),
             ),
-            peri_scribe.kml.fire_data.Perimeter(
+            peri_scribe.kml.perimeters.Perimeter(
                 geometry=tests.factories.square(0.03),
                 observation_time=SCENARIO_TIME,
             ),

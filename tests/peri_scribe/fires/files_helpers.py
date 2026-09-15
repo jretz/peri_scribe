@@ -32,12 +32,12 @@ def assert_histories_equal(
         assert list(first.geometry.to_wkb()) == list(second.geometry.to_wkb())
 
 
-def reject_history_reconstruction(*_args: object, **_kwargs: object) -> typing.Never:
+def reject_history_reconstruction(*args: object, **kwargs: object) -> typing.Never:
     """Reject source reconstruction when a complete cached history is available.
 
     Args:
-        _args: Unused derivation inputs.
-        _kwargs: Unused derivation options.
+        args: Unused derivation inputs.
+        kwargs: Unused derivation options.
 
     Raises:
         AssertionError: When an unchanged fire's evidence is reconstructed.

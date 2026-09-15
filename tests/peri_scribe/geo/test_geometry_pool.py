@@ -12,6 +12,59 @@ import shapely
 import peri_scribe.geo.geometry_pool
 
 
+def test_geometry_pool_from_wkb_handles_digest_sorted_observations() -> None:
+    serialized = sorted(
+        (shapely.Point(index, index).wkb for index in range(1200)),
+        key=peri_scribe.geo.geometry_pool.geometry_digest,
+    )
+    pool = peri_scribe.geo.geometry_pool.GeometryPool()
+    geometries = [pool.from_wkb(wkb) for wkb in serialized]
+    assert all(
+        pool.from_wkb(wkb) is geometry
+        for wkb, geometry in zip(serialized, geometries, strict=True)
+    )
+
+
+@pytest.mark.parametrize("digest", [b"a", b"m", b"z"])
+def test_shared_geometry_preserves_prior_snapshot(digest: bytes) -> None:
+    original, first = peri_scribe.geo.geometry_pool.shared_geometry(
+        None,
+        b"m",
+        shapely.Point(1, 2).wkb,
+    )
+    updated, second = peri_scribe.geo.geometry_pool.shared_geometry(
+        original,
+        digest,
+        shapely.Point(3, 4).wkb,
+    )
+    assert original.geometries == (first,)
+    assert original.smaller is None
+    assert original.larger is None
+    assert second.wkb == shapely.Point(3, 4).wkb
+    assert updated is not original
+
+
+@pytest.mark.parametrize("digest", [b"a", b"m", b"z"])
+def test_shared_geometry_reuses_unchanged_snapshot(digest: bytes) -> None:
+    original, _first = peri_scribe.geo.geometry_pool.shared_geometry(
+        None,
+        b"m",
+        shapely.Point(1, 2).wkb,
+    )
+    cached, geometry = peri_scribe.geo.geometry_pool.shared_geometry(
+        original,
+        digest,
+        shapely.Point(3, 4).wkb,
+    )
+    reused, same_geometry = peri_scribe.geo.geometry_pool.shared_geometry(
+        cached,
+        digest,
+        shapely.Point(3, 4).wkb,
+    )
+    assert reused is cached
+    assert same_geometry is geometry
+
+
 @pytest.mark.parametrize(
     "geometry",
     [shapely.Point(1, 2), shapely.Polygon(), shapely.box(0, 0, 1, 1)],

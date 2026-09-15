@@ -11,6 +11,7 @@ import zipfile
 
 import shapely.geometry
 
+import peri_scribe.sources.external_data
 import peri_scribe.sources.external_sources
 import tests.factories
 
@@ -163,7 +164,7 @@ def building_dataframe() -> geopandas.GeoDataFrame:
     )
 
 
-def per_state_template_source() -> peri_scribe.sources.external_sources.ExternalSource:
+def per_state_template_source() -> peri_scribe.sources.external_data.ExternalSource:
     """Return the buildings source without its page, using a URL template.
 
     The real buildings source reads its per-state links from the repository page; the
@@ -183,7 +184,7 @@ def per_state_template_source() -> peri_scribe.sources.external_sources.External
     )
 
 
-def single_archive_source() -> peri_scribe.sources.external_sources.ExternalSource:
+def single_archive_source() -> peri_scribe.sources.external_data.ExternalSource:
     """Return the buildings source as a single archive instead of per state.
 
     The generic single-archive download path is exercised with this source so that the

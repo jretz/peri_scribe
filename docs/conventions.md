@@ -49,10 +49,10 @@ use `import *`. Avoid circular imports.
 
 Abbreviations are not used in this codebase. All variable names, function names, and
 constants are written out in full. Exceptions are reserved for universally understood
-abbreviations (e.g., KML, ID, URL) and conventional single-letter loop variables (`i`,
-`j` for indices; `a`, `b` for sort comparators). Terms like longitude, latitude,
-minimum, and maximum are written out in full, rather than abbreviated to `lon`, `lat`,
-`min`, and `max`.
+abbreviations (e.g., KML, ID, URL, args, kwargs) and conventional single-letter loop
+variables (`i`, `j` for indices; `a`, `b` for sort comparators). Terms like longitude,
+latitude, minimum, and maximum are written out in full, rather than abbreviated to
+`lon`, `lat`, `min`, and `max`.
 
 ## Real World Units
 

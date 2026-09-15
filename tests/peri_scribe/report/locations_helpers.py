@@ -9,7 +9,7 @@ import shapely
 from peri_scribe.units import units
 
 
-GEOD = pyproj.Geod(ellps="WGS84")
+GEODESIC = pyproj.Geod(ellps="WGS84")
 
 
 PORTLAND_LONGITUDE = -122.6750
@@ -71,26 +71,26 @@ def geodesic_quad(
     Returns:
         The quad polygon, in WGS 84 degrees.
     """
-    corner_longitude, corner_latitude, _ = GEOD.fwd(
+    corner_longitude, corner_latitude, _ = GEODESIC.fwd(
         longitude,
         latitude,
         bearing,
         (distance * units.miles).m_as("meters"),
     )
     first = (corner_longitude, corner_latitude)
-    second = GEOD.fwd(
+    second = GEODESIC.fwd(
         first[0],
         first[1],
         bearing,
         (length * units.miles).m_as("meters"),
     )[:2]
-    third = GEOD.fwd(
+    third = GEODESIC.fwd(
         second[0],
         second[1],
         bearing + 90.0,
         (width_in_miles * units.miles).m_as("meters"),
     )[:2]
-    fourth = GEOD.fwd(
+    fourth = GEODESIC.fwd(
         first[0],
         first[1],
         bearing + 90.0,

@@ -4,6 +4,7 @@ import pathlib
 
 import pytest
 
+import peri_scribe.pipeline_stages
 import peri_scribe.pipeline_state
 import tests.peri_scribe.pipeline_state_helpers
 
@@ -39,10 +40,19 @@ def test_require_stages_preserves_force_and_reinvalidates_prerequisites(
 ) -> None:
     peri_scribe.pipeline_state.require_stages(
         tmp_path,
-        ("kmz", "reports"),
+        (
+            peri_scribe.pipeline_stages.Stage.KMZ,
+            peri_scribe.pipeline_stages.Stage.REPORTS,
+        ),
         unconditional=True,
     )
-    peri_scribe.pipeline_state.require_stages(tmp_path, ("geography", "score"))
+    peri_scribe.pipeline_state.require_stages(
+        tmp_path,
+        (
+            peri_scribe.pipeline_stages.Stage.GEOGRAPHY,
+            peri_scribe.pipeline_stages.Stage.SCORE,
+        ),
+    )
     state = peri_scribe.pipeline_state.read_state(tmp_path)
     assert state.remaining == peri_scribe.pipeline_state.DERIVED_STAGES
     assert state.unconditional
@@ -51,22 +61,37 @@ def test_require_stages_preserves_force_and_reinvalidates_prerequisites(
 def test_complete_stage_requires_prerequisites(tmp_path: pathlib.Path) -> None:
     peri_scribe.pipeline_state.require_stages(
         tmp_path,
-        ("geography", "kmz"),
+        (
+            peri_scribe.pipeline_stages.Stage.GEOGRAPHY,
+            peri_scribe.pipeline_stages.Stage.KMZ,
+        ),
         unconditional=True,
     )
-    peri_scribe.pipeline_state.complete_stage(tmp_path, "kmz")
+    peri_scribe.pipeline_state.complete_stage(
+        tmp_path,
+        peri_scribe.pipeline_stages.Stage.KMZ,
+    )
     assert peri_scribe.pipeline_state.read_state(tmp_path).remaining == (
         "geography",
         "kmz",
     )
-    peri_scribe.pipeline_state.complete_stage(tmp_path, "geography")
+    peri_scribe.pipeline_state.complete_stage(
+        tmp_path,
+        peri_scribe.pipeline_stages.Stage.GEOGRAPHY,
+    )
     assert peri_scribe.pipeline_state.read_state(tmp_path).unconditional
-    peri_scribe.pipeline_state.complete_stage(tmp_path, "kmz")
+    peri_scribe.pipeline_state.complete_stage(
+        tmp_path,
+        peri_scribe.pipeline_stages.Stage.KMZ,
+    )
     assert (
         peri_scribe.pipeline_state.read_state(tmp_path)
         == peri_scribe.pipeline_state.PendingRun()
     )
-    peri_scribe.pipeline_state.complete_stage(tmp_path, "reports")
+    peri_scribe.pipeline_state.complete_stage(
+        tmp_path,
+        peri_scribe.pipeline_stages.Stage.REPORTS,
+    )
 
 
 def test_run_lock_excludes_another_writer_and_releases_on_failure(
@@ -90,7 +115,7 @@ def test_write_state_retains_previous_marker_when_publish_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     original = peri_scribe.pipeline_state.PendingRun(
-        remaining=("geography",),
+        remaining=(peri_scribe.pipeline_stages.Stage.GEOGRAPHY,),
         unconditional=True,
     )
     peri_scribe.pipeline_state.write_state(tmp_path, original)

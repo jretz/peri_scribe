@@ -19,13 +19,13 @@ import datetime
 import functools
 import html
 import math
-from typing import TYPE_CHECKING
+import typing
 
 import peri_scribe.perimeters.progression
 from peri_scribe.units import units
 
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     import pint
 
 
@@ -40,8 +40,8 @@ FULL_CONTAINMENT = 100.0 * units.percent
 # Perimeter lengths keep at most this many digits after the decimal point and at most
 # this many significant digits, so a large fire's perimeter keeps its scale without
 # implying more precision than the mapping supports.
-MAX_PERIMETER_DECIMAL_PLACES = 1
-MAX_PERIMETER_SIGNIFICANT_DIGITS = 3
+MAXIMUM_PERIMETER_DECIMAL_PLACES = 1
+MAXIMUM_PERIMETER_SIGNIFICANT_DIGITS = 3
 
 # At one decimal place, lengths at or above this carry more than three significant
 # digits and are re-rounded to three.
@@ -106,7 +106,7 @@ def format_area(value: pint.Quantity[float] | None) -> str | None:
     if value is None:
         return None
     if abs(value) >= WHOLE_AREA_THRESHOLD:
-        number = format_number(value.m_as("acres"), 0)
+        number = format_number(value.m_as("acres"))
     elif abs(value) >= 1 * units.acres:
         number = format_number(value.m_as("acres"), 1)
     else:
@@ -181,10 +181,13 @@ def format_perimeter_length(value: pint.Quantity[float] | None) -> str | None:
     """
     if value is None:
         return None
-    rounded = round(value.m_as("miles"), MAX_PERIMETER_DECIMAL_PLACES)
+    rounded = round(value.m_as("miles"), MAXIMUM_PERIMETER_DECIMAL_PLACES)
     if abs(rounded) >= PERIMETER_SIGNIFICANT_DIGIT_THRESHOLD.m_as("miles"):
-        rounded = round_to_significant_digits(rounded, MAX_PERIMETER_SIGNIFICANT_DIGITS)
-    return format_number(rounded, MAX_PERIMETER_DECIMAL_PLACES)
+        rounded = round_to_significant_digits(
+            rounded,
+            MAXIMUM_PERIMETER_SIGNIFICANT_DIGITS,
+        )
+    return format_number(rounded, MAXIMUM_PERIMETER_DECIMAL_PLACES)
 
 
 def format_miles(value: pint.Quantity[float] | None) -> str | None:
@@ -257,7 +260,7 @@ def format_cost(value: pint.Quantity[float] | None) -> str | None:
     """
     if value is None:
         return None
-    return f"${format_number(value.m_as('dollars'), 0)}"
+    return f"${format_number(value.m_as('dollars'))}"
 
 
 def format_personnel_count(value: float | None) -> str | None:
@@ -275,7 +278,7 @@ def format_personnel_count(value: float | None) -> str | None:
     """
     if value is None:
         return None
-    return format_number(value, 0)
+    return format_number(value)
 
 
 def format_pacific_time(value: datetime.datetime | None) -> str | None:

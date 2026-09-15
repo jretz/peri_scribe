@@ -8,6 +8,7 @@ import re
 import pytest
 
 import peri_scribe.sources.snapshots
+import tests.peri_scribe.sources.changes_helpers
 import tests.peri_scribe.sources.snapshots_helpers
 
 
@@ -322,3 +323,16 @@ def test_record_cache_database_path_is_one_file_per_feed() -> None:
     assert peri_scribe.sources.snapshots.record_cache_database_path(
         source_directory,
     ) == (pathlib.Path("/base/data/2026/sources/Fires_One_0/record_cache.db"))
+
+
+def test_current_state_file_paths_ignores_malformed_filenames(
+    tmp_path: pathlib.Path,
+) -> None:
+    directory = tests.peri_scribe.sources.changes_helpers.snapshot_source_directory(
+        tmp_path,
+    )
+    directory.mkdir(parents=True)
+    (directory / "state-junk.gpkg").write_bytes(b"")
+    (directory / "state-2.gpkg").write_bytes(b"")
+    state_files = peri_scribe.sources.snapshots.current_state_file_paths(directory)
+    assert [serial for serial, _path in state_files] == [2]

@@ -89,7 +89,6 @@ def test_area_fact_returns_none_without_description() -> None:
     entry = peri_scribe.report.gathering.FireReportEntry(
         name="Bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
-        description=None,
     )
     assert peri_scribe.report.markdown.area_fact(entry) is None
 
@@ -98,7 +97,6 @@ def test_discovery_cell_returns_none_without_description() -> None:
     entry = peri_scribe.report.gathering.FireReportEntry(
         name="Bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
-        description=None,
     )
     assert peri_scribe.report.markdown.discovery_cell(entry) is None
 
@@ -315,8 +313,7 @@ def test_fire_detail_rows_show_growth_without_description() -> None:
         name="Bug",
         identifier="id-bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
-        description=None,
-        growth=5_000.0 * units.acres,
+        growth=5000.0 * units.acres,
     )
     assert peri_scribe.report.markdown.fire_detail_rows(entry) == (
         ("48-Hour Growth (acres)", "+5,000 acres"),

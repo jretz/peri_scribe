@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
+import concurrent.futures
 import os
-from concurrent.futures import ThreadPoolExecutor
 
 import geopandas
 import shapely
@@ -64,7 +64,9 @@ def buffered_fire_geometries(
         [geometry for _index, geometry in present],
         crs=peri_scribe.geo.spatial_reference.WGS84_SPATIAL_REFERENCE,
     ).to_crs(peri_scribe.geo.spatial_reference.WEB_MERCATOR_SPATIAL_REFERENCE)
-    with ThreadPoolExecutor(max_workers=buffer_worker_count()) as executor:
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=buffer_worker_count(),
+    ) as executor:
         buffered_metric = list(executor.map(buffer_geometry, metric))
     buffered = geopandas.GeoSeries(
         buffered_metric,

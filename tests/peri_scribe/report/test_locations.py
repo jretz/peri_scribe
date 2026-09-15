@@ -123,7 +123,7 @@ def test_nearest_city_picks_closest_city() -> None:
         width_in_miles=5.0,
     )
     far_longitude, far_latitude, _ = (
-        tests.peri_scribe.report.locations_helpers.GEOD.fwd(
+        tests.peri_scribe.report.locations_helpers.GEODESIC.fwd(
             tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
             tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
             0.0,
@@ -307,7 +307,7 @@ def test_nearest_city_keeps_usable_rows_among_unusable() -> None:
         tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
     ).buffer(1.0)
     far_longitude, far_latitude, _ = (
-        tests.peri_scribe.report.locations_helpers.GEOD.fwd(
+        tests.peri_scribe.report.locations_helpers.GEODESIC.fwd(
             tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
             tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
             0.0,
@@ -432,7 +432,7 @@ def test_plausible_city_indices_without_boundary_vertices() -> None:
 
 def test_nearest_city_measures_to_a_point_location() -> None:
     point_longitude, point_latitude, _ = (
-        tests.peri_scribe.report.locations_helpers.GEOD.fwd(
+        tests.peri_scribe.report.locations_helpers.GEODESIC.fwd(
             tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
             tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
             112.5,
@@ -440,7 +440,7 @@ def test_nearest_city_measures_to_a_point_location() -> None:
         )
     )
     far_longitude, far_latitude, _ = (
-        tests.peri_scribe.report.locations_helpers.GEOD.fwd(
+        tests.peri_scribe.report.locations_helpers.GEODESIC.fwd(
             tests.peri_scribe.report.locations_helpers.PORTLAND_LONGITUDE,
             tests.peri_scribe.report.locations_helpers.PORTLAND_LATITUDE,
             0.0,

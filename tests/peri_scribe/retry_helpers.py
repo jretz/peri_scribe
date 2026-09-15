@@ -5,16 +5,16 @@ import json
 import requests
 import tenacity
 
-from tests.conftest import LOOSE_429_ERROR_PAYLOAD, RATE_LIMIT_ERROR_PAYLOAD
+import tests.conftest
 
 
 RETRY_AFTER_HEADER_IN_SECONDS = 7
 
 
-RATE_LIMIT_ERROR_STRING = json.dumps(RATE_LIMIT_ERROR_PAYLOAD)
+RATE_LIMIT_ERROR_STRING = json.dumps(tests.conftest.RATE_LIMIT_ERROR_PAYLOAD)
 
 
-LOOSE_429_ERROR_STRING = json.dumps(LOOSE_429_ERROR_PAYLOAD)
+LOOSE_429_ERROR_STRING = json.dumps(tests.conftest.LOOSE_429_ERROR_PAYLOAD)
 
 
 def http_error(

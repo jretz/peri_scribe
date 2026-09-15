@@ -2,12 +2,11 @@
 
 from __future__ import annotations
 
+import html.parser
 import pathlib
 import zipfile
-from html.parser import HTMLParser
 
 import peri_scribe.exceptions
-import peri_scribe.sources.downloading
 import peri_scribe.sources.network
 
 
@@ -20,14 +19,14 @@ def fetch_page_text(url: str) -> str:
     Returns:
         The page's text.
     """
-    with peri_scribe.sources.downloading.downloaded_response(
+    with peri_scribe.sources.network.downloaded_response(
         url,
         stream=False,
     ) as response:
         return response.text
 
 
-class DownloadLinksParser(HTMLParser):
+class DownloadLinksParser(html.parser.HTMLParser):
     """Extract the state-to-URL pairs from a page's "Download links" table.
 
     GitHub renders the repository's README into the page: each heading is a ``<div
@@ -132,7 +131,7 @@ def download_archive(url: str, archive_path: pathlib.Path) -> None:
         archive_path: Where to store the downloaded archive.
     """
     with (
-        peri_scribe.sources.downloading.downloaded_response(
+        peri_scribe.sources.network.downloaded_response(
             url,
             stream=True,
         ) as response,

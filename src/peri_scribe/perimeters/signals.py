@@ -9,7 +9,7 @@ import shapely
 import us.states
 
 import peri_scribe.models
-import peri_scribe.perimeters.border_classification
+import peri_scribe.perimeters.classification_data
 from peri_scribe.units import units
 
 
@@ -27,9 +27,9 @@ STATE_CODE_LENGTH = 2
 
 def geometry_signal(
     union: shapely.Geometry | None,
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
-    config: peri_scribe.perimeters.border_classification.BorderClassificationConfig,
-) -> peri_scribe.perimeters.border_classification.GeometrySignal:
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
+    config: peri_scribe.perimeters.classification_data.BorderClassificationConfig,
+) -> peri_scribe.perimeters.classification_data.GeometrySignal:
     """Compute the geometry signal for *union* against the California box.
 
     The portion of the union lying inside the box is inside California (or in the ocean
@@ -47,7 +47,7 @@ def geometry_signal(
         border, and whether it is inside California.
     """
     if union is None or union.is_empty:
-        return peri_scribe.perimeters.border_classification.GeometrySignal(
+        return peri_scribe.perimeters.classification_data.GeometrySignal(
             distance_to_boundary=float("inf") * units.meters,
             outside_area_fraction=0.0,
             outside_area=0.0 * units.meters**2,
@@ -87,7 +87,7 @@ def geometry_signal(
         crosses = False
         near = distance_to_boundary <= config.near_border_buffer
         inside = inside_area_fraction >= config.inside_area_fraction_threshold
-        return peri_scribe.perimeters.border_classification.GeometrySignal(
+        return peri_scribe.perimeters.classification_data.GeometrySignal(
             distance_to_boundary=distance_to_boundary,
             outside_area_fraction=outside_area_fraction,
             outside_area=outside_area,
@@ -112,7 +112,7 @@ def geometry_signal(
     distance_to_boundary = union.distance(boundaries.border) * units.meters
     near = not crosses and distance_to_boundary <= config.near_border_buffer
     inside = inside_area_fraction >= config.inside_area_fraction_threshold
-    return peri_scribe.perimeters.border_classification.GeometrySignal(
+    return peri_scribe.perimeters.classification_data.GeometrySignal(
         distance_to_boundary=distance_to_boundary,
         outside_area_fraction=outside_area_fraction,
         outside_area=outside_area,
@@ -124,8 +124,8 @@ def geometry_signal(
 
 
 def freshest_observation(
-    observations: list[peri_scribe.perimeters.border_classification.FireObservation],
-) -> peri_scribe.perimeters.border_classification.FireObservation:
+    observations: list[peri_scribe.perimeters.classification_data.FireObservation],
+) -> peri_scribe.perimeters.classification_data.FireObservation:
     """Return the freshest observation in *observations*.
 
     Recency is decided by observation time first and snapshot serial number second, so a
@@ -146,7 +146,7 @@ def freshest_observation(
         raise ValueError(message)
 
     def recency_key(
-        observation: peri_scribe.perimeters.border_classification.FireObservation,
+        observation: peri_scribe.perimeters.classification_data.FireObservation,
     ) -> tuple[datetime.datetime, int]:
         """Use snapshot order to break ties between equally timed observations.
 
@@ -164,9 +164,9 @@ def freshest_observation(
 
 
 def are_contemporaneous(
-    left: peri_scribe.perimeters.border_classification.FireObservation,
-    right: peri_scribe.perimeters.border_classification.FireObservation,
-    config: peri_scribe.perimeters.border_classification.BorderClassificationConfig,
+    left: peri_scribe.perimeters.classification_data.FireObservation,
+    right: peri_scribe.perimeters.classification_data.FireObservation,
+    config: peri_scribe.perimeters.classification_data.BorderClassificationConfig,
 ) -> bool:
     """Return whether two perimeters were mapped at close enough times to compare.
 
@@ -189,9 +189,9 @@ def are_contemporaneous(
 
 
 def extent_signal(
-    observations: list[peri_scribe.perimeters.border_classification.FireObservation],
-    config: peri_scribe.perimeters.border_classification.BorderClassificationConfig,
-) -> peri_scribe.perimeters.border_classification.ExtentSignal:
+    observations: list[peri_scribe.perimeters.classification_data.FireObservation],
+    config: peri_scribe.perimeters.classification_data.BorderClassificationConfig,
+) -> peri_scribe.perimeters.classification_data.ExtentSignal:
     """Compute the FIRIS-versus-WFIGS extent signal.
 
     The freshest FIRIS perimeter and the freshest WFIGS perimeter are compared when they
@@ -209,7 +209,7 @@ def extent_signal(
         observation
         for observation in observations
         if observation.source
-        is peri_scribe.perimeters.border_classification.FireSourceKind.FIRIS_PERIMETER
+        is peri_scribe.perimeters.classification_data.FireSourceKind.FIRIS_PERIMETER
         and observation.geometry is not None
         and not observation.geometry.is_empty
     ]
@@ -217,34 +217,34 @@ def extent_signal(
         observation
         for observation in observations
         if observation.source
-        is peri_scribe.perimeters.border_classification.FireSourceKind.WFIGS_PERIMETER
+        is peri_scribe.perimeters.classification_data.FireSourceKind.WFIGS_PERIMETER
         and observation.geometry is not None
         and not observation.geometry.is_empty
     ]
     if not firis or not wfigs:
-        return peri_scribe.perimeters.border_classification.ExtentSignal(
+        return peri_scribe.perimeters.classification_data.ExtentSignal(
             wfigs_to_firis_area_ratio=None,
             disagrees=False,
         )
     firis_freshest = freshest_observation(firis)
     wfigs_freshest = freshest_observation(wfigs)
     if not are_contemporaneous(firis_freshest, wfigs_freshest, config):
-        return peri_scribe.perimeters.border_classification.ExtentSignal(
+        return peri_scribe.perimeters.classification_data.ExtentSignal(
             wfigs_to_firis_area_ratio=None,
             disagrees=False,
         )
     firis_geometry = (
-        peri_scribe.perimeters.border_classification.reproject_to_california_albers(
+        peri_scribe.perimeters.classification_data.reproject_to_california_albers(
             typing.cast("shapely.Geometry", firis_freshest.geometry),
-            peri_scribe.perimeters.border_classification.SOURCE_SPATIAL_REFERENCE_IDS[
+            peri_scribe.perimeters.classification_data.SOURCE_SPATIAL_REFERENCE_IDS[
                 firis_freshest.source
             ],
         )
     )
     wfigs_geometry = (
-        peri_scribe.perimeters.border_classification.reproject_to_california_albers(
+        peri_scribe.perimeters.classification_data.reproject_to_california_albers(
             typing.cast("shapely.Geometry", wfigs_freshest.geometry),
-            peri_scribe.perimeters.border_classification.SOURCE_SPATIAL_REFERENCE_IDS[
+            peri_scribe.perimeters.classification_data.SOURCE_SPATIAL_REFERENCE_IDS[
                 wfigs_freshest.source
             ],
         )
@@ -253,7 +253,7 @@ def extent_signal(
     wfigs_area = wfigs_geometry.area
     ratio = wfigs_area / firis_area if firis_area > 0 else None
     if ratio is None or firis_area <= 0:
-        return peri_scribe.perimeters.border_classification.ExtentSignal(
+        return peri_scribe.perimeters.classification_data.ExtentSignal(
             wfigs_to_firis_area_ratio=ratio,
             disagrees=False,
         )
@@ -263,7 +263,7 @@ def extent_signal(
         and symmetric_difference_area
         > firis_area * config.symmetric_difference_fraction_threshold
     )
-    return peri_scribe.perimeters.border_classification.ExtentSignal(
+    return peri_scribe.perimeters.classification_data.ExtentSignal(
         wfigs_to_firis_area_ratio=ratio,
         disagrees=disagrees,
     )
@@ -345,7 +345,7 @@ def out_of_california_unit_from(
 
 
 def identifier_signal(
-    observations: list[peri_scribe.perimeters.border_classification.FireObservation],
+    observations: list[peri_scribe.perimeters.classification_data.FireObservation],
 ) -> bool:
     """Return whether any observation carries an out-of-state identifier signal.
 

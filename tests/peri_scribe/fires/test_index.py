@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import pathlib
-import typing
 
 import pydantic
 import pytest
@@ -13,11 +12,7 @@ import peri_scribe.fires.classification
 import peri_scribe.fires.index
 import peri_scribe.models
 import peri_scribe.output
-from tests.factories import ACTIVE, INACTIVE, fire_record
-
-
-if typing.TYPE_CHECKING:
-    from tests.factories import StubFireReader
+import tests.factories
 
 
 def test_fire_index_entries_sorts_fires_and_paths() -> None:
@@ -26,14 +21,14 @@ def test_fire_index_entries_sorts_fires_and_paths() -> None:
         peri_scribe.models.FireSources(
             fire=peri_scribe.models.Fire(
                 name="zulu",
-                status=INACTIVE,
+                status=tests.factories.INACTIVE,
                 identifier="z-1",
                 aliases=frozenset({"z-1"}),
             ),
             paths=(sources_directory / "b.gpkg", sources_directory / "a.gpkg"),
         ),
         peri_scribe.models.FireSources(
-            fire=peri_scribe.models.Fire(name="Alpha", status=ACTIVE),
+            fire=peri_scribe.models.Fire(name="Alpha", status=tests.factories.ACTIVE),
             paths=(sources_directory / "one.gpkg",),
         ),
     ]
@@ -60,7 +55,7 @@ def test_fire_index_entries_sorts_fires_and_paths() -> None:
 def test_fire_document_describes_complex_membership() -> None:
     child = peri_scribe.models.Fire(
         name="Crosswhite",
-        status=ACTIVE,
+        status=tests.factories.ACTIVE,
         identifier="child-id",
         aliases=frozenset({"child-id"}),
     )
@@ -80,12 +75,12 @@ def test_fire_document_describes_complex_membership() -> None:
 
 def test_index_fire_sources_writes_index_file(
     monkeypatch: pytest.MonkeyPatch,
-    stub_fire_reader: StubFireReader,
+    stub_fire_reader: tests.factories.StubFireReader,
 ) -> None:
     year_directory = pathlib.Path("/index/2026")
     stub_fire_reader({
         pathlib.Path("/index/2026/sources/one.gpkg"): [
-            fire_record("Park Fire", ACTIVE),
+            tests.factories.fire_record("Park Fire", tests.factories.ACTIVE),
         ],
     })
     monkeypatch.setattr(
@@ -99,7 +94,7 @@ def test_index_fire_sources_writes_index_file(
         "write_document",
         lambda path, document: writes.append((path, document)),
     )
-    monkeypatch.setattr(pathlib.Path, "mkdir", lambda *_arguments, **_keywords: None)
+    monkeypatch.setattr(pathlib.Path, "mkdir", lambda *_args, **_kwargs: None)
     peri_scribe.fires.index.index_fire_sources(year_directory)
     assert writes[0][0] == pathlib.Path("/index/2026/sources/fires.json")
     assert writes[0][1].model_dump() == {
@@ -169,7 +164,7 @@ def test_load_fire_index_reads_existing_index(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(
         pathlib.Path,
         "read_text",
-        lambda _self, *_arguments, **_keywords: json.dumps(document),
+        lambda _self, *_args, **_kwargs: json.dumps(document),
     )
     index = peri_scribe.fires.index.load_fire_index(year_directory)
     assert index.model_dump() == document
@@ -186,7 +181,7 @@ def test_load_fire_index_builds_index_when_missing(
     monkeypatch.setattr(
         pathlib.Path,
         "read_text",
-        lambda _self, *_arguments, **_keywords: json.dumps(document),
+        lambda _self, *_args, **_kwargs: json.dumps(document),
     )
     index = peri_scribe.fires.index.load_fire_index(year_directory)
     assert built == [year_directory]
@@ -198,7 +193,7 @@ def test_load_fire_index_rejects_invalid_json(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(
         pathlib.Path,
         "read_text",
-        lambda _self, *_arguments, **_keywords: "not json",
+        lambda _self, *_args, **_kwargs: "not json",
     )
     with pytest.raises(pydantic.ValidationError):
         peri_scribe.fires.index.load_fire_index(pathlib.Path("/index/2026"))
@@ -207,7 +202,7 @@ def test_load_fire_index_rejects_invalid_json(monkeypatch: pytest.MonkeyPatch) -
 def test_fire_sources_document_includes_classification() -> None:
     sources_directory = pathlib.Path("/index/2026/sources")
     source = peri_scribe.models.FireSources(
-        fire=peri_scribe.models.Fire(name="Park Fire", status=ACTIVE),
+        fire=peri_scribe.models.Fire(name="Park Fire", status=tests.factories.ACTIVE),
         paths=(sources_directory / "one.gpkg",),
     )
     classification = peri_scribe.models.FireClassification(

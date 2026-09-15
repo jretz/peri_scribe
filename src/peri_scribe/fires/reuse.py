@@ -18,7 +18,7 @@ import peri_scribe.geo.parsing
 import peri_scribe.geo.reading
 import peri_scribe.models
 import peri_scribe.output
-import peri_scribe.perimeters.border_classification
+import peri_scribe.perimeters.classification_data
 import peri_scribe.perimeters.cleaning
 import peri_scribe.perimeters.size_filtering
 import peri_scribe.sources.administrative_boundaries
@@ -95,7 +95,7 @@ def derivation_context(year_directory: pathlib.Path) -> str:
             peri_scribe.perimeters.size_filtering.DEFAULT_SIZE_FILTER_CONFIG,
         ),
         "classification": repr(
-            peri_scribe.perimeters.border_classification.BorderClassificationConfig(),
+            peri_scribe.perimeters.classification_data.BorderClassificationConfig(),
         ),
     })
 

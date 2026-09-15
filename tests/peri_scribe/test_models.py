@@ -1,5 +1,7 @@
 """Verify fire identities, complex membership, and model validation."""
 
+from __future__ import annotations
+
 import peri_scribe.models
 
 

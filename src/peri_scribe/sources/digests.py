@@ -6,12 +6,16 @@ import datetime
 import hashlib
 import math
 import pathlib
-from collections.abc import Callable
+import typing
 
 import geopandas
 import pandas as pd
 import shapely
 import structlog
+
+
+if typing.TYPE_CHECKING:
+    import collections.abc
 
 
 logger = structlog.get_logger()
@@ -22,7 +26,11 @@ def snapshot_matches(
     snapshot_path: pathlib.Path,
     layer_name: str,
     *,
-    normalize: Callable[[geopandas.GeoDataFrame], geopandas.GeoDataFrame] | None = None,
+    normalize: collections.abc.Callable[
+        [geopandas.GeoDataFrame],
+        geopandas.GeoDataFrame,
+    ]
+    | None = None,
 ) -> bool:
     """Return whether *dataframe* holds the same features as *snapshot_path*.
 

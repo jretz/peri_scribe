@@ -6,13 +6,11 @@ import dataclasses
 import datetime
 import pathlib
 
-import numpy as np
 import pytest
 import shapely.geometry
 
 import peri_scribe.models
-import peri_scribe.perimeters.border_classification
-import peri_scribe.perimeters.size_filtering
+import peri_scribe.perimeters.classification_data
 import peri_scribe.perimeters.versions
 import tests.factories
 
@@ -56,7 +54,7 @@ def test_effective_time_prefers_observation_time() -> None:
     observed = tests.factories.observation(
         observation_time=mapping_time,
         snapshot_time=snapshot_time,
-        attributes={"poly_DateCurrent": tests.factories.utc(2026, 8, 15, 22, 0)},
+        attributes={"poly_DateCurrent": tests.factories.utc(2026, 8, 15, 22)},
     )
     assert peri_scribe.perimeters.versions.effective_time(observed) == mapping_time
 
@@ -68,7 +66,7 @@ def test_effective_time_prefers_as_of_date_over_capture_date() -> None:
     as_of = tests.factories.utc(2026, 8, 16, 22, 26)
     observed = tests.factories.observation(
         observation_time=as_of,
-        attributes={"poly_PolygonDateTime": tests.factories.utc(2026, 8, 10, 0, 0)},
+        attributes={"poly_PolygonDateTime": tests.factories.utc(2026, 8, 10, 0)},
     )
     assert peri_scribe.perimeters.versions.effective_time(observed) == as_of
 
@@ -164,7 +162,6 @@ def test_collapse_identical_consecutive_perimeters_collapses_runs() -> None:
     older = tests.factories.observation(
         geometry=geometry,
         observation_time=tests.factories.utc(2026, 8, 16, 0, 10),
-        serial_number=0,
         attributes={"area_acres": 10},
     )
     newer = tests.factories.observation(
@@ -357,7 +354,7 @@ def test_reconcile_perimeter_versions_merges_identical_and_prefers_wfigs() -> No
     firis_observations = [
         tests.factories.observation(
             geometry=early,
-            observation_time=tests.factories.utc(2026, 8, 9, 1, 0),
+            observation_time=tests.factories.utc(2026, 8, 9, 1),
             attributes={"area_acres": 100},
         ),
         tests.factories.observation(
@@ -433,141 +430,6 @@ def test_reconcile_perimeter_versions_prefers_firis_for_inside_near() -> None:
     ]
 
 
-def test_geometry_area_returns_area_for_polygon() -> None:
-    geometry = tests.factories.polygon((0, 0), (1, 0), (1, 1), (0, 0))
-    area = peri_scribe.perimeters.size_filtering.geometry_area(geometry)
-    assert area is not None
-    assert area > 0
-
-
-def test_geometry_area_returns_none_without_geometry() -> None:
-    assert peri_scribe.perimeters.size_filtering.geometry_area(None) is None
-    assert (
-        peri_scribe.perimeters.size_filtering.geometry_area(shapely.geometry.Polygon())
-        is None
-    )
-
-
-def test_computed_area_returns_first_positive_value() -> None:
-    area = peri_scribe.perimeters.size_filtering.computed_area({
-        "poly_Acres_AutoCalc": 123,
-        "poly_GISAcres": 456,
-        "area_acres": 789,
-    })
-    assert area is not None
-    assert area.m_as("acres") == pytest.approx(123)
-
-
-def test_computed_area_skips_missing_and_nonpositive() -> None:
-    area = peri_scribe.perimeters.size_filtering.computed_area({
-        "poly_Acres_AutoCalc": 0,
-        "poly_GISAcres": None,
-        "area_acres": 456,
-    })
-    assert area is not None
-    assert area.m_as("acres") == pytest.approx(456)
-
-
-def test_computed_area_returns_none_without_sizes() -> None:
-    assert peri_scribe.perimeters.size_filtering.computed_area({}) is None
-
-
-def test_incident_size_returns_first_positive_value() -> None:
-    size = peri_scribe.perimeters.size_filtering.incident_size({
-        "attr_IncidentSize": 100,
-        "attr_FinalAcres": 200,
-    })
-    assert size is not None
-    assert size.m_as("acres") == pytest.approx(100)
-
-
-def test_incident_size_skips_missing_and_nonpositive() -> None:
-    size = peri_scribe.perimeters.size_filtering.incident_size({
-        "attr_IncidentSize": np.nan,
-        "attr_FinalAcres": 200,
-    })
-    assert size is not None
-    assert size.m_as("acres") == pytest.approx(200)
-
-
-def test_incident_size_returns_none_without_sizes() -> None:
-    assert peri_scribe.perimeters.size_filtering.incident_size({}) is None
-
-
-def test_perimeter_is_implausibly_small_flags_collapsed_geometry() -> None:
-    tiny = tests.factories.polygon((0, 0), (0.0001, 0), (0.0001, 0.0001), (0, 0))
-    version = tests.factories.observation(
-        geometry=tiny,
-        attributes={"area_acres": 1_000},
-    )
-    assert peri_scribe.perimeters.size_filtering.perimeter_is_implausibly_small(version)
-
-
-def test_perimeter_is_implausibly_small_flags_small_incident_size() -> None:
-    tiny = tests.factories.polygon((0, 0), (0.0001, 0), (0.0001, 0.0001), (0, 0))
-    version = tests.factories.observation(
-        geometry=tiny,
-        attributes={"attr_IncidentSize": 100_000},
-    )
-    assert peri_scribe.perimeters.size_filtering.perimeter_is_implausibly_small(version)
-
-
-def test_perimeter_is_implausibly_small_keeps_matching_geometry() -> None:
-    large = tests.factories.polygon((0, 0), (1, 0), (1, 1), (0, 0))
-    version = tests.factories.observation(
-        geometry=large,
-        attributes={"area_acres": 3_000_000},
-    )
-    assert not peri_scribe.perimeters.size_filtering.perimeter_is_implausibly_small(
-        version,
-    )
-
-
-def test_perimeter_is_implausibly_small_keeps_incident_running_ahead() -> None:
-    medium = tests.factories.polygon((0, 0), (0.01, 0), (0.01, 0.01), (0, 0))
-    version = tests.factories.observation(
-        geometry=medium,
-        attributes={"attr_IncidentSize": 4_000},
-    )
-    assert not peri_scribe.perimeters.size_filtering.perimeter_is_implausibly_small(
-        version,
-    )
-
-
-def test_perimeter_is_implausibly_small_keeps_without_reported_size() -> None:
-    tiny = tests.factories.polygon((0, 0), (0.0001, 0), (0.0001, 0.0001), (0, 0))
-    version = tests.factories.observation(geometry=tiny, attributes={})
-    assert not peri_scribe.perimeters.size_filtering.perimeter_is_implausibly_small(
-        version,
-    )
-
-
-def test_perimeter_is_implausibly_small_keeps_without_geometry() -> None:
-    version = tests.factories.observation(
-        geometry=None,
-        attributes={"area_acres": 1_000},
-    )
-    assert not peri_scribe.perimeters.size_filtering.perimeter_is_implausibly_small(
-        version,
-    )
-
-
-def test_drop_implausibly_small_perimeters_drops_collapsed() -> None:
-    tiny = tests.factories.polygon((0, 0), (0.0001, 0), (0.0001, 0.0001), (0, 0))
-    large = tests.factories.polygon((0, 0), (1, 0), (1, 1), (0, 0))
-    observations = [
-        tests.factories.observation(
-            geometry=large,
-            attributes={"area_acres": 3_000_000},
-        ),
-        tests.factories.observation(geometry=tiny, attributes={"area_acres": 1_000}),
-    ]
-    survivors = peri_scribe.perimeters.size_filtering.drop_implausibly_small_perimeters(
-        observations,
-    )
-    assert survivors == [observations[0]]
-
-
 def test_attributes_are_equal_compares_keys_and_values() -> None:
     assert peri_scribe.perimeters.versions.attributes_are_equal(
         {"a": 1, "b": 2},
@@ -584,14 +446,13 @@ def test_point_versions_folds_geometry_move() -> None:
     first = tests.factories.observation(
         source_kind=tests.factories.WFIGS_LOCATION,
         geometry=tests.factories.point(0, 0),
-        snapshot_time=tests.factories.utc(2026, 8, 17, 1, 0),
-        serial_number=0,
+        snapshot_time=tests.factories.utc(2026, 8, 17, 1),
         attributes={"IncidentSize": 100},
     )
     moved = tests.factories.observation(
         source_kind=tests.factories.WFIGS_LOCATION,
         geometry=tests.factories.point(1, 1),
-        snapshot_time=tests.factories.utc(2026, 8, 17, 2, 0),
+        snapshot_time=tests.factories.utc(2026, 8, 17, 2),
         serial_number=1,
         attributes={"IncidentSize": 100},
     )
@@ -604,7 +465,6 @@ def test_point_versions_creates_version_on_attribute_change() -> None:
     first = tests.factories.observation(
         source_kind=tests.factories.WFIGS_LOCATION,
         geometry=tests.factories.point(0, 0),
-        serial_number=0,
         attributes={"IncidentSize": 100},
     )
     second = tests.factories.observation(
@@ -735,7 +595,7 @@ def test_new_capture_recognizes_separate_flight_record(
     [tests.factories.FIRIS_PERIMETER, tests.factories.WFIGS_PERIMETER],
 )
 def test_drop_losing_source_versions_compares_across_window_boundaries(
-    preferred: peri_scribe.perimeters.border_classification.FireSourceKind,
+    preferred: peri_scribe.perimeters.classification_data.FireSourceKind,
 ) -> None:
     other = (
         tests.factories.WFIGS_PERIMETER
@@ -746,7 +606,7 @@ def test_drop_losing_source_versions_compares_across_window_boundaries(
     records = [
         tests.factories.observation(
             source_kind=preferred if hour == preferred_hour else other,
-            observation_time=tests.factories.utc(2026, 9, 1, hour, 0),
+            observation_time=tests.factories.utc(2026, 9, 1, hour),
             object_id=hour,
             source_file="mapping.gpkg",
         )
@@ -823,7 +683,7 @@ def test_credible_capture_time_rejects_unreliable_dates(capture: str | None) -> 
             True,
         ),
         (
-            tests.factories.utc(2026, 9, 2, 6, 0),
+            tests.factories.utc(2026, 9, 2, 6),
             shapely.geometry.box(0, 0, 1, 1),
             False,
         ),
@@ -878,6 +738,6 @@ def test_mapping_is_superseded_uses_preferred_survey_time(
     flight, delayed = delayed_mapping_pair
     preferred = dataclasses.replace(
         flight,
-        attributes={"poly_PolygonDateTime": tests.factories.utc(2026, 9, 1, 10, 0)},
+        attributes={"poly_PolygonDateTime": tests.factories.utc(2026, 9, 1, 10)},
     )
     assert not peri_scribe.perimeters.versions.mapping_is_superseded(delayed, preferred)

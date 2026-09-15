@@ -28,7 +28,7 @@ TICK_ONE_DECIMAL_THRESHOLD = 10.0
 
 # X-axis tick labels sit only at midnight and are thinned so at most this many fit along
 # the figure without crowding.
-MAX_X_AXIS_TICKS = 6
+MAXIMUM_X_AXIS_TICKS = 6
 
 # The rendered chart size.
 CHART_WIDTH = 480 * units.pixels
@@ -135,7 +135,7 @@ def x_axis_ticks(
 
     Ticks sit on a uniform grid of midnights across the observations: each tick is one
     interval after the last, where the interval thins the grid to at most
-    ``MAX_X_AXIS_TICKS`` ticks. No tick is forced onto the first or last observation
+    ``MAXIMUM_X_AXIS_TICKS`` ticks. No tick is forced onto the first or last observation
     day; the axis itself extends to cover them, so the line is never cut off and the
     reader can read any endpoint off the nearest tick.
 
@@ -152,7 +152,7 @@ def x_axis_ticks(
         return ()
     first_day, last_day = observation_day_span(series_list)
     in_days_spanned = (last_day - first_day).days + 1
-    interval = max(1, math.ceil(in_days_spanned / MAX_X_AXIS_TICKS))
+    interval = max(1, math.ceil(in_days_spanned / MAXIMUM_X_AXIS_TICKS))
     ticks: list[datetime.datetime] = []
     day = first_day
     while day <= last_day:
@@ -161,34 +161,6 @@ def x_axis_ticks(
         )
         day += datetime.timedelta(days=interval)
     return tuple(ticks)
-
-
-def nice_step(span: float, target_intervals: int = 4) -> float:
-    """Return a 1/2/2.5/5/10 x 10**n axis step covering *span* in even intervals.
-
-    Args:
-        span: The data range the axis must cover.
-        target_intervals: The approximate number of intervals wanted.
-
-    Returns:
-        The step between ticks.
-
-    Examples:
-        >>> round(nice_step(38.9), 3)
-        10.0
-        >>> round(nice_step(1.0), 3)
-        0.25
-    """
-    if span <= 0:
-        return 1.0
-    raw = span / target_intervals
-    magnitude = 10.0 ** math.floor(math.log10(raw))
-    # Dividing by the decade's magnitude always leaves a value below ten, and the ladder
-    # ends at ten, so one rung always covers *raw*.
-    for multiple in (1.0, 2.0, 2.5, 5.0, 10.0):
-        if raw <= multiple * magnitude:
-            break
-    return multiple * magnitude
 
 
 def y_axis_ticks(
@@ -220,7 +192,7 @@ def y_axis_ticks(
     peak = max(point.value for series in series_list for point in series.points)
     if peak <= 0:
         return 1.0, (0.0, 1.0)
-    step = nice_step(peak)
+    step = peri_scribe.svg.nice_step(peak, 4)
     top = math.ceil(peak / step) * step
     count = round(top / step)
     return top, tuple(index * step for index in range(count + 1))

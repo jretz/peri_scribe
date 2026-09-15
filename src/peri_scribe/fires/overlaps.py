@@ -95,12 +95,13 @@ def candidate_fids(
 ) -> dict[int, list[int]]:
     """Return, per box index, the feature ids whose R-Tree envelope overlaps the box.
 
-    Each box is ``(index, min_x, min_y, max_x, max_y)``.
+    Each box is ``(index, minimum_x, minimum_y, maximum_x, maximum_y)``.
 
     Args:
         path: The GeoPackage file.
         layer_name: The layer to query.
-        boxes: The boxes to query, as ``(index, min_x, min_y, max_x, max_y)`` tuples.
+        boxes: The boxes to query, as ``(index, minimum_x, minimum_y, maximum_x,
+            maximum_y)`` tuples.
 
     Returns:
         A mapping from box index to the feature ids whose envelopes overlap that box.
@@ -108,13 +109,13 @@ def candidate_fids(
     connection = sqlite3.connect(path)
     try:
         result: dict[int, list[int]] = {}
-        for index, min_x, min_y, max_x, max_y in boxes:
+        for index, minimum_x, minimum_y, maximum_x, maximum_y in boxes:
             fids = [
                 row[0]
                 for row in connection.execute(
                     f"SELECT id FROM rtree_{layer_name}_geom "
                     "WHERE minx <= ? AND maxx >= ? AND miny <= ? AND maxy >= ?",
-                    (max_x, min_x, max_y, min_y),
+                    (maximum_x, minimum_x, maximum_y, minimum_y),
                 )
             ]
             if fids:

@@ -19,11 +19,10 @@ area-weighted.
 
 from __future__ import annotations
 
+import array
 import collections
-import dataclasses
 import pathlib
 import typing
-from array import array
 
 import ijson
 import numpy as np
@@ -32,6 +31,7 @@ import shapely
 import stream_unzip
 
 import peri_scribe.exceptions
+import peri_scribe.fires.centroid_data
 import peri_scribe.fires.centroid_math
 import peri_scribe.geo.spatial_reference
 
@@ -88,37 +88,19 @@ class ByteStream:
         return result
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class GeometryChunk:
-    """One bounded collection of ring geometry from a GeoJSON stream.
-
-    ``coordinates`` holds every ring's coordinates concatenated as an ``(M, 2)`` float64
-    array; ``ring_bounds`` holds each ring's ``[start, end)`` into it as an ``(R, 2)``
-    int64 array (rings are closed, so the first and last points coincide);
-    ``ring_parts`` holds the part id of each ring, where a part is one polygon of a
-    multipolygon and a part's first ring is its exterior; ``part_counts`` holds the
-    number of parts per feature.
-    """
-
-    coordinates: np.ndarray
-    ring_bounds: np.ndarray
-    ring_parts: np.ndarray
-    part_counts: np.ndarray
-
-
 def collect_geometry_chunk(
     features_iter: typing.Iterator[typing.Any],
     chunk_size: int,
     maximum_vertices: int,
-) -> GeometryChunk | None:
+) -> peri_scribe.fires.centroid_data.GeometryChunk | None:
     """Return one bounded chunk of ring geometry from *features_iter*, or None.
 
     *features_iter* yields GeoJSON geometry dicts (``features.item.geometry`` from
     ijson) and is created once by the caller, because ijson's backends cannot start a
     fresh generator over a partially consumed stream. Collection stops at the feature
     limit or the vertex limit, whichever comes first. Coordinates accumulate into a C
-    ``array('d')`` and are returned as a zero-copy numpy view, so the collection holds 8
-    bytes per value rather than the ~32 bytes of a Python float list.
+    ``array.array('d')`` and are returned as a zero-copy numpy view, so the collection
+    holds 8 bytes per value rather than the ~32 bytes of a Python float list.
 
     Args:
         features_iter: The ijson geometry iterator.
@@ -128,7 +110,7 @@ def collect_geometry_chunk(
     Returns:
         The chunk's ring geometry, or None at the end of the stream.
     """
-    flat_coordinates = array("d")
+    flat_coordinates = array.array("d")
     ring_bounds: list[tuple[int, int]] = []
     ring_parts: list[int] = []
     part_counts: list[int] = []
@@ -160,7 +142,7 @@ def collect_geometry_chunk(
             break
     if not part_counts:
         return None
-    return GeometryChunk(
+    return peri_scribe.fires.centroid_data.GeometryChunk(
         coordinates=np.frombuffer(flat_coordinates, dtype=np.float64).reshape(-1, 2),
         ring_bounds=np.asarray(ring_bounds, dtype=np.int64),
         ring_parts=np.asarray(ring_parts, dtype=np.int64),

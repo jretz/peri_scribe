@@ -225,7 +225,3 @@ def test_ccdf_svg_draws_an_empty_chart_without_scores() -> None:
     )
     assert "<svg" in svg
     assert "<path" not in svg
-
-
-def test_nice_step_handles_an_empty_span() -> None:
-    assert peri_scribe.output.nice_step(0.0, 8) == pytest.approx(1.0)

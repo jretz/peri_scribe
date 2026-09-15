@@ -2,8 +2,7 @@
 
 Turns each source row into a labeled observation, collapses and merges observations that
 describe the same moment, and drops perimeters whose geometry collapsed below the size
-the source reports. The attribute-value helpers used to read a row's fields live here
-because both versioning and row construction share them.
+the source reports.
 """
 
 from __future__ import annotations
@@ -17,6 +16,7 @@ import peri_scribe.geo.package
 import peri_scribe.geo.parsing
 import peri_scribe.models
 import peri_scribe.perimeters.border_classification
+import peri_scribe.perimeters.classification_data
 import peri_scribe.perimeters.history_attributes
 import peri_scribe.sources.changes
 import peri_scribe.sources.snapshots
@@ -32,17 +32,17 @@ SUPERSEDED_FOOTPRINT_OVERLAP = 0.95
 
 
 FIRIS_PERIMETER = (
-    peri_scribe.perimeters.border_classification.FireSourceKind.FIRIS_PERIMETER
+    peri_scribe.perimeters.classification_data.FireSourceKind.FIRIS_PERIMETER
 )
 
 
 WFIGS_PERIMETER = (
-    peri_scribe.perimeters.border_classification.FireSourceKind.WFIGS_PERIMETER
+    peri_scribe.perimeters.classification_data.FireSourceKind.WFIGS_PERIMETER
 )
 
 
 WFIGS_LOCATION = (
-    peri_scribe.perimeters.border_classification.FireSourceKind.WFIGS_LOCATION
+    peri_scribe.perimeters.classification_data.FireSourceKind.WFIGS_LOCATION
 )
 
 
@@ -57,7 +57,7 @@ WFIGS_PREFERRED_CLASSIFICATIONS = frozenset({
 class SourceObservation:
     """One fire row observed in a source snapshot, labeled for versioning."""
 
-    source_kind: peri_scribe.perimeters.border_classification.FireSourceKind
+    source_kind: peri_scribe.perimeters.classification_data.FireSourceKind
     geometry: shapely.Geometry | None
     observation_time: datetime.datetime | None
     snapshot_time: datetime.datetime | None
@@ -239,7 +239,7 @@ def observations_are_contemporaneous(
 
 def preferred_perimeter_source(
     classification: peri_scribe.models.FireClassification | None,
-) -> peri_scribe.perimeters.border_classification.FireSourceKind:
+) -> peri_scribe.perimeters.classification_data.FireSourceKind:
     """Return the perimeter source most likely to be correct for a fire.
 
     WFIGS is preferred when a fire crosses or sits outside California, where it maps the
@@ -263,7 +263,7 @@ def preferred_perimeter_source(
 def preferred_pair(
     left: SourceObservation,
     right: SourceObservation,
-    preferred: peri_scribe.perimeters.border_classification.FireSourceKind,
+    preferred: peri_scribe.perimeters.classification_data.FireSourceKind,
 ) -> tuple[SourceObservation, SourceObservation]:
     """Return the preferred observation first among a pair.
 
@@ -332,7 +332,7 @@ def identical_observation_index(
 
 def merge_identical_observations(
     observations: list[SourceObservation],
-    preferred: peri_scribe.perimeters.border_classification.FireSourceKind,
+    preferred: peri_scribe.perimeters.classification_data.FireSourceKind,
 ) -> list[SourceObservation]:
     """Merge contemporaneous observations that share a geometry.
 
@@ -435,7 +435,7 @@ def with_superseded_source(
 
 def drop_losing_source_versions(
     versions: list[SourceObservation],
-    preferred: peri_scribe.perimeters.border_classification.FireSourceKind,
+    preferred: peri_scribe.perimeters.classification_data.FireSourceKind,
 ) -> list[SourceObservation]:
     """Each competing mapping is compared directly with preferred observations.
 

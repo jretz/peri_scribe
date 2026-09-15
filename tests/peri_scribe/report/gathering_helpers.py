@@ -12,6 +12,7 @@ import shapely.geometry
 import peri_scribe.areas
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
+import peri_scribe.kml.perimeters
 import peri_scribe.kml.selection
 import peri_scribe.models
 import peri_scribe.report.gathering
@@ -63,10 +64,6 @@ def make_entry(
         name=name,
         identifier=identifier,
         status=peri_scribe.models.FireStatus.ACTIVE,
-        description=None,
-        growth=None,
-        growth_percent=None,
-        score=None,
     )
 
 
@@ -86,13 +83,12 @@ def located_fire(name: str, identifier: str) -> peri_scribe.kml.fire_data.FireGe
         status=peri_scribe.models.FireStatus.ACTIVE,
         point=None,
         perimeters=(
-            peri_scribe.kml.fire_data.Perimeter(
-                geometry=shapely.geometry.Point(-122.6750, 45.5051).buffer(0.1),
+            peri_scribe.kml.perimeters.Perimeter(
+                geometry=shapely.geometry.Point(-122.675, 45.5051).buffer(0.1),
                 observation_time=None,
             ),
         ),
         identifiers=frozenset({identifier}),
-        description=None,
     )
 
 
@@ -113,7 +109,7 @@ def make_plot_option_recorder(
     """
 
     def fire_geometries(
-        *_arguments: object,
+        *args: object,
         scores: peri_scribe.models.FireScores,
         render_plots: bool,
         incident_rows: geopandas.GeoDataFrame | None = None,
@@ -126,7 +122,7 @@ def make_plot_option_recorder(
         """Capture report-stage options without constructing fire geometry.
 
         Args:
-            _arguments: Unused positional geometry inputs.
+            args: Unused positional geometry inputs.
             render_plots: Whether the report stage requested image rendering.
             incident_rows: Optional independent incident rows supplied by the stage.
             histories: Prepared area and reporting evidence passed through the stage.
@@ -157,7 +153,7 @@ def make_scores_recorder(
     """
 
     def fire_geometries(
-        *_arguments: object,
+        *args: object,
         scores: peri_scribe.models.FireScores,
         render_plots: bool,
         incident_rows: geopandas.GeoDataFrame | None = None,
@@ -170,7 +166,7 @@ def make_scores_recorder(
         """Capture report-stage options without constructing fire geometry.
 
         Args:
-            _arguments: Unused positional geometry inputs.
+            args: Unused positional geometry inputs.
             render_plots: Whether the report stage requested image rendering.
             incident_rows: Optional independent incident rows supplied by the stage.
             histories: Prepared area and reporting evidence passed through the stage.

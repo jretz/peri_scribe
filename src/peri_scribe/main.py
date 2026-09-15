@@ -22,12 +22,14 @@ import peri_scribe.kml.builder
 import peri_scribe.kml.colormap
 import peri_scribe.logging
 import peri_scribe.output
+import peri_scribe.pipeline_stages
 import peri_scribe.pipeline_state
 import peri_scribe.publication
 import peri_scribe.report.gathering
 import peri_scribe.report.markdown
 import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.digests
+import peri_scribe.sources.external_data
 import peri_scribe.sources.external_sources
 import peri_scribe.sources.feeds
 import peri_scribe.sources.fetching
@@ -227,7 +229,7 @@ def year_directory_default_help() -> str:
 
 
 def fetch_external_source(
-    source: peri_scribe.sources.external_sources.ExternalSource,
+    source: peri_scribe.sources.external_data.ExternalSource,
     year_directory: pathlib.Path | None,
 ) -> None:
     """Fetch *source* into *year_directory*, resolving the default directory.
@@ -298,7 +300,7 @@ def stored_evacuations_digest(year_directory: pathlib.Path) -> str | None:
     """
     source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
     return peri_scribe.sources.digests.stored_geopackage_digest(
-        peri_scribe.sources.external_sources.output_path(year_directory, source),
+        peri_scribe.sources.external_data.output_path(year_directory, source),
         source.layer_name or source.name,
     )
 
@@ -640,31 +642,37 @@ def run_reports_stage(year_directory: pathlib.Path) -> None:
 class PipelineStage:
     """A named pipeline stage and its description."""
 
-    name: str
+    name: peri_scribe.pipeline_stages.Stage
     description: str
 
 
 PIPELINE_STAGES: tuple[PipelineStage, ...] = (
     PipelineStage(
-        name="fetch",
+        name=peri_scribe.pipeline_stages.Stage.FETCH,
         description=(
             "Fetch fire feeds, external sources (buildings, evacuations, and "
             "major cities), and the administrative-boundary GeoPackage."
         ),
     ),
     PipelineStage(
-        name="geography",
+        name=peri_scribe.pipeline_stages.Stage.GEOGRAPHY,
         description="Derive fire geography histories from the fetched sources.",
     ),
-    PipelineStage(name="score", description="Score fires from the derived geography."),
-    PipelineStage(name="kmz", description="Build the symbolized KMZ for Google Earth."),
     PipelineStage(
-        name="reports",
+        name=peri_scribe.pipeline_stages.Stage.SCORE,
+        description="Score fires from the derived geography.",
+    ),
+    PipelineStage(
+        name=peri_scribe.pipeline_stages.Stage.KMZ,
+        description="Build the symbolized KMZ for Google Earth.",
+    ),
+    PipelineStage(
+        name=peri_scribe.pipeline_stages.Stage.REPORTS,
         description="Write fire reports from the derived outputs.",
     ),
 )
 
-STAGE_NAMES = tuple(stage.name for stage in PIPELINE_STAGES)
+STAGE_NAMES = tuple(stage.name.value for stage in PIPELINE_STAGES)
 STAGE_INDEX = {stage.name: index for index, stage in enumerate(PIPELINE_STAGES)}
 
 
@@ -694,18 +702,18 @@ def run_pipeline_stage(
     """
     with peri_scribe.logging.log_execution("phase", stage.name):
         match stage.name:
-            case "fetch":
+            case peri_scribe.pipeline_stages.Stage.FETCH:
                 return run_fetch_stage(
                     year_directory,
                     full_fetch_interval=full_fetch_interval,
                     unconditional=unconditional,
                     publish_threshold=publish_threshold,
                 )
-            case "geography":
+            case peri_scribe.pipeline_stages.Stage.GEOGRAPHY:
                 run_geography_stage(year_directory, unconditional=unconditional)
-            case "score":
+            case peri_scribe.pipeline_stages.Stage.SCORE:
                 run_score_stage(year_directory)
-            case "kmz":
+            case peri_scribe.pipeline_stages.Stage.KMZ:
                 run_kmz_stage(year_directory, publication_inputs=publication_inputs)
                 if publish_threshold is not None and publication_inputs is None:
                     peri_scribe.publication.publication_path(year_directory).unlink(
@@ -715,7 +723,7 @@ def run_pipeline_stage(
                         "KMZ created without fresh geography; "
                         "publication checkpoint requires rebuild",
                     )
-            case "reports":
+            case peri_scribe.pipeline_stages.Stage.REPORTS:
                 run_reports_stage(year_directory)
     return True
 
@@ -746,10 +754,18 @@ def selected_stage_range(
         click.UsageError: When ``from_stage`` comes after ``to_stage``.
     """
     if only_stage is not None:
-        index = STAGE_INDEX[only_stage]
+        index = STAGE_INDEX[peri_scribe.pipeline_stages.Stage(only_stage)]
         return index, index
-    start = STAGE_INDEX[from_stage] if from_stage is not None else 0
-    end = STAGE_INDEX[to_stage] if to_stage is not None else len(PIPELINE_STAGES) - 1
+    start = (
+        STAGE_INDEX[peri_scribe.pipeline_stages.Stage(from_stage)]
+        if from_stage is not None
+        else 0
+    )
+    end = (
+        STAGE_INDEX[peri_scribe.pipeline_stages.Stage(to_stage)]
+        if to_stage is not None
+        else len(PIPELINE_STAGES) - 1
+    )
     if start > end:
         message = (
             f"--from {from_stage or PIPELINE_STAGES[0].name} cannot follow "
@@ -929,9 +945,9 @@ def run_selected_stages(
         publish_threshold: The optional mapped-area and elapsed-time gate.
     """
     selected = tuple(
-        typing.cast("peri_scribe.pipeline_state.DerivedStage", stage.name)
+        stage.name
         for stage in PIPELINE_STAGES[start : end + 1]
-        if stage.name != "fetch"
+        if stage.name != peri_scribe.pipeline_stages.Stage.FETCH
     )
     if selected and (unconditional or start > 0):
         peri_scribe.pipeline_state.require_stages(
@@ -957,7 +973,10 @@ def run_selected_stages(
             if publish_threshold is None:
                 logger.debug("Nothing changed; skipping remaining pipeline steps")
             break
-        if stage.name == "geography" and publish_threshold is not None:
+        if (
+            stage.name == peri_scribe.pipeline_stages.Stage.GEOGRAPHY
+            and publish_threshold is not None
+        ):
             publication_inputs = peri_scribe.publication.collect(year_directory)
         peri_scribe.pipeline_state.complete_stage(year_directory, stage.name)
 

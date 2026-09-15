@@ -16,9 +16,11 @@ import peri_scribe.fires.score_files
 import peri_scribe.geo.reading
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
+import peri_scribe.kml.perimeters
 import peri_scribe.models
 import peri_scribe.report.gathering
 import peri_scribe.report.locations
+import peri_scribe.sources.external_data
 import peri_scribe.sources.external_sources
 import tests.peri_scribe.kml.kml_helpers
 import tests.peri_scribe.report.gathering_helpers
@@ -143,7 +145,7 @@ def test_gather_report_assembles_each_fire_list(
     monkeypatch.setattr(
         peri_scribe.kml.fire_data,
         "fire_geometries",
-        lambda *_arguments, **_keywords: [fire],
+        lambda *_args, **_kwargs: [fire],
     )
     monkeypatch.setattr(
         peri_scribe.kml.folders,
@@ -396,7 +398,7 @@ def test_fire_location_returns_none_with_empty_perimeter() -> None:
         status=peri_scribe.models.FireStatus.ACTIVE,
         point=None,
         perimeters=(
-            peri_scribe.kml.fire_data.Perimeter(
+            peri_scribe.kml.perimeters.Perimeter(
                 geometry=shapely.geometry.Polygon(),
                 observation_time=None,
             ),
@@ -460,7 +462,7 @@ def test_fire_location_falls_back_to_point_for_empty_perimeter(
         status=peri_scribe.models.FireStatus.ACTIVE,
         point=point,
         perimeters=(
-            peri_scribe.kml.fire_data.Perimeter(
+            peri_scribe.kml.perimeters.Perimeter(
                 geometry=shapely.geometry.Polygon(),
                 observation_time=None,
             ),
@@ -580,7 +582,7 @@ def test_read_cities_layer_reads_stored_layer(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     year_directory = tmp_path / "2026"
-    path = peri_scribe.sources.external_sources.output_path(
+    path = peri_scribe.sources.external_data.output_path(
         year_directory,
         peri_scribe.sources.external_sources.MAJOR_CITIES_SOURCE,
     )

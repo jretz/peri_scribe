@@ -7,11 +7,8 @@ import dataclasses
 import numpy as np
 import pyproj
 
-import peri_scribe.fires.centroid_streaming
+import peri_scribe.fires.centroid_data
 import peri_scribe.geo.spatial_reference
-
-
-# The maximum number of features per conversion chunk.
 
 
 TO_WEB_MERCATOR = pyproj.Transformer.from_crs(
@@ -193,7 +190,7 @@ def feature_boundaries(part_counts: np.ndarray) -> np.ndarray:
 
 def mean_vertex_centroids(
     projected: np.ndarray,
-    chunk: peri_scribe.fires.centroid_streaming.GeometryChunk,
+    chunk: peri_scribe.fires.centroid_data.GeometryChunk,
 ) -> np.ndarray:
     """Return each feature's mean projected ring vertex, as an ``(F, 2)`` array.
 
@@ -223,7 +220,7 @@ def mean_vertex_centroids(
 
 def projected_centroids(
     projected: np.ndarray,
-    chunk: peri_scribe.fires.centroid_streaming.GeometryChunk,
+    chunk: peri_scribe.fires.centroid_data.GeometryChunk,
     sums: RingCentroidSums,
 ) -> np.ndarray:
     """Return each feature's EPSG:3857 centroid from its ring shoelace sums.
@@ -266,7 +263,7 @@ def projected_centroids(
 
 
 def polygon_centroids(
-    chunk: peri_scribe.fires.centroid_streaming.GeometryChunk,
+    chunk: peri_scribe.fires.centroid_data.GeometryChunk,
 ) -> np.ndarray:
     """Return each feature's WGS84 centroid point from *chunk*'s WGS84 rings.
 

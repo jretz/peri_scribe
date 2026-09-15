@@ -12,6 +12,7 @@ import structlog
 import peri_scribe.fires.sources
 import peri_scribe.models
 import peri_scribe.perimeters.border_classification
+import peri_scribe.perimeters.classification_data
 
 
 logger = structlog.get_logger()
@@ -20,7 +21,7 @@ logger = structlog.get_logger()
 def classify_fire_group(
     group: tuple[int, ...],
     record_groups: peri_scribe.fires.sources.FireRecordGroups,
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> peri_scribe.models.FireClassification:
     """Classify the fire identified by *group* in *record_groups*.
 

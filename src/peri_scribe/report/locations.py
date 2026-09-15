@@ -263,20 +263,20 @@ def plausible_city_indices(
         The index of each plausible city, ordered by name and state so equal distances
         resolve deterministically.
     """
-    geod = pyproj.Geod(ellps="WGS84")
+    geodesic = pyproj.Geod(ellps="WGS84")
     centroid = geometry.centroid
     vertex_coordinates = shapely.get_coordinates(geometry.boundary)
     if len(vertex_coordinates) == 0:
         interior_radius = 0 * units.meters
     else:
-        _, _, vertex_distances = geod.inv(
+        _, _, vertex_distances = geodesic.inv(
             np.full(len(vertex_coordinates), centroid.x),
             np.full(len(vertex_coordinates), centroid.y),
             vertex_coordinates[:, 0],
             vertex_coordinates[:, 1],
         )
         interior_radius = float(vertex_distances.max()) * units.meters
-    _, _, centroid_distances = geod.inv(
+    _, _, centroid_distances = geodesic.inv(
         np.full(len(city_longitudes), centroid.x),
         np.full(len(city_latitudes), centroid.y),
         city_longitudes,

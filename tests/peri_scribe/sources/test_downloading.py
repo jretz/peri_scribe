@@ -8,9 +8,9 @@ import pathlib
 import zipfile
 
 import pytest
+import requests
 
 import peri_scribe.exceptions
-import peri_scribe.sources.downloading
 import peri_scribe.sources.external_sources
 import tests.factories
 import tests.peri_scribe.sources.downloading_helpers
@@ -28,7 +28,7 @@ def test_download_source_raises_when_geodata_cannot_be_read(
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("California.geojson", "not valid geojson {{{ ")
     monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
+        requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(
@@ -52,10 +52,10 @@ def test_download_source_raises_when_download_fails(
     )
 
     fail = tests.factories.raising_stub(
-        peri_scribe.sources.downloading.requests.exceptions.RequestException("boom"),
+        requests.exceptions.RequestException("boom"),
     )
 
-    monkeypatch.setattr(peri_scribe.sources.downloading.requests, "get", fail)
+    monkeypatch.setattr(requests, "get", fail)
     with pytest.raises(
         peri_scribe.exceptions.ExternalDataError,
         match="Failed to download",
@@ -71,7 +71,7 @@ def test_download_source_raises_when_not_a_zip(
         tests.peri_scribe.sources.external_source_helpers.per_state_template_source()
     )
     monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
+        requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(b"not a zip")
@@ -95,7 +95,7 @@ def test_download_source_raises_when_archive_has_no_geodata(
     with zipfile.ZipFile(buffer, "w") as archive:
         archive.writestr("readme.txt", "hi")
     monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
+        requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(
@@ -126,7 +126,7 @@ def test_download_source_skips_when_output_present(
     )
     calls: list[str] = []
     monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
+        requests,
         "get",
         lambda url, **_kwargs: (
             calls.append(url)
@@ -158,7 +158,7 @@ def test_download_source_skips_when_single_archive_output_present(
     )
     calls: list[str] = []
     monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
+        requests,
         "get",
         lambda url, **_kwargs: (
             calls.append(url)
@@ -217,7 +217,7 @@ def test_stream_download_and_convert_raises_when_download_fails(
         page=page,
     )
 
-    monkeypatch.setattr(peri_scribe.sources.downloading.requests, "get", get)
+    monkeypatch.setattr(requests, "get", get)
     with pytest.raises(
         peri_scribe.exceptions.ExternalDataError,
         match="Failed to download",

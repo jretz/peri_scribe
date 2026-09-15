@@ -13,9 +13,9 @@ import peri_scribe.output
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.fetching
 import peri_scribe.sources.snapshots
-from tests.conftest import SAMPLE_FEED_NAME, SAMPLE_FEED_URL
-from tests.factories import FeatureLayerStub, FeatureLayerStubBase
-from tests.main_stubs import SAMPLE_LAST_EDIT_TIMESTAMP
+import tests.conftest
+import tests.factories
+import tests.main_stubs
 
 
 if typing.TYPE_CHECKING:
@@ -45,7 +45,7 @@ def stub_complete_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch: The monkeypatch fixture.
     """
     monkeypatch.setattr(peri_scribe.sources.fetching.arcgis.gis, "GIS", object)
-    monkeypatch.setattr(pathlib.Path, "mkdir", lambda *_arguments, **_keywords: None)
+    monkeypatch.setattr(pathlib.Path, "mkdir", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         peri_scribe.output,
         "write_geopackage",
@@ -75,7 +75,7 @@ class FeedStub:
         return self.last_edit_timestamp
 
 
-class MultiQueryLayerStub(FeatureLayerStubBase):
+class MultiQueryLayerStub(tests.factories.FeatureLayerStubBase):
     """FeatureLayer stand-in that returns/raises successive results per call."""
 
     def __init__(
@@ -112,7 +112,7 @@ class MultiQueryLayerStub(FeatureLayerStubBase):
         return outcome
 
 
-class SequenceFeatureLayerStub(FeatureLayerStubBase):
+class SequenceFeatureLayerStub(tests.factories.FeatureLayerStubBase):
     """FeatureLayer stand-in serving successive feature sets per query."""
 
     def __init__(
@@ -135,11 +135,11 @@ class SequenceFeatureLayerStub(FeatureLayerStubBase):
         self.call_count = 0
         self.events = [] if events is None else events
 
-    def query(self, **_parameters: object) -> arcgis.features.FeatureSet:
+    def query(self, **_kwargs: object) -> arcgis.features.FeatureSet:
         """Record a download and serve the next available feature set.
 
         Args:
-            _parameters: Query options accepted for compatibility with ArcGIS callers.
+            _kwargs: Query options accepted for compatibility with ArcGIS callers.
 
         Returns:
             The next feature set, repeating the last after the sequence is exhausted.
@@ -152,7 +152,7 @@ class SequenceFeatureLayerStub(FeatureLayerStubBase):
         return feature_set
 
 
-class DeltaFeatureLayerStub(FeatureLayerStubBase):
+class DeltaFeatureLayerStub(tests.factories.FeatureLayerStubBase):
     """FeatureLayer stand-in serving a full set, then an incremental delta."""
 
     def __init__(
@@ -174,30 +174,27 @@ class DeltaFeatureLayerStub(FeatureLayerStubBase):
         self.full = full
         self.delta = delta
 
-    def query(
-        self,
-        **parameters: object,
-    ) -> arcgis.features.FeatureSet | dict[str, object]:
+    def query(self, **kwargs: object) -> arcgis.features.FeatureSet | dict[str, object]:
         """Serve complete rows, changed rows, or their object identifiers.
 
         Args:
-            parameters: Parameters supplied to the intercepted query or command.
+            kwargs: Parameters supplied to the intercepted query or command.
 
         Returns:
             The delta identifiers for ID queries, delta rows for ID filters, or full
             rows.
         """
-        if parameters.get("return_ids_only"):
+        if kwargs.get("return_ids_only"):
             object_ids = [
                 feature.attributes["OBJECTID"] for feature in self.delta.features
             ]
             return {"objectIdFieldName": "OBJECTID", "objectIds": object_ids}
-        if parameters.get("object_ids"):
+        if kwargs.get("object_ids"):
             return self.delta
         return self.full
 
 
-class RecordingFeatureLayerStub(FeatureLayerStubBase):
+class RecordingFeatureLayerStub(tests.factories.FeatureLayerStubBase):
     """FeatureLayer stand-in that records when its data is downloaded."""
 
     def __init__(
@@ -236,9 +233,9 @@ def sample_feed_stub() -> FeedStub:
         The sample feed stub.
     """
     return FeedStub(
-        name=SAMPLE_FEED_NAME,
-        url=SAMPLE_FEED_URL,
-        last_edit_timestamp=SAMPLE_LAST_EDIT_TIMESTAMP,
+        name=tests.conftest.SAMPLE_FEED_NAME,
+        url=tests.conftest.SAMPLE_FEED_URL,
+        last_edit_timestamp=tests.main_stubs.SAMPLE_LAST_EDIT_TIMESTAMP,
     )
 
 
@@ -258,17 +255,17 @@ def make_missing_date_filter_recorder(
         The callback bound to the supplied dependencies.
     """
 
-    def capture_where(*_arguments: object, **_keywords: object) -> list[int]:
+    def capture_where(*args: object, **kwargs: object) -> list[int]:
         """Capture the filter used to query rows with missing modification dates.
 
         Args:
-            _arguments: Positional arguments accepted by the substituted dependency.
-            _keywords: Keyword arguments accepted by the substituted dependency.
+            args: Positional arguments accepted by the substituted dependency.
+            kwargs: Keyword arguments accepted by the substituted dependency.
 
         Returns:
             An empty object-ID list.
         """
-        captured.append(str(_keywords["where"]))
+        captured.append(str(kwargs["where"]))
         return []
 
     return capture_where
@@ -289,17 +286,17 @@ def make_active_object_id_query(
         The callback bound to the supplied dependencies.
     """
 
-    def query_ids(*_arguments: object, **_keywords: object) -> list[int]:
+    def query_ids(*args: object, **kwargs: object) -> list[int]:
         """Serve object identifiers for full and active-row queries.
 
         Args:
-            _arguments: Positional arguments accepted by the substituted dependency.
-            _keywords: Keyword arguments accepted by the substituted dependency.
+            args: Positional arguments accepted by the substituted dependency.
+            kwargs: Keyword arguments accepted by the substituted dependency.
 
         Returns:
             The configured object identifiers matching the query filter.
         """
-        where = str(_keywords["where"])
+        where = str(kwargs["where"])
         wheres.append(where)
         if where == "1=1":
             return [1, 2, 3]
@@ -378,12 +375,12 @@ def mixed_feed_outcome(
     return object()
 
 
-def fail_state_update(*_arguments: object, **_keywords: object) -> None:
+def fail_state_update(*args: object, **kwargs: object) -> None:
     """Simulate failure to persist a feed's current state.
 
     Args:
-        _arguments: Positional arguments accepted by the substituted dependency.
-        _keywords: Keyword arguments accepted by the substituted dependency.
+        args: Positional arguments accepted by the substituted dependency.
+        kwargs: Keyword arguments accepted by the substituted dependency.
 
     Raises:
         RuntimeError: Always, to exercise collection continuation after a state-write
@@ -397,7 +394,7 @@ def make_failing_feed_layer_factory(
     *,
     failing: FeedStub,
     feature_set_with_geometry: arcgis.features.FeatureSet,
-) -> typing.Callable[..., FeatureLayerStub]:
+) -> typing.Callable[..., tests.factories.FeatureLayerStub]:
     """Create a callback with controlled dependencies.
 
     Make one feed fail while allowing the other to produce observations.
@@ -410,7 +407,7 @@ def make_failing_feed_layer_factory(
         The callback bound to the supplied dependencies.
     """
 
-    def layer_factory(url: str, gis: object) -> FeatureLayerStub:
+    def layer_factory(url: str, gis: object) -> tests.factories.FeatureLayerStub:
         """Make one feed fail while allowing the other to produce observations.
 
         Args:
@@ -421,12 +418,12 @@ def make_failing_feed_layer_factory(
             A layer stub that fails or succeeds according to the requested URL.
         """
         if url == failing.url:
-            return FeatureLayerStub(
+            return tests.factories.FeatureLayerStub(
                 url,
                 gis,
                 arcgis.features.FeatureSet([]),
                 query_error=RuntimeError("boom"),
             )
-        return FeatureLayerStub(url, gis, feature_set_with_geometry)
+        return tests.factories.FeatureLayerStub(url, gis, feature_set_with_geometry)
 
     return layer_factory

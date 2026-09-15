@@ -8,9 +8,12 @@ import pathlib
 import pytest
 import shapely
 
+import peri_scribe.fires.classification
 import peri_scribe.fires.derived_layers
 import peri_scribe.fires.differential
+import peri_scribe.fires.files
 import peri_scribe.fires.history
+import peri_scribe.fires.reuse
 import peri_scribe.fires.sources
 import peri_scribe.models
 import peri_scribe.perimeters.versions
@@ -128,3 +131,53 @@ def test_write_history_of_full_geography_rebuilds_only_affected_fires(
         tolerate_missing=False,
     )
     tests.peri_scribe.fires.files_helpers.assert_histories_equal(incremental, complete)
+
+
+def test_history_geopackage_path_names_output() -> None:
+    assert peri_scribe.fires.files.history_geopackage_path(
+        pathlib.Path("data/2026"),
+    ) == pathlib.Path("data/2026/derived/history_of_full_geography.gpkg")
+
+
+def test_write_history_of_full_geography_writes_geography_and_incidents(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
+) -> None:
+    record_groups = peri_scribe.fires.sources.FireRecordGroups(
+        records=(),
+        record_paths=(),
+        fires=(tests.factories.fire(),),
+        groups=((),),
+        complex_identifiers=frozenset(),
+    )
+    read = peri_scribe.fires.sources.ReadFireSources(rows=(), paths=(), memberships=())
+    monkeypatch.setattr(
+        peri_scribe.fires.sources,
+        "read_fire_sources",
+        lambda _directory: read,
+    )
+    monkeypatch.setattr(
+        peri_scribe.fires.sources,
+        "group_fire_sources",
+        lambda _read: record_groups,
+    )
+    monkeypatch.setattr(
+        peri_scribe.fires.classification,
+        "classify_fire_sources",
+        lambda *_args: {},
+    )
+    written: list[tuple[pathlib.Path, list[peri_scribe.models.LayerData]]] = []
+    monkeypatch.setattr(
+        peri_scribe.fires.reuse,
+        "write_layers",
+        lambda path, layers: written.append((path, layers)),
+    )
+    result = peri_scribe.fires.files.write_history_of_full_geography(tmp_path)
+    assert result == tmp_path / "derived/history_of_full_geography.gpkg"
+    assert len(written) == 1
+    _path, layers = written[0]
+    assert [layer.name for layer in layers] == [
+        peri_scribe.fires.files.PERIMETER_LAYER_NAME,
+        peri_scribe.fires.files.POINT_LAYER_NAME,
+        "incident_history",
+    ]

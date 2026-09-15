@@ -14,7 +14,7 @@ import shapely
 import shapely.geometry
 
 import peri_scribe.models
-import peri_scribe.perimeters.border_classification
+import peri_scribe.perimeters.classification_data
 import peri_scribe.perimeters.versions
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.snapshots
@@ -27,13 +27,13 @@ INACTIVE = peri_scribe.models.FireStatus.INACTIVE
 
 
 FIRIS_PERIMETER = (
-    peri_scribe.perimeters.border_classification.FireSourceKind.FIRIS_PERIMETER
+    peri_scribe.perimeters.classification_data.FireSourceKind.FIRIS_PERIMETER
 )
 WFIGS_PERIMETER = (
-    peri_scribe.perimeters.border_classification.FireSourceKind.WFIGS_PERIMETER
+    peri_scribe.perimeters.classification_data.FireSourceKind.WFIGS_PERIMETER
 )
 WFIGS_LOCATION = (
-    peri_scribe.perimeters.border_classification.FireSourceKind.WFIGS_LOCATION
+    peri_scribe.perimeters.classification_data.FireSourceKind.WFIGS_LOCATION
 )
 
 
@@ -159,12 +159,12 @@ def raising_stub(error: BaseException) -> typing.Callable[..., typing.Never]:
         The stand-in.
     """
 
-    def raise_error(*_arguments: object, **_keywords: object) -> typing.Never:
+    def raise_error(*args: object, **kwargs: object) -> typing.Never:
         """Raise the configured failure for an isolated dependency call.
 
         Args:
-            _arguments: Positional arguments accepted by the substituted dependency.
-            _keywords: Keyword arguments accepted by the substituted dependency.
+            args: Positional arguments accepted by the substituted dependency.
+            kwargs: Keyword arguments accepted by the substituted dependency.
 
         Raises:
             The exception selected by the enclosing factory, on every call.
@@ -190,16 +190,16 @@ def geo_frame(
     return geopandas.GeoDataFrame(columns, geometry=geometry, crs="EPSG:4326")
 
 
-def polygon(*points: tuple[float, float]) -> shapely.geometry.Polygon:
-    """Return a polygon from *points*.
+def polygon(*args: tuple[float, float]) -> shapely.geometry.Polygon:
+    """Return a polygon from *args*.
 
     Args:
-        points: The polygon's exterior points.
+        args: The polygon's exterior points.
 
     Returns:
         The polygon.
     """
-    return shapely.geometry.Polygon(points)
+    return shapely.geometry.Polygon(args)
 
 
 def square(side: float) -> shapely.geometry.Polygon:
@@ -230,7 +230,7 @@ def point(x: float, y: float) -> shapely.geometry.Point:
 
 def observation(
     *,
-    source_kind: peri_scribe.perimeters.border_classification.FireSourceKind = (
+    source_kind: peri_scribe.perimeters.classification_data.FireSourceKind = (
         FIRIS_PERIMETER
     ),
     geometry: shapely.geometry.base.BaseGeometry | None = None,
@@ -431,14 +431,11 @@ class FeatureLayerStub(FeatureLayerStubBase):
         self.feature_set = feature_set
         self.query_error = query_error
 
-    def query(
-        self,
-        **parameters: object,
-    ) -> arcgis.features.FeatureSet | dict[str, object]:
+    def query(self, **kwargs: object) -> arcgis.features.FeatureSet | dict[str, object]:
         """Serve the configured query result for isolated ArcGIS tests.
 
         Args:
-            parameters: Parameters supplied to the intercepted query or command.
+            kwargs: Parameters supplied to the intercepted query or command.
 
         Returns:
             The fixed object identifiers for ID-only queries, otherwise the feature set.
@@ -448,7 +445,7 @@ class FeatureLayerStub(FeatureLayerStubBase):
         """
         if self.query_error is not None:
             raise self.query_error
-        if parameters.get("return_ids_only"):
+        if kwargs.get("return_ids_only"):
             return {"objectIdFieldName": "OBJECTID", "objectIds": [1, 2]}
         return self.feature_set
 

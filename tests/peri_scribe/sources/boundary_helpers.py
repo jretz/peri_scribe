@@ -49,16 +49,16 @@ class FeatureLayerStub:
         self.feature_set = feature_set
         self.queries: list[dict[str, object]] = []
 
-    def query(self, **parameters: object) -> object:
+    def query(self, **kwargs: object) -> object:
         """Capture query parameters before serving the configured feature set.
 
         Args:
-            parameters: Parameters supplied to the intercepted query or command.
+            kwargs: Parameters supplied to the intercepted query or command.
 
         Returns:
             The feature set supplied to this stub.
         """
-        self.queries.append(parameters)
+        self.queries.append(kwargs)
         return self.feature_set
 
 
@@ -66,11 +66,11 @@ class FailingFeatureLayerStub:
     """FeatureLayer stand-in whose query always raises."""
 
     @staticmethod
-    def query(**_parameters: object) -> object:
+    def query(**_kwargs: object) -> object:
         """Simulate a failed administrative-boundary query.
 
         Args:
-            _parameters: Query options accepted for compatibility with ArcGIS callers.
+            _kwargs: Query options accepted for compatibility with ArcGIS callers.
 
         Raises:
             RuntimeError: Always, to exercise query failure handling.
@@ -171,7 +171,7 @@ def stub_geopackage_reads(
     monkeypatch.setattr(
         peri_scribe.sources.administrative_boundaries.geopandas,
         "read_file",
-        lambda _path, **_keywords: dataframe,
+        lambda _path, **_kwargs: dataframe,
     )
 
 
@@ -218,7 +218,7 @@ def stub_border_file(
     monkeypatch.setattr(
         peri_scribe.sources.administrative_boundaries.geopandas,
         "read_file",
-        lambda _path, **_keywords: dataframe,
+        lambda _path, **_kwargs: dataframe,
     )
 
 

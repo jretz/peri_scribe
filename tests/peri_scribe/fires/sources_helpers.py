@@ -8,11 +8,7 @@ import typing
 import peri_scribe.exceptions
 import peri_scribe.fires.sources
 import peri_scribe.models
-from tests.factories import ACTIVE, fire_record
-
-
-if typing.TYPE_CHECKING:
-    from tests.factories import StubFireReader
+import tests.factories
 
 
 CROSSWHITE_ID = "1b0219ee-5298-4fef-9927-c2666d9d53fc"
@@ -41,7 +37,7 @@ def listed_fires(
 
 
 def complex_parent_and_child_fires(
-    stub_fire_reader: StubFireReader,
+    stub_fire_reader: tests.factories.StubFireReader,
 ) -> list[peri_scribe.models.Fire]:
     """Return fires indexed from the canonical parent/child GeoPackage.
 
@@ -54,12 +50,16 @@ def complex_parent_and_child_fires(
     stub_fire_reader(
         {
             pathlib.Path("one.gpkg"): [
-                fire_record(
+                tests.factories.fire_record(
                     "ROWE CREEK COMPLEX",
-                    ACTIVE,
+                    tests.factories.ACTIVE,
                     identifiers={ROWE_CREEK_COMPLEX_ID},
                 ),
-                fire_record("0445 CROSSWHITE", ACTIVE, identifiers={CROSSWHITE_ID}),
+                tests.factories.fire_record(
+                    "0445 CROSSWHITE",
+                    tests.factories.ACTIVE,
+                    identifiers={CROSSWHITE_ID},
+                ),
             ],
         },
         {

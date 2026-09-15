@@ -36,24 +36,6 @@ def test_text_value_returns_none_for_blank() -> None:
     assert peri_scribe.kml.row_values.text_value(None, "fire_name") is None
 
 
-def test_float_value_reads_numbers_and_rejects_non_numeric() -> None:
-    frame = tests.factories.geo_frame(
-        {
-            "fire_identifier": ["id-a"],
-            "fire_name": ["Bug"],
-            "area_acres": [12.5],
-            "mission": ["x"],
-        },
-        [tests.factories.square(1.0)],
-    )
-    row = frame.iloc[0]
-    assert peri_scribe.kml.row_values.float_value(row, "area_acres") == pytest.approx(
-        12.5,
-    )
-    assert peri_scribe.kml.row_values.float_value(row, "mission") is None
-    assert peri_scribe.kml.row_values.float_value(None, "area_acres") is None
-
-
 def test_as_datetime_parses_strings_and_timestamps() -> None:
     expected = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
     assert peri_scribe.kml.row_values.as_datetime(None) is None

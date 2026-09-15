@@ -5,18 +5,18 @@ from __future__ import annotations
 import datetime
 import typing
 
-import peri_scribe.perimeters.border_classification
+import peri_scribe.perimeters.classification_data
 from peri_scribe.units import units
 
 
-FIRIS = peri_scribe.perimeters.border_classification.FireSourceKind.FIRIS_PERIMETER
+FIRIS = peri_scribe.perimeters.classification_data.FireSourceKind.FIRIS_PERIMETER
 
 WFIGS_PERIMETER = (
-    peri_scribe.perimeters.border_classification.FireSourceKind.WFIGS_PERIMETER
+    peri_scribe.perimeters.classification_data.FireSourceKind.WFIGS_PERIMETER
 )
 
 WFIGS_LOCATION = (
-    peri_scribe.perimeters.border_classification.FireSourceKind.WFIGS_LOCATION
+    peri_scribe.perimeters.classification_data.FireSourceKind.WFIGS_LOCATION
 )
 
 
@@ -25,7 +25,7 @@ if typing.TYPE_CHECKING:
 
 
 def observation(
-    source: peri_scribe.perimeters.border_classification.FireSourceKind,
+    source: peri_scribe.perimeters.classification_data.FireSourceKind,
     geometry: shapely.geometry.base.BaseGeometry | None,
     *,
     observed_at: datetime.datetime | None = None,
@@ -34,7 +34,7 @@ def observation(
     mission: str | None = None,
     point_of_origin_state: str | None = None,
     point_of_origin_fips: str | None = None,
-) -> peri_scribe.perimeters.border_classification.FireObservation:
+) -> peri_scribe.perimeters.classification_data.FireObservation:
     """Build a fire observation for a test.
 
     Args:
@@ -50,7 +50,7 @@ def observation(
     Returns:
         The fire observation.
     """
-    return peri_scribe.perimeters.border_classification.FireObservation(
+    return peri_scribe.perimeters.classification_data.FireObservation(
         source=source,
         geometry=geometry,
         observed_at=observed_at,
@@ -71,7 +71,7 @@ def geometry_signal(
     crosses: bool = False,
     near: bool = False,
     inside: bool = True,
-) -> peri_scribe.perimeters.border_classification.GeometrySignal:
+) -> peri_scribe.perimeters.classification_data.GeometrySignal:
     """Build a geometry signal, defaulting to a fire fully inside California.
 
     Args:
@@ -86,7 +86,7 @@ def geometry_signal(
     Returns:
         The geometry signal.
     """
-    return peri_scribe.perimeters.border_classification.GeometrySignal(
+    return peri_scribe.perimeters.classification_data.GeometrySignal(
         distance_to_boundary=distance_to_boundary * units.meters,
         outside_area_fraction=outside_area_fraction,
         outside_area=outside_area * units.meters**2,
@@ -101,7 +101,7 @@ def extent_signal(
     *,
     wfigs_to_firis_area_ratio: float | None = None,
     disagrees: bool = False,
-) -> peri_scribe.perimeters.border_classification.ExtentSignal:
+) -> peri_scribe.perimeters.classification_data.ExtentSignal:
     """Build an extent signal, defaulting to no disagreement.
 
     Args:
@@ -111,7 +111,7 @@ def extent_signal(
     Returns:
         The extent signal.
     """
-    return peri_scribe.perimeters.border_classification.ExtentSignal(
+    return peri_scribe.perimeters.classification_data.ExtentSignal(
         wfigs_to_firis_area_ratio=wfigs_to_firis_area_ratio,
         disagrees=disagrees,
     )

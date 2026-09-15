@@ -13,8 +13,8 @@ import peri_scribe.geo.reading
 import peri_scribe.sources.feed_state
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.validation
+import tests.factories
 import tests.peri_scribe.sources.validation_helpers
-from tests.factories import change_dataframe, change_feed
 
 
 if typing.TYPE_CHECKING:
@@ -22,9 +22,12 @@ if typing.TYPE_CHECKING:
 
 
 def test_validate_feed_clean_when_stored_covers_complete() -> None:
-    complete = change_dataframe([(1, "a", (0.0, 0.0)), (2, "b", (1.0, 1.0))])
+    complete = tests.factories.change_dataframe([
+        (1, "a", (0.0, 0.0)),
+        (2, "b", (1.0, 1.0)),
+    ])
     result = peri_scribe.sources.validation.validate_feed(
-        change_feed(),
+        tests.factories.change_feed(),
         complete,
         complete,
     )
@@ -37,10 +40,13 @@ def test_validate_feed_clean_when_stored_covers_complete() -> None:
 
 
 def test_validate_feed_reports_missing_features() -> None:
-    complete = change_dataframe([(1, "a", (0.0, 0.0)), (2, "b", (1.0, 1.0))])
-    stored = change_dataframe([(1, "a", (0.0, 0.0))])
+    complete = tests.factories.change_dataframe([
+        (1, "a", (0.0, 0.0)),
+        (2, "b", (1.0, 1.0)),
+    ])
+    stored = tests.factories.change_dataframe([(1, "a", (0.0, 0.0))])
     result = peri_scribe.sources.validation.validate_feed(
-        change_feed(),
+        tests.factories.change_feed(),
         complete,
         stored,
     )
@@ -50,10 +56,10 @@ def test_validate_feed_reports_missing_features() -> None:
 
 
 def test_validate_feed_reports_mismatched_attribute_values() -> None:
-    complete = change_dataframe([(1, "a", (0.0, 0.0))])
-    stored = change_dataframe([(1, "b", (0.0, 0.0))])
+    complete = tests.factories.change_dataframe([(1, "a", (0.0, 0.0))])
+    stored = tests.factories.change_dataframe([(1, "b", (0.0, 0.0))])
     result = peri_scribe.sources.validation.validate_feed(
-        change_feed(),
+        tests.factories.change_feed(),
         complete,
         stored,
     )
@@ -63,10 +69,10 @@ def test_validate_feed_reports_mismatched_attribute_values() -> None:
 
 
 def test_validate_feed_reports_mismatched_geometry() -> None:
-    complete = change_dataframe([(1, "a", (0.0, 0.0))])
-    stored = change_dataframe([(1, "a", (5.0, 5.0))])
+    complete = tests.factories.change_dataframe([(1, "a", (0.0, 0.0))])
+    stored = tests.factories.change_dataframe([(1, "a", (5.0, 5.0))])
     result = peri_scribe.sources.validation.validate_feed(
-        change_feed(),
+        tests.factories.change_feed(),
         complete,
         stored,
     )
@@ -88,7 +94,7 @@ def test_validate_feed_ignores_geometry_type_wrapper_differences() -> None:
         crs=pyproj.CRS.from_epsg(4326),
     )
     result = peri_scribe.sources.validation.validate_feed(
-        change_feed(),
+        tests.factories.change_feed(),
         complete,
         stored,
     )
@@ -119,7 +125,7 @@ def test_validate_feed_still_reports_split_geometry() -> None:
         crs=pyproj.CRS.from_epsg(4326),
     )
     result = peri_scribe.sources.validation.validate_feed(
-        change_feed(),
+        tests.factories.change_feed(),
         complete,
         stored,
     )
@@ -139,7 +145,7 @@ def test_validate_feed_matches_missing_geometries() -> None:
         crs=pyproj.CRS.from_epsg(4326),
     )
     result = peri_scribe.sources.validation.validate_feed(
-        change_feed(),
+        tests.factories.change_feed(),
         complete,
         stored,
     )
@@ -152,9 +158,9 @@ def test_validate_feed_reports_mismatched_missing_geometry() -> None:
         geometry=[None],
         crs=pyproj.CRS.from_epsg(4326),
     )
-    stored = change_dataframe([(1, "a", (0.0, 0.0))])
+    stored = tests.factories.change_dataframe([(1, "a", (0.0, 0.0))])
     result = peri_scribe.sources.validation.validate_feed(
-        change_feed(),
+        tests.factories.change_feed(),
         complete,
         stored,
     )
@@ -168,9 +174,9 @@ def test_validate_feed_reports_columns_missing_from_stored() -> None:
         geometry=[shapely.geometry.Point(0.0, 0.0)],
         crs=pyproj.CRS.from_epsg(4326),
     )
-    stored = change_dataframe([(1, "a", (0.0, 0.0))])
+    stored = tests.factories.change_dataframe([(1, "a", (0.0, 0.0))])
     result = peri_scribe.sources.validation.validate_feed(
-        change_feed(),
+        tests.factories.change_feed(),
         complete,
         stored,
     )
@@ -181,8 +187,15 @@ def test_validate_feed_reports_columns_missing_from_stored() -> None:
 
 
 def test_validate_feed_reports_everything_missing_without_stored_data() -> None:
-    complete = change_dataframe([(1, "a", (0.0, 0.0)), (2, "b", (1.0, 1.0))])
-    result = peri_scribe.sources.validation.validate_feed(change_feed(), complete, None)
+    complete = tests.factories.change_dataframe([
+        (1, "a", (0.0, 0.0)),
+        (2, "b", (1.0, 1.0)),
+    ])
+    result = peri_scribe.sources.validation.validate_feed(
+        tests.factories.change_feed(),
+        complete,
+        None,
+    )
     assert result.has_problems
     assert result.missing_object_ids == frozenset({1, 2})
     assert result.mismatched_object_ids == frozenset()
@@ -190,9 +203,9 @@ def test_validate_feed_reports_everything_missing_without_stored_data() -> None:
 
 
 def test_validate_feed_treats_stored_frame_without_object_id_as_missing() -> None:
-    complete = change_dataframe([(1, "a", (0.0, 0.0))])
+    complete = tests.factories.change_dataframe([(1, "a", (0.0, 0.0))])
     result = peri_scribe.sources.validation.validate_feed(
-        change_feed(),
+        tests.factories.change_feed(),
         complete,
         tests.peri_scribe.sources.validation_helpers.frame_without_object_id(),
     )
@@ -202,14 +215,14 @@ def test_validate_feed_treats_stored_frame_without_object_id_as_missing() -> Non
 
 
 def test_validate_feed_ignores_extra_stored_features_and_columns() -> None:
-    complete = change_dataframe([(1, "a", (0.0, 0.0))])
+    complete = tests.factories.change_dataframe([(1, "a", (0.0, 0.0))])
     stored = geopandas.GeoDataFrame(
         {"OBJECTID": [1, 3], "name": ["a", "c"], "old": ["x", "y"]},
         geometry=[shapely.geometry.Point(0.0, 0.0), shapely.geometry.Point(2.0, 2.0)],
         crs=pyproj.CRS.from_epsg(4326),
     )
     result = peri_scribe.sources.validation.validate_feed(
-        change_feed(),
+        tests.factories.change_feed(),
         complete,
         stored,
     )
@@ -228,12 +241,12 @@ def test_validate_complete_sources_validates_each_feed_in_order(
         tests.peri_scribe.sources.validation_helpers.validation_feed(1),
     ]
     complete_frames = {
-        "Fires0_0": change_dataframe([(1, "a", (0.0, 0.0))]),
-        "Fires1_0": change_dataframe([(2, "b", (1.0, 1.0))]),
+        "Fires0_0": tests.factories.change_dataframe([(1, "a", (0.0, 0.0))]),
+        "Fires1_0": tests.factories.change_dataframe([(2, "b", (1.0, 1.0))]),
     }
     stored_frames = {
-        "Fires0_0": change_dataframe([(1, "a", (0.0, 0.0))]),
-        "Fires1_0": change_dataframe([(2, "different", (1.0, 1.0))]),
+        "Fires0_0": tests.factories.change_dataframe([(1, "a", (0.0, 0.0))]),
+        "Fires1_0": tests.factories.change_dataframe([(2, "different", (1.0, 1.0))]),
     }
     read_calls: list[tuple[pathlib.Path, peri_scribe.sources.feed_types.Feed]] = []
 

@@ -7,7 +7,7 @@ import typing
 
 
 if typing.TYPE_CHECKING:
-    import peri_scribe.sources.external_sources
+    import peri_scribe.sources.external_data
 
 
 def make_external_output_path(
@@ -25,15 +25,15 @@ def make_external_output_path(
 
     def output_path(
         _year_directory: pathlib.Path,
-        source: peri_scribe.sources.external_sources.ExternalSource,
-        **_keywords: object,
+        source: peri_scribe.sources.external_data.ExternalSource,
+        **kwargs: object,
     ) -> pathlib.Path:
         """Keep external-source reads inside the test directory.
 
         Args:
             _year_directory: Unused production year directory.
             source: The source whose storage format determines the suffix.
-            _keywords: Unused source path options.
+            kwargs: Unused source path options.
 
         Returns:
             The isolated SQLite or GeoPackage source path.

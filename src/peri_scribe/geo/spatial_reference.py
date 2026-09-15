@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import functools
 import math
-from typing import TYPE_CHECKING
+import typing
 
 import pyproj
 import pyproj.exceptions
@@ -20,7 +20,7 @@ import peri_scribe.exceptions
 import peri_scribe.models
 
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     import arcgis.features
 
 
@@ -175,23 +175,23 @@ def spatial_reference_domain(
         return None
     if crs.is_geographic:
         return peri_scribe.models.SpatialReferenceDomain(
-            crs,
-            (0.0, 180.0, 0.0, 90.0),
-            "geographic (degrees)",
+            crs=crs,
+            bands=(0.0, 180.0, 0.0, 90.0),
+            description="geographic (degrees)",
         )
     if not crs.is_projected:
         return None
     unit = crs.axis_info[0].unit_name if crs.axis_info else "unknown"
     maximum_magnitude_in_crs_units = projected_maximum_magnitude_in_crs_units(crs)
     return peri_scribe.models.SpatialReferenceDomain(
-        crs,
-        (
+        crs=crs,
+        bands=(
             peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE.m_as("meters"),
             maximum_magnitude_in_crs_units,
             peri_scribe.models.MINIMUM_PROJECTED_MAGNITUDE.m_as("meters"),
             maximum_magnitude_in_crs_units,
         ),
-        f"projected ({unit})",
+        description=f"projected ({unit})",
     )
 
 

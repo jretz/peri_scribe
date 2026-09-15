@@ -8,7 +8,7 @@ import shapely.geometry
 
 import peri_scribe.fires.sources
 import peri_scribe.models
-from tests.factories import ACTIVE, fire_record
+import tests.factories
 
 
 def record_groups(
@@ -26,9 +26,9 @@ def record_groups(
         A single-fire group with the requested complex membership identifiers.
     """
     identifiers = frozenset({fire.identifier}) if fire.identifier else frozenset()
-    record = fire_record(
+    record = tests.factories.fire_record(
         "Park Fire",
-        ACTIVE,
+        tests.factories.ACTIVE,
         identifiers=identifiers,
         geometry=shapely.geometry.Point(-120.0, 39.0),
     )

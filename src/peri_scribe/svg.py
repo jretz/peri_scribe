@@ -14,6 +14,7 @@ only the spacing around it.
 from __future__ import annotations
 
 import html
+import math
 
 
 # The font stack every generated SVG declares. Google Earth substitutes a system font
@@ -164,3 +165,31 @@ def text_width(text: str, font_size: float) -> float:
         HELVETICA_ADVANCES.get(character, DEFAULT_ADVANCE) for character in text
     )
     return advances / 1000.0 * font_size
+
+
+def nice_step(span: float, target_intervals: int) -> float:
+    """Return a 1/2/2.5/5/10 x 10**n axis step covering *span* in even intervals.
+
+    Args:
+        span: The data range the axis must cover.
+        target_intervals: The approximate number of intervals wanted.
+
+    Returns:
+        The step between ticks.
+
+    Examples:
+        >>> round(nice_step(500.0, 8), 3)
+        100.0
+        >>> round(nice_step(1.0, 8), 3)
+        0.2
+    """
+    if span <= 0:
+        return 1.0
+    raw = span / target_intervals
+    magnitude = 10.0 ** math.floor(math.log10(raw))
+    # Dividing by the decade's magnitude always leaves a value below ten, and the ladder
+    # ends at ten, so one rung always covers *raw*.
+    for multiple in (1.0, 2.0, 2.5, 5.0, 10.0):
+        if raw <= multiple * magnitude:
+            break
+    return multiple * magnitude

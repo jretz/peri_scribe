@@ -12,6 +12,7 @@ import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
 import peri_scribe.kml.geometry
+import peri_scribe.kml.perimeters
 import peri_scribe.kml.plot_rendering
 import peri_scribe.models
 import peri_scribe.perimeters.progression
@@ -902,7 +903,6 @@ def test_fire_folder_can_load_visible(style_urls: dict[str, str]) -> None:
         fire,
         style_urls,
         tests.peri_scribe.kml.folders_helpers.ring_style_urls_for(fire),
-        visible=True,
     )
     folder = tests.peri_scribe.kml.kml_helpers.folder_named(
         tests.peri_scribe.kml.kml_helpers.document_from_writer(writer),
@@ -1714,11 +1714,11 @@ def test_fire_growth_sorts_perimeters_chronologically() -> None:
     fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Scrambled",
         perimeters=(
-            peri_scribe.kml.fire_data.Perimeter(
+            peri_scribe.kml.perimeters.Perimeter(
                 geometry=tests.factories.square(0.03),
                 observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
             ),
-            peri_scribe.kml.fire_data.Perimeter(
+            peri_scribe.kml.perimeters.Perimeter(
                 geometry=tests.factories.square(0.02),
                 observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME
                 - datetime.timedelta(hours=48),
@@ -1743,7 +1743,7 @@ def test_fire_growth_without_timed_perimeters_is_unknown() -> None:
     fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Timeless",
         perimeters=(
-            peri_scribe.kml.fire_data.Perimeter(
+            peri_scribe.kml.perimeters.Perimeter(
                 geometry=tests.factories.square(0.02),
                 observation_time=None,
             ),
@@ -1760,12 +1760,12 @@ def test_fire_growth_without_window_start_counts_whole_area() -> None:
     fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Newborn",
         perimeters=(
-            peri_scribe.kml.fire_data.Perimeter(
+            peri_scribe.kml.perimeters.Perimeter(
                 geometry=tests.factories.square(0.03),
                 observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME
                 - datetime.timedelta(hours=24),
             ),
-            peri_scribe.kml.fire_data.Perimeter(
+            peri_scribe.kml.perimeters.Perimeter(
                 geometry=tests.factories.square(0.04),
                 observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
             ),
@@ -1788,12 +1788,12 @@ def test_fire_growth_percent_is_unknown_without_baseline_area() -> None:
     fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "FromNothing",
         perimeters=(
-            peri_scribe.kml.fire_data.Perimeter(
+            peri_scribe.kml.perimeters.Perimeter(
                 geometry=shapely.geometry.Point(0.0, 0.0),
                 observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME
                 - datetime.timedelta(hours=48),
             ),
-            peri_scribe.kml.fire_data.Perimeter(
+            peri_scribe.kml.perimeters.Perimeter(
                 geometry=tests.factories.square(0.03),
                 observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
             ),
@@ -1860,7 +1860,7 @@ def test_fast_growing_fires_by_acres_includes_zero_baseline_growth() -> None:
     fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Newborn",
         perimeters=(
-            peri_scribe.kml.fire_data.Perimeter(
+            peri_scribe.kml.perimeters.Perimeter(
                 geometry=tests.factories.square(0.03),
                 observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
             ),
@@ -1943,7 +1943,7 @@ def test_fast_growing_fires_by_percent_excludes_zero_baseline_growth() -> None:
     fire = tests.peri_scribe.kml.folders_helpers.active_fire(
         "Newborn",
         perimeters=(
-            peri_scribe.kml.fire_data.Perimeter(
+            peri_scribe.kml.perimeters.Perimeter(
                 geometry=tests.factories.square(0.03),
                 observation_time=tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME,
             ),

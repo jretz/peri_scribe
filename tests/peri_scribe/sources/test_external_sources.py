@@ -12,6 +12,7 @@ import geopandas
 import pandas as pd
 import pyproj
 import pytest
+import requests
 import shapely.geometry
 import us
 
@@ -19,93 +20,12 @@ import peri_scribe.exceptions
 import peri_scribe.geo.data
 import peri_scribe.models
 import peri_scribe.output
-import peri_scribe.sources.downloading
+import peri_scribe.sources.external_data
 import peri_scribe.sources.external_sources
 import peri_scribe.sources.snapshots
 import tests.factories
 import tests.peri_scribe.sources.external_source_helpers
 import tests.peri_scribe.sources.external_sources_helpers
-
-
-def test_output_path_places_single_file_under_sources() -> None:
-    source = dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
-        states=(),
-        combine=False,
-        compact_database=False,
-    )
-    path = peri_scribe.sources.external_sources.output_path(
-        tests.peri_scribe.sources.external_sources_helpers.YEAR_DIRECTORY,
-        source,
-    )
-    assert (
-        path
-        == tests.peri_scribe.sources.external_sources_helpers.YEAR_DIRECTORY
-        / "sources"
-        / "buildings.gpkg"
-    )
-
-
-def test_output_path_names_compact_buildings_database() -> None:
-    path = peri_scribe.sources.external_sources.output_path(
-        tests.peri_scribe.sources.external_sources_helpers.YEAR_DIRECTORY,
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
-    )
-    assert (
-        path
-        == tests.peri_scribe.sources.external_sources_helpers.YEAR_DIRECTORY
-        / "sources"
-        / "buildings.sqlite"
-    )
-
-
-def test_output_path_raises_for_combined_source_with_state() -> None:
-    source = dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
-        states=("California", "Texas"),
-        combine=True,
-        compact_database=False,
-    )
-    with pytest.raises(ValueError, match="combines its states"):
-        peri_scribe.sources.external_sources.output_path(
-            tests.peri_scribe.sources.external_sources_helpers.YEAR_DIRECTORY,
-            source,
-            state="California",
-        )
-
-
-def test_output_path_names_live_arcgis_source() -> None:
-    path = peri_scribe.sources.external_sources.output_path(
-        tests.peri_scribe.sources.external_sources_helpers.YEAR_DIRECTORY,
-        peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
-    )
-    assert (
-        path
-        == tests.peri_scribe.sources.external_sources_helpers.YEAR_DIRECTORY
-        / "sources"
-        / "evacuations.gpkg"
-    )
-
-
-def test_output_path_names_per_state_geopackage() -> None:
-    source = dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
-        states=("California",),
-        combine=False,
-        compact_database=False,
-    )
-    path = peri_scribe.sources.external_sources.output_path(
-        tests.peri_scribe.sources.external_sources_helpers.YEAR_DIRECTORY,
-        source,
-        state="California",
-    )
-    assert (
-        path
-        == tests.peri_scribe.sources.external_sources_helpers.YEAR_DIRECTORY
-        / "sources"
-        / "buildings"
-        / "California.gpkg"
-    )
 
 
 def test_buildings_source_covers_every_us_state() -> None:
@@ -124,7 +44,7 @@ def test_every_external_source_has_a_retrieval_url() -> None:
 
 def test_fetch_external_source_raises_for_unknown_kind() -> None:
     source = typing.cast(
-        "peri_scribe.sources.external_sources.ExternalSource",
+        "peri_scribe.sources.external_data.ExternalSource",
         types.SimpleNamespace(compact_database=False, kind=object()),
     )
     with pytest.raises(
@@ -165,7 +85,7 @@ def test_fetch_arcgis_source_writes_snapshot(monkeypatch: pytest.MonkeyPatch) ->
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "geo_data_frame_from",
-        lambda *_arguments: (
+        lambda *_args: (
             tests.peri_scribe.sources.external_source_helpers.sample_arcgis_dataframe()
         ),
     )
@@ -181,7 +101,7 @@ def test_fetch_arcgis_source_writes_snapshot(monkeypatch: pytest.MonkeyPatch) ->
         "replace",
         lambda source, destination: replacements.append((source, destination)),
     )
-    monkeypatch.setattr(pathlib.Path, "mkdir", lambda *_arguments, **_keywords: None)
+    monkeypatch.setattr(pathlib.Path, "mkdir", lambda *_args, **_kwargs: None)
 
     result = peri_scribe.sources.external_sources.fetch_external_source(
         source,
@@ -243,7 +163,7 @@ def test_fetch_arcgis_source_passes_where_clause(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "geo_data_frame_from",
-        lambda *_arguments: (
+        lambda *_args: (
             tests.peri_scribe.sources.external_source_helpers.sample_arcgis_dataframe()
         ),
     )
@@ -253,7 +173,7 @@ def test_fetch_arcgis_source_passes_where_clause(
         lambda _path, _layer_data: None,
     )
     monkeypatch.setattr(pathlib.Path, "replace", lambda _source, _destination: None)
-    monkeypatch.setattr(pathlib.Path, "mkdir", lambda *_arguments, **_keywords: None)
+    monkeypatch.setattr(pathlib.Path, "mkdir", lambda *_args, **_kwargs: None)
 
     peri_scribe.sources.external_sources.fetch_external_source(
         source,
@@ -281,7 +201,7 @@ def test_fetch_arcgis_source_raises_when_no_features(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "query_with_retry",
-        lambda *_arguments, **_keywords: types.SimpleNamespace(features=[]),
+        lambda *_args, **_kwargs: types.SimpleNamespace(features=[]),
     )
     with pytest.raises(
         peri_scribe.exceptions.ExternalDataError,
@@ -330,7 +250,7 @@ def test_fetch_arcgis_source_logs_geometry_warning(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "query_with_retry",
-        lambda *_arguments, **_keywords: feature_set,
+        lambda *_args, **_kwargs: feature_set,
     )
     monkeypatch.setattr(
         peri_scribe.geo.data,
@@ -340,7 +260,7 @@ def test_fetch_arcgis_source_logs_geometry_warning(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "geo_data_frame_from",
-        lambda *_arguments: (
+        lambda *_args: (
             tests.peri_scribe.sources.external_source_helpers.sample_arcgis_dataframe()
         ),
     )
@@ -350,7 +270,7 @@ def test_fetch_arcgis_source_logs_geometry_warning(
         lambda _path, _layer_data: None,
     )
     monkeypatch.setattr(pathlib.Path, "replace", lambda _source, _destination: None)
-    monkeypatch.setattr(pathlib.Path, "mkdir", lambda *_arguments, **_keywords: None)
+    monkeypatch.setattr(pathlib.Path, "mkdir", lambda *_args, **_kwargs: None)
     warnings: list[str] = []
     monkeypatch.setattr(peri_scribe.geo.data.logger, "warning", warnings.append)
     peri_scribe.sources.external_sources.fetch_external_source(
@@ -403,7 +323,7 @@ def test_fetch_arcgis_source_replaces_current_version_when_content_changed(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "geo_data_frame_from",
-        lambda *_arguments: changed,
+        lambda *_args: changed,
     )
     second = peri_scribe.sources.external_sources.fetch_external_source(
         source,
@@ -467,7 +387,7 @@ def test_fetch_arcgis_source_keeps_current_version_when_fetch_fails(
     monkeypatch.setattr(
         peri_scribe.sources.external_sources.logger,
         "warning",
-        lambda message, **_keywords: warnings.append(message),
+        lambda message, **_kwargs: warnings.append(message),
     )
     second = peri_scribe.sources.external_sources.fetch_external_source(
         source,
@@ -490,7 +410,7 @@ def test_buildings_state_urls_reads_repo_page_every_fetch(
     }
     urls: list[str] = []
     monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
+        requests,
         "get",
         lambda url, **_kwargs: (
             urls.append(url)
@@ -512,7 +432,7 @@ def test_buildings_state_urls_raises_when_page_has_nodownload_links(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
+        requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(
@@ -534,7 +454,7 @@ def test_buildings_state_urls_raises_when_a_state_is_missing(
         "California": "https://example.com/California.geojson.zip",
     })
     monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
+        requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(
@@ -553,10 +473,10 @@ def test_buildings_state_urls_raises_when_page_cannot_be_downloaded(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fail = tests.factories.raising_stub(
-        peri_scribe.sources.downloading.requests.exceptions.RequestException("boom"),
+        requests.exceptions.RequestException("boom"),
     )
 
-    monkeypatch.setattr(peri_scribe.sources.downloading.requests, "get", fail)
+    monkeypatch.setattr(requests, "get", fail)
     with pytest.raises(
         peri_scribe.exceptions.ExternalDataError,
         match=(
@@ -603,13 +523,13 @@ def test_fetch_buildings_combines_state_centroids_into_single_geopackage(
         archive=archive,
     )
 
-    monkeypatch.setattr(peri_scribe.sources.downloading.requests, "get", get)
+    monkeypatch.setattr(requests, "get", get)
 
     result = peri_scribe.sources.external_sources.fetch_external_source(
         source,
         tmp_path,
     )
-    output = peri_scribe.sources.external_sources.output_path(tmp_path, source)
+    output = peri_scribe.sources.external_data.output_path(tmp_path, source)
     assert result == (output,)
     assert urls == [
         peri_scribe.sources.external_sources.BUILDINGS_SOURCE.url,
@@ -679,7 +599,7 @@ def test_fetch_buildings_skips_page_when_combined_output_present(
         archive=archive,
     )
 
-    monkeypatch.setattr(peri_scribe.sources.downloading.requests, "get", get)
+    monkeypatch.setattr(requests, "get", get)
 
     first = peri_scribe.sources.external_sources.fetch_external_source(source, tmp_path)
     second = peri_scribe.sources.external_sources.fetch_external_source(
@@ -723,7 +643,7 @@ def test_fetch_buildings_combines_projected_centroids_into_wgs84(
         driver="ESRI Shapefile",
     )
     monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
+        requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(archive)
@@ -734,7 +654,7 @@ def test_fetch_buildings_combines_projected_centroids_into_wgs84(
         source,
         tmp_path,
     )
-    output = peri_scribe.sources.external_sources.output_path(tmp_path, source)
+    output = peri_scribe.sources.external_data.output_path(tmp_path, source)
     assert result == (output,)
     second = peri_scribe.sources.external_sources.fetch_external_source(
         source,
@@ -745,13 +665,13 @@ def test_fetch_buildings_combines_projected_centroids_into_wgs84(
     assert list(converted.columns) == ["geometry"]
     assert converted.geometry.geom_type.iloc[0] == "Point"
     assert converted.crs.to_epsg() == peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID
-    lon, lat = pyproj.Transformer.from_crs(
+    longitude, latitude = pyproj.Transformer.from_crs(
         tests.peri_scribe.sources.external_sources_helpers.WEB_MERCATOR_WKID,
         4326,
         always_xy=True,
     ).transform(1.0, 1.0)
-    assert converted.geometry.iloc[0].x == pytest.approx(lon, abs=1e-12)
-    assert converted.geometry.iloc[0].y == pytest.approx(lat, abs=1e-12)
+    assert converted.geometry.iloc[0].x == pytest.approx(longitude, abs=1e-12)
+    assert converted.geometry.iloc[0].y == pytest.approx(latitude, abs=1e-12)
 
 
 def test_fetch_arcgis_source_skips_identical_millisecond_dates_after_storage(
@@ -780,12 +700,12 @@ def test_fetch_arcgis_source_skips_identical_millisecond_dates_after_storage(
     monkeypatch.setattr(
         peri_scribe.sources.external_sources.arcgis.features,
         "FeatureLayer",
-        lambda *_arguments: object(),
+        lambda *_args: object(),
     )
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "query_with_retry",
-        lambda *_arguments, **_keywords: feature_set,
+        lambda *_args, **_kwargs: feature_set,
     )
     source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
     first = peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)

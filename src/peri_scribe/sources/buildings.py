@@ -45,7 +45,7 @@ import peri_scribe.exceptions
 import peri_scribe.fires.centroid_math
 import peri_scribe.fires.centroid_streaming
 import peri_scribe.sources.downloading
-import peri_scribe.sources.external_sources
+import peri_scribe.sources.external_data
 import peri_scribe.sources.network
 
 
@@ -483,7 +483,7 @@ def stream_state_archive(url: str, partition_files: PartitionFiles) -> int:
         ExternalDataError: If the download fails, the stream is not a zip archive, or
             the archive holds no GeoJSON member with any features.
     """
-    with peri_scribe.sources.downloading.downloaded_response(
+    with peri_scribe.sources.network.downloaded_response(
         url,
         stream=True,
     ) as response:
@@ -670,7 +670,7 @@ def is_valid_database(path: pathlib.Path) -> bool:
 
 
 def fetch_buildings_database(
-    source: peri_scribe.sources.external_sources.ExternalSource,
+    source: peri_scribe.sources.external_data.ExternalSource,
     year_directory: pathlib.Path,
 ) -> tuple[pathlib.Path, ...]:
     """Retrieve *source*'s compact buildings database into *year_directory*.
@@ -694,7 +694,7 @@ def fetch_buildings_database(
         ExternalDataError: If the source's page or any archive cannot be retrieved, or
             the generated database fails validation.
     """
-    output = peri_scribe.sources.external_sources.output_path(year_directory, source)
+    output = peri_scribe.sources.external_data.output_path(year_directory, source)
     if is_valid_database(output):
         logger.debug("External source already present", source=source.name, path=output)
         return (output,)

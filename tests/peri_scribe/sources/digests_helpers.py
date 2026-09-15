@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+import typing
 
 import pandas as pd
 import shapely.geometry
@@ -10,7 +10,7 @@ import shapely.geometry
 import tests.factories
 
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     import geopandas
 
 

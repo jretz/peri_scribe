@@ -13,12 +13,12 @@ import peri_scribe.geo.parsing
 import peri_scribe.sources.changes
 
 
-def attribute_value(attributes: dict[str, object], *column_names: str) -> object | None:
-    """Return the first present value among *column_names*, or None.
+def attribute_value(attributes: dict[str, object], *args: str) -> object | None:
+    """Return the first present value among *args*, or None.
 
     Args:
         attributes: The row's attributes.
-        column_names: The column names to look up, in priority order.
+        args: The column names to look up, in priority order.
 
     Returns:
         The first non-missing value, or None.
@@ -27,7 +27,7 @@ def attribute_value(attributes: dict[str, object], *column_names: str) -> object
         >>> attribute_value({"old": None, "new": "value"}, "old", "new")
         'value'
     """
-    for column_name in column_names:
+    for column_name in args:
         if column_name in attributes:
             value = attributes[column_name]
             if not peri_scribe.geo.parsing.is_missing(value):
@@ -35,12 +35,12 @@ def attribute_value(attributes: dict[str, object], *column_names: str) -> object
     return None
 
 
-def text_attribute(attributes: dict[str, object], *column_names: str) -> str | None:
-    """Return the first present text value among *column_names*, or None.
+def text_attribute(attributes: dict[str, object], *args: str) -> str | None:
+    """Return the first present text value among *args*, or None.
 
     Args:
         attributes: The row's attributes.
-        column_names: The column names to look up, in priority order.
+        args: The column names to look up, in priority order.
 
     Returns:
         The first non-blank text value, or None.
@@ -49,19 +49,19 @@ def text_attribute(attributes: dict[str, object], *column_names: str) -> str | N
         >>> text_attribute({"name": "  Rumsey Fire  "}, "name")
         'Rumsey Fire'
     """
-    value = attribute_value(attributes, *column_names)
+    value = attribute_value(attributes, *args)
     if value is None:
         return None
     text = str(value).strip()
     return text or None
 
 
-def float_attribute(attributes: dict[str, object], *column_names: str) -> float | None:
-    """Return the first present numeric value among *column_names*, or None.
+def float_attribute(attributes: dict[str, object], *args: str) -> float | None:
+    """Return the first present numeric value among *args*, or None.
 
     Args:
         attributes: The row's attributes.
-        column_names: The column names to look up, in priority order.
+        args: The column names to look up, in priority order.
 
     Returns:
         The first numeric value as a float, or None.
@@ -71,19 +71,19 @@ def float_attribute(attributes: dict[str, object], *column_names: str) -> float 
         12.5
     """
     return peri_scribe.geo.parsing.numeric_value(
-        attribute_value(attributes, *column_names),
+        attribute_value(attributes, *args),
     )
 
 
 def datetime_attribute(
     attributes: dict[str, object],
-    *column_names: str,
+    *args: str,
 ) -> datetime.datetime | None:
-    """Return the first present datetime value among *column_names*, or None.
+    """Return the first present datetime value among *args*, or None.
 
     Args:
         attributes: The row's attributes.
-        column_names: The column names to look up, in priority order.
+        args: The column names to look up, in priority order.
 
     Returns:
         The first datetime value, or None.
@@ -93,5 +93,5 @@ def datetime_attribute(
         '1970-01-01T00:00:00+00:00'
     """
     return peri_scribe.sources.changes.modified_datetime_from(
-        attribute_value(attributes, *column_names),
+        attribute_value(attributes, *args),
     )

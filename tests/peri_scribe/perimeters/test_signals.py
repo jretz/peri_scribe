@@ -7,21 +7,21 @@ import datetime
 import pytest
 import shapely.geometry
 
-import peri_scribe.perimeters.border_classification
+import peri_scribe.perimeters.classification_data
 import peri_scribe.perimeters.signals
 import tests.peri_scribe.perimeters.border_helpers
 from peri_scribe.units import units
 
 
-CONFIG = peri_scribe.perimeters.border_classification.BorderClassificationConfig()
+CONFIG = peri_scribe.perimeters.classification_data.BorderClassificationConfig()
 
-PLANAR_CONFIG = peri_scribe.perimeters.border_classification.BorderClassificationConfig(
+PLANAR_CONFIG = peri_scribe.perimeters.classification_data.BorderClassificationConfig(
     near_border_buffer=10.0 * units.meters,
 )
 
 
 def test_geometry_signal_inside_california(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     result = peri_scribe.perimeters.signals.geometry_signal(
         shapely.geometry.box(0.0, 0.0, 50.0, 50.0),
@@ -38,7 +38,7 @@ def test_geometry_signal_inside_california(
 
 
 def test_geometry_signal_inside_near_border(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     result = peri_scribe.perimeters.signals.geometry_signal(
         shapely.geometry.box(90.0, 0.0, 99.0, 100.0),
@@ -52,7 +52,7 @@ def test_geometry_signal_inside_near_border(
 
 
 def test_geometry_signal_outside_california(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     result = peri_scribe.perimeters.signals.geometry_signal(
         shapely.geometry.box(150.0, 0.0, 190.0, 100.0),
@@ -66,7 +66,7 @@ def test_geometry_signal_outside_california(
 
 
 def test_geometry_signal_outside_near_border(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     result = peri_scribe.perimeters.signals.geometry_signal(
         shapely.geometry.box(101.0, 0.0, 102.0, 100.0),
@@ -80,7 +80,7 @@ def test_geometry_signal_outside_near_border(
 
 
 def test_geometry_signal_crosses_border_by_fraction(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     result = peri_scribe.perimeters.signals.geometry_signal(
         shapely.geometry.box(90.0, 0.0, 110.0, 100.0),
@@ -94,9 +94,9 @@ def test_geometry_signal_crosses_border_by_fraction(
 
 
 def test_geometry_signal_crosses_border_by_absolute_area(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
-    config = peri_scribe.perimeters.border_classification.BorderClassificationConfig(
+    config = peri_scribe.perimeters.classification_data.BorderClassificationConfig(
         outside_area_fraction_threshold=1.0,
         outside_area_threshold=0.01 * units.acres,
     )
@@ -109,7 +109,7 @@ def test_geometry_signal_crosses_border_by_absolute_area(
 
 
 def test_geometry_signal_requires_presence_inside_california_to_cross(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     result = peri_scribe.perimeters.signals.geometry_signal(
         shapely.geometry.box(150.0, 0.0, 190.0, 100.0),
@@ -120,7 +120,7 @@ def test_geometry_signal_requires_presence_inside_california_to_cross(
 
 
 def test_geometry_signal_handles_missing_union(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     result = peri_scribe.perimeters.signals.geometry_signal(None, boundaries, CONFIG)
     assert not result.inside
@@ -130,7 +130,7 @@ def test_geometry_signal_handles_missing_union(
 
 
 def test_geometry_signal_one_sided_inside_collection(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     union = shapely.geometry.GeometryCollection([
         shapely.geometry.box(1.0, 1.0, 2.0, 2.0),
@@ -151,7 +151,7 @@ def test_geometry_signal_one_sided_inside_collection(
 
 
 def test_geometry_signal_one_sided_outside_collection(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     union = shapely.geometry.GeometryCollection([
         shapely.geometry.box(150.0, 0.0, 160.0, 10.0),
@@ -170,7 +170,7 @@ def test_geometry_signal_one_sided_outside_collection(
 
 
 def test_geometry_signal_one_sided_inside_point_only(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     union = shapely.geometry.GeometryCollection([shapely.geometry.Point(5.0, 5.0)])
     result = peri_scribe.perimeters.signals.geometry_signal(
@@ -185,7 +185,7 @@ def test_geometry_signal_one_sided_inside_point_only(
 
 
 def test_geometry_signal_one_sided_outside_point_only(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     union = shapely.geometry.GeometryCollection([shapely.geometry.Point(200.0, 200.0)])
     result = peri_scribe.perimeters.signals.geometry_signal(
@@ -200,7 +200,7 @@ def test_geometry_signal_one_sided_outside_point_only(
 
 
 def test_geometry_signal_one_sided_near_border(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     union = shapely.geometry.GeometryCollection([
         shapely.geometry.box(101.0, 0.0, 102.0, 100.0),
@@ -512,7 +512,7 @@ def test_identifier_signal_detects_non_california_fips() -> None:
 
 
 def test_geometry_signal_zero_area_union_has_no_fractions(
-    boundaries: peri_scribe.perimeters.border_classification.Boundaries,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
 ) -> None:
     result = peri_scribe.perimeters.signals.geometry_signal(
         shapely.geometry.Point(0.0, 0.0),

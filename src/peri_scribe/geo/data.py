@@ -173,7 +173,7 @@ def query_with_retry(
     feed_name: str,
     layer: arcgis.features.FeatureLayer,
     *,
-    max_retries: int = peri_scribe.retry.DEFAULT_MAX_RETRIES,
+    maximum_retries: int = peri_scribe.retry.DEFAULT_MAXIMUM_RETRIES,
     parameters: dict[str, typing.Any] | None = None,
 ) -> arcgis.features.FeatureSet:
     """Query *layer* for features, retrying on transient and rate-limit errors.
@@ -181,7 +181,7 @@ def query_with_retry(
     Args:
         feed_name: Human-readable feed identifier for log messages.
         layer: The FeatureLayer to query.
-        max_retries: Maximum number of retries before giving up.
+        maximum_retries: Maximum number of retries before giving up.
         parameters: Keyword arguments forwarded to ``layer.query``.
 
     Returns:
@@ -191,7 +191,7 @@ def query_with_retry(
     return peri_scribe.retry.run_with_retry(
         feed_name,
         lambda: layer.query(**query_parameters),
-        max_retries=max_retries,
+        maximum_retries=maximum_retries,
     )
 
 
@@ -200,7 +200,7 @@ def query_object_ids_with_retry(
     layer: arcgis.features.FeatureLayer,
     *,
     where: str,
-    max_retries: int = peri_scribe.retry.DEFAULT_MAX_RETRIES,
+    maximum_retries: int = peri_scribe.retry.DEFAULT_MAXIMUM_RETRIES,
 ) -> list[int]:
     """Return the OBJECTIDs of the features in *layer* matching *where*.
 
@@ -211,7 +211,7 @@ def query_object_ids_with_retry(
         feed_name: Human-readable feed identifier for log messages.
         layer: The FeatureLayer to query.
         where: The SQL where clause selecting the features.
-        max_retries: Maximum number of retries before giving up.
+        maximum_retries: Maximum number of retries before giving up.
 
     Returns:
         The OBJECTIDs of the matching features.
@@ -222,7 +222,7 @@ def query_object_ids_with_retry(
     result = peri_scribe.retry.run_with_retry(
         feed_name,
         lambda: layer.query(where=where, return_ids_only=True),
-        max_retries=max_retries,
+        maximum_retries=maximum_retries,
     )
     if not isinstance(result, dict) or "objectIds" not in result:
         message = f"Feed {feed_name} returned no object ids"

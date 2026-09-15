@@ -14,11 +14,11 @@ import struct
 
 import numpy as np
 import pytest
+import requests
 import shapely.geometry
 
 import peri_scribe.exceptions
 import peri_scribe.sources.buildings
-import peri_scribe.sources.downloading
 import peri_scribe.sources.external_sources
 import tests.factories
 import tests.peri_scribe.sources.buildings_helpers
@@ -526,7 +526,7 @@ def test_fetch_buildings_database_streams_states_into_database(
         archives=archives,
     )
 
-    monkeypatch.setattr(peri_scribe.sources.downloading.requests, "get", get)
+    monkeypatch.setattr(requests, "get", get)
 
     result = peri_scribe.sources.external_sources.fetch_external_source(
         source,
@@ -574,9 +574,9 @@ def test_fetch_buildings_database_skips_valid_existing_database(
     )
     original = output.read_bytes()
     monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
+        requests,
         "get",
-        lambda *_arguments, **_keywords: pytest.fail("no downloads expected"),
+        lambda *_args, **_kwargs: pytest.fail("no downloads expected"),
     )
 
     result = peri_scribe.sources.external_sources.fetch_external_source(
@@ -596,7 +596,7 @@ def test_fetch_buildings_database_preserves_existing_file_when_download_fails(
     output.parent.mkdir(parents=True)
     output.write_bytes(b"existing contents")
     monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
+        requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(
@@ -627,10 +627,10 @@ def test_fetch_buildings_database_preserves_existing_file_when_archive_fails(
     output.write_bytes(b"existing contents")
 
     fail = tests.factories.raising_stub(
-        peri_scribe.sources.downloading.requests.exceptions.RequestException("boom"),
+        requests.exceptions.RequestException("boom"),
     )
 
-    monkeypatch.setattr(peri_scribe.sources.downloading.requests, "get", fail)
+    monkeypatch.setattr(requests, "get", fail)
     with pytest.raises(
         peri_scribe.exceptions.ExternalDataError,
         match="Failed to download",
@@ -658,7 +658,7 @@ def test_fetch_buildings_database_raises_when_archive_is_not_a_zip(
         url="https://example.com/legacy/{state}.geojson.zip",
     )
     monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
+        requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(b"not a zip")
@@ -686,7 +686,7 @@ def test_fetch_buildings_database_raises_when_geojson_is_unreadable(
         "California.geojson": b"not valid geojson {{{ ",
     })
     monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
+        requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(archive)
@@ -717,7 +717,7 @@ def test_fetch_buildings_database_raises_when_generated_database_is_invalid(
         "California.geojson": california,
     })
     monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
+        requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(archive)
@@ -750,7 +750,7 @@ def test_fetch_buildings_database_raises_when_archive_has_no_geojson(
         "readme.txt": b"hi",
     })
     monkeypatch.setattr(
-        peri_scribe.sources.downloading.requests,
+        requests,
         "get",
         lambda _url, **_kwargs: (
             tests.peri_scribe.sources.external_source_helpers.FakeResponse(archive)

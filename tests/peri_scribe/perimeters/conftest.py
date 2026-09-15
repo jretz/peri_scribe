@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 import shapely.geometry
 
-import peri_scribe.perimeters.border_classification
+import peri_scribe.perimeters.classification_data
 import peri_scribe.perimeters.versions
 import tests.factories
 import tests.peri_scribe.perimeters.classification_helpers
@@ -16,32 +16,32 @@ BORDER = shapely.geometry.LineString([(100.0, 0.0), (100.0, 100.0)])
 
 
 @pytest.fixture
-def boundaries() -> peri_scribe.perimeters.border_classification.Boundaries:
+def boundaries() -> peri_scribe.perimeters.classification_data.Boundaries:
     """Return a synthetic California box and border in planar coordinates.
 
     Returns:
         The California box and the border along its eastern edge.
     """
-    return peri_scribe.perimeters.border_classification.Boundaries(
+    return peri_scribe.perimeters.classification_data.Boundaries(
         box=CALIFORNIA_BOX,
         border=BORDER,
     )
 
 
 @pytest.fixture
-def wgs84_boundaries() -> peri_scribe.perimeters.border_classification.Boundaries:
+def wgs84_boundaries() -> peri_scribe.perimeters.classification_data.Boundaries:
     """Return a synthetic California box and border in California Albers.
 
     Returns:
         The California box and border, reprojected from WGS84.
     """
-    return peri_scribe.perimeters.border_classification.Boundaries(
-        box=peri_scribe.perimeters.border_classification.reproject_to_california_albers(
+    return peri_scribe.perimeters.classification_data.Boundaries(
+        box=peri_scribe.perimeters.classification_data.reproject_to_california_albers(
             tests.peri_scribe.perimeters.classification_helpers.CALIFORNIA_BOX_WGS84,
             4326,
         ),
         border=(
-            peri_scribe.perimeters.border_classification.reproject_to_california_albers(
+            peri_scribe.perimeters.classification_data.reproject_to_california_albers(
                 tests.peri_scribe.perimeters.classification_helpers.CA_BORDER_WGS84,
                 4326,
             )
@@ -88,7 +88,6 @@ def delayed_mapping_pair() -> tuple[
         geometry=shapely.geometry.box(0, 0, 1, 1),
         observation_time=tests.factories.utc(2026, 9, 1, 21, 32),
         source_file="flight.gpkg",
-        object_id=1,
     )
     delayed = tests.factories.observation(
         source_kind=tests.factories.WFIGS_PERIMETER,

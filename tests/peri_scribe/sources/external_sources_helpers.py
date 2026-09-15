@@ -42,7 +42,7 @@ def install_arcgis_query_stubs(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "query_with_retry",
-        lambda *_arguments, **_keywords: feature_set,
+        lambda *_args, **_kwargs: feature_set,
     )
     monkeypatch.setattr(
         peri_scribe.geo.data,
@@ -52,7 +52,7 @@ def install_arcgis_query_stubs(
     monkeypatch.setattr(
         peri_scribe.geo.data,
         "geo_data_frame_from",
-        lambda *_arguments: dataframe,
+        lambda *_args: dataframe,
     )
 
 
@@ -148,13 +148,13 @@ def make_building_responder(
 
     def get(
         url: str,
-        **_kwargs: object,
+        **kwargs: object,
     ) -> tests.peri_scribe.sources.external_source_helpers.FakeResponse:
         """Capture building download URLs and serve the configured content.
 
         Args:
             url: ArcGIS layer or download URL supplied by the caller.
-            _kwargs: HTTP request options accepted by the response substitute.
+            kwargs: HTTP request options accepted by the response substitute.
 
         Returns:
             The buildings index or archive selected by the URL.

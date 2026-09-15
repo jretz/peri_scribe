@@ -17,7 +17,7 @@ import peri_scribe.fires.sources
 import peri_scribe.geo.package
 import peri_scribe.models
 import peri_scribe.output
-import peri_scribe.sources.external_sources
+import peri_scribe.sources.external_data
 import peri_scribe.sources.feed_types
 import tests.factories
 import tests.peri_scribe.fires.fire_helpers
@@ -96,7 +96,7 @@ def score_fires_stubs(
             lambda _path: tests.factories.empty_frame(),
         )
         monkeypatch.setattr(
-            peri_scribe.sources.external_sources,
+            peri_scribe.sources.external_data,
             "output_path",
             output_path
             or (
@@ -114,7 +114,7 @@ def score_fires_stubs(
         monkeypatch.setattr(
             pathlib.Path,
             "mkdir",
-            lambda *_arguments, **_keywords: None,
+            lambda *_args, **_kwargs: None,
         )
         stubs = tests.peri_scribe.fires.fire_helpers.ScoreFiresStubs(
             writes=[],

@@ -109,8 +109,8 @@ def shared_border(
     """Return the portion of California's boundary shared with *neighbor_geometry*.
 
     The boundary is intersected with the neighbor polygon, and with the neighbor grown
-    by ``INTERSECTION_TOLERANCE_DEGREES``; the more complete result is kept so borders
-    that line up only approximately between the two source copies are still captured.
+    by ``INTERSECTION_TOLERANCE``; the more complete result is kept so borders that line
+    up only approximately between the two source copies are still captured.
 
     Args:
         california_geometry: California's polygon.
@@ -148,8 +148,8 @@ def border_length(geometry: shapely.Geometry) -> pint.Quantity[float]:
     Returns:
         The geodesic length.
     """
-    geod = pyproj.Geod(ellps="WGS84")
-    length = sum(geod.geometry_length(part) for part in line_parts(geometry))
+    geodesic = pyproj.Geod(ellps="WGS84")
+    length = sum(geodesic.geometry_length(part) for part in line_parts(geometry))
     return length * units.meters
 
 

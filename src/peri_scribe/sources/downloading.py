@@ -2,68 +2,27 @@
 
 from __future__ import annotations
 
-import contextlib
 import pathlib
 import tempfile
-import typing
 import urllib.parse
 
-import requests
 import structlog
 
-import peri_scribe.exceptions
 import peri_scribe.fires.centroid_streaming
 import peri_scribe.geo.reading
 import peri_scribe.geo.spatial_reference
+import peri_scribe.output
 import peri_scribe.sources.archives
 import peri_scribe.sources.conversion
-import peri_scribe.sources.external_sources
+import peri_scribe.sources.external_data
 import peri_scribe.sources.network
 
 
 logger = structlog.get_logger()
 
 
-if typing.TYPE_CHECKING:
-    import geopandas
-
-
-@contextlib.contextmanager
-def downloaded_response(
-    url: str,
-    *,
-    stream: bool,
-) -> typing.Generator[requests.Response]:
-    """Yield the open response for *url*, translating download failures.
-
-    The response is yielded inside the guard, so a transfer that fails part-way through
-    its body is reported the same way as one that never connected.
-
-    Args:
-        url: The URL to download.
-        stream: Whether to stream the body rather than reading it eagerly.
-
-    Yields:
-        The open response.
-
-    Raises:
-        ExternalDataError: If the download fails.
-    """
-    try:
-        response = requests.get(
-            url,
-            stream=stream,
-            timeout=peri_scribe.sources.network.REQUEST_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-        yield response
-    except requests.exceptions.RequestException as error:
-        message = f"Failed to download {url}: {error}"
-        raise peri_scribe.exceptions.ExternalDataError(message) from error
-
-
 def state_download_url(
-    source: peri_scribe.sources.external_sources.ExternalSource,
+    source: peri_scribe.sources.external_data.ExternalSource,
     state: str | None,
     state_urls: dict[str, str] | None,
 ) -> str:
@@ -90,7 +49,7 @@ def state_download_url(
 
 
 def download_source(
-    source: peri_scribe.sources.external_sources.ExternalSource,
+    source: peri_scribe.sources.external_data.ExternalSource,
     year_directory: pathlib.Path,
 ) -> tuple[pathlib.Path, ...]:
     """Download and convert *source*'s archives into GeoPackages.
@@ -109,7 +68,7 @@ def download_source(
     Returns:
         The paths of the written GeoPackages.
     """
-    directory = peri_scribe.sources.external_sources.external_source_directory_path(
+    directory = peri_scribe.sources.external_data.external_source_directory_path(
         year_directory,
         source,
     )
@@ -120,7 +79,7 @@ def download_source(
     directory.mkdir(parents=True, exist_ok=True)
     paths: list[pathlib.Path] = []
     for state in source.states or (None,):
-        output = peri_scribe.sources.external_sources.output_path(
+        output = peri_scribe.sources.external_data.output_path(
             year_directory,
             source,
             state=state,
@@ -140,7 +99,7 @@ def download_source(
 
 
 def stream_combined_source(
-    source: peri_scribe.sources.external_sources.ExternalSource,
+    source: peri_scribe.sources.external_data.ExternalSource,
     year_directory: pathlib.Path,
 ) -> pathlib.Path:
     """Stream every state of *source* into one combined GeoPackage.
@@ -164,7 +123,7 @@ def stream_combined_source(
         ValueError: If the source is not configured to reduce to centroid points with no
             attributes, which the streaming conversion requires.
     """
-    output = peri_scribe.sources.external_sources.output_path(year_directory, source)
+    output = peri_scribe.sources.external_data.output_path(year_directory, source)
     if output.is_file():
         logger.debug("External source already present", source=source.name, path=output)
         return output
@@ -210,7 +169,7 @@ def stream_download_and_convert(
     Returns:
         The number of features converted.
     """
-    with downloaded_response(url, stream=True) as response:
+    with peri_scribe.sources.network.downloaded_response(url, stream=True) as response:
         return peri_scribe.fires.centroid_streaming.convert_zip_stream(
             response.iter_content(
                 chunk_size=peri_scribe.sources.network.DOWNLOAD_CHUNK_SIZE,
@@ -222,7 +181,7 @@ def stream_download_and_convert(
 
 
 def combine_downloaded_source(
-    source: peri_scribe.sources.external_sources.ExternalSource,
+    source: peri_scribe.sources.external_data.ExternalSource,
     year_directory: pathlib.Path,
 ) -> pathlib.Path:
     """Download every state of *source* and combine them into one GeoPackage.
@@ -241,7 +200,7 @@ def combine_downloaded_source(
     Returns:
         The path of the combined GeoPackage.
     """
-    output = peri_scribe.sources.external_sources.output_path(year_directory, source)
+    output = peri_scribe.sources.external_data.output_path(year_directory, source)
     if output.is_file():
         logger.debug("External source already present", source=source.name, path=output)
         return output
@@ -264,7 +223,7 @@ def combine_downloaded_source(
                 dataframe = chunk.to_crs(
                     peri_scribe.geo.spatial_reference.WGS84_SPATIAL_REFERENCE,
                 )
-                append_geopackage_chunk(
+                peri_scribe.output.append_geopackage_chunk(
                     output,
                     layer_name,
                     dataframe,
@@ -276,33 +235,8 @@ def combine_downloaded_source(
     return output
 
 
-def append_geopackage_chunk(
-    output: pathlib.Path,
-    layer_name: str,
-    dataframe: geopandas.GeoDataFrame,
-    *,
-    replace: bool,
-) -> None:
-    """Append *dataframe* to the GeoPackage at *output*.
-
-    Args:
-        output: The GeoPackage path to write.
-        layer_name: The layer to append to.
-        dataframe: The chunk's features to write.
-        replace: Whether to replace any existing file at *output*.
-    """
-    if replace:
-        output.unlink(missing_ok=True)
-    dataframe.to_file(
-        output,
-        driver="GPKG",
-        layer=layer_name,
-        mode="w" if replace else "a",
-    )
-
-
 def download_and_convert(
-    source: peri_scribe.sources.external_sources.ExternalSource,
+    source: peri_scribe.sources.external_data.ExternalSource,
     directory: pathlib.Path,
     url: str,
     output: pathlib.Path,

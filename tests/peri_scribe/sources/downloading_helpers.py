@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import typing
 
-import peri_scribe.sources.downloading
+import requests
+
 import peri_scribe.sources.external_sources
 import tests.peri_scribe.sources.external_source_helpers
 
@@ -29,19 +30,19 @@ def make_failing_archive_responder(
 
     def get(
         url: str,
-        **_kwargs: object,
+        **kwargs: object,
     ) -> tests.peri_scribe.sources.external_source_helpers.FakeResponse:
         """Serve the buildings index and fail the subsequent archive download.
 
         Args:
             url: ArcGIS layer or download URL supplied by the caller.
-            _kwargs: HTTP request options accepted by the response substitute.
+            kwargs: HTTP request options accepted by the response substitute.
 
         Returns:
             The buildings index response.
 
         Raises:
-            peri_scribe.sources.downloading.requests.exceptions.RequestException: If the
+            requests.exceptions.RequestException: If the
                 request targets an archive.
         """
         if url == peri_scribe.sources.external_sources.BUILDINGS_SOURCE.url:
@@ -49,7 +50,7 @@ def make_failing_archive_responder(
                 page.encode("utf-8"),
             )
         message = "boom"
-        raise peri_scribe.sources.downloading.requests.exceptions.RequestException(
+        raise requests.exceptions.RequestException(
             message,
         )
 

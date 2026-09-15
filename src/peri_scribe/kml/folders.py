@@ -15,6 +15,7 @@ import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.geometry
 import peri_scribe.kml.icons
+import peri_scribe.kml.perimeters
 import peri_scribe.kml.selection
 import peri_scribe.kml.styles
 import peri_scribe.kml.tour
@@ -602,7 +603,7 @@ def fire_growth(
         The growth and growth percent, or None for each when it cannot be measured.
     """
     timed_perimeters: list[
-        tuple[datetime.datetime, peri_scribe.kml.fire_data.Perimeter],
+        tuple[datetime.datetime, peri_scribe.kml.perimeters.Perimeter],
     ] = []
     for perimeter in fire.perimeters:
         observation_time = perimeter.observation_time
@@ -614,7 +615,7 @@ def fire_growth(
     latest_perimeter = timed_perimeters[-1][1]
     latest_area = latest_perimeter.measured_area
     cutoff = reference_time - FAST_GROWTH_LOOKBACK
-    baseline_perimeter: peri_scribe.kml.fire_data.Perimeter | None = None
+    baseline_perimeter: peri_scribe.kml.perimeters.Perimeter | None = None
     for observation_time, perimeter in reversed(timed_perimeters):
         if observation_time <= cutoff:
             baseline_perimeter = perimeter

@@ -14,6 +14,7 @@ import pytest
 import peri_scribe.fires.identity
 import peri_scribe.fires.scores
 import peri_scribe.sources.buildings
+import peri_scribe.sources.external_data
 import peri_scribe.sources.external_sources
 import peri_scribe.units
 import tests.factories
@@ -23,9 +24,9 @@ from peri_scribe.units import units
 
 
 def test_latest_snapshot_layer_returns_none_without_layer_name() -> None:
-    source = peri_scribe.sources.external_sources.ExternalSource(
+    source = peri_scribe.sources.external_data.ExternalSource(
         name="none",
-        kind=peri_scribe.sources.external_sources.ExternalSourceKind.ARCGIS,
+        kind=peri_scribe.sources.external_data.ExternalSourceKind.ARCGIS,
         url="https://example.test/FeatureServer/0",
     )
     assert (
@@ -41,7 +42,7 @@ def test_latest_snapshot_layer_returns_none_without_snapshot(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        peri_scribe.sources.external_sources,
+        peri_scribe.sources.external_data,
         "output_path",
         lambda _year_directory, _source: pathlib.Path("/sources/evacuations.gpkg"),
     )
@@ -61,7 +62,7 @@ def test_latest_snapshot_layer_names_source_geopackage(
     path = tmp_path / "evacuations.gpkg"
     path.write_bytes(b"data")
     monkeypatch.setattr(
-        peri_scribe.sources.external_sources,
+        peri_scribe.sources.external_data,
         "output_path",
         lambda _year_directory, _source: path,
     )

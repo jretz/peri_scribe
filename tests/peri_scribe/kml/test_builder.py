@@ -573,11 +573,10 @@ def test_write_archive_writes_compressed_document(
 
     assert len(archives) == 1
     archive = archives[0]
-    assert archive.arguments == (path, "w")
-    assert archive.keywords["compression"] == zipfile.ZIP_DEFLATED
+    assert archive.args == (path, "w")
+    assert archive.kwargs["compression"] == zipfile.ZIP_DEFLATED
     assert (
-        archive.keywords["compresslevel"]
-        == peri_scribe.kml.builder.KMZ_COMPRESSION_LEVEL
+        archive.kwargs["compresslevel"] == peri_scribe.kml.builder.KMZ_COMPRESSION_LEVEL
     )
     assert archive.writes == [("doc.kml", "<kml/>", None)]
 
@@ -804,7 +803,11 @@ def test_create_kmz_advances_checkpoint_only_after_file_completion(
         "load_fire_scores",
         lambda _year: None,
     )
-    monkeypatch.setattr(peri_scribe.geo.reading, "read_layer", lambda *_args: empty)
+    monkeypatch.setattr(
+        peri_scribe.geo.reading,
+        "read_layer",
+        lambda *_args: empty,
+    )
     checkpoint = peri_scribe.publication.publication_path(year)
     checkpoint.parent.mkdir()
     checkpoint.write_bytes(b"previous checkpoint")

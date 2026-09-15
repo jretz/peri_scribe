@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
-from typing import TYPE_CHECKING
+import typing
 
 import numpy as np
 
@@ -19,7 +19,7 @@ import peri_scribe.sources.feeds
 import tests.factories
 
 
-if TYPE_CHECKING:
+if typing.TYPE_CHECKING:
     import pytest
 
 

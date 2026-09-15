@@ -2,26 +2,22 @@
 
 from __future__ import annotations
 
-from tests.conftest import (
-    SAMPLE_FEED_URL,
-    SAMPLE_FIRE_NAME_COLUMN,
-    SAMPLE_STATUS_COLUMN,
-)
+import tests.conftest
 
 
-def feed_document(**overrides: object) -> dict[str, object]:
-    """Return the sample feed's configuration document with *overrides*.
+def feed_document(**kwargs: object) -> dict[str, object]:
+    """Return the sample feed's configuration document with *kwargs*.
 
     Args:
-        overrides: Configuration keys to add or replace.
+        kwargs: Configuration keys to add or replace.
 
     Returns:
         The feed configuration document.
     """
     return {
         "feed_type": "ArcGISFeed",
-        "url": SAMPLE_FEED_URL,
-        "fire_name_column": SAMPLE_FIRE_NAME_COLUMN,
-        "status_column": SAMPLE_STATUS_COLUMN,
-        **overrides,
+        "url": tests.conftest.SAMPLE_FEED_URL,
+        "fire_name_column": tests.conftest.SAMPLE_FIRE_NAME_COLUMN,
+        "status_column": tests.conftest.SAMPLE_STATUS_COLUMN,
+        **kwargs,
     }

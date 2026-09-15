@@ -9,21 +9,25 @@ import structlog
 
 import peri_scribe.fires.grouping
 import peri_scribe.models
+import tests.factories
 import tests.peri_scribe.fires.grouping_helpers
-from tests.factories import ACTIVE, INACTIVE, fire_record
 
 
 def test_most_common_fire_prefers_unique_fire_identifier_over_guid() -> None:
     unique_id = "2026-nvccd-030683"
     guid = "286b7f1d-8945-4a5d-9d81-5235c18af1fe"
     occurrences = [
-        fire_record("Bug", ACTIVE, identifiers={guid}),
-        fire_record("Bug", ACTIVE, identifiers={unique_id, guid}),
+        tests.factories.fire_record("Bug", tests.factories.ACTIVE, identifiers={guid}),
+        tests.factories.fire_record(
+            "Bug",
+            tests.factories.ACTIVE,
+            identifiers={unique_id, guid},
+        ),
     ]
     assert peri_scribe.fires.grouping.most_common_fire(occurrences) == (
         peri_scribe.models.Fire(
             name="Bug",
-            status=ACTIVE,
+            status=tests.factories.ACTIVE,
             identifier=unique_id,
             aliases=frozenset({unique_id, guid}),
         )
@@ -32,11 +36,13 @@ def test_most_common_fire_prefers_unique_fire_identifier_over_guid() -> None:
 
 def test_most_common_fire_uses_guid_without_unique_fire_identifier() -> None:
     guid = "286b7f1d-8945-4a5d-9d81-5235c18af1fe"
-    occurrences = [fire_record("Bug", ACTIVE, identifiers={guid})]
+    occurrences = [
+        tests.factories.fire_record("Bug", tests.factories.ACTIVE, identifiers={guid}),
+    ]
     assert peri_scribe.fires.grouping.most_common_fire(occurrences) == (
         peri_scribe.models.Fire(
             name="Bug",
-            status=ACTIVE,
+            status=tests.factories.ACTIVE,
             identifier=guid,
             aliases=frozenset({guid}),
         )
@@ -51,17 +57,24 @@ def test_is_mixed_case() -> None:
 
 
 def test_warn_for_inconsistent_fires_ignores_group_without_geometries() -> None:
-    records = [fire_record("RIVER", ACTIVE), fire_record("RIVER", INACTIVE)]
-    fires = [peri_scribe.models.Fire(name="RIVER", status=ACTIVE)]
+    records = [
+        tests.factories.fire_record("RIVER", tests.factories.ACTIVE),
+        tests.factories.fire_record("RIVER", tests.factories.INACTIVE),
+    ]
+    fires = [peri_scribe.models.Fire(name="RIVER", status=tests.factories.ACTIVE)]
     assert tests.peri_scribe.fires.grouping_helpers.warning_events(records, fires) == []
 
 
 def test_warn_for_inconsistent_fires_logs_outlier_for_record_without_geometry() -> None:
     records = [
-        fire_record("RIVER", ACTIVE, geometry=shapely.geometry.Point(0, 0)),
-        fire_record("RIVER", INACTIVE),
+        tests.factories.fire_record(
+            "RIVER",
+            tests.factories.ACTIVE,
+            geometry=shapely.geometry.Point(0, 0),
+        ),
+        tests.factories.fire_record("RIVER", tests.factories.INACTIVE),
     ]
-    fires = [peri_scribe.models.Fire(name="RIVER", status=ACTIVE)]
+    fires = [peri_scribe.models.Fire(name="RIVER", status=tests.factories.ACTIVE)]
     assert [
         event["event"]
         for event in tests.peri_scribe.fires.grouping_helpers.warning_events(
@@ -73,10 +86,18 @@ def test_warn_for_inconsistent_fires_logs_outlier_for_record_without_geometry() 
 
 def test_warn_for_inconsistent_fires_logs_outlier_when_other_geometries_empty() -> None:
     records = [
-        fire_record("RIVER", ACTIVE, geometry=shapely.geometry.Point()),
-        fire_record("RIVER", INACTIVE, geometry=shapely.geometry.Point(0, 0)),
+        tests.factories.fire_record(
+            "RIVER",
+            tests.factories.ACTIVE,
+            geometry=shapely.geometry.Point(),
+        ),
+        tests.factories.fire_record(
+            "RIVER",
+            tests.factories.INACTIVE,
+            geometry=shapely.geometry.Point(0, 0),
+        ),
     ]
-    fires = [peri_scribe.models.Fire(name="RIVER", status=ACTIVE)]
+    fires = [peri_scribe.models.Fire(name="RIVER", status=tests.factories.ACTIVE)]
     assert [
         event["event"]
         for event in tests.peri_scribe.fires.grouping_helpers.warning_events(
@@ -88,10 +109,14 @@ def test_warn_for_inconsistent_fires_logs_outlier_when_other_geometries_empty() 
 
 def test_warn_for_inconsistent_fires_logs_spatial_outlier() -> None:
     records = [
-        fire_record("RIVER", ACTIVE, geometry=shapely.geometry.Point(0, 0)),
-        fire_record(
+        tests.factories.fire_record(
+            "RIVER",
+            tests.factories.ACTIVE,
+            geometry=shapely.geometry.Point(0, 0),
+        ),
+        tests.factories.fire_record(
             "River",
-            ACTIVE,
+            tests.factories.ACTIVE,
             identifiers={"67e0a229-1214-4e17-a80d-c819f88013e8"},
             geometry=shapely.geometry.Point(10, 10),
         ),
@@ -99,7 +124,7 @@ def test_warn_for_inconsistent_fires_logs_spatial_outlier() -> None:
     fires = [
         peri_scribe.models.Fire(
             name="River",
-            status=ACTIVE,
+            status=tests.factories.ACTIVE,
             identifier="67e0a229-1214-4e17-a80d-c819f88013e8",
         ),
     ]
@@ -115,15 +140,15 @@ def test_warn_for_inconsistent_fires_logs_spatial_outlier() -> None:
 def test_warn_for_inconsistent_fires_logs_temporal_outlier() -> None:
     location = shapely.geometry.Point(0, 0)
     records = [
-        fire_record(
+        tests.factories.fire_record(
             "RIVER",
-            ACTIVE,
+            tests.factories.ACTIVE,
             geometry=location,
             observed_at=datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC),
         ),
-        fire_record(
+        tests.factories.fire_record(
             "River",
-            ACTIVE,
+            tests.factories.ACTIVE,
             identifiers={"67e0a229-1214-4e17-a80d-c819f88013e8"},
             geometry=location,
             observed_at=datetime.datetime(2026, 6, 1, tzinfo=datetime.UTC),
@@ -132,7 +157,7 @@ def test_warn_for_inconsistent_fires_logs_temporal_outlier() -> None:
     fires = [
         peri_scribe.models.Fire(
             name="River",
-            status=ACTIVE,
+            status=tests.factories.ACTIVE,
             identifier="67e0a229-1214-4e17-a80d-c819f88013e8",
         ),
     ]
@@ -147,11 +172,19 @@ def test_warn_for_inconsistent_fires_logs_temporal_outlier() -> None:
 
 def test_warn_for_inconsistent_fires_ignores_duplicate_geometry_singleton() -> None:
     records = [
-        fire_record("RIVER", ACTIVE, geometry=shapely.geometry.Point(0, 0)),
-        fire_record("RIVER", INACTIVE, geometry=shapely.geometry.Point(0, 0)),
-        fire_record(
+        tests.factories.fire_record(
             "RIVER",
-            INACTIVE,
+            tests.factories.ACTIVE,
+            geometry=shapely.geometry.Point(0, 0),
+        ),
+        tests.factories.fire_record(
+            "RIVER",
+            tests.factories.INACTIVE,
+            geometry=shapely.geometry.Point(0, 0),
+        ),
+        tests.factories.fire_record(
+            "RIVER",
+            tests.factories.INACTIVE,
             identifiers={"67e0a229-1214-4e17-a80d-c819f88013e8"},
             geometry=shapely.geometry.Point(0.1, 0.1),
         ),
@@ -159,7 +192,7 @@ def test_warn_for_inconsistent_fires_ignores_duplicate_geometry_singleton() -> N
     fires = [
         peri_scribe.models.Fire(
             name="RIVER",
-            status=ACTIVE,
+            status=tests.factories.ACTIVE,
             identifier="67e0a229-1214-4e17-a80d-c819f88013e8",
         ),
     ]
@@ -174,11 +207,19 @@ def test_warn_for_inconsistent_fires_ignores_duplicate_geometry_singleton() -> N
 
 def test_warn_for_inconsistent_fires_logs_singleton_outlier_among_duplicates() -> None:
     records = [
-        fire_record("RIVER", ACTIVE, geometry=shapely.geometry.Point(0, 0)),
-        fire_record("RIVER", INACTIVE, geometry=shapely.geometry.Point(0, 0)),
-        fire_record(
+        tests.factories.fire_record(
             "RIVER",
-            INACTIVE,
+            tests.factories.ACTIVE,
+            geometry=shapely.geometry.Point(0, 0),
+        ),
+        tests.factories.fire_record(
+            "RIVER",
+            tests.factories.INACTIVE,
+            geometry=shapely.geometry.Point(0, 0),
+        ),
+        tests.factories.fire_record(
+            "RIVER",
+            tests.factories.INACTIVE,
             identifiers={"67e0a229-1214-4e17-a80d-c819f88013e8"},
             geometry=shapely.geometry.Point(10, 10),
         ),
@@ -186,7 +227,7 @@ def test_warn_for_inconsistent_fires_logs_singleton_outlier_among_duplicates() -
     fires = [
         peri_scribe.models.Fire(
             name="RIVER",
-            status=ACTIVE,
+            status=tests.factories.ACTIVE,
             identifier="67e0a229-1214-4e17-a80d-c819f88013e8",
         ),
     ]
@@ -204,12 +245,27 @@ def test_warn_for_inconsistent_fires_logs_singleton_outlier_among_duplicates() -
 def test_group_fire_record_indices_merges_identical_geometry_records() -> None:
     location = shapely.geometry.Point(0, 0)
     records = [
-        fire_record("RIVER", ACTIVE, identifiers={"a"}, geometry=location),
-        fire_record("RIVER", ACTIVE, identifiers={"b"}, geometry=location),
-        fire_record("RIVER", ACTIVE, identifiers={"c"}, geometry=location),
-        fire_record(
+        tests.factories.fire_record(
             "RIVER",
-            ACTIVE,
+            tests.factories.ACTIVE,
+            identifiers={"a"},
+            geometry=location,
+        ),
+        tests.factories.fire_record(
+            "RIVER",
+            tests.factories.ACTIVE,
+            identifiers={"b"},
+            geometry=location,
+        ),
+        tests.factories.fire_record(
+            "RIVER",
+            tests.factories.ACTIVE,
+            identifiers={"c"},
+            geometry=location,
+        ),
+        tests.factories.fire_record(
+            "RIVER",
+            tests.factories.ACTIVE,
             identifiers={"d"},
             geometry=shapely.geometry.Point(50, 50),
         ),
@@ -220,21 +276,21 @@ def test_group_fire_record_indices_merges_identical_geometry_records() -> None:
 
 def test_group_fire_record_indices_unions_distinct_geometry_classes() -> None:
     records = [
-        fire_record(
+        tests.factories.fire_record(
             "RIVER",
-            ACTIVE,
+            tests.factories.ACTIVE,
             identifiers={"a"},
             geometry=shapely.geometry.Point(0, 0),
         ),
-        fire_record(
+        tests.factories.fire_record(
             "RIVER",
-            ACTIVE,
+            tests.factories.ACTIVE,
             identifiers={"b"},
             geometry=shapely.geometry.Point(0, 0),
         ),
-        fire_record(
+        tests.factories.fire_record(
             "RIVER",
-            ACTIVE,
+            tests.factories.ACTIVE,
             identifiers={"c"},
             geometry=shapely.geometry.Point(0.01, 0.01),
         ),

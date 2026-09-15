@@ -37,7 +37,7 @@ RATE_LIMIT_ERROR_PATTERN = re.compile(
 """,
 )
 
-DEFAULT_MAX_RETRIES = 4
+DEFAULT_MAXIMUM_RETRIES = 4
 FALLBACK_RETRY = 60 * units.seconds
 
 # Base and cap for exponential backoff on transient network errors.
@@ -227,20 +227,20 @@ def run_with_retry[Result](
     feed_name: str,
     query: typing.Callable[[], Result],
     *,
-    max_retries: int = DEFAULT_MAX_RETRIES,
+    maximum_retries: int = DEFAULT_MAXIMUM_RETRIES,
 ) -> Result:
     """Run *query*, retrying on transient and rate-limit errors.
 
     Rate-limit errors (HTTP 429 from the ArcGIS REST API) wait for the server-suggested
     ``Retry after`` delay (or the fallback for a loose 429 response). Other transient
     network errors wait with exponential backoff starting at ``BACKOFF_BASE`` and capped
-    at ``BACKOFF_MAXIMUM``. Up to *max_retries* retries are made before the last error
-    is re-raised.
+    at ``BACKOFF_MAXIMUM``. Up to *maximum_retries* retries are made before the last
+    error is re-raised.
 
     Args:
         feed_name: Human-readable feed identifier for log messages.
         query: The zero-argument callable that performs a single attempt.
-        max_retries: Maximum number of retries before giving up.
+        maximum_retries: Maximum number of retries before giving up.
 
     Returns:
         The result returned by *query*.
@@ -287,7 +287,7 @@ def run_with_retry[Result](
     retrying = tenacity.Retrying(
         retry=tenacity.retry_if_exception(is_retryable_error),
         wait=retry_wait,
-        stop=tenacity.stop_after_attempt(max_retries + 1),
+        stop=tenacity.stop_after_attempt(maximum_retries + 1),
         before_sleep=log_before_sleep,
         retry_error_callback=log_exhaustion,
     )

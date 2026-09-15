@@ -15,8 +15,8 @@ import defusedxml.ElementTree as DefusedElementTree
 import geopandas
 import pytest
 
-import peri_scribe.kml.fire_data
 import peri_scribe.kml.geometry
+import peri_scribe.kml.perimeters
 import peri_scribe.models
 
 
@@ -58,7 +58,7 @@ def gx_tag(name: str) -> str:
 def perimeter_with_time(
     geometry: shapely.Geometry,
     observation_time: datetime.datetime | None = None,
-) -> peri_scribe.kml.fire_data.Perimeter:
+) -> peri_scribe.kml.perimeters.Perimeter:
     """Build a perimeter with *geometry* and *observation_time*.
 
     Args:
@@ -68,7 +68,7 @@ def perimeter_with_time(
     Returns:
         The perimeter.
     """
-    return peri_scribe.kml.fire_data.Perimeter(
+    return peri_scribe.kml.perimeters.Perimeter(
         geometry=geometry,
         observation_time=observation_time,
     )
