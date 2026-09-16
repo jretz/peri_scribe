@@ -138,6 +138,7 @@ run = [
     "echo '*.kmz' >> .gitignore",
     "echo 'coverage.json' >> .gitignore",
     "echo 'data/' >> .gitignore",
+    "echo 'pytest-slow-first.json' >> .gitignore",
 ]
 
 [env]

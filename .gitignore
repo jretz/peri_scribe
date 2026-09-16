@@ -277,3 +277,4 @@ Temporary Items
 *.kmz
 coverage.json
 data/
+pytest-slow-first.json

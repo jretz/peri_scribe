@@ -14,6 +14,7 @@ dependencies = [
     "pygments",  # For pytest code highlighting
     "pyproj",
     "pytest-cov",
+    "pytest-slow-first",
     "pytest-tqdm",
     "pytest-xdist",
     "pytest",
@@ -68,9 +69,12 @@ addopts = [
     "--cov-report=",
     "--cov=src",
 
+    # pytest-slow-first
+    "--slow-first",
+
     # pytest-xdist
     "--dist=worksteal",
-    "--numprocesses=6",
+    "--numprocesses=8",
 ]
 filterwarnings = [
     # Deprecation warnings raised at import time by third-party dependencies (arcgis,
