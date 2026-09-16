@@ -21,7 +21,9 @@ import peri_scribe.fires.scores
 import peri_scribe.kml.builder
 import peri_scribe.kml.colormap
 import peri_scribe.logging
+import peri_scribe.monitor.app
 import peri_scribe.output
+import peri_scribe.phases
 import peri_scribe.pipeline_stages
 import peri_scribe.pipeline_state
 import peri_scribe.publication
@@ -241,9 +243,8 @@ def fetch_external_source(
     """
     if year_directory is None:
         year_directory = default_year_directory()
-    with peri_scribe.logging.log_execution(
-        "phase",
-        "collect-external-source",
+    with peri_scribe.logging.log_phase(
+        peri_scribe.phases.Phase.COLLECT_EXTERNAL_SOURCE,
         source=source.name,
     ):
         paths = peri_scribe.sources.external_sources.fetch_external_source(
@@ -482,12 +483,12 @@ def run_gated_fetch_stage(
         defer_index=True,
     )
     try:
-        with peri_scribe.logging.log_execution("phase", "evacuation-check"):
+        with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.EVACUATION_CHECK):
             fetch_external_source(
                 peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
                 year_directory,
             )
-        with peri_scribe.logging.log_execution("phase", "publication-gate"):
+        with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.PUBLICATION_GATE):
             decision = publication_decision(year_directory, threshold)
     except Exception, SystemExit:
         peri_scribe.pipeline_state.require_stages(
@@ -507,12 +508,16 @@ def run_gated_fetch_stage(
         threshold=threshold.area.to("acres"),
     )
     if not proceed:
+        peri_scribe.logging.skip_phases(
+            (peri_scribe.phases.Phase.DEFERRED_FETCH,),
+            decision.reason,
+        )
         return False
     peri_scribe.pipeline_state.require_stages(
         year_directory,
         peri_scribe.pipeline_state.DERIVED_STAGES,
     )
-    with peri_scribe.logging.log_execution("phase", "deferred-fetch"):
+    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.DEFERRED_FETCH):
         peri_scribe.fires.index.index_fire_sources(year_directory)
         if full:
             peri_scribe.sources.full_fetch_state.write_state(
@@ -564,7 +569,9 @@ def refresh_external_sources(
     Returns:
         Whether evacuation geography changed.
     """
-    with peri_scribe.logging.log_execution("phase", "external-source-refresh"):
+    with peri_scribe.logging.log_phase(
+        peri_scribe.phases.Phase.EXTERNAL_SOURCE_REFRESH,
+    ):
         evacuations_digest_before = (
             stored_evacuations_digest(year_directory) if include_evacuations else None
         )
@@ -575,7 +582,9 @@ def refresh_external_sources(
             ):
                 continue
             fetch_external_source(source, year_directory)
-        with peri_scribe.logging.log_execution("phase", "administrative-boundaries"):
+        with peri_scribe.logging.log_phase(
+            peri_scribe.phases.Phase.ADMINISTRATIVE_BOUNDARIES,
+        ):
             peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries(
                 year_directory,
             )
@@ -706,7 +715,7 @@ def run_pipeline_stage(
     Returns:
         True when the next stage should run.
     """
-    with peri_scribe.logging.log_execution("phase", stage.name):
+    with peri_scribe.logging.log_phase(stage.name):
         match stage.name:
             case peri_scribe.pipeline_stages.Stage.FETCH:
                 return run_fetch_stage(
@@ -919,6 +928,12 @@ def run(
                 year=str(year_directory),
             )
             return
+        logger.info(
+            "Planned phases",
+            branches=configured_phase_branches(),
+            gated=publish_threshold is not None,
+            stages=tuple(stage.name for stage in PIPELINE_STAGES[start : end + 1]),
+        )
         run_selected_stages(
             year_directory,
             start,
@@ -978,6 +993,15 @@ def run_selected_stages(
         if not should_continue and stage is not PIPELINE_STAGES[end]:
             if publish_threshold is None:
                 logger.debug("Nothing changed; skipping remaining pipeline steps")
+                peri_scribe.logging.skip_phases(
+                    tuple(
+                        item.name
+                        for item in PIPELINE_STAGES[
+                            STAGE_INDEX[stage.name] + 1 : end + 1
+                        ]
+                    ),
+                    "No fire or evacuation data changed",
+                )
             break
         if (
             stage.name == peri_scribe.pipeline_stages.Stage.GEOGRAPHY
@@ -1047,6 +1071,45 @@ def validate_sources(year_directory: pathlib.Path) -> None:
         len(problem_results),
         len(results),
     )
+
+
+def configured_phase_branches() -> peri_scribe.phases.Branches:
+    """Give execution and observers the same configured source instance names.
+
+    Returns:
+        Feed and external-source branches used to expand the phase catalogue.
+    """
+    return peri_scribe.phases.Branches(
+        feeds=tuple(feed.name for feed in peri_scribe.sources.feeds.FEEDS),
+        sources=tuple(
+            source.name
+            for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES
+        ),
+        evacuations=peri_scribe.sources.external_sources.EVACUATIONS_SOURCE.name,
+    )
+
+
+@cli.command(
+    help="Observe live logs, pipeline phases, run history, and the current report. "
+    + year_directory_default_help(),
+)
+@click.argument(
+    "year_directory",
+    type=click.Path(path_type=pathlib.Path, file_okay=False),
+    required=False,
+    callback=command_year_directory,
+)
+def monitor(year_directory: pathlib.Path) -> None:
+    """Observe a year directory without writing logs or acquiring the pipeline lock.
+
+    Args:
+        year_directory: The resolved directory whose logs and report should be watched.
+    """
+    peri_scribe.monitor.app.MonitorApp(
+        year_directory,
+        peri_scribe.report.markdown.markdown_report_path(year_directory),
+        configured_phase_branches(),
+    ).run()
 
 
 def distribution_version() -> str:

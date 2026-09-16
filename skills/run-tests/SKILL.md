@@ -12,15 +12,12 @@ Run the offline KMZ stage directly from the project root with the `python` that'
 path (that will get the one in .venv):
 
 ```bash
-pytest;
-ruff format --check;
-ruff check;
-ty check;
+.venv/bin/pytest;
+.venv/bin/coverage json --quiet --fail-under=100 -o .coverage/coverage.json;
+.venv/bin/ruff format --check --config 'lint.ignore = ["COM812"]';
+.venv/bin/ruff check;
+.venv/bin/ty check;
 rumdl_bin="$(mise which rumdl)" ; "$rumdl_bin" check;
 ```
 
 All tests should run in well under a minute.
-
-The ruff format check will give a warning about COM812 - ignore that. Do not ignore (or
-cause tooling to ignore) any other warnings or errors that arise from any of the test
-stages.

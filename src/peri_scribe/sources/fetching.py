@@ -17,6 +17,7 @@ import peri_scribe.geo.data
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.output
+import peri_scribe.phases
 import peri_scribe.sources.changes
 import peri_scribe.sources.feed_state
 import peri_scribe.sources.feed_types
@@ -85,9 +86,8 @@ def fetch_feed_dataframe(
             source_directory,
             feed,
         )
-        with peri_scribe.logging.log_execution(
-            "phase",
-            "compare-features",
+        with peri_scribe.logging.log_phase(
+            peri_scribe.phases.Phase.COMPARE_FEATURES,
             feed=feed.name,
         ):
             geodataframe = peri_scribe.sources.changes.drop_features_already_present(
@@ -167,7 +167,10 @@ def fetch_feed_dataframe(
         parameters={"object_ids": ",".join(str(i) for i in object_ids)},
     )
     geodataframe = peri_scribe.geo.data.dataframe_for_layer(feed, layer, feature_set)
-    with peri_scribe.logging.log_execution("phase", "compare-features", feed=feed.name):
+    with peri_scribe.logging.log_phase(
+        peri_scribe.phases.Phase.COMPARE_FEATURES,
+        feed=feed.name,
+    ):
         geodataframe = peri_scribe.sources.changes.drop_features_already_present(
             geodataframe,
             existing,
@@ -265,21 +268,19 @@ def fetch_all_feeds(
         base_dir = pathlib.Path.cwd()
     if year is None:
         year = datetime.date.today().year
-    with peri_scribe.logging.log_execution("phase", "fire-collection"):
+    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.FIRE_COLLECTION):
         gis = arcgis.gis.GIS()
         snapshot_paths: list[pathlib.Path] = []
         errors: list[str] = []
         wrote_snapshot = False
         for feed in peri_scribe.sources.feeds.FEEDS:
-            with peri_scribe.logging.log_execution(
-                "phase",
-                "collect-feed",
+            with peri_scribe.logging.log_phase(
+                peri_scribe.phases.Phase.COLLECT_FEED,
                 feed=feed.name,
                 url=feed.url,
             ):
-                with peri_scribe.logging.log_execution(
-                    "phase",
-                    "check-metadata",
+                with peri_scribe.logging.log_phase(
+                    peri_scribe.phases.Phase.CHECK_METADATA,
                     feed=feed.name,
                 ):
                     last_edit_timestamp = feed.current_last_edit_timestamp
@@ -349,9 +350,8 @@ def fetch_all_feeds(
                     ),
                 )
                 output_path.parent.mkdir(parents=True, exist_ok=True)
-                with peri_scribe.logging.log_execution(
-                    "phase",
-                    "write-snapshot",
+                with peri_scribe.logging.log_phase(
+                    peri_scribe.phases.Phase.WRITE_SNAPSHOT,
                     feed=feed.name,
                     path=output_path,
                     rows=len(geodataframe),
@@ -367,9 +367,8 @@ def fetch_all_feeds(
                         ],
                     )
                 try:
-                    with peri_scribe.logging.log_execution(
-                        "phase",
-                        "update-current-state",
+                    with peri_scribe.logging.log_phase(
+                        peri_scribe.phases.Phase.UPDATE_CURRENT_STATE,
                         feed=feed.name,
                     ):
                         peri_scribe.sources.feed_state.write_current_state(

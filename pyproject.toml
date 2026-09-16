@@ -14,6 +14,7 @@ dependencies = [
     "pygments",  # For pytest code highlighting
     "pyproj",
     "pytest-cov",
+    "pytest-tqdm",
     "pytest-xdist",
     "pytest",
     "requests-mock",
@@ -28,6 +29,8 @@ dependencies = [
     "stream-unzip",
     "structlog",
     "tenacity",
+    "textual-dev",
+    "textual",
     "time-machine",
     "ty",
     "us",
@@ -39,6 +42,14 @@ peri_scribe = "peri_scribe.main:cli"
 [build-system]
 requires = ["uv_build < 0.13"]
 build-backend = "uv_build"
+
+[tool.coverage.json]
+pretty_print = true
+
+[tool.coverage.run]
+concurrency = ["multiprocessing"]
+data_file = ".coverage/data"
+relative_files = true
 
 [tool.pyright]
 typeCheckingMode = "off"
@@ -53,11 +64,8 @@ addopts = [
     "--showlocals",
 
     # pytest-cov
-    "--cov-fail-under=100",
-    "--cov-report=xml:coverage.xml",
-    "--cov-report=html",
+    "--cov-report=",
     "--cov=src",
-    "--no-cov-on-fail",
 
     # pytest-xdist
     "--dist=worksteal",

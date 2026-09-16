@@ -125,13 +125,17 @@ def test_cli_logs_command_boundaries_and_elapsed_seconds(
     result = runner.invoke(peri_scribe.main.cli, arguments)
 
     assert result.exit_code == 0
-    assert cli_log_output.entries[0] == {
+    assert tests.helpers.peri_scribe.main.boundary_payload(
+        cli_log_output.entries[0],
+    ) == {
         "event": "Starting command",
         "command": arguments[0],
         "log_level": "info",
         "parameters": parameters,
     }
-    assert cli_log_output.entries[-1] == {
+    assert tests.helpers.peri_scribe.main.boundary_payload(
+        cli_log_output.entries[-1],
+    ) == {
         "event": "Finished command",
         "command": arguments[0],
         "duration": {"value": 123.45, "units": units.seconds},
@@ -808,7 +812,7 @@ def test_run_logs_each_executed_phase_inside_command_boundaries(
     assert result.exit_code == 0
     phases = ["fetch", "geography", "score", "kmz", "reports"] if changed else ["fetch"]
     entries = [
-        entry
+        tests.helpers.peri_scribe.main.boundary_payload(entry)
         for entry in cli_log_output.entries
         if "command" in entry or "phase" in entry
     ]
@@ -871,7 +875,10 @@ def test_run_logs_elapsed_time_when_a_phase_fails(
 
     assert result.exit_code != 0
     assert result.exception is error
-    assert cli_log_output.entries[-2:] == [
+    assert [
+        tests.helpers.peri_scribe.main.boundary_payload(entry)
+        for entry in cli_log_output.entries[-2:]
+    ] == [
         {
             "event": "Finished phase",
             "phase": "score",

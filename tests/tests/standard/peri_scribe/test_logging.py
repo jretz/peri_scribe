@@ -272,8 +272,9 @@ def test_configure_logging_preserves_exception_details_in_both_destinations(
     except ValueError:
         structlog.get_logger().exception("Could not fetch", path=tmp_path)
     captured = capsys.readouterr()
-    assert "ValueError: fetch failed" in captured.err
-    assert "Traceback (most recent call last)" in captured.err
+    stderr = click.unstyle(captured.err)
+    assert "ValueError: fetch failed" in stderr
+    assert "Traceback (most recent call last)" in stderr
     path = next((tmp_path / "logs").glob("*.jsonl"))
     entry = json.loads(path.read_text())
     assert entry["path"] == str(tmp_path)

@@ -28,6 +28,7 @@ import peri_scribe.kml.selection
 import peri_scribe.kml.styles
 import peri_scribe.logging
 import peri_scribe.models
+import peri_scribe.phases
 import peri_scribe.publication
 import peri_scribe.sources.snapshots
 
@@ -479,7 +480,7 @@ def prepare_histories(
     Returns:
         Prepared reporting and area decisions keyed by canonical identity.
     """
-    with peri_scribe.logging.log_execution("phase", "prepare-fire-histories"):
+    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.PREPARE_FIRE_HISTORIES):
         return peri_scribe.kml.selection.prepare_histories(
             perimeters,
             points,
@@ -620,7 +621,9 @@ def create_kmz(
         excluded_fires=fire_count - len(index.fires),
         minimum_area=peri_scribe.kml.selection.MINIMUM_FIRE_AREA,
     )
-    with peri_scribe.logging.log_execution("phase", "prepare-fire-geometries"):
+    with peri_scribe.logging.log_phase(
+        peri_scribe.phases.Phase.PREPARE_FIRE_GEOMETRIES,
+    ):
         geometries = peri_scribe.kml.fire_data.fire_geometries(
             index,
             perimeters,
@@ -645,8 +648,10 @@ def create_kmz(
         if publication_inputs is not None
         else None
     )
-    with peri_scribe.logging.log_execution("phase", "serialize-and-write-kmz"):
-        with peri_scribe.logging.log_execution("phase", "build-kml"):
+    with peri_scribe.logging.log_phase(
+        peri_scribe.phases.Phase.SERIALIZE_AND_WRITE_KMZ,
+    ):
+        with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.BUILD_KML):
             kml_text = fire_kml(
                 geometries,
                 output_path.stem,

@@ -24,6 +24,7 @@ import peri_scribe.kml.text
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.perimeters.progression
+import peri_scribe.phases
 
 
 if typing.TYPE_CHECKING:
@@ -499,7 +500,9 @@ def fire_geometries(
         histories=histories,
     )
     if render_plots:
-        with peri_scribe.logging.log_execution("phase", "prepare-plot-images"):
+        with peri_scribe.logging.log_phase(
+            peri_scribe.phases.Phase.PREPARE_PLOT_IMAGES,
+        ):
             image_bundles = peri_scribe.kml.plot_rendering.plot_image_bundles(
                 tuple(plot_bundles),
                 before_rendering=functools.partial(

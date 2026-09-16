@@ -41,6 +41,7 @@ import peri_scribe.fires.scoring
 import peri_scribe.geo.parsing
 import peri_scribe.logging
 import peri_scribe.output
+import peri_scribe.phases
 import peri_scribe.sources.buildings
 import peri_scribe.sources.external_data
 import peri_scribe.sources.external_sources
@@ -475,7 +476,7 @@ def scoring_input(year_directory: pathlib.Path) -> ScoringInput:
     point_keys = peri_scribe.fires.identity.group_keys(points)
     keys = sorted(set(perimeter_keys) | set(point_keys))
     metrics, first_mapping = fire_metrics(perimeters, perimeter_keys)
-    with peri_scribe.logging.log_execution("phase", "select-current-areas"):
+    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.SELECT_CURRENT_AREAS):
         areas = displayed_areas(keys, full_perimeters, points, point_keys, incidents)
     names, identifiers = fire_names_and_identifiers(
         perimeters,
@@ -483,7 +484,7 @@ def scoring_input(year_directory: pathlib.Path) -> ScoringInput:
         perimeter_keys,
         point_keys,
     )
-    with peri_scribe.logging.log_execution("phase", "spatial-signals"):
+    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.SPATIAL_SIGNALS):
         geometries = cumulative_fire_geometries(
             keys,
             full_perimeters,

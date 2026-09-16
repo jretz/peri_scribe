@@ -15,6 +15,7 @@ import peri_scribe.geo.reading
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.output
+import peri_scribe.phases
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.snapshots
 
@@ -140,9 +141,8 @@ def read_current_features(
     Returns:
         The most recent feature per OBJECTID, or None when there are none.
     """
-    with peri_scribe.logging.log_execution(
-        "phase",
-        "read-current-state",
+    with peri_scribe.logging.log_phase(
+        peri_scribe.phases.Phase.READ_CURRENT_STATE,
         feed=feed.name,
     ):
         state_files = peri_scribe.sources.snapshots.current_state_file_paths(directory)

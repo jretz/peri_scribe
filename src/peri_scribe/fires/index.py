@@ -9,6 +9,7 @@ import peri_scribe.fires.sources
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.output
+import peri_scribe.phases
 import peri_scribe.sources.snapshots
 
 
@@ -135,20 +136,22 @@ def index_fire_sources(year_directory: pathlib.Path) -> None:
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
     """
-    with peri_scribe.logging.log_execution("phase", "source-index"):
+    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.SOURCE_INDEX):
         sources_directory = peri_scribe.sources.snapshots.sources_directory_path(
             year_directory,
         )
-        with peri_scribe.logging.log_execution("phase", "load-and-group-sources"):
+        with peri_scribe.logging.log_phase(
+            peri_scribe.phases.Phase.LOAD_AND_GROUP_SOURCES,
+        ):
             record_groups = peri_scribe.fires.sources.fire_record_groups(
                 sources_directory,
             )
-        with peri_scribe.logging.log_execution("phase", "classify-fires"):
+        with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.CLASSIFY_FIRES):
             classifications = peri_scribe.fires.classification.classify_fire_sources(
                 record_groups,
                 year_directory,
             )
-        with peri_scribe.logging.log_execution("phase", "write-index"):
+        with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.WRITE_INDEX):
             write_fire_index(year_directory, record_groups, classifications)
 
 

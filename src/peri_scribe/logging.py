@@ -11,6 +11,7 @@ import fcntl
 import functools
 import json
 import logging
+import os
 import pathlib
 import re
 import shutil
@@ -18,12 +19,15 @@ import sys
 import tempfile
 import time
 import typing
+import uuid
 
 import click
 import pint
 import pyproj
 import structlog
 
+import peri_scribe.phases
+import peri_scribe.pipeline_stages
 from peri_scribe.units import units
 
 
@@ -31,6 +35,16 @@ logger = structlog.get_logger()
 PHASE_PATH: contextvars.ContextVar[tuple[str, ...]] = contextvars.ContextVar(
     "phase_path",
     default=(),
+)
+PHASE_INSTANCES: contextvars.ContextVar[peri_scribe.phases.Path] = (
+    contextvars.ContextVar(
+        "phase_instances",
+        default=(),
+    )
+)
+RUN_CONTEXT: contextvars.ContextVar[dict[str, object] | None] = contextvars.ContextVar(
+    "run_context",
+    default=None,
 )
 
 
@@ -87,9 +101,15 @@ def serialize_log_values(
     Returns:
         The event with serializable application fields and native exception metadata.
     """
+    context = dict(RUN_CONTEXT.get() or {})
+    if PHASE_INSTANCES.get():
+        context.update(
+            phase_path=".".join(PHASE_PATH.get()),
+            phase_segments=PHASE_INSTANCES.get(),
+        )
     return {
         name: value if name == "exc_info" else log_value(value)
-        for name, value in event_dict.items()
+        for name, value in (context | dict(event_dict)).items()
     }
 
 
@@ -255,11 +275,32 @@ def log_execution(
         Control to the operation being timed.
     """
     phase_path = (*PHASE_PATH.get(), name) if kind == "phase" else ()
-    with PHASE_PATH.set(phase_path):
+    instances = (
+        (
+            *PHASE_INSTANCES.get(),
+            peri_scribe.phases.Segment(
+                phase=name,
+                branch=peri_scribe.phases.branch_name(name, kwargs),
+            ),
+        )
+        if kind == "phase"
+        else ()
+    )
+    run_context = (
+        {"run_id": str(uuid.uuid4()), "process_id": os.getpid()}
+        if kind == "command"
+        else RUN_CONTEXT.get() or {}
+    )
+    with (
+        PHASE_PATH.set(phase_path),
+        PHASE_INSTANCES.set(instances),
+        RUN_CONTEXT.set(run_context),
+    ):
         started_at = time.perf_counter() * units.seconds
-        context: dict[str, object] = {kind: name}
+        context: dict[str, object] = run_context | {kind: name}
         if kind == "phase":
             context["phase_path"] = ".".join(phase_path)
+            context["phase_segments"] = instances
         logger.info("Starting %s", kind, **context, **kwargs)
         status = "failed"
         try:
@@ -276,6 +317,51 @@ def log_execution(
                 duration=round(elapsed, 2),
                 status=status,
             )
+
+
+@contextlib.contextmanager
+def log_phase(
+    identifier: peri_scribe.phases.Identifier,
+    **kwargs: object,
+) -> typing.Generator[None]:
+    """Require registered phases and valid parentage at every execution boundary.
+
+    Args:
+        identifier: The shared catalogue's identifier for this operation.
+        kwargs: Structured feed, source, or other diagnostic context.
+
+    Yields:
+        Control while the phase is active.
+
+    Raises:
+        TypeError: If the phase is not a registered enum member.
+        ValueError: If the phase is invalid in its enclosing context.
+    """
+    if not isinstance(
+        identifier,
+        (peri_scribe.phases.Phase, peri_scribe.pipeline_stages.Stage),
+    ):
+        message = f"Undeclared phase: {identifier!r}"
+        raise TypeError(message)
+    parent = PHASE_PATH.get()
+    if parent and identifier not in peri_scribe.phases.CHILDREN.get(parent[-1], ()):
+        message = f"Phase {identifier} is not a child of {parent[-1]}"
+        raise ValueError(message)
+    with log_execution("phase", identifier, **kwargs):
+        yield
+
+
+def skip_phases(
+    identifiers: tuple[peri_scribe.phases.Identifier, ...],
+    reason: str,
+) -> None:
+    """Preserve the reason unentered branches disappear from the planned hierarchy.
+
+    Args:
+        identifiers: Sibling phases that will not run in the enclosing context.
+        reason: The execution decision responsible for skipping this work.
+    """
+    logger.info("Skipped phases", phases=identifiers, reason=reason)
 
 
 def command_line_parameters(context: click.Context) -> dict[str, object]:

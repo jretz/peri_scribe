@@ -18,6 +18,7 @@ import peri_scribe.geo.measurements
 import peri_scribe.incidents
 import peri_scribe.logging
 import peri_scribe.models
+import peri_scribe.phases
 import peri_scribe.sources.snapshots
 
 
@@ -128,14 +129,16 @@ def write_history_of_full_geography(
     sources_directory = peri_scribe.sources.snapshots.sources_directory_path(
         year_directory,
     )
-    with peri_scribe.logging.log_execution("phase", "load-and-group-sources"):
+    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.LOAD_AND_GROUP_SOURCES):
         read = peri_scribe.fires.sources.read_fire_sources(sources_directory)
         record_groups = peri_scribe.fires.sources.group_fire_sources(read)
     output_path = history_geopackage_path(year_directory)
     with (
         contextlib.nullcontext()
         if unconditional
-        else peri_scribe.logging.log_execution("phase", "load-reusable-history")
+        else peri_scribe.logging.log_phase(
+            peri_scribe.phases.Phase.LOAD_REUSABLE_HISTORY,
+        )
     ):
         cached = peri_scribe.fires.reuse.read_rows(
             output_path,
@@ -174,7 +177,7 @@ def write_history_of_full_geography(
             record_groups,
             classifications,
         )
-    with peri_scribe.logging.log_execution("phase", "reconstruct-geography"):
+    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.RECONSTRUCT_GEOGRAPHY):
         perimeter_rows, point_rows = peri_scribe.fires.history.history_layer_rows(
             record_groups,
             classifications,

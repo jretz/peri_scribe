@@ -15,6 +15,7 @@ import peri_scribe.exceptions
 import peri_scribe.geo.spatial_reference
 import peri_scribe.logging
 import peri_scribe.models
+import peri_scribe.phases
 import peri_scribe.retry
 import peri_scribe.sources.feed_types
 
@@ -151,7 +152,10 @@ def dataframe_for_layer(
     Raises:
         NoFeaturesError: If the feed returns no features.
     """
-    with peri_scribe.logging.log_execution("phase", "convert-features", feed=feed.name):
+    with peri_scribe.logging.log_phase(
+        peri_scribe.phases.Phase.CONVERT_FEATURES,
+        feed=feed.name,
+    ):
         features = feature_set.features
         if not features:
             message = f"Feed {feed.name} returned no features; no output was written"
@@ -189,7 +193,10 @@ def query_with_retry(
     Returns:
         The FeatureSet returned by a successful query.
     """
-    with peri_scribe.logging.log_execution("phase", "query-features", feed=feed_name):
+    with peri_scribe.logging.log_phase(
+        peri_scribe.phases.Phase.QUERY_FEATURES,
+        feed=feed_name,
+    ):
         query_parameters = {} if parameters is None else parameters
         return peri_scribe.retry.run_with_retry(
             feed_name,

@@ -56,6 +56,7 @@ import peri_scribe.geo.data
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.output
+import peri_scribe.phases
 import peri_scribe.sources.archives
 import peri_scribe.sources.buildings
 import peri_scribe.sources.digests
@@ -198,9 +199,8 @@ def fetch_arcgis_source(
     output = peri_scribe.sources.external_data.output_path(year_directory, source)
     try:
         geodataframe = query_arcgis_source(source)
-        with peri_scribe.logging.log_execution(
-            "phase",
-            "normalize-datetimes",
+        with peri_scribe.logging.log_phase(
+            peri_scribe.phases.Phase.NORMALIZE_DATETIMES,
             source=source.name,
         ):
             geodataframe = normalize_arcgis_datetimes(geodataframe)
@@ -213,9 +213,8 @@ def fetch_arcgis_source(
             )
             return output
         raise
-    with peri_scribe.logging.log_execution(
-        "phase",
-        "compare-features",
+    with peri_scribe.logging.log_phase(
+        peri_scribe.phases.Phase.COMPARE_FEATURES,
         source=source.name,
     ):
         if output.is_file() and peri_scribe.sources.digests.snapshot_matches(
@@ -233,9 +232,8 @@ def fetch_arcgis_source(
     temporary = output.with_name(f"{output.stem}.tmp.gpkg")
     output.parent.mkdir(parents=True, exist_ok=True)
     try:
-        with peri_scribe.logging.log_execution(
-            "phase",
-            "write-snapshot",
+        with peri_scribe.logging.log_phase(
+            peri_scribe.phases.Phase.WRITE_SNAPSHOT,
             source=source.name,
         ):
             peri_scribe.output.write_geopackage(
@@ -336,9 +334,8 @@ def query_arcgis_source(
     if not feature_set.features:
         message = f"External source {source.name} returned no features"
         raise peri_scribe.exceptions.ExternalDataError(message)
-    with peri_scribe.logging.log_execution(
-        "phase",
-        "convert-features",
+    with peri_scribe.logging.log_phase(
+        peri_scribe.phases.Phase.CONVERT_FEATURES,
         source=source.name,
     ):
         return peri_scribe.geo.data.geo_data_frame_from_feature_set(feature_set)

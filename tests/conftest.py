@@ -26,6 +26,7 @@ pytest_plugins = [
     "tests.helpers.fixtures.peri_scribe.kml.styles",
     "tests.helpers.fixtures.peri_scribe.logging",
     "tests.helpers.fixtures.peri_scribe.main",
+    "tests.helpers.fixtures.peri_scribe.monitor.application",
     "tests.helpers.fixtures.peri_scribe.main_publication",
     "tests.helpers.fixtures.peri_scribe.models",
     "tests.helpers.fixtures.peri_scribe.perimeters.classification_data",

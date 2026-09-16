@@ -45,6 +45,7 @@ import peri_scribe.exceptions
 import peri_scribe.fires.centroid_math
 import peri_scribe.fires.centroid_streaming
 import peri_scribe.logging
+import peri_scribe.phases
 import peri_scribe.sources.downloading
 import peri_scribe.sources.external_data
 import peri_scribe.sources.network
@@ -702,9 +703,8 @@ def fetch_buildings_database(
     if is_valid_database(output):
         logger.debug("External source already present", source=source.name, path=output)
         return (output,)
-    with peri_scribe.logging.log_execution(
-        "phase",
-        "buildings-database",
+    with peri_scribe.logging.log_phase(
+        peri_scribe.phases.Phase.BUILDINGS_DATABASE,
         source=source.name,
         path=output,
     ):

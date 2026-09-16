@@ -25,6 +25,7 @@ import peri_scribe.geo.reading
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.perimeters.progression
+import peri_scribe.phases
 import peri_scribe.units
 
 
@@ -510,12 +511,12 @@ def write_history_of_differential_geography(
     Returns:
         The path of the written differential GeoPackage.
     """
-    with peri_scribe.logging.log_execution("phase", "full-history"):
+    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.FULL_HISTORY):
         full_path = peri_scribe.fires.files.write_history_of_full_geography(
             year_directory,
             unconditional=unconditional,
         )
-    with peri_scribe.logging.log_execution("phase", "differential-history"):
+    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.DIFFERENTIAL_HISTORY):
         full_perimeters = peri_scribe.geo.reading.read_layer(
             full_path,
             peri_scribe.fires.files.PERIMETER_LAYER_NAME,

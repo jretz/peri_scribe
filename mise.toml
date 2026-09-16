@@ -10,6 +10,12 @@ depends = ["venv"]
 raw_args = true
 run = "uv run --locked peri_scribe run --from geography"
 
+[tasks.monitor]
+description = "Run the PeriScribe monitoring dashboard"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked peri_scribe monitor"
+
 [tasks.run-online]
 description = "Run the main module's run command steps"
 depends = ["venv"]
@@ -51,6 +57,11 @@ depends = ["venv"]
 raw_args = true
 run = "uv run --locked peri_scribe validate-sources"
 
+[tasks.coverage-report]
+description = "Generate a coverage report from previously collected data"
+depends = ["venv"]
+run = "uv run coverage json --quiet --fail-under=100 -o .coverage/coverage.json"
+
 [tasks.format]
 description = "Format with ruff"
 depends = ["venv"]
@@ -59,7 +70,7 @@ run = "uv run ruff format --quiet"
 [tasks.format-check]
 description = "Check format with ruff"
 depends = ["venv"]
-run = "uv run ruff format --check --quiet"
+run = "uv run ruff format --check --config 'lint.ignore = [\"COM812\"]'"
 
 [tasks.lint]
 description = "Check and fix style with ruff"
@@ -83,6 +94,7 @@ run = "uv run --locked --module pytest"
 description = "Run tests, then lint and typecheck"
 run = [
     { task = "pytest" },
+    { task = "coverage-report" },
     { task = "lint" },
     { task = "typecheck" },
     { task = "format-check" },
@@ -124,6 +136,7 @@ run = [
     "echo '.hypothesis/' >> .gitignore",
     "echo '*.kml' >> .gitignore",
     "echo '*.kmz' >> .gitignore",
+    "echo 'coverage.json' >> .gitignore",
     "echo 'data/' >> .gitignore",
 ]
 

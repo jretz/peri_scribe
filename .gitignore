@@ -275,4 +275,5 @@ Temporary Items
 .hypothesis/
 *.kml
 *.kmz
+coverage.json
 data/
