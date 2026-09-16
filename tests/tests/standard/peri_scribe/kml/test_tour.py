@@ -1,0 +1,206 @@
+"""Tests for peri_scribe.kml.tour."""
+
+from __future__ import annotations
+
+import datetime
+
+import pytest
+
+import peri_scribe.kml.geometry
+import peri_scribe.kml.tour
+import tests.helpers.peri_scribe.kml.parsing
+
+
+def test_time_label_returns_none_without_observation_time() -> None:
+    assert peri_scribe.kml.tour.time_label(None) is None
+
+
+def test_time_label_formats_california_time() -> None:
+    observation_time = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.tour.time_label(observation_time) == "08/05 13:30"
+
+
+def test_interior_placemark_name_without_observation_time() -> None:
+    assert peri_scribe.kml.tour.interior_placemark_name(None) == "Interior"
+
+
+def test_interior_placemark_name_with_observation_time() -> None:
+    observation_time = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.tour.interior_placemark_name(observation_time) == (
+        "08/05 13:30 Interior"
+    )
+
+
+def test_mapping_placemark_name_without_observation_time() -> None:
+    assert peri_scribe.kml.tour.mapping_placemark_name(None) == "Unknown Mapping"
+
+
+def test_mapping_placemark_name_with_observation_time() -> None:
+    observation_time = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.tour.mapping_placemark_name(observation_time) == (
+        "08/05 13:30 Perimeter"
+    )
+
+
+def test_interior_ring_id_names_folder_and_index() -> None:
+    assert peri_scribe.kml.tour.interior_ring_id("folder-7", 3) == (
+        "progression-ring-folder-7-3"
+    )
+
+
+def test_tour_wait_scales_days_by_playback_rate() -> None:
+    earlier = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
+    later = datetime.datetime(2026, 8, 8, 20, 0, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.tour.tour_wait(
+        earlier,
+        later,
+        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
+    ).m_as("seconds") == pytest.approx(3.0)
+    assert peri_scribe.kml.tour.tour_wait(earlier, later, 0.5).m_as(
+        "seconds",
+    ) == pytest.approx(1.5)
+
+
+def test_tour_wait_with_missing_observation_time() -> None:
+    observation_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.tour.tour_wait(
+        None,
+        observation_time,
+        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
+    ).m_as("seconds") == pytest.approx(0.0)
+    assert peri_scribe.kml.tour.tour_wait(
+        observation_time,
+        None,
+        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
+    ).m_as("seconds") == pytest.approx(0.0)
+
+
+def test_tour_playback_rate_for_short_fire() -> None:
+    first = datetime.datetime(2026, 8, 1, 0, 0, tzinfo=datetime.UTC)
+    second = datetime.datetime(2026, 8, 6, 0, 0, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.tour.tour_playback_rate([first, second]) == pytest.approx(
+        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
+    )
+
+
+def test_tour_playback_rate_for_five_day_fire() -> None:
+    first = datetime.datetime(2026, 8, 1, 0, 0, tzinfo=datetime.UTC)
+    second = datetime.datetime(2026, 8, 6, 0, 0, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.tour.tour_playback_rate([first, second]) == pytest.approx(
+        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
+    )
+
+
+def test_tour_playback_rate_for_long_fire() -> None:
+    first = datetime.datetime(2026, 8, 1, 0, 0, tzinfo=datetime.UTC)
+    second = datetime.datetime(2026, 8, 26, 0, 0, tzinfo=datetime.UTC)
+    rate = peri_scribe.kml.tour.tour_playback_rate([first, second])
+    assert rate == pytest.approx(0.2)
+    total_in_days = (second - first).total_seconds() / 86_400
+    assert total_in_days * rate == pytest.approx(
+        peri_scribe.kml.tour.MAXIMUM_TOUR_PLAYBACK.m_as("seconds"),
+    )
+
+
+def test_tour_playback_rate_without_two_observations() -> None:
+    observation_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
+    assert peri_scribe.kml.tour.tour_playback_rate([observation_time]) == pytest.approx(
+        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
+    )
+    assert peri_scribe.kml.tour.tour_playback_rate([None]) == pytest.approx(
+        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
+    )
+    assert peri_scribe.kml.tour.tour_playback_rate([]) == pytest.approx(
+        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
+    )
+
+
+def test_visibility_change_reveals_rings_through_index() -> None:
+    assert peri_scribe.kml.tour.visibility_change(["a", "b", "c"], 1) == (
+        '<Placemark targetId="a"><visibility>1</visibility></Placemark>'
+        '<Placemark targetId="b"><visibility>1</visibility></Placemark>'
+        '<Placemark targetId="c"><visibility>0</visibility></Placemark>'
+    )
+
+
+def test_progression_tour_reveals_rings_and_waits() -> None:
+    first = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
+    second = datetime.datetime(2026, 8, 8, 20, 0, tzinfo=datetime.UTC)
+    third = datetime.datetime(2026, 8, 9, 20, 0, tzinfo=datetime.UTC)
+    ring_times = [first, second, third]
+    writer = peri_scribe.kml.geometry.KmlWriter()
+    with writer.folder("Bug") as folder_id:
+        peri_scribe.kml.tour.progression_tour(writer, folder_id, ring_times)
+    bug_folder = tests.helpers.peri_scribe.kml.parsing.folder_named(
+        tests.helpers.peri_scribe.kml.parsing.document_from_writer(writer),
+        "Bug",
+    )
+    tour = tests.helpers.peri_scribe.kml.parsing.tour_named(bug_folder, "Progression")
+    updates = tests.helpers.peri_scribe.kml.parsing.tour_primitives(
+        tour,
+        tests.helpers.peri_scribe.kml.parsing.gx_tag("AnimatedUpdate"),
+    )
+    waits = tests.helpers.peri_scribe.kml.parsing.tour_primitives(
+        tour,
+        tests.helpers.peri_scribe.kml.parsing.gx_tag("Wait"),
+    )
+    assert len(updates) == len(ring_times)
+    assert len(waits) == len(ring_times)
+    ring_ids = [
+        peri_scribe.kml.tour.interior_ring_id(folder_id, index)
+        for index in range(len(ring_times))
+    ]
+    assert [
+        tests.helpers.peri_scribe.kml.parsing.update_visibility_by_target(update)
+        for update in updates
+    ] == [
+        {ring_ids[0]: 1, ring_ids[1]: 0, ring_ids[2]: 0},
+        {ring_ids[0]: 1, ring_ids[1]: 1, ring_ids[2]: 0},
+        {ring_ids[0]: 1, ring_ids[1]: 1, ring_ids[2]: 1},
+    ]
+    assert [
+        tests.helpers.peri_scribe.kml.parsing.wait_duration(wait) for wait in waits
+    ] == [3.0, 1.0, 1.0]
+
+
+def test_progression_tour_scales_waits_for_long_fire() -> None:
+    first = datetime.datetime(2026, 8, 1, 0, 0, tzinfo=datetime.UTC)
+    second = datetime.datetime(2026, 8, 6, 0, 0, tzinfo=datetime.UTC)
+    third = datetime.datetime(2026, 8, 26, 0, 0, tzinfo=datetime.UTC)
+    ring_times = [first, second, third]
+    writer = peri_scribe.kml.geometry.KmlWriter()
+    with writer.folder("Bug") as folder_id:
+        peri_scribe.kml.tour.progression_tour(writer, folder_id, ring_times)
+    bug_folder = tests.helpers.peri_scribe.kml.parsing.folder_named(
+        tests.helpers.peri_scribe.kml.parsing.document_from_writer(writer),
+        "Bug",
+    )
+    tour = tests.helpers.peri_scribe.kml.parsing.tour_named(bug_folder, "Progression")
+    waits = tests.helpers.peri_scribe.kml.parsing.tour_primitives(
+        tour,
+        tests.helpers.peri_scribe.kml.parsing.gx_tag("Wait"),
+    )
+    assert [
+        tests.helpers.peri_scribe.kml.parsing.wait_duration(wait) for wait in waits
+    ] == pytest.approx([1, 4, 1])
+
+
+def test_progression_tour_assigns_targeted_placemark_ids() -> None:
+    observation_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
+    writer = peri_scribe.kml.geometry.KmlWriter()
+    with writer.folder("Bug") as folder_id:
+        peri_scribe.kml.tour.progression_tour(writer, folder_id, [observation_time])
+    bug_folder = tests.helpers.peri_scribe.kml.parsing.folder_named(
+        tests.helpers.peri_scribe.kml.parsing.document_from_writer(writer),
+        "Bug",
+    )
+    tour = tests.helpers.peri_scribe.kml.parsing.tour_named(bug_folder, "Progression")
+    update = tests.helpers.peri_scribe.kml.parsing.tour_primitives(
+        tour,
+        tests.helpers.peri_scribe.kml.parsing.gx_tag("AnimatedUpdate"),
+    )[0]
+    assert tests.helpers.peri_scribe.kml.parsing.update_visibility_by_target(
+        update,
+    ) == {
+        peri_scribe.kml.tour.interior_ring_id(folder_id, 0): 1,
+    }

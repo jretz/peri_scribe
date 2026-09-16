@@ -1,0 +1,452 @@
+"""Inspect parsing behavior with shared test utilities."""
+
+from __future__ import annotations
+
+import struct
+import typing
+import zlib
+
+import defusedxml.ElementTree as DefusedElementTree
+import pytest
+
+
+if typing.TYPE_CHECKING:
+    import xml.etree.ElementTree as ET
+
+    import peri_scribe.kml.geometry
+
+
+KML_NAMESPACE = "http://www.opengis.net/kml/2.2"
+
+
+GX_NAMESPACE = "http://www.google.com/kml/ext/2.2"
+
+
+def kml_tag(name: str) -> str:
+    """Return the namespaced element tag for *name*.
+
+    Args:
+        name: The KML element name.
+
+    Returns:
+        The tag ElementTree uses for the element.
+    """
+    return f"{{{KML_NAMESPACE}}}{name}"
+
+
+def gx_tag(name: str) -> str:
+    """Return the namespaced element tag for the Google extension *name*.
+
+    Args:
+        name: The Google extension element name.
+
+    Returns:
+        The tag ElementTree uses for the element.
+    """
+    return f"{{{GX_NAMESPACE}}}{name}"
+
+
+def document_from(kml_text: str) -> ET.Element:
+    """Parse *kml_text* and return its Document element.
+
+    Args:
+        kml_text: The KML document.
+
+    Returns:
+        The document element.
+    """
+    root = DefusedElementTree.fromstring(kml_text)
+    document = root.find(kml_tag("Document"))
+    if document is None:
+        pytest.fail("KML has no Document element")
+    return document
+
+
+def document_from_writer(writer: peri_scribe.kml.geometry.KmlWriter) -> ET.Element:
+    """Parse *writer*'s accumulated KML fragments into a document element.
+
+    The writer holds document content without the enclosing ``<kml>`` and ``<Document>``
+    wrapper, so the wrapper is added here before parsing.
+
+    Args:
+        writer: The writer holding the KML content.
+
+    Returns:
+        The document element.
+    """
+    kml_text = (
+        f'<kml xmlns="{KML_NAMESPACE}" xmlns:gx="{GX_NAMESPACE}">'
+        f"<Document>{writer.text()}</Document></kml>"
+    )
+    return document_from(kml_text)
+
+
+def folder_named(container: ET.Element, name: str) -> ET.Element:
+    """Return the folder named *name* inside *container*.
+
+    Args:
+        container: The element to search.
+        name: The folder name.
+
+    Returns:
+        The folder element.
+    """
+    for child in container:
+        if child.tag == kml_tag("Folder") and child.findtext(kml_tag("name")) == name:
+            return child
+    pytest.fail(f"Folder {name!r} not found")
+
+
+def placemark_named(folder: ET.Element, name: str) -> ET.Element:
+    """Return the placemark named *name* inside *folder*.
+
+    Args:
+        folder: The folder to search.
+        name: The placemark name.
+
+    Returns:
+        The placemark element.
+    """
+    for child in folder:
+        if (
+            child.tag == kml_tag("Placemark")
+            and child.findtext(kml_tag("name")) == name
+        ):
+            return child
+    pytest.fail(f"Placemark {name!r} not found")
+
+
+def placemark_style_url(placemark: ET.Element) -> str:
+    """Return the style URL of *placemark*.
+
+    Args:
+        placemark: The placemark to inspect.
+
+    Returns:
+        The style URL.
+    """
+    style_url = placemark.findtext(kml_tag("styleUrl"))
+    if style_url is None:
+        pytest.fail("Placemark has no styleUrl")
+    return style_url
+
+
+def description_text(placemark: ET.Element) -> str:
+    """Return *placemark*'s balloon text as the KML parser reads it.
+
+    The writer stores each balloon inside a CDATA section so its HTML survives as
+    markup, and the parser hands the section's content back without the markers.
+
+    Args:
+        placemark: The placemark to inspect.
+
+    Returns:
+        The balloon text.
+    """
+    text = placemark.findtext(kml_tag("description"))
+    if text is None:
+        pytest.fail("Placemark has no description")
+    return text
+
+
+def draw_order(placemark: ET.Element) -> int:
+    """Return the gx:drawOrder of *placemark*'s geometry.
+
+    A multi-geometry's order is set on each geometry it contains rather than on the
+    multi-geometry itself, so the order is read from the first polygon.
+
+    Args:
+        placemark: The placemark to inspect.
+
+    Returns:
+        The geometry's draw order.
+    """
+    for child in placemark:
+        if child.tag == kml_tag("MultiGeometry"):
+            for polygon in child:
+                if polygon.tag != kml_tag("Polygon"):
+                    continue
+                text = polygon.findtext(gx_tag("drawOrder"))
+                if text is None:
+                    pytest.fail("MultiGeometry polygon has no gx:drawOrder")
+                return int(text)
+            pytest.fail("MultiGeometry has no polygons")
+        if child.tag in {kml_tag("Point"), kml_tag("Polygon")}:
+            text = child.findtext(gx_tag("drawOrder"))
+            if text is None:
+                pytest.fail("Placemark has no gx:drawOrder")
+            return int(text)
+    pytest.fail("Placemark has no geometry")
+
+
+def visibility(feature: ET.Element) -> int | None:
+    """Return the ``<visibility>`` of *feature*, or None when absent.
+
+    A feature without a ``<visibility>`` element is visible by default.
+
+    Args:
+        feature: The folder or placemark to inspect.
+
+    Returns:
+        The visibility value, or None when the feature has none.
+    """
+    text = feature.findtext(kml_tag("visibility"))
+    if text is None:
+        return None
+    return int(text)
+
+
+def point_coordinates(placemark: ET.Element) -> tuple[float, float]:
+    """Return the (longitude, latitude) of *placemark*'s point geometry.
+
+    Args:
+        placemark: The placemark to inspect.
+
+    Returns:
+        The point's (longitude, latitude).
+    """
+    coordinates = placemark.find(f"{kml_tag('Point')}/{kml_tag('coordinates')}")
+    if coordinates is None or coordinates.text is None:
+        pytest.fail("Placemark has no point coordinates")
+    longitude, latitude, *_altitude = coordinates.text.split(",")
+    return float(longitude), float(latitude)
+
+
+def exterior_coordinates(placemark: ET.Element) -> list[tuple[float, float]]:
+    """Return the outer ring coordinates of *placemark*'s polygon.
+
+    Args:
+        placemark: The placemark to inspect.
+
+    Returns:
+        The outer ring's (longitude, latitude) coordinates.
+    """
+    ring = placemark.find(
+        f"{kml_tag('Polygon')}/{kml_tag('outerBoundaryIs')}/{kml_tag('LinearRing')}",
+    )
+    if ring is None:
+        pytest.fail("Placemark has no polygon outer boundary")
+    text = ring.findtext(kml_tag("coordinates"))
+    if text is None:
+        pytest.fail("Ring has no coordinates")
+    return [
+        (float(longitude), float(latitude))
+        for longitude, latitude, *_altitude in (
+            coordinates.split(",") for coordinates in text.split()
+        )
+    ]
+
+
+def interior_coordinates(placemark: ET.Element) -> list[tuple[float, float]]:
+    """Return the coordinates of *placemark*'s polygon hole, or [] when it has none.
+
+    Args:
+        placemark: The placemark to inspect.
+
+    Returns:
+        The hole ring's (longitude, latitude) coordinates, or an empty list when the
+        placemark's polygon is solid.
+    """
+    ring = placemark.find(
+        f"{kml_tag('Polygon')}/{kml_tag('innerBoundaryIs')}/{kml_tag('LinearRing')}",
+    )
+    if ring is None:
+        return []
+    text = ring.findtext(kml_tag("coordinates"))
+    if text is None:
+        pytest.fail("Ring has no coordinates")
+    return [
+        (float(longitude), float(latitude))
+        for longitude, latitude, *_altitude in (
+            coordinates.split(",") for coordinates in text.split()
+        )
+    ]
+
+
+def folder_names(container: ET.Element) -> list[str]:
+    """Return the names of *container*'s folders, in order.
+
+    Args:
+        container: The element to inspect.
+
+    Returns:
+        The folder names.
+    """
+    names: list[str] = []
+    for child in container:
+        if child.tag != kml_tag("Folder"):
+            continue
+        name = child.findtext(kml_tag("name"))
+        if name is not None:
+            names.append(name)
+    return names
+
+
+def placemark_names(folder: ET.Element) -> list[str]:
+    """Return the names of *folder*'s placemarks, in order.
+
+    Args:
+        folder: The folder to inspect.
+
+    Returns:
+        The placemark names.
+    """
+    names: list[str] = []
+    for child in folder:
+        if child.tag != kml_tag("Placemark"):
+            continue
+        name = child.findtext(kml_tag("name"))
+        if name is not None:
+            names.append(name)
+    return names
+
+
+def folder_item_icon_href(folder: ET.Element) -> str:
+    """Return *folder*'s list-view item icon href.
+
+    Args:
+        folder: The folder to inspect.
+
+    Returns:
+        The icon href.
+    """
+    href = folder.findtext(
+        f"{kml_tag('Style')}/{kml_tag('ListStyle')}"
+        f"/{kml_tag('ItemIcon')}/{kml_tag('href')}",
+    )
+    if href is None:
+        pytest.fail("Folder has no item icon")
+    return href
+
+
+def folder_list_item_type(folder: ET.Element) -> str | None:
+    """Return *folder*'s list-view item type, or None when it has none.
+
+    Args:
+        folder: The folder to inspect.
+
+    Returns:
+        The list item type, like ``check`` or ``radioFolder``, or None when the folder
+        sets no list item type.
+    """
+    return folder.findtext(
+        f"{kml_tag('Style')}/{kml_tag('ListStyle')}/{kml_tag('listItemType')}",
+    )
+
+
+def top_level_folder(document: ET.Element) -> ET.Element:
+    """Return the top-level folder holding the status folders in *document*.
+
+    Args:
+        document: The parsed KML document.
+
+    Returns:
+        The folder named after the document.
+    """
+    return folder_named(document, "PeriScribe Fires 2026")
+
+
+def png_pixel_rows(content: bytes) -> list[list[tuple[int, int, int, int]]]:
+    """Return each row's RGBA pixels of the PNG *content*.
+
+    Args:
+        content: The PNG bytes.
+
+    Returns:
+        One list of (red, green, blue, alpha) tuples per row, top row first.
+    """
+    assert content[:8] == b"\x89PNG\r\n\x1a\n"
+    width, height, bit_depth, color_type, _compression, _filter, _interlace = (
+        struct.unpack(">IIBBBBB", content[16:29])
+    )
+    assert (bit_depth, color_type) == (8, 6)
+    offset = 8
+    idat = b""
+    while offset < len(content):
+        length = struct.unpack(">I", content[offset : offset + 4])[0]
+        chunk_type = content[offset + 4 : offset + 8]
+        if chunk_type == b"IDAT":
+            idat += content[offset + 8 : offset + 8 + length]
+        offset += 12 + length
+    raw = zlib.decompress(idat)
+    row_size = 1 + width * 4
+    assert len(raw) == row_size * height
+    rows: list[list[tuple[int, int, int, int]]] = []
+    for row_start in range(0, len(raw), row_size):
+        assert raw[row_start] == 0
+        rows.append([
+            struct.unpack(">BBBB", raw[pixel_start : pixel_start + 4])
+            for pixel_start in range(row_start + 1, row_start + row_size, 4)
+        ])
+    return rows
+
+
+def tour_named(folder: ET.Element, name: str) -> ET.Element:
+    """Return the tour named *name* inside *folder*.
+
+    Args:
+        folder: The folder to search.
+        name: The tour name.
+
+    Returns:
+        The tour element.
+    """
+    for child in folder:
+        if child.tag == gx_tag("Tour") and child.findtext(kml_tag("name")) == name:
+            return child
+    pytest.fail(f"Tour {name!r} not found")
+
+
+def tour_primitives(tour: ET.Element, tag: str) -> list[ET.Element]:
+    """Return the playlist primitives with *tag* inside *tour*, in order.
+
+    Args:
+        tour: The tour element.
+        tag: The primitive tag to collect.
+
+    Returns:
+        The matching playlist primitives.
+    """
+    playlist = tour.find(gx_tag("Playlist"))
+    if playlist is None:
+        pytest.fail("Tour has no playlist")
+    return [child for child in playlist if child.tag == tag]
+
+
+def update_visibility_by_target(update: ET.Element) -> dict[str, int]:
+    """Return each targetId and its visibility in *update*'s change.
+
+    Args:
+        update: The animated update element.
+
+    Returns:
+        The visibility for each targetId.
+    """
+    change = update.find(f"{kml_tag('Update')}/{kml_tag('Change')}")
+    if change is None:
+        pytest.fail("Animated update has no change")
+    visibility_by_target: dict[str, int] = {}
+    for placemark in change.findall(kml_tag("Placemark")):
+        target_id = placemark.get("targetId")
+        if target_id is None:
+            pytest.fail("Change placemark has no targetId")
+        visibility = placemark.findtext(kml_tag("visibility"))
+        if visibility is None:
+            pytest.fail("Change placemark has no visibility")
+        visibility_by_target[target_id] = int(visibility)
+    return visibility_by_target
+
+
+def wait_duration(wait: ET.Element) -> float:
+    """Return the duration, in seconds, of *wait*.
+
+    Args:
+        wait: The wait element.
+
+    Returns:
+        The wait duration.
+    """
+    duration = wait.findtext(gx_tag("duration"))
+    if duration is None:
+        pytest.fail("Wait has no duration")
+    return float(duration)

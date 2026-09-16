@@ -1,0 +1,404 @@
+"""Tests for peri_scribe.fires.scores."""
+
+from __future__ import annotations
+
+import datetime
+import json
+import pathlib
+import tempfile
+import typing
+
+import numpy as np
+import pytest
+
+import peri_scribe.fires.identity
+import peri_scribe.fires.scores
+import peri_scribe.sources.buildings
+import peri_scribe.sources.external_data
+import peri_scribe.sources.external_sources
+import peri_scribe.units
+import tests.helpers.doubles.peri_scribe.fires.scores
+import tests.helpers.factories.geography
+import tests.helpers.factories.geometry
+import tests.helpers.factories.peri_scribe.fires.scores
+import tests.helpers.factories.time
+from peri_scribe.units import units
+
+
+def test_latest_snapshot_layer_returns_none_without_layer_name() -> None:
+    source = peri_scribe.sources.external_data.ExternalSource(
+        name="none",
+        kind=peri_scribe.sources.external_data.ExternalSourceKind.ARCGIS,
+        url="https://example.test/FeatureServer/0",
+    )
+    assert (
+        peri_scribe.fires.scores.latest_snapshot_layer(
+            pathlib.Path("data/2026"),
+            source,
+        )
+        is None
+    )
+
+
+def test_latest_snapshot_layer_returns_none_without_snapshot(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.sources.external_data,
+        "output_path",
+        lambda _year_directory, _source: pathlib.Path("/sources/evacuations.gpkg"),
+    )
+    assert (
+        peri_scribe.fires.scores.latest_snapshot_layer(
+            pathlib.Path("data/2026"),
+            peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
+        )
+        is None
+    )
+
+
+def test_latest_snapshot_layer_names_source_geopackage(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "evacuations.gpkg"
+    path.write_bytes(b"data")
+    monkeypatch.setattr(
+        peri_scribe.sources.external_data,
+        "output_path",
+        lambda _year_directory, _source: path,
+    )
+    assert peri_scribe.fires.scores.latest_snapshot_layer(
+        pathlib.Path("data/2026"),
+        peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
+    ) == (path, "evacuations")
+
+
+def test_score_fires_writes_current_scores(
+    score_fires_stubs: typing.Callable[
+        ...,
+        tests.helpers.doubles.peri_scribe.fires.scores.ScoreFiresStubs,
+    ],
+) -> None:
+    perimeters = tests.helpers.factories.peri_scribe.fires.scores.perimeter_frame(
+        [
+            {
+                "fire_name": "Bug",
+                "fire_identifier": "2026-a",
+                "area_acres": 120_000.0,
+                "geometry_area_square_meters": (
+                    120_000.0 * peri_scribe.units.units.acres
+                ).m_as("meters**2"),
+                "area_acres_differential": 0.0,
+                "observation_time": datetime.datetime(2026, 8, 1),
+            },
+        ],
+        [tests.helpers.factories.geometry.square(0.01)],
+    )
+    perimeters = perimeters.assign(
+        geometry_area_square_meters=(120_000.0 * peri_scribe.units.units.acres).m_as(
+            "meters**2",
+        ),
+    )
+    points = tests.helpers.factories.peri_scribe.fires.scores.point_frame(
+        [
+            {
+                "fire_name": "Bug",
+                "fire_identifier": "2026-a",
+                "source_attributes": json.dumps({}),
+            },
+        ],
+        [tests.helpers.factories.geometry.point(0, 0)],
+    )
+    stubs = score_fires_stubs(perimeters=perimeters, points=points)
+
+    result = peri_scribe.fires.scores.score_fires(pathlib.Path("data/2026"))
+
+    assert result == pathlib.Path("data/2026/derived/fire_scores.json")
+    assert len(stubs.writes) == 1
+    _path, document = stubs.writes[0]
+    assert document.fires[0].name == "Bug"
+    assert document.fires[0].score == pytest.approx(168)
+    assert stubs.ccdf_writes == [
+        (pathlib.Path("data/2026/derived/fire_scores_ccdf.html"), document),
+    ]
+
+
+def test_score_fires_streams_external_signals(
+    tmp_path: pathlib.Path,
+    score_fires_stubs: typing.Callable[
+        ...,
+        tests.helpers.doubles.peri_scribe.fires.scores.ScoreFiresStubs,
+    ],
+) -> None:
+    perimeters = tests.helpers.factories.peri_scribe.fires.scores.perimeter_frame(
+        [
+            {
+                "fire_name": "Bug",
+                "fire_identifier": "2026-a",
+                "area_acres": 120_000.0,
+                "geometry_area_square_meters": (
+                    120_000.0 * peri_scribe.units.units.acres
+                ).m_as("meters**2"),
+                "area_acres_differential": 0.0,
+                "observation_time": datetime.datetime(2026, 8, 1),
+            },
+        ],
+        [tests.helpers.factories.geometry.square(0.01)],
+    )
+    perimeters = perimeters.assign(
+        geometry_area_square_meters=(120_000.0 * peri_scribe.units.units.acres).m_as(
+            "meters**2",
+        ),
+    )
+    points = tests.helpers.factories.peri_scribe.fires.scores.point_frame(
+        [
+            {
+                "fire_name": "Bug",
+                "fire_identifier": "2026-a",
+                "source_attributes": json.dumps({
+                    "IncidentComplexityLevel": "Type 2 Incident",
+                }),
+            },
+        ],
+        [tests.helpers.factories.geometry.point(0, 0)],
+    )
+
+    buildings_path = tmp_path / "sources" / "buildings" / "buildings.sqlite"
+    buildings_path.parent.mkdir(parents=True)
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        partition_directory = pathlib.Path(temporary_directory)
+        with peri_scribe.sources.buildings.PartitionFiles(
+            partition_directory,
+        ) as partition_files:
+            peri_scribe.sources.buildings.append_centroids_to_partitions(
+                np.asarray([[0.0, 0.0]] * 5),
+                partition_files,
+            )
+        peri_scribe.sources.buildings.build_tiles_database(
+            partition_directory,
+            buildings_path,
+        )
+    snapshot = tmp_path / "sources" / "evacuations" / "evacuations.gpkg"
+    snapshot.parent.mkdir(parents=True)
+    tests.helpers.factories.geography.geo_frame(
+        {"name": ["zone"]},
+        [tests.helpers.factories.geometry.square(1.0)],
+    ).to_file(snapshot, layer="evacuations")
+
+    output_path = (
+        tests.helpers.doubles.peri_scribe.fires.scores.make_external_output_path(
+            tmp_path=tmp_path,
+        )
+    )
+
+    stubs = score_fires_stubs(
+        perimeters=perimeters,
+        points=points,
+        output_path=output_path,
+        stub_latest_snapshot_layer=False,
+    )
+
+    result = peri_scribe.fires.scores.score_fires(tmp_path)
+
+    assert result == tmp_path / "derived" / "fire_scores.json"
+    entry = stubs.writes[0][1].fires[0]
+    assert entry.name == "Bug"
+    assert entry.score == pytest.approx(445)
+
+
+def test_score_fires_sorts_entries_by_score_descending(
+    score_fires_stubs: typing.Callable[
+        ...,
+        tests.helpers.doubles.peri_scribe.fires.scores.ScoreFiresStubs,
+    ],
+) -> None:
+    perimeters = tests.helpers.factories.peri_scribe.fires.scores.perimeter_frame(
+        [
+            {
+                "fire_name": "Big",
+                "fire_identifier": "2026-a",
+                "area_acres": 120_000.0,
+                "geometry_area_square_meters": (
+                    120_000.0 * peri_scribe.units.units.acres
+                ).m_as("meters**2"),
+                "area_acres_differential": 0.0,
+                "observation_time": datetime.datetime(2026, 8, 1),
+            },
+            {
+                "fire_name": "Small",
+                "fire_identifier": "2026-b",
+                "area_acres": 100.0,
+                "area_acres_differential": 0.0,
+                "observation_time": datetime.datetime(2026, 8, 1),
+            },
+        ],
+        [
+            tests.helpers.factories.geometry.square(0.01),
+            tests.helpers.factories.geometry.square(0.01),
+        ],
+    )
+    stubs = score_fires_stubs(perimeters=perimeters)
+
+    peri_scribe.fires.scores.score_fires(pathlib.Path("data/2026"))
+
+    assert [entry.name for entry in stubs.writes[0][1].fires] == ["Big", "Small"]
+
+
+def test_score_fires_scores_point_only_fire(
+    score_fires_stubs: typing.Callable[
+        ...,
+        tests.helpers.doubles.peri_scribe.fires.scores.ScoreFiresStubs,
+    ],
+) -> None:
+    points = tests.helpers.factories.peri_scribe.fires.scores.point_frame(
+        [
+            {
+                "fire_name": "Smoke",
+                "fire_identifier": None,
+                "source_attributes": json.dumps({}),
+            },
+        ],
+        [tests.helpers.factories.geometry.point(0, 0)],
+    )
+    stubs = score_fires_stubs(points=points)
+
+    peri_scribe.fires.scores.score_fires(pathlib.Path("data/2026"))
+
+    assert [entry.name for entry in stubs.writes[0][1].fires] == ["Smoke"]
+
+
+def test_fire_metrics_prefers_geometry_for_growth_and_first_mapping() -> None:
+    perimeters = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_name": ["Snow", "Snow"],
+            "fire_identifier": ["2026-a", "2026-a"],
+            "area_acres": [1100.0, 1200.0],
+            "area_acres_differential": [1100.0, 100.0],
+            "area_acres_from_geometry": [2939.0, 3039.0],
+            "area_acres_from_geometry_differential": [2939.0, 100.0],
+            "observation_time": [
+                datetime.datetime(2026, 9, 3, 1, 0),
+                datetime.datetime(2026, 9, 4, 1, 0),
+            ],
+        },
+        [
+            tests.helpers.factories.geometry.square(0.01),
+            tests.helpers.factories.geometry.square(0.01),
+        ],
+    )
+    perimeter_keys = peri_scribe.fires.identity.group_keys(perimeters)
+    metrics, first_mapping = peri_scribe.fires.scores.fire_metrics(
+        perimeters,
+        perimeter_keys,
+    )
+    assert metrics.loc["2026-a", "max_growth"] == pytest.approx(2939.0)
+    assert first_mapping["2026-a"] == pytest.approx(2939.0)
+
+
+def test_fire_metrics_uses_geometry_when_measurements_agree() -> None:
+    perimeters = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_name": ["Snow"],
+            "fire_identifier": ["2026-a"],
+            "area_acres": [1100.0],
+            "area_acres_differential": [1100.0],
+            "area_acres_from_geometry": [1110.0],
+            "area_acres_from_geometry_differential": [1110.0],
+            "observation_time": [datetime.datetime(2026, 9, 3, 1, 0)],
+        },
+        [tests.helpers.factories.geometry.square(0.01)],
+    )
+    perimeter_keys = peri_scribe.fires.identity.group_keys(perimeters)
+    metrics, first_mapping = peri_scribe.fires.scores.fire_metrics(
+        perimeters,
+        perimeter_keys,
+    )
+    assert metrics.loc["2026-a", "max_growth"] == pytest.approx(1110.0)
+    assert first_mapping["2026-a"] == pytest.approx(1110.0)
+
+
+def test_displayed_areas_prefers_latest_perimeter_measured_area() -> None:
+    perimeters = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_name": ["Snow", "Snow"],
+            "fire_identifier": ["2026-a", "2026-a"],
+            "area_acres": [100.0, 100.0],
+            "observation_time": [
+                datetime.datetime(2026, 9, 3, 1, 0),
+                datetime.datetime(2026, 9, 4, 1, 0),
+            ],
+        },
+        [
+            tests.helpers.factories.geometry.square(0.01),
+            tests.helpers.factories.geometry.square(0.02),
+        ],
+    )
+    points = tests.helpers.factories.geography.geo_frame(
+        {"fire_name": ["Snow"], "fire_identifier": ["2026-a"]},
+        [tests.helpers.factories.geometry.point(0, 0)],
+    )
+    point_keys = peri_scribe.fires.identity.group_keys(points)
+    areas = peri_scribe.fires.scores.displayed_areas(
+        ["2026-a"],
+        perimeters,
+        points,
+        point_keys,
+    )
+    # The latest perimeter's geometry is far larger than its 100-acre report, so the
+    # measured area is what scoring presents.
+    area = areas[0]
+    assert area is not None
+    assert area.m_as("acres") == pytest.approx(
+        peri_scribe.units.area(tests.helpers.factories.geometry.square(0.02)).m_as(
+            "acres",
+        ),
+    )
+
+
+def test_displayed_areas_falls_back_to_point_size_without_perimeter() -> None:
+    points = tests.helpers.factories.geography.geo_frame(
+        {"fire_name": ["Smoke"], "fire_identifier": [None], "incident_size": [500.0]},
+        [tests.helpers.factories.geometry.point(0, 0)],
+    )
+    point_keys = peri_scribe.fires.identity.group_keys(points)
+    areas = peri_scribe.fires.scores.displayed_areas(
+        ["name:Smoke"],
+        tests.helpers.factories.geography.empty_frame(),
+        points,
+        point_keys,
+    )
+    area = areas[0]
+    assert area is not None
+    assert area.m_as("acres") == pytest.approx(500.0)
+
+
+def test_displayed_areas_uses_populated_incident_history_for_stale_mapping() -> None:
+    perimeters = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_name": ["Example"],
+            "fire_identifier": ["example"],
+            "observation_time": [tests.helpers.factories.time.utc(2026, 9, 1, 0)],
+            "geometry_area_square_meters": [(100 * units.acres).m_as("meters**2")],
+        },
+        [tests.helpers.factories.geometry.square(0.01)],
+    )
+    points = perimeters.iloc[0:0]
+    incidents = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_name": ["Example"],
+            "fire_identifier": ["example"],
+            "observation_time": [tests.helpers.factories.time.utc(2026, 9, 5, 0)],
+            "report_confirmed": [False],
+            "incident_size": [200],
+        },
+        [None],
+    )
+    result = peri_scribe.fires.scores.displayed_areas(
+        ["example"],
+        perimeters,
+        points,
+        peri_scribe.fires.identity.group_keys(points),
+        incidents,
+    )
+    assert result == [200 * units.acres]
