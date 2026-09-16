@@ -81,6 +81,28 @@ def test_fire_kml_names_the_document() -> None:
     )
 
 
+def test_fire_kml_uses_supplied_progression_style_urls() -> None:
+    fires, _scores = (
+        tests.helpers.factories.peri_scribe.kml.builder.new_folder_scenario()
+    )
+    styles = {
+        color: f"shared-styles.kml{style_url}"
+        for color, style_url in peri_scribe.kml.builder.ring_style_urls_for(
+            fires,
+        ).items()
+    }
+    document = tests.helpers.peri_scribe.kml.parsing.document_from(
+        peri_scribe.kml.builder.fire_kml(fires, "Example", ring_style_urls=styles),
+    )
+    urls = {
+        element.text
+        for element in document.iter(
+            tests.helpers.peri_scribe.kml.parsing.kml_tag("styleUrl"),
+        )
+    }
+    assert set(styles.values()) <= urls
+
+
 def test_fire_kml_puts_top_fires_before_status_folders() -> None:
     fires = [
         peri_scribe.kml.fire_data.FireGeometry(

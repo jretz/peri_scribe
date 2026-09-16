@@ -247,8 +247,7 @@ def reconcile_updates(
             confirmed_values.update({
                 column: (update.report_time, value) for column, value in values.items()
             })
-        if values:
-            result.append(dataclasses.replace(update, measurements=values))
+        result.append(dataclasses.replace(update, measurements=values))
     return tuple(result)
 
 

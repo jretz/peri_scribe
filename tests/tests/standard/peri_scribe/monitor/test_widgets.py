@@ -13,6 +13,23 @@ if typing.TYPE_CHECKING:
     import tests.helpers.fixtures.peri_scribe.monitor.application
 
 
+@pytest.mark.parametrize("key", ["down", "pagedown", "right", "x"])
+def test_event_table_on_key_keeps_following_for_other_keys(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    key: str,
+) -> None:
+    session = monitor_session
+    table = session.app.query_one(
+        "#pipeline-stream",
+        peri_scribe.monitor.widgets.Stream,
+    ).query_one(
+        peri_scribe.monitor.widgets.EventTable,
+    )
+    session.call(table.focus)
+    session.runner.run(session.pilot.press(key))
+    assert session.app.following
+
+
 @pytest.mark.parametrize("href", ["#moonshine", "https://example.com/fire"])
 def test_report_viewer_routes_links_without_loading_another_file(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,

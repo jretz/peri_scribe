@@ -47,6 +47,7 @@ build-backend = "uv_build"
 pretty_print = true
 
 [tool.coverage.run]
+branch = true
 concurrency = ["multiprocessing"]
 data_file = ".coverage/data"
 relative_files = true

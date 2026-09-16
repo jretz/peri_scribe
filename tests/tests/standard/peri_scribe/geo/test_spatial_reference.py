@@ -1,5 +1,7 @@
 """Verify coordinate-reference selection against metadata and geometry."""
 
+import unittest.mock
+
 import pyproj
 import pytest
 import shapely
@@ -199,6 +201,48 @@ def test_projected_maximum_magnitude_in_crs_units_web_mercator() -> None:
     assert peri_scribe.geo.spatial_reference.projected_maximum_magnitude_in_crs_units(
         crs,
     ) == pytest.approx(tests.helpers.factories.geography.WEB_MERCATOR_MAXIMUM_MAGNITUDE)
+
+
+@pytest.mark.parametrize(
+    "coordinates",
+    [(float("inf"), 1.0), (1.0, float("inf")), (float("nan"), float("nan"))],
+)
+def test_projected_maximum_magnitude_in_crs_units_ignores_nonfinite_corners(
+    monkeypatch: pytest.MonkeyPatch,
+    coordinates: tuple[float, float],
+) -> None:
+    transformer = unittest.mock.Mock(spec=pyproj.Transformer)
+    transformer.transform.side_effect = [
+        coordinates,
+        (-20.0, 10.0),
+        (5.0, -30.0),
+        (1.0, 2.0),
+    ]
+    monkeypatch.setattr(
+        pyproj.Transformer,
+        "from_crs",
+        lambda *_args, **_kwargs: transformer,
+    )
+    crs = pyproj.CRS.from_epsg(tests.helpers.factories.geography.WEB_MERCATOR_WKID)
+    assert peri_scribe.geo.spatial_reference.projected_maximum_magnitude_in_crs_units(
+        crs,
+    ) == pytest.approx(30.0)
+
+
+def test_projected_maximum_magnitude_in_crs_units_falls_back_for_nonfinite_corners(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transformer = unittest.mock.Mock(spec=pyproj.Transformer)
+    transformer.transform.return_value = (float("inf"), float("inf"))
+    monkeypatch.setattr(
+        pyproj.Transformer,
+        "from_crs",
+        lambda *_args, **_kwargs: transformer,
+    )
+    crs = pyproj.CRS.from_epsg(tests.helpers.factories.geography.WEB_MERCATOR_WKID)
+    assert peri_scribe.geo.spatial_reference.projected_maximum_magnitude_in_crs_units(
+        crs,
+    ) == peri_scribe.models.PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK.m_as("meters")
 
 
 def test_projected_maximum_magnitude_in_crs_units_fallback_without_area_of_use() -> (

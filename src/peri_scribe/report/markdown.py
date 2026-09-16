@@ -337,16 +337,15 @@ def fire_detail_rows(
             if value is not None:
                 rows.append((label, value))
     if entry.growth is not None and entry.growth > 0 * units.acres:
-        growth_cell_text = growth_cell(entry)
-        if growth_cell_text is not None:
-            rows.append((GROWTH_IN_ACRES_LABEL, growth_cell_text))
+        rows.append((GROWTH_IN_ACRES_LABEL, typing.cast("str", growth_cell(entry))))
     if (
         entry.growth_percent is not None
         and entry.growth_percent >= MINIMUM_DISPLAYED_GROWTH_PERCENT
     ):
-        growth_percent = growth_percent_cell(entry)
-        if growth_percent is not None:
-            rows.append((GROWTH_IN_PERCENT_LABEL, growth_percent))
+        rows.append((
+            GROWTH_IN_PERCENT_LABEL,
+            typing.cast("str", growth_percent_cell(entry)),
+        ))
     return tuple(rows)
 
 

@@ -18,6 +18,7 @@ import tests.helpers.doubles.peri_scribe.perimeters.classification
 import tests.helpers.factories.peri_scribe.perimeters.classification
 import tests.helpers.factories.peri_scribe.perimeters.signals
 import tests.helpers.reference.peri_scribe.perimeters.classification
+from peri_scribe.units import units
 
 
 @pytest.mark.parametrize(
@@ -486,6 +487,39 @@ def test_classify_fire_classifies_inside_california_fire(
         result.classification
         is peri_scribe.models.BorderClassification.INSIDE_CALIFORNIA
     )
+
+
+@pytest.mark.parametrize(
+    ("buffer_kilometers", "expected"),
+    [
+        (1, peri_scribe.models.BorderClassification.INSIDE_CALIFORNIA),
+        (200, peri_scribe.models.BorderClassification.INSIDE_CALIFORNIA_NEAR_BORDER),
+    ],
+)
+def test_classify_fire_respects_configured_border_buffer(
+    wgs84_boundaries: peri_scribe.perimeters.classification_data.Boundaries,
+    buffer_kilometers: int,
+    expected: peri_scribe.models.BorderClassification,
+) -> None:
+    records = [
+        tests.helpers.factories.peri_scribe.perimeters.classification.classifiable_record(
+            geometry=shapely.geometry.box(-120.5, 39.0, -120.0, 39.5),
+        ),
+    ]
+    result = peri_scribe.perimeters.border_classification.classify_fire(
+        records=records,
+        record_paths=[
+            pathlib.Path(
+                "sources/WFIGS_Interagency_Perimeters_Current_0/"
+                "000___/000000,lastEdit=0.gpkg",
+            ),
+        ],
+        boundaries=wgs84_boundaries,
+        config=peri_scribe.perimeters.classification_data.BorderClassificationConfig(
+            near_border_buffer=buffer_kilometers * units.km,
+        ),
+    )
+    assert result.classification is expected
 
 
 def test_classify_fire_classifies_outside_california_fire(

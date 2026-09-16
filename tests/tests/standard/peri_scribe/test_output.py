@@ -128,6 +128,13 @@ def test_curve_knees_returns_empty_without_a_bend() -> None:
     )
 
 
+def test_curve_knees_selects_the_best_fit_among_multiple_candidates() -> None:
+    assert peri_scribe.output.curve_knees(list(range(1, 11))) == [
+        (6, pytest.approx(0.4)),
+        (8, pytest.approx(0.2)),
+    ]
+
+
 def test_write_fire_scores_ccdf_writes_an_html_page(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "fire_scores_ccdf.html"
     with structlog.testing.capture_logs() as captured:

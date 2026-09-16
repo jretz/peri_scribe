@@ -189,7 +189,9 @@ def nice_step(span: float, target_intervals: int) -> float:
     magnitude = 10.0 ** math.floor(math.log10(raw))
     # Dividing by the decade's magnitude always leaves a value below ten, and the ladder
     # ends at ten, so one rung always covers *raw*.
-    for multiple in (1.0, 2.0, 2.5, 5.0, 10.0):
-        if raw <= multiple * magnitude:
-            break
+    multiple = next(
+        multiple
+        for multiple in (1.0, 2.0, 2.5, 5.0, 10.0)
+        if raw <= multiple * magnitude
+    )
     return multiple * magnitude

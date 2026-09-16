@@ -61,6 +61,34 @@ def test_incident_layer_rows_skips_complex_parent_duplicates(
     )
 
 
+def test_incident_layer_rows_skips_reports_without_incident_time(
+    incident_sources: peri_scribe.fires.sources.ReadFireSources,
+    tmp_path: pathlib.Path,
+) -> None:
+    undated = dataclasses.replace(
+        incident_sources.rows[0],
+        attributes={"attr_IncidentSize": 100},
+    )
+    read = dataclasses.replace(
+        incident_sources,
+        rows=(undated, incident_sources.rows[1]),
+    )
+    rows = peri_scribe.fires.incident_history.incident_layer_rows(
+        read,
+        peri_scribe.fires.sources.group_fire_sources(read),
+        tmp_path,
+    )
+    assert len(rows) == 1
+    expected_cost = 3000
+    assert rows[0]["estimated_cost_to_date"] == expected_cost
+    assert rows[0]["observation_time"] == tests.helpers.factories.time.utc(
+        2026,
+        9,
+        3,
+        0,
+    )
+
+
 def test_incident_layer_rows_preserves_measurement_confirmation_through_storage(
     incident_sources: peri_scribe.fires.sources.ReadFireSources,
     tmp_path: pathlib.Path,

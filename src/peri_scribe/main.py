@@ -738,7 +738,7 @@ def run_pipeline_stage(
                         "KMZ created without fresh geography; "
                         "publication checkpoint requires rebuild",
                     )
-            case peri_scribe.pipeline_stages.Stage.REPORTS:
+            case _:
                 run_reports_stage(year_directory)
     return True
 

@@ -25,6 +25,22 @@ if typing.TYPE_CHECKING:
     import geopandas
 
 
+def test_area_groups_keeps_unidentified_fires_separate_by_name() -> None:
+    frame = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": [None, None, "alias", None],
+            "fire_name": ["Alpha", "Beta", "Alpha", "Alpha"],
+        },
+        [None] * 4,
+    )
+    groups = peri_scribe.kml.selection.area_groups(frame, {"alias": "canonical"})
+    assert {key: list(rows.index) for key, rows in groups.items()} == {
+        ("name", "Alpha"): [0, 3],
+        ("name", "Beta"): [1],
+        ("id", "canonical"): [2],
+    }
+
+
 def test_fires_with_qualifying_area_includes_geometry_without_reported_acres(
     mapped_fire: geopandas.GeoDataFrame,
 ) -> None:

@@ -14,6 +14,7 @@ import textual.widgets
 import peri_scribe.monitor.widgets
 import peri_scribe.phases
 import peri_scribe.pipeline_stages
+import tests.helpers.doubles.peri_scribe.monitor.app
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.fixtures.peri_scribe.monitor.application
 
@@ -399,6 +400,29 @@ def test_monitor_app_ignores_completed_read_after_views_unmount(
     )
     monitor_session.runner.run(monitor_session.app.refresh_files())
     assert not monitor_session.app.query("#views")
+
+
+def test_monitor_app_refresh_files_does_not_scroll_a_viewer_removed_during_update(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = monitor_session
+    viewer = session.app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
+    session.app.report_path.write_text("# Updated report")
+    monkeypatch.setattr(
+        viewer.document,
+        "update",
+        functools.partial(
+            tests.helpers.doubles.peri_scribe.monitor.app.remove_viewer_during_update,
+            viewer,
+        ),
+    )
+    scroll = unittest.mock.Mock()
+    monkeypatch.setattr(viewer, "scroll_to", scroll)
+    session.runner.run(session.app.refresh_files())
+    assert not viewer.is_attached
+    scroll.assert_not_called()
+    assert session.app.report.content == "# Updated report"
 
 
 def test_monitor_app_does_not_redraw_after_shutdown_begins(

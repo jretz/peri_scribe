@@ -17,6 +17,17 @@ import tests.helpers.peri_scribe.areas
 from peri_scribe.units import units
 
 
+def test_area_history_does_not_emit_estimates_before_the_first_observation() -> None:
+    history = peri_scribe.areas.area_history(
+        tests.helpers.factories.peri_scribe.areas.mappings([(0, 1000)]),
+        tests.helpers.factories.peri_scribe.areas.reports([]),
+        policy=peri_scribe.areas.AreaPolicy(stale_after=datetime.timedelta(days=-1)),
+    )
+    assert len(history) == 1
+    assert history[0].time == tests.helpers.factories.peri_scribe.areas.time(0)
+    assert tests.helpers.peri_scribe.areas.acres(history[0].area) == pytest.approx(1000)
+
+
 def test_area_history_prefers_recent_geometry_over_conflicting_reports() -> None:
     history = peri_scribe.areas.area_history(
         tests.helpers.factories.peri_scribe.areas.mappings([(0, 1000)]),

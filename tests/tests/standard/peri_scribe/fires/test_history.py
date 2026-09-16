@@ -11,6 +11,7 @@ import pytest
 
 import peri_scribe.fires.history
 import peri_scribe.fires.sources
+import peri_scribe.geo.measurements
 import peri_scribe.geo.package
 import peri_scribe.models
 import tests.helpers.doubles.peri_scribe.fires.history
@@ -98,6 +99,21 @@ def test_perimeter_row_falls_back_to_modified_time() -> None:
         version,
     )
     assert row["observation_time"] == modified_time
+
+
+def test_perimeter_row_preserves_attributes_without_geometry() -> None:
+    observation = tests.helpers.factories.peri_scribe.perimeters.versions.observation(
+        attributes={"GlobalID": "unmapped"},
+    )
+    row = peri_scribe.fires.history.perimeter_row(
+        tests.helpers.factories.peri_scribe.models.fire(),
+        None,
+        observation,
+    )
+    assert row["geometry"] is None
+    assert row["source_globalid"] == "unmapped"
+    assert peri_scribe.geo.measurements.AREA_COLUMN not in row
+    assert peri_scribe.geo.measurements.EXTERIOR_COLUMN not in row
 
 
 def test_point_row_builds_fields_and_geometry() -> None:

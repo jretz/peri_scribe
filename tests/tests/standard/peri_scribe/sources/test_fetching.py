@@ -498,6 +498,31 @@ def test_fetch_all_feeds_writes_geo_package(
     )
 
 
+def test_fetch_all_feeds_omits_snapshot_when_fetch_returns_no_data_without_history(
+    monkeypatch: pytest.MonkeyPatch,
+    fetch_all_feeds_stubs: typing.Callable[..., None],
+    geo_package_store: (
+        tests.helpers.doubles.peri_scribe.snapshot_storage.GeoPackageStore
+    ),
+) -> None:
+    fetch_all_feeds_stubs(
+        [tests.helpers.doubles.peri_scribe.sources.fetching.sample_feed_stub()],
+        lambda _url, _gis: None,
+    )
+    monkeypatch.setattr(
+        peri_scribe.sources.fetching,
+        "fetch_feed",
+        lambda *_args, **_kwargs: None,
+    )
+    result = peri_scribe.sources.fetching.fetch_all_feeds(
+        tests.helpers.factories.peri_scribe.sources.snapshots.BASE_DIRECTORY,
+        year=2026,
+    )
+    assert result.snapshot_paths == ()
+    assert not result.changed
+    assert not geo_package_store.layers
+
+
 def test_fetch_all_feeds_reports_query_failure(
     fetch_all_feeds_stubs: typing.Callable[..., None],
     geo_package_store: (

@@ -20,6 +20,25 @@ if typing.TYPE_CHECKING:
 
 
 @pytest.mark.parametrize(
+    ("details", "seconds"),
+    [
+        (["Request limit exceeded", "Retry after 7 sec"], 7),
+        (["Request limit exceeded"], peri_scribe.retry.FALLBACK_RETRY.m_as("seconds")),
+    ],
+)
+def test_rate_limit_from_payload_ignores_details_without_retry_instructions(
+    details: list[str],
+    seconds: float,
+) -> None:
+    assert (
+        peri_scribe.retry.rate_limit_from_payload({
+            "error": {"code": 429, "details": details},
+        })
+        == seconds * units.seconds
+    )
+
+
+@pytest.mark.parametrize(
     ("text", "seconds"),
     [
         ('{"error": {"code": 429,\n"details": ["Retry after 0 sec"]}}', 0),

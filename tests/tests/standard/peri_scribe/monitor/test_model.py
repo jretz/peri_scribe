@@ -74,6 +74,28 @@ def test_phase_tree_starts_with_all_phases_waiting() -> None:
     assert all(phase.status == "waiting" for phase in tree.phases)
 
 
+@pytest.mark.parametrize("phases", [None, "geography", {"geography": True}])
+def test_phase_tree_ignores_malformed_skipped_phase_lists(phases: object) -> None:
+    run = tests.helpers.factories.peri_scribe.monitor.events.run(
+        tests.helpers.factories.peri_scribe.monitor.events.record(
+            "Starting command",
+            command="run",
+        ),
+        tests.helpers.factories.peri_scribe.monitor.events.record(
+            "Skipped phases",
+            phases=phases,
+            reason="no changes",
+        ),
+    )
+    tree = peri_scribe.monitor.model.phase_tree(
+        run,
+        tests.helpers.factories.peri_scribe.monitor.events.BRANCHES,
+    )
+    assert tree.phases
+    assert all(phase.status == "waiting" for phase in tree.phases)
+    assert tree.omissions == ()
+
+
 def test_phase_tree_trims_gate_rejected_work_immediately() -> None:
     run = tests.helpers.factories.peri_scribe.monitor.events.run(
         tests.helpers.factories.peri_scribe.monitor.events.record(
