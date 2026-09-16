@@ -9,6 +9,7 @@ import typing
 
 import pytest
 import textual.pilot
+import textual.widget
 import textual.widgets
 
 import peri_scribe.monitor.app
@@ -39,6 +40,19 @@ class Session:
             The action's result after dispatch within the terminal event loop.
         """
         return self.runner.run(invoke(callback, *args))
+
+    def drag(self, divider: textual.widget.Widget, movement: tuple[int, int]) -> None:
+        """Exercise pointer capture by dragging outside the divider's original bounds.
+
+        Args:
+            divider: The visible divider to move.
+            movement: Horizontal and vertical pointer movement in terminal cells.
+        """
+        position = divider.region.offset
+        destination = (position.x + movement[0], position.y + movement[1])
+        self.runner.run(self.pilot.mouse_down(divider))
+        self.runner.run(self.pilot.hover(offset=destination))
+        self.runner.run(self.pilot.mouse_up(offset=destination))
 
 
 async def invoke[Result](

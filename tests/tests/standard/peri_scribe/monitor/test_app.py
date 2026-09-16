@@ -433,3 +433,92 @@ def test_monitor_app_ignores_tab_changes_after_shutdown_begins(
     ):
         monitor_session.app.tab_changed(event)
     assert inspection.display
+
+
+@pytest.mark.parametrize(
+    ("tab", "divider", "before", "after", "dimension", "movement"),
+    [
+        (
+            "pipeline",
+            "#pipeline-divider",
+            "#phase-tree",
+            "#pipeline-stream",
+            "width",
+            (10, 0),
+        ),
+        ("pipeline", "#inspection-divider", "#views", "#inspection", "height", (0, -4)),
+        ("logs", "#inspection-divider", "#views", "#inspection", "height", (0, -4)),
+    ],
+)
+def test_monitor_app_resizes_panes_by_dragging(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    *,
+    tab: str,
+    divider: str,
+    before: str,
+    after: str,
+    dimension: str,
+    movement: tuple[int, int],
+) -> None:
+    session = monitor_session
+    session.call(session.app.action_view, tab)
+    session.runner.run(session.pilot.pause())
+    leading = session.app.query_one(before)
+    trailing = session.app.query_one(after)
+    initial = getattr(leading.size, dimension)
+    total = initial + getattr(trailing.size, dimension)
+    session.drag(session.app.query_one(divider), movement)
+    change = movement[0] if dimension == "width" else movement[1]
+    assert getattr(leading.size, dimension) == initial + change
+    assert getattr(leading.size, dimension) + getattr(trailing.size, dimension) == total
+    assert session.app.mouse_captured is None
+
+
+@pytest.mark.parametrize("tab", ["runs", "report"])
+def test_monitor_app_hides_inspection_divider_on_single_pane_tabs(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    tab: str,
+) -> None:
+    session = monitor_session
+    session.call(session.app.action_view, tab)
+    session.runner.run(session.pilot.pause())
+    assert not session.app.query_one("#inspection-divider").display
+
+
+def test_monitor_app_preserves_resized_panes_after_refresh_and_tab_changes(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+) -> None:
+    session = monitor_session
+    session.drag(session.app.query_one("#pipeline-divider"), (10, 0))
+    session.drag(session.app.query_one("#inspection-divider"), (0, -4))
+    tree = session.app.query_one("#phase-tree")
+    inspection = session.app.query_one("#inspection")
+    sizes = (tree.size, inspection.size)
+    session.runner.run(session.app.refresh_files())
+    session.runner.run(session.pilot.press("3", "4", "2", "1"))
+    assert (tree.size, inspection.size) == sizes
+
+
+@pytest.mark.parametrize(("width", "height"), [(80, 24), (160, 50)])
+def test_monitor_app_resized_panes_fit_after_terminal_resize(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    width: int,
+    height: int,
+) -> None:
+    session = monitor_session
+    session.drag(session.app.query_one("#pipeline-divider"), (10, 0))
+    session.drag(session.app.query_one("#inspection-divider"), (0, -4))
+    tree = session.app.query_one("#phase-tree")
+    stream = session.app.query_one("#pipeline-stream")
+    proportion = tree.size.width / (tree.size.width + stream.size.width)
+    session.runner.run(session.pilot.resize_terminal(width, height))
+    assert tree.size.width / (tree.size.width + stream.size.width) == pytest.approx(
+        proportion,
+        abs=0.02,
+    )
+    for selector in ("#phase-tree", "#pipeline-stream", "#inspection", "Footer"):
+        region = session.app.query_one(selector).region
+        assert region.width > 0
+        assert region.height > 0
+        assert region.right <= width
+        assert region.bottom <= height

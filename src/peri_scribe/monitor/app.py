@@ -17,6 +17,7 @@ import textual.widgets.tree
 import peri_scribe.monitor.events
 import peri_scribe.monitor.model
 import peri_scribe.monitor.presentation
+import peri_scribe.monitor.screenshots
 import peri_scribe.monitor.storage
 import peri_scribe.monitor.theme
 import peri_scribe.monitor.widgets
@@ -27,7 +28,7 @@ from peri_scribe.units import units
 POLL_INTERVAL = 500 * units.milliseconds
 
 
-class MonitorApp(textual.app.App[None]):
+class MonitorApp(peri_scribe.monitor.screenshots.SnapshotApp):
     """The terminal observes log and report files without becoming a pipeline writer."""
 
     TITLE = "PeriScribe monitor"
@@ -38,18 +39,19 @@ class MonitorApp(textual.app.App[None]):
     Tabs { background: $panel; }
     Tab.-active { background: $surface; color: $accent; text-style: bold; }
     Underline > .underline--bar { color: $accent; background: $panel; }
-    #views { height: 1fr; }
+    #views { height: 1fr; min-height: 8; }
     #activity { height: 2; padding: 0 1; color: $accent; }
     #phase-tree {
-        width: 43%; min-width: 24; border-right: solid $border; background: $panel;
+        width: 43fr; min-width: 20%; background: $panel;
     }
+    #pipeline-stream { width: 57fr; min-width: 20%; }
     .filters { height: 3; }
     .search { width: 1fr; }
     .severity { width: 18; }
     .events { height: 1fr; }
     #run-table { height: 1fr; }
     #decisions { max-height: 4; padding: 0 1; overflow-y: auto; }
-    #inspection { height: 6; border-top: solid $border; background: $panel; }
+    #inspection { height: 6; min-height: 3; background: $panel; }
     #report-time { height: auto; padding: 1; color: $text-muted; }
     #report-viewer { height: 1fr; }
     #file-status { height: auto; max-height: 3; padding: 0 1; }
@@ -79,9 +81,8 @@ class MonitorApp(textual.app.App[None]):
             report_path: The report path resolved by the existing report module.
             branches: Configured feed and source names.
         """
-        super().__init__()
+        super().__init__(year_directory)
         self.theme = peri_scribe.monitor.theme.DEFAULT_THEME
-        self.year_directory = year_directory
         self.report_path = report_path
         self.branches = branches
         self.follower = peri_scribe.monitor.storage.Follower(year_directory / "logs")
@@ -108,13 +109,23 @@ class MonitorApp(textual.app.App[None]):
         """
         yield textual.widgets.Header()
         yield textual.widgets.Static(id="activity", markup=False)
-        with textual.widgets.TabbedContent(id="views"):
+        views = textual.widgets.TabbedContent(id="views")
+        inspection = textual.containers.VerticalScroll(id="inspection")
+        with views:
             with (
                 textual.widgets.TabPane("Pipeline", id="pipeline"),
                 textual.containers.Horizontal(),
             ):
-                yield textual.widgets.Tree("All events", id="phase-tree")
-                yield peri_scribe.monitor.widgets.Stream(id="pipeline-stream")
+                tree = textual.widgets.Tree("All events", id="phase-tree")
+                stream = peri_scribe.monitor.widgets.Stream(id="pipeline-stream")
+                yield tree
+                yield peri_scribe.monitor.widgets.PaneDivider(
+                    tree,
+                    stream,
+                    dimension=peri_scribe.monitor.widgets.Dimension.WIDTH,
+                    identifier="pipeline-divider",
+                )
+                yield stream
             with textual.widgets.TabPane("Logs", id="logs"):
                 yield peri_scribe.monitor.widgets.Stream(id="log-stream")
             with textual.widgets.TabPane("Runs", id="runs"):
@@ -128,7 +139,13 @@ class MonitorApp(textual.app.App[None]):
                     id="report-viewer",
                 )
         yield textual.widgets.Static(id="decisions", markup=False)
-        with textual.containers.VerticalScroll(id="inspection"):
+        yield peri_scribe.monitor.widgets.PaneDivider(
+            views,
+            inspection,
+            dimension=peri_scribe.monitor.widgets.Dimension.HEIGHT,
+            identifier="inspection-divider",
+        )
+        with inspection:
             yield textual.widgets.Static(
                 "Select an event to inspect its fields.",
                 id="details",
@@ -361,6 +378,7 @@ class MonitorApp(textual.app.App[None]):
             return
         show = event.pane.id in {"pipeline", "logs"}
         self.query_one("#inspection").display = show
+        self.query_one("#inspection-divider").display = show
         self.query_one("#decisions").display = show
 
     @textual.on(textual.widgets.Button.Pressed, "#older")
