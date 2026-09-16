@@ -241,11 +241,16 @@ def fetch_external_source(
     """
     if year_directory is None:
         year_directory = default_year_directory()
-    paths = peri_scribe.sources.external_sources.fetch_external_source(
-        source,
-        year_directory,
-    )
-    logger.info("Fetched external source", source=source.name, paths=paths)
+    with peri_scribe.logging.log_execution(
+        "phase",
+        "collect-external-source",
+        source=source.name,
+    ):
+        paths = peri_scribe.sources.external_sources.fetch_external_source(
+            source,
+            year_directory,
+        )
+        logger.info("Fetched external source", source=source.name, paths=paths)
 
 
 @cli.command()
@@ -471,12 +476,11 @@ def run_gated_fetch_stage(
     Raises:
         SystemExit: If fetching or evaluating saved inputs fails.
     """
-    with peri_scribe.logging.log_execution("phase", "fire-collection"):
-        _result, full = fetch_fire_sources(
-            year_directory,
-            full_fetch_interval=full_fetch_interval,
-            defer_index=True,
-        )
+    _result, full = fetch_fire_sources(
+        year_directory,
+        full_fetch_interval=full_fetch_interval,
+        defer_index=True,
+    )
     try:
         with peri_scribe.logging.log_execution("phase", "evacuation-check"):
             fetch_external_source(
@@ -560,23 +564,25 @@ def refresh_external_sources(
     Returns:
         Whether evacuation geography changed.
     """
-    evacuations_digest_before = (
-        stored_evacuations_digest(year_directory) if include_evacuations else None
-    )
-    for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES:
-        if (
-            not include_evacuations
-            and source is peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
-        ):
-            continue
-        fetch_external_source(source, year_directory)
-    peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries(
-        year_directory,
-    )
-    return (
-        include_evacuations
-        and stored_evacuations_digest(year_directory) != evacuations_digest_before
-    )
+    with peri_scribe.logging.log_execution("phase", "external-source-refresh"):
+        evacuations_digest_before = (
+            stored_evacuations_digest(year_directory) if include_evacuations else None
+        )
+        for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES:
+            if (
+                not include_evacuations
+                and source is peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+            ):
+                continue
+            fetch_external_source(source, year_directory)
+        with peri_scribe.logging.log_execution("phase", "administrative-boundaries"):
+            peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries(
+                year_directory,
+            )
+        return (
+            include_evacuations
+            and stored_evacuations_digest(year_directory) != evacuations_digest_before
+        )
 
 
 def run_geography_stage(

@@ -13,6 +13,7 @@ import structlog
 
 import peri_scribe.exceptions
 import peri_scribe.geo.spatial_reference
+import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.retry
 import peri_scribe.sources.feed_types
@@ -150,23 +151,24 @@ def dataframe_for_layer(
     Raises:
         NoFeaturesError: If the feed returns no features.
     """
-    features = feature_set.features
-    if not features:
-        message = f"Feed {feed.name} returned no features; no output was written"
-        raise peri_scribe.exceptions.NoFeaturesError(message)
-    dataframe = feature_set.sdf
-    dataframe, shapely_geometries, geometry_warning = extract_geometries(dataframe)
-    if geometry_warning is not None:
-        logger.warning(geometry_warning)
-    bounds = peri_scribe.geo.spatial_reference.bounds_of(shapely_geometries)
-    spatial_reference_id = (
-        peri_scribe.geo.spatial_reference.choose_spatial_reference_id(
-            layer,
-            feature_set,
-            bounds,
+    with peri_scribe.logging.log_execution("phase", "convert-features", feed=feed.name):
+        features = feature_set.features
+        if not features:
+            message = f"Feed {feed.name} returned no features; no output was written"
+            raise peri_scribe.exceptions.NoFeaturesError(message)
+        dataframe = feature_set.sdf
+        dataframe, shapely_geometries, geometry_warning = extract_geometries(dataframe)
+        if geometry_warning is not None:
+            logger.warning(geometry_warning)
+        bounds = peri_scribe.geo.spatial_reference.bounds_of(shapely_geometries)
+        spatial_reference_id = (
+            peri_scribe.geo.spatial_reference.choose_spatial_reference_id(
+                layer,
+                feature_set,
+                bounds,
+            )
         )
-    )
-    return geo_data_frame_from(dataframe, shapely_geometries, spatial_reference_id)
+        return geo_data_frame_from(dataframe, shapely_geometries, spatial_reference_id)
 
 
 def query_with_retry(
@@ -187,12 +189,13 @@ def query_with_retry(
     Returns:
         The FeatureSet returned by a successful query.
     """
-    query_parameters = {} if parameters is None else parameters
-    return peri_scribe.retry.run_with_retry(
-        feed_name,
-        lambda: layer.query(**query_parameters),
-        maximum_retries=maximum_retries,
-    )
+    with peri_scribe.logging.log_execution("phase", "query-features", feed=feed_name):
+        query_parameters = {} if parameters is None else parameters
+        return peri_scribe.retry.run_with_retry(
+            feed_name,
+            lambda: layer.query(**query_parameters),
+            maximum_retries=maximum_retries,
+        )
 
 
 def query_object_ids_with_retry(

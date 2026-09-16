@@ -22,6 +22,7 @@ import peri_scribe.fires.reuse
 import peri_scribe.geo.measurements
 import peri_scribe.geo.parsing
 import peri_scribe.geo.reading
+import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.perimeters.progression
 import peri_scribe.units
@@ -509,38 +510,43 @@ def write_history_of_differential_geography(
     Returns:
         The path of the written differential GeoPackage.
     """
-    full_path = peri_scribe.fires.files.write_history_of_full_geography(
-        year_directory,
-        unconditional=unconditional,
-    )
-    full_perimeters = peri_scribe.geo.reading.read_layer(
-        full_path,
-        peri_scribe.fires.files.PERIMETER_LAYER_NAME,
-    )
-    full_points = peri_scribe.geo.reading.read_layer(
-        full_path,
-        peri_scribe.fires.files.POINT_LAYER_NAME,
-    )
-    output_path = differential_geopackage_path(year_directory)
-    cached = peri_scribe.fires.reuse.read_rows(
-        output_path,
-        (peri_scribe.fires.files.PERIMETER_LAYER_NAME,),
-        unconditional=unconditional,
-    )
-    peri_scribe.fires.reuse.write_layers(
-        output_path,
-        [
-            peri_scribe.models.LayerData(
-                name=peri_scribe.fires.files.PERIMETER_LAYER_NAME,
-                dataframe=differential_perimeter_dataframe(
-                    full_perimeters,
-                    reused=cached.get(peri_scribe.fires.files.PERIMETER_LAYER_NAME, {}),
+    with peri_scribe.logging.log_execution("phase", "full-history"):
+        full_path = peri_scribe.fires.files.write_history_of_full_geography(
+            year_directory,
+            unconditional=unconditional,
+        )
+    with peri_scribe.logging.log_execution("phase", "differential-history"):
+        full_perimeters = peri_scribe.geo.reading.read_layer(
+            full_path,
+            peri_scribe.fires.files.PERIMETER_LAYER_NAME,
+        )
+        full_points = peri_scribe.geo.reading.read_layer(
+            full_path,
+            peri_scribe.fires.files.POINT_LAYER_NAME,
+        )
+        output_path = differential_geopackage_path(year_directory)
+        cached = peri_scribe.fires.reuse.read_rows(
+            output_path,
+            (peri_scribe.fires.files.PERIMETER_LAYER_NAME,),
+            unconditional=unconditional,
+        )
+        peri_scribe.fires.reuse.write_layers(
+            output_path,
+            [
+                peri_scribe.models.LayerData(
+                    name=peri_scribe.fires.files.PERIMETER_LAYER_NAME,
+                    dataframe=differential_perimeter_dataframe(
+                        full_perimeters,
+                        reused=cached.get(
+                            peri_scribe.fires.files.PERIMETER_LAYER_NAME,
+                            {},
+                        ),
+                    ),
                 ),
-            ),
-            peri_scribe.models.LayerData(
-                name=peri_scribe.fires.files.POINT_LAYER_NAME,
-                dataframe=full_points,
-            ),
-        ],
-    )
+                peri_scribe.models.LayerData(
+                    name=peri_scribe.fires.files.POINT_LAYER_NAME,
+                    dataframe=full_points,
+                ),
+            ],
+        )
     return output_path

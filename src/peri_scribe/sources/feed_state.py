@@ -12,6 +12,7 @@ import structlog
 
 import peri_scribe.geo.parsing
 import peri_scribe.geo.reading
+import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.sources.feed_types
@@ -139,24 +140,32 @@ def read_current_features(
     Returns:
         The most recent feature per OBJECTID, or None when there are none.
     """
-    state_files = peri_scribe.sources.snapshots.current_state_file_paths(directory)
-    if state_files:
-        state_serial_number, state_path = state_files[-1]
-        newest_serial_number = current_state_serial_number(directory)
-        if (
-            newest_serial_number is not None
-            and state_serial_number == newest_serial_number
-        ):
-            try:
-                return peri_scribe.geo.reading.read_layer_dataframe(state_path, feed)
-            except (OSError, RuntimeError, ValueError) as error:
-                logger.warning(
-                    "Failed to read current state; reading snapshots instead",
-                    feed=feed.name,
-                    path=str(state_path),
-                    error=str(error),
-                )
-    return existing_features(directory, feed)
+    with peri_scribe.logging.log_execution(
+        "phase",
+        "read-current-state",
+        feed=feed.name,
+    ):
+        state_files = peri_scribe.sources.snapshots.current_state_file_paths(directory)
+        if state_files:
+            state_serial_number, state_path = state_files[-1]
+            newest_serial_number = current_state_serial_number(directory)
+            if (
+                newest_serial_number is not None
+                and state_serial_number == newest_serial_number
+            ):
+                try:
+                    return peri_scribe.geo.reading.read_layer_dataframe(
+                        state_path,
+                        feed,
+                    )
+                except (OSError, RuntimeError, ValueError) as error:
+                    logger.warning(
+                        "Failed to read current state; reading snapshots instead",
+                        feed=feed.name,
+                        path=str(state_path),
+                        error=str(error),
+                    )
+        return existing_features(directory, feed)
 
 
 def write_current_state(

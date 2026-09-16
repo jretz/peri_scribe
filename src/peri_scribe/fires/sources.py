@@ -13,6 +13,7 @@ import peri_scribe.fires.grouping
 import peri_scribe.geo.geometry_pool
 import peri_scribe.geo.package
 import peri_scribe.geo.reading
+import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.sources.snapshots
 
@@ -165,7 +166,10 @@ def fire_record_groups(directory: pathlib.Path) -> FireRecordGroups:
         The records, their source files, the grouped fires, and the identifiers of the
         fires that are complex parents.
     """
-    return group_fire_sources(read_fire_sources(directory))
+    with peri_scribe.logging.log_execution("phase", "read-sources"):
+        read = read_fire_sources(directory)
+    with peri_scribe.logging.log_execution("phase", "group-sources"):
+        return group_fire_sources(read)
 
 
 def fire_is_complex_parent(

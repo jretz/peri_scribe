@@ -136,6 +136,7 @@ def test_dataframe_for_layer_warns_when_features_lack_geometry(
     ])
     with structlog.testing.capture_logs() as captured:
         result = peri_scribe.geo.data.dataframe_for_layer(feed, layer, feature_set)
+    captured = [entry for entry in captured if entry["log_level"] == "warning"]
     assert len(captured) == 1
     assert captured[0]["log_level"] == "warning"
     assert "all features lack geometry" in captured[0]["event"]
@@ -315,6 +316,7 @@ def test_query_with_retry_logs_rate_limit_reason(
             tests.helpers.factories.peri_scribe.sources.feed_types.SAMPLE_FEED_NAME,
             typing.cast("arcgis.features.FeatureLayer", layer),
         )
+    captured = [entry for entry in captured if "retry_delay" in entry]
     assert captured[0]["event"] == "Rate-limited; retrying after server-suggested delay"
     assert captured[0]["attempt"] == 1
     assert captured[0]["retry_delay"] == {
@@ -346,6 +348,7 @@ def test_query_with_retry_logs_transient_reason(
             tests.helpers.factories.peri_scribe.sources.feed_types.SAMPLE_FEED_NAME,
             typing.cast("arcgis.features.FeatureLayer", layer),
         )
+    captured = [entry for entry in captured if "retry_delay" in entry]
     assert captured[0]["event"] == "Transient network error; retrying after backoff"
     assert captured[0]["attempt"] == 1
     assert captured[0]["retry_delay"] == {

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import pathlib
 
@@ -15,6 +16,7 @@ import peri_scribe.fires.reuse
 import peri_scribe.fires.sources
 import peri_scribe.geo.measurements
 import peri_scribe.incidents
+import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.sources.snapshots
 
@@ -126,14 +128,20 @@ def write_history_of_full_geography(
     sources_directory = peri_scribe.sources.snapshots.sources_directory_path(
         year_directory,
     )
-    read = peri_scribe.fires.sources.read_fire_sources(sources_directory)
-    record_groups = peri_scribe.fires.sources.group_fire_sources(read)
+    with peri_scribe.logging.log_execution("phase", "load-and-group-sources"):
+        read = peri_scribe.fires.sources.read_fire_sources(sources_directory)
+        record_groups = peri_scribe.fires.sources.group_fire_sources(read)
     output_path = history_geopackage_path(year_directory)
-    cached = peri_scribe.fires.reuse.read_rows(
-        output_path,
-        (PERIMETER_LAYER_NAME, POINT_LAYER_NAME, peri_scribe.incidents.LAYER_NAME),
-        unconditional=unconditional,
-    )
+    with (
+        contextlib.nullcontext()
+        if unconditional
+        else peri_scribe.logging.log_execution("phase", "load-reusable-history")
+    ):
+        cached = peri_scribe.fires.reuse.read_rows(
+            output_path,
+            (PERIMETER_LAYER_NAME, POINT_LAYER_NAME, peri_scribe.incidents.LAYER_NAME),
+            unconditional=unconditional,
+        )
     keys = peri_scribe.fires.reuse.fire_keys(
         read,
         record_groups,
@@ -166,15 +174,16 @@ def write_history_of_full_geography(
             record_groups,
             classifications,
         )
-    perimeter_rows, point_rows = peri_scribe.fires.history.history_layer_rows(
-        record_groups,
-        classifications,
-        list(read.rows),
-        list(read.paths),
-        sources_directory,
-        reused=reused,
-        derivation_keys=keys,
-    )
+    with peri_scribe.logging.log_execution("phase", "reconstruct-geography"):
+        perimeter_rows, point_rows = peri_scribe.fires.history.history_layer_rows(
+            record_groups,
+            classifications,
+            list(read.rows),
+            list(read.paths),
+            sources_directory,
+            reused=reused,
+            derivation_keys=keys,
+        )
     perimeter_dataframe = peri_scribe.fires.history.build_dataframe(
         perimeter_rows,
         PERIMETER_COLUMNS,

@@ -21,6 +21,7 @@ import peri_scribe.kml.plot_data
 import peri_scribe.kml.plot_rendering
 import peri_scribe.kml.selection
 import peri_scribe.kml.text
+import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.perimeters.progression
 
@@ -498,13 +499,14 @@ def fire_geometries(
         histories=histories,
     )
     if render_plots:
-        image_bundles = peri_scribe.kml.plot_rendering.plot_image_bundles(
-            tuple(plot_bundles),
-            before_rendering=functools.partial(
-                precompute_interior_added_areas,
-                pending,
-            ),
-        )
+        with peri_scribe.logging.log_execution("phase", "prepare-plot-images"):
+            image_bundles = peri_scribe.kml.plot_rendering.plot_image_bundles(
+                tuple(plot_bundles),
+                before_rendering=functools.partial(
+                    precompute_interior_added_areas,
+                    pending,
+                ),
+            )
     else:
         image_bundles = tuple(() for _plot_bundle in plot_bundles)
     fires: list[FireGeometry] = []

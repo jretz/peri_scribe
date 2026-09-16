@@ -53,6 +53,7 @@ import us
 
 import peri_scribe.exceptions
 import peri_scribe.geo.data
+import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.sources.archives
@@ -196,7 +197,13 @@ def fetch_arcgis_source(
     layer_name = source.layer_name or source.name
     output = peri_scribe.sources.external_data.output_path(year_directory, source)
     try:
-        geodataframe = normalize_arcgis_datetimes(query_arcgis_source(source))
+        geodataframe = query_arcgis_source(source)
+        with peri_scribe.logging.log_execution(
+            "phase",
+            "normalize-datetimes",
+            source=source.name,
+        ):
+            geodataframe = normalize_arcgis_datetimes(geodataframe)
     except peri_scribe.exceptions.ExternalDataError as error:
         if output.is_file():
             logger.warning(
@@ -206,26 +213,36 @@ def fetch_arcgis_source(
             )
             return output
         raise
-    if output.is_file() and peri_scribe.sources.digests.snapshot_matches(
-        geodataframe,
-        output,
-        layer_name,
-        normalize=(
-            evacuation_comparison_frame
-            if source.name == EVACUATIONS_SOURCE.name
-            else None
-        ),
+    with peri_scribe.logging.log_execution(
+        "phase",
+        "compare-features",
+        source=source.name,
     ):
-        logger.debug("External source unchanged", source=source.name, path=output)
-        return output
+        if output.is_file() and peri_scribe.sources.digests.snapshot_matches(
+            geodataframe,
+            output,
+            layer_name,
+            normalize=(
+                evacuation_comparison_frame
+                if source.name == EVACUATIONS_SOURCE.name
+                else None
+            ),
+        ):
+            logger.debug("External source unchanged", source=source.name, path=output)
+            return output
     temporary = output.with_name(f"{output.stem}.tmp.gpkg")
     output.parent.mkdir(parents=True, exist_ok=True)
     try:
-        peri_scribe.output.write_geopackage(
-            temporary,
-            [peri_scribe.models.LayerData(name=layer_name, dataframe=geodataframe)],
-        )
-        temporary.replace(output)
+        with peri_scribe.logging.log_execution(
+            "phase",
+            "write-snapshot",
+            source=source.name,
+        ):
+            peri_scribe.output.write_geopackage(
+                temporary,
+                [peri_scribe.models.LayerData(name=layer_name, dataframe=geodataframe)],
+            )
+            temporary.replace(output)
     finally:
         temporary.unlink(missing_ok=True)
     logger.debug(
@@ -319,4 +336,9 @@ def query_arcgis_source(
     if not feature_set.features:
         message = f"External source {source.name} returned no features"
         raise peri_scribe.exceptions.ExternalDataError(message)
-    return peri_scribe.geo.data.geo_data_frame_from_feature_set(feature_set)
+    with peri_scribe.logging.log_execution(
+        "phase",
+        "convert-features",
+        source=source.name,
+    ):
+        return peri_scribe.geo.data.geo_data_frame_from_feature_set(feature_set)

@@ -196,6 +196,7 @@ def test_layer_dataframe_logs_warning_when_geometry_missing() -> None:
         )
     assert len(dataframe) == 1
     assert dataframe.geometry.iloc[0] is None
+    captured = [entry for entry in captured if entry["log_level"] == "warning"]
     assert captured[0]["event"] == (
         "  warning: all features lack geometry; writing the layer with NULL geometry"
     )

@@ -421,7 +421,12 @@ def test_fetch_external_source_uses_given_year_directory(
     )
     peri_scribe.main.fetch_external_source(source, year_directory)
     assert fetched == [(source, year_directory)]
-    assert log_output.entries[-1]["paths"] == ["/out.gpkg"]
+    fetched_entry = next(
+        entry
+        for entry in log_output.entries
+        if entry["event"] == "Fetched external source"
+    )
+    assert fetched_entry["paths"] == ["/out.gpkg"]
 
 
 def test_fetch_external_source_defaults_to_current_year_directory(
@@ -541,7 +546,7 @@ def test_gate_skip_checks_evacuations_and_preserves_checkpoint_without_pending_f
         entry["phase"]
         for entry in cli_log_output.entries
         if entry.get("event") == "Finished phase"
-    } == {"fetch", "fire-collection", "evacuation-check", "publication-gate"}
+    } == {"fetch", "evacuation-check", "publication-gate"}
 
 
 def test_timer_builds_saved_updates_on_unchanged_fetch_and_advances_checkpoint(
@@ -790,6 +795,11 @@ def test_run_logs_each_executed_phase_inside_command_boundaries(
     changed: bool,
 ) -> None:
     run_stubs(changed=changed)
+    monkeypatch.setattr(
+        peri_scribe.main,
+        "refresh_external_sources",
+        lambda _year_directory: False,
+    )
     ticks = itertools.count()
     monkeypatch.setattr(peri_scribe.logging.time, "perf_counter", lambda: next(ticks))
 
@@ -813,10 +823,16 @@ def test_run_logs_each_executed_phase_inside_command_boundaries(
             entry
             for phase in phases
             for entry in (
-                {"event": "Starting phase", "phase": phase, "log_level": "info"},
+                {
+                    "event": "Starting phase",
+                    "phase": phase,
+                    "phase_path": phase,
+                    "log_level": "info",
+                },
                 {
                     "event": "Finished phase",
                     "phase": phase,
+                    "phase_path": phase,
                     "duration": {"value": 1.0, "units": units.seconds},
                     "status": "completed",
                     "log_level": "info",
@@ -859,6 +875,7 @@ def test_run_logs_elapsed_time_when_a_phase_fails(
         {
             "event": "Finished phase",
             "phase": "score",
+            "phase_path": "score",
             "duration": {"value": 123.45, "units": units.seconds},
             "status": "failed",
             "log_level": "error",

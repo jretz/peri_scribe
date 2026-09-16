@@ -3,6 +3,7 @@
 import collections.abc
 import compression.zstd
 import contextlib
+import contextvars
 import dataclasses
 import datetime
 import enum
@@ -27,6 +28,10 @@ from peri_scribe.units import units
 
 
 logger = structlog.get_logger()
+PHASE_PATH: contextvars.ContextVar[tuple[str, ...]] = contextvars.ContextVar(
+    "phase_path",
+    default=(),
+)
 
 
 def log_value(value: object) -> object:
@@ -239,33 +244,38 @@ def log_execution(
     name: str,
     **kwargs: object,
 ) -> typing.Generator[None]:
-    """Make execution boundaries and elapsed time visible, including failed work.
+    """Make nested execution boundaries and elapsed time visible, including failures.
 
     Args:
         kind: Whether the operation is a CLI command or a pipeline phase.
         name: The operation's CLI or phase name.
-        kwargs: Additional context to include in the start log entry.
+        kwargs: Additional context for the start entry and, for phases, the finish.
 
     Yields:
         Control to the operation being timed.
     """
-    started_at = time.perf_counter() * units.seconds
-    context = {kind: name}
-    logger.info("Starting %s", kind, **context, **kwargs)
-    status = "failed"
-    try:
-        yield
-        status = "completed"
-    finally:
-        elapsed = time.perf_counter() * units.seconds - started_at
-        logger.log(
-            logging.ERROR if status == "failed" else logging.INFO,
-            "Finished %s",
-            kind,
-            **context,
-            duration=round(elapsed, 2),
-            status=status,
-        )
+    phase_path = (*PHASE_PATH.get(), name) if kind == "phase" else ()
+    with PHASE_PATH.set(phase_path):
+        started_at = time.perf_counter() * units.seconds
+        context: dict[str, object] = {kind: name}
+        if kind == "phase":
+            context["phase_path"] = ".".join(phase_path)
+        logger.info("Starting %s", kind, **context, **kwargs)
+        status = "failed"
+        try:
+            yield
+            status = "completed"
+        finally:
+            elapsed = time.perf_counter() * units.seconds - started_at
+            logger.log(
+                logging.ERROR if status == "failed" else logging.INFO,
+                "Finished %s",
+                kind,
+                **context,
+                **(kwargs if kind == "phase" else {}),
+                duration=round(elapsed, 2),
+                status=status,
+            )
 
 
 def command_line_parameters(context: click.Context) -> dict[str, object]:

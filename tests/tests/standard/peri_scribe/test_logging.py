@@ -52,6 +52,58 @@ def test_configure_logging_writes_to_stderr(capsys: pytest.CaptureFixture[str]) 
     assert "evacuations" in captured.err
 
 
+def test_log_execution_nests_phase_paths_and_restores_siblings() -> None:
+    with structlog.testing.capture_logs() as entries:
+        with peri_scribe.logging.log_execution("phase", "geography"):
+            with (
+                peri_scribe.logging.log_execution("phase", "full-history"),
+                peri_scribe.logging.log_execution("phase", "load-sources"),
+            ):
+                pass
+            with peri_scribe.logging.log_execution("phase", "differential-history"):
+                pass
+        with peri_scribe.logging.log_execution("phase", "score"):
+            pass
+
+    assert [(entry["event"], entry["phase_path"]) for entry in entries] == [
+        ("Starting phase", "geography"),
+        ("Starting phase", "geography.full-history"),
+        ("Starting phase", "geography.full-history.load-sources"),
+        ("Finished phase", "geography.full-history.load-sources"),
+        ("Finished phase", "geography.full-history"),
+        ("Starting phase", "geography.differential-history"),
+        ("Finished phase", "geography.differential-history"),
+        ("Finished phase", "geography"),
+        ("Starting phase", "score"),
+        ("Finished phase", "score"),
+    ]
+    assert all(entry["log_level"] == "info" for entry in entries)
+
+
+@pytest.mark.parametrize("error", [RuntimeError("failed"), SystemExit("failed")])
+def test_log_execution_restores_phase_path_after_failure(error: BaseException) -> None:
+    with (
+        structlog.testing.capture_logs() as entries,
+        peri_scribe.logging.log_execution("phase", "geography"),
+    ):
+        with (
+            pytest.raises(type(error), match="failed"),
+            peri_scribe.logging.log_execution("phase", "full-history"),
+        ):
+            raise error
+        with peri_scribe.logging.log_execution("phase", "recovery"):
+            pass
+
+    finished = [entry for entry in entries if entry["event"] == "Finished phase"]
+    assert [
+        (entry["phase_path"], entry["status"], entry["log_level"]) for entry in finished
+    ] == [
+        ("geography.full-history", "failed", "error"),
+        ("geography.recovery", "completed", "info"),
+        ("geography", "completed", "info"),
+    ]
+
+
 @pytest.mark.parametrize("kind", ["command", "phase"])
 def test_log_execution_emits_failures_when_both_destinations_require_error(
     tmp_path: pathlib.Path,

@@ -14,6 +14,7 @@ import structlog
 import peri_scribe.exceptions
 import peri_scribe.fires.index
 import peri_scribe.geo.data
+import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.sources.changes
@@ -84,10 +85,15 @@ def fetch_feed_dataframe(
             source_directory,
             feed,
         )
-        geodataframe = peri_scribe.sources.changes.drop_features_already_present(
-            geodataframe,
-            existing,
-        )
+        with peri_scribe.logging.log_execution(
+            "phase",
+            "compare-features",
+            feed=feed.name,
+        ):
+            geodataframe = peri_scribe.sources.changes.drop_features_already_present(
+                geodataframe,
+                existing,
+            )
         if geodataframe.empty:
             logger.debug("No new or changed features", feed=feed.name)
             return None
@@ -161,10 +167,11 @@ def fetch_feed_dataframe(
         parameters={"object_ids": ",".join(str(i) for i in object_ids)},
     )
     geodataframe = peri_scribe.geo.data.dataframe_for_layer(feed, layer, feature_set)
-    geodataframe = peri_scribe.sources.changes.drop_features_already_present(
-        geodataframe,
-        existing,
-    )
+    with peri_scribe.logging.log_execution("phase", "compare-features", feed=feed.name):
+        geodataframe = peri_scribe.sources.changes.drop_features_already_present(
+            geodataframe,
+            existing,
+        )
     if geodataframe.empty:
         logger.debug("No new or changed features", feed=feed.name)
         return None
@@ -258,112 +265,134 @@ def fetch_all_feeds(
         base_dir = pathlib.Path.cwd()
     if year is None:
         year = datetime.date.today().year
-    gis = arcgis.gis.GIS()
-    snapshot_paths: list[pathlib.Path] = []
-    errors: list[str] = []
-    wrote_snapshot = False
-    for feed in peri_scribe.sources.feeds.FEEDS:
-        logger.debug("Fetching", feed=feed.name, url=feed.url)
-        last_edit_timestamp = feed.current_last_edit_timestamp
-        if last_edit_timestamp is None:
-            errors.append(
-                f"Failed to fetch {feed.name}: no last-edit timestamp "
-                "could be observed",
-            )
-            continue
-        source_directory = peri_scribe.sources.snapshots.source_directory_path(
-            base_dir,
-            year,
-            feed.name,
-        )
-        if not full:
-            existing_path = (
-                peri_scribe.sources.snapshots.snapshot_path_for_last_edit_timestamp(
-                    source_directory,
-                    last_edit_timestamp,
-                )
-            )
-            if existing_path is not None:
-                logger.debug(
-                    "Skipping fetch; data already present",
-                    feed=feed.name,
-                    last_edit_timestamp=last_edit_timestamp,
-                    path=existing_path,
-                )
-                snapshot_paths.append(existing_path)
-                continue
-        existing_source_files = peri_scribe.sources.snapshots.existing_source_files(
-            source_directory,
-        )
-        try:
-            geodataframe = fetch_feed(
-                feed,
-                gis,
-                existing_source_files,
-                source_directory,
-                full=full,
-            )
-        except peri_scribe.exceptions.FeedFetchError as error:
-            errors.append(str(error))
-            continue
-        if geodataframe is None:
-            latest_path = peri_scribe.sources.feed_state.latest_snapshot_path(
-                source_directory,
-                existing_source_files,
-            )
-            if latest_path is not None:
-                snapshot_paths.append(latest_path)
-            continue
-        logger.debug("Received features", count=len(geodataframe))
-        logger.debug(
-            "Prepared feed",
-            feed=feed.name,
-            rows=len(geodataframe),
-            crs=geodataframe.crs,
-        )
-        serial_number = peri_scribe.sources.snapshots.next_serial_number(
-            existing_source_files,
-            last_edit_timestamp,
-            reuse_same_timestamp=not full,
-        )
-        output_path = peri_scribe.sources.snapshots.source_geopackage_path(
-            base_dir,
-            year,
-            feed.name,
-            peri_scribe.sources.snapshots.SourceFile(
-                serial_number=serial_number,
-                last_edit_timestamp=last_edit_timestamp,
-            ),
-        )
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        logger.debug("Writing layer", feed=feed.name, path=output_path)
-        peri_scribe.output.write_geopackage(
-            output_path,
-            [peri_scribe.models.LayerData(name=feed.name, dataframe=geodataframe)],
-        )
-        try:
-            peri_scribe.sources.feed_state.write_current_state(
-                source_directory,
-                feed,
-                geodataframe,
-            )
-        except (OSError, RuntimeError, ValueError) as error:
-            # The current-state file is only a derived cache; a failed update leaves the
-            # snapshots authoritative and the next fetch rebuilds the state.
-            logger.warning(
-                "Failed to update current state",
+    with peri_scribe.logging.log_execution("phase", "fire-collection"):
+        gis = arcgis.gis.GIS()
+        snapshot_paths: list[pathlib.Path] = []
+        errors: list[str] = []
+        wrote_snapshot = False
+        for feed in peri_scribe.sources.feeds.FEEDS:
+            with peri_scribe.logging.log_execution(
+                "phase",
+                "collect-feed",
                 feed=feed.name,
-                error=str(error),
-            )
-        snapshot_paths.append(output_path)
-        wrote_snapshot = True
+                url=feed.url,
+            ):
+                with peri_scribe.logging.log_execution(
+                    "phase",
+                    "check-metadata",
+                    feed=feed.name,
+                ):
+                    last_edit_timestamp = feed.current_last_edit_timestamp
+                if last_edit_timestamp is None:
+                    errors.append(
+                        f"Failed to fetch {feed.name}: no last-edit timestamp "
+                        "could be observed",
+                    )
+                    continue
+                source_directory = peri_scribe.sources.snapshots.source_directory_path(
+                    base_dir,
+                    year,
+                    feed.name,
+                )
+                if not full:
+                    existing_path = (
+                        peri_scribe.sources.snapshots
+                    ).snapshot_path_for_last_edit_timestamp(
+                        source_directory,
+                        last_edit_timestamp,
+                    )
+                    if existing_path is not None:
+                        logger.debug(
+                            "Skipping fetch; data already present",
+                            feed=feed.name,
+                            last_edit_timestamp=last_edit_timestamp,
+                            path=existing_path,
+                        )
+                        snapshot_paths.append(existing_path)
+                        continue
+                existing_source_files = (
+                    peri_scribe.sources.snapshots.existing_source_files(
+                        source_directory,
+                    )
+                )
+                try:
+                    geodataframe = fetch_feed(
+                        feed,
+                        gis,
+                        existing_source_files,
+                        source_directory,
+                        full=full,
+                    )
+                except peri_scribe.exceptions.FeedFetchError as error:
+                    errors.append(str(error))
+                    continue
+                if geodataframe is None:
+                    latest_path = peri_scribe.sources.feed_state.latest_snapshot_path(
+                        source_directory,
+                        existing_source_files,
+                    )
+                    if latest_path is not None:
+                        snapshot_paths.append(latest_path)
+                    continue
+                serial_number = peri_scribe.sources.snapshots.next_serial_number(
+                    existing_source_files,
+                    last_edit_timestamp,
+                    reuse_same_timestamp=not full,
+                )
+                output_path = peri_scribe.sources.snapshots.source_geopackage_path(
+                    base_dir,
+                    year,
+                    feed.name,
+                    peri_scribe.sources.snapshots.SourceFile(
+                        serial_number=serial_number,
+                        last_edit_timestamp=last_edit_timestamp,
+                    ),
+                )
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+                with peri_scribe.logging.log_execution(
+                    "phase",
+                    "write-snapshot",
+                    feed=feed.name,
+                    path=output_path,
+                    rows=len(geodataframe),
+                    crs=geodataframe.crs,
+                ):
+                    peri_scribe.output.write_geopackage(
+                        output_path,
+                        [
+                            peri_scribe.models.LayerData(
+                                name=feed.name,
+                                dataframe=geodataframe,
+                            ),
+                        ],
+                    )
+                try:
+                    with peri_scribe.logging.log_execution(
+                        "phase",
+                        "update-current-state",
+                        feed=feed.name,
+                    ):
+                        peri_scribe.sources.feed_state.write_current_state(
+                            source_directory,
+                            feed,
+                            geodataframe,
+                        )
+                except (OSError, RuntimeError, ValueError) as error:
+                    # The current-state file is only a derived cache; a failed update
+                    # leaves snapshots authoritative so the next fetch rebuilds it.
+                    logger.warning(
+                        "Failed to update current state",
+                        feed=feed.name,
+                        error=str(error),
+                    )
+                snapshot_paths.append(output_path)
+                wrote_snapshot = True
     if build_index and (wrote_snapshot or full):
         peri_scribe.fires.index.index_fire_sources(
             peri_scribe.sources.snapshots.year_directory_path(base_dir, year),
         )
     if errors:
         raise SystemExit("\n".join(errors))
-    logger.debug("Done")
     return FetchResult(snapshot_paths=tuple(snapshot_paths), changed=wrote_snapshot)
 
 

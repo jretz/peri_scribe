@@ -700,6 +700,7 @@ def test_fire_sources_from_groups_skips_membership_for_unidentified_fire(
     )
     with structlog.testing.capture_logs() as captured:
         fires = tests.helpers.factories.peri_scribe.fires.sources.listed_fires()
+    captured = [entry for entry in captured if entry["log_level"] == "warning"]
     assert captured[0]["event"] == "Complex membership references an unidentified fire"
     assert captured[0]["fire_identifier"] == "unknown-fire"
     assert fires == [

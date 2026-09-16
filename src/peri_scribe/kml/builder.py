@@ -26,6 +26,7 @@ import peri_scribe.kml.geometry
 import peri_scribe.kml.icons
 import peri_scribe.kml.selection
 import peri_scribe.kml.styles
+import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.publication
 import peri_scribe.sources.snapshots
@@ -478,16 +479,17 @@ def prepare_histories(
     Returns:
         Prepared reporting and area decisions keyed by canonical identity.
     """
-    return peri_scribe.kml.selection.prepare_histories(
-        perimeters,
-        points,
-        incident_rows,
-        aliases={
-            identifier: entry.identifier or identifier
-            for entry in index.fires
-            for identifier in peri_scribe.kml.selection.identifiers(entry)
-        },
-    )
+    with peri_scribe.logging.log_execution("phase", "prepare-fire-histories"):
+        return peri_scribe.kml.selection.prepare_histories(
+            perimeters,
+            points,
+            incident_rows,
+            aliases={
+                identifier: entry.identifier or identifier
+                for entry in index.fires
+                for identifier in peri_scribe.kml.selection.identifiers(entry)
+            },
+        )
 
 
 def area_qualified_index(
@@ -618,15 +620,16 @@ def create_kmz(
         excluded_fires=fire_count - len(index.fires),
         minimum_area=peri_scribe.kml.selection.MINIMUM_FIRE_AREA,
     )
-    geometries = peri_scribe.kml.fire_data.fire_geometries(
-        index,
-        perimeters,
-        points,
-        differential_perimeters,
-        scores=scores,
-        incident_rows=layers.incidents,
-        histories=histories,
-    )
+    with peri_scribe.logging.log_execution("phase", "prepare-fire-geometries"):
+        geometries = peri_scribe.kml.fire_data.fire_geometries(
+            index,
+            perimeters,
+            points,
+            differential_perimeters,
+            scores=scores,
+            incident_rows=layers.incidents,
+            histories=histories,
+        )
     images = {
         image.filename: image.content for fire in geometries for image in fire.images
     }
@@ -642,15 +645,14 @@ def create_kmz(
         if publication_inputs is not None
         else None
     )
-    write_kmz(
-        output_path,
-        fire_kml(
-            geometries,
-            output_path.stem,
-            scores or peri_scribe.models.FireScores(version="", fires=[]),
-        ),
-        images,
-    )
+    with peri_scribe.logging.log_execution("phase", "serialize-and-write-kmz"):
+        with peri_scribe.logging.log_execution("phase", "build-kml"):
+            kml_text = fire_kml(
+                geometries,
+                output_path.stem,
+                scores or peri_scribe.models.FireScores(version="", fires=[]),
+            )
+        write_kmz(output_path, kml_text, images)
     if publication_inputs is not None and published is not None:
         peri_scribe.publication.commit(
             year_directory,
