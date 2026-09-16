@@ -20,5 +20,5 @@ def boundary_payload(entry: collections.abc.Mapping[str, object]) -> dict[str, o
     return {
         key: value
         for key, value in entry.items()
-        if key not in {"run_id", "process_id", "phase_segments"}
+        if key not in {"run_id", "process_id", "phase_segments", "exception"}
     }

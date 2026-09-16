@@ -3,6 +3,7 @@
 import http
 import json
 import typing
+import unittest.mock
 
 import pytest
 import requests
@@ -296,5 +297,20 @@ def test_run_with_retry_logs_serializable_traceback_on_exhaustion(
     entry = json.loads(json.dumps(log_output.entries[0]))
     assert entry["event"] == "Retries exhausted"
     assert entry["attempts"] == 1
+    assert "Traceback (most recent call last)" in entry["exception"]
+    assert "ConnectionError: Disconnected" in entry["exception"]
+
+
+def test_run_with_retry_logs_traceback_before_a_successful_retry(
+    monkeypatch: pytest.MonkeyPatch,
+    log_output: structlog.testing.LogCapture,
+) -> None:
+    monkeypatch.setattr(tenacity.nap.time, "sleep", lambda _seconds: None)
+    query = unittest.mock.Mock(
+        side_effect=[requests.exceptions.ConnectionError("Disconnected"), "result"],
+    )
+    assert peri_scribe.retry.run_with_retry("example", query) == "result"
+    entry = log_output.entries[0]
+    assert entry["log_level"] == "info"
     assert "Traceback (most recent call last)" in entry["exception"]
     assert "ConnectionError: Disconnected" in entry["exception"]

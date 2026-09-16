@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import typing
 
+import pytest
 import shapely.geometry
 
 import peri_scribe.geo.measurements
@@ -190,6 +191,23 @@ def test_point_locations_keep_last_point_per_fire() -> None:
     by_identifier, by_name = peri_scribe.kml.selection.point_locations(points)
     assert by_identifier == {"id-a": later}
     assert list(by_name) == ["Nameless"]
+
+
+@pytest.mark.parametrize("geometry", [None, shapely.Polygon(), shapely.MultiPolygon()])
+@pytest.mark.parametrize("identifier", ["id-bug", None])
+def test_perimeter_groups_omits_missing_and_empty_geometry(
+    geometry: shapely.Geometry | None,
+    identifier: str | None,
+) -> None:
+    perimeters = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": [identifier],
+            "fire_name": ["Bug"],
+            "observation_time": [tests.helpers.factories.time.utc(2026, 9, 12, 22)],
+        },
+        [geometry],
+    )
+    assert peri_scribe.kml.selection.perimeter_groups(perimeters) == ({}, {})
 
 
 def test_fire_point_matches_identifier() -> None:

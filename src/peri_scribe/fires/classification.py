@@ -65,7 +65,11 @@ def classify_fire_sources(
             year_directory,
         )
     except (OSError, RuntimeError, ValueError) as error:
-        logger.warning("Skipping border classification", error=str(error))
+        logger.warning(
+            "Skipping border classification",
+            error=str(error),
+            exc_info=True,
+        )
         return {}
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=os.cpu_count() or 1,

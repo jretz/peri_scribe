@@ -136,6 +136,50 @@ def test_fire_kml_puts_top_fires_before_status_folders() -> None:
     ]
 
 
+def test_fire_kml_ranks_growth_with_a_missing_baseline_geometry() -> None:
+    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
+        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
+            "Star Lake",
+            "active",
+            identifier="2026-txmcr-000378",
+        ),
+    ])
+    baseline_time = tests.helpers.factories.time.utc(2026, 9, 12, 22)
+    latest_time = tests.helpers.factories.time.utc(2026, 9, 16, 17)
+    perimeters = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["2026-txmcr-000378"] * 3,
+            "fire_name": ["Star Lake"] * 3,
+            "observation_time": [baseline_time, baseline_time, latest_time],
+        },
+        [
+            shapely.box(-94.16, 29.66, -94.14, 29.68),
+            None,
+            shapely.box(-94.16, 29.66, -94.08, 29.74),
+        ],
+    )
+    fires = peri_scribe.kml.fire_data.fire_geometries(
+        index,
+        perimeters,
+        perimeters.iloc[0:0],
+        perimeters.iloc[0:0],
+        render_plots=False,
+    )
+    with time_machine.travel(latest_time):
+        document = tests.helpers.peri_scribe.kml.parsing.document_from(
+            peri_scribe.kml.builder.fire_kml(
+                fires,
+                "PeriScribe Fires 2026",
+                peri_scribe.models.FireScores(version="test", fires=[]),
+            ),
+        )
+    growing = tests.helpers.peri_scribe.kml.parsing.folder_named(
+        tests.helpers.peri_scribe.kml.parsing.top_level_folder(document),
+        "Fast Growing Fires (%)",
+    )
+    assert tests.helpers.peri_scribe.kml.parsing.folder_names(growing) == ["Star Lake"]
+
+
 def test_fire_kml_puts_new_folders_before_top_fires() -> None:
     fires, scores = (
         tests.helpers.factories.peri_scribe.kml.builder.new_folder_scenario()

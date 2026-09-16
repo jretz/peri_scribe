@@ -109,3 +109,7 @@ code.
 Do not copy/paste code, even if changing constants or a small minority of behavior.
 Extract and abstract. After extracting, use existing tests to ensure origin site has no
 behavioral changes before making further test changes.
+
+## Logging
+
+Wherever a log entry is made as a result of an exception, include `exc_info`.

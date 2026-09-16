@@ -263,3 +263,5 @@ def test_read_state_logs_malformed_state_error(
     assert entry["event"] == "Malformed fetch state"
     assert entry["path"] == str(path)
     assert "Expecting value" in entry["error"]
+    assert "Traceback (most recent call last)" in entry["exception"]
+    assert "JSONDecodeError: Expecting value" in entry["exception"]

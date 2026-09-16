@@ -205,7 +205,12 @@ def read_rows(
     try:
         return validated_rows(path, layer_names)
     except (OSError, ValueError, RuntimeError) as error:
-        logger.info("Ignoring history cache", path=str(path), reason=str(error))
+        logger.info(
+            "Ignoring history cache",
+            path=str(path),
+            reason=str(error),
+            exc_info=True,
+        )
         return {}
 
 

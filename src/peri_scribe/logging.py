@@ -316,6 +316,7 @@ def log_execution(
                 **(kwargs if kind == "phase" else {}),
                 duration=round(elapsed, 2),
                 status=status,
+                exc_info=status == "failed",
             )
 
 

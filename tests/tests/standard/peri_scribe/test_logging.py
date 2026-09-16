@@ -105,21 +105,30 @@ def test_log_execution_restores_phase_path_after_failure(error: BaseException) -
 
 
 @pytest.mark.parametrize("kind", ["command", "phase"])
+@pytest.mark.parametrize(
+    "error",
+    [
+        RuntimeError("execution failed"),
+        SystemExit("execution failed"),
+        KeyboardInterrupt("execution failed"),
+    ],
+)
 def test_log_execution_emits_failures_when_both_destinations_require_error(
     tmp_path: pathlib.Path,
     capsys: pytest.CaptureFixture[str],
     kind: typing.Literal["command", "phase"],
+    error: BaseException,
 ) -> None:
     peri_scribe.logging.configure_logging("error", "error", year_directory=tmp_path)
-    error = RuntimeError("execution failed")
     with (
-        pytest.raises(RuntimeError, match="execution failed"),
+        pytest.raises(type(error), match="execution failed") as raised,
         peri_scribe.logging.log_execution(kind, "fetch"),
     ):
-        raise error
+        tests.helpers.doubles.errors.raising_stub(error)()
+    assert raised.value is error
     captured = capsys.readouterr()
     assert captured.out == ""
-    assert "Starting" not in captured.err
+    assert f"Starting {kind}" not in captured.err
     assert f"Finished {kind}" in captured.err
     path = next((tmp_path / "logs").glob("*.jsonl"))
     entry = json.loads(path.read_text())
@@ -127,6 +136,46 @@ def test_log_execution_emits_failures_when_both_destinations_require_error(
     assert entry["status"] == "failed"
     assert entry[kind] == "fetch"
     assert entry["duration"]["units"] == str(units.seconds)
+    for traceback in (click.unstyle(captured.err), entry["exception"]):
+        assert "Traceback (most recent call last)" in traceback
+        assert f"{type(error).__name__}: execution failed" in traceback
+        assert "raise_error" in traceback
+
+
+def test_log_execution_preserves_chained_exceptions_in_file_logs(
+    tmp_path: pathlib.Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    peri_scribe.logging.configure_logging("critical", "error", year_directory=tmp_path)
+    with (
+        pytest.raises(RuntimeError, match="KMZ failed"),
+        peri_scribe.logging.log_execution("command", "run"),
+    ):
+        tests.helpers.doubles.errors.raise_chained_error(
+            RuntimeError("KMZ failed"),
+            ValueError("missing geometry"),
+        )
+    assert capsys.readouterr().err == ""
+    path = next((tmp_path / "logs").glob("*.jsonl"))
+    entry = json.loads(path.read_text())
+    assert "ValueError: missing geometry" in entry["exception"]
+    assert "direct cause" in entry["exception"]
+    assert "RuntimeError: KMZ failed" in entry["exception"]
+
+
+def test_log_execution_omits_handled_exceptions_from_successful_events(
+    tmp_path: pathlib.Path,
+) -> None:
+    peri_scribe.logging.configure_logging("critical", "info", year_directory=tmp_path)
+    try:
+        tests.helpers.doubles.errors.raising_stub(ValueError("handled"))()
+    except ValueError:
+        with peri_scribe.logging.log_execution("command", "run"):
+            pass
+    path = next((tmp_path / "logs").glob("*.jsonl"))
+    entries = [json.loads(line) for line in path.read_text().splitlines()]
+    assert entries[-1]["status"] == "completed"
+    assert all("exception" not in entry for entry in entries)
 
 
 @pytest.mark.parametrize(

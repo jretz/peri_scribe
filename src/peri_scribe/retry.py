@@ -281,6 +281,7 @@ def run_with_retry[Result](
             feed=feed_name,
             attempt=retry_state.attempt_number,
             retry_delay=retry_state.upcoming_sleep * units.seconds,
+            exc_info=error,
         )
 
     def log_exhaustion(retry_state: tenacity.RetryCallState) -> typing.NoReturn:

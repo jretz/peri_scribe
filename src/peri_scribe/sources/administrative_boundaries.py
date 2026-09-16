@@ -86,6 +86,7 @@ def is_usable(path: pathlib.Path) -> bool:
             "Administrative boundaries file is not usable",
             path=path,
             error=str(error),
+            exc_info=True,
         )
         return False
     return usable

@@ -383,6 +383,7 @@ def fetch_all_feeds(
                         "Failed to update current state",
                         feed=feed.name,
                         error=str(error),
+                        exc_info=True,
                     )
                 snapshot_paths.append(output_path)
                 wrote_snapshot = True

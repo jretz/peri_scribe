@@ -250,7 +250,11 @@ def ensure_database_current(
     try:
         open_and_sync(db_path, source_directory)
     except sqlite3.DatabaseError:
-        logger.debug("Record cache database unusable; rebuilding", path=str(db_path))
+        logger.debug(
+            "Record cache database unusable; rebuilding",
+            path=str(db_path),
+            exc_info=True,
+        )
         with contextlib.suppress(OSError):
             db_path.unlink()
         open_and_sync(db_path, source_directory)

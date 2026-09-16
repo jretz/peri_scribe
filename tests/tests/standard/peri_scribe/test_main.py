@@ -346,6 +346,47 @@ def test_cli_closes_failed_command_logging_before_the_next_invocation(
     assert path.read_text() == contents
 
 
+def test_run_logs_failure_tracebacks_to_the_year_directory(
+    runner: click.testing.CliRunner,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    run_stubs: typing.Callable[..., tests.helpers.doubles.peri_scribe.main.RunStubs],
+) -> None:
+    run_stubs(changed=True)
+    error = RuntimeError("scoring failed")
+    monkeypatch.setattr(
+        peri_scribe.fires.scores,
+        "score_fires",
+        tests.helpers.doubles.errors.raising_stub(error),
+    )
+    result = runner.invoke(
+        peri_scribe.main.cli,
+        [
+            "--stderr-log-level",
+            "warning",
+            "--file-log-level",
+            "info",
+            "run",
+            str(tmp_path),
+            "--from",
+            "score",
+        ],
+    )
+    assert result.exit_code != 0
+    assert result.exception is error
+    path = next((tmp_path / "logs").glob("*.jsonl"))
+    entries = [json.loads(line) for line in path.read_text().splitlines()]
+    failures = [entry for entry in entries if entry.get("status") == "failed"]
+    assert [entry["event"] for entry in failures] == [
+        "Finished phase",
+        "Finished command",
+    ]
+    for entry in failures:
+        assert "Traceback (most recent call last)" in entry["exception"]
+        assert "RuntimeError: scoring failed" in entry["exception"]
+        assert "raise_error" in entry["exception"]
+
+
 def test_stored_evacuations_digest_uses_evacuations_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

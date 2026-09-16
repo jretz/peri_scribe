@@ -142,7 +142,7 @@ def read_cached_snapshot(
     try:
         contents = read_snapshot_rows(db_path, serial, geometry_pool=geometry_pool)
     except OSError, ValueError, sqlite3.Error:
-        logger.debug("Failed to read record cache", path=str(path))
+        logger.debug("Failed to read record cache", path=str(path), exc_info=True)
         return peri_scribe.geo.package.read_geopackage(path)
     if contents is None:
         return peri_scribe.geo.package.read_geopackage(path)
@@ -186,7 +186,7 @@ def read_geopackage_cached(
         with peri_scribe.geo.database.RECORD_CACHE_LOCK:
             peri_scribe.geo.database.ensure_database_current(db_path, source_directory)
     except OSError, ValueError, sqlite3.Error:
-        logger.debug("Failed to update record cache", path=str(path))
+        logger.debug("Failed to update record cache", path=str(path), exc_info=True)
         return peri_scribe.geo.package.read_geopackage(path)
     if geometry_pool is None:
         geometry_pool = peri_scribe.geo.geometry_pool.GeometryPool()

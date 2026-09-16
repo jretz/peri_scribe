@@ -230,8 +230,10 @@ def perimeter_groups(
 ]:
     """Group perimeters by fire, preserving chronological order.
 
-    Each perimeter keeps its geometry and observation time. Fires are keyed by
-    identifier when one is known, and by name otherwise.
+    Each perimeter keeps its geometry and observation time. Missing and empty shapes
+    cannot supply mapped growth or drawable outlines, so they are excluded from these
+    groups. Their history rows remain available for reported incident information. Fires
+    are keyed by identifier when one is known, and by name otherwise.
 
     Args:
         perimeters: The perimeter history layer.
@@ -271,6 +273,8 @@ def perimeter_groups(
         sequences,
         strict=True,
     ):
+        if geometry is None or geometry.is_empty:
+            continue
         area = peri_scribe.geo.parsing.numeric_value(stored_area)
         added = peri_scribe.geo.parsing.numeric_value(stored_added)
         perimeter = peri_scribe.kml.perimeters.Perimeter(

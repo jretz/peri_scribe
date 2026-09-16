@@ -243,7 +243,12 @@ def read_state[State: pydantic.BaseModel](
     except FileNotFoundError:
         return None
     except ValueError as error:
-        logger.warning("Invalid publication state", path=path, error=str(error))
+        logger.warning(
+            "Invalid publication state",
+            path=path,
+            error=str(error),
+            exc_info=True,
+        )
         return None
 
 

@@ -164,6 +164,7 @@ def read_current_features(
                         feed=feed.name,
                         path=str(state_path),
                         error=str(error),
+                        exc_info=True,
                     )
         return existing_features(directory, feed)
 
@@ -200,6 +201,7 @@ def write_current_state(
                 feed=feed.name,
                 path=str(state_path),
                 error=str(error),
+                exc_info=True,
             )
     if base is None:
         base = existing_features(directory, feed)

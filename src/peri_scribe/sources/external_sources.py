@@ -210,6 +210,7 @@ def fetch_arcgis_source(
                 "Failed to fetch external source; keeping current data",
                 source=source.name,
                 error=str(error),
+                exc_info=True,
             )
             return output
         raise

@@ -72,7 +72,11 @@ def read_state(year_directory: pathlib.Path) -> PendingRun:
     except FileNotFoundError:
         return PendingRun()
     except ValueError as error:
-        logger.warning("Invalid run state; requiring full rebuild", error=str(error))
+        logger.warning(
+            "Invalid run state; requiring full rebuild",
+            error=str(error),
+            exc_info=True,
+        )
     else:
         expected = tuple(stage for stage in DERIVED_STAGES if stage in state.remaining)
         if expected == state.remaining:

@@ -405,6 +405,13 @@ def test_fetch_arcgis_source_keeps_current_version_when_fetch_fails(
         if event["log_level"] == "warning"
     ]
     assert any("keeping current data" in message for message in warnings)
+    failure = next(
+        entry
+        for entry in log_output.entries
+        if "keeping current data" in entry["event"]
+    )
+    assert "Traceback (most recent call last)" in failure["exception"]
+    assert "RuntimeError: boom" in failure["exception"]
     stored = geopandas.read_file(first, layer="evacuations")
     assert len(stored) == len(
         tests.helpers.factories.peri_scribe.sources.external_source.sample_arcgis_dataframe(),

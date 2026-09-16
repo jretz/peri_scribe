@@ -54,6 +54,7 @@ def snapshot_matches(
             "Failed to read external source snapshot",
             path=snapshot_path,
             error=str(error),
+            exc_info=True,
         )
         return False
     if normalize is not None:

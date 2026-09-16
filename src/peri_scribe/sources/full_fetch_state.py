@@ -162,7 +162,7 @@ def malformed_state_error(path: pathlib.Path, error: Exception) -> typing.Never:
         ValueError: Always, with a message describing the unusable state.
     """
     message = f"Malformed fetch state at {path}: {error}"
-    logger.error("Malformed fetch state", path=path, error=str(error))
+    logger.error("Malformed fetch state", path=path, error=str(error), exc_info=error)
     raise ValueError(message) from error
 
 

@@ -61,7 +61,12 @@ def observe_layer_last_edit_timestamp(url: str, name: str) -> int | None:
             lambda: fetch_layer_metadata(url),
         )
     except (requests.exceptions.RequestException, ValueError) as error:
-        logger.warning("Last-edit timestamp check failed", url=url, error=str(error))
+        logger.warning(
+            "Last-edit timestamp check failed",
+            url=url,
+            error=str(error),
+            exc_info=True,
+        )
         return None
     if not isinstance(payload, dict):
         logger.warning(
