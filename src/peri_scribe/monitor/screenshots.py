@@ -8,10 +8,19 @@ import typing
 
 import textual.app
 import textual.screen
+import textual.strip
 
 
 class SnapshotScreen(textual.screen.Screen[None]):
     """The screen owns access to Textual's final, clipped rendering of its widgets."""
+
+    def snapshot_rows(self) -> list[textual.strip.Strip]:
+        """Expose painted cells, including backgrounds beneath rebuilding widgets.
+
+        Returns:
+            The complete, clipped rows currently composed for the terminal.
+        """
+        return self._compositor.render_strips()
 
     def export_snapshot(self) -> str:
         """Preserve terminal cells and styles without cursor-positioning sequences.
@@ -19,7 +28,7 @@ class SnapshotScreen(textual.screen.Screen[None]):
         Returns:
             ANSI-colored screen rows with terminal styles reset before and after them.
         """
-        rows = self._compositor.render_strips()
+        rows = self.snapshot_rows()
         return (
             "\x1b[0m"
             + "\n".join(row.render(self.app.console) for row in rows)

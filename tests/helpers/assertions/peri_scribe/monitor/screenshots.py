@@ -1,10 +1,11 @@
-"""Compare a screenshot with its live screen before asynchronous redraws intervene."""
+"""Compare exported ANSI with composed text and background cells."""
 
 import re
 import typing
 
 import rich.ansi
 import rich.cells
+import rich.style
 
 
 if typing.TYPE_CHECKING:
@@ -14,11 +15,12 @@ if typing.TYPE_CHECKING:
 def assert_screen_matches_snapshot(
     screen: peri_scribe.monitor.screenshots.SnapshotScreen,
 ) -> None:
-    """Keep capture and style inspection in the same uninterrupted UI callback.
+    """Painted cells remain authoritative while footer bindings are being rebuilt.
 
     Args:
         screen: The mounted screen whose screenshot must preserve terminal cells.
     """
+    expected_rows = screen.snapshot_rows()
     content = screen.export_snapshot()
     rows = list(rich.ansi.AnsiDecoder().decode(content.rstrip("\n")))
     assert len(rows) == screen.app.size.height
@@ -26,13 +28,15 @@ def assert_screen_matches_snapshot(
     assert "PeriScribe monitor" in rows[0].plain
     assert "\x1b[" in content
     assert "\x1b" not in re.sub(r"\x1b\[[0-9;]*m", "", content)
-    for y, row in enumerate(rows):
-        x = 0
-        for offset, character in enumerate(row.plain):
-            actual = row.get_style_at_offset(screen.app.console, offset)
-            expected = screen.get_style_at(x, y)
-            assert actual.color == expected.color
-            assert actual.bgcolor == expected.bgcolor
-            assert bool(actual.bold) == bool(expected.bold)
-            assert bool(actual.reverse) == bool(expected.reverse)
-            x += rich.cells.cell_len(character)
+    for row, expected_row in zip(rows, expected_rows, strict=True):
+        assert row.plain == expected_row.text
+        offset = 0
+        for segment in expected_row:
+            expected = segment.style or rich.style.Style.null()
+            for _ in segment.text:
+                actual = row.get_style_at_offset(screen.app.console, offset)
+                assert actual.color == expected.color
+                assert actual.bgcolor == expected.bgcolor
+                assert bool(actual.bold) == bool(expected.bold)
+                assert bool(actual.reverse) == bool(expected.reverse)
+                offset += 1

@@ -4,6 +4,7 @@ import datetime
 import functools
 import pathlib
 import re
+import unittest.mock
 
 import pytest
 import rich.text
@@ -11,6 +12,7 @@ import textual.widgets
 
 import peri_scribe.monitor.screenshots
 import tests.helpers.assertions.peri_scribe.monitor.screenshots
+import tests.helpers.doubles.peri_scribe.monitor.screenshots
 import tests.helpers.fixtures.peri_scribe.monitor.application
 
 
@@ -28,6 +30,29 @@ def test_snapshot_screen_export_snapshot_preserves_screen_dimensions_and_styles(
         tests.helpers.assertions.peri_scribe.monitor.screenshots.assert_screen_matches_snapshot,
         screen,
     )
+
+
+def test_snapshot_screen_export_snapshot_preserves_footer_during_binding_refresh(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+) -> None:
+    session = monitor_session
+    session.call(session.app.action_view, "report")
+    session.runner.run(session.pilot.pause())
+    screen = session.app.screen
+    assert isinstance(screen, peri_scribe.monitor.screenshots.SnapshotScreen)
+    footer = session.app.query_one(textual.widgets.Footer)
+    with unittest.mock.patch.object(
+        footer,
+        "mount_all",
+        side_effect=functools.partial(
+            tests.helpers.doubles.peri_scribe.monitor.screenshots.mount_after_snapshot_check,
+            screen,
+            footer.mount_all,
+        ),
+    ) as mount:
+        session.call(footer.call_later, footer.recompose)
+        session.runner.run(session.pilot.pause())
+    mount.assert_called()
 
 
 def test_snapshot_screen_export_snapshot_preserves_unicode_and_scrolled_content(
