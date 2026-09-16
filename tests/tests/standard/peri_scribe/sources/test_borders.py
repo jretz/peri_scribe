@@ -335,6 +335,56 @@ def test_ordered_border_coordinates_bridges_small_gaps() -> None:
     ]
 
 
+@pytest.mark.parametrize(
+    "coordinates",
+    [
+        [(0.00001, 10.0), (0.0, 10.0), (5.0, 10.0), (10.0, 5.0)],
+        [(0.0, 10.0), (5.0, 10.0), (5.00001, 10.0), (10.0, 5.0)],
+        [(0.0, 10.0), (5.0, 10.0), (10.0, 5.0), (10.00001, 5.0)],
+        [(0.0, 10.0), (5.0, 10.0), (5.0, 10.0), (10.0, 5.0)],
+    ],
+    ids=["start", "interior", "end", "duplicate"],
+)
+def test_ordered_border_coordinates_ignores_collapsed_segments(
+    coordinates: list[tuple[float, float]],
+) -> None:
+    parts = [shapely.LineString(coordinates)]
+    assert peri_scribe.sources.borders.ordered_border_coordinates(parts) == [
+        (0.0, 10.0),
+        (5.0, 10.0),
+        (10.0, 5.0),
+    ]
+
+
+def test_ordered_border_coordinates_joins_parts_at_collapsed_corners() -> None:
+    parts = [
+        shapely.LineString([
+            (-120.0, 42.0),
+            (-119.99346940251291, 41.9892049663436),
+            (-119.993459402389, 41.9892049837925),
+        ]),
+        shapely.LineString([
+            (-119.993459402389, 41.9892049837925),
+            (-119.9934594376917, 41.98919498371568),
+            (-119.0, 41.0),
+        ]),
+    ]
+    assert peri_scribe.sources.borders.ordered_border_coordinates(parts) == [
+        (-120.0, 42.0),
+        (-119.99346940251291, 41.9892049663436),
+        (-119.0, 41.0),
+    ]
+
+
+def test_ordered_border_coordinates_rejects_entirely_collapsed_path() -> None:
+    parts = [shapely.LineString([(0.0, 10.0), (0.00001, 10.0)])]
+    with pytest.raises(
+        peri_scribe.exceptions.AdministrativeBoundariesError,
+        match="no line segments",
+    ):
+        peri_scribe.sources.borders.ordered_border_coordinates(parts)
+
+
 def test_ordered_border_coordinates_raises_when_no_segments() -> None:
     with pytest.raises(
         peri_scribe.exceptions.AdministrativeBoundariesError,

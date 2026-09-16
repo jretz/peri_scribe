@@ -44,6 +44,7 @@ import structlog
 import peri_scribe.exceptions
 import peri_scribe.fires.centroid_math
 import peri_scribe.fires.centroid_streaming
+import peri_scribe.logging
 import peri_scribe.sources.downloading
 import peri_scribe.sources.external_data
 import peri_scribe.sources.network
@@ -701,32 +702,38 @@ def fetch_buildings_database(
     if is_valid_database(output):
         logger.debug("External source already present", source=source.name, path=output)
         return (output,)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    state_urls = source.state_urls() if source.state_urls is not None else None
-    with tempfile.TemporaryDirectory(dir=output.parent) as temporary_directory:
-        directory = pathlib.Path(temporary_directory)
-        partition_directory = directory / "partitions"
-        partition_directory.mkdir()
-        with PartitionFiles(partition_directory) as partition_files:
-            for state in source.states:
-                url = peri_scribe.sources.downloading.state_download_url(
-                    source,
-                    state,
-                    state_urls,
-                )
-                stream_state_archive(url, partition_files)
-        database_path = directory / f"{output.stem}.tmp.sqlite"
-        building_count = build_tiles_database(partition_directory, database_path)
-        if not is_valid_database(database_path):
-            message = "The generated buildings database is invalid"
-            raise peri_scribe.exceptions.ExternalDataError(message)
-        database_path.replace(output)
-    logger.debug(
-        "Fetched compact buildings database",
+    with peri_scribe.logging.log_execution(
+        "phase",
+        "buildings-database",
         source=source.name,
         path=output,
-        buildings=building_count,
-    )
+    ):
+        output.parent.mkdir(parents=True, exist_ok=True)
+        state_urls = source.state_urls() if source.state_urls is not None else None
+        with tempfile.TemporaryDirectory(dir=output.parent) as temporary_directory:
+            directory = pathlib.Path(temporary_directory)
+            partition_directory = directory / "partitions"
+            partition_directory.mkdir()
+            with PartitionFiles(partition_directory) as partition_files:
+                for state in source.states:
+                    url = peri_scribe.sources.downloading.state_download_url(
+                        source,
+                        state,
+                        state_urls,
+                    )
+                    stream_state_archive(url, partition_files)
+            database_path = directory / f"{output.stem}.tmp.sqlite"
+            building_count = build_tiles_database(partition_directory, database_path)
+            if not is_valid_database(database_path):
+                message = "The generated buildings database is invalid"
+                raise peri_scribe.exceptions.ExternalDataError(message)
+            database_path.replace(output)
+        logger.debug(
+            "Fetched compact buildings database",
+            source=source.name,
+            path=output,
+            buildings=building_count,
+        )
     return (output,)
 
 

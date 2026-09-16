@@ -321,12 +321,6 @@ def ordered_border_coordinates(
     Raises:
         AdministrativeBoundariesError: If the parts do not form a single path.
     """
-    segments: list[tuple[tuple[float, float], tuple[float, float]]] = []
-    for part in parts:
-        segments.extend(itertools.pairwise(part.coords))
-    if not segments:
-        message = "California border has no line segments"
-        raise peri_scribe.exceptions.AdministrativeBoundariesError(message)
 
     # Endpoints that round to the same four-decimal coordinate are the same corner. The
     # stored borders are offset by roughly a meter at the corners, so this snaps them
@@ -341,6 +335,17 @@ def ordered_border_coordinates(
             The coordinates rounded to four decimal places for vertex matching.
         """
         return (round(point[0], 4), round(point[1], 4))
+
+    # A segment collapsed by snapping cannot create a branch or extend the path.
+    segments = [
+        segment
+        for part in parts
+        for segment in itertools.pairwise(part.coords)
+        if snapped(segment[0]) != snapped(segment[1])
+    ]
+    if not segments:
+        message = "California border has no line segments"
+        raise peri_scribe.exceptions.AdministrativeBoundariesError(message)
 
     adjacency: dict[
         tuple[float, float],
