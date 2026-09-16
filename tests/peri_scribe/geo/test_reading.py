@@ -5,8 +5,13 @@ from __future__ import annotations
 import os
 import pathlib
 import sqlite3
+import tempfile
 
 import geopandas
+import geopandas.testing
+import hypothesis
+import hypothesis.strategies
+import pandas as pd
 import pytest
 import shapely.geometry
 
@@ -19,6 +24,34 @@ import tests.conftest
 import tests.factories
 import tests.peri_scribe.geo.package_helpers
 import tests.peri_scribe.geo.reading_helpers
+
+
+# This test is slow, so limit examples to keep routine test runs fast.
+@hypothesis.settings(max_examples=25, deadline=400)
+@hypothesis.given(
+    identifiers=hypothesis.strategies.lists(
+        hypothesis.strategies.integers(1, 1000),
+        unique=True,
+        max_size=20,
+    ),
+    chunk_size=hypothesis.strategies.integers(1, 7),
+)
+def test_read_layer_chunks_preserves_sparse_features_in_bounded_chunks(
+    identifiers: list[int],
+    chunk_size: int,
+) -> None:
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        path = pathlib.Path(temporary_directory) / "layer.gpkg"
+        tests.peri_scribe.geo.reading_helpers.write_sparse_layer(path, identifiers)
+        expected = geopandas.read_file(path, layer="features")
+        chunks = list(
+            peri_scribe.geo.reading.read_layer_chunks(path, "features", chunk_size),
+        )
+    assert all(0 < len(chunk) <= chunk_size for chunk in chunks)
+    assert sum(map(len, chunks)) == len(identifiers)
+    if chunks:
+        actual = pd.concat(chunks, ignore_index=True)
+        geopandas.testing.assert_geodataframe_equal(actual, expected)
 
 
 def test_read_layer_reads_named_layer(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -53,6 +86,15 @@ def test_read_layer_chunks_yields_bounded_chunks(tmp_path: pathlib.Path) -> None
 
     assert [len(chunk) for chunk in chunks] == [2, 2, 1]
     assert [chunk.iloc[0]["a"] for chunk in chunks] == [1, 3, 5]
+
+
+def test_read_layer_chunks_limits_rows_when_feature_ids_have_gaps(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "layer.gpkg"
+    tests.peri_scribe.geo.reading_helpers.write_sparse_layer(path, [1, 3, 4])
+    chunks = list(peri_scribe.geo.reading.read_layer_chunks(path, "features", 2))
+    assert [chunk["value"].tolist() for chunk in chunks] == [[1, 3], [4]]
 
 
 def test_read_layer_chunks_reads_default_layer_without_name(
@@ -169,9 +211,11 @@ def test_read_geopackage_cached_rebuilds_corrupt_database(
     assert [row.record.name for row in contents.rows] == ["Park Fire"]
 
 
+@pytest.mark.parametrize("version", [1, 999])
 def test_read_geopackage_cached_rebuilds_outdated_schema(
     tmp_path: pathlib.Path,
     configured_feeds: list[peri_scribe.sources.feed_types.Feed],
+    version: int,
 ) -> None:
     feed = configured_feeds[0]
     path = tests.peri_scribe.geo.package_helpers.write_cache_snapshot(
@@ -183,7 +227,7 @@ def test_read_geopackage_cached_rebuilds_outdated_schema(
     conn = sqlite3.connect(
         tests.peri_scribe.geo.package_helpers.record_cache_database_path(path),
     )
-    conn.execute("PRAGMA user_version = 999")
+    conn.execute(f"PRAGMA user_version = {version}")
     conn.commit()
     conn.close()
     # Change the snapshot's bucket directory so the in-process freshness memo

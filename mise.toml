@@ -120,7 +120,8 @@ run = "uv sync"
 description = "Regenerate .gitignore from gitnr templates"
 run = [
     "gitnr create tt:Python tt:linux tt:macOS tt:VisualStudioCode > .gitignore",
-    "echo '.codewhale' >> .gitignore",
+    "echo '.codewhale/' >> .gitignore",
+    "echo '.hypothesis/' >> .gitignore",
     "echo '*.kml' >> .gitignore",
     "echo '*.kmz' >> .gitignore",
     "echo 'data/' >> .gitignore",

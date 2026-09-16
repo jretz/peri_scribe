@@ -107,12 +107,18 @@ def log_output() -> typing.Iterator[structlog.testing.LogCapture]:
 
 
 @pytest.fixture(autouse=True)  # ruff: ignore[pytest-fixture-autouse]
-def configure_structlog(log_output: structlog.testing.LogCapture) -> None:
-    """Capture logs after structlog converts exception information for JSON output.
+def configure_structlog(
+    log_output: structlog.testing.LogCapture,
+) -> typing.Iterator[None]:
+    """Isolate logging configuration and capture JSON-compatible log entries.
 
     Args:
         log_output: Captured structured log entries for assertions.
+
+    Yields:
+        Control while the test uses its own logging configuration.
     """
+    original_configuration = structlog.get_config()
     structlog.configure(
         processors=[
             peri_scribe.logging.serialize_log_values,
@@ -121,6 +127,10 @@ def configure_structlog(log_output: structlog.testing.LogCapture) -> None:
         ],
         wrapper_class=structlog.make_filtering_bound_logger("DEBUG"),
     )
+    try:
+        yield
+    finally:
+        structlog.configure(**original_configuration)
 
 
 @pytest.fixture

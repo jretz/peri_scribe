@@ -8,7 +8,9 @@ import pathlib
 import tempfile
 import typing
 
+import hypothesis
 import numpy as np
+import pandas as pd
 import pytest
 
 import peri_scribe.fires.identity
@@ -21,6 +23,56 @@ import tests.factories
 import tests.peri_scribe.fires.fire_helpers
 import tests.peri_scribe.fires.scores_helpers
 from peri_scribe.units import units
+
+
+# This test is slow, so limit examples to keep routine test runs fast.
+@hypothesis.settings(max_examples=25)
+@hypothesis.given(
+    observations=tests.peri_scribe.fires.scores_helpers.score_histories(),
+    use_geometry=hypothesis.infer,
+)
+def test_fire_metrics_matches_independent_per_fire_reductions(
+    observations: list[tests.peri_scribe.fires.scores_helpers.ScoreObservation],
+    *,
+    use_geometry: bool,
+) -> None:
+    frame = tests.peri_scribe.fires.scores_helpers.metric_frame(
+        observations,
+        use_geometry=use_geometry,
+    )
+    metrics, first = peri_scribe.fires.scores.fire_metrics(
+        frame,
+        peri_scribe.fires.identity.group_keys(frame),
+    )
+    keys = {item.key for item in observations}
+    assert set(metrics.index) == keys
+    assert set(first.index) == keys
+    for key in keys:
+        rows = [item for item in observations if item.key == key]
+        growth = [
+            item.calculated_growth
+            if use_geometry and item.calculated_growth is not None
+            else item.reported_growth
+            for item in rows
+        ]
+        known_growth = [value for value in growth if value is not None]
+        if known_growth:
+            assert metrics.loc[key, "max_growth"] == pytest.approx(max(known_growth))
+        else:
+            assert pd.isna(metrics.loc[key, "max_growth"])
+        earliest = min(
+            rows,
+            key=lambda item: float("inf") if item.hour is None else item.hour,
+        )
+        area = (
+            earliest.calculated_area
+            if use_geometry and earliest.calculated_area is not None
+            else earliest.reported_area
+        )
+        if area is None:
+            assert pd.isna(first[key])
+        else:
+            assert first[key] == pytest.approx(area)
 
 
 def test_latest_snapshot_layer_returns_none_without_layer_name() -> None:

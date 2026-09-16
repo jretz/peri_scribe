@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import datetime
+import functools
 import typing
 
 import pytest
 
+import peri_scribe.kml.fire_data
 import peri_scribe.kml.plot_data
 import peri_scribe.kml.styles
 import tests.factories
@@ -15,6 +17,20 @@ from peri_scribe.units import units
 
 if typing.TYPE_CHECKING:
     import geopandas
+
+
+@pytest.fixture
+def isolated_added_area_cache(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Keep cache assertions independent of rings processed by other tests.
+
+    Args:
+        monkeypatch: Replace dependencies and restore them after the test.
+    """
+    monkeypatch.setattr(
+        peri_scribe.kml.fire_data,
+        "added_areas_for_rings",
+        functools.cache(peri_scribe.kml.fire_data.added_areas_for_rings.__wrapped__),
+    )
 
 
 @pytest.fixture

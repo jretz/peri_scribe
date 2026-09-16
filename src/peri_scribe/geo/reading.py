@@ -294,46 +294,29 @@ def read_gpkg_layer_chunks(
 ) -> typing.Iterator[geopandas.GeoDataFrame]:
     """Yield chunks of a GeoPackage layer paginated by its ``fid`` primary key.
 
-    Each chunk is ``where="fid > lower AND fid <= upper"`` for fid boundaries spaced
-    ``chunk_size`` apart, so every chunk is an indexed range read of constant cost
-    rather than a rescan. Boundaries are taken at ``fid % chunk_size == 0``; for the
-    dense fids this project writes, that yields chunks of exactly ``chunk_size`` rows in
-    fid order, matching the skip-based contract.
+    Each indexed read resumes after the previous chunk's last feature id and limits
+    the number of returned features. Gaps in the ids therefore cannot enlarge a chunk,
+    and earlier rows are not rescanned. The feature ids are used only for pagination;
+    each yielded frame has the ordinary positional index used by the other readers.
 
     Args:
         path: The GeoPackage to read.
         layer_name: The layer whose ``fid`` primary key supports pagination.
-        chunk_size: The number of ``fid`` values covered by each indexed range.
+        chunk_size: The maximum number of features per chunk.
 
     Yields:
         Each chunk of the layer's features, in fid order.
     """
-    connection = sqlite3.connect(path)
-    try:
-        minimum_fid = connection.execute(
-            f'SELECT MIN(fid) FROM "{layer_name}"',
-        ).fetchone()[0]
-        boundaries = [
-            row[0]
-            for row in connection.execute(
-                f'SELECT fid FROM "{layer_name}" '
-                f"WHERE fid % {chunk_size} = 0 ORDER BY fid",
-            )
-        ]
-    finally:
-        connection.close()
-    if minimum_fid is None:
-        return
-    lower = minimum_fid - 1
-    for upper in boundaries:
+    lower: int | None = None
+    while True:
         dataframe = geopandas.read_file(
             path,
             layer=layer_name,
-            where=f"fid > {lower} AND fid <= {upper}",
+            where=None if lower is None else f"fid > {lower}",
+            max_features=chunk_size,
+            fid_as_index=True,
         )
-        if not dataframe.empty:
-            yield dataframe
-        lower = upper
-    dataframe = geopandas.read_file(path, layer=layer_name, where=f"fid > {lower}")
-    if not dataframe.empty:
-        yield dataframe
+        if dataframe.empty:
+            return
+        lower = int(dataframe.index[-1])
+        yield dataframe.reset_index(drop=True)

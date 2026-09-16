@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import http
+import json
 import re
 import typing
 
@@ -98,6 +99,30 @@ def rate_limit_from_payload(payload: dict[str, object]) -> pint.Quantity[float] 
     return FALLBACK_RETRY
 
 
+def rate_limit_from_text(error_string: str) -> pint.Quantity[float] | None:
+    """Preserve structured retry instructions across JSON layouts and key orders.
+
+    Args:
+        error_string: An error's text, either JSON or a loosely formatted message.
+
+    Returns:
+        The server's retry delay, the fallback for a rate limit without a hint, or None
+        for another error.
+    """
+    try:
+        payload = json.loads(error_string)
+    except json.JSONDecodeError:
+        payload = None
+    if isinstance(payload, dict) and "error" in payload:
+        return rate_limit_from_payload(payload)
+    rate_limit_match = RATE_LIMIT_ERROR_PATTERN.search(error_string)
+    if rate_limit_match is not None:
+        return int(rate_limit_match.group(1)) * units.seconds
+    if LOOSE_429_PATTERN.search(error_string) is not None:
+        return FALLBACK_RETRY
+    return None
+
+
 def rate_limit_retry(error: BaseException) -> pint.Quantity[float] | None:
     """Return the delay before retrying after a rate-limit error.
 
@@ -128,13 +153,7 @@ def rate_limit_retry(error: BaseException) -> pint.Quantity[float] | None:
             if retry_after is not None and retry_after.isdigit():
                 return int(retry_after) * units.seconds
             return FALLBACK_RETRY
-    error_string = str(error)
-    rate_limit_match = RATE_LIMIT_ERROR_PATTERN.search(error_string)
-    if rate_limit_match is not None:
-        return int(rate_limit_match.group(1)) * units.seconds
-    if LOOSE_429_PATTERN.search(error_string) is not None:
-        return FALLBACK_RETRY
-    return None
+    return rate_limit_from_text(str(error))
 
 
 def is_transient_error(error: BaseException) -> bool:

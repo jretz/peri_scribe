@@ -283,4 +283,4 @@ def drop_features_already_present(
                 columns,
             ),
         )
-    return new_dataframe[keep].reset_index(drop=True)
+    return new_dataframe.loc[keep].reset_index(drop=True)

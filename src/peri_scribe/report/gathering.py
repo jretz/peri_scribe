@@ -23,6 +23,7 @@ import peri_scribe.kml.builder
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
+import peri_scribe.kml.selection
 import peri_scribe.models
 import peri_scribe.report.locations
 import peri_scribe.sources.external_data
@@ -70,12 +71,14 @@ class FireReport:
     fire_details: tuple[FireReportEntry, ...]
 
 
-def fire_identity(fire: peri_scribe.kml.fire_data.FireGeometry) -> str:
-    """Return the report identity of *fire*: its canonical identifier, else its name.
+def fire_identity(
+    fire: peri_scribe.kml.fire_data.FireGeometry,
+) -> peri_scribe.kml.selection.AreaKey:
+    """Return the tagged report identity of *fire*.
 
     The identity is the one the report uses to tell fires apart, so two fires that share
     a name but not an identifier stay distinct, and a fire without identifiers is
-    identified by its name.
+    identified by its name. Tags distinguish a name from an identical identifier.
 
     Args:
         fire: The fire to identify.
@@ -84,7 +87,7 @@ def fire_identity(fire: peri_scribe.kml.fire_data.FireGeometry) -> str:
         The fire's report identity.
     """
     identifier = peri_scribe.models.canonical_fire_identifier(fire.identifiers)
-    return fire.name if identifier is None else identifier
+    return peri_scribe.kml.selection.fire_area_key(identifier, fire.name)
 
 
 def read_cities_layer(year_directory: pathlib.Path) -> geopandas.GeoDataFrame:
@@ -143,7 +146,7 @@ def fire_location(
 def fire_locations(
     fires: typing.Iterable[peri_scribe.kml.fire_data.FireGeometry],
     cities: geopandas.GeoDataFrame,
-) -> dict[str, str]:
+) -> dict[peri_scribe.kml.selection.AreaKey, str]:
     """Return each located fire's phrase keyed by its report identity.
 
     A fire without an interior or without a usable city contributes no entry, and a fire
@@ -157,7 +160,7 @@ def fire_locations(
     Returns:
         The location phrase of each located fire, keyed by report identity.
     """
-    locations_by_identity: dict[str, str] = {}
+    locations_by_identity: dict[peri_scribe.kml.selection.AreaKey, str] = {}
     for fire in fires:
         location = fire_location(fire, cities)
         if location is not None:
@@ -213,7 +216,8 @@ def report_entries(
     scores_by_name: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
     reference_time: datetime.datetime,
     *,
-    locations_by_identity: typing.Mapping[str, str] | None = None,
+    locations_by_identity: typing.Mapping[peri_scribe.kml.selection.AreaKey, str]
+    | None = None,
 ) -> tuple[FireReportEntry, ...]:
     """Return the report facts for each fire, preserving the input order.
 
@@ -271,6 +275,7 @@ def located_entries(
     Returns:
         One report entry per fire, in the input order.
     """
+    fires = tuple(fires)
     return report_entries(
         fires,
         scores_by_identifier,
@@ -293,10 +298,13 @@ def report_details(*args: tuple[FireReportEntry, ...]) -> tuple[FireReportEntry,
     Returns:
         One entry per distinct fire, ordered by name.
     """
-    entries_by_identity: dict[str, FireReportEntry] = {}
+    entries_by_identity: dict[peri_scribe.kml.selection.AreaKey, FireReportEntry] = {}
     for section in args:
         for entry in section:
-            identity = entry.identifier if entry.identifier is not None else entry.name
+            identity = peri_scribe.kml.selection.fire_area_key(
+                entry.identifier,
+                entry.name,
+            )
             entries_by_identity.setdefault(identity, entry)
     return tuple(
         sorted(

@@ -2,9 +2,49 @@
 
 from __future__ import annotations
 
+import hypothesis
+import numpy as np
+import pyproj
 import shapely.geometry
 
 import peri_scribe.geo.geometry
+import tests.geometry_strategies
+
+
+@hypothesis.given(case=tests.geometry_strategies.nested_collections())
+def test_polygonal_parts_preserves_polygons_through_nested_collections(
+    case: tuple[shapely.Geometry, list[shapely.Polygon]],
+) -> None:
+    geometry, expected = case
+    assert peri_scribe.geo.geometry.polygonal_parts(geometry) == expected
+
+
+def test_polygonal_parts_keeps_polygon_inside_nested_collection() -> None:
+    polygon = shapely.Polygon([(0, 0), (0, 1), (1, 0)])
+    collection = shapely.GeometryCollection([
+        shapely.GeometryCollection([polygon]),
+    ])
+    assert peri_scribe.geo.geometry.polygonal_parts(collection) == [polygon]
+
+
+@hypothesis.given(geometry=tests.geometry_strategies.footprints())
+def test_transform_coordinates_round_trips_projection(
+    geometry: shapely.Polygon | shapely.MultiPolygon,
+) -> None:
+    projected = peri_scribe.geo.geometry.transform_coordinates(
+        geometry,
+        pyproj.Transformer.from_crs(4326, 3857, always_xy=True),
+    )
+    restored = peri_scribe.geo.geometry.transform_coordinates(
+        projected,
+        pyproj.Transformer.from_crs(3857, 4326, always_xy=True),
+    )
+    np.testing.assert_allclose(
+        shapely.get_coordinates(restored),
+        shapely.get_coordinates(geometry),
+        rtol=0,
+        atol=1e-10,
+    )
 
 
 def test_polygonal_parts_flattens_multipolygon() -> None:

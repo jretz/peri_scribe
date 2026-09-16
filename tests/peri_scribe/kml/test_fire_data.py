@@ -647,6 +647,7 @@ def test_interior_ring_colors_returns_nothing_without_rings_or_perimeters() -> N
     assert peri_scribe.kml.fire_data.interior_ring_colors((), ()) == ()
 
 
+@pytest.mark.usefixtures("isolated_added_area_cache")
 def test_precompute_interior_added_areas_warms_drawn_ring_sequences() -> None:
     first_time = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     second_time = datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC)
@@ -685,6 +686,7 @@ def test_precompute_interior_added_areas_warms_drawn_ring_sequences() -> None:
     assert 0 < first_added < second_added
 
 
+@pytest.mark.usefixtures("isolated_added_area_cache")
 def test_precompute_interior_added_areas_warms_latest_perimeter_fallback() -> None:
     observation_time = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     entry = tests.peri_scribe.kml.kml_helpers.fire_index_entry(
@@ -713,6 +715,7 @@ def test_precompute_interior_added_areas_warms_latest_perimeter_fallback() -> No
     assert cache.cache_info().currsize == before + 1
 
 
+@pytest.mark.usefixtures("isolated_added_area_cache")
 def test_precompute_interior_added_areas_leaves_fire_without_drawn_rings_alone() -> (
     None
 ):
@@ -737,6 +740,7 @@ def test_precompute_interior_added_areas_leaves_fire_without_drawn_rings_alone()
     assert cache.cache_info().currsize == before
 
 
+@pytest.mark.usefixtures("isolated_added_area_cache")
 def test_added_areas_for_rings_reuses_only_the_exact_stored_sequence(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -761,7 +765,6 @@ def test_added_areas_for_rings_reuses_only_the_exact_stored_sequence(
     )
 
     monkeypatch.setattr(peri_scribe.perimeters.progression, "added_areas", tracked)
-    peri_scribe.kml.fire_data.added_areas_for_rings.cache_clear()
     assert peri_scribe.kml.fire_data.added_areas_for_rings(rings) == measured
     assert calls == []
     assert peri_scribe.kml.fire_data.added_areas_for_rings(rings[1:]) == original(

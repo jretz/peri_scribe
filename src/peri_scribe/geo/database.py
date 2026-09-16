@@ -16,7 +16,7 @@ import peri_scribe.sources.snapshots
 logger = structlog.get_logger()
 
 
-RECORD_CACHE_SCHEMA_VERSION = 1
+RECORD_CACHE_SCHEMA_VERSION = 2
 
 
 RECORD_CACHE_SCHEMA = """

@@ -3,7 +3,10 @@
 import http
 import json
 import typing
+import unittest.mock
 
+import hypothesis
+import hypothesis.strategies
 import pytest
 import requests
 import tenacity
@@ -20,6 +23,117 @@ if typing.TYPE_CHECKING:
 
 # JSON wire-format strings of the payloads, used to exercise the string fallback
 # classification.
+
+
+@hypothesis.given(
+    representations=tests.peri_scribe.retry_helpers.rate_limit_representations(),
+)
+def test_rate_limit_retry_agrees_for_payload_and_json_text(
+    representations: tuple[dict[str, object], str],
+) -> None:
+    payload, text = representations
+    assert peri_scribe.retry.rate_limit_retry(ValueError(text)) == (
+        peri_scribe.retry.rate_limit_retry(ValueError(payload))
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "seconds"),
+    [
+        ('{"error": {"code": 429,\n"details": ["Retry after 0 sec"]}}', 0),
+        ('{"error": {"details": ["Retry after 7 sec"], "code": 429}}', 7),
+        (
+            (
+                '{"error": {"code": 429, '
+                '"details": ["Retry after 1 sec", "Retry after 2 sec"]}}'
+            ),
+            1,
+        ),
+    ],
+    ids=["multiline", "reordered-keys", "first-hint"],
+)
+def test_rate_limit_retry_preserves_json_retry_instruction(
+    text: str,
+    seconds: int,
+) -> None:
+    assert (
+        peri_scribe.retry.rate_limit_retry(ValueError(text)) == seconds * units.seconds
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "seconds"),
+    [
+        ("ArcGIS error: {'code': 429, 'details': ['Retry after 9 sec']}", 9),
+        ('{"code": 429, "details": ["Retry after 9 sec"]}', 9),
+        (
+            "ArcGIS error: {'code': 429}",
+            peri_scribe.retry.FALLBACK_RETRY.m_as("seconds"),
+        ),
+    ],
+)
+def test_rate_limit_retry_accepts_error_text_without_an_envelope(
+    text: str,
+    seconds: float,
+) -> None:
+    assert (
+        peri_scribe.retry.rate_limit_retry(RuntimeError(text))
+        == seconds * units.seconds
+    )
+
+
+def test_rate_limit_retry_ignores_json_without_an_error_object() -> None:
+    assert peri_scribe.retry.rate_limit_retry(ValueError("[]")) is None
+
+
+@hypothesis.given(
+    outcomes=hypothesis.strategies.lists(
+        hypothesis.strategies.from_type(tests.peri_scribe.retry_helpers.AttemptOutcome),
+        max_size=10,
+    ),
+    maximum_retries=hypothesis.strategies.integers(0, 8),
+)
+def test_run_with_retry_stops_at_success_fatal_error_or_retry_limit(
+    outcomes: list[tests.peri_scribe.retry_helpers.AttemptOutcome],
+    maximum_retries: int,
+) -> None:
+    result = object()
+    effects = tests.peri_scribe.retry_helpers.query_effects(outcomes, result)
+    terminal_outcomes = {
+        tests.peri_scribe.retry_helpers.AttemptOutcome.SUCCESS,
+        tests.peri_scribe.retry_helpers.AttemptOutcome.FATAL_ERROR,
+    }
+    first_terminal = next(
+        (
+            index
+            for index, outcome in enumerate(outcomes)
+            if outcome in terminal_outcomes
+        ),
+        len(outcomes),
+    )
+    last_attempt = min(first_terminal, maximum_retries)
+    expected = effects[last_attempt]
+    query = unittest.mock.Mock(side_effect=effects)
+    with unittest.mock.patch("time.sleep") as sleep:
+        if isinstance(expected, Exception):
+            with pytest.raises(type(expected)) as raised:
+                peri_scribe.retry.run_with_retry(
+                    "generated-feed",
+                    query,
+                    maximum_retries=maximum_retries,
+                )
+            assert raised.value is expected
+        else:
+            assert (
+                peri_scribe.retry.run_with_retry(
+                    "generated-feed",
+                    query,
+                    maximum_retries=maximum_retries,
+                )
+                is result
+            )
+    assert query.call_count == last_attempt + 1
+    assert sleep.call_count == last_attempt
 
 
 def test_rate_limit_retry_uses_server_hint() -> None:

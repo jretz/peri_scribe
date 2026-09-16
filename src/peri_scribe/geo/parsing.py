@@ -55,8 +55,8 @@ def is_missing(value: object) -> bool:
     """Return True when *value* is a missing (null) value.
 
     Pandas missing values are treated as missing, except for strings and bytes, which
-    are never treated as missing here (an empty string is a present value). Values that
-    pandas cannot truth-test (e.g. lists) are treated as present.
+    are never treated as missing here (an empty string is a present value). Containers
+    are present even when every element they hold is missing.
 
     Args:
         value: The value to test.
@@ -71,12 +71,7 @@ def is_missing(value: object) -> bool:
         >>> is_missing("")
         False
     """
-    if value is None:
-        return True
-    try:
-        return bool(pd.isna(value)) and not isinstance(value, (str, bytes))
-    except TypeError, ValueError:
-        return False
+    return pd.api.types.is_scalar(value) and bool(pd.isna(value))
 
 
 def numeric_value(value: object) -> float | None:
@@ -156,10 +151,8 @@ def normalize_identifier(value: object) -> str | None:
     """
     if is_missing(value):
         return None
-    text = str(value).strip()
-    if not text:
-        return None
-    return text.casefold().strip("{}")
+    text = re.sub(r"^[\s{}]+|[\s{}]+$", "", str(value).casefold())
+    return text or None
 
 
 def is_complex_child_from(value: object) -> bool:

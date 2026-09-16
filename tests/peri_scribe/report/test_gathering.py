@@ -4,8 +4,10 @@ from __future__ import annotations
 
 import datetime
 import pathlib
+import tempfile
 
 import geopandas
+import hypothesis
 import pytest
 import shapely.geometry
 
@@ -25,6 +27,104 @@ import peri_scribe.sources.external_sources
 import tests.peri_scribe.kml.kml_helpers
 import tests.peri_scribe.report.gathering_helpers
 from peri_scribe.units import units
+
+
+@hypothesis.given(sections=tests.peri_scribe.report.gathering_helpers.report_sections())
+def test_report_details_preserves_the_first_entry_for_each_distinct_fire(
+    sections: list[tuple[peri_scribe.report.gathering.FireReportEntry, ...]],
+) -> None:
+    entries = [entry for section in sections for entry in section]
+    representatives = [
+        entry
+        for index, entry in enumerate(entries)
+        if not any(
+            tests.peri_scribe.report.gathering_helpers.same_report_fire(entry, previous)
+            for previous in entries[:index]
+        )
+    ]
+    expected = sorted(
+        representatives,
+        key=lambda entry: (entry.name.casefold(), entry.name, entry.identifier or ""),
+    )
+    assert peri_scribe.report.gathering.report_details(*sections) == tuple(expected)
+
+
+@hypothesis.given(names=hypothesis.infer)
+def test_located_entries_accepts_an_iterator_like_a_list(names: list[str]) -> None:
+    fires = [
+        tests.peri_scribe.report.gathering_helpers.make_fire(name, f"id-{index}")
+        for index, name in enumerate(names)
+    ]
+    now = datetime.datetime(2026, 8, 2, tzinfo=datetime.UTC)
+    with tempfile.TemporaryDirectory() as directory:
+        year_directory = pathlib.Path(directory)
+        expected = peri_scribe.report.gathering.located_entries(
+            fires,
+            {},
+            {},
+            now,
+            year_directory,
+        )
+        actual = peri_scribe.report.gathering.located_entries(
+            iter(fires),
+            {},
+            {},
+            now,
+            year_directory,
+        )
+    assert actual == expected
+
+
+def test_located_entries_keeps_a_fire_from_a_single_use_iterator(
+    tmp_path: pathlib.Path,
+) -> None:
+    fire = tests.peri_scribe.report.gathering_helpers.make_fire("Bug", "id-bug")
+    entries = peri_scribe.report.gathering.located_entries(
+        iter([fire]),
+        {},
+        {},
+        datetime.datetime(2026, 8, 2, tzinfo=datetime.UTC),
+        tmp_path,
+    )
+    assert len(entries) == 1
+    assert entries[0].name == "Bug"
+    assert entries[0].identifier == "id-bug"
+
+
+def test_report_details_distinguishes_a_name_from_a_matching_identifier() -> None:
+    unidentified = tests.peri_scribe.report.gathering_helpers.make_entry("2026-a")
+    identified = tests.peri_scribe.report.gathering_helpers.make_entry(
+        "2026-a",
+        identifier="2026-a",
+    )
+    assert peri_scribe.report.gathering.report_details(
+        (unidentified, identified),
+    ) == (unidentified, identified)
+
+
+def test_fire_locations_distinguishes_a_name_from_a_matching_identifier(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    unidentified = peri_scribe.kml.fire_data.FireGeometry(
+        name="2026-a",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+        point=None,
+        perimeters=(),
+    )
+    identified = tests.peri_scribe.report.gathering_helpers.make_fire("River", "2026-a")
+    monkeypatch.setattr(
+        peri_scribe.report.gathering,
+        "fire_location",
+        lambda fire, _cities: fire.name,
+    )
+    locations = peri_scribe.report.gathering.fire_locations(
+        [unidentified, identified],
+        geopandas.GeoDataFrame(),
+    )
+    assert locations == {
+        ("name", "2026-a"): "2026-a",
+        ("id", "2026-a"): "River",
+    }
 
 
 def test_report_entry_captures_fire_facts(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -339,7 +439,10 @@ def test_fire_identity_prefers_canonical_identifier() -> None:
         "2026-casnd-150541",
     )
 
-    assert peri_scribe.report.gathering.fire_identity(fire) == "2026-casnd-150541"
+    assert peri_scribe.report.gathering.fire_identity(fire) == (
+        "id",
+        "2026-casnd-150541",
+    )
 
 
 def test_fire_identity_uses_name_without_identifier() -> None:
@@ -350,7 +453,7 @@ def test_fire_identity_uses_name_without_identifier() -> None:
         perimeters=(),
     )
 
-    assert peri_scribe.report.gathering.fire_identity(fire) == "Bug"
+    assert peri_scribe.report.gathering.fire_identity(fire) == ("name", "Bug")
 
 
 def test_fire_location_formats_nearest_city_phrase(
@@ -539,7 +642,7 @@ def test_fire_locations_maps_each_located_fire_once(
         geopandas.GeoDataFrame(),
     )
 
-    assert locations == {"2026-casnd-150541": "15 mi ESE of Portland, OR"}
+    assert locations == {("id", "2026-casnd-150541"): "15 mi ESE of Portland, OR"}
 
 
 def test_located_entries_attach_location_phrases(

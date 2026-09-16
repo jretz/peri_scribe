@@ -6,6 +6,8 @@ import datetime
 import json
 import typing
 
+import hypothesis
+import hypothesis.strategies
 import numpy as np
 import pandas as pd
 import pytest
@@ -20,6 +22,48 @@ import tests.factories
 ITEM_VALUE = 7
 
 
+@pytest.mark.parametrize("value", ["{}", "{ }", " {\t{ }\n} "])
+def test_normalize_identifier_returns_none_for_empty_braced_values(value: str) -> None:
+    assert peri_scribe.geo.parsing.normalize_identifier(value) is None
+
+
+def test_normalize_identifier_removes_whitespace_inside_braces() -> None:
+    assert peri_scribe.geo.parsing.normalize_identifier("{ 0}") == "0"
+
+
+@hypothesis.given(value=hypothesis.infer)
+def test_normalize_identifier_ignores_surrounding_braces(value: str) -> None:
+    assert peri_scribe.geo.parsing.normalize_identifier(
+        "{" + value + "}",
+    ) == peri_scribe.geo.parsing.normalize_identifier(value)
+
+
+@hypothesis.given(value=hypothesis.infer)
+def test_normalize_identifier_is_idempotent(value: str | None) -> None:
+    normalized = peri_scribe.geo.parsing.normalize_identifier(value)
+    assert peri_scribe.geo.parsing.normalize_identifier(normalized) == normalized
+
+
+@hypothesis.given(value=hypothesis.strategies.floats(allow_nan=False))
+def test_numeric_value_round_trips_numeric_text(value: float) -> None:
+    assert peri_scribe.geo.parsing.numeric_value(str(value)) == value
+
+
+@hypothesis.given(
+    value=hypothesis.strategies.datetimes(
+        min_value=datetime.datetime(2000, 1, 1),
+        max_value=datetime.datetime(2100, 1, 1),
+        timezones=hypothesis.strategies.timezones(),
+    ),
+)
+def test_observation_time_from_preserves_instants_across_iso_round_trips(
+    value: datetime.datetime,
+) -> None:
+    assert peri_scribe.geo.parsing.observation_time_from(
+        value.isoformat(),
+    ) == value.astimezone(datetime.UTC)
+
+
 def test_json_native_value_normalizes_nested_numpy_and_date_values() -> None:
     assert peri_scribe.geo.parsing.json_native_value({"nested": [1, 2]}) == {
         "nested": [1, 2],
@@ -29,6 +73,13 @@ def test_json_native_value_normalizes_nested_numpy_and_date_values() -> None:
         peri_scribe.geo.parsing.json_native_value(datetime.date(2026, 5, 4))
         == "2026-05-04"
     )
+
+
+@pytest.mark.parametrize("value", [[None], (None,), [float("nan")]])
+def test_json_native_value_preserves_singleton_missing_containers(
+    value: object,
+) -> None:
+    assert peri_scribe.geo.parsing.json_native_value(value) == [None]
 
 
 def test_json_native_value_returns_unknown_values_as_text() -> None:
@@ -71,6 +122,14 @@ def test_is_missing_treats_strings_as_present() -> None:
 
 def test_is_missing_treats_non_scalar_values_as_present() -> None:
     assert peri_scribe.geo.parsing.is_missing([1, 2]) is False
+
+
+@pytest.mark.parametrize(
+    "value",
+    [[], [None], (None,), np.array([float("nan")]), pd.Series([pd.NA])],
+)
+def test_is_missing_preserves_containers_of_missing_values(value: object) -> None:
+    assert not peri_scribe.geo.parsing.is_missing(value)
 
 
 def test_normalize_identifier() -> None:

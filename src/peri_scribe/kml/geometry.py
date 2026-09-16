@@ -71,14 +71,17 @@ def escape_text(text: str) -> str:
     while True:
         cdata_start = text.find("<![CDATA[", start)
         if cdata_start == -1:
-            result.append(html.escape(text[start:]))
-            return "".join(result)
+            break
         cdata_end = text.find("]]>", cdata_start)
+        if cdata_end == -1:
+            break
         result.extend([
             html.escape(text[start:cdata_start]),
             text[cdata_start : cdata_end + 3],
         ])
         start = cdata_end + 3
+    result.append(html.escape(text[start:]))
+    return "".join(result)
 
 
 def ring_coordinates_text(ring: shapely.LinearRing) -> str:
@@ -100,13 +103,14 @@ class KmlWriter:
     The parts list holds the document as it is assembled; :meth:`text` joins it. Each
     unique geometry's rings are serialized once and cached, keyed by the geometry object
     itself, which the folder builders share across the several views that show the same
-    fire.
+    fire. The cache retains the geometries so their identities stay unique while the
+    document is built.
     """
 
     def __init__(self) -> None:
         """Initialize an independent KML document and geometry cache."""
         self.parts: list[str] = []
-        self.geometry_cache: dict[int, tuple[str, ...]] = {}
+        self.geometry_cache: dict[int, tuple[shapely.Geometry, tuple[str, ...]]] = {}
         self.next_folder_id = 0
 
     def text(self) -> str:
@@ -173,14 +177,18 @@ class KmlWriter:
         Returns:
             The geometry element's KML text.
         """
-        cached = self.geometry_cache.get(id(geometry))
-        if cached is None:
+        entry = self.geometry_cache.get(id(geometry))
+        if entry is None:
             if geometry.geom_type == "Polygon":
                 polygons = [geometry]
             else:
                 polygons = list(geometry.geoms)
-            cached = tuple(polygon_boundaries(polygon) for polygon in polygons)
-            self.geometry_cache[id(geometry)] = cached
+            entry = (
+                geometry,
+                tuple(polygon_boundaries(polygon) for polygon in polygons),
+            )
+            self.geometry_cache[id(geometry)] = entry
+        cached = entry[1]
         if geometry.geom_type == "Polygon":
             return (
                 f"<Polygon>{cached[0]}"

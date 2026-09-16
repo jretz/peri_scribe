@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import datetime
+import operator
 import pathlib
 import typing
 
 import geopandas
+import hypothesis.strategies
 import pyproj
 import shapely.geometry
 
@@ -21,6 +23,46 @@ UTC = datetime.UTC
 
 
 SAMPLE_FEATURE_ROW = (1, "a", (0.0, 0.0))
+
+type FeatureRow = tuple[int, str, tuple[float, float]]
+
+
+@hypothesis.strategies.composite
+def feature_pairs(
+    draw: hypothesis.strategies.DrawFn,
+) -> tuple[list[FeatureRow], list[FeatureRow]]:
+    """Make unchanged rows common alongside attribute edits and geometry-only edits.
+
+    Args:
+        draw: The current example's strategy sampler.
+
+    Returns:
+        Existing and fetched rows, each with unique OBJECTIDs in arbitrary order.
+    """
+    row = hypothesis.strategies.tuples(
+        hypothesis.strategies.integers(0, 8),
+        hypothesis.strategies.sampled_from(("", "River", "Cañon")),
+        hypothesis.strategies.tuples(
+            hypothesis.strategies.integers(-2, 2).map(float),
+            hypothesis.strategies.integers(-2, 2).map(float),
+        ),
+    )
+    existing = draw(
+        hypothesis.strategies.lists(row, unique_by=operator.itemgetter(0), max_size=9),
+    )
+    fetched_row = (
+        hypothesis.strategies.one_of(hypothesis.strategies.sampled_from(existing), row)
+        if existing
+        else row
+    )
+    fetched = draw(
+        hypothesis.strategies.lists(
+            fetched_row,
+            unique_by=operator.itemgetter(0),
+            max_size=9,
+        ),
+    )
+    return existing, fetched
 
 
 def modified_dataframe(

@@ -4,8 +4,33 @@ from __future__ import annotations
 
 import datetime
 
+import hypothesis.strategies
+
 import peri_scribe.kml.descriptions
 from peri_scribe.units import units
+
+
+def balloon_text() -> hypothesis.strategies.SearchStrategy[str]:
+    """Exercise both markup escaping layers with XML-compatible display text.
+
+    Returns:
+        Unicode text including HTML punctuation, entity spellings, and CDATA endings.
+    """
+    return hypothesis.strategies.one_of(
+        hypothesis.strategies.text(
+            alphabet=hypothesis.strategies.characters(
+                exclude_categories=("Cc", "Cs"),
+                exclude_characters=("\ufffe", "\uffff"),
+            ),
+            max_size=40,
+        ),
+        hypothesis.strategies.sampled_from([
+            "]]>",
+            "&amp;",
+            '<b title="quoted">text</b>',
+            "O'Brien & Sons",
+        ]),
+    )
 
 
 def full_description() -> peri_scribe.kml.descriptions.FireDescription:

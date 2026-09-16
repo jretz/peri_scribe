@@ -215,5 +215,6 @@ def centroid_dataframe(dataframe: geopandas.GeoDataFrame) -> geopandas.GeoDataFr
         )
         projected.geometry = projected.geometry.centroid
         return projected.to_crs(crs)
-    dataframe.geometry = dataframe.geometry.centroid
-    return dataframe
+    centroids = dataframe.copy()
+    centroids.geometry = dataframe.geometry.centroid
+    return centroids

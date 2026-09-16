@@ -1,11 +1,35 @@
 """Tests for peri_scribe.perimeters.cleaning."""
 
+import hypothesis
 import pytest
 import shapely.geometry
 
 import peri_scribe.perimeters.cleaning
+import tests.geometry_strategies
 import tests.peri_scribe.perimeters.cleaning_helpers
 from peri_scribe.units import units
+
+
+@hypothesis.given(geometry=tests.geometry_strategies.footprints())
+def test_clean_perimeter_preserves_valid_nonempty_footprints(
+    geometry: shapely.Polygon | shapely.MultiPolygon,
+) -> None:
+    cleaned = peri_scribe.perimeters.cleaning.clean_perimeter(geometry)
+    assert cleaned is not None
+    assert cleaned.is_valid
+    assert not cleaned.is_empty
+    assert cleaned.area > 0
+
+
+@hypothesis.given(geometry=tests.geometry_strategies.footprints())
+def test_clean_perimeter_is_idempotent_for_generated_footprints(
+    geometry: shapely.Polygon | shapely.MultiPolygon,
+) -> None:
+    cleaned = peri_scribe.perimeters.cleaning.clean_perimeter(geometry)
+    repeated = peri_scribe.perimeters.cleaning.clean_perimeter(cleaned)
+    assert cleaned is not None
+    assert repeated is not None
+    assert repeated.equals(cleaned)
 
 
 def test_clean_perimeter_returns_none_for_missing() -> None:

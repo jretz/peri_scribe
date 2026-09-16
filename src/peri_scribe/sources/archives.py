@@ -57,6 +57,7 @@ class DownloadLinksParser(html.parser.HTMLParser):
         """
         attribute_map = dict(attrs)
         if tag in {"h1", "h2", "h3"}:
+            self.collecting = False
             self.heading_level = tag
             self.heading_text = []
         elif tag == "a":

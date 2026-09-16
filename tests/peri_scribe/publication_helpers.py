@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import pathlib
 import typing
+
+import hypothesis.strategies
 
 import peri_scribe.publication
 import peri_scribe.sources.feeds
@@ -26,6 +29,182 @@ THRESHOLD = peri_scribe.publication.Threshold(
     area=25.0 * units.acres,
     interval=datetime.timedelta(minutes=5),
 )
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class MappingComparison:
+    """Keep source acreages independent of the persisted square-meter measurements.
+
+    Args:
+        current_acres: The candidate acreage, or None when it cannot be measured.
+        baseline_acres: The published acreage, or None when it cannot be measured.
+        baseline_present: Whether a published mapping exists for the fire.
+        current_minutes: The candidate's time relative to the published observation.
+    """
+
+    current_acres: int | None
+    baseline_acres: int | None
+    baseline_present: bool
+    current_minutes: int
+
+
+@hypothesis.strategies.composite
+def mapping_decision_cases(
+    draw: hypothesis.strategies.DrawFn,
+) -> tuple[list[MappingComparison], int]:
+    """Generate competing changes, missing measurements, and exact threshold boundaries.
+
+    Args:
+        draw: The current example's strategy sampler.
+
+    Returns:
+        Independent per-fire observations and a positive threshold measured in acres.
+    """
+    acreage = hypothesis.strategies.one_of(
+        hypothesis.strategies.none(),
+        hypothesis.strategies.integers(0, 10_000),
+    )
+    comparisons = draw(
+        hypothesis.strategies.lists(
+            hypothesis.strategies.builds(
+                MappingComparison,
+                current_acres=acreage,
+                baseline_acres=acreage,
+                current_minutes=hypothesis.strategies.integers(-2, 2),
+            ),
+            max_size=8,
+        ),
+    )
+    changes = {
+        abs(
+            item.current_acres
+            - ((item.baseline_acres or 0) if item.baseline_present else 0),
+        )
+        for item in comparisons
+        if item.current_acres is not None
+        and (not item.baseline_present or item.baseline_acres is not None)
+    }
+    boundaries = sorted(changes - {0})
+    threshold = hypothesis.strategies.integers(1, 10_000)
+    if boundaries:
+        threshold |= hypothesis.strategies.sampled_from(boundaries)
+    return comparisons, draw(threshold)
+
+
+def mapping_candidates(
+    comparisons: list[MappingComparison],
+) -> dict[
+    str,
+    tuple[
+        peri_scribe.publication.Mapping,
+        peri_scribe.publication.PublishedFire | None,
+    ],
+]:
+    """Encode independent comparison data as publication candidates.
+
+    Args:
+        comparisons: Current and published observations for distinct fires.
+
+    Returns:
+        Candidates whose area units and timestamps match persisted publication data.
+    """
+    candidates = {}
+    for index, item in enumerate(comparisons):
+        name = f"Fire {index}"
+        identifiers = (f"fire-{index}",)
+        current = mapping(
+            item.current_acres,
+            serial=3,
+            identifiers=identifiers,
+        ).model_copy(
+            update={
+                "name": name,
+                "observed_at": NOW + datetime.timedelta(minutes=item.current_minutes),
+            },
+        )
+        baseline = (
+            peri_scribe.publication.PublishedFire(
+                name=name,
+                identifiers=identifiers,
+                mapping=mapping(
+                    item.baseline_acres,
+                    serial=2,
+                    identifiers=identifiers,
+                ).model_copy(update={"observed_at": NOW}),
+            )
+            if item.baseline_present
+            else None
+        )
+        candidates[name] = (current, baseline)
+    return candidates
+
+
+@hypothesis.strategies.composite
+def mapping_snapshots(
+    draw: hypothesis.strategies.DrawFn,
+) -> dict[str, tuple[peri_scribe.publication.Mapping, ...]]:
+    """Exercise alias chains without conflating different geometries or unnamed fires.
+
+    Args:
+        draw: The current example's strategy sampler.
+
+    Returns:
+        Snapshots with repeated shapes, shared aliases, and varied capture dates.
+    """
+    rows = draw(
+        hypothesis.strategies.lists(
+            hypothesis.strategies.tuples(
+                hypothesis.strategies.sets(
+                    hypothesis.strategies.sampled_from(["a", "b", "c", "d"]),
+                    max_size=3,
+                ),
+                hypothesis.strategies.integers(0, 2),
+                hypothesis.strategies.integers(0, 30),
+            ),
+            max_size=12,
+        ),
+    )
+    measurements = [
+        mapping(
+            100,
+            serial=index,
+            identifiers=tuple(sorted(identifiers)),
+            captured_at=NOW + datetime.timedelta(days=day),
+        ).model_copy(update={"shape": f"shape-{shape}"})
+        for index, (identifiers, shape, day) in enumerate(rows)
+    ]
+    return collection(*measurements).mappings
+
+
+def earliest_linked_capture(
+    target: peri_scribe.publication.Mapping,
+    measurements: list[peri_scribe.publication.Mapping],
+) -> datetime.datetime:
+    """Find the earliest same-shape capture by following overlapping alias sets.
+
+    Args:
+        target: The mapping whose first capture is required.
+        measurements: Every snapshot's original measurements.
+
+    Returns:
+        The earliest time reachable through identifiers for the same shape, retaining
+        the original timestamp when there are no identifiers.
+    """
+    identifiers = set(target.identifiers)
+    related = [target]
+    remaining = [item for item in measurements if item.shape == target.shape]
+    while remaining:
+        connected = [
+            item for item in remaining if identifiers.intersection(item.identifiers)
+        ]
+        if not connected:
+            break
+        related.extend(connected)
+        identifiers.update(
+            identifier for item in connected for identifier in item.identifiers
+        )
+        remaining = [item for item in remaining if item not in connected]
+    return min(item.captured_at for item in related)
 
 
 def mapping(

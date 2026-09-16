@@ -7,6 +7,8 @@ import pathlib
 import shutil
 import typing
 
+import hypothesis
+import hypothesis.strategies
 import pytest
 import structlog
 
@@ -15,6 +17,23 @@ import peri_scribe.models
 import peri_scribe.output
 import tests.factories
 import tests.peri_scribe.output_helpers
+
+
+@hypothesis.given(
+    scores=hypothesis.strategies.lists(
+        hypothesis.strategies.integers(0, 10_000),
+        max_size=40,
+    ),
+)
+def test_score_share_curve_matches_direct_exceedance_counts(scores: list[int]) -> None:
+    expected = [
+        (score, sum(other > score for other in scores) / len(scores))
+        for score in sorted(set(scores))
+        if any(other > score for other in scores)
+    ]
+    values, shares = peri_scribe.output.score_share_curve(scores)
+    assert values.tolist() == [score for score, _share in expected]
+    assert shares.tolist() == pytest.approx([share for _score, share in expected])
 
 
 def test_write_geopackage_writes_every_layer(

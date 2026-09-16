@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import pathlib
 
+import hypothesis
 import pytest
 import shapely.geometry
 
@@ -15,6 +16,68 @@ import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.borders
 import tests.peri_scribe.perimeters.border_helpers
 import tests.peri_scribe.perimeters.classification_helpers
+
+
+@hypothesis.given(
+    observations=tests.peri_scribe.perimeters.classification_helpers.observation_sequences(),
+)
+def test_unioned_observation_geometry_preserves_full_union_coverage(
+    observations: list[peri_scribe.perimeters.classification_data.FireObservation],
+) -> None:
+    boundaries = (
+        tests.peri_scribe.perimeters.classification_helpers.projected_boundaries()
+    )
+    expected = tests.peri_scribe.perimeters.classification_helpers.full_projected_union(
+        observations,
+    )
+    actual = peri_scribe.perimeters.border_classification.unioned_observation_geometry(
+        observations,
+        boundaries,
+    )
+    if expected is None:
+        assert actual is None
+    else:
+        assert actual is not None
+        tests.peri_scribe.perimeters.classification_helpers.assert_same_projected_coverage(
+            actual,
+            expected,
+        )
+
+
+@pytest.mark.parametrize(
+    ("shapes", "order"),
+    tests.peri_scribe.perimeters.classification_helpers.overlapping_observation_cases(),
+    ids=[
+        "overlap-across-hole",
+        "repeated-overlap",
+        "touching-holes-with-repeated-mapping",
+    ],
+)
+def test_unioned_observation_geometry_preserves_overlapping_and_repeated_parts(
+    shapes: list[shapely.Geometry],
+    order: tuple[int, ...],
+) -> None:
+    observations = [
+        tests.peri_scribe.perimeters.border_helpers.observation(
+            tests.peri_scribe.perimeters.border_helpers.FIRIS,
+            shapes[index],
+            serial_number=serial,
+        )
+        for serial, index in enumerate(order)
+    ]
+    actual = peri_scribe.perimeters.border_classification.unioned_observation_geometry(
+        observations,
+        tests.peri_scribe.perimeters.classification_helpers.projected_boundaries(),
+    )
+    expected = tests.peri_scribe.perimeters.classification_helpers.full_projected_union(
+        observations,
+    )
+    assert actual is not None
+    assert expected is not None
+    tests.peri_scribe.perimeters.classification_helpers.assert_same_projected_coverage(
+        actual,
+        expected,
+    )
 
 
 def test_source_kind_for_feed_name_recognizes_firis() -> None:

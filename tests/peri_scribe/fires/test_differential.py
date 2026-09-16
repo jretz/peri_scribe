@@ -3,6 +3,8 @@
 import pathlib
 
 import geopandas
+import hypothesis
+import hypothesis.strategies
 import pandas as pd
 import pytest
 import shapely.geometry
@@ -13,7 +15,32 @@ import peri_scribe.fires.reuse
 import peri_scribe.geo.reading
 import peri_scribe.models
 import tests.factories
+import tests.geometry_strategies
 import tests.peri_scribe.fires.differential_helpers
+
+
+@hypothesis.given(
+    geometries=hypothesis.strategies.lists(
+        tests.geometry_strategies.rectangles(),
+        min_size=1,
+        max_size=8,
+    ),
+)
+def test_corrected_geometries_match_all_later_intersections(
+    geometries: list[shapely.Polygon],
+) -> None:
+    actual = peri_scribe.fires.differential.corrected_geometries(geometries)
+    assert len(actual) == len(geometries)
+    for index, corrected in enumerate(actual):
+        expected = shapely.intersection_all(geometries[index:])
+        if expected.area == 0:
+            assert corrected is None
+        else:
+            assert corrected is not None
+            assert corrected.symmetric_difference(expected).area == pytest.approx(
+                0,
+                abs=1e-12,
+            )
 
 
 def test_differential_geopackage_path_names_output() -> None:

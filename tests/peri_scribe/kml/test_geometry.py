@@ -2,14 +2,117 @@
 
 from __future__ import annotations
 
+import defusedxml.ElementTree as DefusedElementTree
+import hypothesis
+import hypothesis.strategies
+import numpy as np
 import pytest
 import shapely.geometry
 
 import peri_scribe.kml.geometry
 import peri_scribe.kml.styles
 import tests.factories
+import tests.geometry_strategies
 import tests.peri_scribe.kml.geometry_helpers
 import tests.peri_scribe.kml.kml_helpers
+
+
+@hypothesis.given(
+    geometry=tests.geometry_strategies.footprints(),
+    draw_order=hypothesis.strategies.integers(0, 1000),
+)
+def test_perimeter_geometry_preserves_parts_holes_and_rounded_coordinates(
+    geometry: shapely.Polygon | shapely.MultiPolygon,
+    draw_order: int,
+) -> None:
+    writer = peri_scribe.kml.geometry.KmlWriter()
+    peri_scribe.kml.geometry.perimeter_geometry(
+        writer,
+        "River",
+        "#perimeter",
+        geometry,
+        draw_order,
+    )
+    document = tests.peri_scribe.kml.kml_helpers.document_from_writer(writer)
+    polygons = list(document.iter(tests.peri_scribe.kml.kml_helpers.kml_tag("Polygon")))
+    expected = (
+        [geometry] if isinstance(geometry, shapely.Polygon) else list(geometry.geoms)
+    )
+    assert len(polygons) == len(expected)
+    for actual, original in zip(polygons, expected, strict=True):
+        rings = tests.peri_scribe.kml.geometry_helpers.coordinate_rings(actual)
+        original_rings = [original.exterior, *original.interiors]
+        assert len(rings) == len(original_rings)
+        for coordinates, ring in zip(rings, original_rings, strict=True):
+            np.testing.assert_allclose(
+                coordinates,
+                list(ring.coords),
+                rtol=0,
+                atol=0.5 * 10**-peri_scribe.kml.geometry.COORDINATE_DECIMALS + 1e-12,
+            )
+        assert actual.findtext(
+            tests.peri_scribe.kml.kml_helpers.gx_tag("drawOrder"),
+        ) == str(draw_order)
+
+
+@hypothesis.given(
+    geometries=hypothesis.strategies.lists(
+        tests.geometry_strategies.footprints(),
+        min_size=1,
+        max_size=5,
+    ),
+)
+def test_kml_writer_geometry_xml_matches_fresh_serialization_for_temporary_geometry(
+    geometries: list[shapely.Polygon | shapely.MultiPolygon],
+) -> None:
+    tests.peri_scribe.kml.geometry_helpers.assert_temporary_geometry_serialization(
+        geometries,
+    )
+
+
+def test_kml_writer_geometry_xml_keeps_distinct_temporary_polygons() -> None:
+    tests.peri_scribe.kml.geometry_helpers.assert_temporary_geometry_serialization([
+        shapely.box(0, 0, 1, 1),
+        shapely.box(2, 2, 3, 3),
+    ])
+
+
+@hypothesis.given(
+    before=tests.peri_scribe.kml.geometry_helpers.xml_text(),
+    content=tests.peri_scribe.kml.geometry_helpers.xml_text(),
+    after=tests.peri_scribe.kml.geometry_helpers.xml_text(),
+)
+def test_escape_text_round_trips_plain_text_and_cdata(
+    before: str,
+    content: str,
+    after: str,
+) -> None:
+    escaped = peri_scribe.kml.geometry.escape_text(
+        f"{before}<![CDATA[{content}]]>{after}",
+    )
+    element = DefusedElementTree.fromstring(f"<text>{escaped}</text>")
+    assert (element.text or "") == before + content + after
+
+
+@hypothesis.given(
+    before=tests.peri_scribe.kml.geometry_helpers.xml_text(),
+    content=tests.peri_scribe.kml.geometry_helpers.xml_text(),
+)
+def test_escape_text_preserves_unterminated_cdata_as_literal_text(
+    before: str,
+    content: str,
+) -> None:
+    text = f"{before}<![CDATA[{content}"
+    escaped = peri_scribe.kml.geometry.escape_text(text)
+    element = DefusedElementTree.fromstring(f"<text>{escaped}</text>")
+    assert element.text == text
+
+
+@pytest.mark.parametrize("text", ["<![CDATA[", "Fire <![CDATA["])
+def test_escape_text_escapes_unclosed_cdata_marker(text: str) -> None:
+    escaped = peri_scribe.kml.geometry.escape_text(text)
+    element = DefusedElementTree.fromstring(f"<text>{escaped}</text>")
+    assert element.text == text
 
 
 def test_ring_coordinates_text_rounds_and_omits_altitude() -> None:

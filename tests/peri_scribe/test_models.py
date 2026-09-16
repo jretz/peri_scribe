@@ -2,7 +2,131 @@
 
 from __future__ import annotations
 
+import datetime
+import zoneinfo
+
+import hypothesis
+import hypothesis.strategies
+import pytest
+
 import peri_scribe.models
+import tests.peri_scribe.models_helpers
+
+
+@hypothesis.given(
+    identifiers=tests.peri_scribe.models_helpers.identifier_collections(),
+)
+def test_canonical_fire_identifier_accepts_single_pass_iterators(
+    identifiers: list[str],
+) -> None:
+    assert peri_scribe.models.canonical_fire_identifier(iter(identifiers)) == (
+        peri_scribe.models.canonical_fire_identifier(identifiers)
+    )
+
+
+@pytest.mark.parametrize(
+    "identifier",
+    ["00000000-0000-0000-0000-000000000000", "other"],
+)
+def test_canonical_fire_identifier_preserves_iterator_fallbacks(
+    identifier: str,
+) -> None:
+    assert (
+        peri_scribe.models.canonical_fire_identifier(iter([identifier])) == identifier
+    )
+
+
+@hypothesis.given(scenario=tests.peri_scribe.models_helpers.clock_change_comparisons())
+def test_times_are_contemporaneous_is_independent_of_time_zone_representation(
+    scenario: tuple[datetime.datetime, datetime.datetime, datetime.timedelta],
+) -> None:
+    left, right, tolerance = scenario
+    expected = peri_scribe.models.times_are_contemporaneous(
+        left.astimezone(datetime.UTC),
+        right.astimezone(datetime.UTC),
+        tolerance,
+    )
+    assert (
+        peri_scribe.models.times_are_contemporaneous(left, right, tolerance) == expected
+    )
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "tolerance", "expected"),
+    [
+        (
+            datetime.datetime(2026, 3, 8, 9, 5, tzinfo=datetime.UTC),
+            datetime.datetime(2026, 3, 8, 10, tzinfo=datetime.UTC),
+            datetime.timedelta(minutes=55),
+            True,
+        ),
+        (
+            datetime.datetime(2026, 11, 1, 8, tzinfo=datetime.UTC),
+            datetime.datetime(2026, 11, 1, 9, tzinfo=datetime.UTC),
+            datetime.timedelta(0),
+            False,
+        ),
+    ],
+    ids=["skipped-hour", "repeated-hour"],
+)
+def test_times_are_contemporaneous_uses_elapsed_time_across_clock_changes(
+    left: datetime.datetime,
+    right: datetime.datetime,
+    tolerance: datetime.timedelta,
+    *,
+    expected: bool,
+) -> None:
+    zone = zoneinfo.ZoneInfo("America/Los_Angeles")
+    assert (
+        peri_scribe.models.times_are_contemporaneous(
+            left.astimezone(zone),
+            right.astimezone(zone),
+            tolerance,
+        )
+        == expected
+    )
+
+
+def test_times_are_contemporaneous_accepts_naive_times() -> None:
+    left = datetime.datetime(2026, 7, 1, tzinfo=datetime.UTC).replace(tzinfo=None)
+    right = left + datetime.timedelta(hours=1)
+    assert peri_scribe.models.times_are_contemporaneous(
+        left,
+        right,
+        datetime.timedelta(hours=1),
+    )
+
+
+@pytest.mark.parametrize("reverse", [False, True])
+def test_times_are_contemporaneous_rejects_mixed_naive_and_aware_times(
+    *,
+    reverse: bool,
+) -> None:
+    aware = datetime.datetime(2026, 7, 1, tzinfo=datetime.UTC)
+    naive = aware.replace(tzinfo=None)
+    left, right = (aware, naive) if reverse else (naive, aware)
+    with pytest.raises(TypeError, match="offset-naive and offset-aware"):
+        peri_scribe.models.times_are_contemporaneous(left, right, datetime.timedelta(0))
+
+
+@hypothesis.given(name=hypothesis.infer)
+def test_normalize_fire_name_is_idempotent(name: str) -> None:
+    normalized = peri_scribe.models.normalize_fire_name(name)
+    assert peri_scribe.models.normalize_fire_name(normalized) == normalized
+
+
+@hypothesis.given(
+    identifiers=hypothesis.strategies.lists(hypothesis.strategies.text(), max_size=20),
+    data=hypothesis.strategies.data(),
+)
+def test_canonical_fire_identifier_ignores_order_and_duplicates(
+    identifiers: list[str],
+    data: hypothesis.strategies.DataObject,
+) -> None:
+    reordered = data.draw(hypothesis.strategies.permutations(identifiers))
+    assert peri_scribe.models.canonical_fire_identifier(
+        [*reordered, *identifiers],
+    ) == peri_scribe.models.canonical_fire_identifier(identifiers)
 
 
 def test_fire_complex_links_fires_circularly() -> None:

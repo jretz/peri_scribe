@@ -356,8 +356,10 @@ def ordered_border_coordinates(
     odd_endpoints = [
         key for key, incident in adjacency.items() if len(incident) % 2 == 1
     ]
-    if len(odd_endpoints) != BORDER_PATH_ENDPOINT_COUNT:
-        message = "California border is not a single continuous path"
+    message = "California border is not a single continuous path"
+    if len(odd_endpoints) != BORDER_PATH_ENDPOINT_COUNT or any(
+        len(incident) > BORDER_PATH_ENDPOINT_COUNT for incident in adjacency.values()
+    ):
         raise peri_scribe.exceptions.AdministrativeBoundariesError(message)
     start_key = min(odd_endpoints, key=operator.itemgetter(0))
     ordered = [representatives[start_key]]
@@ -379,6 +381,8 @@ def ordered_border_coordinates(
         ordered.append(next_endpoint)
         previous_segment = segment
         current_key = snapped(next_endpoint)
+    if len(ordered) != len(segments) + 1:
+        raise peri_scribe.exceptions.AdministrativeBoundariesError(message)
     return ordered
 
 

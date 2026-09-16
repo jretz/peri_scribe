@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import datetime
 
+import hypothesis
+import hypothesis.strategies
 import shapely.geometry
 import structlog
 
@@ -297,3 +299,56 @@ def test_group_fire_record_indices_unions_distinct_geometry_classes() -> None:
     ]
     groups = peri_scribe.fires.grouping.group_fire_record_indices(records)
     assert groups == [[0, 1, 2]]
+
+
+@hypothesis.given(records=tests.peri_scribe.fires.grouping_helpers.fire_records())
+def test_group_fire_record_indices_matches_connected_components(
+    records: list[peri_scribe.models.FireRecord],
+) -> None:
+    assert peri_scribe.fires.grouping.group_fire_record_indices(records) == (
+        tests.peri_scribe.fires.grouping_helpers.reference_groups(records)
+    )
+
+
+@hypothesis.given(
+    records=tests.peri_scribe.fires.grouping_helpers.fire_records(),
+    data=hypothesis.strategies.data(),
+)
+def test_group_fire_record_indices_preserves_membership_under_permutation(
+    records: list[peri_scribe.models.FireRecord],
+    data: hypothesis.strategies.DataObject,
+) -> None:
+    permutation = data.draw(hypothesis.strategies.permutations(range(len(records))))
+    original = peri_scribe.fires.grouping.group_fire_record_indices(records)
+    reordered = peri_scribe.fires.grouping.group_fire_record_indices([
+        records[index] for index in permutation
+    ])
+    assert {frozenset(group) for group in original} == {
+        frozenset(permutation[index] for index in group) for group in reordered
+    }
+
+
+@hypothesis.given(
+    geometries=hypothesis.strategies.lists(
+        tests.peri_scribe.fires.grouping_helpers.local_geometries(),
+        max_size=15,
+    ),
+)
+def test_matched_within_outlier_tolerance_matches_exhaustive_comparisons(
+    geometries: list[shapely.Geometry],
+) -> None:
+    tolerance = peri_scribe.fires.grouping.FIRE_OUTLIER_TOLERANCE.m_as("degrees")
+    expected = {
+        index
+        for index, geometry in enumerate(geometries)
+        if any(
+            index != other_index and geometry.distance(other) <= tolerance
+            for other_index, other in enumerate(geometries)
+        )
+    }
+    assert (
+        peri_scribe.fires.grouping.matched_within_outlier_tolerance(
+            list(enumerate(geometries)),
+        )
+        == expected
+    )

@@ -114,7 +114,7 @@ class Collection(pydantic.BaseModel):
     """
 
     model_config = pydantic.ConfigDict(extra="forbid", frozen=True)
-    version: typing.Literal[2] = 2
+    version: typing.Literal[3] = 3
     files: dict[str, FileStamp] = pydantic.Field(default_factory=dict)
     mappings: dict[str, tuple[Mapping, ...]] = pydantic.Field(default_factory=dict)
     evacuations: FileStamp | None = None
@@ -148,7 +148,7 @@ class Publication(pydantic.BaseModel):
     """
 
     model_config = pydantic.ConfigDict(extra="forbid", frozen=True)
-    version: typing.Literal[1] = 1
+    version: typing.Literal[3] = 3
     created_at: pydantic.AwareDatetime
     output: FileStamp
     files: dict[str, FileStamp]
@@ -441,6 +441,9 @@ def first_captures(
 ) -> dict[str, tuple[Mapping, ...]]:
     """Attribute-only republication must not move a geometry's first-capture clock.
 
+    Capture times propagate through chains of aliases for the same shape so repeated
+    collection does not move them.
+
     Args:
         snapshots: Source paths and their mapping measurements, including repeat shapes.
 
@@ -448,14 +451,31 @@ def first_captures(
         Measurements carrying the earliest capture of their fire and shape.
     """
     captured: dict[tuple[str, str], datetime.datetime] = {}
+    linked: dict[tuple[str, str], set[tuple[str, str]]] = {}
     for mappings in snapshots.values():
         for mapping in mappings:
             for identifier in mapping.identifiers:
                 key = identifier, mapping.shape
+                anchor = mapping.identifiers[0], mapping.shape
+                linked.setdefault(key, set()).add(anchor)
+                linked.setdefault(anchor, set()).add(key)
                 captured[key] = min(
                     captured.get(key, mapping.captured_at),
                     mapping.captured_at,
                 )
+    remaining = set(captured)
+    while remaining:
+        anchor = remaining.pop()
+        component = {anchor}
+        pending = [anchor]
+        while pending:
+            key = pending.pop()
+            neighbors = linked[key] & remaining
+            remaining.difference_update(neighbors)
+            component.update(neighbors)
+            pending.extend(neighbors)
+        earliest = min(captured[key] for key in component)
+        captured.update(dict.fromkeys(component, earliest))
     return {
         path: tuple(
             mapping.model_copy(

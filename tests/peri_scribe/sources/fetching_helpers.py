@@ -3,10 +3,16 @@
 from __future__ import annotations
 
 import dataclasses
+import datetime
+import itertools
 import pathlib
+import sqlite3
 import typing
 
 import arcgis.features
+import geopandas
+import hypothesis.strategies
+import shapely
 
 import peri_scribe.exceptions
 import peri_scribe.output
@@ -20,6 +26,184 @@ import tests.main_stubs
 
 if typing.TYPE_CHECKING:
     import pytest
+
+
+FETCH_REFERENCE_TIME = datetime.datetime(2026, 8, 1, tzinfo=datetime.UTC)
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class FetchFeature:
+    """Keep independent source facts for the full and incremental fetch model.
+
+    Args:
+        name: The source's display name.
+        active: Whether the incident is active.
+        modified_minute: The modification time relative to the stored high-water mark.
+        longitude: The point's longitude in source coordinate units.
+    """
+
+    name: str
+    active: bool
+    modified_minute: int | None
+    longitude: int
+
+
+@hypothesis.strategies.composite
+def fetch_scenarios(
+    draw: hypothesis.strategies.DrawFn,
+) -> tuple[dict[int, FetchFeature], dict[int, FetchFeature]]:
+    """Mix overlapping fetch signals, geometry edits, removals, and unchanged rows.
+
+    The stored anchors establish the latest modification time and both raw status
+    spellings, which are prerequisites for the feed's status-change query.
+
+    Args:
+        draw: The current example's strategy sampler.
+
+    Returns:
+        Stored and current source features, each with unique object IDs.
+    """
+    feature = hypothesis.strategies.builds(
+        FetchFeature,
+        name=hypothesis.strategies.sampled_from(["River", "Cañon", "Cedar"]),
+        modified_minute=hypothesis.strategies.one_of(
+            hypothesis.strategies.none(),
+            hypothesis.strategies.integers(-10, 10),
+        ),
+        longitude=hypothesis.strategies.integers(-2, 2),
+    )
+    stored = draw(
+        hypothesis.strategies.dictionaries(
+            hypothesis.strategies.integers(2, 6),
+            feature,
+            max_size=5,
+        ),
+    )
+    stored = {
+        identifier: dataclasses.replace(
+            item,
+            modified_minute=None
+            if item.modified_minute is None
+            else min(item.modified_minute, 0),
+        )
+        for identifier, item in stored.items()
+    }
+    stored.update({
+        0: FetchFeature(name="Cedar", active=False, modified_minute=0, longitude=0),
+        1: FetchFeature(name="River", active=True, modified_minute=0, longitude=1),
+    })
+    current = draw(
+        hypothesis.strategies.dictionaries(
+            hypothesis.strategies.integers(0, 8),
+            hypothesis.strategies.one_of(
+                hypothesis.strategies.sampled_from(list(stored.values())),
+                feature,
+            ),
+            min_size=1,
+            max_size=9,
+        ),
+    )
+    return stored, current
+
+
+def fetch_attributes(identifier: int, feature: FetchFeature) -> dict[str, object]:
+    """Represent raw source facts in the same schema for storage and service results.
+
+    Args:
+        identifier: The feature's object ID.
+        feature: Independent source facts for this feature.
+
+    Returns:
+        Attributes with UTC date text and the feed's raw status spellings.
+    """
+    return {
+        "OBJECTID": identifier,
+        "name": feature.name,
+        "status": "Active" if feature.active else "Inactive",
+        "ModifiedOnDateTime_dt": None
+        if feature.modified_minute is None
+        else (
+            FETCH_REFERENCE_TIME + datetime.timedelta(minutes=feature.modified_minute)
+        ).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    }
+
+
+def fetch_frame(features: dict[int, FetchFeature]) -> geopandas.GeoDataFrame:
+    """Keep geometry and attributes aligned in a simulated stored snapshot.
+
+    Args:
+        features: Stored feature facts in their snapshot order.
+
+    Returns:
+        A WGS84 frame containing the raw source columns and point geometries.
+    """
+    return geopandas.GeoDataFrame(
+        list(itertools.starmap(fetch_attributes, features.items())),
+        geometry=[shapely.Point(feature.longitude, 0) for feature in features.values()],
+        crs=tests.factories.WGS84_WKID,
+    )
+
+
+class QueryableFeatureLayer(tests.factories.FeatureLayerStubBase):
+    """Evaluate production filters with SQLite instead of assuming query order."""
+
+    def __init__(
+        self,
+        database: sqlite3.Connection,
+        features: dict[int, FetchFeature],
+    ) -> None:
+        """Keep all service state inside the generated example's database.
+
+        Args:
+            database: An isolated in-memory database owned by the test.
+            features: Current features exposed by the simulated service.
+        """
+        super().__init__("https://example.test/FeatureServer/0", object())
+        self.database = database
+        database.row_factory = sqlite3.Row
+        database.execute(
+            "CREATE TABLE features (OBJECTID INTEGER PRIMARY KEY, name TEXT, "
+            "status TEXT, ModifiedOnDateTime_dt TEXT, longitude REAL)",
+        )
+        database.executemany(
+            "INSERT INTO features VALUES (?, ?, ?, ?, ?)",
+            [
+                (*fetch_attributes(identifier, feature).values(), feature.longitude)
+                for identifier, feature in features.items()
+            ],
+        )
+
+    def query(self, **kwargs: object) -> arcgis.features.FeatureSet | dict[str, object]:
+        """Use an independent SQL evaluator for ID selection and feature retrieval.
+
+        Args:
+            kwargs: ArcGIS query options emitted by the production fetcher.
+
+        Returns:
+            Matching object IDs or a real ArcGIS FeatureSet, without network access.
+        """
+        predicate = str(kwargs.get("where", "1=1")).replace("timestamp ", "")
+        if "object_ids" in kwargs:
+            predicate = f"OBJECTID IN ({kwargs['object_ids']})"
+        clauses = ["SELECT * FROM features"]
+        clauses.extend(("WHERE", predicate, "ORDER BY OBJECTID"))
+        rows = self.database.execute(" ".join(clauses)).fetchall()
+        if kwargs.get("return_ids_only"):
+            return {"objectIds": [row["OBJECTID"] for row in rows]}
+        return arcgis.features.FeatureSet([
+            arcgis.features.Feature(
+                attributes={
+                    key: row[key]
+                    for key in ("OBJECTID", "name", "status", "ModifiedOnDateTime_dt")
+                },
+                geometry={
+                    "x": row["longitude"],
+                    "y": 0.0,
+                    "spatialReference": {"wkid": tests.factories.WGS84_WKID},
+                },
+            )
+            for row in rows
+        ])
 
 
 def complete_fetch_feed(index: int) -> peri_scribe.sources.feed_types.ArcGISFeed:

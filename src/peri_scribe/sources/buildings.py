@@ -77,7 +77,7 @@ RECORD_SIZE_BYTES = 8
 PARTITION_COUNT = 16
 
 # The database format version, recorded in the metadata and checked on read.
-BUILDINGS_VERSION = "2026-09-03"
+BUILDINGS_VERSION = "2026-09-15"
 
 
 TILES_TABLE_SCHEMA = (
@@ -164,6 +164,9 @@ def quantize_centroids(centroids: np.ndarray) -> np.ndarray:
 def tile_id(encoded_longitude: int, encoded_latitude: int) -> int:
     """Return the 0.5° tile id containing the encoded coordinates.
 
+    The easternmost column and northernmost row include the geographic domain's upper
+    endpoints, since quantization can round a coordinate onto 180° or 90°.
+
     Args:
         encoded_longitude: The encoded longitude.
         encoded_latitude: The encoded latitude.
@@ -175,8 +178,8 @@ def tile_id(encoded_longitude: int, encoded_latitude: int) -> int:
         >>> tile_id(0, 0)
         129960
     """
-    column = (encoded_longitude + LONGITUDE_OFFSET) // TILE_STEPS
-    row = (encoded_latitude + LATITUDE_OFFSET) // TILE_STEPS
+    column = min((encoded_longitude + LONGITUDE_OFFSET) // TILE_STEPS, TILE_COLUMNS - 1)
+    row = min((encoded_latitude + LATITUDE_OFFSET) // TILE_STEPS, TILE_ROWS - 1)
     return row * TILE_COLUMNS + column
 
 
@@ -194,6 +197,8 @@ def tile_ids(encoded: np.ndarray) -> np.ndarray:
     """
     columns = (encoded[:, 0] + np.int32(LONGITUDE_OFFSET)) // TILE_STEPS
     rows = (encoded[:, 1] + np.int32(LATITUDE_OFFSET)) // TILE_STEPS
+    np.minimum(columns, TILE_COLUMNS - 1, out=columns)
+    np.minimum(rows, TILE_ROWS - 1, out=rows)
     return rows * np.int32(TILE_COLUMNS) + columns
 
 
@@ -239,22 +244,21 @@ def tile_ids_for_box(box: tuple[float, float, float, float]) -> list[int]:
     Returns:
         The intersecting tile ids, ordered by row then column.
     """
-    minimum_longitude, minimum_latitude, maximum_longitude, maximum_latitude = box
-    first_column = max(
-        0,
-        (encode_longitude(minimum_longitude) + LONGITUDE_OFFSET) // TILE_STEPS,
+    minimum_x, minimum_y, maximum_x, maximum_y = encoded_box(box)
+    if (
+        minimum_x > LONGITUDE_OFFSET
+        or maximum_x < -LONGITUDE_OFFSET
+        or minimum_y > LATITUDE_OFFSET
+        or maximum_y < -LATITUDE_OFFSET
+    ):
+        return []
+    first_row, first_column = divmod(
+        tile_id(max(minimum_x, -LONGITUDE_OFFSET), max(minimum_y, -LATITUDE_OFFSET)),
+        TILE_COLUMNS,
     )
-    last_column = min(
-        TILE_COLUMNS - 1,
-        (encode_longitude(maximum_longitude) + LONGITUDE_OFFSET) // TILE_STEPS,
-    )
-    first_row = max(
-        0,
-        (encode_latitude(minimum_latitude) + LATITUDE_OFFSET) // TILE_STEPS,
-    )
-    last_row = min(
-        TILE_ROWS - 1,
-        (encode_latitude(maximum_latitude) + LATITUDE_OFFSET) // TILE_STEPS,
+    last_row, last_column = divmod(
+        tile_id(min(maximum_x, LONGITUDE_OFFSET), min(maximum_y, LATITUDE_OFFSET)),
+        TILE_COLUMNS,
     )
     return [
         row * TILE_COLUMNS + column
@@ -314,8 +318,7 @@ def compress_tile_points(points: np.ndarray) -> bytes:
     Returns:
         The compressed payload bytes.
     """
-    records = np.ascontiguousarray(points.view("V8").reshape(-1))
-    records.sort()
+    records = np.sort(points.view("V8").reshape(-1))
     return compression.zstd.compress(records, level=2)
 
 

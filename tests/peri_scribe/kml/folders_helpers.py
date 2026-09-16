@@ -4,12 +4,52 @@ from __future__ import annotations
 
 import datetime
 
+import hypothesis.strategies
+
 import peri_scribe.kml.builder
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.perimeters
 import peri_scribe.models
 import tests.factories
+from peri_scribe.units import units
+
+
+@hypothesis.strategies.composite
+def growth_histories(
+    draw: hypothesis.strategies.DrawFn,
+) -> tuple[peri_scribe.kml.perimeters.Perimeter, ...]:
+    """Mix dated, undated, and future measurements around the growth window.
+
+    Args:
+        draw: The current example's strategy sampler.
+
+    Returns:
+        Unordered perimeters with unique dated observations and varied area units.
+    """
+    measurements = draw(
+        hypothesis.strategies.dictionaries(
+            hypothesis.strategies.one_of(
+                hypothesis.strategies.none(),
+                hypothesis.strategies.integers(-96, 48),
+            ),
+            hypothesis.strategies.integers(0, 10_000),
+            max_size=12,
+        ),
+    )
+    area_unit = draw(
+        hypothesis.strategies.sampled_from(["acres", "hectares", "meters ** 2"]),
+    )
+    return tuple(
+        peri_scribe.kml.perimeters.Perimeter(
+            geometry=tests.factories.square(0.01),
+            observation_time=None
+            if hour is None
+            else REFERENCE_TIME + datetime.timedelta(hours=hour),
+            area=(area * units.acres).to(area_unit),
+        )
+        for hour, area in measurements.items()
+    )
 
 
 def ring_style_urls_for(fire: peri_scribe.kml.fire_data.FireGeometry) -> dict[str, str]:

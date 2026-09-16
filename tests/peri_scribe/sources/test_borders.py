@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import arcgis.features
 import geopandas
+import hypothesis
 import pyproj
 import pytest
 import shapely.geometry
@@ -12,7 +13,31 @@ import structlog
 import peri_scribe.exceptions
 import peri_scribe.models
 import peri_scribe.sources.borders
+import tests.peri_scribe.sources.borders_helpers
 import tests.peri_scribe.sources.boundary_helpers
+
+
+@hypothesis.given(scenario=tests.peri_scribe.sources.borders_helpers.split_paths())
+def test_ordered_border_coordinates_ignores_splitting_order_and_direction(
+    scenario: tuple[list[tuple[float, float]], list[shapely.LineString]],
+) -> None:
+    coordinates, parts = scenario
+    assert peri_scribe.sources.borders.ordered_border_coordinates(parts) == coordinates
+
+
+@hypothesis.given(scenario=tests.peri_scribe.sources.borders_helpers.split_paths())
+def test_ordered_border_coordinates_rejects_disconnected_closed_components(
+    scenario: tuple[list[tuple[float, float]], list[shapely.LineString]],
+) -> None:
+    _coordinates, parts = scenario
+    closed_component = shapely.LineString([(172, 0), (173, 0), (173, 1), (172, 0)])
+    with pytest.raises(
+        peri_scribe.exceptions.AdministrativeBoundariesError,
+        match="not a single continuous path",
+    ):
+        peri_scribe.sources.borders.ordered_border_coordinates(
+            [*parts, closed_component],
+        )
 
 
 def test_line_parts_returns_lines_from_collection() -> None:
@@ -318,6 +343,30 @@ def test_ordered_border_coordinates_raises_when_not_a_single_path() -> None:
     parts = [
         shapely.geometry.LineString([(0.0, 0.0), (1.0, 0.0)]),
         shapely.geometry.LineString([(10.0, 0.0), (11.0, 0.0)]),
+    ]
+    with pytest.raises(
+        peri_scribe.exceptions.AdministrativeBoundariesError,
+        match="not a single continuous path",
+    ):
+        peri_scribe.sources.borders.ordered_border_coordinates(parts)
+
+
+def test_ordered_border_coordinates_rejects_an_isolated_triangle() -> None:
+    parts = [
+        shapely.LineString([(0, 0), (1, 0)]),
+        shapely.LineString([(2, 0), (3, 0), (3, 1), (2, 0)]),
+    ]
+    with pytest.raises(
+        peri_scribe.exceptions.AdministrativeBoundariesError,
+        match="not a single continuous path",
+    ):
+        peri_scribe.sources.borders.ordered_border_coordinates(parts)
+
+
+def test_ordered_border_coordinates_rejects_a_loop_attached_to_a_path() -> None:
+    parts = [
+        shapely.LineString([(0, 0), (1, 0), (2, 0)]),
+        shapely.LineString([(1, 0), (1, 1), (2, 1), (1, 0)]),
     ]
     with pytest.raises(
         peri_scribe.exceptions.AdministrativeBoundariesError,

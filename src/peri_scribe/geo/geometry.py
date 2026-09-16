@@ -73,10 +73,6 @@ def polygonal_parts(geometry: shapely.Geometry) -> list[shapely.Polygon]:
             continue
         if part.geom_type == "Polygon":
             parts.append(typing.cast("shapely.Polygon", part))
-        elif part.geom_type == "MultiPolygon":
-            parts.extend(
-                typing.cast("shapely.Polygon", member)
-                for member in part.geoms
-                if not member.is_empty
-            )
+        elif part.geom_type in {"MultiPolygon", "GeometryCollection"}:
+            parts.extend(polygonal_parts(part))
     return parts

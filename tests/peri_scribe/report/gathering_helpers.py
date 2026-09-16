@@ -7,6 +7,7 @@ import pathlib
 import typing
 
 import geopandas
+import hypothesis.strategies
 import shapely.geometry
 
 import peri_scribe.areas
@@ -18,6 +19,58 @@ import peri_scribe.models
 import peri_scribe.report.gathering
 import peri_scribe.report.locations
 from peri_scribe.units import units
+
+
+def report_sections() -> hypothesis.strategies.SearchStrategy[
+    list[tuple[peri_scribe.report.gathering.FireReportEntry, ...]]
+]:
+    """Exercise repeated identities, ambiguous names, and case-insensitive ordering.
+
+    Returns:
+        Report sections with independent copies of the same fire and shared names.
+    """
+    entry = hypothesis.strategies.builds(
+        peri_scribe.report.gathering.FireReportEntry,
+        status=hypothesis.strategies.from_type(peri_scribe.models.FireStatus),
+        name=hypothesis.strategies.sampled_from([
+            "2026-a",
+            "2026-b",
+            "River",
+            "river",
+            "Cedar",
+            "cedar",
+        ]),
+        identifier=hypothesis.strategies.one_of(
+            hypothesis.strategies.none(),
+            hypothesis.strategies.sampled_from(["2026-a", "2026-b"]),
+        ),
+        score=hypothesis.strategies.one_of(
+            hypothesis.strategies.none(),
+            hypothesis.strategies.integers(0, 1000),
+        ),
+    )
+    return hypothesis.strategies.lists(
+        hypothesis.strategies.lists(entry, max_size=8).map(tuple),
+        max_size=5,
+    )
+
+
+def same_report_fire(
+    first: peri_scribe.report.gathering.FireReportEntry,
+    second: peri_scribe.report.gathering.FireReportEntry,
+) -> bool:
+    """Match canonical identifiers, falling back to names only for unidentified fires.
+
+    Args:
+        first: One section's report entry.
+        second: Another section's report entry.
+
+    Returns:
+        Whether the two entries describe the same fire.
+    """
+    if first.identifier is not None or second.identifier is not None:
+        return first.identifier == second.identifier
+    return first.name == second.name
 
 
 def make_fire(name: str, identifier: str) -> peri_scribe.kml.fire_data.FireGeometry:

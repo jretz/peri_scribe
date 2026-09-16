@@ -275,11 +275,7 @@ def scaled_points(
         The scaled points, in the same order.
     """
     return tuple(
-        SeriesPoint(
-            observation_time=point.observation_time,
-            value=point.value / divisor,
-        )
-        for point in points
+        dataclasses.replace(point, value=point.value / divisor) for point in points
     )
 
 

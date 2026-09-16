@@ -3,9 +3,65 @@
 import pathlib
 import typing
 
+import hypothesis.strategies
+import shapely
+
 import peri_scribe.fires.reuse
 import peri_scribe.fires.sources
 import peri_scribe.models
+import tests.factories
+
+
+@hypothesis.strategies.composite
+def history_layers(
+    draw: hypothesis.strategies.DrawFn,
+) -> list[peri_scribe.models.LayerData]:
+    """Interleave cached fires across layers with missing geometry and empty histories.
+
+    Args:
+        draw: The current example's strategy sampler.
+
+    Returns:
+        Small history layers with repeated fire keys and distinct row contents.
+    """
+    coordinates = hypothesis.strategies.one_of(
+        hypothesis.strategies.none(),
+        hypothesis.strategies.tuples(
+            hypothesis.strategies.integers(-179, 179),
+            hypothesis.strategies.integers(-80, 80),
+        ),
+    )
+    layers = draw(
+        hypothesis.strategies.dictionaries(
+            hypothesis.strategies.sampled_from(["perimeters", "points", "incidents"]),
+            hypothesis.strategies.lists(
+                hypothesis.strategies.tuples(
+                    hypothesis.strategies.sampled_from(["first", "second", "third"]),
+                    hypothesis.strategies.integers(0, 1000),
+                    coordinates,
+                ),
+                max_size=8,
+            ),
+            min_size=1,
+            max_size=3,
+        ),
+    )
+    return [
+        peri_scribe.models.LayerData(
+            name=name,
+            dataframe=tests.factories.geo_frame(
+                {
+                    "derivation_key": [key for key, _revision, _point in rows],
+                    "revision": [revision for _key, revision, _point in rows],
+                },
+                [
+                    None if point is None else shapely.Point(point)
+                    for _key, _revision, point in rows
+                ],
+            ),
+        )
+        for name, rows in layers.items()
+    ]
 
 
 def source_key(

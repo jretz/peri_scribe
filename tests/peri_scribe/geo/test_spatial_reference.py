@@ -1,5 +1,9 @@
 """Verify coordinate-reference selection against metadata and geometry."""
 
+import operator
+
+import hypothesis
+import hypothesis.strategies
 import pyproj
 import pytest
 import shapely
@@ -11,12 +15,53 @@ import peri_scribe.geo.spatial_reference
 import peri_scribe.models
 import tests.conftest
 import tests.factories
+import tests.geometry_strategies
 
 
 CALIFORNIA_BOUNDS = (-121.0, -120.0, 33.0, 34.0)
 
 # Spans the continental US and Guam, outside the NAD83 area of use.
 OUTSIDE_NAD83_AREA_BOUNDS = (-123.0, 144.8, 13.5, 48.4)
+
+
+@hypothesis.given(
+    geometries=hypothesis.strategies.lists(
+        hypothesis.strategies.one_of(
+            hypothesis.strategies.none(),
+            hypothesis.strategies.sampled_from([
+                shapely.Point(),
+                shapely.Polygon(),
+                shapely.GeometryCollection(),
+            ]),
+            tests.geometry_strategies.footprints(),
+            tests.geometry_strategies.nested_collections().map(operator.itemgetter(0)),
+        ),
+        max_size=8,
+    ),
+)
+def test_bounds_of_matches_extrema_of_all_present_coordinates(
+    geometries: list[shapely.Geometry | None],
+) -> None:
+    coordinates = shapely.get_coordinates(geometries)
+    if not len(coordinates):
+        assert peri_scribe.geo.spatial_reference.bounds_of(geometries) is None
+    else:
+        longitudes = [point[0] for point in coordinates]
+        latitudes = [point[1] for point in coordinates]
+        assert peri_scribe.geo.spatial_reference.bounds_of(geometries) == (
+            min(longitudes),
+            max(longitudes),
+            min(latitudes),
+            max(latitudes),
+        )
+
+
+@pytest.mark.parametrize(
+    "geometry",
+    [shapely.Point(), shapely.Polygon(), shapely.GeometryCollection()],
+)
+def test_bounds_of_returns_none_for_empty_geometry(geometry: shapely.Geometry) -> None:
+    assert peri_scribe.geo.spatial_reference.bounds_of([geometry]) is None
 
 
 def test_spatial_reference_wkids_none_is_empty() -> None:

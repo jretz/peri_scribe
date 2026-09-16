@@ -8,6 +8,8 @@ import pathlib
 import unittest.mock
 
 import geopandas
+import hypothesis
+import hypothesis.strategies
 import pytest
 import shapely
 import time_machine
@@ -22,6 +24,114 @@ import peri_scribe.units
 import tests.factories
 import tests.peri_scribe.publication_helpers
 from peri_scribe.units import units
+
+
+@hypothesis.given(
+    case=tests.peri_scribe.publication_helpers.mapping_decision_cases(),
+    area_unit=hypothesis.strategies.sampled_from(["acres", "hectares", "meters ** 2"]),
+)
+def test_mapping_decision_matches_the_largest_eligible_absolute_change(
+    case: tuple[list[tests.peri_scribe.publication_helpers.MappingComparison], int],
+    area_unit: str,
+) -> None:
+    comparisons, threshold_acres = case
+    decision = peri_scribe.publication.mapping_decision(
+        tests.peri_scribe.publication_helpers.mapping_candidates(comparisons),
+        peri_scribe.publication.Threshold(
+            area=(threshold_acres * units.acres).to(area_unit),
+            interval=datetime.timedelta(minutes=5),
+        ),
+    )
+    eligible = {
+        f"Fire {index}": item
+        for index, item in enumerate(comparisons)
+        if not item.baseline_present or item.current_minutes >= 0
+    }
+    if any(
+        item.current_acres is None
+        or (item.baseline_present and item.baseline_acres is None)
+        for item in eligible.values()
+    ):
+        assert decision.proceed
+        assert decision.reason == peri_scribe.publication.Reason.UNCERTAIN_MAPPING
+        return
+    changes = {
+        name: item.current_acres
+        - ((item.baseline_acres or 0) if item.baseline_present else 0)
+        for name, item in eligible.items()
+        if item.current_acres is not None
+        and (not item.baseline_present or item.baseline_acres is not None)
+    }
+    largest = max(map(abs, changes.values()), default=0)
+    assert abs(decision.change.m_as("acres")) == pytest.approx(largest)
+    assert decision.proceed == (largest >= threshold_acres)
+    assert decision.reason == (
+        peri_scribe.publication.Reason.AREA
+        if largest >= threshold_acres
+        else peri_scribe.publication.Reason.BELOW_THRESHOLD
+    )
+    if largest:
+        assert decision.fire in changes
+        assert abs(changes[decision.fire]) == largest
+        assert decision.change.m_as("acres") == pytest.approx(changes[decision.fire])
+    else:
+        assert decision.fire is None
+
+
+@hypothesis.given(snapshots=tests.peri_scribe.publication_helpers.mapping_snapshots())
+def test_first_captures_is_idempotent(
+    snapshots: dict[str, tuple[peri_scribe.publication.Mapping, ...]],
+) -> None:
+    once = peri_scribe.publication.first_captures(snapshots)
+    assert peri_scribe.publication.first_captures(once) == once
+
+
+@hypothesis.given(snapshots=tests.peri_scribe.publication_helpers.mapping_snapshots())
+def test_first_captures_matches_earliest_connected_alias_capture(
+    snapshots: dict[str, tuple[peri_scribe.publication.Mapping, ...]],
+) -> None:
+    measurements = [item for mappings in snapshots.values() for item in mappings]
+    expected = {
+        path: tuple(
+            item.model_copy(
+                update={
+                    "captured_at": (
+                        tests.peri_scribe.publication_helpers.earliest_linked_capture(
+                            item,
+                            measurements,
+                        )
+                    ),
+                },
+            )
+            for item in mappings
+        )
+        for path, mappings in snapshots.items()
+    }
+    assert peri_scribe.publication.first_captures(snapshots) == expected
+
+
+def test_first_captures_propagates_the_earliest_date_through_an_alias_bridge() -> None:
+    early = tests.peri_scribe.publication_helpers.NOW
+    later = early + datetime.timedelta(days=1)
+    measurements = [
+        tests.peri_scribe.publication_helpers.mapping(
+            100,
+            serial=serial,
+            identifiers=identifiers,
+            captured_at=captured,
+        )
+        for serial, (identifiers, captured) in enumerate([
+            (("a",), later),
+            (("a", "b"), later),
+            (("b",), early),
+        ])
+    ]
+    snapshots = tests.peri_scribe.publication_helpers.collection(*measurements).mappings
+    result = peri_scribe.publication.first_captures(snapshots)
+    assert [item.captured_at for mappings in result.values() for item in mappings] == (
+        [early] * len(measurements)
+    )
+    assert snapshots[measurements[0].source_file][0].captured_at == later
 
 
 @pytest.mark.parametrize(
@@ -323,6 +433,49 @@ def test_corrupt_state_cannot_authorize_skip(tmp_path: pathlib.Path) -> None:
         peri_scribe.publication.read_state(state, peri_scribe.publication.Collection)
         is None
     )
+
+
+def test_collect_recomputes_measurements_from_version_two_cache(
+    tmp_path: pathlib.Path,
+) -> None:
+    sources = tmp_path / "sources"
+    first = shapely.box(-100, 40, -99.99, 40.01)
+    second = shapely.reverse(shapely.box(-100, 40.02, -99.99, 40.03))
+    snapshot = tests.peri_scribe.publication_helpers.write_perimeter_snapshot(
+        sources,
+        shapely.MultiPolygon([first, second]),
+        {},
+    )
+    relative = str(snapshot.relative_to(sources))
+    outdated = peri_scribe.publication.collect(tmp_path).model_dump(mode="json")
+    outdated["version"] = 2
+    outdated["mappings"][relative][0]["area_square_meters"] = 0.0
+    peri_scribe.publication.collection_path(tmp_path).write_text(json.dumps(outdated))
+    refreshed = peri_scribe.publication.collect(tmp_path)
+    expected = peri_scribe.units.area(first) + peri_scribe.units.area(second)
+    assert refreshed.mappings[relative][0].area_square_meters == pytest.approx(
+        expected.m_as("meters**2"),
+    )
+
+
+@pytest.mark.parametrize("version", [1, 2])
+def test_read_publication_rejects_outdated_checkpoint(
+    tmp_path: pathlib.Path,
+    version: int,
+) -> None:
+    output = tmp_path / "output.kmz"
+    output.write_bytes(b"complete")
+    outdated = (
+        tests.peri_scribe.publication_helpers
+        .publication(None)
+        .model_copy(
+            update={"output": peri_scribe.publication.file_stamp(output)},
+        )
+        .model_dump(mode="json")
+    )
+    outdated["version"] = version
+    peri_scribe.publication.publication_path(tmp_path).write_text(json.dumps(outdated))
+    assert peri_scribe.publication.read_publication(tmp_path, output) is None
 
 
 def test_failed_checkpoint_replacement_preserves_previous_state(

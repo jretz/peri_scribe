@@ -303,9 +303,9 @@ def nearest_city(
     """Return the city nearest to *geometry*, or None when no city can be named.
 
     Each row of *cities* names one city with ``NAME`` and ``STATE_ABBR`` columns and a
-    point geometry in WGS 84 degrees. Rows missing any of those are ignored. The exact
-    distances are measured only for the cities that could plausibly be nearest (see
-    :func:`plausible_city_indices`), and when several cities tie for nearest, the first
+    point geometry in WGS 84 degrees. Rows missing any of those or carrying empty
+    geometries are ignored. Exact distances are measured only for plausible candidates
+    (see :func:`plausible_city_indices`). When several cities tie for nearest, the first
     alphabetically by name and state wins, so the choice is stable.
 
     Args:
@@ -321,8 +321,8 @@ def nearest_city(
     valid = cities[
         cities["NAME"].notna()
         & cities["STATE_ABBR"].notna()
-        & cities.geometry.notna()
         & (cities.geometry.geom_type == "Point")
+        & ~cities.geometry.is_empty
     ]
     if valid.empty:
         return None

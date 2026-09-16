@@ -6,6 +6,7 @@ import pathlib
 import typing
 
 import geopandas
+import hypothesis
 import pyproj
 import shapely.geometry
 
@@ -14,11 +15,54 @@ import peri_scribe.sources.feed_state
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.validation
 import tests.factories
+import tests.peri_scribe.sources.changes_helpers
 import tests.peri_scribe.sources.validation_helpers
 
 
 if typing.TYPE_CHECKING:
     import pytest
+
+
+@hypothesis.given(
+    rows=tests.peri_scribe.sources.changes_helpers.feature_pairs(),
+    omit_name=...,
+)
+def test_validate_feed_matches_feature_and_schema_differences(
+    rows: tuple[
+        list[tests.peri_scribe.sources.changes_helpers.FeatureRow],
+        list[tests.peri_scribe.sources.changes_helpers.FeatureRow],
+    ],
+    *,
+    omit_name: bool,
+) -> None:
+    stored_rows, complete_rows = rows
+    stored = tests.factories.change_dataframe(stored_rows)
+    complete = tests.factories.change_dataframe(complete_rows)
+    if omit_name:
+        stored = typing.cast("geopandas.GeoDataFrame", stored.drop(columns="name"))
+    stored_by_id = {row[0]: row for row in stored_rows}
+    missing = frozenset(row[0] for row in complete_rows if row[0] not in stored_by_id)
+    mismatched = frozenset(
+        identifier
+        for identifier, name, coordinates in complete_rows
+        if identifier in stored_by_id
+        and (
+            stored_by_id[identifier][2] != coordinates
+            or (not omit_name and stored_by_id[identifier][1] != name)
+        )
+    )
+    feed = tests.peri_scribe.sources.validation_helpers.validation_feed(0)
+    assert peri_scribe.sources.validation.validate_feed(feed, complete, stored) == (
+        peri_scribe.sources.validation.FeedValidationResult(
+            feed_name=feed.name,
+            complete_feature_count=len(complete_rows),
+            missing_object_ids=missing,
+            mismatched_object_ids=mismatched,
+            columns_missing_from_stored=frozenset({"name"})
+            if omit_name
+            else frozenset(),
+        )
+    )
 
 
 def test_validate_feed_clean_when_stored_covers_complete() -> None:

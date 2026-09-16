@@ -107,10 +107,14 @@ def bounds_of(
             for missing geometry.
 
     Returns:
-        The bounds as (x_minimum, x_maximum, y_minimum, y_maximum), or None if every
-        geometry is null.
+        The bounds as (x_minimum, x_maximum, y_minimum, y_maximum), or None when no
+        geometry has coordinates.
     """
-    valid = [geometry for geometry in geometries if geometry is not None]
+    valid = [
+        geometry
+        for geometry in geometries
+        if geometry is not None and not geometry.is_empty
+    ]
     if not valid:
         return None
     x_minimum, y_minimum, x_maximum, y_maximum = shapely.total_bounds(valid)

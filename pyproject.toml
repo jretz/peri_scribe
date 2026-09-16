@@ -7,12 +7,14 @@ dependencies = [
     "click",
     "defusedxml",
     "geopandas",
+    "hypothesis",
     "ijson",
     "pint",
     "pydantic",
     "pygments",  # For pytest code highlighting
     "pyproj",
     "pytest-cov",
+    "pytest-xdist",
     "pytest",
     "requests-mock",
     "requests",
@@ -56,6 +58,10 @@ addopts = [
     "--cov-report=html",
     "--cov=src",
     "--no-cov-on-fail",
+
+    # pytest-xdist
+    "--dist=worksteal",
+    "--numprocesses=6",
 ]
 filterwarnings = [
     # Deprecation warnings raised at import time by third-party dependencies (arcgis,
@@ -86,14 +92,30 @@ ignore = [
     "T20",  # https://docs.astral.sh/ruff/rules/#flake8-print-t20
 
     # Specific rules
-    "unnecessary-collection-call",  # https://docs.astral.sh/ruff/rules/unnecessary-collection-call/
-    "missing-copyright-notice",  # https://docs.astral.sh/ruff/rules/missing-copyright-notice/
-    "too-many-arguments",  # https://docs.astral.sh/ruff/rules/too-many-arguments/
-    "subprocess-without-shell-equals-true",  # https://docs.astral.sh/ruff/rules/subprocess-without-shell-equals-true/
-    "hardcoded-sql-expression",  # https://docs.astral.sh/ruff/rules/hardcoded-sql-expression/
-    "typing-only-standard-library-import",  # https://docs.astral.sh/ruff/rules/typing-only-standard-library-import/
-    "missing-todo-author",  # https://docs.astral.sh/ruff/rules/missing-todo-author/
-    "missing-todo-link",  # https://docs.astral.sh/ruff/rules/missing-todo-link/
+
+    # https://docs.astral.sh/ruff/rules/unnecessary-collection-call/
+    "unnecessary-collection-call",
+
+    # https://docs.astral.sh/ruff/rules/missing-copyright-notice/
+    "missing-copyright-notice",
+
+    # https://docs.astral.sh/ruff/rules/too-many-arguments/
+    "too-many-arguments",
+
+    # https://docs.astral.sh/ruff/rules/subprocess-without-shell-equals-true/
+    "subprocess-without-shell-equals-true",
+
+    # https://docs.astral.sh/ruff/rules/hardcoded-sql-expression/
+    "hardcoded-sql-expression",
+
+    # https://docs.astral.sh/ruff/rules/typing-only-standard-library-import/
+    "typing-only-standard-library-import",
+
+    # https://docs.astral.sh/ruff/rules/missing-todo-author/
+    "missing-todo-author",
+
+    # https://docs.astral.sh/ruff/rules/missing-todo-link/
+    "missing-todo-link",
 ]
 
 [tool.ruff.lint.flake8-pytest-style]
@@ -106,9 +128,15 @@ lines-after-imports = 2
 # "tests/conftest.py" = ["pytest-fixture-autouse"]
 "tests/**/*.py" = [
     # Specific rules
-    "unused-function-argument",  # https://docs.astral.sh/ruff/rules/unused-function-argument/
-    "compare-to-empty-string",  # https://docs.astral.sh/ruff/rules/compare-to-empty-string/
-    "assert",  # https://docs.astral.sh/ruff/rules/assert/
+
+    # https://docs.astral.sh/ruff/rules/unused-function-argument/
+    "unused-function-argument",
+
+    # https://docs.astral.sh/ruff/rules/compare-to-empty-string/
+    "compare-to-empty-string",
+
+    # https://docs.astral.sh/ruff/rules/assert/
+    "assert",
 ]
 "tests/**/test_*.py" = [
     # Rule sets

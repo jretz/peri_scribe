@@ -5,11 +5,16 @@ from __future__ import annotations
 import datetime
 import json
 import pathlib
+import tempfile
 import typing
+import zoneinfo
 
+import hypothesis
+import hypothesis.strategies
 import pytest
 
 import peri_scribe.sources.full_fetch_state
+import tests.peri_scribe.models_helpers
 
 
 if typing.TYPE_CHECKING:
@@ -17,6 +22,134 @@ if typing.TYPE_CHECKING:
 
 
 SAMPLE_TIMESTAMP = datetime.datetime(2026, 9, 6, 18, 42, tzinfo=datetime.UTC)
+
+
+@hypothesis.given(
+    instants=tests.peri_scribe.models_helpers.clock_change_instants(),
+    interval_hours=hypothesis.strategies.integers(0, 4),
+)
+def test_full_fetch_is_due_uses_elapsed_time_across_clock_changes(
+    instants: tuple[datetime.datetime, datetime.datetime],
+    interval_hours: int,
+) -> None:
+    previous, current = instants
+    interval = datetime.timedelta(hours=interval_hours)
+    elapsed_seconds = current.timestamp() - previous.timestamp()
+    assert peri_scribe.sources.full_fetch_state.full_fetch_is_due(
+        interval=interval,
+        current_time=current,
+        last_full_fetch=previous,
+    ) == (elapsed_seconds >= interval.total_seconds())
+
+
+@hypothesis.given(
+    timestamps=hypothesis.strategies.lists(
+        hypothesis.strategies.datetimes(
+            min_value=datetime.datetime(2000, 1, 1),
+            max_value=datetime.datetime(2100, 1, 1),
+            timezones=hypothesis.strategies.timezones(),
+        ),
+        min_size=1,
+        max_size=4,
+    ),
+)
+def test_write_state_round_trips_timestamps_across_repeated_writes(
+    timestamps: list[datetime.datetime],
+) -> None:
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        path = pathlib.Path(temporary_directory) / "sources" / "fetch_state.json"
+        for timestamp in timestamps:
+            peri_scribe.sources.full_fetch_state.write_state(
+                path,
+                last_full_fetch=timestamp,
+            )
+            assert peri_scribe.sources.full_fetch_state.read_state(path) == (
+                peri_scribe.sources.full_fetch_state.FullFetchState(
+                    last_full_fetch=timestamp.astimezone(datetime.UTC),
+                )
+            )
+
+
+@pytest.mark.parametrize(
+    ("previous", "current", "interval_hours", "due"),
+    [
+        (
+            datetime.datetime(
+                2026,
+                3,
+                8,
+                1,
+                tzinfo=zoneinfo.ZoneInfo("America/Los_Angeles"),
+            ),
+            datetime.datetime(
+                2026,
+                3,
+                8,
+                3,
+                tzinfo=zoneinfo.ZoneInfo("America/Los_Angeles"),
+            ),
+            2,
+            False,
+        ),
+        (
+            datetime.datetime(
+                2026,
+                11,
+                1,
+                1,
+                tzinfo=zoneinfo.ZoneInfo("America/Los_Angeles"),
+            ),
+            datetime.datetime(
+                2026,
+                11,
+                1,
+                1,
+                fold=1,
+                tzinfo=zoneinfo.ZoneInfo("America/Los_Angeles"),
+            ),
+            1,
+            True,
+        ),
+    ],
+)
+def test_full_fetch_is_due_accounts_for_skipped_and_repeated_hours(
+    previous: datetime.datetime,
+    current: datetime.datetime,
+    interval_hours: int,
+    *,
+    due: bool,
+) -> None:
+    assert (
+        peri_scribe.sources.full_fetch_state.full_fetch_is_due(
+            interval=datetime.timedelta(hours=interval_hours),
+            current_time=current,
+            last_full_fetch=previous,
+        )
+        is due
+    )
+
+
+def test_full_fetch_is_due_compares_naive_timestamps_without_a_local_timezone() -> None:
+    assert peri_scribe.sources.full_fetch_state.full_fetch_is_due(
+        interval=datetime.timedelta(hours=2),
+        current_time=datetime.datetime(2026, 3, 8, 3),
+        last_full_fetch=datetime.datetime(2026, 3, 8, 1),
+    )
+
+
+@pytest.mark.parametrize("current_is_aware", [True, False])
+def test_full_fetch_is_due_rejects_mixed_naive_and_aware_timestamps(
+    *,
+    current_is_aware: bool,
+) -> None:
+    naive = datetime.datetime(2026, 3, 8, 1)
+    aware = naive.replace(tzinfo=datetime.UTC)
+    with pytest.raises(TypeError, match="offset-naive and offset-aware"):
+        peri_scribe.sources.full_fetch_state.full_fetch_is_due(
+            interval=datetime.timedelta(hours=1),
+            current_time=aware if current_is_aware else naive,
+            last_full_fetch=naive if current_is_aware else aware,
+        )
 
 
 def test_full_fetch_is_due_with_zero_interval() -> None:

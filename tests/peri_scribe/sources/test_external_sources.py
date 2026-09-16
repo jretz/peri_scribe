@@ -28,6 +28,10 @@ import tests.peri_scribe.sources.external_source_helpers
 import tests.peri_scribe.sources.external_sources_helpers
 
 
+if typing.TYPE_CHECKING:
+    import structlog.testing
+
+
 def test_buildings_source_covers_every_us_state() -> None:
     states = peri_scribe.sources.external_sources.BUILDINGS_SOURCE.states
     assert len(states) == len(us.states.STATES) + 1
@@ -238,6 +242,7 @@ def test_fetch_arcgis_source_raises_when_fetch_fails(
 
 def test_fetch_arcgis_source_logs_geometry_warning(
     monkeypatch: pytest.MonkeyPatch,
+    log_output: structlog.testing.LogCapture,
 ) -> None:
     source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
     monkeypatch.setattr(peri_scribe.sources.external_sources.arcgis.gis, "GIS", object)
@@ -271,12 +276,15 @@ def test_fetch_arcgis_source_logs_geometry_warning(
     )
     monkeypatch.setattr(pathlib.Path, "replace", lambda _source, _destination: None)
     monkeypatch.setattr(pathlib.Path, "mkdir", lambda *_args, **_kwargs: None)
-    warnings: list[str] = []
-    monkeypatch.setattr(peri_scribe.geo.data.logger, "warning", warnings.append)
     peri_scribe.sources.external_sources.fetch_external_source(
         source,
         tests.peri_scribe.sources.external_sources_helpers.YEAR_DIRECTORY,
     )
+    warnings = [
+        event["event"]
+        for event in log_output.entries
+        if event["log_level"] == "warning"
+    ]
     assert warnings == ["warning text"]
 
 
@@ -364,6 +372,7 @@ def test_fetch_arcgis_source_replaces_unreadable_current_version(
 def test_fetch_arcgis_source_keeps_current_version_when_fetch_fails(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
+    log_output: structlog.testing.LogCapture,
 ) -> None:
     source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
     tests.peri_scribe.sources.external_sources_helpers.install_arcgis_query_stubs(
@@ -383,17 +392,16 @@ def test_fetch_arcgis_source_keeps_current_version_when_fetch_fails(
         "FeatureLayer",
         fail,
     )
-    warnings: list[str] = []
-    monkeypatch.setattr(
-        peri_scribe.sources.external_sources.logger,
-        "warning",
-        lambda message, **_kwargs: warnings.append(message),
-    )
     second = peri_scribe.sources.external_sources.fetch_external_source(
         source,
         tmp_path,
     )
     assert second == (first,)
+    warnings = [
+        event["event"]
+        for event in log_output.entries
+        if event["log_level"] == "warning"
+    ]
     assert any("keeping current data" in message for message in warnings)
     stored = geopandas.read_file(first, layer="evacuations")
     assert len(stored) == len(

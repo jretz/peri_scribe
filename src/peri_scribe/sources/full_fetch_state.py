@@ -54,7 +54,8 @@ def full_fetch_is_due(
     """Return whether a full fetch is due at *current_time*.
 
     A zero interval makes a full fetch due on every invocation, and no recorded full
-    fetch makes one due, so both short-circuit the age comparison.
+    fetch makes one due, so both short-circuit the age comparison. Aware timestamps use
+    elapsed time in UTC so skipped and repeated local hours cannot change the cadence.
 
     Args:
         interval: The full fetch interval, a whole number of hours or days.
@@ -78,6 +79,9 @@ def full_fetch_is_due(
         return True
     if last_full_fetch is None:
         return True
+    if current_time.tzinfo is not None and last_full_fetch.tzinfo is not None:
+        current_time = current_time.astimezone(datetime.UTC)
+        last_full_fetch = last_full_fetch.astimezone(datetime.UTC)
     return current_time - last_full_fetch >= interval
 
 

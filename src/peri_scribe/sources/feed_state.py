@@ -256,11 +256,13 @@ def sql_literal(value: object) -> str:
         'true'
     """
     if isinstance(value, str):
-        return f"'{value}'"
+        escaped = value.replace("'", "''")
+        return f"'{escaped}'"
     if isinstance(value, bool):
         return "true" if value else "false"
     if isinstance(value, (int, float)):
-        return str(int(value))
+        integer = int(value)
+        return str(integer) if integer == value else str(value)
     message = f"Unsupported SQL literal type: {type(value).__name__}"
     raise ValueError(message)
 

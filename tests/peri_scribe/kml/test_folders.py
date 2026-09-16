@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 
+import hypothesis
 import pytest
 import shapely.geometry
 
@@ -21,6 +22,76 @@ import tests.factories
 import tests.peri_scribe.kml.folders_helpers
 import tests.peri_scribe.kml.kml_helpers
 from peri_scribe.units import units
+
+
+@hypothesis.given(perimeters=tests.peri_scribe.kml.folders_helpers.growth_histories())
+def test_fire_growth_matches_the_measurements_available_at_the_reference_time(
+    perimeters: tuple[peri_scribe.kml.perimeters.Perimeter, ...],
+) -> None:
+    now = tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME
+    available = {
+        item.observation_time: item.measured_area.m_as("acres")
+        for item in perimeters
+        if item.observation_time is not None and item.observation_time <= now
+    }
+    growth, percent = peri_scribe.kml.folders.fire_growth(
+        tests.peri_scribe.kml.folders_helpers.active_fire(
+            "Generated",
+            perimeters=perimeters,
+        ),
+        now,
+    )
+    if not available:
+        assert (growth, percent) == (None, None)
+        return
+    cutoff = now - peri_scribe.kml.folders.FAST_GROWTH_LOOKBACK
+    baseline_times = [time for time in available if time <= cutoff]
+    baseline = available[max(baseline_times)] if baseline_times else 0
+    expected = available[max(available)] - baseline
+    assert growth is not None
+    assert growth.m_as("acres") == pytest.approx(expected)
+    if baseline > 0:
+        assert percent is not None
+        assert percent.m_as("percent") == pytest.approx(expected / baseline * 100)
+    else:
+        assert percent is None
+
+
+def test_fire_growth_is_unknown_with_only_future_measurements() -> None:
+    now = tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire(
+        "Future",
+        perimeters=(
+            peri_scribe.kml.perimeters.Perimeter(
+                geometry=tests.factories.square(0.01),
+                observation_time=now + datetime.timedelta(hours=1),
+                area=0 * units.acres,
+            ),
+        ),
+    )
+    assert peri_scribe.kml.folders.fire_growth(fire, now) == (None, None)
+
+
+def test_fire_growth_ignores_a_future_increase() -> None:
+    now = tests.peri_scribe.kml.folders_helpers.REFERENCE_TIME
+    fire = tests.peri_scribe.kml.folders_helpers.active_fire(
+        "Current",
+        perimeters=(
+            peri_scribe.kml.perimeters.Perimeter(
+                geometry=tests.factories.square(0.01),
+                observation_time=now,
+                area=0 * units.acres,
+            ),
+            peri_scribe.kml.perimeters.Perimeter(
+                geometry=tests.factories.square(0.01),
+                observation_time=now + datetime.timedelta(hours=1),
+                area=1 * units.acres,
+            ),
+        ),
+    )
+    growth, percent = peri_scribe.kml.folders.fire_growth(fire, now)
+    assert growth == 0 * units.acres
+    assert percent is None
 
 
 def test_fire_folder_includes_point_perimeters_and_interior(

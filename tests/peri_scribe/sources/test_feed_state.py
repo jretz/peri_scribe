@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import contextlib
 import datetime
 import pathlib
+import sqlite3
 import typing
 
+import hypothesis
 import pytest
+import shapely
 
 import peri_scribe.geo.reading
 import peri_scribe.models
@@ -15,10 +19,45 @@ import peri_scribe.sources.feed_state
 import peri_scribe.sources.snapshots
 import tests.factories
 import tests.peri_scribe.sources.changes_helpers
+import tests.peri_scribe.sources.feed_state_helpers
 
 
 if typing.TYPE_CHECKING:
     import geopandas
+
+
+@hypothesis.given(value=tests.peri_scribe.sources.feed_state_helpers.sql_values())
+def test_sql_literal_round_trips_through_a_sql_parser(
+    *,
+    value: str | float | bool,
+) -> None:
+    literal = peri_scribe.sources.feed_state.sql_literal(value)
+    with contextlib.closing(sqlite3.connect(":memory:")) as database:
+        assert database.execute("SELECT " + literal).fetchone() == (value,)
+
+
+def test_sql_literal_preserves_fractional_values() -> None:
+    assert peri_scribe.sources.feed_state.sql_literal(1.5) == "1.5"
+
+
+def test_sql_literal_escapes_an_embedded_quote() -> None:
+    assert peri_scribe.sources.feed_state.sql_literal("'") == "''''"
+
+
+@hypothesis.given(
+    batches=tests.peri_scribe.sources.feed_state_helpers.feature_batches(),
+)
+def test_latest_features_by_object_id_matches_last_observation_model(
+    batches: list[list[tuple[int, str]]],
+) -> None:
+    frames = tests.peri_scribe.sources.feed_state_helpers.feature_frames(batches)
+    expected = dict(entry for batch in batches for entry in batch)
+    actual = peri_scribe.sources.feed_state.latest_features_by_object_id(frames)
+    assert actual is not None
+    assert len(actual) == len(expected)
+    assert dict(zip(actual.OBJECTID, actual.value, strict=True)) == expected
+    for identifier, geometry in zip(actual.OBJECTID, actual.geometry, strict=True):
+        assert geometry == shapely.Point(identifier, len(expected[identifier]))
 
 
 def test_existing_features_returns_none_without_files(

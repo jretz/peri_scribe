@@ -11,7 +11,9 @@ import itertools
 import pathlib
 import sqlite3
 import struct
+import tempfile
 
+import hypothesis
 import numpy as np
 import pytest
 import requests
@@ -33,6 +35,71 @@ QUANTIZED_NEGATIVE_HALF_DEGREE = -50_000
 QUANTIZED_FORTY_POINT_TWENTY_FIVE_DEGREES = 4_025_000
 QUANTIZED_NEGATIVE_NINETY_DEGREES = -9_000_000
 QUANTIZED_HALF_DEGREE = 50_000
+
+
+@hypothesis.given(points=tests.peri_scribe.sources.buildings_helpers.encoded_points())
+def test_decode_payload_preserves_coordinate_multiset(
+    points: list[tuple[int, int]],
+) -> None:
+    encoded = np.asarray(points, dtype="<i4").reshape(-1, 2)
+    payload = peri_scribe.sources.buildings.compress_tile_points(encoded)
+    decoded = peri_scribe.sources.buildings.decode_payload(payload)
+    assert sorted(map(tuple, decoded.tolist())) == sorted(points)
+
+
+@hypothesis.given(points=tests.peri_scribe.sources.buildings_helpers.encoded_points())
+def test_compress_tile_points_preserves_input(points: list[tuple[int, int]]) -> None:
+    encoded = np.asarray(points, dtype="<i4").reshape(-1, 2)
+    original = encoded.copy()
+    peri_scribe.sources.buildings.compress_tile_points(encoded)
+    np.testing.assert_array_equal(encoded, original)
+
+
+@hypothesis.given(
+    longitude=tests.peri_scribe.sources.buildings_helpers.encoded_coordinate(
+        18_000_000,
+    ),
+    latitude=tests.peri_scribe.sources.buildings_helpers.encoded_coordinate(9_000_000),
+)
+def test_tile_ids_for_box_finds_every_encodable_point(
+    longitude: int,
+    latitude: int,
+) -> None:
+    scale = peri_scribe.sources.buildings.COORDINATE_SCALE
+    box = (longitude / scale, latitude / scale, longitude / scale, latitude / scale)
+    identifiers = peri_scribe.sources.buildings.tile_ids(
+        np.asarray([[longitude, latitude]], dtype="<i4"),
+    )
+    tiles = peri_scribe.sources.buildings.tile_ids_for_box(box)
+    assert identifiers[0] in tiles
+    assert peri_scribe.sources.buildings.tile_id(longitude, latitude) in tiles
+
+
+# This test is slow, so limit examples to keep routine test runs fast.
+@hypothesis.settings(max_examples=25)
+@hypothesis.given(
+    scenario=tests.peri_scribe.sources.buildings_helpers.building_queries(),
+)
+def test_building_counts_within_matches_exhaustive_containment(
+    scenario: tuple[np.ndarray, list[shapely.Geometry | None]],
+) -> None:
+    points, queries = scenario
+    scale = peri_scribe.sources.buildings.COORDINATE_SCALE
+    stored_points = [
+        shapely.Point(round(longitude * scale) / scale, round(latitude * scale) / scale)
+        for longitude, latitude in points
+    ]
+    expected = [
+        0
+        if geometry is None
+        else sum(geometry.contains(point) for point in stored_points)
+        for geometry in queries
+    ]
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        path = pathlib.Path(temporary_directory) / "buildings.sqlite"
+        tests.peri_scribe.sources.buildings_helpers.write_database(points, path)
+        actual = peri_scribe.sources.buildings.building_counts_within(queries, path)
+    assert actual == expected
 
 
 def test_encode_longitude_scales_and_rounds() -> None:
@@ -76,6 +143,22 @@ def test_tile_id_maps_encoded_coordinates() -> None:
     assert peri_scribe.sources.buildings.tile_id(10_050_000, 4_025_000) == (
         260 * 720 + 561
     )
+
+
+@pytest.mark.parametrize(
+    ("longitude", "latitude", "expected"),
+    [
+        (18_000_000, 0, 180 * 720 + 719),
+        (0, 9_000_000, 359 * 720 + 360),
+        (18_000_000, 9_000_000, 359 * 720 + 719),
+    ],
+)
+def test_tile_id_keeps_geographic_upper_endpoints_in_edge_tiles(
+    longitude: int,
+    latitude: int,
+    expected: int,
+) -> None:
+    assert peri_scribe.sources.buildings.tile_id(longitude, latitude) == expected
 
 
 def test_tile_ids_matches_scalar_tile_id() -> None:
@@ -151,6 +234,12 @@ def test_compress_tile_points_sorts_raw_records() -> None:
     assert decoded.tolist() == [[0, 0], [1, 2], [-1, 3]]
 
 
+def test_compress_tile_points_keeps_original_record_order() -> None:
+    points = np.asarray([[0, 1], [0, 0]], dtype="<i4")
+    peri_scribe.sources.buildings.compress_tile_points(points)
+    assert points.tolist() == [[0, 1], [0, 0]]
+
+
 def test_process_partition_writes_one_row_per_tile(tmp_path: pathlib.Path) -> None:
     points = np.asarray([[0.2, 0.2], [0.3, 0.3], [100.5, 40.25]], dtype=float)
     with peri_scribe.sources.buildings.PartitionFiles(tmp_path) as partition_files:
@@ -189,6 +278,26 @@ def test_is_valid_database_rejects_missing_file(tmp_path: pathlib.Path) -> None:
 def test_is_valid_database_rejects_non_database_file(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "junk.sqlite"
     path.write_bytes(b"not a database")
+    assert not peri_scribe.sources.buildings.is_valid_database(path)
+
+
+def test_is_valid_database_rejects_outdated_tile_assignment(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "buildings.sqlite"
+    tests.peri_scribe.sources.buildings_helpers.write_database(
+        np.asarray([[0.0, 0.0]]),
+        path,
+    )
+    connection = sqlite3.connect(path)
+    try:
+        connection.execute(
+            "UPDATE metadata SET value = ? WHERE key = 'version'",
+            ("2026-09-03",),
+        )
+        connection.commit()
+    finally:
+        connection.close()
     assert not peri_scribe.sources.buildings.is_valid_database(path)
 
 
@@ -280,6 +389,25 @@ def test_tile_ids_for_box_includes_boundary_tiles() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("box", "expected"),
+    [
+        ((180.0, 0.0, 180.0, 0.0), [180 * 720 + 719]),
+        ((0.0, 90.0, 0.0, 90.0), [359 * 720 + 360]),
+        ((180.0, 90.0, 180.0, 90.0), [359 * 720 + 719]),
+        ((180.1, 0.0, 180.2, 0.1), []),
+        ((-180.2, 0.0, -180.1, 0.1), []),
+        ((0.0, 90.1, 0.1, 90.2), []),
+        ((0.0, -90.2, 0.1, -90.1), []),
+    ],
+)
+def test_tile_ids_for_box_respects_geographic_domain_edges(
+    box: tuple[float, float, float, float],
+    expected: list[int],
+) -> None:
+    assert peri_scribe.sources.buildings.tile_ids_for_box(box) == expected
+
+
 def test_points_within_box_filters_by_encoded_bounds() -> None:
     points = np.asarray([[0, 0], [1, 1], [-1, 1], [1, -1]], dtype="<i4")
     filtered = peri_scribe.sources.buildings.points_within_box(points, (0, 0, 1, 1))
@@ -303,6 +431,18 @@ def test_building_counts_within_counts_points_across_tiles(
         path,
     )
     assert counts == [2, 2]
+
+
+def test_building_counts_within_finds_points_quantized_onto_geographic_edges(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "buildings.sqlite"
+    tests.peri_scribe.sources.buildings_helpers.write_database(
+        np.asarray([[179.999999, 0], [0, 89.999999]]),
+        path,
+    )
+    queries = [shapely.box(179.9, -0.1, 180.1, 0.1), shapely.box(-0.1, 89.9, 0.1, 90.1)]
+    assert peri_scribe.sources.buildings.building_counts_within(queries, path) == [1, 1]
 
 
 def test_building_counts_within_includes_points_on_upper_boundary(

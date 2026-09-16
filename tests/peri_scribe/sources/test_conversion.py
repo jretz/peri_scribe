@@ -4,8 +4,12 @@ from __future__ import annotations
 
 import json
 import pathlib
+import tempfile
 
 import geopandas
+import geopandas.testing
+import hypothesis
+import hypothesis.strategies
 import pandas as pd
 import pytest
 import shapely.geometry
@@ -13,6 +17,71 @@ import shapely.geometry
 import peri_scribe.models
 import peri_scribe.sources.conversion
 import tests.factories
+import tests.geometry_strategies
+import tests.peri_scribe.sources.conversion_helpers
+
+
+# This test is slow, so limit examples to keep routine test runs fast.
+@hypothesis.settings(max_examples=25)
+@hypothesis.given(
+    features=tests.peri_scribe.sources.conversion_helpers.feature_collections(),
+    chunk_size=hypothesis.strategies.integers(1, 10),
+)
+def test_geojson_feature_chunks_preserves_features_across_chunk_boundaries(
+    features: list[dict[str, object]],
+    chunk_size: int,
+) -> None:
+    with tempfile.TemporaryDirectory() as temporary_directory:
+        path = pathlib.Path(temporary_directory) / "features.geojson"
+        path.write_text(
+            json.dumps({"type": "FeatureCollection", "features": features}),
+            encoding="utf-8",
+        )
+        chunks = list(
+            peri_scribe.sources.conversion.geojson_feature_chunks(path, chunk_size),
+        )
+    assert all(0 < len(chunk) <= chunk_size for chunk in chunks)
+    assert sum(len(chunk) for chunk in chunks) == len(features)
+    if features:
+        expected = geopandas.GeoDataFrame.from_features(
+            features,
+            crs=peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+        )
+        actual = pd.concat(chunks, ignore_index=True)
+        assert isinstance(actual, geopandas.GeoDataFrame)
+        pd.testing.assert_frame_equal(
+            tests.peri_scribe.sources.conversion_helpers.comparable_attributes(actual),
+            tests.peri_scribe.sources.conversion_helpers.comparable_attributes(
+                expected,
+            ),
+            check_like=True,
+        )
+        geopandas.testing.assert_geoseries_equal(actual.geometry, expected.geometry)
+
+
+@hypothesis.given(
+    geometry=tests.geometry_strategies.footprints(),
+    projected=...,
+)
+def test_centroid_dataframe_preserves_its_input(
+    geometry: shapely.Polygon | shapely.MultiPolygon,
+    *,
+    projected: bool,
+) -> None:
+    frame = tests.factories.geo_frame({"name": ["River"]}, [geometry])
+    if projected:
+        frame = frame.to_crs(3857)
+    original = frame.copy(deep=True)
+    peri_scribe.sources.conversion.centroid_dataframe(frame)
+    geopandas.testing.assert_geodataframe_equal(frame, original)
+
+
+def test_centroid_dataframe_preserves_projected_polygon_input() -> None:
+    polygon = shapely.Polygon([(0, 0), (0, 1), (1, 0)])
+    frame = geopandas.GeoDataFrame(geometry=[polygon], crs=3857)
+    result = peri_scribe.sources.conversion.centroid_dataframe(frame)
+    assert frame.geometry.iloc[0].equals(polygon)
+    assert result.geometry.iloc[0].equals(polygon.centroid)
 
 
 def test_geojson_feature_chunks_streams_features_in_chunks(

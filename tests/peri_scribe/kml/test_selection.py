@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import datetime
+import re
 import typing
 
+import hypothesis
 import shapely.geometry
 
 import peri_scribe.geo.measurements
@@ -15,11 +17,41 @@ import peri_scribe.units
 import tests.factories
 import tests.peri_scribe.kml.fire_data_helpers
 import tests.peri_scribe.kml.kml_helpers
+import tests.peri_scribe.kml.selection_helpers
 from peri_scribe.units import units
 
 
 if typing.TYPE_CHECKING:
     import geopandas
+
+
+@hypothesis.given(scenario=tests.peri_scribe.kml.selection_helpers.aliased_histories())
+def test_area_groups_preserves_the_canonical_identity_partition(
+    scenario: tuple[
+        geopandas.GeoDataFrame,
+        dict[str, str],
+        dict[tuple[str, str], list[int]],
+    ],
+) -> None:
+    frame, aliases, expected = scenario
+    groups = peri_scribe.kml.selection.area_groups(frame, aliases)
+    assert {key: group["row_id"].tolist() for key, group in groups.items()} == expected
+
+
+@hypothesis.given(requests=tests.peri_scribe.kml.selection_helpers.filename_requests())
+def test_unique_filename_prefix_allocates_distinct_safe_names(
+    requests: list[tuple[str | None, str]],
+) -> None:
+    used: set[str] = set()
+    for identifier, name in requests:
+        prefix = peri_scribe.kml.selection.unique_filename_prefix(
+            identifier,
+            name,
+            frozenset(used),
+        )
+        assert prefix not in used
+        assert re.fullmatch(r"[a-z0-9]+(?:-[a-z0-9]+)*", prefix)
+        used.add(prefix)
 
 
 def test_fires_with_qualifying_area_includes_geometry_without_reported_acres(

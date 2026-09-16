@@ -73,6 +73,10 @@ def times_are_contemporaneous(
         return True
     if left is None or right is None:
         return False
+    # Observation age is elapsed time, including when local clocks change.
+    if left.utcoffset() is not None and right.utcoffset() is not None:
+        left = left.astimezone(datetime.UTC)
+        right = right.astimezone(datetime.UTC)
     return abs(left - right) <= tolerance
 
 
@@ -177,6 +181,7 @@ def canonical_fire_identifier(identifiers: typing.Iterable[str]) -> str | None:
         >>> canonical_fire_identifier(["other", "2025-LNU-123456", "guid"])
         '2025-LNU-123456'
     """
+    identifiers = tuple(identifiers)
     unique = sorted(
         identifier
         for identifier in identifiers

@@ -20,7 +20,8 @@ units.define("dollar = [currency] = $ = USD")
 def area(geometry: shapely.Geometry) -> pint.Quantity[float]:
     """Return the absolute geodesic area of *geometry*.
 
-    The area is computed geodesically so it is accurate anywhere on Earth.
+    The area is computed geodesically so it is accurate anywhere on Earth. Consistent
+    ring orientation makes disjoint parts add and holes subtract.
 
     Args:
         geometry: The geometry to measure, in WGS 84 degrees.
@@ -33,7 +34,7 @@ def area(geometry: shapely.Geometry) -> pint.Quantity[float]:
         0.0
     """
     measured_area, _perimeter = pyproj.Geod(ellps="WGS84").geometry_area_perimeter(
-        geometry,
+        shapely.orient_polygons(geometry),
     )
     return abs(measured_area) * units.meters**2
 

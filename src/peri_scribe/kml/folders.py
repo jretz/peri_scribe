@@ -589,11 +589,11 @@ def fire_growth(
 ) -> tuple[pint.Quantity[float] | None, pint.Quantity[float] | None]:
     """Return *fire*'s growth over the fast-growth window.
 
-    The fire's latest known area is compared with its area at the start of the window,
-    measured from its perimeters. A fire first observed inside the window has no area at
-    the window's start, so it is treated as having grown from zero acres: its whole
-    latest area counts as growth, and its growth percent is unknown because a zero
-    baseline has no percentage.
+    The fire's latest area known at the reference time is compared with its area at the
+    start of the window, measured from its perimeters. A fire first observed inside the
+    window has no area at the window's start, so it is treated as having grown from zero
+    acres: its whole latest area counts as growth, and its growth percent is unknown
+    because a zero baseline has no percentage.
 
     Args:
         fire: The fire to measure.
@@ -607,7 +607,7 @@ def fire_growth(
     ] = []
     for perimeter in fire.perimeters:
         observation_time = perimeter.observation_time
-        if observation_time is not None:
+        if observation_time is not None and observation_time <= reference_time:
             timed_perimeters.append((observation_time, perimeter))
     if not timed_perimeters:
         return None, None

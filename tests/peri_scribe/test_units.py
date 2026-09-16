@@ -1,10 +1,45 @@
 """Tests for peri_scribe.units."""
 
+import hypothesis
 import pytest
 import shapely.geometry
 
 import peri_scribe.units
 import tests.factories
+import tests.geometry_strategies
+
+
+@hypothesis.given(geometry=tests.geometry_strategies.polygons())
+def test_area_is_independent_of_ring_orientation(geometry: shapely.Polygon) -> None:
+    reversed_shell = shapely.Polygon(
+        list(geometry.exterior.coords)[::-1],
+        geometry.interiors,
+    )
+    assert peri_scribe.units.area(reversed_shell).m_as("meters**2") == pytest.approx(
+        peri_scribe.units.area(geometry).m_as("meters**2"),
+        rel=1e-8,
+        abs=0.001,
+    )
+
+
+def test_area_sums_parts_with_opposite_orientations() -> None:
+    first = shapely.box(-100, 40, -99.99, 40.01)
+    second = shapely.reverse(shapely.box(-100, 40.02, -99.99, 40.03))
+    combined = shapely.MultiPolygon([first, second])
+    expected = peri_scribe.units.area(first) + peri_scribe.units.area(second)
+    assert peri_scribe.units.area(combined).m_as("meters**2") == pytest.approx(
+        expected.m_as("meters**2"),
+    )
+
+
+def test_area_subtracts_holes_with_the_same_orientation_as_the_shell() -> None:
+    outer = shapely.box(-100, 40, -99.9, 40.1)
+    hole = shapely.box(-99.98, 40.02, -99.96, 40.04)
+    polygon = shapely.Polygon(outer.exterior, [hole.exterior])
+    expected = peri_scribe.units.area(outer) - peri_scribe.units.area(hole)
+    assert peri_scribe.units.area(polygon).m_as("meters**2") == pytest.approx(
+        expected.m_as("meters**2"),
+    )
 
 
 def test_area_measures_geometry() -> None:
