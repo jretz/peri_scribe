@@ -7,6 +7,8 @@ import textual.app
 import textual.containers
 import textual.events
 import textual.message
+import textual.reactive
+import textual.strip
 import textual.widget
 import textual.widgets
 
@@ -144,7 +146,36 @@ class PaneDivider(textual.widget.Widget, can_focus=True):
             event.prevent_default()
 
 
-class EventTable(textual.widgets.DataTable):
+class TintedTable(textual.widgets.DataTable):
+    """Status metadata covers full rows, including their padding and empty space."""
+
+    row_tints = textual.reactive.reactive[tuple[str | None, ...]](())
+
+    @typing.override
+    def render_line(self, y: int) -> textual.strip.Strip:
+        """Attach status hues to content rows before shared background shading.
+
+        Args:
+            y: The viewport line requested by Textual.
+
+        Returns:
+            A rendered line with its content row's tint and existing mouse targets.
+        """
+        strip = super().render_line(y)
+        row = next(
+            (
+                segment.style.meta["row"]
+                for segment in strip
+                if segment.style is not None and "row" in segment.style.meta
+            ),
+            -1,
+        )
+        if 0 <= row < len(self.row_tints):
+            return strip.apply_meta({"row_tint": self.row_tints[row]})
+        return strip
+
+
+class EventTable(TintedTable):
     """Browsing older rows pauses following before a redraw can move the cursor."""
 
     class Browse(textual.message.Message):

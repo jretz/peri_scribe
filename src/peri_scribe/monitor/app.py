@@ -1,6 +1,7 @@
 """Textual presents immutable monitoring data without owning its interpretation."""
 
 import asyncio
+import collections.abc
 import datetime
 import functools
 import pathlib
@@ -11,6 +12,7 @@ import textual
 import textual.app
 import textual.binding
 import textual.containers
+import textual.filter
 import textual.widgets
 import textual.widgets.tree
 
@@ -19,6 +21,7 @@ import peri_scribe.monitor.model
 import peri_scribe.monitor.presentation
 import peri_scribe.monitor.screenshots
 import peri_scribe.monitor.storage
+import peri_scribe.monitor.striping
 import peri_scribe.monitor.theme
 import peri_scribe.monitor.widgets
 import peri_scribe.phases
@@ -32,6 +35,7 @@ class MonitorApp(peri_scribe.monitor.screenshots.SnapshotApp):
     """The terminal observes log and report files without becoming a pipeline writer."""
 
     TITLE = "PeriScribe monitor"
+    ROW_STRIPES = peri_scribe.monitor.striping.AlternatingRows()
     CSS = """
     /* A neutral edge prevents terminal margins from extending scrollbar colors. */
     Screen { padding-right: 1; }
@@ -82,6 +86,7 @@ class MonitorApp(peri_scribe.monitor.screenshots.SnapshotApp):
             branches: Configured feed and source names.
         """
         super().__init__(year_directory)
+        self.scroll_sensitivity_y = 1.0
         self.theme = peri_scribe.monitor.theme.DEFAULT_THEME
         self.report_path = report_path
         self.branches = branches
@@ -99,6 +104,15 @@ class MonitorApp(peri_scribe.monitor.screenshots.SnapshotApp):
             peri_scribe.phases.Path,
             textual.widgets.tree.TreeNode[peri_scribe.monitor.model.PhaseView],
         ] = {}
+
+    @typing.override
+    def get_line_filters(self) -> collections.abc.Sequence[textual.filter.LineFilter]:
+        """Share row shading with built-in dropdowns and command palettes.
+
+        Returns:
+            Row shading followed by Textual's color and accessibility filters.
+        """
+        return [self.ROW_STRIPES, *super().get_line_filters()]
 
     @typing.override
     def compose(self) -> textual.app.ComposeResult:
@@ -130,7 +144,10 @@ class MonitorApp(peri_scribe.monitor.screenshots.SnapshotApp):
                 yield peri_scribe.monitor.widgets.Stream(id="log-stream")
             with textual.widgets.TabPane("Runs", id="runs"):
                 yield textual.widgets.Button("Load older month", id="older")
-                yield textual.widgets.DataTable(id="run-table", cursor_type="row")
+                yield peri_scribe.monitor.widgets.TintedTable(
+                    id="run-table",
+                    cursor_type="row",
+                )
             with textual.widgets.TabPane("Report", id="report"):
                 yield textual.widgets.Static(id="report-time", markup=False)
                 yield peri_scribe.monitor.widgets.ReportViewer(
@@ -278,9 +295,13 @@ class MonitorApp(peri_scribe.monitor.screenshots.SnapshotApp):
         self.rows.clear()
         for stream in self.query(peri_scribe.monitor.widgets.Stream):
             self.render_stream(stream, run)
-        table = self.query_one("#run-table", textual.widgets.DataTable)
+        table = self.query_one("#run-table", peri_scribe.monitor.widgets.TintedTable)
         row = table.cursor_row
         table.clear()
+        table.row_tints = tuple(
+            peri_scribe.monitor.theme.RUN_TINTS.get(item.status)
+            for item in reversed(self.state.runs)
+        )
         for item in reversed(self.state.runs):
             table.add_row(
                 *peri_scribe.monitor.presentation.run_cells(item),
@@ -309,6 +330,9 @@ class MonitorApp(peri_scribe.monitor.screenshots.SnapshotApp):
         row = table.cursor_row
         position = table.scroll_offset
         table.clear()
+        table.row_tints = tuple(
+            peri_scribe.monitor.theme.EVENT_TINTS.get(event.level) for event in events
+        )
         for event in events:
             self.rows[event.sequence] = event
             table.add_row(

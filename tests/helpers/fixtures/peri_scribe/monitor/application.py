@@ -109,6 +109,24 @@ async def remove_views(app: peri_scribe.monitor.app.MonitorApp) -> None:
 
 
 @pytest.fixture
+def color_session(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+) -> Session:
+    """Exercise status hues even when the test runner requests monochrome output.
+
+    Args:
+        monkeypatch: Restores the terminal environment after this test.
+        request: Starts the ordinary isolated monitor after enabling color.
+
+    Returns:
+        A mounted monitor with its normal color rendering enabled.
+    """
+    monkeypatch.delenv("NO_COLOR", raising=False)
+    return request.getfixturevalue("monitor_session")
+
+
+@pytest.fixture
 def scrolling_session(monitor_session: Session) -> Session:
     """Give every pane enough content to exercise its scrollbar at several positions.
 
