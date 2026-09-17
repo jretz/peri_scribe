@@ -13,6 +13,7 @@ run = "uv run --locked peri_scribe run --from geography"
 [tasks.monitor]
 description = "Run the PeriScribe monitoring dashboard"
 depends = ["venv"]
+env = { COLORTERM = "truecolor" }
 raw_args = true
 run = "uv run --locked peri_scribe monitor"
 
