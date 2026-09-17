@@ -94,6 +94,7 @@ def monitor_session(tmp_path: pathlib.Path) -> typing.Iterator[Session]:
         stack = contextlib.AsyncExitStack()
         pilot = runner.run(stack.enter_async_context(app.run_test(size=(120, 42))))
         try:
+            runner.run(pilot.press("2"))
             yield Session(app=app, runner=runner, pilot=pilot, directory=directory)
         finally:
             runner.run(stack.aclose())

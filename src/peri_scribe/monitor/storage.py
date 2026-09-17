@@ -30,6 +30,7 @@ class Batch:
     records: tuple[dict[str, object], ...] = ()
     errors: tuple[str, ...] = ()
     archives: tuple[pathlib.Path, ...] = ()
+    caught_up: bool = True
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -83,15 +84,17 @@ def open_cursor(path: pathlib.Path, *, tail: bool) -> tuple[tuple[int, int], Cur
 class Follower:
     """Own file handles at the I/O boundary while consumers receive plain batches."""
 
-    def __init__(self, directory: pathlib.Path) -> None:
+    def __init__(self, directory: pathlib.Path, *, tail: bool = True) -> None:
         """Keep watching independent of whether the logging directory exists yet.
 
         Args:
             directory: The year directory's monthly log folder.
+            tail: Whether startup may omit older records from uncompressed logs.
         """
         self.directory = directory
         self.cursors: dict[tuple[int, int], Cursor] = {}
         self.started = False
+        self.tail = tail
 
     def poll(self) -> Batch:
         """Drain retained handles and discover newly published monthly logs.
@@ -102,9 +105,13 @@ class Follower:
         current: set[tuple[int, int]] = set()
         errors: list[str] = []
         records: list[dict[str, object]] = []
+        caught_up = True
         for path in sorted(self.directory.glob("*.jsonl")):
             try:
-                identity, opened = open_cursor(path, tail=not self.started)
+                identity, opened = open_cursor(
+                    path,
+                    tail=self.tail and not self.started,
+                )
             except OSError as error:
                 errors.append(f"{path.name}: {error}")
             else:
@@ -123,6 +130,7 @@ class Follower:
                 errors.append(str(error))
             else:
                 records.extend(entries)
+                caught_up = caught_up and exhausted
                 self.cursors[identity] = updated
                 if identity not in current and exhausted:
                     cursor.stream.close()
@@ -132,6 +140,7 @@ class Follower:
             records=tuple(records),
             errors=tuple(errors),
             archives=tuple(sorted(self.directory.glob("*.jsonl.zst"), reverse=True)),
+            caught_up=caught_up,
         )
 
     def close(self) -> None:

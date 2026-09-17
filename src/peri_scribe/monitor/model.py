@@ -82,12 +82,15 @@ class PhaseTree:
 def append_records(
     state: State,
     records: tuple[dict[str, object], ...],
+    *,
+    bounded: bool = True,
 ) -> State:
     """Correlate a batch without mutating the state held by a reader or another view.
 
     Args:
         state: The previously published stream state.
         records: Newly completed JSON records in file order.
+        bounded: Whether to apply the interactive log view's retention limits.
 
     Returns:
         Updated bounded run history with stable event sequence numbers.
@@ -130,7 +133,11 @@ def append_records(
         run = runs[identifier]
         runs[identifier] = dataclasses.replace(
             run,
-            events=(*run.events, *events)[-MAXIMUM_EVENTS_PER_RUN:],
+            events=(
+                (*run.events, *events)[-MAXIMUM_EVENTS_PER_RUN:]
+                if bounded
+                else (*run.events, *events)
+            ),
             progress=(
                 *run.progress,
                 *(
@@ -151,7 +158,7 @@ def append_records(
             ),
         )
     return State(
-        runs=tuple(runs.values())[-MAXIMUM_RUNS:],
+        runs=tuple(runs.values())[-MAXIMUM_RUNS:] if bounded else tuple(runs.values()),
         sequence=sequence,
         unscoped_run=unscoped,
     )

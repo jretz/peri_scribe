@@ -1,7 +1,8 @@
 """Textual presents immutable monitoring data without owning its interpretation."""
 
 import asyncio
-import collections.abc
+import compression.zstd
+import dataclasses
 import datetime
 import functools
 import pathlib
@@ -12,14 +13,16 @@ import textual
 import textual.app
 import textual.binding
 import textual.containers
-import textual.filter
 import textual.widgets
 import textual.widgets.tree
 
+import peri_scribe.kml.builder
 import peri_scribe.monitor.events
+import peri_scribe.monitor.history
 import peri_scribe.monitor.model
 import peri_scribe.monitor.presentation
-import peri_scribe.monitor.screenshots
+import peri_scribe.monitor.status
+import peri_scribe.monitor.status_widgets
 import peri_scribe.monitor.storage
 import peri_scribe.monitor.striping
 import peri_scribe.monitor.theme
@@ -31,11 +34,10 @@ from peri_scribe.units import units
 POLL_INTERVAL = 500 * units.milliseconds
 
 
-class MonitorApp(peri_scribe.monitor.screenshots.SnapshotApp):
+class MonitorApp(peri_scribe.monitor.striping.StripedApp):
     """The terminal observes log and report files without becoming a pipeline writer."""
 
     TITLE = "PeriScribe monitor"
-    ROW_STRIPES = peri_scribe.monitor.striping.AlternatingRows()
     CSS = """
     /* A neutral edge prevents terminal margins from extending scrollbar colors. */
     Screen { padding-right: 1; }
@@ -62,14 +64,16 @@ class MonitorApp(peri_scribe.monitor.screenshots.SnapshotApp):
     """
     BINDINGS: typing.ClassVar[list[textual.binding.BindingType]] = [
         textual.binding.Binding("q", "quit", "Quit"),
+        textual.binding.Binding("ctrl+d", "quit", "Quit", show=False, priority=True),
         textual.binding.Binding("space", "toggle_follow", "Pause / follow"),
         textual.binding.Binding("end", "live", "Live", priority=True),
         textual.binding.Binding("slash", "search", "Search"),
         textual.binding.Binding("escape", "clear_filter", "Clear filter"),
-        textual.binding.Binding("1", "view('pipeline')", "Pipeline", show=False),
-        textual.binding.Binding("2", "view('logs')", "Logs", show=False),
-        textual.binding.Binding("3", "view('runs')", "Runs", show=False),
-        textual.binding.Binding("4", "view('report')", "Report", show=False),
+        textual.binding.Binding("1", "view('status')", "Status", show=False),
+        textual.binding.Binding("2", "view('pipeline')", "Pipeline", show=False),
+        textual.binding.Binding("3", "view('logs')", "Logs", show=False),
+        textual.binding.Binding("4", "view('runs')", "Runs", show=False),
+        textual.binding.Binding("5", "view('report')", "Report", show=False),
     ]
 
     def __init__(
@@ -89,8 +93,12 @@ class MonitorApp(peri_scribe.monitor.screenshots.SnapshotApp):
         self.scroll_sensitivity_y = 1.0
         self.theme = peri_scribe.monitor.theme.DEFAULT_THEME
         self.report_path = report_path
+        self.kmz_path = peri_scribe.kml.builder.kmz_path(year_directory)
         self.branches = branches
         self.follower = peri_scribe.monitor.storage.Follower(year_directory / "logs")
+        self.history_reader = peri_scribe.monitor.history.Reader(
+            year_directory / "logs",
+        )
         self.state = peri_scribe.monitor.model.State()
         self.visible_state = self.state
         self.selected_run = ""
@@ -106,17 +114,8 @@ class MonitorApp(peri_scribe.monitor.screenshots.SnapshotApp):
         ] = {}
 
     @typing.override
-    def get_line_filters(self) -> collections.abc.Sequence[textual.filter.LineFilter]:
-        """Share row shading with built-in dropdowns and command palettes.
-
-        Returns:
-            Row shading followed by Textual's color and accessibility filters.
-        """
-        return [self.ROW_STRIPES, *super().get_line_filters()]
-
-    @typing.override
     def compose(self) -> textual.app.ComposeResult:
-        """Provide four views over the same observer state.
+        """Provide live health and four diagnostic views over the same evidence.
 
         Yields:
             Navigation, pipeline hierarchy, events, run history, and current report.
@@ -126,6 +125,8 @@ class MonitorApp(peri_scribe.monitor.screenshots.SnapshotApp):
         views = textual.widgets.TabbedContent(id="views")
         inspection = textual.containers.VerticalScroll(id="inspection")
         with views:
+            with textual.widgets.TabPane("Status", id="status"):
+                yield peri_scribe.monitor.status_widgets.StatusPane()
             with (
                 textual.widgets.TabPane("Pipeline", id="pipeline"),
                 textual.containers.Horizontal(),
@@ -190,6 +191,7 @@ class MonitorApp(peri_scribe.monitor.screenshots.SnapshotApp):
     def on_unmount(self) -> None:
         """Close retained log handles after the presentation exits."""
         self.follower.close()
+        self.history_reader.close()
 
     async def refresh_files(self) -> None:
         """Refresh log state and stable report snapshots independently of the tab."""
@@ -205,9 +207,20 @@ class MonitorApp(peri_scribe.monitor.screenshots.SnapshotApp):
             self.report_path,
             self.report,
         )
+        now = datetime.datetime.now(datetime.UTC)
+        history = await asyncio.to_thread(self.history_reader.poll, now)
+        files = await asyncio.to_thread(
+            peri_scribe.monitor.status.read_files,
+            self.year_directory,
+            self.kmz_path,
+            self.report_path,
+        )
         if not self.is_running or not self.query("#views"):
             return
         self.archives = batch.archives
+        self.query_one(peri_scribe.monitor.status_widgets.StatusPane).show_view(
+            peri_scribe.monitor.status.project(history, files, now),
+        )
         self.query_one("#older", textual.widgets.Button).disabled = not any(
             path not in self.loaded_archives for path in self.archives
         )
@@ -226,7 +239,10 @@ class MonitorApp(peri_scribe.monitor.screenshots.SnapshotApp):
         )
         mode = "FOLLOW" if self.following else f"PAUSED · {pending} new events"
         self.query_one("#activity", textual.widgets.Static).update(
-            f"{mode} · {description}",
+            "LIVE STATUS · select an observation to inspect its Pipeline evidence"
+            if self.query_one("#views", textual.widgets.TabbedContent).active
+            == "status"
+            else f"{mode} · {description}",
         )
         self.query_one("#file-status", textual.widgets.Static).update(
             "\n".join(batch.errors)
@@ -342,6 +358,67 @@ class MonitorApp(peri_scribe.monitor.screenshots.SnapshotApp):
         table.move_cursor(row=max(0, len(events) - 1) if self.following else row)
         if not self.following:
             table.scroll_to(position.x, position.y, animate=False)
+
+    @textual.on(peri_scribe.monitor.status_widgets.OpenEvidence)
+    async def open_status_evidence(
+        self,
+        message: peri_scribe.monitor.status_widgets.OpenEvidence,
+    ) -> None:
+        """Load the selected run and focus the precise evidence behind a health value.
+
+        Args:
+            message: The live observation selected in Status.
+        """
+        message.stop()
+        target = message.target
+        try:
+            run = await asyncio.to_thread(
+                peri_scribe.monitor.history.load_run,
+                self.year_directory / "logs",
+                target.run,
+            )
+        except (OSError, EOFError, compression.zstd.ZstdError) as error:
+            self.notify(f"Unable to load run: {error}", severity="error")
+            return
+        if not run.events:
+            self.notify(
+                "The selected run's logs are no longer available",
+                severity="warning",
+            )
+            return
+        self.following = False
+        self.selected_run = run.identifier
+        self.visible_state = dataclasses.replace(
+            self.state,
+            runs=(
+                *tuple(
+                    item
+                    for item in self.state.runs
+                    if item.identifier != run.identifier
+                ),
+                run,
+            ),
+        )
+        selected = next(
+            (
+                event
+                for event in reversed(run.events)
+                if event.fields == target.event.fields
+            ),
+            run.events[-1],
+        )
+        self.selected_phase = selected.path
+        stream = self.query_one("#pipeline-stream", peri_scribe.monitor.widgets.Stream)
+        stream.query_one(textual.widgets.Input).value = ""
+        stream.query_one(textual.widgets.Select).value = "debug"
+        self.action_view("pipeline")
+        self.render_state()
+        self.query_one("#details", textual.widgets.Static).update(
+            rich.json.JSON(peri_scribe.monitor.presentation.details(selected)),
+        )
+        table = stream.query_one(peri_scribe.monitor.widgets.EventTable)
+        table.move_cursor(row=table.get_row_index(str(selected.sequence)))
+        table.focus()
 
     @textual.on(textual.widgets.Tree.NodeSelected, "#phase-tree")
     def select_phase(self, event: textual.widgets.Tree.NodeSelected) -> None:

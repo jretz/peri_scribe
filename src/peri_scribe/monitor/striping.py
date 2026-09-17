@@ -1,5 +1,6 @@
 """Shared row shading keeps terminal lists readable across themes and layouts."""
 
+import collections.abc
 import functools
 import typing
 
@@ -7,6 +8,8 @@ import rich.segment
 import rich.style
 import textual.color
 import textual.filter
+
+import peri_scribe.monitor.screenshots
 
 
 @functools.lru_cache(maxsize=256)
@@ -90,3 +93,18 @@ class AlternatingRows(textual.filter.LineFilter):
                     continue
             result.append(segment)
         return result
+
+
+class StripedApp(peri_scribe.monitor.screenshots.SnapshotApp):
+    """Apply the same row shading to all terminal views and built-in controls."""
+
+    ROW_STRIPES = AlternatingRows()
+
+    @typing.override
+    def get_line_filters(self) -> collections.abc.Sequence[textual.filter.LineFilter]:
+        """Keep status hues and alternating rows consistent across the application.
+
+        Returns:
+            Shared row shading followed by the terminal's accessibility filters.
+        """
+        return [self.ROW_STRIPES, *super().get_line_filters()]

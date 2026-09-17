@@ -178,7 +178,7 @@ def test_monitor_app_report_uses_current_file_and_mtime(
     path = monitor_session.app.report_path
     path.write_text("# Fires\n\n[Jump](#moonshine)\n\n## Moonshine\n\nDetails")
     monitor_session.runner.run(monitor_session.app.refresh_files())
-    monitor_session.runner.run(monitor_session.pilot.press("4"))
+    monitor_session.runner.run(monitor_session.pilot.press("5"))
     viewer = monitor_session.app.query_one(
         "#report-viewer",
         textual.widgets.MarkdownViewer,
@@ -239,7 +239,7 @@ def test_monitor_app_selects_historical_run(
 def test_monitor_app_navigation_keys(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
-    monitor_session.runner.run(monitor_session.pilot.press("2", "1", "end"))
+    monitor_session.runner.run(monitor_session.pilot.press("3", "2", "end"))
     assert (
         monitor_session.app.query_one("#views", textual.widgets.TabbedContent).active
         == "pipeline"
@@ -313,7 +313,7 @@ def test_monitor_app_preserves_report_scroll_on_refresh(
     path = monitor_session.app.report_path
     path.write_text("# Report\n\n" + "Paragraph\n\n" * 200)
     monitor_session.runner.run(monitor_session.app.refresh_files())
-    monitor_session.runner.run(monitor_session.pilot.press("4"))
+    monitor_session.runner.run(monitor_session.pilot.press("5"))
     viewer = monitor_session.app.query_one(
         "#report-viewer",
         textual.widgets.MarkdownViewer,
@@ -519,7 +519,7 @@ def test_monitor_app_preserves_resized_panes_after_refresh_and_tab_changes(
     inspection = session.app.query_one("#inspection")
     sizes = (tree.size, inspection.size)
     session.runner.run(session.app.refresh_files())
-    session.runner.run(session.pilot.press("3", "4", "2", "1"))
+    session.runner.run(session.pilot.press("4", "5", "3", "2"))
     assert (tree.size, inspection.size) == sizes
 
 
