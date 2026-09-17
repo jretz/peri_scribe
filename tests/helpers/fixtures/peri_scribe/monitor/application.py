@@ -4,10 +4,12 @@ import asyncio
 import collections.abc
 import contextlib
 import dataclasses
+import functools
 import pathlib
 import typing
 
 import pytest
+import textual.constants
 import textual.pilot
 import textual.widget
 import textual.widgets
@@ -74,21 +76,31 @@ async def invoke[Result](
 
 
 @pytest.fixture
-def monitor_session(tmp_path: pathlib.Path) -> typing.Iterator[Session]:
-    """Provide a mounted observer that cannot touch persistent application data.
+def monitor_session(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> typing.Iterator[Session]:
+    """Control file refreshes and terminal capabilities independently of the host.
 
     Args:
         tmp_path: The current test's isolated filesystem.
+        monkeypatch: Fixes color support and pauses automatic file reads.
 
     Yields:
         A headless terminal and its explicit event-loop runner.
     """
+    monkeypatch.setattr(textual.constants, "COLOR_SYSTEM", "truecolor")
     directory = tmp_path / "2026"
     directory.mkdir()
     app = peri_scribe.monitor.app.MonitorApp(
         directory,
         directory / "report.md",
         tests.helpers.factories.peri_scribe.monitor.events.BRANCHES,
+    )
+    monkeypatch.setattr(
+        app,
+        "set_interval",
+        functools.partial(app.set_interval, pause=True),
     )
     with asyncio.Runner() as runner:
         stack = contextlib.AsyncExitStack()

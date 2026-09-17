@@ -10,8 +10,8 @@ import peri_scribe.models
 import tests.helpers.strategies.peri_scribe.fires.reuse
 
 
-# This test is slow, so limit examples to keep routine test runs fast.
-@hypothesis.settings(max_examples=25)
+# File I/O has host-dependent latency; bound examples rather than elapsed time.
+@hypothesis.settings(max_examples=25, deadline=None)
 @hypothesis.given(
     layers=tests.helpers.strategies.peri_scribe.fires.reuse.history_layers(),
 )
