@@ -9,12 +9,10 @@ import typing
 
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.folders
+import peri_scribe.paths
 import peri_scribe.report.gathering
-import peri_scribe.sources.snapshots
 from peri_scribe.units import units
 
-
-REPORTS_DIRECTORY_NAME = "reports"
 
 # The fast-growth window, expressed in whole hours for the report's prose.
 FAST_GROWTH_WINDOW = (
@@ -50,23 +48,6 @@ ColumnTextFor = typing.Callable[
     [peri_scribe.report.gathering.FireReportEntry],
     str | None,
 ]
-
-
-def markdown_report_path(year_directory: pathlib.Path) -> pathlib.Path:
-    """Return the Markdown report path for *year_directory*.
-
-    Args:
-        year_directory: The year directory, whose name is the year.
-
-    Returns:
-        The report's output path.
-
-    Examples:
-        >>> markdown_report_path(pathlib.Path("data/2026"))
-        PosixPath('data/2026/reports/PeriScribe Fires 2026.md')
-    """
-    year = peri_scribe.sources.snapshots.year_for_year_directory(year_directory)
-    return year_directory / REPORTS_DIRECTORY_NAME / f"PeriScribe Fires {year}.md"
 
 
 def discovery_cell(entry: peri_scribe.report.gathering.FireReportEntry) -> str | None:
@@ -486,12 +467,12 @@ def render_markdown_report(
     Returns:
         The written report path.
     """
-    path = markdown_report_path(year_directory)
+    path = peri_scribe.paths.markdown_report_path(year_directory)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
         markdown_text(
             report,
-            peri_scribe.sources.snapshots.year_for_year_directory(year_directory),
+            peri_scribe.paths.year_for_year_directory(year_directory),
         ),
         encoding="utf-8",
     )

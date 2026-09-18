@@ -17,6 +17,7 @@ import peri_scribe.geo.data
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.output
+import peri_scribe.paths
 import peri_scribe.phases
 import peri_scribe.sources.changes
 import peri_scribe.sources.feed_state
@@ -389,7 +390,7 @@ def fetch_all_feeds(
                 wrote_snapshot = True
     if build_index and (wrote_snapshot or full):
         peri_scribe.fires.index.index_fire_sources(
-            peri_scribe.sources.snapshots.year_directory_path(base_dir, year),
+            peri_scribe.paths.year_directory_path(base_dir, year),
         )
     if errors:
         raise SystemExit("\n".join(errors))
@@ -426,7 +427,7 @@ def fetch_all_feeds_complete(
     if year is None:
         year = datetime.date.today().year
     gis = arcgis.gis.GIS()
-    year_directory = peri_scribe.sources.snapshots.year_directory_path(base_dir, year)
+    year_directory = peri_scribe.paths.year_directory_path(base_dir, year)
     snapshot_paths: list[pathlib.Path] = []
     errors: list[str] = []
     for feed in peri_scribe.sources.feeds.FEEDS:

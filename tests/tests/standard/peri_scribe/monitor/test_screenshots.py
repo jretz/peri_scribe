@@ -10,6 +10,7 @@ import pytest
 import rich.text
 import textual.widgets
 
+import peri_scribe.monitor.app
 import peri_scribe.monitor.screenshots
 import tests.helpers.assertions.peri_scribe.monitor.screenshots
 import tests.helpers.doubles.peri_scribe.monitor.screenshots
@@ -60,6 +61,7 @@ def test_snapshot_screen_export_snapshot_preserves_unicode_and_scrolled_content(
 ) -> None:
     session = scrolling_session
     session.call(session.app.action_view, "report")
+    session.runner.run(peri_scribe.monitor.app.render_report(session.app))
     session.runner.run(session.pilot.pause())
     viewer = session.app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
     session.call(functools.partial(viewer.scroll_end, animate=False))

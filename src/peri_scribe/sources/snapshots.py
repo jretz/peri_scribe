@@ -6,7 +6,7 @@ import dataclasses
 import pathlib
 import typing
 
-import peri_scribe.output
+import peri_scribe.paths
 
 
 SOURCES_DIRECTORY_NAME = "sources"
@@ -304,7 +304,10 @@ def source_directory_path(
     Returns:
         The path to the source's directory.
     """
-    return sources_directory_path(year_directory_path(base_dir, year)) / source_name
+    return (
+        sources_directory_path(peri_scribe.paths.year_directory_path(base_dir, year))
+        / source_name
+    )
 
 
 def source_geopackage_path(
@@ -354,35 +357,6 @@ def source_name_from_snapshot_path(path: pathlib.Path) -> str:
         'incidents'
     """
     return path.parent.parent.name
-
-
-def year_directory_path(base_dir: pathlib.Path, year: int) -> pathlib.Path:
-    """Return the directory that holds *year*'s data under *base_dir*.
-
-    Args:
-        base_dir: The base directory that holds the ``data`` directory.
-        year: The year whose data directory is returned.
-
-    Returns:
-        The path to the year's data directory.
-
-    Examples:
-        >>> year_directory_path(pathlib.Path("project"), 2025)
-        PosixPath('project/data/2025')
-    """
-    return base_dir / peri_scribe.output.DATA_DIRECTORY / str(year)
-
-
-def year_for_year_directory(year_directory: pathlib.Path) -> int:
-    """Return the year number that *year_directory* holds data for.
-
-    Args:
-        year_directory: The year directory, named for the year it holds data for.
-
-    Returns:
-        The year number.
-    """
-    return int(year_directory.name)
 
 
 def base_directory_for_year_directory(year_directory: pathlib.Path) -> pathlib.Path:

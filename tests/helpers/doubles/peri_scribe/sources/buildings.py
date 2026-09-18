@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 import typing
 
-import peri_scribe.sources.external_sources
+import peri_scribe.sources.catalog
 import tests.helpers.doubles.peri_scribe.sources.external_source
 
 
@@ -83,7 +83,7 @@ def make_state_archive_responder(
             The index page or state archive selected by the URL.
         """
         urls.append(url)
-        if url == peri_scribe.sources.external_sources.BUILDINGS_SOURCE.url:
+        if url == peri_scribe.sources.catalog.BUILDINGS_SOURCE.url:
             return (
                 tests.helpers.doubles.peri_scribe.sources.external_source.FakeResponse(
                     page.encode("utf-8"),

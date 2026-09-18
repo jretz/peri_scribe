@@ -87,7 +87,7 @@ class StatusLink(textual.widgets.Static, can_focus=True):
             metric: The current live observation.
         """
         self.target = metric.target
-        self.update(metric_text(metric))
+        peri_scribe.monitor.widgets.update_content(self, metric_text(metric))
         self.tooltip = "Open this evidence in Pipeline" if self.target else None
 
     def on_click(self) -> None:
@@ -137,7 +137,11 @@ class StatusPane(textual.containers.VerticalScroll):
         Yields:
             Live observations, exception groups, and concise change history.
         """
-        yield textual.widgets.Static(id="status-overview", markup=False)
+        yield textual.widgets.Static(
+            "Loading status…",
+            id="status-overview",
+            markup=False,
+        )
         with textual.containers.Horizontal(id="status-outputs"):
             yield StatusLink("status-kmz")
             yield StatusLink("status-report")
@@ -230,7 +234,8 @@ class StatusPane(textual.containers.VerticalScroll):
         Args:
             view: The current immutable health projection.
         """
-        self.query_one("#status-overview", textual.widgets.Static).update(
+        peri_scribe.monitor.widgets.update_content(
+            self.query_one("#status-overview", textual.widgets.Static),
             metric_text(view.overview),
         )
         for name, metric in zip(
@@ -239,7 +244,8 @@ class StatusPane(textual.containers.VerticalScroll):
             strict=True,
         ):
             self.query_one(f"#status-{name}", StatusLink).show_metric(metric)
-        self.query_one("#status-coverage", textual.widgets.Static).update(
+        peri_scribe.monitor.widgets.update_content(
+            self.query_one("#status-coverage", textual.widgets.Static),
             metric_text(view.coverage),
         )
         for name, metrics in (

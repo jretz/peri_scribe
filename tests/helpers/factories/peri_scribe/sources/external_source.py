@@ -11,8 +11,8 @@ import zipfile
 
 import shapely.geometry
 
+import peri_scribe.sources.catalog
 import peri_scribe.sources.external_data
-import peri_scribe.sources.external_sources
 import tests.helpers.factories.geography
 
 
@@ -139,7 +139,7 @@ def per_state_template_source() -> peri_scribe.sources.external_data.ExternalSou
         A per-state download source named after the buildings source.
     """
     return dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
         states=("California",),
         state_urls=None,
         url="https://example.com/legacy/{state}.geojson.zip",
@@ -158,7 +158,7 @@ def single_archive_source() -> peri_scribe.sources.external_data.ExternalSource:
         A single-archive download source named after the buildings source.
     """
     return dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
         states=(),
         combine=False,
         state_urls=None,

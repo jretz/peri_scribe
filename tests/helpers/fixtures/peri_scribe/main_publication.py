@@ -10,6 +10,7 @@ import time_machine
 
 import peri_scribe.fires.index
 import peri_scribe.kml.builder
+import peri_scribe.paths
 import peri_scribe.publication
 import peri_scribe.sources.fetching
 import tests.helpers.doubles.peri_scribe.main
@@ -42,7 +43,7 @@ def scenario(
         tests.helpers.factories.peri_scribe.publication.mapping(110, serial=2),
     )
     monkeypatch.setattr(peri_scribe.publication, "collect", lambda _year: inputs)
-    output = peri_scribe.kml.builder.kmz_path(year)
+    output = peri_scribe.paths.kmz_path(year)
     output.parent.mkdir()
     output.write_bytes(b"complete previous KMZ")
     with time_machine.travel(

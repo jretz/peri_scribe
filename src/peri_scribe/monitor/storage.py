@@ -2,6 +2,7 @@
 
 import collections
 import compression.zstd
+import contextlib
 import dataclasses
 import datetime
 import os
@@ -43,17 +44,24 @@ class Report:
     error: str = ""
 
 
-def read_cursor(cursor: Cursor) -> tuple[Cursor, tuple[dict[str, object], ...]]:
+def read_cursor(
+    cursor: Cursor,
+    *,
+    since: datetime.datetime | None = None,
+) -> tuple[Cursor, tuple[dict[str, object], ...]]:
     """Buffer incomplete records and restart after truncation without merging writes.
 
     Args:
         cursor: A retained binary stream and its unfinished final record.
+        since: The timestamp cutoff to restore if the writer truncates the log.
 
     Returns:
         An updated cursor and newly completed structured records.
     """
     if os.fstat(cursor.stream.fileno()).st_size < cursor.stream.tell():
         cursor.stream.seek(0)
+        if since is not None:
+            seek_since(cursor.stream, since)
         cursor = dataclasses.replace(cursor, partial=b"")
     lines = (cursor.partial + cursor.stream.read(MAXIMUM_READ_BYTES)).split(b"\n")
     return dataclasses.replace(cursor, partial=lines[-1]), tuple(
@@ -63,21 +71,86 @@ def read_cursor(cursor: Cursor) -> tuple[Cursor, tuple[dict[str, object], ...]]:
     )
 
 
-def open_cursor(path: pathlib.Path, *, tail: bool) -> tuple[tuple[int, int], Cursor]:
+def timestamp_after(
+    stream: typing.BinaryIO,
+    offset: int,
+    end: int,
+) -> datetime.datetime | None:
+    """Probe complete records so byte offsets cannot split UTF-8 or JSON values.
+
+    Args:
+        stream: A chronological, uncompressed log.
+        offset: The binary search probe's byte offset.
+        end: The file size observed before searching.
+
+    Returns:
+        The next usable timestamp, leaving the stream just after its record.
+    """
+    stream.seek(max(0, offset - 1))
+    if offset:
+        stream.readline(end - stream.tell())
+    while stream.tell() < end:
+        line = stream.readline(end - stream.tell())
+        if not line.endswith(b"\n"):
+            return None
+        fields = peri_scribe.monitor.events.parse_record(
+            line.decode("utf-8", errors="replace"),
+        )
+        timestamp = peri_scribe.monitor.events.timestamp(fields.get("timestamp"))
+        if timestamp is not None:
+            return timestamp
+    return None
+
+
+def seek_since(stream: typing.BinaryIO, since: datetime.datetime) -> None:
+    """Binary search chronological logs without parsing their entire old prefix.
+
+    Undated records after the last older timestamp remain available for diagnostics,
+    and an unfinished final line remains available when its writer completes it.
+
+    Args:
+        stream: A seekable, uncompressed log with ordered timestamps.
+        since: The inclusive timestamp cutoff.
+    """
+    # The writer timestamps under its lock; backward system-clock moves are an
+    # acceptable ordering risk for this monitor's recent-history search.
+    lower = 0
+    end = upper = stream.seek(0, os.SEEK_END)
+    while lower < upper:
+        middle = (lower + upper) // 2
+        timestamp = timestamp_after(stream, middle, end)
+        if timestamp is not None and timestamp < since:
+            lower = stream.tell()
+        else:
+            upper = middle
+    stream.seek(lower)
+
+
+def open_cursor(
+    path: pathlib.Path,
+    *,
+    tail: bool,
+    since: datetime.datetime | None = None,
+) -> tuple[tuple[int, int], Cursor]:
     """Limit startup reads while keeping new monthly logs complete.
 
     Args:
         path: A discovered monthly log.
         tail: Whether this is the initial scan of existing history.
+        since: An inclusive timestamp cutoff taking precedence over the byte limit.
 
     Returns:
         The opened file's identity and its cursor.
     """
-    stream = path.open("rb")
-    metadata = os.fstat(stream.fileno())
-    if tail and metadata.st_size > MAXIMUM_READ_BYTES:
-        stream.seek(metadata.st_size - MAXIMUM_READ_BYTES)
-        stream.readline()
+    with contextlib.ExitStack() as stack:
+        stream = stack.enter_context(path.open("rb"))
+        metadata = os.fstat(stream.fileno())
+        if since is not None:
+            seek_since(stream, since)
+        elif tail and metadata.st_size > MAXIMUM_READ_BYTES:
+            stream.seek(metadata.st_size - MAXIMUM_READ_BYTES)
+            stream.readline()
+        stack.pop_all()
     return (metadata.st_dev, metadata.st_ino), Cursor(stream=stream)
 
 
@@ -96,8 +169,36 @@ class Follower:
         self.started = False
         self.tail = tail
 
-    def poll(self) -> Batch:
+    def discover(
+        self,
+        path: pathlib.Path,
+        since: datetime.datetime | None,
+    ) -> tuple[int, int]:
+        """Reuse known cursors so refreshes do not repeat the initial search.
+
+        Args:
+            path: A discovered monthly log.
+            since: The earliest timestamp to seek in an unfamiliar file.
+
+        Returns:
+            The identity of the watched file.
+        """
+        metadata = path.stat()
+        identity = metadata.st_dev, metadata.st_ino
+        if identity not in self.cursors:
+            identity, opened = open_cursor(
+                path,
+                tail=self.tail and not self.started,
+                since=since,
+            )
+            self.cursors[identity] = opened
+        return identity
+
+    def poll(self, *, since: datetime.datetime | None = None) -> Batch:
         """Drain retained handles and discover newly published monthly logs.
+
+        Args:
+            since: The earliest timestamp to seek when opening a new log.
 
         Returns:
             Complete records, readable diagnostics, and available archived months.
@@ -108,21 +209,12 @@ class Follower:
         caught_up = True
         for path in sorted(self.directory.glob("*.jsonl")):
             try:
-                identity, opened = open_cursor(
-                    path,
-                    tail=self.tail and not self.started,
-                )
+                current.add(self.discover(path, since))
             except OSError as error:
                 errors.append(f"{path.name}: {error}")
-            else:
-                current.add(identity)
-                if identity in self.cursors:
-                    opened.stream.close()
-                else:
-                    self.cursors[identity] = opened
         for identity, cursor in tuple(self.cursors.items()):
             try:
-                updated, entries = read_cursor(cursor)
+                updated, entries = read_cursor(cursor, since=since)
                 exhausted = (
                     cursor.stream.tell() >= os.fstat(cursor.stream.fileno()).st_size
                 )

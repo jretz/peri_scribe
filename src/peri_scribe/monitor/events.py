@@ -4,8 +4,8 @@ import collections.abc
 import dataclasses
 import datetime
 import json
-import types
 
+import peri_scribe.monitor.sharing
 import peri_scribe.phases
 
 
@@ -39,7 +39,7 @@ def parse_record(line: str) -> dict[str, object]:
         JSON fields or a warning containing the original text.
     """
     try:
-        value = json.loads(line)
+        value = json.loads(line, object_hook=peri_scribe.monitor.sharing.fields)
         if isinstance(value, dict):
             return value
     except ValueError:
@@ -130,7 +130,7 @@ def make_event(
     """
     return Event(
         sequence=sequence,
-        fields=types.MappingProxyType(fields),
-        path=event_path(fields, parent),
+        fields=peri_scribe.monitor.sharing.record(fields),
+        path=peri_scribe.monitor.sharing.path(event_path(fields, parent)),
         timestamp=timestamp(fields.get("timestamp")),
     )

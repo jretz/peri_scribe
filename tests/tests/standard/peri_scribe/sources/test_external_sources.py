@@ -14,12 +14,12 @@ import pyproj
 import pytest
 import requests
 import shapely.geometry
-import us
 
 import peri_scribe.exceptions
 import peri_scribe.geo.data
 import peri_scribe.models
 import peri_scribe.output
+import peri_scribe.sources.catalog
 import peri_scribe.sources.external_data
 import peri_scribe.sources.external_sources
 import peri_scribe.sources.snapshots
@@ -32,20 +32,6 @@ import tests.helpers.factories.peri_scribe.sources.external_source
 
 if typing.TYPE_CHECKING:
     import structlog.testing
-
-
-def test_buildings_source_covers_every_us_state() -> None:
-    states = peri_scribe.sources.external_sources.BUILDINGS_SOURCE.states
-    assert len(states) == len(us.states.STATES) + 1
-    assert "California" in states
-    assert "District of Columbia" in states
-
-
-def test_every_external_source_has_a_retrieval_url() -> None:
-    for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES:
-        assert source.url
-        if not source.compact_database:
-            assert source.layer_name
 
 
 def test_fetch_external_source_raises_for_unknown_kind() -> None:
@@ -64,7 +50,7 @@ def test_fetch_external_source_raises_for_unknown_kind() -> None:
 
 
 def test_fetch_arcgis_source_writes_snapshot(monkeypatch: pytest.MonkeyPatch) -> None:
-    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+    source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
     monkeypatch.setattr(peri_scribe.sources.external_sources.arcgis.gis, "GIS", object)
     layers: list[str] = []
     monkeypatch.setattr(
@@ -141,7 +127,7 @@ def test_fetch_arcgis_source_passes_where_clause(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = dataclasses.replace(
-        peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
+        peri_scribe.sources.catalog.EVACUATIONS_SOURCE,
         where="Event IN ('Red Flag Warning', 'Fire Weather Watch')",
     )
     monkeypatch.setattr(peri_scribe.sources.external_sources.arcgis.gis, "GIS", object)
@@ -197,7 +183,7 @@ def test_fetch_arcgis_source_passes_where_clause(
 def test_fetch_arcgis_source_raises_when_no_features(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+    source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
     monkeypatch.setattr(peri_scribe.sources.external_sources.arcgis.gis, "GIS", object)
     monkeypatch.setattr(
         peri_scribe.sources.external_sources.arcgis.features,
@@ -222,7 +208,7 @@ def test_fetch_arcgis_source_raises_when_no_features(
 def test_fetch_arcgis_source_raises_when_fetch_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+    source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
 
     fail = tests.helpers.doubles.errors.raising_stub(RuntimeError("boom"))
 
@@ -246,7 +232,7 @@ def test_fetch_arcgis_source_logs_geometry_warning(
     monkeypatch: pytest.MonkeyPatch,
     log_output: structlog.testing.LogCapture,
 ) -> None:
-    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+    source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
     monkeypatch.setattr(peri_scribe.sources.external_sources.arcgis.gis, "GIS", object)
     monkeypatch.setattr(
         peri_scribe.sources.external_sources.arcgis.features,
@@ -294,7 +280,7 @@ def test_fetch_arcgis_source_skips_when_content_unchanged(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+    source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
     tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_query_stubs(
         monkeypatch,
         tests.helpers.factories.peri_scribe.sources.external_source.sample_arcgis_dataframe(),
@@ -317,7 +303,7 @@ def test_fetch_arcgis_source_replaces_current_version_when_content_changed(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+    source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
     tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_query_stubs(
         monkeypatch,
         tests.helpers.factories.peri_scribe.sources.external_source.sample_arcgis_dataframe(),
@@ -350,7 +336,7 @@ def test_fetch_arcgis_source_replaces_unreadable_current_version(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+    source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
     tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_query_stubs(
         monkeypatch,
         tests.helpers.factories.peri_scribe.sources.external_source.sample_arcgis_dataframe(),
@@ -376,7 +362,7 @@ def test_fetch_arcgis_source_keeps_current_version_when_fetch_fails(
     monkeypatch: pytest.MonkeyPatch,
     log_output: structlog.testing.LogCapture,
 ) -> None:
-    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+    source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
     tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_query_stubs(
         monkeypatch,
         tests.helpers.factories.peri_scribe.sources.external_source.sample_arcgis_dataframe(),
@@ -418,100 +404,12 @@ def test_fetch_arcgis_source_keeps_current_version_when_fetch_fails(
     )
 
 
-def test_buildings_state_urls_reads_repo_page_every_fetch(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    links = {
-        state: f"https://example.com/{state.replace(' ', '')}.geojson.zip"
-        for state in peri_scribe.sources.external_sources.BUILDINGS_STATES
-    }
-    urls: list[str] = []
-    monkeypatch.setattr(
-        requests,
-        "get",
-        lambda url, **_kwargs: (
-            urls.append(url)
-            or tests.helpers.doubles.peri_scribe.sources.external_source.FakeResponse(
-                tests.helpers.factories.peri_scribe.sources.external_source.buildings_page_html(
-                    links,
-                ).encode("utf-8"),
-            )
-        ),
-    )
-
-    result = peri_scribe.sources.external_sources.buildings_state_urls()
-    assert urls == ["https://github.com/microsoft/USBuildingFootprints"]
-    assert result == links
-    assert result["New Hampshire"] == ("https://example.com/NewHampshire.geojson.zip")
-
-
-def test_buildings_state_urls_raises_when_page_has_nodownload_links(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    monkeypatch.setattr(
-        requests,
-        "get",
-        lambda _url, **_kwargs: (
-            tests.helpers.doubles.peri_scribe.sources.external_source.FakeResponse(
-                b"<html><body><p>hi</p></body></html>",
-            )
-        ),
-    )
-    with pytest.raises(
-        peri_scribe.exceptions.ExternalDataError,
-        match="No download links found",
-    ):
-        peri_scribe.sources.external_sources.buildings_state_urls()
-
-
-def test_buildings_state_urls_raises_when_a_state_is_missing(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    page = (
-        tests.helpers.factories.peri_scribe.sources.external_source
-    ).buildings_page_html({
-        "California": "https://example.com/California.geojson.zip",
-    })
-    monkeypatch.setattr(
-        requests,
-        "get",
-        lambda _url, **_kwargs: (
-            tests.helpers.doubles.peri_scribe.sources.external_source.FakeResponse(
-                page.encode("utf-8"),
-            )
-        ),
-    )
-    with pytest.raises(
-        peri_scribe.exceptions.ExternalDataError,
-        match="No download link for Alabama",
-    ):
-        peri_scribe.sources.external_sources.buildings_state_urls()
-
-
-def test_buildings_state_urls_raises_when_page_cannot_be_downloaded(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    fail = tests.helpers.doubles.errors.raising_stub(
-        requests.exceptions.RequestException("boom"),
-    )
-
-    monkeypatch.setattr(requests, "get", fail)
-    with pytest.raises(
-        peri_scribe.exceptions.ExternalDataError,
-        match=(
-            r"Failed to download https://github\.com/microsoft/USBuildingFootprints: "
-            r"boom"
-        ),
-    ):
-        peri_scribe.sources.external_sources.buildings_state_urls()
-
-
 def test_fetch_buildings_combines_state_centroids_into_single_geopackage(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
         states=("California", "Texas"),
         combine=True,
         stream=True,
@@ -524,7 +422,7 @@ def test_fetch_buildings_combines_state_centroids_into_single_geopackage(
             "https://minedbuildings.z5.web.core.windows.net/legacy/"
             f"usbuildings-v2/{state.replace(' ', '')}.geojson.zip"
         )
-        for state in peri_scribe.sources.external_sources.BUILDINGS_STATES
+        for state in peri_scribe.sources.catalog.BUILDINGS_STATES
     }
     page = (
         tests.helpers.factories.peri_scribe.sources.external_source.buildings_page_html(
@@ -559,7 +457,7 @@ def test_fetch_buildings_combines_state_centroids_into_single_geopackage(
     output = peri_scribe.sources.external_data.output_path(tmp_path, source)
     assert result == (output,)
     assert urls == [
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE.url,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE.url,
         links["California"],
         links["Texas"],
     ]
@@ -569,7 +467,7 @@ def test_fetch_buildings_combines_state_centroids_into_single_geopackage(
     )
     assert second == result
     assert urls == [
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE.url,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE.url,
         links["California"],
         links["Texas"],
     ]
@@ -595,7 +493,7 @@ def test_fetch_buildings_skips_page_when_combined_output_present(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
         states=("California",),
         combine=True,
         stream=True,
@@ -608,7 +506,7 @@ def test_fetch_buildings_skips_page_when_combined_output_present(
             "https://minedbuildings.z5.web.core.windows.net/legacy/"
             f"usbuildings-v2/{state.replace(' ', '')}.geojson.zip"
         )
-        for state in peri_scribe.sources.external_sources.BUILDINGS_STATES
+        for state in peri_scribe.sources.catalog.BUILDINGS_STATES
     }
     page = (
         tests.helpers.factories.peri_scribe.sources.external_source.buildings_page_html(
@@ -643,7 +541,7 @@ def test_fetch_buildings_skips_page_when_combined_output_present(
     )
     assert second == first
     assert urls == [
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE.url,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE.url,
         links["California"],
     ]
 
@@ -656,7 +554,7 @@ def test_fetch_buildings_combines_projected_centroids_into_wgs84(
         tests.helpers.doubles.peri_scribe.sources.external_sources.WEB_MERCATOR_WKID
     )
     source = dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
         states=("California",),
         state_urls=None,
         url="https://example.com/legacy/{state}.geojson.zip",
@@ -747,7 +645,7 @@ def test_fetch_arcgis_source_skips_identical_millisecond_dates_after_storage(
         "query_with_retry",
         lambda *_args, **_kwargs: feature_set,
     )
-    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+    source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
     first = peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
     stamp = first.stat()
     content = first.read_bytes()
@@ -778,7 +676,7 @@ def test_fetch_arcgis_source_preserves_real_changes_after_date_normalization(
         monkeypatch,
         dataframe,
     )
-    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+    source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
     output = peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
     before = geopandas.read_file(output, layer="evacuations")
     changed = dataframe.copy()
@@ -818,7 +716,7 @@ def test_fetch_arcgis_source_skips_alternating_evacuation_date_precision(
         },
         [shapely.geometry.Point(-121.0, 40.0), shapely.geometry.Point(-122.0, 40.0)],
     )
-    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
+    source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
     tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_query_stubs(
         monkeypatch,
         dataframe,
@@ -847,7 +745,7 @@ def test_fetch_arcgis_source_keeps_millisecond_comparisons_for_other_sources(
         {"EditDate": [pd.Timestamp("2026-09-08 22:30:35.576")]},
         [shapely.geometry.Point(-121.0, 40.0)],
     )
-    source = peri_scribe.sources.external_sources.MAJOR_CITIES_SOURCE
+    source = peri_scribe.sources.catalog.MAJOR_CITIES_SOURCE
     tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_query_stubs(
         monkeypatch,
         dataframe,

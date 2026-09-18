@@ -18,6 +18,7 @@ import shapely.geometry
 
 import peri_scribe.exceptions
 import peri_scribe.sources.buildings
+import peri_scribe.sources.catalog
 import peri_scribe.sources.external_sources
 import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.sources.buildings
@@ -569,13 +570,13 @@ def test_fetch_buildings_database_streams_states_into_database(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
         states=("California", "Texas"),
     )
     page = tests.helpers.factories.peri_scribe.sources.buildings.buildings_fetch_page()
     links = {
         state: f"https://example.com/{state.replace(' ', '')}.geojson.zip"
-        for state in peri_scribe.sources.external_sources.BUILDINGS_STATES
+        for state in peri_scribe.sources.catalog.BUILDINGS_STATES
     }
     california = (
         tests.helpers.factories.peri_scribe.sources.buildings.feature_collection_bytes([
@@ -622,7 +623,7 @@ def test_fetch_buildings_database_streams_states_into_database(
     output = tmp_path / "sources" / "buildings.sqlite"
     assert result == (output,)
     assert urls == [
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE.url,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE.url,
         links["California"],
         links["Texas"],
     ]
@@ -667,7 +668,7 @@ def test_fetch_buildings_database_skips_valid_existing_database(
     )
 
     result = peri_scribe.sources.external_sources.fetch_external_source(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
         tmp_path,
     )
 
@@ -697,7 +698,7 @@ def test_fetch_buildings_database_preserves_existing_file_when_download_fails(
     ):
         peri_scribe.sources.external_sources.fetch_external_source(
             dataclasses.replace(
-                peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+                peri_scribe.sources.catalog.BUILDINGS_SOURCE,
                 states=("California",),
             ),
             tmp_path,
@@ -724,7 +725,7 @@ def test_fetch_buildings_database_preserves_existing_file_when_archive_fails(
     ):
         peri_scribe.sources.external_sources.fetch_external_source(
             dataclasses.replace(
-                peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+                peri_scribe.sources.catalog.BUILDINGS_SOURCE,
                 states=("California",),
                 state_urls=None,
                 url="https://example.com/legacy/{state}.geojson.zip",
@@ -739,7 +740,7 @@ def test_fetch_buildings_database_raises_when_archive_is_not_a_zip(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
         states=("California",),
         state_urls=None,
         url="https://example.com/legacy/{state}.geojson.zip",
@@ -766,7 +767,7 @@ def test_fetch_buildings_database_raises_when_geojson_is_unreadable(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
         states=("California",),
         state_urls=None,
         url="https://example.com/legacy/{state}.geojson.zip",
@@ -796,7 +797,7 @@ def test_fetch_buildings_database_raises_when_generated_database_is_invalid(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
         states=("California",),
         state_urls=None,
         url="https://example.com/legacy/{state}.geojson.zip",
@@ -836,7 +837,7 @@ def test_fetch_buildings_database_raises_when_archive_has_no_geojson(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
         states=("California",),
         state_urls=None,
         url="https://example.com/legacy/{state}.geojson.zip",

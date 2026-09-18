@@ -17,12 +17,6 @@ from peri_scribe.units import units
 # located fire in each of them: New, Notable Fires and Top Fires.
 
 
-def test_markdown_report_path_names_year() -> None:
-    assert peri_scribe.report.markdown.markdown_report_path(
-        pathlib.Path("data/2026"),
-    ) == pathlib.Path("data/2026/reports/PeriScribe Fires 2026.md")
-
-
 def test_discovery_cell_formats_discovery_time() -> None:
     entry = tests.helpers.factories.peri_scribe.report.markdown.make_entry(
         "Bug",

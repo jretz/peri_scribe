@@ -26,8 +26,6 @@ if typing.TYPE_CHECKING:
 logger = structlog.get_logger()
 
 
-DATA_DIRECTORY = pathlib.Path("data")
-
 # The fire-scores chart's size.
 CCDF_CHART_WIDTH = 1024 * units.pixels
 CCDF_CHART_HEIGHT = 768 * units.pixels

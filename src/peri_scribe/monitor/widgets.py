@@ -13,6 +13,27 @@ import textual.widget
 import textual.widgets
 
 
+if typing.TYPE_CHECKING:
+    import rich.text
+
+
+def update_content(
+    widget: textual.widgets.Static,
+    content: str | rich.text.Text,
+    *,
+    layout: bool = True,
+) -> None:
+    """Preserve layout and rendering caches when visible content is unchanged.
+
+    Args:
+        widget: The text widget receiving current content.
+        content: The literal or styled text to display.
+        layout: Whether changed content can affect the widget's dimensions.
+    """
+    if widget.content != content:
+        widget.update(content, layout=layout)
+
+
 class Dimension(enum.StrEnum):
     """Pane dimensions identify the direction in which a divider can move."""
 

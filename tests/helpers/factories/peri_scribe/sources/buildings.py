@@ -10,7 +10,7 @@ import typing
 import zipfile
 
 import peri_scribe.sources.buildings
-import peri_scribe.sources.external_sources
+import peri_scribe.sources.catalog
 import tests.helpers.factories.peri_scribe.sources.external_source
 
 
@@ -112,7 +112,7 @@ def buildings_fetch_page() -> str:
     """
     links = {
         state: f"https://example.com/{state.replace(' ', '')}.geojson.zip"
-        for state in peri_scribe.sources.external_sources.BUILDINGS_STATES
+        for state in peri_scribe.sources.catalog.BUILDINGS_STATES
     }
     return (
         tests.helpers.factories.peri_scribe.sources.external_source.buildings_page_html(

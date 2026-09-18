@@ -26,8 +26,8 @@ import peri_scribe.kml.folders
 import peri_scribe.kml.selection
 import peri_scribe.models
 import peri_scribe.report.locations
+import peri_scribe.sources.catalog
 import peri_scribe.sources.external_data
-import peri_scribe.sources.external_sources
 
 
 if typing.TYPE_CHECKING:
@@ -103,7 +103,7 @@ def read_cities_layer(year_directory: pathlib.Path) -> geopandas.GeoDataFrame:
     Returns:
         The major cities layer's features, or an empty frame when the layer is absent.
     """
-    source = peri_scribe.sources.external_sources.MAJOR_CITIES_SOURCE
+    source = peri_scribe.sources.catalog.MAJOR_CITIES_SOURCE
     path = peri_scribe.sources.external_data.output_path(year_directory, source)
     if not path.is_file():
         return geopandas.GeoDataFrame()

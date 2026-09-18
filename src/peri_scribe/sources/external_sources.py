@@ -49,7 +49,6 @@ import typing
 import arcgis.features
 import arcgis.gis
 import structlog
-import us
 
 import peri_scribe.exceptions
 import peri_scribe.geo.data
@@ -57,8 +56,8 @@ import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.phases
-import peri_scribe.sources.archives
 import peri_scribe.sources.buildings
+import peri_scribe.sources.catalog
 import peri_scribe.sources.digests
 import peri_scribe.sources.downloading
 import peri_scribe.sources.external_data
@@ -69,68 +68,6 @@ logger = structlog.get_logger()
 
 if typing.TYPE_CHECKING:
     import geopandas
-
-
-BUILDINGS_STATES = tuple(state.name for state in (*us.states.STATES, us.states.DC))
-
-
-def buildings_state_urls() -> dict[str, str]:
-    """Return the state-to-archive-URL mapping from the repo's page.
-
-    The per-state archive links live in the "Download links" table of the repository
-    page named by ``BUILDINGS_SOURCE.url``; the page is loaded only when the archives
-    are about to be downloaded, so a change in the link scheme is picked up
-    automatically.
-
-    Returns:
-        The mapping from state name to archive URL.
-
-    Raises:
-        ExternalDataError: If the page cannot be downloaded, holds no download links, or
-            is missing a link for one of the states.
-    """
-    html_text = peri_scribe.sources.archives.fetch_page_text(BUILDINGS_SOURCE.url)
-    links = peri_scribe.sources.archives.download_links(html_text)
-    if not links:
-        message = f"No download links found on {BUILDINGS_SOURCE.url}"
-        raise peri_scribe.exceptions.ExternalDataError(message)
-    missing = [state for state in BUILDINGS_STATES if state not in links]
-    if missing:
-        message = f"No download link for {', '.join(missing)} on {BUILDINGS_SOURCE.url}"
-        raise peri_scribe.exceptions.ExternalDataError(message)
-    return links
-
-
-BUILDINGS_SOURCE = peri_scribe.sources.external_data.ExternalSource(
-    name="buildings",
-    kind=peri_scribe.sources.external_data.ExternalSourceKind.DOWNLOAD,
-    url="https://github.com/microsoft/USBuildingFootprints",
-    states=BUILDINGS_STATES,
-    state_urls=buildings_state_urls,
-    compact_database=True,
-)
-
-EVACUATIONS_SOURCE = peri_scribe.sources.external_data.ExternalSource(
-    name="evacuations",
-    kind=peri_scribe.sources.external_data.ExternalSourceKind.ARCGIS,
-    url=(
-        "https://services.arcgis.com/BLN4oKB0N1YSgvY8/arcgis/rest/services/"
-        "CA_EVACUATIONS_CalOESHosted_view/FeatureServer/0"
-    ),
-    layer_name="evacuations",
-)
-
-MAJOR_CITIES_SOURCE = peri_scribe.sources.external_data.ExternalSource(
-    name="major_cities",
-    kind=peri_scribe.sources.external_data.ExternalSourceKind.ARCGIS,
-    url=(
-        "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/"
-        "USA_Major_Cities_/FeatureServer/0"
-    ),
-    layer_name="major_cities",
-)
-
-EXTERNAL_SOURCES = (BUILDINGS_SOURCE, EVACUATIONS_SOURCE, MAJOR_CITIES_SOURCE)
 
 
 def fetch_external_source(
@@ -224,7 +161,7 @@ def fetch_arcgis_source(
             layer_name,
             normalize=(
                 evacuation_comparison_frame
-                if source.name == EVACUATIONS_SOURCE.name
+                if source.name == peri_scribe.sources.catalog.EVACUATIONS_SOURCE.name
                 else None
             ),
         ):

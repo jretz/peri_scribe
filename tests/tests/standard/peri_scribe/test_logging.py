@@ -8,6 +8,7 @@ import datetime
 import functools
 import json
 import logging
+import operator
 import pathlib
 import typing
 import unittest.mock
@@ -21,6 +22,7 @@ import time_machine
 
 import peri_scribe.logging
 import tests.helpers.doubles.errors
+import tests.helpers.doubles.peri_scribe.logging
 import tests.helpers.factories.peri_scribe.logging
 from peri_scribe.units import units
 
@@ -400,6 +402,33 @@ def test_configure_logging_rotates_older_months_after_a_restart(
         assert (directory / name).read_text() == content
 
 
+@pytest.mark.parametrize(
+    "before",
+    [datetime.datetime(2026, 9, 18, 12), datetime.datetime(2026, 9, 30, 23, 59, 59)],
+)
+def test_configure_logging_timestamps_follow_writer_lock_order(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    before: datetime.datetime,
+) -> None:
+    before = before.replace(tzinfo=zoneinfo.ZoneInfo("America/Los_Angeles"))
+    later = before + datetime.timedelta(seconds=2)
+    peri_scribe.logging.configure_logging(year_directory=tmp_path)
+    with time_machine.travel(before, tick=False) as clock:
+        tests.helpers.doubles.peri_scribe.logging.overtake_first_writer(
+            monkeypatch,
+            clock,
+            later,
+        )
+        structlog.get_logger().info("Delayed writer")
+    path = tmp_path / "logs" / later.strftime("%Y-%m.jsonl")
+    entries = [json.loads(line) for line in path.read_text().splitlines()]
+    assert [(entry["event"], entry["timestamp"]) for entry in entries] == [
+        ("Overtaking writer", later.strftime("%Y-%m-%dT%H:%M:%S%z")),
+        ("Delayed writer", later.strftime("%Y-%m-%dT%H:%M:%S%z")),
+    ]
+
+
 def test_compress_log_uses_zstd_level_19(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "2026-01.jsonl"
     path.write_text('{"event":"Archived"}\n')
@@ -454,8 +483,7 @@ def test_append_monthly_log_serializes_overlapping_writes_and_rotation(
     old_log = tmp_path / "2000-01.jsonl"
     old_log.write_text('{"event":"Older month"}\n')
     entries = [
-        json.dumps({"event": f"Writer {index}", "details": "🔥\n" * 5000})
-        for index in range(12)
+        {"event": f"Writer {index}", "details": "🔥\n" * 5000} for index in range(12)
     ]
     with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         list(
@@ -465,7 +493,13 @@ def test_append_monthly_log_serializes_overlapping_writes_and_rotation(
             ),
         )
     path = next(tmp_path.glob("*.jsonl"))
-    assert sorted(path.read_text().splitlines()) == sorted(entries)
+    written = [json.loads(line) for line in path.read_text().splitlines()]
+    for entry in written:
+        del entry["timestamp"]
+    assert sorted(written, key=operator.itemgetter("event")) == sorted(
+        entries,
+        key=operator.itemgetter("event"),
+    )
     with compression.zstd.open(old_log.with_suffix(".jsonl.zst"), "rt") as archive:
         assert json.loads(archive.read()) == {"event": "Older month"}
 

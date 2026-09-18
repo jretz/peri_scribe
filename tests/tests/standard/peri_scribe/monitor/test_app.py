@@ -1,9 +1,11 @@
 """Exercise real terminal controls over isolated files and the shared domain model."""
 
+import asyncio
 import compression.zstd
 import datetime
 import functools
 import json
+import threading
 import unittest.mock
 
 import pytest
@@ -11,6 +13,9 @@ import rich.json
 import textual.events
 import textual.widgets
 
+import peri_scribe.monitor.app
+import peri_scribe.monitor.model
+import peri_scribe.monitor.storage
 import peri_scribe.monitor.widgets
 import peri_scribe.phases
 import peri_scribe.pipeline_stages
@@ -196,18 +201,89 @@ def test_monitor_app_report_uses_current_file_and_mtime(
     )
 
 
+def test_monitor_app_defers_report_loading_until_its_tab_is_selected(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = monitor_session
+    assert session.app.report == peri_scribe.monitor.storage.Report()
+    read = unittest.mock.Mock(wraps=peri_scribe.monitor.storage.read_report)
+    monkeypatch.setattr(peri_scribe.monitor.storage, "read_report", read)
+    viewer = session.app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
+    update = unittest.mock.AsyncMock(wraps=viewer.document.update)
+    monkeypatch.setattr(viewer.document, "update", update)
+    session.app.report_path.write_text("# First")
+    session.runner.run(session.app.refresh_files())
+    session.app.report_path.write_text("# Latest")
+    session.runner.run(session.app.refresh_files())
+    read.assert_not_called()
+    update.assert_not_called()
+    session.runner.run(session.pilot.press("5"))
+    update.assert_awaited_once_with("# Latest")
+    session.runner.run(session.app.refresh_files())
+    session.runner.run(session.pilot.press("1", "5"))
+    update.assert_awaited_once()
+
+
 def test_monitor_app_refreshes_replaced_report_while_paused(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     monitor_session.call(monitor_session.app.action_toggle_follow)
     path = monitor_session.app.report_path
     path.write_text("# Original")
-    monitor_session.runner.run(monitor_session.app.refresh_files())
+    monitor_session.runner.run(monitor_session.pilot.press("5"))
     temporary = path.with_suffix(".new")
     temporary.write_text("# Replacement")
     temporary.replace(path)
     monitor_session.runner.run(monitor_session.app.refresh_files())
     assert monitor_session.app.report.content == "# Replacement"
+
+
+@pytest.mark.parametrize("tab", ["1", "2", "3", "4"])
+def test_monitor_app_suspends_report_refresh_until_returning_to_its_tab(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    monkeypatch: pytest.MonkeyPatch,
+    tab: str,
+) -> None:
+    session = monitor_session
+    session.app.report_path.write_text("# Original")
+    session.runner.run(session.pilot.press("5", tab))
+    read = unittest.mock.Mock(wraps=peri_scribe.monitor.storage.read_report)
+    monkeypatch.setattr(peri_scribe.monitor.storage, "read_report", read)
+    viewer = session.app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
+    update = unittest.mock.AsyncMock(wraps=viewer.document.update)
+    monkeypatch.setattr(viewer.document, "update", update)
+    session.app.report_path.write_text("# Replacement")
+    session.runner.run(session.app.refresh_files())
+    read.assert_not_called()
+    update.assert_not_called()
+    assert session.app.report.content == "# Original"
+    session.runner.run(session.pilot.press("5"))
+    assert session.app.report.content == "# Replacement"
+    update.assert_awaited_once_with("# Replacement")
+
+
+def test_render_report_discards_a_read_completed_after_leaving_its_tab(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = monitor_session
+    session.app.report_path.write_text("# Original")
+    session.runner.run(session.pilot.press("5"))
+    viewer = session.app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
+    update = unittest.mock.AsyncMock(wraps=viewer.document.update)
+    monkeypatch.setattr(viewer.document, "update", update)
+    monkeypatch.setattr(
+        peri_scribe.monitor.storage,
+        "read_report",
+        functools.partial(
+            tests.helpers.doubles.peri_scribe.monitor.app.hide_report_during_read,
+            session.app,
+        ),
+    )
+    session.runner.run(peri_scribe.monitor.app.render_report(session.app))
+    update.assert_not_called()
+    assert session.app.report.content == "# Original"
 
 
 def test_monitor_app_selects_historical_run(
@@ -289,6 +365,68 @@ def test_monitor_app_loads_older_month_on_request(
     assert monitor_session.app.state.runs[0].identifier == "archive"
     monitor_session.runner.run(monitor_session.app.load_older())
     assert len(monitor_session.app.state.runs) == 1
+
+
+def test_monitor_app_preserves_live_events_arriving_during_archive_loading(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = monitor_session
+    tests.helpers.factories.peri_scribe.monitor.events.write_log(
+        session.directory,
+        tests.helpers.factories.peri_scribe.monitor.events.record(
+            "Starting command",
+            command="run",
+            run_id="initial",
+        ),
+    )
+    archive = session.directory / "logs" / "2026-08.jsonl.zst"
+    with compression.zstd.open(archive, "wt") as stream:
+        stream.write(
+            json.dumps(
+                tests.helpers.factories.peri_scribe.monitor.events.record(
+                    "Starting command",
+                    command="run",
+                    run_id="archive",
+                ),
+            )
+            + "\n",
+        )
+    session.runner.run(session.app.refresh_files())
+    started, release = threading.Event(), threading.Event()
+    monkeypatch.setattr(
+        peri_scribe.monitor.model,
+        "append_records",
+        tests.helpers.doubles.peri_scribe.monitor.app.BlockedArchiveAppend(
+            started=started,
+            release=release,
+            append=peri_scribe.monitor.model.append_records,
+        ),
+    )
+    session.call(session.app.call_later, session.app.load_older)
+    try:
+        assert session.runner.run(asyncio.to_thread(started.wait, timeout=5))
+        tests.helpers.factories.peri_scribe.monitor.events.write_log(
+            session.directory,
+            tests.helpers.factories.peri_scribe.monitor.events.record(
+                "Starting command",
+                command="run",
+                run_id="new",
+            ),
+        )
+        session.app.files_changed = True
+        session.runner.run(
+            tests.helpers.doubles.peri_scribe.monitor.app.tick(session.clock),
+        )
+    finally:
+        release.set()
+    session.runner.run(session.pilot.pause())
+    session.runner.run(session.app.refresh_files())
+    assert [run.identifier for run in session.app.state.runs] == [
+        "archive",
+        "initial",
+        "new",
+    ]
 
 
 def test_monitor_app_preserves_collapsed_branches_during_live_updates(
@@ -408,6 +546,7 @@ def test_monitor_app_refresh_files_does_not_scroll_a_viewer_removed_during_updat
 ) -> None:
     session = monitor_session
     viewer = session.app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
+    session.runner.run(session.pilot.press("5"))
     session.app.report_path.write_text("# Updated report")
     monkeypatch.setattr(
         viewer.document,
@@ -455,7 +594,7 @@ def test_monitor_app_ignores_tab_changes_after_shutdown_begins(
         new_callable=unittest.mock.PropertyMock,
         return_value=False,
     ):
-        monitor_session.app.tab_changed(event)
+        monitor_session.runner.run(monitor_session.app.tab_changed(event))
     assert inspection.display
 
 

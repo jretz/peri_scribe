@@ -133,25 +133,34 @@ def compress_log(path: pathlib.Path) -> None:
     path.unlink()
 
 
-def append_monthly_log(directory: pathlib.Path, entry: str) -> None:
-    """Serialize writes and rotation across commands sharing a year directory.
+def append_monthly_log(
+    directory: pathlib.Path,
+    event_dict: collections.abc.Mapping[str, object],
+) -> None:
+    """Keep timestamps and monthly rotation consistent across concurrent commands.
 
     Args:
         directory: The directory holding monthly logs and their archives.
-        entry: A rendered JSON event without its trailing newline.
+        event_dict: A normalized event with formatted exception details.
     """
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / ".rotation.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        filename = datetime.datetime.now().astimezone().strftime("%Y-%m.jsonl")
+        timestamp = datetime.datetime.now().astimezone()
+        filename = timestamp.strftime("%Y-%m.jsonl")
         for path in sorted(directory.glob("*.jsonl")):
             if (
                 re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])\.jsonl", path.name)
                 and path.name < filename
             ):
                 compress_log(path)
+        entry = structlog.processors.JSONRenderer(allow_nan=False)(
+            None,
+            "",
+            {**event_dict, "timestamp": timestamp.strftime("%Y-%m-%dT%H:%M:%S%z")},
+        )
         with (directory / filename).open("a", encoding="utf-8") as stream:
-            stream.write(entry + "\n")
+            stream.write(typing.cast("str", entry) + "\n")
 
 
 def route_log_event(
@@ -186,12 +195,7 @@ def route_log_event(
             method_name,
             dict(event_dict),
         )
-        rendered = structlog.processors.JSONRenderer(allow_nan=False)(
-            wrapped_logger,
-            method_name,
-            file_event,
-        )
-        append_monthly_log(directory, typing.cast("str", rendered))
+        append_monthly_log(directory, file_event)
     if level < stderr_level:
         raise structlog.DropEvent
     return event_dict

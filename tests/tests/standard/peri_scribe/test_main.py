@@ -9,13 +9,12 @@ import json
 import pathlib
 import typing
 
-import click
-import click.testing
 import pytest
 import structlog
 import structlog.testing
 import time_machine
 
+import peri_scribe.cli_options
 import peri_scribe.exceptions
 import peri_scribe.fires.differential
 import peri_scribe.fires.index
@@ -23,14 +22,11 @@ import peri_scribe.fires.scores
 import peri_scribe.kml.colormap
 import peri_scribe.logging
 import peri_scribe.main
-import peri_scribe.output
+import peri_scribe.paths
+import peri_scribe.pipeline
 import peri_scribe.pipeline_state
 import peri_scribe.publication
-import peri_scribe.report.gathering
-import peri_scribe.report.markdown
-import peri_scribe.sources.digests
-import peri_scribe.sources.external_data
-import peri_scribe.sources.external_sources
+import peri_scribe.sources.catalog
 import peri_scribe.sources.fetching
 import peri_scribe.sources.full_fetch_state
 import peri_scribe.sources.snapshots
@@ -39,13 +35,15 @@ import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.main
 import tests.helpers.doubles.peri_scribe.main_run
 import tests.helpers.doubles.peri_scribe.main_show_colormap
-import tests.helpers.doubles.peri_scribe.main_source
-import tests.helpers.doubles.peri_scribe.main_write_reports
 import tests.helpers.factories.peri_scribe.publication
 import tests.helpers.factories.peri_scribe.sources.snapshots
 import tests.helpers.peri_scribe.main
 import tests.helpers.peri_scribe.main_publication
 from peri_scribe.units import units
+
+
+if typing.TYPE_CHECKING:
+    import click.testing
 
 
 def test_cli_help(runner: click.testing.CliRunner) -> None:
@@ -247,7 +245,7 @@ def test_cli_logs_year_commands_to_their_resolved_directory(
     year_directory = (
         tmp_path / "chosen" / "2026"
         if explicit_directory
-        else peri_scribe.main.default_year_directory()
+        else peri_scribe.cli_options.default_year_directory()
     )
     arguments = [command]
     if explicit_directory:
@@ -387,171 +385,6 @@ def test_run_logs_failure_tracebacks_to_the_year_directory(
         assert "raise_error" in entry["exception"]
 
 
-def test_stored_evacuations_digest_uses_evacuations_output(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    output = pathlib.Path("/data/2026/sources/evacuations.gpkg")
-    monkeypatch.setattr(
-        peri_scribe.sources.external_data,
-        "output_path",
-        lambda _year_directory, _source: output,
-    )
-    digests: list[tuple[pathlib.Path, str]] = []
-
-    stored_geopackage_digest = (
-        tests.helpers.doubles.peri_scribe.main_run.make_digest_recorder(
-            digests=digests,
-        )
-    )
-
-    monkeypatch.setattr(
-        peri_scribe.sources.digests,
-        "stored_geopackage_digest",
-        stored_geopackage_digest,
-    )
-    result = peri_scribe.main.stored_evacuations_digest(pathlib.Path("/data/2026"))
-    assert result == "digest"
-    assert digests == [(output, "evacuations")]
-
-
-def test_duration_convert_whole_hours_and_days() -> None:
-    duration = peri_scribe.main.Duration()
-    assert duration.convert("0h", None, None) == datetime.timedelta(0)
-    assert duration.convert("12h", None, None) == datetime.timedelta(hours=12)
-    assert duration.convert("24h", None, None) == datetime.timedelta(hours=24)
-    assert duration.convert("1d", None, None) == datetime.timedelta(days=1)
-    assert duration.convert("3d", None, None) == datetime.timedelta(days=3)
-    assert duration.convert("0d", None, None) == datetime.timedelta(0)
-
-
-def test_duration_convert_accepts_an_already_converted_timedelta() -> None:
-    duration = peri_scribe.main.Duration()
-    value = datetime.timedelta(hours=12)
-    assert duration.convert(value, None, None) is value
-
-
-@pytest.mark.parametrize("value", [None, 12, b"12h"])
-def test_duration_convert_rejects_values_that_are_not_duration_text(
-    value: object,
-) -> None:
-    duration = peri_scribe.main.Duration()
-    with pytest.raises(click.BadParameter):
-        duration.convert(value, None, None)
-
-
-def test_duration_convert_rejects_out_of_range_durations() -> None:
-    duration = peri_scribe.main.Duration()
-    with pytest.raises(click.BadParameter):
-        duration.convert("9999999999999h", None, None)
-
-
-def test_fetch_external_source_uses_given_year_directory(
-    monkeypatch: pytest.MonkeyPatch,
-    log_output: structlog.testing.LogCapture,
-) -> None:
-    source = peri_scribe.sources.external_sources.BUILDINGS_SOURCE
-    year_directory = pathlib.Path("data/2026")
-    fetched: list[tuple[object, pathlib.Path]] = []
-
-    fetch_external_source = (
-        tests.helpers.doubles.peri_scribe.main_source.make_fetch_recorder(
-            fetched=fetched,
-        )
-    )
-
-    monkeypatch.setattr(
-        peri_scribe.sources.external_sources,
-        "fetch_external_source",
-        fetch_external_source,
-    )
-    peri_scribe.main.fetch_external_source(source, year_directory)
-    assert fetched == [(source, year_directory)]
-    fetched_entry = next(
-        entry
-        for entry in log_output.entries
-        if entry["event"] == "Fetched external source"
-    )
-    assert fetched_entry["paths"] == ["/out.gpkg"]
-
-
-def test_fetch_external_source_defaults_to_current_year_directory(
-    monkeypatch: pytest.MonkeyPatch,
-    current_year: typing.Iterator[None],
-) -> None:
-    source = peri_scribe.sources.external_sources.EVACUATIONS_SOURCE
-    fetched: list[tuple[object, pathlib.Path]] = []
-
-    fetch_external_source = (
-        tests.helpers.doubles.peri_scribe.main_source.make_fetch_recorder(
-            fetched=fetched,
-        )
-    )
-
-    monkeypatch.setattr(
-        peri_scribe.sources.external_sources,
-        "fetch_external_source",
-        fetch_external_source,
-    )
-    peri_scribe.main.fetch_external_source(source, None)
-    assert fetched == [
-        (
-            source,
-            tests.helpers.factories.peri_scribe.sources.snapshots.BASE_DIRECTORY
-            / "data"
-            / "2026",
-        ),
-    ]
-
-
-def test_write_reports_gathers_and_renders(monkeypatch: pytest.MonkeyPatch) -> None:
-    year_directory = pathlib.Path("data/2026")
-    report = peri_scribe.report.gathering.FireReport(
-        new_notable_fires=(),
-        type_one_fires=(),
-        fastest_growing_by_acres=(),
-        fastest_growing_by_percent=(),
-        top_fires=(),
-        fire_details=(),
-    )
-    output = year_directory / "reports" / "PeriScribe Fires 2026.md"
-    gathered: list[pathlib.Path] = []
-    rendered: list[tuple[peri_scribe.report.gathering.FireReport, pathlib.Path]] = []
-
-    gather_report = (
-        tests.helpers.doubles.peri_scribe.main_write_reports.make_report_gatherer(
-            gathered=gathered,
-            report=report,
-        )
-    )
-
-    render_markdown_report = (
-        tests.helpers.doubles.peri_scribe.main_write_reports.make_report_renderer(
-            rendered=rendered,
-            output=output,
-        )
-    )
-
-    monkeypatch.setattr(peri_scribe.report.gathering, "gather_report", gather_report)
-    monkeypatch.setattr(
-        peri_scribe.report.markdown,
-        "render_markdown_report",
-        render_markdown_report,
-    )
-
-    result = peri_scribe.main.write_reports(year_directory)
-
-    assert result == output
-    assert gathered == [year_directory]
-    assert rendered == [(report, year_directory)]
-
-
-def test_area_convert_accepts_equivalent_explicit_units() -> None:
-    parser = peri_scribe.main.Area()
-    assert parser.convert("1 hectare", None, None) == 10000 * units.meters**2
-    with pytest.raises(click.BadParameter, match="positive area"):
-        parser.convert(object(), None, None)
-
-
 def test_gate_skip_checks_evacuations_and_preserves_checkpoint_without_pending_failure(
     scenario: tests.helpers.peri_scribe.main_publication.Scenario,
     runner: click.testing.CliRunner,
@@ -574,7 +407,7 @@ def test_gate_skip_checks_evacuations_and_preserves_checkpoint_without_pending_f
     assert scenario.indexed == []
     assert scenario.stubs.history_calls == []
     assert scenario.stubs.external_calls == [
-        (peri_scribe.sources.external_sources.EVACUATIONS_SOURCE, scenario.year),
+        (peri_scribe.sources.catalog.EVACUATIONS_SOURCE, scenario.year),
     ]
     assert scenario.stubs.ensure_boundary_calls == []
     assert not peri_scribe.pipeline_state.read_state(scenario.year).remaining
@@ -625,7 +458,7 @@ def test_timer_builds_saved_updates_on_unchanged_fetch_and_advances_checkpoint(
     assert scenario.stubs.kmz_calls == [scenario.year]
     assert scenario.stubs.report_calls == [scenario.year]
     assert [source for source, _year in scenario.stubs.external_calls].count(
-        peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
+        peri_scribe.sources.catalog.EVACUATIONS_SOURCE,
     ) == 1
     published = peri_scribe.publication.read_publication(scenario.year, scenario.output)
     assert published is not None
@@ -698,7 +531,7 @@ def test_failed_fetch_or_check_requires_retry_without_advancing_publication(
 ) -> None:
     module, name = {
         "collection": (peri_scribe.sources.fetching, "fetch_all_feeds"),
-        "evacuations": (peri_scribe.main, "fetch_external_source"),
+        "evacuations": (peri_scribe.pipeline, "fetch_external_source"),
         "gate": (peri_scribe.publication, "collect"),
         "index": (peri_scribe.fires.index, "index_fire_sources"),
     }[operation]
@@ -802,7 +635,7 @@ def test_report_failure_does_not_undo_completed_local_publication(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(
-        peri_scribe.main,
+        peri_scribe.pipeline,
         "write_reports",
         tests.helpers.doubles.errors.raising_stub(RuntimeError("report failed")),
     )
@@ -841,7 +674,7 @@ def test_run_logs_each_executed_phase_inside_command_boundaries(
 ) -> None:
     run_stubs(changed=changed)
     monkeypatch.setattr(
-        peri_scribe.main,
+        peri_scribe.pipeline,
         "refresh_external_sources",
         lambda _year_directory: False,
     )
@@ -950,7 +783,7 @@ def test_run_runs_all_stages_when_fetch_changed(
     assert result.exit_code == 0
     assert stubs.external_calls == [
         (source, year_directory)
-        for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES
+        for source in peri_scribe.sources.catalog.EXTERNAL_SOURCES
     ]
     assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == [year_directory]
@@ -981,7 +814,7 @@ def test_run_defaults_to_current_year_directory(
     ]
     assert stubs.external_calls == [
         (source, year_directory)
-        for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES
+        for source in peri_scribe.sources.catalog.EXTERNAL_SOURCES
     ]
     assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == [year_directory]
@@ -1005,7 +838,7 @@ def test_run_fetches_external_sources_but_skips_later_stages_when_nothing_change
     )
     assert stubs.external_calls == [
         (source, year_directory)
-        for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES
+        for source in peri_scribe.sources.catalog.EXTERNAL_SOURCES
     ]
     assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == []
@@ -1036,7 +869,7 @@ def test_run_runs_stages_when_evacuations_changed(
     ]
     assert stubs.external_calls == [
         (source, year_directory)
-        for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES
+        for source in peri_scribe.sources.catalog.EXTERNAL_SOURCES
     ]
     assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == [year_directory]
@@ -1341,15 +1174,15 @@ def test_run_retries_external_failure_after_full_fetch(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     stubs = run_stubs(changed=False)
-    refresh = peri_scribe.main.refresh_external_sources
+    refresh = peri_scribe.pipeline.refresh_external_sources
     monkeypatch.setattr(
-        peri_scribe.main,
+        peri_scribe.pipeline,
         "refresh_external_sources",
         tests.helpers.doubles.errors.raising_stub(ValueError("interrupted")),
     )
     failed = runner.invoke(peri_scribe.main.cli, ["run", "--full-fetch-interval", "6h"])
     assert failed.exit_code != 0
-    monkeypatch.setattr(peri_scribe.main, "refresh_external_sources", refresh)
+    monkeypatch.setattr(peri_scribe.pipeline, "refresh_external_sources", refresh)
     retry = runner.invoke(peri_scribe.main.cli, ["run"])
     assert retry.exit_code == 0
     assert stubs.unconditional_history_calls == [
@@ -1502,7 +1335,7 @@ def test_run_stops_when_external_source_fetch_fails(
     )
 
     stubs = run_stubs(changed=True)
-    monkeypatch.setattr(peri_scribe.main, "fetch_external_source", fail)
+    monkeypatch.setattr(peri_scribe.pipeline, "fetch_external_source", fail)
     result = runner.invoke(peri_scribe.main.cli, ["run"])
     assert result.exit_code == 1
     assert isinstance(result.exception, peri_scribe.exceptions.ExternalDataError)
@@ -1613,7 +1446,7 @@ def test_run_only_fetch_runs_no_later_stages(
     ]
     assert stubs.external_calls == [
         (source, year_directory)
-        for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES
+        for source in peri_scribe.sources.catalog.EXTERNAL_SOURCES
     ]
     assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == []
@@ -1691,7 +1524,7 @@ def test_run_to_geography_runs_fetch_through_geography(
     ]
     assert stubs.external_calls == [
         (source, year_directory)
-        for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES
+        for source in peri_scribe.sources.catalog.EXTERNAL_SOURCES
     ]
     assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == [year_directory]
@@ -1722,7 +1555,7 @@ def test_run_to_fetch_short_circuits_without_later_stages(
     ]
     assert stubs.external_calls == [
         (source, year_directory)
-        for source in peri_scribe.sources.external_sources.EXTERNAL_SOURCES
+        for source in peri_scribe.sources.catalog.EXTERNAL_SOURCES
     ]
     assert stubs.ensure_boundary_calls == [year_directory]
     assert stubs.history_calls == []
@@ -1767,7 +1600,7 @@ def test_run_list_stages_prints_descriptions_without_running(
     assert stubs.scores_calls == []
     assert stubs.kmz_calls == []
     assert stubs.report_calls == []
-    for stage in peri_scribe.main.PIPELINE_STAGES:
+    for stage in peri_scribe.pipeline.PIPELINE_STAGES:
         assert stage.name in result.output
         assert stage.description in result.output
 
@@ -1776,7 +1609,7 @@ def test_run_help_names_current_year_default(runner: click.testing.CliRunner) ->
     result = runner.invoke(peri_scribe.main.cli, ["run", "--help"])
     assert result.exit_code == 0
     assert (
-        f"{peri_scribe.output.DATA_DIRECTORY}/{datetime.date.today().year}"
+        f"{peri_scribe.paths.DATA_DIRECTORY}/{datetime.date.today().year}"
     ) in result.output
     assert "data/<current year>" not in result.output
 
@@ -1989,7 +1822,7 @@ def test_validate_sources_help_names_current_year_default(
     result = runner.invoke(peri_scribe.main.cli, ["validate-sources", "--help"])
     assert result.exit_code == 0
     assert (
-        f"{peri_scribe.output.DATA_DIRECTORY}/{datetime.date.today().year}"
+        f"{peri_scribe.paths.DATA_DIRECTORY}/{datetime.date.today().year}"
     ) in result.output
     assert "data/<current year>" not in result.output
 

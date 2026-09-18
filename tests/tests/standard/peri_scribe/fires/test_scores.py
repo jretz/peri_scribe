@@ -14,8 +14,8 @@ import pytest
 import peri_scribe.fires.identity
 import peri_scribe.fires.scores
 import peri_scribe.sources.buildings
+import peri_scribe.sources.catalog
 import peri_scribe.sources.external_data
-import peri_scribe.sources.external_sources
 import peri_scribe.units
 import tests.helpers.doubles.peri_scribe.fires.scores
 import tests.helpers.factories.geography
@@ -51,7 +51,7 @@ def test_latest_snapshot_layer_returns_none_without_snapshot(
     assert (
         peri_scribe.fires.scores.latest_snapshot_layer(
             pathlib.Path("data/2026"),
-            peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
+            peri_scribe.sources.catalog.EVACUATIONS_SOURCE,
         )
         is None
     )
@@ -70,7 +70,7 @@ def test_latest_snapshot_layer_names_source_geopackage(
     )
     assert peri_scribe.fires.scores.latest_snapshot_layer(
         pathlib.Path("data/2026"),
-        peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
+        peri_scribe.sources.catalog.EVACUATIONS_SOURCE,
     ) == (path, "evacuations")
 
 

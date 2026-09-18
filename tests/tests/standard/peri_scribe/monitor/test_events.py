@@ -1,6 +1,8 @@
 """Record normalization preserves useful evidence even in incomplete logs."""
 
 import datetime
+import json
+import typing
 
 import pytest
 
@@ -69,3 +71,25 @@ def test_event_path_keeps_messages_inside_open_phase() -> None:
 def test_make_event_supplies_display_defaults() -> None:
     event = peri_scribe.monitor.events.make_event({}, 1, ())
     assert (event.message, event.level) == ("", "info")
+
+
+def test_parse_record_keeps_nested_mutable_fields_independent() -> None:
+    line = json.dumps({
+        "event": "test event",
+        "phase_segments": [{"phase": "test phase"}],
+        "values": [[1, "nested"]],
+    })
+    first = peri_scribe.monitor.events.parse_record(line)
+    second = peri_scribe.monitor.events.parse_record(line)
+    assert first == second
+    assert first["event"] is second["event"]
+    segments = typing.cast("list[dict[str, object]]", first["phase_segments"])
+    segments[0]["phase"] = "changed"
+    assert second == json.loads(line)
+
+
+def test_make_event_shares_equal_resolved_paths() -> None:
+    fields: dict[str, object] = {"phase_path": "fetch.collect-feed", "feed": "alpha"}
+    first = peri_scribe.monitor.events.make_event(fields, 1, ())
+    second = peri_scribe.monitor.events.make_event(dict(fields), 2, ())
+    assert first.path is second.path

@@ -3,19 +3,145 @@
 import compression.zstd
 import contextlib
 import datetime
+import io
 import json
 import os
 import pathlib
 import unittest.mock
-from typing import TYPE_CHECKING
 
+import pytest
+
+import peri_scribe.monitor.events
 import peri_scribe.monitor.storage
 import tests.helpers.doubles.errors
 import tests.helpers.factories.peri_scribe.monitor.events
+import tests.helpers.factories.peri_scribe.monitor.status
 
 
-if TYPE_CHECKING:
-    import pytest
+@pytest.mark.parametrize("minutes", [[], [-2], [0], [1], [-2, -1], [-1, 0, 0, 1]])
+def test_seek_since_keeps_every_record_at_or_after_the_cutoff(
+    minutes: list[int],
+) -> None:
+    cutoff = tests.helpers.factories.peri_scribe.monitor.status.NOW
+    records = [
+        tests.helpers.factories.peri_scribe.monitor.status.record(
+            "café" * (index + 1),
+            when=(cutoff + datetime.timedelta(minutes=minute)).astimezone(
+                datetime.timezone(datetime.timedelta(hours=index)),
+            ),
+        )
+        for index, minute in enumerate(minutes)
+    ]
+    with io.BytesIO(
+        "".join(
+            json.dumps(record, ensure_ascii=False) + "\n" for record in records
+        ).encode(),
+    ) as stream:
+        peri_scribe.monitor.storage.seek_since(stream, cutoff)
+        assert [json.loads(line) for line in stream] == [
+            record
+            for minute, record in zip(minutes, records, strict=True)
+            if minute >= 0
+        ]
+
+
+def test_seek_since_preserves_undated_records_at_the_cutoff() -> None:
+    cutoff = tests.helpers.factories.peri_scribe.monitor.status.NOW
+    old = tests.helpers.factories.peri_scribe.monitor.status.record(
+        "Old",
+        when=cutoff - datetime.timedelta(seconds=1),
+    )
+    recent = tests.helpers.factories.peri_scribe.monitor.status.record("Recent")
+    suffix = b'\nnot json\n{"event":"undated"}\n' + json.dumps(recent).encode() + b"\n"
+    with io.BytesIO(json.dumps(old).encode() + b"\n" + suffix) as stream:
+        peri_scribe.monitor.storage.seek_since(stream, cutoff)
+        assert stream.read() == suffix
+
+
+def test_seek_since_preserves_an_entirely_undated_log() -> None:
+    data = b'bad line\n{"event":"undated"}\n'
+    with io.BytesIO(data) as stream:
+        peri_scribe.monitor.storage.seek_since(
+            stream,
+            tests.helpers.factories.peri_scribe.monitor.status.NOW,
+        )
+        assert stream.read() == data
+
+
+def test_seek_since_does_not_parse_the_entire_old_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cutoff = tests.helpers.factories.peri_scribe.monitor.status.NOW
+    old = tests.helpers.factories.peri_scribe.monitor.status.record(
+        "Old",
+        when=cutoff - datetime.timedelta(seconds=1),
+    )
+    recent = tests.helpers.factories.peri_scribe.monitor.status.record("Recent")
+    old_count = 10000
+    data = (json.dumps(old) + "\n") * old_count + json.dumps(recent) + "\n"
+    parser = unittest.mock.Mock(wraps=peri_scribe.monitor.events.parse_record)
+    monkeypatch.setattr(peri_scribe.monitor.events, "parse_record", parser)
+    with io.BytesIO(data.encode()) as stream:
+        peri_scribe.monitor.storage.seek_since(stream, cutoff)
+        assert json.loads(stream.readline()) == recent
+    assert parser.call_count < old_count // 100
+
+
+def test_follower_since_preserves_an_unfinished_utf8_record(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
+    path = tests.helpers.factories.peri_scribe.monitor.events.write_log(
+        tmp_path,
+        tests.helpers.factories.peri_scribe.monitor.status.record(
+            "Old",
+            when=now - datetime.timedelta(days=3),
+        ),
+    )
+    record = {"timestamp": now.isoformat(), "event": "café"}
+    data = json.dumps(record, ensure_ascii=False).encode()
+    with path.open("ab") as stream:
+        stream.write(data[:-3])
+    with contextlib.closing(
+        peri_scribe.monitor.storage.Follower(path.parent),
+    ) as follower:
+        assert not follower.poll(since=now - datetime.timedelta(hours=48)).records
+        monkeypatch.setattr(
+            peri_scribe.monitor.storage,
+            "seek_since",
+            tests.helpers.doubles.errors.raising_stub(AssertionError("repeated seek")),
+        )
+        with path.open("ab") as stream:
+            stream.write(data[-3:] + b"\n")
+        assert follower.poll(since=now - datetime.timedelta(hours=48)).records == (
+            record,
+        )
+
+
+def test_open_cursor_closes_the_log_when_seeking_fails(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tests.helpers.factories.peri_scribe.monitor.events.write_log(tmp_path)
+    with path.open("rb") as stream:
+        monkeypatch.setattr(
+            pathlib.Path,
+            "open",
+            unittest.mock.Mock(return_value=stream),
+        )
+        monkeypatch.setattr(
+            peri_scribe.monitor.storage,
+            "seek_since",
+            tests.helpers.doubles.errors.raising_stub(OSError("seek failed")),
+        )
+        with pytest.raises(OSError, match="seek failed"):
+            peri_scribe.monitor.storage.open_cursor(
+                path,
+                tail=False,
+                since=tests.helpers.factories.peri_scribe.monitor.status.NOW,
+            )
+        assert stream.closed
 
 
 def test_follower_waits_without_creating_directories(tmp_path: pathlib.Path) -> None:
@@ -72,6 +198,25 @@ def test_follower_restarts_truncated_file(tmp_path: pathlib.Path) -> None:
         follower.poll()
         path.write_text('{"event":"new"}\n')
         assert follower.poll().records == ({"event": "new"},)
+
+
+def test_follower_seeks_the_cutoff_after_truncation(tmp_path: pathlib.Path) -> None:
+    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
+    path = tests.helpers.factories.peri_scribe.monitor.events.write_log(
+        tmp_path,
+        tests.helpers.factories.peri_scribe.monitor.status.record("Long" * 1000),
+    )
+    old = tests.helpers.factories.peri_scribe.monitor.status.record(
+        "Old",
+        when=now - datetime.timedelta(days=3),
+    )
+    new = tests.helpers.factories.peri_scribe.monitor.status.record("New")
+    with contextlib.closing(
+        peri_scribe.monitor.storage.Follower(path.parent),
+    ) as follower:
+        follower.poll(since=now - datetime.timedelta(hours=48))
+        path.write_text(json.dumps(old) + "\n" + json.dumps(new) + "\n")
+        assert follower.poll(since=now - datetime.timedelta(hours=48)).records == (new,)
 
 
 def test_follower_bounds_startup_reads(

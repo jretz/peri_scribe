@@ -12,9 +12,9 @@ import shapely.geometry
 
 import peri_scribe.models
 import peri_scribe.output
+import peri_scribe.sources.catalog
 import peri_scribe.sources.digests
 import peri_scribe.sources.external_data
-import peri_scribe.sources.external_sources
 import tests.helpers.factories.geography
 import tests.helpers.factories.peri_scribe.sources.digests
 import tests.helpers.factories.peri_scribe.sources.external_source
@@ -93,7 +93,7 @@ def test_stored_geopackage_digest_returns_none_when_file_unreadable(
 def test_stored_geopackage_digest_digests_file_contents(tmp_path: pathlib.Path) -> None:
     output = peri_scribe.sources.external_data.output_path(
         tmp_path,
-        peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
+        peri_scribe.sources.catalog.EVACUATIONS_SOURCE,
     )
     output.parent.mkdir(parents=True, exist_ok=True)
     frame = (

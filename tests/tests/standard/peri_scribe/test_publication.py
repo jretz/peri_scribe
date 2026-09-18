@@ -15,8 +15,8 @@ import time_machine
 import peri_scribe.geo.package
 import peri_scribe.models
 import peri_scribe.publication
+import peri_scribe.sources.catalog
 import peri_scribe.sources.external_data
-import peri_scribe.sources.external_sources
 import peri_scribe.sources.feeds
 import peri_scribe.units
 import tests.helpers.doubles.errors
@@ -790,7 +790,7 @@ def test_collection_reuses_measurements_and_retains_skipped_snapshots(
     # External-only updates reuse measurements; lost cache rows are reconstructed.
     evacuation = peri_scribe.sources.external_data.output_path(
         tmp_path,
-        peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
+        peri_scribe.sources.catalog.EVACUATIONS_SOURCE,
     )
     evacuation.write_bytes(b"evacuations")
     assert peri_scribe.publication.collect(tmp_path).evacuations is not None

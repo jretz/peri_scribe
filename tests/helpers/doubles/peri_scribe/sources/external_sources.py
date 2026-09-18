@@ -7,6 +7,7 @@ import types
 import typing
 
 import peri_scribe.geo.data
+import peri_scribe.sources.catalog
 import peri_scribe.sources.external_sources
 import tests.helpers.doubles.peri_scribe.sources.external_source
 
@@ -159,7 +160,7 @@ def make_building_responder(
             The buildings index or archive selected by the URL.
         """
         urls.append(url)
-        if url == peri_scribe.sources.external_sources.BUILDINGS_SOURCE.url:
+        if url == peri_scribe.sources.catalog.BUILDINGS_SOURCE.url:
             return (
                 tests.helpers.doubles.peri_scribe.sources.external_source.FakeResponse(
                     page.encode("utf-8"),

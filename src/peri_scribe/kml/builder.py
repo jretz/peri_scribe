@@ -28,9 +28,9 @@ import peri_scribe.kml.selection
 import peri_scribe.kml.styles
 import peri_scribe.logging
 import peri_scribe.models
+import peri_scribe.paths
 import peri_scribe.phases
 import peri_scribe.publication
-import peri_scribe.sources.snapshots
 
 
 if typing.TYPE_CHECKING:
@@ -39,8 +39,6 @@ if typing.TYPE_CHECKING:
 
 logger = structlog.get_logger()
 
-
-MAPS_DIRECTORY_NAME = "maps"
 
 KMZ_DOCUMENT_FILENAME = "doc.kml"
 
@@ -137,39 +135,6 @@ KMZ_COMPRESSION_LEVEL = 6
 # costs time for no size benefit. Everything else the archive carries -- the KML
 # document and the SVG plots -- is text, which DEFLATE shrinks by roughly two thirds.
 ALREADY_COMPRESSED_IMAGE_SUFFIXES = (".gif", ".jpeg", ".jpg", ".png")
-
-
-def kmz_filename(year: int) -> str:
-    """Return the KMZ filename for *year*.
-
-    Args:
-        year: The year the output describes.
-
-    Returns:
-        The filename.
-
-    Examples:
-        >>> kmz_filename(2025)
-        'PeriScribe Fires 2025.kmz'
-    """
-    return f"PeriScribe Fires {year}.kmz"
-
-
-def kmz_path(year_directory: pathlib.Path) -> pathlib.Path:
-    """Return the path of the KMZ output for *year_directory*.
-
-    Args:
-        year_directory: The year directory that holds the ``maps`` directory.
-
-    Returns:
-        The output KMZ path.
-
-    Examples:
-        >>> kmz_path(pathlib.Path("data/2025"))
-        PosixPath('data/2025/maps/PeriScribe Fires 2025.kmz')
-    """
-    year = peri_scribe.sources.snapshots.year_for_year_directory(year_directory)
-    return year_directory / MAPS_DIRECTORY_NAME / kmz_filename(year)
 
 
 def fire_view_folders(
@@ -642,7 +607,7 @@ def create_kmz(
     images[peri_scribe.kml.icons.perimeters_icon_filename()] = (
         peri_scribe.kml.icons.perimeters_icon()
     )
-    output_path = kmz_path(year_directory)
+    output_path = peri_scribe.paths.kmz_path(year_directory)
     published = (
         peri_scribe.publication.published_fires(publication_inputs, perimeters, index)
         if publication_inputs is not None

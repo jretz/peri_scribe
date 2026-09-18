@@ -18,6 +18,7 @@ import peri_scribe.kml.builder
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.icons
 import peri_scribe.models
+import peri_scribe.paths
 import peri_scribe.publication
 import tests.helpers.assertions.peri_scribe.kml.parsing
 import tests.helpers.doubles.errors
@@ -28,16 +29,6 @@ import tests.helpers.factories.peri_scribe.kml.builder
 import tests.helpers.factories.peri_scribe.kml.parsing
 import tests.helpers.factories.time
 import tests.helpers.peri_scribe.kml.parsing
-
-
-def test_kmz_filename_names_year() -> None:
-    assert peri_scribe.kml.builder.kmz_filename(2026) == "PeriScribe Fires 2026.kmz"
-
-
-def test_kmz_path_places_file_in_maps_directory() -> None:
-    assert peri_scribe.kml.builder.kmz_path(pathlib.Path("data/2026")) == (
-        pathlib.Path("data/2026/maps/PeriScribe Fires 2026.kmz")
-    )
 
 
 def test_fire_kml_names_the_document() -> None:
@@ -776,7 +767,7 @@ def test_create_kmz_reads_history_and_writes_kmz(
 
     result = peri_scribe.kml.builder.create_kmz(year_directory)
 
-    assert result == peri_scribe.kml.builder.kmz_path(year_directory)
+    assert result == peri_scribe.paths.kmz_path(year_directory)
     assert len(writes) == 1
     path, kml_text, images = writes[0]
     assert path == result

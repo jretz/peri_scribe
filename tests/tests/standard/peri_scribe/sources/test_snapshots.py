@@ -277,13 +277,6 @@ def test_source_name_from_snapshot_path_returns_feed_directory_name() -> None:
     )
 
 
-def test_year_directory_path_groups_year_under_data() -> None:
-    assert peri_scribe.sources.snapshots.year_directory_path(
-        pathlib.Path("/base"),
-        2026,
-    ) == pathlib.Path("/base/data/2026")
-
-
 def test_sources_directory_path_places_sources_under_year() -> None:
     assert peri_scribe.sources.snapshots.sources_directory_path(
         pathlib.Path("/data/2026"),
@@ -302,16 +295,6 @@ def test_validation_geopackage_path_places_file_in_validation_directory() -> Non
         "CA_Perimeters_NIFC_FIRIS_public_view_0",
     ) == pathlib.Path(
         "/data/2026/validation/CA_Perimeters_NIFC_FIRIS_public_view_0.gpkg",
-    )
-
-
-def test_year_for_year_directory_returns_directory_name_as_year() -> None:
-    expected_year = 2026
-    assert (
-        peri_scribe.sources.snapshots.year_for_year_directory(
-            pathlib.Path(f"/base/data/{expected_year}"),
-        )
-        == expected_year
     )
 
 

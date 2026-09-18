@@ -4,7 +4,9 @@ import collections.abc
 import compression.zstd
 import dataclasses
 import datetime
+import operator
 import pathlib
+import threading
 import typing
 
 import peri_scribe.monitor.events
@@ -27,16 +29,26 @@ STRUCTURAL_MESSAGES = {
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
+class Coverage:
+    """Merged windows preserve timestamp coverage after verbose events are discarded."""
+
+    start: datetime.datetime
+    end: datetime.datetime
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class History:
-    """Recent evidence and older landmarks support counts, recovery, and navigation."""
+    """Recent evidence supports counts, recovery, and navigation."""
 
     state: peri_scribe.monitor.model.State = dataclasses.field(
         default_factory=peri_scribe.monitor.model.State,
     )
-    since: datetime.datetime | None = None
+    coverage: tuple[Coverage, ...] = ()
     undated: int = 0
     errors: tuple[str, ...] = ()
     caught_up: bool = True
+    retained_at: datetime.datetime | None = None
+    expires: datetime.datetime | None = None
 
 
 def important(fields: collections.abc.Mapping[str, object]) -> bool:
@@ -77,31 +89,23 @@ def retain(
     peri_scribe.monitor.model.Run,
     ...,
 ]:
-    """Keep older recovery landmarks without retaining all historical run details.
+    """Bound status history to recent runs while preserving undated diagnostics.
 
     Args:
         state: Compact evidence after ingesting another batch.
         now: The observation time determining the rolling window.
 
     Returns:
-        Recent runs and the latest run supplying each historical landmark.
+        Runs with recent or unknown timestamps, in observation order.
     """
-    runs = sorted(state.runs, key=last_time)
-    anchors: dict[object, str] = {}
-    for run in runs:
-        anchors["command", run.command] = run.identifier
-        if run.status == peri_scribe.monitor.model.Status.FAILED:
-            anchors["failure", run.command] = run.identifier
-        for event in run.events:
-            if event.message == "Finished phase":
-                anchors[event.path, event.fields.get("status")] = run.identifier
-            elif event.message.startswith("Publication gate "):
-                anchors["gate"] = run.identifier
-    identifiers = set(anchors.values()) | {run.identifier for run in runs[-12:]}
+    undated = datetime.datetime.min.replace(tzinfo=datetime.UTC)
     return tuple(
         run
-        for run in runs
-        if run.identifier in identifiers or last_time(run) >= now - WINDOW
+        for timestamp, run in sorted(
+            ((last_time(run), run) for run in state.runs),
+            key=operator.itemgetter(0),
+        )
+        if timestamp == undated or timestamp >= now - WINDOW
     )
 
 
@@ -120,8 +124,16 @@ def append(
     Returns:
         Updated immutable evidence with explicit timestamp coverage.
     """
+    if not records:
+        if (
+            history.retained_at is not None
+            and now >= history.retained_at
+            and (history.expires is None or now <= history.expires)
+        ):
+            return history
+        return expire(history, now)
     latest: dict[str, int] = {}
-    timestamps = [history.since] if history.since else []
+    timestamps = []
     undated = history.undated
     for index, fields in enumerate(records):
         latest[str(fields.get("run_id", "unattributed"))] = index
@@ -153,11 +165,79 @@ def append(
         for run in map(chronological_run, state.runs)
     )
     state = dataclasses.replace(state, runs=runs)
+    return expire(
+        dataclasses.replace(
+            history,
+            state=state,
+            coverage=extend_coverage(history.coverage, timestamps),
+            undated=undated,
+        ),
+        now,
+    )
+
+
+def extend_coverage(
+    coverage: tuple[Coverage, ...],
+    timestamps: list[datetime.datetime],
+) -> tuple[Coverage, ...]:
+    """Compress overlapping windows without letting future records mask recent ones.
+
+    Args:
+        coverage: Previous intervals when at least one record is within 48 hours.
+        timestamps: Times from every record, including discarded verbose events.
+
+    Returns:
+        Disjoint inclusive coverage intervals in chronological order.
+    """
+    maximum = datetime.datetime.max.replace(tzinfo=datetime.UTC)
+    periods = [
+        *coverage,
+        *(
+            Coverage(
+                start=timestamp,
+                end=timestamp + WINDOW if timestamp <= maximum - WINDOW else maximum,
+            )
+            for timestamp in timestamps
+        ),
+    ]
+    merged: list[Coverage] = []
+    for period in sorted(periods, key=operator.attrgetter("start")):
+        if merged and period.start <= merged[-1].end:
+            merged[-1] = dataclasses.replace(
+                merged[-1],
+                end=max(merged[-1].end, period.end),
+            )
+        else:
+            merged.append(period)
+    return tuple(merged)
+
+
+def expire(history: History, now: datetime.datetime) -> History:
+    """Schedule retention work for the first run that can leave the window.
+
+    Args:
+        history: Evidence needing a retention check.
+        now: The observation time for the inclusive rolling window.
+
+    Returns:
+        Retained evidence and its next possible expiry.
+    """
+    runs = retain(history.state, now)
+    undated = datetime.datetime.min.replace(tzinfo=datetime.UTC)
+    first = next((last_time(run) for run in runs if last_time(run) != undated), None)
+    coverage = tuple(period for period in history.coverage if period.end >= now)
+    maximum = datetime.datetime.max.replace(tzinfo=datetime.UTC)
+    deadlines = [period.end for period in coverage if period.end < maximum]
+    if first and first <= maximum - WINDOW:
+        deadlines.append(first + WINDOW)
     return dataclasses.replace(
         history,
-        state=dataclasses.replace(state, runs=retain(state, now)),
-        since=min(timestamps) if timestamps else None,
-        undated=undated,
+        state=history.state
+        if runs == history.state.runs
+        else dataclasses.replace(history.state, runs=runs),
+        coverage=coverage,
+        retained_at=now,
+        expires=min(deadlines, default=None),
     )
 
 
@@ -206,9 +286,24 @@ def records_from(path: pathlib.Path) -> typing.Iterator[dict[str, object]]:
 
     Yields:
         Complete nonempty records, including inspectable malformed lines.
+
+    Raises:
+        FileNotFoundError: Neither the requested log nor its rotated copy is available.
     """
     opener = compression.zstd.open if path.suffix == ".zst" else pathlib.Path.open
-    with opener(path, "rt", encoding="utf-8", errors="replace") as stream:
+    try:
+        stream = opener(path, "rt", encoding="utf-8", errors="replace")
+    except FileNotFoundError:
+        if path.suffix == ".zst":
+            raise
+        # Rotation can replace a discovered plain file before the reader opens it.
+        stream = compression.zstd.open(
+            path.with_suffix(path.suffix + ".zst"),
+            "rt",
+            encoding="utf-8",
+            errors="replace",
+        )
+    with stream:
         for line in stream:
             if line.endswith("\n") and line.strip():
                 yield peri_scribe.monitor.events.parse_record(line)
@@ -235,11 +330,16 @@ def record_batches(
         yield tuple(batch)
 
 
-def log_paths(directory: pathlib.Path) -> tuple[pathlib.Path, ...]:
+def log_paths(
+    directory: pathlib.Path,
+    *,
+    since: datetime.datetime | None = None,
+) -> tuple[pathlib.Path, ...]:
     """Prefer the active copy if compression briefly exposes both copies of a month.
 
     Args:
         directory: The watched log directory.
+        since: Exclude months ending before this timestamp in the writer's timezone.
 
     Returns:
         Monthly logs in chronological filename order without duplicate months.
@@ -248,11 +348,56 @@ def log_paths(directory: pathlib.Path) -> tuple[pathlib.Path, ...]:
         path.name.removesuffix(".zst"): path for path in directory.glob("*.jsonl.zst")
     }
     paths.update({path.name: path for path in directory.glob("*.jsonl")})
-    return tuple(paths[name] for name in sorted(paths))
+    first_month = since.astimezone().strftime("%Y-%m") if since else ""
+    return tuple(paths[name] for name in sorted(paths) if name >= first_month)
+
+
+def recent_records(
+    records: collections.abc.Iterable[dict[str, object]],
+    since: datetime.datetime,
+) -> typing.Iterator[dict[str, object]]:
+    """Limit health evidence while preserving diagnostics for undated records.
+
+    Args:
+        records: Records from a plain or compressed log.
+        since: The inclusive start of the observation window.
+
+    Yields:
+        Recent records and records whose time cannot be established.
+    """
+    for fields in records:
+        timestamp = peri_scribe.monitor.events.timestamp(fields.get("timestamp"))
+        if timestamp is None or timestamp >= since:
+            yield fields
+
+
+def context_records(
+    records: collections.abc.Iterable[dict[str, object]],
+    cutoffs: collections.abc.Mapping[str, datetime.datetime],
+    stopped: threading.Event,
+) -> typing.Iterator[dict[str, object]]:
+    """Recover skipped run context without duplicating the recent observation window.
+
+    Args:
+        records: Records from a plain or compressed log.
+        cutoffs: Each selected run's earliest already loaded observation boundary.
+        stopped: Cancellation shared with the reader's shutdown path.
+
+    Yields:
+        Older diagnostic and structural records belonging to the selected runs.
+    """
+    for fields in records:
+        if stopped.is_set():
+            return
+        cutoff = cutoffs.get(str(fields.get("run_id") or ""))
+        if cutoff is not None and important(fields):
+            timestamp = peri_scribe.monitor.events.timestamp(fields.get("timestamp"))
+            if timestamp is not None and timestamp < cutoff:
+                yield fields
 
 
 class Reader:
-    """A separate cursor reads complete health history without disturbing browsing."""
+    """A separate cursor reads recent health evidence without disturbing browsing."""
 
     def __init__(self, directory: pathlib.Path) -> None:
         """Keep all file access at the observation boundary.
@@ -265,9 +410,28 @@ class Reader:
         self.months: set[str] = set()
         self.history = History()
         self.archive_errors: tuple[str, ...] = ()
+        self.context_checked: set[str] = set()
+        self.stopped = threading.Event()
+        self.reading = threading.Lock()
+
+    def catch_up(self, now: datetime.datetime) -> History:
+        """Consume the backlog before publishing complete status evidence.
+
+        Args:
+            now: The observation time for the rolling window.
+
+        Returns:
+            Evidence at end of file, or the last batch before an error or shutdown.
+        """
+        with self.reading:
+            while not self.stopped.is_set():
+                history = self.poll(now)
+                if history.caught_up or history.errors:
+                    break
+            return self.history
 
     def poll(self, now: datetime.datetime) -> History:
-        """Load each historical month once and incrementally follow active files.
+        """Seek recent evidence at startup and incrementally follow active files.
 
         Args:
             now: The observation time for the rolling window.
@@ -275,11 +439,19 @@ class Reader:
         Returns:
             Current evidence and any limitations on its coverage.
         """
-        for path in log_paths(self.directory):
+        self.context_checked.intersection_update(
+            run.identifier for run in self.history.state.runs
+        )
+        since = now - WINDOW
+        for path in log_paths(self.directory, since=since):
             month = path.name.removesuffix(".zst")
             if month not in self.months and path.suffix == ".zst":
                 try:
-                    for batch in record_batches(records_from(path)):
+                    for batch in record_batches(
+                        recent_records(records_from(path), since),
+                    ):
+                        if self.stopped.is_set():
+                            return self.history
                         self.history = append(self.history, batch, now)
                 except (OSError, EOFError, compression.zstd.ZstdError) as error:
                     self.archive_errors = (
@@ -287,17 +459,67 @@ class Reader:
                         f"{path.name}: {error}",
                     )
             self.months.add(month)
-        batch = self.follower.poll()
+        batch = self.follower.poll(since=since)
+        self.history = append(self.history, batch.records, now)
+        if batch.caught_up:
+            self.restore_context(now)
         self.history = dataclasses.replace(
-            append(self.history, batch.records, now),
+            self.history,
             errors=(*self.archive_errors, *batch.errors),
             caught_up=batch.caught_up,
         )
         return self.history
 
+    def restore_context(self, now: datetime.datetime) -> None:
+        """Keep long-running commands recognizable after the recent-window seek.
+
+        Args:
+            now: The observation time used to load recent evidence.
+        """
+        # Catch-up can span multiple polls without replaying already ingested context.
+        cutoffs = {
+            run.identifier: min(
+                (
+                    now - WINDOW,
+                    *(event.timestamp for event in run.events if event.timestamp),
+                ),
+            )
+            for run in self.history.state.runs
+            if run.identifier not in self.context_checked
+            and any(event.fields.get("run_id") for event in run.events)
+            and not any(event.message == "Starting command" for event in run.events)
+        }
+        self.context_checked = {run.identifier for run in self.history.state.runs}
+        if not cutoffs:
+            return
+        for path in reversed(log_paths(self.directory)):
+            if not cutoffs or self.stopped.is_set():
+                break
+            started: set[str] = set()
+            try:
+                for batch in record_batches(
+                    context_records(
+                        records_from(path),
+                        cutoffs,
+                        self.stopped,
+                    ),
+                ):
+                    self.history = append(self.history, batch, now)
+                    started.update(
+                        str(fields["run_id"])
+                        for fields in batch
+                        if fields.get("event") == "Starting command"
+                    )
+            except (OSError, EOFError, compression.zstd.ZstdError) as error:
+                self.archive_errors = (*self.archive_errors, f"{path.name}: {error}")
+            for identifier in started:
+                cutoffs.pop(identifier)
+
     def close(self) -> None:
         """Release active log descriptors when the monitor exits."""
-        self.follower.close()
+        self.stopped.set()
+        with self.reading:
+            self.follower.close()
 
 
 def load_run(directory: pathlib.Path, identifier: str) -> peri_scribe.monitor.model.Run:

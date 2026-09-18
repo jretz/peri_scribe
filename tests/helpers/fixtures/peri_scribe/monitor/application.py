@@ -7,15 +7,18 @@ import dataclasses
 import functools
 import pathlib
 import typing
+import unittest.mock
 
 import pytest
 import textual.constants
 import textual.pilot
 import textual.widget
 import textual.widgets
+import time_machine
 
 import peri_scribe.monitor.app
 import tests.helpers.factories.peri_scribe.monitor.events
+import tests.helpers.factories.peri_scribe.monitor.status
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -26,6 +29,7 @@ class Session:
     runner: asyncio.Runner
     pilot: textual.pilot.Pilot[None]
     directory: pathlib.Path
+    clock: collections.abc.Callable[[], object]
 
     def call[Result](
         self,
@@ -90,6 +94,11 @@ def monitor_session(
         A headless terminal and its explicit event-loop runner.
     """
     monkeypatch.setattr(textual.constants, "COLOR_SYSTEM", "truecolor")
+    monkeypatch.setattr(
+        peri_scribe.monitor.app,
+        "watch_files",
+        unittest.mock.AsyncMock(),
+    )
     directory = tmp_path / "2026"
     directory.mkdir()
     app = peri_scribe.monitor.app.MonitorApp(
@@ -97,17 +106,28 @@ def monitor_session(
         directory / "report.md",
         tests.helpers.factories.peri_scribe.monitor.events.BRANCHES,
     )
-    monkeypatch.setattr(
-        app,
-        "set_interval",
-        functools.partial(app.set_interval, pause=True),
+    interval = unittest.mock.Mock(
+        wraps=functools.partial(app.set_interval, pause=True),
     )
-    with asyncio.Runner() as runner:
+    monkeypatch.setattr(app, "set_interval", interval)
+    with (
+        time_machine.travel(
+            tests.helpers.factories.peri_scribe.monitor.status.NOW,
+            tick=False,
+        ),
+        asyncio.Runner() as runner,
+    ):
         stack = contextlib.AsyncExitStack()
         pilot = runner.run(stack.enter_async_context(app.run_test(size=(120, 42))))
         try:
             runner.run(pilot.press("2"))
-            yield Session(app=app, runner=runner, pilot=pilot, directory=directory)
+            yield Session(
+                app=app,
+                runner=runner,
+                pilot=pilot,
+                directory=directory,
+                clock=interval.call_args.args[1],
+            )
         finally:
             runner.run(stack.aclose())
 
@@ -176,3 +196,25 @@ def scrolling_session(monitor_session: Session) -> Session:
             content,
         )
     return monitor_session
+
+
+@pytest.fixture
+def file_watching_session(
+    request: pytest.FixtureRequest,
+) -> tuple[
+    collections.abc.Callable[
+        [peri_scribe.monitor.app.MonitorApp],
+        collections.abc.Coroutine[typing.Any, typing.Any, None],
+    ],
+    Session,
+]:
+    """Preserve the real notification consumer before isolating automatic file reads.
+
+    Args:
+        request: Starts the ordinary monitor after saving its notification consumer.
+
+    Returns:
+        The native-hint consumer and a controlled monitor session.
+    """
+    watcher = peri_scribe.monitor.app.watch_files
+    return watcher, request.getfixturevalue("monitor_session")

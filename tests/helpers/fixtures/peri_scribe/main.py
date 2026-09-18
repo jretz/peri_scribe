@@ -14,8 +14,8 @@ import peri_scribe.fires.differential
 import peri_scribe.fires.scores
 import peri_scribe.kml.builder
 import peri_scribe.logging
-import peri_scribe.main
 import peri_scribe.output
+import peri_scribe.pipeline
 import peri_scribe.pipeline_state
 import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.fetching
@@ -221,12 +221,12 @@ def run_stubs(
             return digests.pop() if digests else "same"
 
         monkeypatch.setattr(
-            peri_scribe.main,
+            peri_scribe.pipeline,
             "stored_evacuations_digest",
             stored_evacuations_digest,
         )
         monkeypatch.setattr(
-            peri_scribe.main,
+            peri_scribe.pipeline,
             "fetch_external_source",
             lambda source, year_directory: stubs.external_calls.append((
                 source,
@@ -261,7 +261,7 @@ def run_stubs(
             stubs.kmz_calls.append,
         )
         monkeypatch.setattr(
-            peri_scribe.main,
+            peri_scribe.pipeline,
             "write_reports",
             stubs.report_calls.append,
         )

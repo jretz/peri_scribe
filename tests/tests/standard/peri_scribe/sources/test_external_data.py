@@ -6,14 +6,14 @@ import dataclasses
 
 import pytest
 
+import peri_scribe.sources.catalog
 import peri_scribe.sources.external_data
-import peri_scribe.sources.external_sources
 import tests.helpers.doubles.peri_scribe.sources.external_sources
 
 
 def test_output_path_places_single_file_under_sources() -> None:
     source = dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
         states=(),
         combine=False,
         compact_database=False,
@@ -33,7 +33,7 @@ def test_output_path_places_single_file_under_sources() -> None:
 def test_output_path_names_compact_buildings_database() -> None:
     path = peri_scribe.sources.external_data.output_path(
         tests.helpers.doubles.peri_scribe.sources.external_sources.YEAR_DIRECTORY,
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
     )
     assert (
         path
@@ -45,7 +45,7 @@ def test_output_path_names_compact_buildings_database() -> None:
 
 def test_output_path_raises_for_combined_source_with_state() -> None:
     source = dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
         states=("California", "Texas"),
         combine=True,
         compact_database=False,
@@ -61,7 +61,7 @@ def test_output_path_raises_for_combined_source_with_state() -> None:
 def test_output_path_names_live_arcgis_source() -> None:
     path = peri_scribe.sources.external_data.output_path(
         tests.helpers.doubles.peri_scribe.sources.external_sources.YEAR_DIRECTORY,
-        peri_scribe.sources.external_sources.EVACUATIONS_SOURCE,
+        peri_scribe.sources.catalog.EVACUATIONS_SOURCE,
     )
     assert (
         path
@@ -73,7 +73,7 @@ def test_output_path_names_live_arcgis_source() -> None:
 
 def test_output_path_names_per_state_geopackage() -> None:
     source = dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
         states=("California",),
         combine=False,
         compact_database=False,

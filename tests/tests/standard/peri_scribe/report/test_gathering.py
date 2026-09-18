@@ -20,8 +20,8 @@ import peri_scribe.kml.perimeters
 import peri_scribe.models
 import peri_scribe.report.gathering
 import peri_scribe.report.locations
+import peri_scribe.sources.catalog
 import peri_scribe.sources.external_data
-import peri_scribe.sources.external_sources
 import tests.helpers.doubles.peri_scribe.report.gathering
 import tests.helpers.factories.peri_scribe.kml.parsing
 import tests.helpers.factories.peri_scribe.report.gathering
@@ -659,7 +659,7 @@ def test_read_cities_layer_reads_stored_layer(
     year_directory = tmp_path / "2026"
     path = peri_scribe.sources.external_data.output_path(
         year_directory,
-        peri_scribe.sources.external_sources.MAJOR_CITIES_SOURCE,
+        peri_scribe.sources.catalog.MAJOR_CITIES_SOURCE,
     )
     path.parent.mkdir(parents=True)
     path.touch()

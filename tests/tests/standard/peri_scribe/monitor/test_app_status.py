@@ -1,6 +1,8 @@
 """Status remains live and its evidence links open exact historical Pipeline records."""
 
+import collections.abc
 import datetime
+import typing
 import unittest.mock
 
 import pytest
@@ -10,11 +12,15 @@ import textual.events
 import textual.widgets
 import time_machine
 
+import peri_scribe.monitor.app
+import peri_scribe.monitor.changes
 import peri_scribe.monitor.history
 import peri_scribe.monitor.status
 import peri_scribe.monitor.status_widgets
+import peri_scribe.monitor.storage
 import peri_scribe.monitor.theme
 import tests.helpers.doubles.errors
+import tests.helpers.doubles.peri_scribe.monitor.changes
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.factories.peri_scribe.monitor.status
 import tests.helpers.fixtures.peri_scribe.monitor.application
@@ -56,6 +62,57 @@ def test_monitor_app_status_ages_update_without_new_logs(
         session.runner.run(session.app.refresh_files())
         assert pane.view is not None
         assert pane.view.metrics[0].health == peri_scribe.monitor.status.Health.BAD
+
+
+def test_monitor_app_status_reuses_sorted_evidence_when_only_time_changes(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = monitor_session
+    session.app.kmz_path.parent.mkdir()
+    session.app.kmz_path.write_bytes(b"map")
+    tests.helpers.factories.peri_scribe.monitor.events.write_log(
+        session.directory,
+        tests.helpers.factories.peri_scribe.monitor.status.finished("kmz"),
+    )
+    evidence = unittest.mock.Mock(wraps=peri_scribe.monitor.status.evidence)
+    monkeypatch.setattr(peri_scribe.monitor.status, "evidence", evidence)
+    session.runner.run(session.app.refresh_files())
+    pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
+    assert pane.view is not None
+    previous = pane.view.metrics
+    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
+    with time_machine.travel(now + datetime.timedelta(hours=7), tick=False):
+        session.runner.run(session.app.refresh_files())
+    evidence.assert_called_once()
+    assert pane.view.metrics != previous
+    tests.helpers.factories.peri_scribe.monitor.events.write_log(
+        session.directory,
+        tests.helpers.factories.peri_scribe.monitor.status.finished("reports"),
+    )
+    session.runner.run(session.app.refresh_files())
+    expected_calls = 2
+    assert evidence.call_count == expected_calls
+
+
+def test_monitor_app_status_catches_up_before_projecting_history(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = monitor_session
+    monkeypatch.setattr(peri_scribe.monitor.storage, "MAXIMUM_READ_BYTES", 100)
+    tests.helpers.factories.peri_scribe.monitor.events.write_log(
+        session.directory,
+        *tests.helpers.factories.peri_scribe.monitor.status.failed_run(),
+    )
+    project = unittest.mock.Mock(wraps=peri_scribe.monitor.status.project)
+    monkeypatch.setattr(peri_scribe.monitor.status, "project", project)
+    session.runner.run(session.app.refresh_files())
+    project.assert_called_once()
+    assert project.call_args.args[0].caught_up
+    pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
+    assert pane.view is not None
+    assert pane.view.coverage.health == peri_scribe.monitor.status.Health.GOOD
 
 
 def test_monitor_app_status_uses_live_phase_while_pipeline_is_paused(
@@ -310,3 +367,101 @@ def test_monitor_app_status_unlinked_observations_are_readable(
     table = pane.query_one("#status-recent", textual.widgets.DataTable)
     assert table.row_count == 1
     assert not any(key[0] == "recent" for key in pane.targets)
+
+
+def test_refresh_clock_updates_freshness_without_reading_files(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = monitor_session
+    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
+    session.app.report_path.write_text("Report")
+    tests.helpers.factories.peri_scribe.monitor.events.write_log(
+        session.directory,
+        tests.helpers.factories.peri_scribe.monitor.status.finished("reports"),
+    )
+    session.runner.run(session.app.refresh_files())
+    read = unittest.mock.AsyncMock()
+    monkeypatch.setattr(session.app, "refresh_files", read)
+    session.app.files_changed = False
+    session.app.reconcile_at = float("inf")
+    with time_machine.travel(now + datetime.timedelta(hours=7), tick=False):
+        session.runner.run(peri_scribe.monitor.app.refresh_clock(session.app))
+    read.assert_not_awaited()
+    pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
+    assert pane.view is not None
+    assert pane.view.metrics[1].health == peri_scribe.monitor.status.Health.BAD
+
+
+@pytest.mark.parametrize("notification", [True, False])
+def test_refresh_clock_reads_on_notification_or_reconciliation_deadline(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    notification: bool,
+) -> None:
+    session = monitor_session
+    read = unittest.mock.AsyncMock()
+    monkeypatch.setattr(session.app, "refresh_files", read)
+    session.app.files_changed = notification
+    session.app.reconcile_at = float("inf") if notification else 0
+    session.runner.run(peri_scribe.monitor.app.refresh_clock(session.app))
+    read.assert_awaited_once()
+    assert not session.app.files_changed
+
+
+def test_refresh_clock_ignores_unmounted_views(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = monitor_session
+    session.runner.run(
+        tests.helpers.fixtures.peri_scribe.monitor.application.remove_views(
+            session.app,
+        ),
+    )
+    read = unittest.mock.AsyncMock()
+    monkeypatch.setattr(session.app, "refresh_files", read)
+    session.runner.run(peri_scribe.monitor.app.refresh_clock(session.app))
+    read.assert_not_awaited()
+
+
+def test_refresh_clock_waits_for_initial_status(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = monitor_session
+    session.app.status_snapshot = None
+    session.app.files_changed = False
+    session.app.reconcile_at = float("inf")
+    read = unittest.mock.AsyncMock()
+    monkeypatch.setattr(session.app, "refresh_files", read)
+    session.runner.run(peri_scribe.monitor.app.refresh_clock(session.app))
+    read.assert_not_awaited()
+
+
+def test_watch_files_coalesces_notifications_without_reading_from_the_worker(
+    file_watching_session: tuple[
+        collections.abc.Callable[
+            [peri_scribe.monitor.app.MonitorApp],
+            collections.abc.Coroutine[typing.Any, typing.Any, None],
+        ],
+        tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    ],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    watcher, session = file_watching_session
+    hints = tests.helpers.doubles.peri_scribe.monitor.changes.notifications(
+        session.app.watching_stopped,
+    )
+    monkeypatch.setattr(
+        peri_scribe.monitor.changes,
+        "watch",
+        unittest.mock.Mock(return_value=hints),
+    )
+    session.app.files_changed = False
+    read = unittest.mock.AsyncMock()
+    monkeypatch.setattr(session.app, "refresh_files", read)
+    session.runner.run(watcher(session.app))
+    assert session.app.files_changed
+    read.assert_not_awaited()

@@ -4,6 +4,7 @@ import dataclasses
 import datetime
 import os
 import pathlib
+import unittest.mock
 
 import pytest
 
@@ -362,35 +363,65 @@ def test_signature_normalizes_incidental_values_and_preserves_http_code() -> Non
     [
         ({"caught_up": False}, "Loading"),
         ({"errors": ("unreadable",)}, "unreadable"),
-        ({}, "No timestamped"),
-        (
-            {
-                "since": tests.helpers.factories.peri_scribe.monitor.status.NOW,
-                "undated": 1,
-            },
-            "undated",
-        ),
-        ({"since": tests.helpers.factories.peri_scribe.monitor.status.NOW}, "Partial"),
-        (
-            {
-                "since": tests.helpers.factories.peri_scribe.monitor.status.NOW
-                - datetime.timedelta(hours=48),
-            },
-            "48-hour window loaded",
-        ),
+        ({"coverage": ()}, "No log entries"),
+        ({"undated": 1}, "undated"),
+        ({}, "48-hour window loaded"),
     ],
 )
 def test_coverage_metric_exposes_incomplete_history(
     changes: dict[str, object],
     text: str,
 ) -> None:
-    history = dataclasses.replace(peri_scribe.monitor.history.History(), **changes)
+    history = dataclasses.replace(
+        tests.helpers.factories.peri_scribe.monitor.status.history(
+            tests.helpers.factories.peri_scribe.monitor.status.record("Recent"),
+        ),
+        **changes,
+    )
     assert (
         text
         in peri_scribe.monitor.status.coverage_metric(
             history,
             tests.helpers.factories.peri_scribe.monitor.status.NOW,
         ).text
+    )
+
+
+@pytest.mark.parametrize("hours", [49, -1])
+def test_coverage_metric_errors_without_entries_in_the_last_48_hours(
+    hours: int,
+) -> None:
+    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
+    history = tests.helpers.factories.peri_scribe.monitor.status.history(
+        tests.helpers.factories.peri_scribe.monitor.status.record(
+            "Outside window",
+            when=now - datetime.timedelta(hours=hours),
+        ),
+    )
+    metric = peri_scribe.monitor.status.coverage_metric(history, now)
+    assert metric.health == peri_scribe.monitor.status.Health.BAD
+    assert metric.text == "No log entries in the last 48 hours"
+
+
+@pytest.mark.parametrize("future_first", [False, True])
+def test_coverage_metric_accepts_recent_entries_alongside_future_progress(
+    *,
+    future_first: bool,
+) -> None:
+    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
+    records = (
+        tests.helpers.factories.peri_scribe.monitor.status.record("Recent"),
+        tests.helpers.factories.peri_scribe.monitor.status.record(
+            "Future",
+            when=now + datetime.timedelta(days=3),
+        ),
+    )
+    history = tests.helpers.factories.peri_scribe.monitor.status.history(
+        *(reversed(records) if future_first else records),
+    )
+    assert (
+        peri_scribe.monitor.status.coverage_metric(history, now).health
+        == peri_scribe.monitor.status.Health.GOOD
     )
 
 
@@ -725,6 +756,62 @@ def test_transition_metrics_include_failure_recovery_and_outputs() -> None:
         "KMZ updated",
         "Report updated",
     }
+
+
+@pytest.mark.parametrize("same_time", [True, False])
+def test_transition_metrics_format_only_the_eight_selected_rows(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    same_time: bool,
+) -> None:
+    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
+    history = tests.helpers.factories.peri_scribe.monitor.status.history(
+        *(
+            tests.helpers.factories.peri_scribe.monitor.status.finished(
+                "kmz",
+                run_id=str(index),
+                when=now if same_time else now - datetime.timedelta(minutes=20 - index),
+            )
+            for index in range(20)
+        ),
+    )
+    formatter = unittest.mock.Mock(wraps=peri_scribe.monitor.status.local_time)
+    monkeypatch.setattr(peri_scribe.monitor.status, "local_time", formatter)
+    metrics = peri_scribe.monitor.status.transition_metrics(
+        peri_scribe.monitor.status.evidence(history),
+        peri_scribe.monitor.status.Metric(
+            label="Failure",
+            text="None",
+            health=peri_scribe.monitor.status.Health.GOOD,
+        ),
+    )
+    expected = range(8) if same_time else range(19, 11, -1)
+    assert [metric.target.run for metric in metrics if metric.target] == [
+        str(index) for index in expected
+    ]
+    assert formatter.call_count == len(metrics)
+
+
+def test_project_reuses_observations_without_freezing_future_event_visibility() -> None:
+    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
+    history = tests.helpers.factories.peri_scribe.monitor.status.history(
+        tests.helpers.factories.peri_scribe.monitor.status.finished(
+            "kmz",
+            when=now + datetime.timedelta(minutes=1),
+        ),
+    )
+    observations = peri_scribe.monitor.status.evidence(history)
+    for when in (now, now + datetime.timedelta(minutes=2)):
+        assert peri_scribe.monitor.status.project(
+            history,
+            tests.helpers.factories.peri_scribe.monitor.status.files(),
+            when,
+            observations=observations,
+        ) == peri_scribe.monitor.status.project(
+            history,
+            tests.helpers.factories.peri_scribe.monitor.status.files(),
+            when,
+        )
 
 
 def test_exception_groups_keep_unresolved_failures_visible_after_another_retry() -> (

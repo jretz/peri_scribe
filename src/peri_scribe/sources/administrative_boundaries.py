@@ -15,6 +15,7 @@ import structlog
 import peri_scribe.exceptions
 import peri_scribe.models
 import peri_scribe.output
+import peri_scribe.paths
 import peri_scribe.sources.borders
 import peri_scribe.sources.snapshots
 
@@ -115,7 +116,7 @@ def ensure_administrative_boundaries(
         AdministrativeBoundariesError: If the boundary cannot be fetched or computed.
     """
     if year_directory is None:
-        year_directory = peri_scribe.sources.snapshots.year_directory_path(
+        year_directory = peri_scribe.paths.year_directory_path(
             pathlib.Path.cwd(),
             datetime.date.today().year,
         )

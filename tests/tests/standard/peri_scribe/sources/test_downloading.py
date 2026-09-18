@@ -11,6 +11,7 @@ import pytest
 import requests
 
 import peri_scribe.exceptions
+import peri_scribe.sources.catalog
 import peri_scribe.sources.external_sources
 import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.sources.downloading
@@ -193,7 +194,7 @@ def test_stream_combined_source_requires_centroids_without_attributes(
     tmp_path: pathlib.Path,
 ) -> None:
     source = dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
         states=("California",),
         keep_attributes=True,
         combine=True,
@@ -209,7 +210,7 @@ def test_stream_download_and_convert_raises_when_download_fails(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = dataclasses.replace(
-        peri_scribe.sources.external_sources.BUILDINGS_SOURCE,
+        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
         states=("California",),
         combine=True,
         stream=True,
@@ -222,7 +223,7 @@ def test_stream_download_and_convert_raises_when_download_fails(
             "https://minedbuildings.z5.web.core.windows.net/legacy/"
             f"usbuildings-v2/{state.replace(' ', '')}.geojson.zip"
         )
-        for state in peri_scribe.sources.external_sources.BUILDINGS_STATES
+        for state in peri_scribe.sources.catalog.BUILDINGS_STATES
     }
     page = (
         tests.helpers.factories.peri_scribe.sources.external_source.buildings_page_html(

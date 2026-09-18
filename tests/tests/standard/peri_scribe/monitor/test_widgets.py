@@ -40,6 +40,7 @@ def test_report_viewer_routes_links_without_loading_another_file(
     monkeypatch.setattr(monitor_session.app, "open_url", open_url)
     monitor_session.app.report_path.write_text("# Report\n\n## Moonshine\n\nDetails")
     monitor_session.runner.run(monitor_session.app.refresh_files())
+    monitor_session.runner.run(monitor_session.pilot.press("5"))
     viewer = monitor_session.app.query_one(textual.widgets.MarkdownViewer)
     monitor_session.call(
         viewer.document.post_message,

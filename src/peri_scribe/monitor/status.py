@@ -3,6 +3,7 @@
 import dataclasses
 import datetime
 import enum
+import heapq
 import pathlib
 import re
 
@@ -647,15 +648,17 @@ def coverage_metric(
         text = "Loading history · counts are incomplete"
     elif history.errors:
         text = "History incomplete · " + "; ".join(history.errors)
-    elif history.since is None:
-        text = "No timestamped history available"
+    elif not any(period.start <= now <= period.end for period in history.coverage):
+        return Metric(
+            label="History",
+            text="No log entries in the last 48 hours",
+            health=Health.BAD,
+        )
     elif history.undated:
         text = (
             f"History incomplete · {history.undated} undated records "
             "excluded from timed metrics"
         )
-    elif history.since > now - peri_scribe.monitor.history.WINDOW:
-        text = f"Partial 48-hour coverage · available since {local_time(history.since)}"
     else:
         return Metric(
             label="History",
@@ -714,6 +717,9 @@ def project(
     history: peri_scribe.monitor.history.History,
     files: Files,
     now: datetime.datetime,
+    *,
+    observations: tuple[Target, ...] | None = None,
+    tables: View | None = None,
 ) -> View:
     """Derive a live overview independently of whichever historical run is selected.
 
@@ -721,11 +727,16 @@ def project(
         history: Compact diagnostic evidence.
         files: Current artifact and recovery snapshots.
         now: The observation time for ages and the exception window.
+        observations: Previously sorted evidence from the same history state.
+        tables: Tables from the same evidence and exception window, when unchanged.
 
     Returns:
         All Status content and links without terminal-specific formatting.
     """
-    observations = tuple(item for item in evidence(history) if item.when <= now)
+    if observations is None:
+        observations = evidence(history)
+    if observations and observations[-1].when > now:
+        observations = tuple(item for item in observations if item.when <= now)
     activity = activity_metric(history, now)
     kmz = output_metric("KMZ", "kmz", files.kmz, observations, now)
     report = output_metric("Report", "reports", files.report, observations, now)
@@ -758,7 +769,9 @@ def project(
         )
     metrics = (kmz, report, activity, source, publication, failure)
     coverage = coverage_metric(history, now)
-    groups = exception_groups(history, observations, now)
+    groups = (
+        tables.exceptions if tables else exception_groups(history, observations, now)
+    )
     exceptions = Metric(
         label="Exceptions",
         text=(
@@ -789,8 +802,10 @@ def project(
         overview=overview,
         metrics=metrics,
         exceptions=groups,
-        recent=recent_metrics(history),
-        transitions=transition_metrics(observations, failure),
+        recent=tables.recent if tables else recent_metrics(history),
+        transitions=tables.transitions
+        if tables
+        else transition_metrics(observations, failure),
         coverage=coverage,
     )
 
@@ -808,7 +823,7 @@ def transition_metrics(
     Returns:
         The eight most recent publication, failure, and recovery transitions.
     """
-    transitions: list[Metric] = []
+    transitions: list[tuple[Target, str, Health]] = []
     for item in observations:
         event = item.event
         label = ""
@@ -826,30 +841,20 @@ def transition_metrics(
             label = "Run failed"
             health = Health.BAD
         if label:
-            transitions.append(
-                Metric(
-                    label=local_time(event.timestamp),
-                    text=label,
-                    health=health,
-                    target=item,
-                ),
-            )
+            transitions.append((item, label, health))
     recovered = recovery(failure.target, observations) if failure.target else None
     if recovered:
-        transitions.append(
-            Metric(
-                label=local_time(recovered.event.timestamp),
-                text="Failed work recovered",
-                health=Health.GOOD,
-                target=recovered,
-            ),
+        transitions.append((recovered, "Failed work recovered", Health.GOOD))
+    return tuple(
+        Metric(
+            label=local_time(item.event.timestamp),
+            text=label,
+            health=health,
+            target=item,
         )
-    transitions.sort(
-        key=lambda item: (
-            item.target.when
-            if item.target
-            else datetime.datetime.min.replace(tzinfo=datetime.UTC)
-        ),
-        reverse=True,
+        for item, label, health in heapq.nlargest(
+            8,
+            transitions,
+            key=lambda transition: transition[0].when,
+        )
     )
-    return tuple(transitions[:8])

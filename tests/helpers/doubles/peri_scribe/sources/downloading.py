@@ -6,7 +6,7 @@ import typing
 
 import requests
 
-import peri_scribe.sources.external_sources
+import peri_scribe.sources.catalog
 import tests.helpers.doubles.peri_scribe.sources.external_source
 
 
@@ -45,7 +45,7 @@ def make_failing_archive_responder(
             requests.exceptions.RequestException: If the
                 request targets an archive.
         """
-        if url == peri_scribe.sources.external_sources.BUILDINGS_SOURCE.url:
+        if url == peri_scribe.sources.catalog.BUILDINGS_SOURCE.url:
             return (
                 tests.helpers.doubles.peri_scribe.sources.external_source.FakeResponse(
                     page.encode("utf-8"),
