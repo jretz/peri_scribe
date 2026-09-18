@@ -59,6 +59,36 @@ def test_unioned_observation_geometry_preserves_overlapping_and_repeated_parts(
     )
 
 
+@pytest.mark.parametrize(
+    "shapes",
+    tests.helpers.factories.peri_scribe.perimeters.classification.overlapping_hole_observation_cases(),
+    ids=["identical-repeats", "different-ring-encodings"],
+)
+def test_unioned_observation_geometry_preserves_gap_between_touching_holes(
+    shapes: list[shapely.Polygon],
+) -> None:
+    observations = [
+        tests.helpers.factories.peri_scribe.perimeters.signals.observation(
+            tests.helpers.factories.peri_scribe.perimeters.signals.FIRIS,
+            shape,
+            serial_number=serial,
+        )
+        for serial, shape in enumerate(shapes)
+    ]
+    actual = peri_scribe.perimeters.border_classification.unioned_observation_geometry(
+        observations,
+        tests.helpers.factories.peri_scribe.perimeters.classification.projected_boundaries(),
+    )
+    reference = (
+        tests.helpers.reference.peri_scribe.perimeters.classification
+    ).full_projected_union(observations)
+    gap = shapely.Point(157639.4796050014, -55831.13224623485)
+    assert actual is not None
+    assert reference is not None
+    assert not actual.covers(gap)
+    assert not reference.covers(gap)
+
+
 def test_source_kind_for_feed_name_recognizes_firis() -> None:
     assert (
         peri_scribe.perimeters.border_classification.source_kind_for_feed_name(

@@ -36,7 +36,7 @@ def test_ring_carries_its_geometry_time_and_area() -> None:
     ring = peri_scribe.perimeters.progression.Ring(
         geometry=tests.helpers.factories.geometry.square(1.0),
         observation_time=observation_time,
-        area=42.5 * units.meters**2,
+        area=42.5 * units.Unit("meters ** 2"),
     )
     assert ring.geometry == tests.helpers.factories.geometry.square(1.0)
     assert ring.observation_time == observation_time

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import pytest
 import shapely.geometry
 
 import peri_scribe.geo.geometry
@@ -34,9 +35,11 @@ def test_polygonal_parts_flattens_nested_multipolygon() -> None:
     assert parts == [first, second]
 
 
-def test_polygonal_parts_skips_empty_members() -> None:
+@pytest.mark.parametrize("empty_first", [True, False])
+def test_polygonal_parts_skips_empty_members(*, empty_first: bool) -> None:
     box = shapely.geometry.box(0.0, 0.0, 1.0, 1.0)
-    collection = shapely.geometry.GeometryCollection([shapely.geometry.Polygon(), box])
+    members = [shapely.Polygon(), box] if empty_first else [box, shapely.Polygon()]
+    collection = shapely.geometrycollections(members, indices=[0, 0])[0]
     parts = peri_scribe.geo.geometry.polygonal_parts(collection)
     assert parts == [box]
 

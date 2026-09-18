@@ -99,7 +99,7 @@ class Mapping(pydantic.BaseModel):
         """
         if self.area_square_meters is None:
             return None
-        return self.area_square_meters * units.meters**2
+        return self.area_square_meters * units.Unit("meters ** 2")
 
 
 class Collection(pydantic.BaseModel):
@@ -381,7 +381,7 @@ def snapshot_mappings(
                     area_square_meters=area,
                     collapsed=(
                         peri_scribe.perimeters.size_filtering.area_is_implausibly_small(
-                            None if area is None else area * units.meters**2,
+                            None if area is None else area * units.Unit("meters ** 2"),
                             source.attributes,
                         )
                     ),

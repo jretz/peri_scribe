@@ -282,8 +282,8 @@ def perimeter_groups(
             observation_time=peri_scribe.geo.parsing.observation_time_from(
                 observation_time,
             ),
-            area=None if area is None else area * units.meters**2,
-            added_area=None if added is None else added * units.meters**2,
+            area=None if area is None else area * units.Unit("meters ** 2"),
+            added_area=None if added is None else added * units.Unit("meters ** 2"),
             sequence_digest=sequence if isinstance(sequence, str) else None,
         )
         if peri_scribe.geo.parsing.is_missing(identifier):

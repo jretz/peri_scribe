@@ -462,7 +462,7 @@ def test_nonfinite_area_cannot_authorize_skip(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(
         peri_scribe.units,
         "area",
-        lambda _geometry: float("nan") * units.meters**2,
+        lambda _geometry: float("nan") * units.Unit("meters ** 2"),
     )
     assert peri_scribe.publication.shape_measurement(shapely.box(0, 0, 1, 1))[1] is None
 

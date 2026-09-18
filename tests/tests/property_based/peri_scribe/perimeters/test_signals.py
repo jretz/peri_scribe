@@ -39,7 +39,7 @@ def test_geometry_signal_scales_with_geometry_and_dimensioned_thresholds(
     config = dataclasses.replace(
         tests.helpers.factories.peri_scribe.perimeters.signals.CONFIG,
         near_border_buffer=buffer_meters * units.meters,
-        outside_area_threshold=outside_square_meters * units.meters**2,
+        outside_area_threshold=outside_square_meters * units.Unit("meters ** 2"),
         outside_area_fraction_threshold=fraction_threshold,
     )
     original = peri_scribe.perimeters.signals.geometry_signal(

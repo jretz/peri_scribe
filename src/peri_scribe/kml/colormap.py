@@ -484,7 +484,7 @@ def active_ring_window(
     """
     best = (0, len(areas) - 1)
     left = 0
-    running = 0 * units.meters**2
+    running = 0 * units.Unit("meters ** 2")
     for right, area in enumerate(areas):
         running += area
         while left < right and running - areas[left] >= threshold:
@@ -549,7 +549,7 @@ def progression_ring_colors(
     if not dated:
         return ()
     areas = [ring.area for ring in dated]
-    threshold = ACTIVE_GROWTH_FRACTION * sum(areas, 0 * units.meters**2)
+    threshold = ACTIVE_GROWTH_FRACTION * sum(areas, 0 * units.Unit("meters ** 2"))
     start, end = active_ring_window(areas, threshold)
     cool = cool_fraction(end - start + 1)
     first_timestamp = timestamps[start]

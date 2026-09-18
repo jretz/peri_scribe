@@ -29,11 +29,12 @@ def nested_collections(
     for polygon in polygons_to_wrap:
         member: shapely.Geometry = polygon
         for _level in range(draw(hypothesis.strategies.integers(0, 4))):
-            member = shapely.GeometryCollection([
-                shapely.Point(0, 0),
-                member,
-                shapely.Polygon(),
-            ])
+            # The indexed constructor avoids a spurious NumPy warning when the
+            # conda-forge GEOS build combines nonempty bounds with an empty member.
+            member = shapely.geometrycollections(
+                [shapely.Point(0, 0), member, shapely.Polygon()],
+                indices=[0, 0, 0],
+            )[0]
         members.append(member)
     return shapely.GeometryCollection(members), polygons_to_wrap
 

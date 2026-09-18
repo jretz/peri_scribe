@@ -36,7 +36,7 @@ def area(geometry: shapely.Geometry) -> pint.Quantity[float]:
     measured_area, _perimeter = pyproj.Geod(ellps="WGS84").geometry_area_perimeter(
         shapely.orient_polygons(geometry),
     )
-    return abs(measured_area) * units.meters**2
+    return abs(measured_area) * units.Unit("meters ** 2")
 
 
 def exterior_perimeter(

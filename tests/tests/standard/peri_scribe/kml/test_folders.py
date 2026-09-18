@@ -586,7 +586,7 @@ def test_fire_folder_holds_point_and_ring_folders(style_urls: dict[str, str]) ->
                     0,
                     tzinfo=datetime.UTC,
                 ),
-                area=100.0 * units.meters**2,
+                area=100.0 * units.Unit("meters ** 2"),
             ),
             peri_scribe.perimeters.progression.Ring(
                 geometry=tests.helpers.factories.geometry.square(2.0),
@@ -598,7 +598,7 @@ def test_fire_folder_holds_point_and_ring_folders(style_urls: dict[str, str]) ->
                     0,
                     tzinfo=datetime.UTC,
                 ),
-                area=100.0 * units.meters**2,
+                area=100.0 * units.Unit("meters ** 2"),
             ),
             peri_scribe.perimeters.progression.Ring(
                 geometry=tests.helpers.factories.geometry.square(3.0),
@@ -610,7 +610,7 @@ def test_fire_folder_holds_point_and_ring_folders(style_urls: dict[str, str]) ->
                     0,
                     tzinfo=datetime.UTC,
                 ),
-                area=100.0 * units.meters**2,
+                area=100.0 * units.Unit("meters ** 2"),
             ),
         ),
     )

@@ -50,7 +50,7 @@ def geometry_signal(
         return peri_scribe.perimeters.classification_data.GeometrySignal(
             distance_to_boundary=float("inf") * units.meters,
             outside_area_fraction=0.0,
-            outside_area=0.0 * units.meters**2,
+            outside_area=0.0 * units.Unit("meters ** 2"),
             inside_area_fraction=0.0,
             crosses=False,
             near=False,
@@ -79,11 +79,11 @@ def geometry_signal(
         if all(box.contains(part) for part in parts):
             inside_area_fraction = 1.0 if has_area else 0.0
             outside_area_fraction = 0.0
-            outside_area = 0.0 * units.meters**2
+            outside_area = 0.0 * units.Unit("meters ** 2")
         else:
             inside_area_fraction = 0.0
             outside_area_fraction = 1.0 if has_area else 0.0
-            outside_area = union.area * units.meters**2
+            outside_area = union.area * units.Unit("meters ** 2")
         crosses = False
         near = distance_to_boundary <= config.near_border_buffer
         inside = inside_area_fraction >= config.inside_area_fraction_threshold
@@ -96,9 +96,9 @@ def geometry_signal(
             near=near,
             inside=inside,
         )
-    inside_area = union.intersection(box).area * units.meters**2
-    total_area = union.area * units.meters**2
-    outside_area = max(0.0 * units.meters**2, total_area - inside_area)
+    inside_area = union.intersection(box).area * units.Unit("meters ** 2")
+    total_area = union.area * units.Unit("meters ** 2")
+    outside_area = max(0.0 * units.Unit("meters ** 2"), total_area - inside_area)
     if total_area.magnitude > 0:
         inside_area_fraction = inside_area.magnitude / total_area.magnitude
         outside_area_fraction = outside_area.magnitude / total_area.magnitude

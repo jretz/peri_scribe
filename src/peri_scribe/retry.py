@@ -78,7 +78,7 @@ def rate_limit_from_payload(payload: dict[str, object]) -> pint.Quantity[float] 
         >>> rate_limit_from_payload({
         ...     "error": {"code": 429, "details": ["Retry after 8 sec"]}
         ... })
-        <Quantity(8, 'second')>
+        Quantity(8, "second")
 
         >>> rate_limit_from_payload({}) is None
         True

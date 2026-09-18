@@ -31,7 +31,7 @@ class PerimeterCleaningConfig:
     the smallest settings that remove the artifacts rather than aesthetic choices.
     """
 
-    minimum_part_area: pint.Quantity[float] = 1e-6 * units.degrees**2
+    minimum_part_area: pint.Quantity[float] = 1e-6 * units.Unit("degrees ** 2")
     collinear_epsilon: pint.Quantity[float] = 1e-7 * units.degrees
     maximum_deviation: pint.Quantity[float] = 22.0 * units.meters
 
@@ -99,7 +99,8 @@ def without_degenerate_holes(
         [
             ring
             for ring in part.interiors
-            if shapely.Polygon(ring).area * units.degrees**2 > config.minimum_part_area
+            if shapely.Polygon(ring).area * units.Unit("degrees ** 2")
+            > config.minimum_part_area
         ],
     )
 
@@ -134,7 +135,7 @@ def clean_perimeter(
     kept = [
         without_degenerate_holes(part, config)
         for part in parts
-        if part.area * units.degrees**2 > config.minimum_part_area
+        if part.area * units.Unit("degrees ** 2") > config.minimum_part_area
     ]
     if not kept:
         return geometry

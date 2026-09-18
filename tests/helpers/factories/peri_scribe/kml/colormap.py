@@ -30,7 +30,7 @@ def ring(
     return peri_scribe.perimeters.progression.Ring(
         geometry=shapely.geometry.box(-half, -half, half, half),
         observation_time=observation_time,
-        area=area * units.meters**2,
+        area=area * units.Unit("meters ** 2"),
     )
 
 

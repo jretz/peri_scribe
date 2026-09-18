@@ -23,6 +23,6 @@ def assert_same_projected_coverage(
     tolerance = 1e-6 * units.meters
     assert expected.buffer(tolerance.m_as("meter")).covers(merged)
     assert merged.buffer(tolerance.m_as("meter")).covers(expected)
-    assert merged.symmetric_difference(expected).area * units.meters**2 <= (
+    assert merged.symmetric_difference(expected).area * units.Unit("meters ** 2") <= (
         (merged.length + expected.length) * units.meters * tolerance
     )

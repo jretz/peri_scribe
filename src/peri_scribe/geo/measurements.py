@@ -31,7 +31,7 @@ def area(geometry: shapely.Geometry, stored: object = None) -> pint.Quantity[flo
     """
     value = peri_scribe.geo.parsing.numeric_value(stored)
     if value is not None:
-        return value * units.meters**2
+        return value * units.Unit("meters ** 2")
     return peri_scribe.units.area(geometry)
 
 

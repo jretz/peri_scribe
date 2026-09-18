@@ -148,7 +148,7 @@ def test_clean_perimeter_makes_invalid_polygon_valid() -> None:
 
 def test_clean_perimeter_keeps_geometry_when_everything_is_below_area_floor() -> None:
     config = peri_scribe.perimeters.cleaning.PerimeterCleaningConfig(
-        minimum_part_area=100.0 * units.degrees**2,
+        minimum_part_area=100.0 * units.Unit("degrees ** 2"),
     )
     box = shapely.geometry.box(0.0, 0.0, 1.0, 1.0)
     result = peri_scribe.perimeters.cleaning.clean_perimeter(box, config)

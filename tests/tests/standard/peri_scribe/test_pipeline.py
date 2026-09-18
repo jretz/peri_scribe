@@ -187,6 +187,6 @@ def test_write_reports_gathers_and_renders(monkeypatch: pytest.MonkeyPatch) -> N
 
 def test_area_convert_accepts_equivalent_explicit_units() -> None:
     parser = peri_scribe.pipeline.Area()
-    assert parser.convert("1 hectare", None, None) == 10000 * units.meters**2
+    assert parser.convert("1 hectare", None, None) == 10000 * units.Unit("meters ** 2")
     with pytest.raises(click.BadParameter, match="positive area"):
         parser.convert(object(), None, None)

@@ -117,6 +117,8 @@ class Area(click.ParamType):
             The positive area converted to square meters.
         """
         message = f"{value!r} is not a positive area such as '25 acre'"
+        if not isinstance(value, (str, pint.Quantity)):
+            self.fail(message, param, ctx)
         try:
             area = units.Quantity(value).to("meters ** 2")
         except pint.errors.PintError, TypeError, ValueError:

@@ -176,4 +176,12 @@ packages = ["src/peri_scribe"]
 
 [tool.uv]
 exclude-newer = "7 days"
+# Build against mise's GEOS 3.15.0, which fixes incorrect perimeter unions:
+# https://github.com/libgeos/geos/issues/1405
+#
+# Maintainers plan to bundle GEOS 3.15 in Shapely 2.3 (2.2 is planned with GEOS
+# 3.14): https://github.com/shapely/shapely/issues/2413#issuecomment-5582882915
+# This is the plan as of 2026-09-08; revisit this override and mise's GEOS setup
+# once released Shapely wheels include the fix.
+no-binary-package = ["shapely"]
 python-preference = "only-managed"

@@ -100,22 +100,30 @@ def test_cool_fraction_anchors_short_fires_partway() -> None:
 
 def test_active_ring_window_keeps_the_single_qualifying_ring() -> None:
     assert peri_scribe.kml.colormap.active_ring_window(
-        [5.0 * units.meters**2, 1.0 * units.meters**2],
-        4.0 * units.meters**2,
+        [5.0 * units.Unit("meters ** 2"), 1.0 * units.Unit("meters ** 2")],
+        4.0 * units.Unit("meters ** 2"),
     ) == (0, 0)
 
 
 def test_active_ring_window_drops_trivial_edges() -> None:
     assert peri_scribe.kml.colormap.active_ring_window(
-        [0.1 * units.meters**2, 10.0 * units.meters**2, 0.1 * units.meters**2],
-        9.9 * units.meters**2,
+        [
+            0.1 * units.Unit("meters ** 2"),
+            10.0 * units.Unit("meters ** 2"),
+            0.1 * units.Unit("meters ** 2"),
+        ],
+        9.9 * units.Unit("meters ** 2"),
     ) == (1, 1)
 
 
 def test_active_ring_window_keeps_the_larger_boundary_ring_on_a_tie() -> None:
     assert peri_scribe.kml.colormap.active_ring_window(
-        [1.0 * units.meters**2, 100.0 * units.meters**2, 5.0 * units.meters**2],
-        101.0 * units.meters**2,
+        [
+            1.0 * units.Unit("meters ** 2"),
+            100.0 * units.Unit("meters ** 2"),
+            5.0 * units.Unit("meters ** 2"),
+        ],
+        101.0 * units.Unit("meters ** 2"),
     ) == (1, 2)
 
 

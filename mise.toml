@@ -112,7 +112,8 @@ description = "Upgrade tools managed by mise and packages managed by uv"
 run = [
     "mise upgrade --local --minimum-release-age 3d",
     { task = "lock" },
-    "uv sync --upgrade",
+    { task = "geos" },
+    'micromamba run --prefix "$GEOS_PREFIX" env CC=cc uv sync --upgrade',
     "touch .venv",
     { task = "test" },
 ]
@@ -124,11 +125,44 @@ sources = ["mise.toml"]
 outputs = ["mise.lock"]
 run = "mise lock"
 
-[tasks.venv]
-description = "Create or sync the uv virtual environment"
+# GEOS 3.15.0 fixes the overlay bug that can fill holes in perimeter unions:
+# https://github.com/libgeos/geos/issues/1405
+#
+# As of 2026-09-08, Shapely maintainers plan to bundle GEOS 3.15 in Shapely 2.3;
+# Shapely 2.2 is planned with GEOS 3.14:
+# https://github.com/shapely/shapely/issues/2413#issuecomment-5582882915 Use
+# conda-forge GEOS binaries and build Shapely against them until released
+# Shapely wheels include the fix, then revisit these tasks and pyproject.toml's
+# source build.
+[tasks.geos]
+description = "Install GEOS and a C compiler from conda-forge binaries"
 depends = ["install-tools"]
+sources = ["mise.toml"]
+outputs = ["{{env.GEOS_PREFIX}}/conda-meta/history"]
+run = 'micromamba create --yes --no-rc --override-channels --channel conda-forge --prefix "$GEOS_PREFIX" "geos=$GEOS_VERSION" c-compiler'
+
+[tasks.venv]
+description = "Sync Python packages and build Shapely against the project GEOS"
+depends = ["geos"]
 sources = ["mise.toml", "pyproject.toml", "uv.lock"]
-run = "uv sync"
+outputs = [".venv/.geos"]
+run = [
+    'micromamba run --prefix "$GEOS_PREFIX" env CC=cc uv sync --locked --reinstall-package shapely',
+    """
+.venv/bin/python - <<'PY'
+import os
+import sys
+
+import shapely
+
+expected = os.environ["GEOS_VERSION"]
+actual = shapely.geos_version_string
+if actual != expected:
+    sys.exit(f"Expected GEOS {expected}, loaded {actual}")
+PY
+""",
+    "touch .venv/.geos",
+]
 
 [tasks.gitignore]
 description = "Regenerate .gitignore from gitnr templates"
@@ -145,12 +179,22 @@ run = [
 
 [env]
 _.python.venv = { path = ".venv" }
+# Keep Shapely's build and runtime linked to the GEOS overlay fix documented above.
+GEOS_VERSION = "3.15.0"
+GEOS_PREFIX = "{{config_root}}/.cache/geos/{{env.GEOS_VERSION}}"
+GEOS_INCLUDE_PATH = "{{env.GEOS_PREFIX}}/include"
+GEOS_LIBRARY_PATH = "{{env.GEOS_PREFIX}}/lib"
+LDFLAGS = '{{env.LDFLAGS | default(value="")}} -Wl,-rpath,"{{env.GEOS_LIBRARY_PATH}}"'
+MAMBA_ROOT_PREFIX = "{{config_root}}/.cache/micromamba"
+# Shapely's cached builds must use this checkout's GEOS library and version.
+UV_CACHE_DIR = "{{config_root}}/.cache/uv/geos-{{env.GEOS_VERSION}}"
 
 [settings]
 task.quiet = true
 
 [tools]
 "cargo:gitnr" = "latest"
+micromamba = "latest"
 rclone = "latest"
 rg = "latest"
 rumdl = "latest"

@@ -28,7 +28,7 @@ if typing.TYPE_CHECKING:
 # are written in California local time.
 CALIFORNIA_TIME_ZONE = zoneinfo.ZoneInfo("America/Los_Angeles")
 
-MINIMUM_RING_AREA = 1.0 * units.meters**2
+MINIMUM_RING_AREA = 1.0 * units.Unit("meters ** 2")
 ADDED_AREA_COLUMN = "added_area_square_meters"
 SEQUENCE_COLUMN = "ring_sequence_digest"
 
@@ -44,7 +44,7 @@ class Ring:
 
     geometry: shapely.Geometry
     observation_time: datetime.datetime | None
-    area: pint.Quantity[float] = 0.0 * units.meters**2
+    area: pint.Quantity[float] = 0.0 * units.Unit("meters ** 2")
     added_area: pint.Quantity[float] | None = None
     sequence_digest: str | None = None
 
@@ -78,11 +78,11 @@ def added_areas(
         The additional area at each step, in input order.
     """
     combined: shapely.Geometry | None = None
-    previous = 0 * units.meters**2
+    previous = 0 * units.Unit("meters ** 2")
     added: list[pint.Quantity[float]] = []
     for geometry in geometries:
         combined = geometry if combined is None else shapely.union(combined, geometry)
         cumulative = peri_scribe.units.area(combined)
-        added.append(max(0 * units.meters**2, cumulative - previous))
+        added.append(max(0 * units.Unit("meters ** 2"), cumulative - previous))
         previous = cumulative
     return tuple(added)

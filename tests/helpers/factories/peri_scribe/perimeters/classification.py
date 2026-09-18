@@ -68,6 +68,35 @@ def projected_boundaries() -> peri_scribe.perimeters.classification_data.Boundar
     )
 
 
+def overlapping_hole_observation_cases() -> list[list[shapely.Polygon]]:
+    """Preserve a gap whose union depends on robust ordering of nearly parallel edges.
+
+    Returns:
+        Overlapping polygons with identical or differently encoded repeats.
+    """
+    triangle = shapely.Polygon([(-121, 35), (-120, 35), (-121, 36)])
+    repeated = shapely.Polygon(
+        shapely.box(-119.5, 37.5, -118, 39).exterior,
+        [shapely.box(-119, 38, -118.5, 38.5).exterior],
+    )
+    overlapping = shapely.Polygon(
+        shapely.box(-119, 37, -117.5, 38.5).exterior,
+        [shapely.box(-118.5, 37.5, -118, 38).exterior],
+    )
+    variants = []
+    for start, reverse in [(0, False), (2, False), (3, False), (0, True), (1, True)]:
+        exterior = list(repeated.exterior.coords)[:-1]
+        if reverse:
+            exterior.reverse()
+        variants.append(
+            shapely.Polygon(exterior[start:] + exterior[:start], repeated.interiors),
+        )
+    return [
+        [triangle, *[repeated] * 5, overlapping],
+        [triangle, *variants, overlapping],
+    ]
+
+
 def classifiable_record(
     *,
     geometry: shapely.geometry.base.BaseGeometry,

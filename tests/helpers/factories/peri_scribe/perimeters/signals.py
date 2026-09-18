@@ -91,7 +91,7 @@ def geometry_signal(
     return peri_scribe.perimeters.classification_data.GeometrySignal(
         distance_to_boundary=distance_to_boundary * units.meters,
         outside_area_fraction=outside_area_fraction,
-        outside_area=outside_area * units.meters**2,
+        outside_area=outside_area * units.Unit("meters ** 2"),
         inside_area_fraction=inside_area_fraction,
         crosses=crosses,
         near=near,

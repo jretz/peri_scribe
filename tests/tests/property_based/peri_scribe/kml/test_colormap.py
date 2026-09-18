@@ -37,8 +37,8 @@ def test_active_ring_window_finds_a_shortest_qualifying_run(
     expected = {(start, end) for start, end in qualifying if end - start == shortest}
     assert (
         peri_scribe.kml.colormap.active_ring_window(
-            [area * units.meters**2 for area in areas],
-            threshold * units.meters**2,
+            [area * units.Unit("meters ** 2") for area in areas],
+            threshold * units.Unit("meters ** 2"),
         )
         in expected
     )
