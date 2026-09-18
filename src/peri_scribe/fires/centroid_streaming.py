@@ -47,47 +47,6 @@ MAXIMUM_VERTICES_PER_CHUNK = 2_000_000
 GEOJSON_MEMBER_SUFFIX = b".geojson"
 
 
-class ByteStream:
-    """A file-like reader over an iterable of bytes chunks.
-
-    ijson needs a file-like object, and the decompressed chunks from ``stream_unzip``
-    are an iterable of bytes, so this adapter presents them through a ``read()``
-    interface without materializing them in a file.
-    """
-
-    def __init__(self, chunks: typing.Iterable[bytes]) -> None:
-        """Expose decompressed chunks without materializing the complete stream.
-
-        Args:
-            chunks: The byte chunks to consume in stream order.
-        """
-        self.chunks = iter(chunks)
-        self.buffer = b""
-
-    def read(self, size: int = -1) -> bytes:
-        """Return the next up to *size* bytes of the stream.
-
-        Args:
-            size: The maximum number of bytes to return, or -1 for all remaining.
-
-        Returns:
-            The bytes, or ``b""`` at the end of the stream.
-        """
-        if size < 0:
-            result = self.buffer + b"".join(self.chunks)
-            self.buffer = b""
-            return result
-        while len(self.buffer) < size:
-            try:
-                self.buffer += next(self.chunks)
-            except StopIteration:
-                break
-        if not self.buffer:
-            return b""
-        result, self.buffer = self.buffer[:size], self.buffer[size:]
-        return result
-
-
 def collect_geometry_chunk(
     features_iter: typing.Iterator[typing.Any],
     chunk_size: int,
@@ -173,16 +132,7 @@ def convert_geometry_chunks(
         The number of features converted.
     """
     feature_count = 0
-    wrote_any = False
-    while True:
-        chunk = collect_geometry_chunk(
-            features_iter,
-            FEATURE_CHUNK_SIZE,
-            MAXIMUM_VERTICES_PER_CHUNK,
-        )
-        if chunk is None:
-            break
-        centroids = peri_scribe.fires.centroid_math.polygon_centroids(chunk)
+    for centroids in centroid_chunks(features_iter):
         points = shapely.points(centroids[:, 0], centroids[:, 1])
         pyogrio.raw.write(
             output,
@@ -193,54 +143,53 @@ def convert_geometry_chunks(
             crs=str(peri_scribe.geo.spatial_reference.WGS84_SPATIAL_REFERENCE),
             driver="GPKG",
             layer=layer_name,
-            append=(not first) or wrote_any,
+            append=(not first) or feature_count > 0,
         )
-        wrote_any = True
         feature_count += len(points)
     return feature_count
 
 
-def convert_zip_members(
-    bytes_source: typing.Iterable[bytes],
-    output: pathlib.Path,
-    layer_name: str,
-    *,
-    first: bool,
-) -> tuple[int, bool]:
-    """Convert the GeoJSON members of a zip archive streaming from *bytes_source*.
-
-    Each member named like ``*.geojson`` is parsed and converted; other members are
-    consumed so the archive's next member can be read from the stream.
+def centroid_chunks(
+    features: typing.Iterator[typing.Any],
+) -> typing.Iterator[np.ndarray]:
+    """Keep both feature and vertex limits while sharing vectorized conversion.
 
     Args:
-        bytes_source: An iterable of byte chunks of the zip archive, in order.
-        output: The GeoPackage path to write to.
-        layer_name: The GeoPackage layer.
-        first: Whether this is the very first chunk of the whole output file.
+        features: A single-pass stream of GeoJSON geometries.
 
-    Returns:
-        The number of features converted and whether any were written.
+    Yields:
+        Centroid arrays in source order, bounded by the geometry chunk limits.
     """
-    feature_count = 0
-    wrote_any = False
+    while (
+        chunk := collect_geometry_chunk(
+            features,
+            FEATURE_CHUNK_SIZE,
+            MAXIMUM_VERTICES_PER_CHUNK,
+        )
+    ) is not None:
+        centroids = peri_scribe.fires.centroid_math.polygon_centroids(chunk)
+        del chunk
+        yield centroids
+
+
+def zip_geometries(bytes_source: typing.Iterable[bytes]) -> typing.Iterator[typing.Any]:
+    """Finish every ZIP member before advancing to the next member.
+
+    Args:
+        bytes_source: Compressed archive bytes in source order.
+
+    Yields:
+        GeoJSON geometries from every matching archive member.
+    """
     for filename, _size, chunks in stream_unzip.stream_unzip(bytes_source):
-        if not filename.endswith(GEOJSON_MEMBER_SUFFIX):
+        if filename.endswith(GEOJSON_MEMBER_SUFFIX):
+            yield from ijson.items(
+                ijson.from_iter(chunks),
+                "features.item.geometry",
+                use_float=True,
+            )
+        else:
             collections.deque(chunks, maxlen=0)
-            continue
-        features_iter = ijson.items(
-            ByteStream(chunks),
-            "features.item.geometry",
-            use_float=True,
-        )
-        count = convert_geometry_chunks(
-            features_iter,
-            output,
-            layer_name,
-            first=first and not wrote_any,
-        )
-        wrote_any = wrote_any or count > 0
-        feature_count += count
-    return feature_count, wrote_any
 
 
 def convert_zip_stream(
@@ -269,8 +218,8 @@ def convert_zip_stream(
             with any features.
     """
     try:
-        feature_count, wrote_any = convert_zip_members(
-            bytes_source,
+        feature_count = convert_geometry_chunks(
+            zip_geometries(bytes_source),
             output,
             layer_name,
             first=first,
@@ -281,7 +230,7 @@ def convert_zip_stream(
     except Exception as error:
         message = f"Failed to read the streamed GeoJSON: {error}"
         raise peri_scribe.exceptions.ExternalDataError(message) from error
-    if not wrote_any:
+    if not feature_count:
         message = "No GeoJSON data found in the streamed archive"
         raise peri_scribe.exceptions.ExternalDataError(message)
     return feature_count

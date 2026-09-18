@@ -6,8 +6,8 @@ import datetime
 
 import pytest
 
-import peri_scribe.kml.geometry
 import peri_scribe.kml.tour
+import tests.helpers.factories.peri_scribe.kml.geometry
 import tests.helpers.peri_scribe.kml.parsing
 
 
@@ -128,7 +128,7 @@ def test_progression_tour_reveals_rings_and_waits() -> None:
     second = datetime.datetime(2026, 8, 8, 20, 0, tzinfo=datetime.UTC)
     third = datetime.datetime(2026, 8, 9, 20, 0, tzinfo=datetime.UTC)
     ring_times = [first, second, third]
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     with writer.folder("Bug") as folder_id:
         peri_scribe.kml.tour.progression_tour(writer, folder_id, ring_times)
     bug_folder = tests.helpers.peri_scribe.kml.parsing.folder_named(
@@ -168,7 +168,7 @@ def test_progression_tour_scales_waits_for_long_fire() -> None:
     second = datetime.datetime(2026, 8, 6, 0, 0, tzinfo=datetime.UTC)
     third = datetime.datetime(2026, 8, 26, 0, 0, tzinfo=datetime.UTC)
     ring_times = [first, second, third]
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     with writer.folder("Bug") as folder_id:
         peri_scribe.kml.tour.progression_tour(writer, folder_id, ring_times)
     bug_folder = tests.helpers.peri_scribe.kml.parsing.folder_named(
@@ -187,7 +187,7 @@ def test_progression_tour_scales_waits_for_long_fire() -> None:
 
 def test_progression_tour_assigns_targeted_placemark_ids() -> None:
     observation_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     with writer.folder("Bug") as folder_id:
         peri_scribe.kml.tour.progression_tour(writer, folder_id, [observation_time])
     bug_folder = tests.helpers.peri_scribe.kml.parsing.folder_named(

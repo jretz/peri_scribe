@@ -9,6 +9,7 @@ corrections, so the differential layer shows only growth.
 from __future__ import annotations
 
 import concurrent.futures
+import functools
 import os
 import pathlib
 import typing
@@ -436,6 +437,27 @@ def measure_drawn_rings(rows: list[dict[str, object]]) -> None:
         row[peri_scribe.perimeters.progression.SEQUENCE_COLUMN] = digest
 
 
+def differential_group_rows(
+    group: tuple[list[dict[str, object]], list[shapely.Geometry | None]],
+    *,
+    reused: dict[str, peri_scribe.fires.reuse.Rows],
+) -> tuple[peri_scribe.fires.reuse.Rows, bool]:
+    """Keep one fire's inputs and result within the bounded work queue.
+
+    Args:
+        group: Source attributes and geometries for one fire.
+        reused: Validated rows keyed by complete source fingerprint.
+
+    Returns:
+        The fire's rows and whether they came from validated history.
+    """
+    attributes, geometries = group
+    key = str(attributes[0].get(peri_scribe.fires.reuse.KEY_COLUMN))
+    if key in reused:
+        return reused[key], True
+    return differential_rows_for_fire(attributes, geometries), False
+
+
 def differential_perimeter_dataframe(
     full_perimeters: geopandas.GeoDataFrame,
     *,
@@ -457,34 +479,29 @@ def differential_perimeter_dataframe(
         reference.
     """
     reused = {} if reused is None else reused
-    fire_attributes: list[list[dict[str, object]]] = []
-    fire_geometries: list[list[shapely.Geometry | None]] = []
-    for positions in fire_positions(full_perimeters):
-        attributes, geometries = group_records(full_perimeters, positions)
-        fire_attributes.append(attributes)
-        fire_geometries.append(geometries)
+    groups = (
+        group_records(full_perimeters, positions)
+        for positions in fire_positions(full_perimeters)
+    )
     rows: list[dict[str, object]] = []
+    reused_count = 0
+    recomputed_count = 0
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=DIFFERENTIAL_WORKER_COUNT,
     ) as executor:
-        keys = [
-            str(attributes[0].get(peri_scribe.fires.reuse.KEY_COLUMN))
-            for attributes in fire_attributes
-        ]
-        futures = {
-            index: executor.submit(differential_rows_for_fire, attributes, geometries)
-            for index, (attributes, geometries) in enumerate(
-                zip(fire_attributes, fire_geometries, strict=True),
-            )
-            if keys[index] not in reused
-        }
-        for index, key in enumerate(keys):
-            fire_rows = reused[key] if key in reused else futures[index].result()
+        results = executor.map(
+            functools.partial(differential_group_rows, reused=reused),
+            groups,
+            buffersize=2 * DIFFERENTIAL_WORKER_COUNT,
+        )
+        for fire_rows, was_reused in results:
             rows.extend(fire_rows)
+            reused_count += was_reused
+            recomputed_count += not was_reused
     logger.info(
         "Differential history reuse",
-        reused=len(keys) - len(futures),
-        recomputed=len(futures),
+        reused=reused_count,
+        recomputed=recomputed_count,
     )
     return peri_scribe.fires.history.build_dataframe(
         rows,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import concurrent.futures
 import dataclasses
 import functools
+import itertools
 import os
 import pathlib
 
@@ -88,24 +89,23 @@ def read_fire_sources(directory: pathlib.Path) -> ReadFireSources:
     Returns:
         The fire rows, their source files, and the complex memberships.
     """
-    files = list(peri_scribe.sources.snapshots.geo_package_files(directory))
+    files = peri_scribe.sources.snapshots.geo_package_files(directory)
     read = functools.partial(
         read_fire_geopackage,
         geometry_pool=peri_scribe.geo.geometry_pool.GeometryPool(),
     )
     # GeoPackage reads release the GIL, so the files are read in parallel and the
     # results are collected in file order to keep rows, paths, and memberships aligned.
-    with concurrent.futures.ThreadPoolExecutor(
-        max_workers=os.cpu_count() or 1,
-    ) as executor:
-        contents_by_file = list(executor.map(read, files))
     rows: list[peri_scribe.geo.package.FireRowRecord] = []
     paths: list[pathlib.Path] = []
     memberships: list[peri_scribe.models.ComplexMembership] = []
-    for path, contents in zip(files, contents_by_file, strict=True):
-        rows.extend(contents.rows)
-        paths.extend([path] * len(contents.rows))
-        memberships.extend(contents.memberships)
+    worker_count = os.cpu_count() or 1
+    with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
+        contents_by_file = executor.map(read, files, buffersize=2 * worker_count)
+        for path, contents in zip(files, contents_by_file, strict=True):
+            rows.extend(contents.rows)
+            paths.extend(itertools.repeat(path, len(contents.rows)))
+            memberships.extend(contents.memberships)
     return ReadFireSources(
         rows=tuple(rows),
         paths=tuple(paths),

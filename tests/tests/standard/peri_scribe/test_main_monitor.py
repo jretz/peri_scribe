@@ -1,6 +1,5 @@
 """The monitoring CLI resolves standard locations without becoming a data writer."""
 
-import asyncio
 import pathlib
 import typing
 import unittest.mock
@@ -18,10 +17,11 @@ if typing.TYPE_CHECKING:
     import click.testing
 
 
-def test_monitor_starts_without_pipeline_dependencies(tmp_path: pathlib.Path) -> None:
-    imported = asyncio.run(
-        tests.helpers.peri_scribe.main.monitor_imports(tmp_path / "2040"),
-    )
+@pytest.mark.asyncio
+async def test_monitor_starts_without_pipeline_dependencies(
+    tmp_path: pathlib.Path,
+) -> None:
+    imported = await tests.helpers.peri_scribe.main.monitor_imports(tmp_path / "2040")
     forbidden = {
         "peri_scribe.pipeline",
         "peri_scribe.kml.builder",

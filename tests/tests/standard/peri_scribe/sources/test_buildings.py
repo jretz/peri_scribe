@@ -622,11 +622,8 @@ def test_fetch_buildings_database_streams_states_into_database(
     )
     output = tmp_path / "sources" / "buildings.sqlite"
     assert result == (output,)
-    assert urls == [
-        peri_scribe.sources.catalog.BUILDINGS_SOURCE.url,
-        links["California"],
-        links["Texas"],
-    ]
+    assert urls[0] == peri_scribe.sources.catalog.BUILDINGS_SOURCE.url
+    assert sorted(urls[1:]) == sorted([links["California"], links["Texas"]])
     assert peri_scribe.sources.buildings.is_valid_database(output)
     sources = tmp_path / "sources"
     assert sorted(path.name for path in sources.iterdir()) == ["buildings.sqlite"]

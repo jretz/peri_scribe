@@ -3,7 +3,7 @@
 import pathlib
 import typing
 
-import pytest
+import pytest_asyncio
 
 import peri_scribe.monitor.screenshots
 import tests.helpers.textual
@@ -14,8 +14,8 @@ type Session = tests.helpers.textual.Session[
 ]
 
 
-@pytest.fixture
-def snapshot_session(tmp_path: pathlib.Path) -> typing.Iterator[Session]:
+@pytest_asyncio.fixture
+async def snapshot_session(tmp_path: pathlib.Path) -> typing.AsyncIterator[Session]:
     """Keep screenshot command behavior independent of the monitor's widgets.
 
     Args:
@@ -24,7 +24,7 @@ def snapshot_session(tmp_path: pathlib.Path) -> typing.Iterator[Session]:
     Yields:
         A mounted snapshot screen and its owning application.
     """
-    with tests.helpers.textual.mounted(
+    async with tests.helpers.textual.mounted(
         peri_scribe.monitor.screenshots.SnapshotApp(tmp_path),
     ) as session:
         yield session

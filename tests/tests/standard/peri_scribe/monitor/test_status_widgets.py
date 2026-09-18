@@ -1,5 +1,6 @@
 """Status controls preserve presentation and emit only actionable evidence targets."""
 
+import pytest
 import rich.text
 import textual.events
 import textual.widgets
@@ -9,6 +10,7 @@ import peri_scribe.monitor.status_widgets
 import peri_scribe.monitor.theme
 import tests.helpers.factories.peri_scribe.monitor.status
 import tests.helpers.fixtures.peri_scribe.monitor.status_widgets
+import tests.helpers.textual
 
 
 def test_status_pane_show_view_uses_health_colors_and_symbols(
@@ -21,7 +23,8 @@ def test_status_pane_show_view_uses_health_colors_and_symbols(
     assert "✗" in text.plain
 
 
-def test_status_pane_ignores_observations_without_navigation_targets(
+@pytest.mark.asyncio
+async def test_status_pane_ignores_observations_without_navigation_targets(
     status_session: tests.helpers.fixtures.peri_scribe.monitor.status_widgets.Session,
 ) -> None:
     session = status_session
@@ -29,19 +32,20 @@ def test_status_pane_ignores_observations_without_navigation_targets(
         "#status-failure",
         peri_scribe.monitor.status_widgets.StatusLink,
     )
-    session.call(link.on_click)
-    session.call(link.on_key, textual.events.Key("x", "x"))
+    await tests.helpers.textual.invoke(link.on_click)
+    await tests.helpers.textual.invoke(link.on_key, textual.events.Key("x", "x"))
     pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
     table = pane.query_one("#status-exceptions", textual.widgets.DataTable)
-    session.call(
+    await tests.helpers.textual.invoke(
         pane.select_evidence,
         textual.widgets.DataTable.RowSelected(table, 0, next(iter(table.rows))),
     )
-    session.refresh()
+    await session.refresh()
     assert session.app.opened == []
 
 
-def test_status_pane_show_exceptions_preserves_selection_as_count_changes(
+@pytest.mark.asyncio
+async def test_status_pane_show_exceptions_preserves_selection_as_count_changes(
     status_session: tests.helpers.fixtures.peri_scribe.monitor.status_widgets.Session,
 ) -> None:
     session = status_session
@@ -49,13 +53,13 @@ def test_status_pane_show_exceptions_preserves_selection_as_count_changes(
     first = tests.helpers.factories.peri_scribe.monitor.status.failed_run(
         run_id="first",
     )
-    session.call(
+    await tests.helpers.textual.invoke(
         pane.show_view,
         tests.helpers.factories.peri_scribe.monitor.status.view(*first),
     )
     table = pane.query_one("#status-exceptions", textual.widgets.DataTable)
     selected = table.coordinate_to_cell_key(table.cursor_coordinate).row_key
-    session.call(
+    await tests.helpers.textual.invoke(
         pane.show_view,
         tests.helpers.factories.peri_scribe.monitor.status.view(
             *first,
@@ -68,12 +72,13 @@ def test_status_pane_show_exceptions_preserves_selection_as_count_changes(
     assert table.get_row(selected)[1] == "2"
 
 
-def test_status_pane_update_table_displays_unlinked_observations(
+@pytest.mark.asyncio
+async def test_status_pane_update_table_displays_unlinked_observations(
     status_session: tests.helpers.fixtures.peri_scribe.monitor.status_widgets.Session,
 ) -> None:
     session = status_session
     pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
-    session.call(
+    await tests.helpers.textual.invoke(
         pane.update_table,
         "recent",
         (

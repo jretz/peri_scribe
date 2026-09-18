@@ -10,6 +10,7 @@ import peri_scribe.kml.geometry
 import peri_scribe.kml.styles
 import tests.helpers.assertions.peri_scribe.kml.geometry
 import tests.helpers.factories.geometry
+import tests.helpers.factories.peri_scribe.kml.geometry
 import tests.helpers.peri_scribe.kml.geometry
 import tests.helpers.peri_scribe.kml.parsing
 
@@ -47,7 +48,7 @@ def test_polygon_geometry_includes_holes() -> None:
         [(0.0, 0.0), (0.0, 2.0), (2.0, 2.0), (2.0, 0.0), (0.0, 0.0)],
         [[(0.5, 0.5), (0.5, 1.5), (1.5, 1.5), (1.5, 0.5), (0.5, 0.5)]],
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.geometry.polygon_geometry(
         writer,
         "Bug",
@@ -82,7 +83,7 @@ def test_multi_polygon_geometry_holds_each_polygon() -> None:
         shapely.geometry.box(2.0, 2.0, 3.0, 3.0),
     ])
     expected_draw_order = 2
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.geometry.multi_polygon_geometry(
         writer,
         "Bug",
@@ -119,7 +120,7 @@ def test_multi_polygon_geometry_holds_each_polygon() -> None:
 
 
 def test_perimeter_geometry_converts_polygon() -> None:
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.geometry.perimeter_geometry(
         writer,
         "Bug",
@@ -144,7 +145,7 @@ def test_perimeter_geometry_converts_multi_polygon() -> None:
         tests.helpers.factories.geometry.square(2.0),
     ])
     expected_draw_order = 5
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.geometry.perimeter_geometry(
         writer,
         "Bug",
@@ -176,7 +177,7 @@ def test_perimeter_geometry_converts_multi_polygon() -> None:
 
 def test_point_placemark_names_and_styles_point() -> None:
     point = shapely.geometry.Point(1.0, 2.0)
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     expected_draw_order = peri_scribe.kml.styles.point_draw_order(3)
     peri_scribe.kml.geometry.point_placemark(
         writer,
@@ -204,7 +205,7 @@ def test_point_placemark_names_and_styles_point() -> None:
 
 
 def test_point_placemark_coordinates_round_and_omit_altitude() -> None:
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.geometry.point_placemark(
         writer,
         "Bug",
@@ -225,7 +226,7 @@ def test_point_placemark_coordinates_round_and_omit_altitude() -> None:
 
 
 def test_perimeter_placemark_names_and_styles_polygon() -> None:
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.geometry.perimeter_placemark(
         writer,
         "Interior",
@@ -249,7 +250,7 @@ def test_perimeter_placemark_names_and_styles_polygon() -> None:
 
 
 def test_polygon_geometry_sets_description() -> None:
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.geometry.polygon_geometry(
         writer,
         "Bug",
@@ -269,7 +270,7 @@ def test_polygon_geometry_sets_description() -> None:
 
 
 def test_multi_polygon_geometry_sets_description() -> None:
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     multi_polygon = shapely.geometry.MultiPolygon([
         tests.helpers.factories.geometry.square(1.0),
         tests.helpers.factories.geometry.square(2.0),
@@ -293,7 +294,7 @@ def test_multi_polygon_geometry_sets_description() -> None:
 
 
 def test_point_placemark_sets_description() -> None:
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.geometry.point_placemark(
         writer,
         "Bug",

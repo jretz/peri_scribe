@@ -22,9 +22,11 @@ import peri_scribe.pipeline_stages
 import tests.helpers.doubles.peri_scribe.monitor.app
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.fixtures.peri_scribe.monitor.application
+import tests.helpers.textual
 
 
-def test_monitor_app_renders_every_possible_phase(
+@pytest.mark.asyncio
+async def test_monitor_app_renders_every_possible_phase(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     seen = set()
@@ -42,7 +44,7 @@ def test_monitor_app_renders_every_possible_phase(
                 run_id=str(gated),
             ),
         )
-        monitor_session.runner.run(monitor_session.app.refresh_files())
+        await monitor_session.app.refresh_files()
         seen.update(path[-1].phase for path in monitor_session.app.tree_nodes)
         assert all(
             node.data is not None and node.data.status == "waiting"
@@ -59,7 +61,7 @@ def test_monitor_app_renders_every_possible_phase(
                 for path in monitor_session.app.tree_nodes
             ),
         )
-        monitor_session.runner.run(monitor_session.app.refresh_files())
+        await monitor_session.app.refresh_files()
         assert all(
             node.data is not None and node.data.status == "open"
             for node in monitor_session.app.tree_nodes.values()
@@ -67,18 +69,20 @@ def test_monitor_app_renders_every_possible_phase(
     assert seen == {*peri_scribe.phases.Phase, *peri_scribe.pipeline_stages.Stage}
 
 
-def test_monitor_app_waiting_phases_cannot_filter(
+@pytest.mark.asyncio
+async def test_monitor_app_waiting_phases_cannot_filter(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     node = next(iter(monitor_session.app.tree_nodes.values()))
-    monitor_session.call(
+    await tests.helpers.textual.invoke(
         monitor_session.app.select_phase,
         textual.widgets.Tree.NodeSelected(node),
     )
     assert monitor_session.app.selected_phase == ()
 
 
-def test_monitor_app_selects_started_source_branch(
+@pytest.mark.asyncio
+async def test_monitor_app_selects_started_source_branch(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     path = (
@@ -97,22 +101,23 @@ def test_monitor_app_selects_started_source_branch(
             path=path,
         ),
     )
-    monitor_session.runner.run(monitor_session.app.refresh_files())
+    await monitor_session.app.refresh_files()
     node = monitor_session.app.tree_nodes[path]
-    monitor_session.call(
+    await tests.helpers.textual.invoke(
         monitor_session.app.select_phase,
         textual.widgets.Tree.NodeSelected(node),
     )
     assert monitor_session.app.selected_phase == path
     root = monitor_session.app.query_one("#phase-tree", textual.widgets.Tree).root
-    monitor_session.call(
+    await tests.helpers.textual.invoke(
         monitor_session.app.select_phase,
         textual.widgets.Tree.NodeSelected(root),
     )
     assert monitor_session.app.selected_phase == ()
 
 
-def test_monitor_app_pause_keeps_collecting(
+@pytest.mark.asyncio
+async def test_monitor_app_pause_keeps_collecting(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
@@ -122,21 +127,22 @@ def test_monitor_app_pause_keeps_collecting(
             command="run",
         ),
     )
-    monitor_session.runner.run(monitor_session.app.refresh_files())
-    monitor_session.call(monitor_session.app.action_toggle_follow)
+    await monitor_session.app.refresh_files()
+    await tests.helpers.textual.invoke(monitor_session.app.action_toggle_follow)
     visible = monitor_session.app.visible_state
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
         monitor_session.directory,
         tests.helpers.factories.peri_scribe.monitor.events.record("New event"),
     )
-    monitor_session.runner.run(monitor_session.app.refresh_files())
+    await monitor_session.app.refresh_files()
     assert monitor_session.app.visible_state is visible
     assert monitor_session.app.state.sequence > visible.sequence
-    monitor_session.call(monitor_session.app.action_toggle_follow)
+    await tests.helpers.textual.invoke(monitor_session.app.action_toggle_follow)
     assert monitor_session.app.visible_state is monitor_session.app.state
 
 
-def test_monitor_app_filters_and_inspects_events(
+@pytest.mark.asyncio
+async def test_monitor_app_filters_and_inspects_events(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
@@ -151,44 +157,45 @@ def test_monitor_app_filters_and_inspects_events(
             exception="Full traceback",
         ),
     )
-    monitor_session.runner.run(monitor_session.app.refresh_files())
-    monitor_session.call(monitor_session.app.action_search)
+    await monitor_session.app.refresh_files()
+    await tests.helpers.textual.invoke(monitor_session.app.action_search)
     stream = monitor_session.app.query_one(
         "#log-stream",
         peri_scribe.monitor.widgets.Stream,
     )
-    monitor_session.call(
+    await tests.helpers.textual.invoke(
         setattr,
         stream.query_one(textual.widgets.Input),
         "value",
         "moonshine",
     )
-    monitor_session.runner.run(monitor_session.pilot.pause())
+    await monitor_session.pilot.pause()
     table = stream.query_one(peri_scribe.monitor.widgets.EventTable)
     assert table.row_count == 1
-    monitor_session.call(
+    await tests.helpers.textual.invoke(
         monitor_session.app.select_row,
         textual.widgets.DataTable.RowSelected(table, 0, next(iter(table.rows))),
     )
     details = monitor_session.app.query_one("#details", textual.widgets.Static).content
     assert isinstance(details, rich.json.JSON)
     assert "Full traceback" in details.text.plain
-    monitor_session.call(monitor_session.app.action_clear_filter)
+    await tests.helpers.textual.invoke(monitor_session.app.action_clear_filter)
     assert stream.query_one(textual.widgets.Input).value == ""
 
 
-def test_monitor_app_report_uses_current_file_and_mtime(
+@pytest.mark.asyncio
+async def test_monitor_app_report_uses_current_file_and_mtime(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     path = monitor_session.app.report_path
     path.write_text("# Fires\n\n[Jump](#moonshine)\n\n## Moonshine\n\nDetails")
-    monitor_session.runner.run(monitor_session.app.refresh_files())
-    monitor_session.runner.run(monitor_session.pilot.press("5"))
+    await monitor_session.app.refresh_files()
+    await monitor_session.pilot.press("5")
     viewer = monitor_session.app.query_one(
         "#report-viewer",
         textual.widgets.MarkdownViewer,
     )
-    assert monitor_session.call(viewer.document.goto_anchor, "moonshine")
+    assert await tests.helpers.textual.invoke(viewer.document.goto_anchor, "moonshine")
     assert (
         monitor_session.app.report.modified
         == datetime.datetime.fromtimestamp(
@@ -201,7 +208,8 @@ def test_monitor_app_report_uses_current_file_and_mtime(
     )
 
 
-def test_monitor_app_defers_report_loading_until_its_tab_is_selected(
+@pytest.mark.asyncio
+async def test_monitor_app_defers_report_loading_until_its_tab_is_selected(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -213,63 +221,66 @@ def test_monitor_app_defers_report_loading_until_its_tab_is_selected(
     update = unittest.mock.AsyncMock(wraps=viewer.document.update)
     monkeypatch.setattr(viewer.document, "update", update)
     session.app.report_path.write_text("# First")
-    session.runner.run(session.app.refresh_files())
+    await session.app.refresh_files()
     session.app.report_path.write_text("# Latest")
-    session.runner.run(session.app.refresh_files())
+    await session.app.refresh_files()
     read.assert_not_called()
     update.assert_not_called()
-    session.runner.run(session.pilot.press("5"))
+    await session.pilot.press("5")
     update.assert_awaited_once_with("# Latest")
-    session.runner.run(session.app.refresh_files())
-    session.runner.run(session.pilot.press("1", "5"))
+    await session.app.refresh_files()
+    await session.pilot.press("1", "5")
     update.assert_awaited_once()
 
 
-def test_monitor_app_refreshes_replaced_report_while_paused(
+@pytest.mark.asyncio
+async def test_monitor_app_refreshes_replaced_report_while_paused(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
-    monitor_session.call(monitor_session.app.action_toggle_follow)
+    await tests.helpers.textual.invoke(monitor_session.app.action_toggle_follow)
     path = monitor_session.app.report_path
     path.write_text("# Original")
-    monitor_session.runner.run(monitor_session.pilot.press("5"))
+    await monitor_session.pilot.press("5")
     temporary = path.with_suffix(".new")
     temporary.write_text("# Replacement")
     temporary.replace(path)
-    monitor_session.runner.run(monitor_session.app.refresh_files())
+    await monitor_session.app.refresh_files()
     assert monitor_session.app.report.content == "# Replacement"
 
 
 @pytest.mark.parametrize("tab", ["1", "2", "3", "4"])
-def test_monitor_app_suspends_report_refresh_until_returning_to_its_tab(
+@pytest.mark.asyncio
+async def test_monitor_app_suspends_report_refresh_until_returning_to_its_tab(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
     tab: str,
 ) -> None:
     session = monitor_session
     session.app.report_path.write_text("# Original")
-    session.runner.run(session.pilot.press("5", tab))
+    await session.pilot.press("5", tab)
     read = unittest.mock.Mock(wraps=peri_scribe.monitor.storage.read_report)
     monkeypatch.setattr(peri_scribe.monitor.storage, "read_report", read)
     viewer = session.app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
     update = unittest.mock.AsyncMock(wraps=viewer.document.update)
     monkeypatch.setattr(viewer.document, "update", update)
     session.app.report_path.write_text("# Replacement")
-    session.runner.run(session.app.refresh_files())
+    await session.app.refresh_files()
     read.assert_not_called()
     update.assert_not_called()
     assert session.app.report.content == "# Original"
-    session.runner.run(session.pilot.press("5"))
+    await session.pilot.press("5")
     assert session.app.report.content == "# Replacement"
     update.assert_awaited_once_with("# Replacement")
 
 
-def test_render_report_discards_a_read_completed_after_leaving_its_tab(
+@pytest.mark.asyncio
+async def test_render_report_discards_a_read_completed_after_leaving_its_tab(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = monitor_session
     session.app.report_path.write_text("# Original")
-    session.runner.run(session.pilot.press("5"))
+    await session.pilot.press("5")
     viewer = session.app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
     update = unittest.mock.AsyncMock(wraps=viewer.document.update)
     monkeypatch.setattr(viewer.document, "update", update)
@@ -281,12 +292,13 @@ def test_render_report_discards_a_read_completed_after_leaving_its_tab(
             session.app,
         ),
     )
-    session.runner.run(peri_scribe.monitor.app.render_report(session.app))
+    await peri_scribe.monitor.app.render_report(session.app)
     update.assert_not_called()
     assert session.app.report.content == "# Original"
 
 
-def test_monitor_app_selects_historical_run(
+@pytest.mark.asyncio
+async def test_monitor_app_selects_historical_run(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
@@ -300,10 +312,10 @@ def test_monitor_app_selects_historical_run(
             status="completed",
         ),
     )
-    monitor_session.runner.run(monitor_session.app.refresh_files())
-    monitor_session.runner.run(monitor_session.pilot.press("3"))
+    await monitor_session.app.refresh_files()
+    await monitor_session.pilot.press("3")
     table = monitor_session.app.query_one("#run-table", textual.widgets.DataTable)
-    monitor_session.call(
+    await tests.helpers.textual.invoke(
         monitor_session.app.select_row,
         textual.widgets.DataTable.RowSelected(table, 0, next(iter(table.rows))),
     )
@@ -312,10 +324,11 @@ def test_monitor_app_selects_historical_run(
     assert not monitor_session.app.tree_nodes
 
 
-def test_monitor_app_navigation_keys(
+@pytest.mark.asyncio
+async def test_monitor_app_navigation_keys(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
-    monitor_session.runner.run(monitor_session.pilot.press("3", "2", "end"))
+    await monitor_session.pilot.press("3", "2", "end")
     assert (
         monitor_session.app.query_one("#views", textual.widgets.TabbedContent).active
         == "pipeline"
@@ -323,28 +336,31 @@ def test_monitor_app_navigation_keys(
     assert monitor_session.app.following
 
 
-def test_event_table_upward_browsing_pauses_following(
+@pytest.mark.asyncio
+async def test_event_table_upward_browsing_pauses_following(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     table = monitor_session.app.query_one(peri_scribe.monitor.widgets.EventTable)
-    monitor_session.call(table.on_key, textual.events.Key("up", None))
-    monitor_session.runner.run(monitor_session.pilot.pause())
+    await tests.helpers.textual.invoke(table.on_key, textual.events.Key("up", None))
+    await monitor_session.pilot.pause()
     assert not monitor_session.app.following
 
 
-def test_event_table_wheel_browsing_pauses_following(
+@pytest.mark.asyncio
+async def test_event_table_wheel_browsing_pauses_following(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     table = monitor_session.app.query_one(peri_scribe.monitor.widgets.EventTable)
-    monitor_session.call(
+    await tests.helpers.textual.invoke(
         table.on_mouse_scroll_up,
         unittest.mock.Mock(spec=textual.events.MouseScrollUp),
     )
-    monitor_session.runner.run(monitor_session.pilot.pause())
+    await monitor_session.pilot.pause()
     assert not monitor_session.app.following
 
 
-def test_monitor_app_loads_older_month_on_request(
+@pytest.mark.asyncio
+async def test_monitor_app_loads_older_month_on_request(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     path = monitor_session.directory / "logs" / "2026-08.jsonl.zst"
@@ -360,14 +376,15 @@ def test_monitor_app_loads_older_month_on_request(
             )
             + "\n",
         )
-    monitor_session.runner.run(monitor_session.app.refresh_files())
-    monitor_session.runner.run(monitor_session.app.load_older())
+    await monitor_session.app.refresh_files()
+    await monitor_session.app.load_older()
     assert monitor_session.app.state.runs[0].identifier == "archive"
-    monitor_session.runner.run(monitor_session.app.load_older())
+    await monitor_session.app.load_older()
     assert len(monitor_session.app.state.runs) == 1
 
 
-def test_monitor_app_preserves_live_events_arriving_during_archive_loading(
+@pytest.mark.asyncio
+async def test_monitor_app_preserves_live_events_arriving_during_archive_loading(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -392,7 +409,7 @@ def test_monitor_app_preserves_live_events_arriving_during_archive_loading(
             )
             + "\n",
         )
-    session.runner.run(session.app.refresh_files())
+    await session.app.refresh_files()
     started, release = threading.Event(), threading.Event()
     monkeypatch.setattr(
         peri_scribe.monitor.model,
@@ -403,9 +420,9 @@ def test_monitor_app_preserves_live_events_arriving_during_archive_loading(
             append=peri_scribe.monitor.model.append_records,
         ),
     )
-    session.call(session.app.call_later, session.app.load_older)
+    await tests.helpers.textual.invoke(session.app.call_later, session.app.load_older)
     try:
-        assert session.runner.run(asyncio.to_thread(started.wait, timeout=5))
+        assert await asyncio.to_thread(started.wait, timeout=5)
         tests.helpers.factories.peri_scribe.monitor.events.write_log(
             session.directory,
             tests.helpers.factories.peri_scribe.monitor.events.record(
@@ -415,13 +432,11 @@ def test_monitor_app_preserves_live_events_arriving_during_archive_loading(
             ),
         )
         session.app.files_changed = True
-        session.runner.run(
-            tests.helpers.doubles.peri_scribe.monitor.app.tick(session.clock),
-        )
+        await tests.helpers.doubles.peri_scribe.monitor.app.tick(session.clock)
     finally:
         release.set()
-    session.runner.run(session.pilot.pause())
-    session.runner.run(session.app.refresh_files())
+    await session.pilot.pause()
+    await session.app.refresh_files()
     assert [run.identifier for run in session.app.state.runs] == [
         "archive",
         "initial",
@@ -429,11 +444,12 @@ def test_monitor_app_preserves_live_events_arriving_during_archive_loading(
     ]
 
 
-def test_monitor_app_preserves_collapsed_branches_during_live_updates(
+@pytest.mark.asyncio
+async def test_monitor_app_preserves_collapsed_branches_during_live_updates(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     path = (peri_scribe.phases.Segment(phase="fetch"),)
-    monitor_session.call(monitor_session.app.tree_nodes[path].collapse)
+    await tests.helpers.textual.invoke(monitor_session.app.tree_nodes[path].collapse)
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
         monitor_session.directory,
         tests.helpers.factories.peri_scribe.monitor.events.record(
@@ -441,35 +457,39 @@ def test_monitor_app_preserves_collapsed_branches_during_live_updates(
             command="run",
         ),
     )
-    monitor_session.runner.run(monitor_session.app.refresh_files())
+    await monitor_session.app.refresh_files()
     assert not monitor_session.app.tree_nodes[path].is_expanded
 
 
-def test_monitor_app_preserves_report_scroll_on_refresh(
+@pytest.mark.asyncio
+async def test_monitor_app_preserves_report_scroll_on_refresh(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     path = monitor_session.app.report_path
     path.write_text("# Report\n\n" + "Paragraph\n\n" * 200)
-    monitor_session.runner.run(monitor_session.app.refresh_files())
-    monitor_session.runner.run(monitor_session.pilot.press("5"))
+    await monitor_session.app.refresh_files()
+    await monitor_session.pilot.press("5")
     viewer = monitor_session.app.query_one(
         "#report-viewer",
         textual.widgets.MarkdownViewer,
     )
-    monitor_session.call(functools.partial(viewer.scroll_page_down, animate=False))
-    monitor_session.runner.run(monitor_session.pilot.pause())
+    await tests.helpers.textual.invoke(
+        functools.partial(viewer.scroll_page_down, animate=False),
+    )
+    await monitor_session.pilot.pause()
     before = viewer.scroll_offset
     assert before.y > 0
     path.write_text(path.read_text() + "New paragraph\n\n")
-    monitor_session.runner.run(monitor_session.app.refresh_files())
-    monitor_session.runner.run(monitor_session.pilot.pause())
+    await monitor_session.app.refresh_files()
+    await monitor_session.pilot.pause()
     assert viewer.scroll_offset == before
 
 
-def test_monitor_app_keeps_status_and_controls_inside_viewport(
+@pytest.mark.asyncio
+async def test_monitor_app_keeps_status_and_controls_inside_viewport(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
-    monitor_session.runner.run(monitor_session.pilot.pause())
+    await monitor_session.pilot.pause()
     for selector in ("#activity", "#views", "#inspection", "#file-status"):
         region = monitor_session.app.query_one(selector).region
         assert region.y >= 0
@@ -487,26 +507,27 @@ def test_monitor_app_keeps_status_and_controls_inside_viewport(
         ("pipeline", "#inspection"),
     ],
 )
-def test_monitor_app_scrollbars_keep_terminal_edge_neutral(
+@pytest.mark.asyncio
+async def test_monitor_app_scrollbars_keep_terminal_edge_neutral(
     scrolling_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     tab: str,
     selector: str,
 ) -> None:
     session = scrolling_session
-    session.call(session.app.action_view, tab)
-    session.runner.run(session.pilot.pause())
+    await tests.helpers.textual.invoke(session.app.action_view, tab)
+    await session.pilot.pause()
     pane = session.app.query_one(selector)
     assert pane.show_vertical_scrollbar
     backgrounds = set()
     for fraction in (0, 0.4, 1):
-        session.call(
+        await tests.helpers.textual.invoke(
             functools.partial(
                 pane.scroll_to,
                 y=pane.max_scroll_y * fraction,
                 animate=False,
             ),
         )
-        session.runner.run(session.pilot.pause())
+        await session.pilot.pause()
         bar = pane.vertical_scrollbar
         for row in range(bar.region.y, bar.region.bottom):
             style = session.app.screen.get_style_at(session.app.size.width - 1, row)
@@ -514,39 +535,43 @@ def test_monitor_app_scrollbars_keep_terminal_edge_neutral(
     assert len(backgrounds) == 1
 
 
-def test_monitor_app_preserves_tree_cursor_during_refresh(
+@pytest.mark.asyncio
+async def test_monitor_app_preserves_tree_cursor_during_refresh(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     path = (peri_scribe.phases.Segment(phase="fetch"),)
     tree = monitor_session.app.query_one("#phase-tree", textual.widgets.Tree)
-    monitor_session.runner.run(monitor_session.pilot.pause())
-    monitor_session.call(tree.move_cursor, monitor_session.app.tree_nodes[path])
-    monitor_session.runner.run(monitor_session.app.refresh_files())
-    monitor_session.runner.run(monitor_session.pilot.pause())
+    await monitor_session.pilot.pause()
+    await tests.helpers.textual.invoke(
+        tree.move_cursor,
+        monitor_session.app.tree_nodes[path],
+    )
+    await monitor_session.app.refresh_files()
+    await monitor_session.pilot.pause()
     assert tree.cursor_node is not None
     assert tree.cursor_node.data is not None
     assert tree.cursor_node.data.path == path
 
 
-def test_monitor_app_ignores_completed_read_after_views_unmount(
+@pytest.mark.asyncio
+async def test_monitor_app_ignores_completed_read_after_views_unmount(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
-    monitor_session.runner.run(
-        tests.helpers.fixtures.peri_scribe.monitor.application.remove_views(
-            monitor_session.app,
-        ),
+    await tests.helpers.fixtures.peri_scribe.monitor.application.remove_views(
+        monitor_session.app,
     )
-    monitor_session.runner.run(monitor_session.app.refresh_files())
+    await monitor_session.app.refresh_files()
     assert not monitor_session.app.query("#views")
 
 
-def test_monitor_app_refresh_files_does_not_scroll_a_viewer_removed_during_update(
+@pytest.mark.asyncio
+async def test_monitor_app_refresh_files_does_not_scroll_a_viewer_removed_during_update(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = monitor_session
     viewer = session.app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
-    session.runner.run(session.pilot.press("5"))
+    await session.pilot.press("5")
     session.app.report_path.write_text("# Updated report")
     monkeypatch.setattr(
         viewer.document,
@@ -558,13 +583,14 @@ def test_monitor_app_refresh_files_does_not_scroll_a_viewer_removed_during_updat
     )
     scroll = unittest.mock.Mock()
     monkeypatch.setattr(viewer, "scroll_to", scroll)
-    session.runner.run(session.app.refresh_files())
+    await session.app.refresh_files()
     assert not viewer.is_attached
     scroll.assert_not_called()
     assert session.app.report.content == "# Updated report"
 
 
-def test_monitor_app_does_not_redraw_after_shutdown_begins(
+@pytest.mark.asyncio
+async def test_monitor_app_does_not_redraw_after_shutdown_begins(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -576,11 +602,12 @@ def test_monitor_app_does_not_redraw_after_shutdown_begins(
         new_callable=unittest.mock.PropertyMock,
         return_value=False,
     ):
-        monitor_session.runner.run(monitor_session.app.refresh_files())
+        await monitor_session.app.refresh_files()
     redraw.assert_not_called()
 
 
-def test_monitor_app_ignores_tab_changes_after_shutdown_begins(
+@pytest.mark.asyncio
+async def test_monitor_app_ignores_tab_changes_after_shutdown_begins(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     inspection = monitor_session.app.query_one("#inspection")
@@ -594,7 +621,7 @@ def test_monitor_app_ignores_tab_changes_after_shutdown_begins(
         new_callable=unittest.mock.PropertyMock,
         return_value=False,
     ):
-        monitor_session.runner.run(monitor_session.app.tab_changed(event))
+        await monitor_session.app.tab_changed(event)
     assert inspection.display
 
 
@@ -613,7 +640,8 @@ def test_monitor_app_ignores_tab_changes_after_shutdown_begins(
         ("logs", "#inspection-divider", "#views", "#inspection", "height", (0, -4)),
     ],
 )
-def test_monitor_app_resizes_panes_by_dragging(
+@pytest.mark.asyncio
+async def test_monitor_app_resizes_panes_by_dragging(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     *,
     tab: str,
@@ -624,13 +652,13 @@ def test_monitor_app_resizes_panes_by_dragging(
     movement: tuple[int, int],
 ) -> None:
     session = monitor_session
-    session.call(session.app.action_view, tab)
-    session.runner.run(session.pilot.pause())
+    await tests.helpers.textual.invoke(session.app.action_view, tab)
+    await session.pilot.pause()
     leading = session.app.query_one(before)
     trailing = session.app.query_one(after)
     initial = getattr(leading.size, dimension)
     total = initial + getattr(trailing.size, dimension)
-    session.drag(session.app.query_one(divider), movement)
+    await session.drag(session.app.query_one(divider), movement)
     change = movement[0] if dimension == "width" else movement[1]
     assert getattr(leading.size, dimension) == initial + change
     assert getattr(leading.size, dimension) + getattr(trailing.size, dimension) == total
@@ -638,43 +666,46 @@ def test_monitor_app_resizes_panes_by_dragging(
 
 
 @pytest.mark.parametrize("tab", ["runs", "report"])
-def test_monitor_app_hides_inspection_divider_on_single_pane_tabs(
+@pytest.mark.asyncio
+async def test_monitor_app_hides_inspection_divider_on_single_pane_tabs(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     tab: str,
 ) -> None:
     session = monitor_session
-    session.call(session.app.action_view, tab)
-    session.runner.run(session.pilot.pause())
+    await tests.helpers.textual.invoke(session.app.action_view, tab)
+    await session.pilot.pause()
     assert not session.app.query_one("#inspection-divider").display
 
 
-def test_monitor_app_preserves_resized_panes_after_refresh_and_tab_changes(
+@pytest.mark.asyncio
+async def test_monitor_app_preserves_resized_panes_after_refresh_and_tab_changes(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     session = monitor_session
-    session.drag(session.app.query_one("#pipeline-divider"), (10, 0))
-    session.drag(session.app.query_one("#inspection-divider"), (0, -4))
+    await session.drag(session.app.query_one("#pipeline-divider"), (10, 0))
+    await session.drag(session.app.query_one("#inspection-divider"), (0, -4))
     tree = session.app.query_one("#phase-tree")
     inspection = session.app.query_one("#inspection")
     sizes = (tree.size, inspection.size)
-    session.runner.run(session.app.refresh_files())
-    session.runner.run(session.pilot.press("4", "5", "3", "2"))
+    await session.app.refresh_files()
+    await session.pilot.press("4", "5", "3", "2")
     assert (tree.size, inspection.size) == sizes
 
 
 @pytest.mark.parametrize(("width", "height"), [(80, 24), (160, 50)])
-def test_monitor_app_resized_panes_fit_after_terminal_resize(
+@pytest.mark.asyncio
+async def test_monitor_app_resized_panes_fit_after_terminal_resize(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     width: int,
     height: int,
 ) -> None:
     session = monitor_session
-    session.drag(session.app.query_one("#pipeline-divider"), (10, 0))
-    session.drag(session.app.query_one("#inspection-divider"), (0, -4))
+    await session.drag(session.app.query_one("#pipeline-divider"), (10, 0))
+    await session.drag(session.app.query_one("#inspection-divider"), (0, -4))
     tree = session.app.query_one("#phase-tree")
     stream = session.app.query_one("#pipeline-stream")
     proportion = tree.size.width / (tree.size.width + stream.size.width)
-    session.runner.run(session.pilot.resize_terminal(width, height))
+    await session.pilot.resize_terminal(width, height)
     assert tree.size.width / (tree.size.width + stream.size.width) == pytest.approx(
         proportion,
         abs=0.02,

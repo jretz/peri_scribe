@@ -10,6 +10,7 @@ import shapely.geometry
 
 import peri_scribe.kml.geometry
 import tests.helpers.assertions.peri_scribe.kml.geometry
+import tests.helpers.factories.peri_scribe.kml.geometry
 import tests.helpers.peri_scribe.kml.geometry
 import tests.helpers.peri_scribe.kml.parsing
 import tests.helpers.strategies.geometry
@@ -24,7 +25,7 @@ def test_perimeter_geometry_preserves_parts_holes_and_rounded_coordinates(
     geometry: shapely.Polygon | shapely.MultiPolygon,
     draw_order: int,
 ) -> None:
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.geometry.perimeter_geometry(
         writer,
         "River",

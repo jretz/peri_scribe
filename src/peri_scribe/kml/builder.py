@@ -8,6 +8,8 @@ colormap.
 from __future__ import annotations
 
 import datetime
+import functools
+import io
 import pathlib
 import tempfile
 import typing
@@ -308,7 +310,30 @@ def fire_kml(
     scores: peri_scribe.models.FireScores | None = None,
     ring_style_urls: typing.Mapping[str, str] | None = None,
 ) -> str:
-    """Return the KML document string for *fires*.
+    """Provide document text for callers that need an in-memory representation.
+
+    Args:
+        fires: The fires to symbolize.
+        name: The document name.
+        scores: Saved fire scores, or None.
+        ring_style_urls: Explicit progression styles, or None to derive them.
+
+    Returns:
+        The complete KML text.
+    """
+    with io.StringIO() as stream:
+        write_fire_kml(fires, name, stream, scores, ring_style_urls)
+        return stream.getvalue()
+
+
+def write_fire_kml(
+    fires: list[peri_scribe.kml.fire_data.FireGeometry],
+    name: str,
+    stream: typing.TextIO,
+    scores: peri_scribe.models.FireScores | None = None,
+    ring_style_urls: typing.Mapping[str, str] | None = None,
+) -> None:
+    """Stream the KML document while retaining only shared serialization state.
 
     The document is named *name* and holds the symbolization styles, the
     progression-ring styles, and a top-level folder, also named *name*. The top-level
@@ -318,28 +343,26 @@ def fire_kml(
     inactive fire folders; without scores it holds the active and inactive fire folders.
 
     Args:
+        stream: The destination for the generated XML.
         fires: The fires to symbolize.
         name: The document's name, conventionally the output filename without its
             extension.
         scores: The saved score for each fire, or None.
         ring_style_urls: The style URL for each progression ring color, keyed by its
             ``#RRGGBB`` color, or None for none.
-
-    Returns:
-        The KML document.
     """
     if ring_style_urls is None:
         ring_style_urls = ring_style_urls_for(fires)
-    writer = peri_scribe.kml.geometry.KmlWriter()
-    writer.parts.append(
+    writer = peri_scribe.kml.geometry.KmlWriter(stream)
+    writer.write(
         f'<kml xmlns="{peri_scribe.kml.geometry.KML_NAMESPACE}" '
         f'xmlns:gx="{peri_scribe.kml.geometry.GX_NAMESPACE}">'
         "<Document>",
     )
     for style in peri_scribe.kml.styles.symbolization_styles():
-        writer.parts.append(str(style))
+        writer.write(str(style))
     for color in ring_style_urls:
-        writer.parts.append(
+        writer.write(
             str(
                 peri_scribe.kml.styles.filled_polygon_style(
                     peri_scribe.kml.styles.progression_ring_style_id(color),
@@ -347,8 +370,8 @@ def fire_kml(
                 ),
             ),
         )
-    writer.parts.append(f"<name>{peri_scribe.kml.geometry.escape_text(name)}</name>")
-    writer.parts.append(f"<description>{ROOT_DOCUMENT_ATTRIBUTION}</description>")
+    writer.write(f"<name>{peri_scribe.kml.geometry.escape_text(name)}</name>")
+    writer.write(f"<description>{ROOT_DOCUMENT_ATTRIBUTION}</description>")
 
     # The top-level folder holds the fire views as radio options, each created only when
     # it holds fires. Google Earth checks the last radio option that has any visible
@@ -371,39 +394,38 @@ def fire_kml(
                 ring_style_urls,
                 top_fires_present=False,
             )
-    writer.parts.append("</Document></kml>")
-    return writer.text()
+    writer.write("</Document></kml>")
 
 
 def write_kmz(
     path: pathlib.Path,
-    kml_text: str,
+    write_document: typing.Callable[[typing.TextIO], object],
     images: typing.Mapping[str, bytes] | None = None,
 ) -> None:
-    """Write *kml_text* and *images* as a compressed KMZ file at *path*.
+    """Write the generated document and *images* as a compressed KMZ file at *path*.
 
     Args:
         path: The KMZ file to write.
-        kml_text: The KML document to compress.
+        write_document: A renderer that writes XML to the supplied stream.
         images: Each plot image's filename and its bytes, or None for none.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=path.parent) as directory:
         temporary = pathlib.Path(directory) / path.name
-        write_archive(temporary, kml_text, images)
+        write_archive(temporary, write_document, images)
         temporary.replace(path)
 
 
 def write_archive(
     path: pathlib.Path,
-    kml_text: str,
+    write_document: typing.Callable[[typing.TextIO], object],
     images: typing.Mapping[str, bytes] | None,
 ) -> None:
     """Keep incomplete archive bytes away from the public KMZ path.
 
     Args:
         path: The temporary archive path, separate from the published KMZ.
-        kml_text: The KML document to include in the archive.
+        write_document: A renderer that writes XML to the supplied stream.
         images: Plot image filenames and bytes, or None when no images are needed.
     """
     with zipfile.ZipFile(
@@ -411,8 +433,14 @@ def write_archive(
         "w",
         compression=KMZ_COMPRESSION,
         compresslevel=KMZ_COMPRESSION_LEVEL,
+        allowZip64=False,
     ) as archive:
-        archive.writestr(KMZ_DOCUMENT_FILENAME, kml_text)
+        with (
+            archive.open(KMZ_DOCUMENT_FILENAME, "w") as member,
+            io.TextIOWrapper(member, encoding="utf-8", newline="") as stream,
+            peri_scribe.logging.log_phase(peri_scribe.phases.Phase.BUILD_KML),
+        ):
+            write_document(stream)
         if images:
             for filename, content in images.items():
                 archive.writestr(
@@ -616,13 +644,16 @@ def create_kmz(
     with peri_scribe.logging.log_phase(
         peri_scribe.phases.Phase.SERIALIZE_AND_WRITE_KMZ,
     ):
-        with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.BUILD_KML):
-            kml_text = fire_kml(
+        write_kmz(
+            output_path,
+            functools.partial(
+                write_fire_kml,
                 geometries,
                 output_path.stem,
-                scores or peri_scribe.models.FireScores(version="", fires=[]),
-            )
-        write_kmz(output_path, kml_text, images)
+                scores=scores or peri_scribe.models.FireScores(version="", fires=[]),
+            ),
+            images,
+        )
     if publication_inputs is not None and published is not None:
         peri_scribe.publication.commit(
             year_directory,

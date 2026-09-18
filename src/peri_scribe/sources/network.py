@@ -46,13 +46,13 @@ def downloaded_response(
         ExternalDataError: If the download fails.
     """
     try:
-        response = requests.get(
+        with requests.get(
             url,
             stream=stream,
             timeout=REQUEST_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-        yield response
+        ) as response:
+            response.raise_for_status()
+            yield response
     except requests.exceptions.RequestException as error:
         message = f"Failed to download {url}: {error}"
         raise peri_scribe.exceptions.ExternalDataError(message) from error

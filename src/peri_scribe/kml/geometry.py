@@ -98,28 +98,29 @@ def ring_coordinates_text(ring: shapely.LinearRing) -> str:
 
 
 class KmlWriter:
-    """Accumulates KML text and caches repeated geometry serialization.
+    """Write nested KML directly while sharing geometry text and tour identifiers.
 
-    The parts list holds the document as it is assembled; :meth:`text` joins it. Each
-    unique geometry's rings are serialized once and cached, keyed by the geometry object
-    itself, which the folder builders share across the several views that show the same
-    fire. The cache retains the geometries so their identities stay unique while the
-    document is built.
+    Folder scopes keep opening and closing tags together. The geometry cache avoids
+    repeating coordinate formatting across the several views of each fire.
     """
 
-    def __init__(self) -> None:
-        """Initialize an independent KML document and geometry cache."""
-        self.parts: list[str] = []
+    def __init__(self, stream: typing.TextIO) -> None:
+        """Keep document state separate from the caller-owned output stream.
+
+        Args:
+            stream: The text destination, buffered by the caller when appropriate.
+        """
+        self.stream = stream
         self.geometry_cache: dict[int, tuple[shapely.Geometry, tuple[str, ...]]] = {}
         self.next_folder_id = 0
 
-    def text(self) -> str:
-        """Return the assembled KML document.
+    def write(self, text: str) -> None:
+        """Release each fragment to the destination without retaining the document.
 
-        Returns:
-            The KML document text.
+        Args:
+            text: An already escaped XML fragment.
         """
-        return "".join(self.parts)
+        self.stream.write(text)
 
     @contextlib.contextmanager
     def folder(
@@ -144,23 +145,22 @@ class KmlWriter:
         """
         folder_id = str(self.next_folder_id)
         self.next_folder_id += 1
-        parts = self.parts
-        parts.append("<Folder>")
-        parts.append(f"<name>{escape_text(name)}</name>")
+        self.write("<Folder>")
+        self.write(f"<name>{escape_text(name)}</name>")
         if not visible:
-            parts.append("<visibility>0</visibility>")
+            self.write("<visibility>0</visibility>")
         if list_item_type is not None or item_icon is not None:
-            parts.append("<Style><ListStyle>")
-            parts.append(f"<listItemType>{list_item_type or 'check'}</listItemType>")
+            self.write("<Style><ListStyle>")
+            self.write(f"<listItemType>{list_item_type or 'check'}</listItemType>")
             if item_icon is not None:
-                parts.append(
+                self.write(
                     f"<ItemIcon><href>{escape_text(item_icon)}</href></ItemIcon>",
                 )
-            parts.append("</ListStyle></Style>")
+            self.write("</ListStyle></Style>")
         try:
             yield folder_id
         finally:
-            parts.append("</Folder>")
+            self.write("</Folder>")
 
     def geometry_xml(self, geometry: shapely.Geometry, draw_order: int) -> str:
         """Return *geometry* as a KML geometry element with *draw_order* applied.
@@ -243,17 +243,16 @@ def open_placemark(
         visible: Whether the placemark is initially visible.
         placemark_id: The placemark's XML identifier, or None to omit it.
     """
-    parts = writer.parts
-    parts.append("<Placemark")
+    writer.write("<Placemark")
     if placemark_id is not None:
-        parts.append(f' id="{placemark_id}"')
-    parts.append(">")
-    parts.append(f"<name>{escape_text(name)}</name>")
-    parts.append(f"<styleUrl>{style_url}</styleUrl>")
+        writer.write(f' id="{placemark_id}"')
+    writer.write(">")
+    writer.write(f"<name>{escape_text(name)}</name>")
+    writer.write(f"<styleUrl>{style_url}</styleUrl>")
     if not visible:
-        parts.append("<visibility>0</visibility>")
+        writer.write("<visibility>0</visibility>")
     if description is not None:
-        parts.append(f"<description>{escape_text(description)}</description>")
+        writer.write(f"<description>{escape_text(description)}</description>")
 
 
 def point_placemark(
@@ -286,11 +285,11 @@ def point_placemark(
         visible=visible,
         placemark_id=None,
     )
-    writer.parts.append(
+    writer.write(
         f"<Point><coordinates>{coordinate_pair(point.x, point.y)}</coordinates>"
         f"<gx:drawOrder>{draw_order}</gx:drawOrder></Point>",
     )
-    writer.parts.append("</Placemark>")
+    writer.write("</Placemark>")
 
 
 def polygon_geometry(
@@ -324,8 +323,8 @@ def polygon_geometry(
         visible=visible,
         placemark_id=placemark_id,
     )
-    writer.parts.append(writer.geometry_xml(polygon, draw_order))
-    writer.parts.append("</Placemark>")
+    writer.write(writer.geometry_xml(polygon, draw_order))
+    writer.write("</Placemark>")
 
 
 def multi_polygon_geometry(
@@ -359,8 +358,8 @@ def multi_polygon_geometry(
         visible=visible,
         placemark_id=placemark_id,
     )
-    writer.parts.append(writer.geometry_xml(multi_polygon, draw_order))
-    writer.parts.append("</Placemark>")
+    writer.write(writer.geometry_xml(multi_polygon, draw_order))
+    writer.write("</Placemark>")
 
 
 def perimeter_geometry(

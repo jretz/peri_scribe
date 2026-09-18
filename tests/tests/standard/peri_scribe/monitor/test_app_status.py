@@ -22,14 +22,16 @@ import tests.helpers.doubles.peri_scribe.monitor.changes
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.factories.peri_scribe.monitor.status
 import tests.helpers.fixtures.peri_scribe.monitor.application
+import tests.helpers.textual
 
 
-def test_monitor_app_status_is_first_tab_and_first_shortcut(
+@pytest.mark.asyncio
+async def test_monitor_app_status_is_first_tab_and_first_shortcut(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     session = monitor_session
     assert session.app.query(textual.widgets.TabPane).first().id == "status"
-    session.runner.run(session.pilot.press("1"))
+    await session.pilot.press("1")
     assert (
         session.app.query_one("#views", textual.widgets.TabbedContent).active
         == "status"
@@ -38,7 +40,8 @@ def test_monitor_app_status_is_first_tab_and_first_shortcut(
     assert not session.app.query_one("#decisions").display
 
 
-def test_monitor_app_status_ages_update_without_new_logs(
+@pytest.mark.asyncio
+async def test_monitor_app_status_ages_update_without_new_logs(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     session = monitor_session
@@ -52,17 +55,18 @@ def test_monitor_app_status_ages_update_without_new_logs(
         tests.helpers.factories.peri_scribe.monitor.status.finished("reports"),
     )
     with time_machine.travel(now + datetime.timedelta(hours=4), tick=False):
-        session.runner.run(session.app.refresh_files())
+        await session.app.refresh_files()
         pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
         assert pane.view is not None
         assert pane.view.metrics[0].health == peri_scribe.monitor.status.Health.GOOD
     with time_machine.travel(now + datetime.timedelta(hours=7), tick=False):
-        session.runner.run(session.app.refresh_files())
+        await session.app.refresh_files()
         assert pane.view is not None
         assert pane.view.metrics[0].health == peri_scribe.monitor.status.Health.BAD
 
 
-def test_monitor_app_status_reuses_sorted_evidence_when_only_time_changes(
+@pytest.mark.asyncio
+async def test_monitor_app_status_reuses_sorted_evidence_when_only_time_changes(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -75,25 +79,26 @@ def test_monitor_app_status_reuses_sorted_evidence_when_only_time_changes(
     )
     evidence = unittest.mock.Mock(wraps=peri_scribe.monitor.status.evidence)
     monkeypatch.setattr(peri_scribe.monitor.status, "evidence", evidence)
-    session.runner.run(session.app.refresh_files())
+    await session.app.refresh_files()
     pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
     assert pane.view is not None
     previous = pane.view.metrics
     now = tests.helpers.factories.peri_scribe.monitor.status.NOW
     with time_machine.travel(now + datetime.timedelta(hours=7), tick=False):
-        session.runner.run(session.app.refresh_files())
+        await session.app.refresh_files()
     evidence.assert_called_once()
     assert pane.view.metrics != previous
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
         session.directory,
         tests.helpers.factories.peri_scribe.monitor.status.finished("reports"),
     )
-    session.runner.run(session.app.refresh_files())
+    await session.app.refresh_files()
     expected_calls = 2
     assert evidence.call_count == expected_calls
 
 
-def test_monitor_app_status_catches_up_before_projecting_history(
+@pytest.mark.asyncio
+async def test_monitor_app_status_catches_up_before_projecting_history(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -105,7 +110,7 @@ def test_monitor_app_status_catches_up_before_projecting_history(
     )
     project = unittest.mock.Mock(wraps=peri_scribe.monitor.status.project)
     monkeypatch.setattr(peri_scribe.monitor.status, "project", project)
-    session.runner.run(session.app.refresh_files())
+    await session.app.refresh_files()
     project.assert_called_once()
     assert project.call_args.args[0].caught_up
     pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
@@ -113,7 +118,8 @@ def test_monitor_app_status_catches_up_before_projecting_history(
     assert pane.view.coverage.health == peri_scribe.monitor.status.Health.GOOD
 
 
-def test_monitor_app_status_uses_live_phase_while_pipeline_is_paused(
+@pytest.mark.asyncio
+async def test_monitor_app_status_uses_live_phase_while_pipeline_is_paused(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     session = monitor_session
@@ -125,8 +131,8 @@ def test_monitor_app_status_uses_live_phase_while_pipeline_is_paused(
             run_id="old",
         ),
     )
-    session.runner.run(session.app.refresh_files())
-    session.call(session.app.action_toggle_follow)
+    await session.app.refresh_files()
+    await tests.helpers.textual.invoke(session.app.action_toggle_follow)
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
         session.directory,
         tests.helpers.factories.peri_scribe.monitor.status.record(
@@ -140,7 +146,7 @@ def test_monitor_app_status_uses_live_phase_while_pipeline_is_paused(
             phase="fetch.fire-collection.collect-feed.query-features",
         ),
     )
-    session.runner.run(session.app.refresh_files())
+    await session.app.refresh_files()
     assert session.app.current_run().identifier == "old"
     text = session.app.query_one(
         "#status-activity",
@@ -150,7 +156,8 @@ def test_monitor_app_status_uses_live_phase_while_pipeline_is_paused(
     assert "fetch → fire-collection → collect-feed → query-features" in text.plain
 
 
-def test_monitor_app_status_links_load_run_beyond_interactive_history(
+@pytest.mark.asyncio
+async def test_monitor_app_status_links_load_run_beyond_interactive_history(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     session = monitor_session
@@ -166,15 +173,15 @@ def test_monitor_app_status_links_load_run_beyond_interactive_history(
             for number in range(110)
         ),
     )
-    session.runner.run(session.app.refresh_files())
+    await session.app.refresh_files()
     assert all(run.identifier != "failed" for run in session.app.state.runs)
-    session.call(
+    await tests.helpers.textual.invoke(
         session.app.query_one(
             "#status-failure",
             peri_scribe.monitor.status_widgets.StatusLink,
         ).on_click,
     )
-    session.runner.run(session.pilot.pause())
+    await session.pilot.pause()
     assert session.app.current_run().identifier == "failed"
     assert not session.app.following
     assert (
@@ -187,7 +194,8 @@ def test_monitor_app_status_links_load_run_beyond_interactive_history(
     assert "invalid geometry" in details.text.plain
 
 
-def test_monitor_app_status_exception_row_opens_latest_instance(
+@pytest.mark.asyncio
+async def test_monitor_app_status_exception_row_opens_latest_instance(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     session = monitor_session
@@ -196,18 +204,19 @@ def test_monitor_app_status_exception_row_opens_latest_instance(
         *tests.helpers.factories.peri_scribe.monitor.status.failed_run(run_id="first"),
         *tests.helpers.factories.peri_scribe.monitor.status.failed_run(run_id="latest"),
     )
-    session.runner.run(session.app.refresh_files())
+    await session.app.refresh_files()
     pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
     table = pane.query_one("#status-exceptions", textual.widgets.DataTable)
-    session.call(
+    await tests.helpers.textual.invoke(
         pane.select_evidence,
         textual.widgets.DataTable.RowSelected(table, 0, next(iter(table.rows))),
     )
-    session.runner.run(session.pilot.pause())
+    await session.pilot.pause()
     assert session.app.current_run().identifier == "latest"
 
 
-def test_monitor_app_status_link_supports_keyboard(
+@pytest.mark.asyncio
+async def test_monitor_app_status_link_supports_keyboard(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     session = monitor_session
@@ -215,17 +224,18 @@ def test_monitor_app_status_link_supports_keyboard(
         session.directory,
         *tests.helpers.factories.peri_scribe.monitor.status.failed_run(),
     )
-    session.runner.run(session.app.refresh_files())
-    session.runner.run(session.pilot.press("1"))
-    session.call(session.app.query_one("#status-failure").focus)
-    session.runner.run(session.pilot.press("enter"))
+    await session.app.refresh_files()
+    await session.pilot.press("1")
+    await tests.helpers.textual.invoke(session.app.query_one("#status-failure").focus)
+    await session.pilot.press("enter")
     assert (
         session.app.query_one("#views", textual.widgets.TabbedContent).active
         == "pipeline"
     )
 
 
-def test_monitor_app_status_missing_evidence_reports_unavailable(
+@pytest.mark.asyncio
+async def test_monitor_app_status_missing_evidence_reports_unavailable(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -236,15 +246,14 @@ def test_monitor_app_status_missing_evidence_reports_unavailable(
         *tests.helpers.factories.peri_scribe.monitor.status.failed_run(),
     )
     target = peri_scribe.monitor.status.evidence(history)[0]
-    session.runner.run(
-        session.app.open_status_evidence(
-            peri_scribe.monitor.status_widgets.OpenEvidence(target),
-        ),
+    await session.app.open_status_evidence(
+        peri_scribe.monitor.status_widgets.OpenEvidence(target),
     )
     assert "no longer available" in notification.call_args.args[0]
 
 
-def test_monitor_app_status_evidence_read_error_is_visible(
+@pytest.mark.asyncio
+async def test_monitor_app_status_evidence_read_error_is_visible(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -261,23 +270,22 @@ def test_monitor_app_status_evidence_read_error_is_visible(
             *tests.helpers.factories.peri_scribe.monitor.status.failed_run(),
         ),
     )[0]
-    session.runner.run(
-        session.app.open_status_evidence(
-            peri_scribe.monitor.status_widgets.OpenEvidence(target),
-        ),
+    await session.app.open_status_evidence(
+        peri_scribe.monitor.status_widgets.OpenEvidence(target),
     )
     assert "unreadable" in notification.call_args.args[0]
 
 
 @pytest.mark.parametrize(("width", "height"), [(80, 24), (120, 42)])
-def test_monitor_app_status_fits_terminal_with_scrollable_details(
+@pytest.mark.asyncio
+async def test_monitor_app_status_fits_terminal_with_scrollable_details(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     width: int,
     height: int,
 ) -> None:
     session = monitor_session
-    session.runner.run(session.pilot.press("1"))
-    session.runner.run(session.pilot.resize_terminal(width, height))
+    await session.pilot.press("1")
+    await session.pilot.resize_terminal(width, height)
     for selector in (
         "#status-content",
         "#status-overview",
@@ -291,7 +299,8 @@ def test_monitor_app_status_fits_terminal_with_scrollable_details(
         assert region.bottom <= height
 
 
-def test_refresh_clock_updates_freshness_without_reading_files(
+@pytest.mark.asyncio
+async def test_refresh_clock_updates_freshness_without_reading_files(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -302,13 +311,13 @@ def test_refresh_clock_updates_freshness_without_reading_files(
         session.directory,
         tests.helpers.factories.peri_scribe.monitor.status.finished("reports"),
     )
-    session.runner.run(session.app.refresh_files())
+    await session.app.refresh_files()
     read = unittest.mock.AsyncMock()
     monkeypatch.setattr(session.app, "refresh_files", read)
     session.app.files_changed = False
     session.app.reconcile_at = float("inf")
     with time_machine.travel(now + datetime.timedelta(hours=7), tick=False):
-        session.runner.run(peri_scribe.monitor.app.refresh_clock(session.app))
+        await peri_scribe.monitor.app.refresh_clock(session.app)
     read.assert_not_awaited()
     pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
     assert pane.view is not None
@@ -316,7 +325,8 @@ def test_refresh_clock_updates_freshness_without_reading_files(
 
 
 @pytest.mark.parametrize("notification", [True, False])
-def test_refresh_clock_reads_on_notification_or_reconciliation_deadline(
+@pytest.mark.asyncio
+async def test_refresh_clock_reads_on_notification_or_reconciliation_deadline(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
     *,
@@ -327,28 +337,28 @@ def test_refresh_clock_reads_on_notification_or_reconciliation_deadline(
     monkeypatch.setattr(session.app, "refresh_files", read)
     session.app.files_changed = notification
     session.app.reconcile_at = float("inf") if notification else 0
-    session.runner.run(peri_scribe.monitor.app.refresh_clock(session.app))
+    await peri_scribe.monitor.app.refresh_clock(session.app)
     read.assert_awaited_once()
     assert not session.app.files_changed
 
 
-def test_refresh_clock_ignores_unmounted_views(
+@pytest.mark.asyncio
+async def test_refresh_clock_ignores_unmounted_views(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = monitor_session
-    session.runner.run(
-        tests.helpers.fixtures.peri_scribe.monitor.application.remove_views(
-            session.app,
-        ),
+    await tests.helpers.fixtures.peri_scribe.monitor.application.remove_views(
+        session.app,
     )
     read = unittest.mock.AsyncMock()
     monkeypatch.setattr(session.app, "refresh_files", read)
-    session.runner.run(peri_scribe.monitor.app.refresh_clock(session.app))
+    await peri_scribe.monitor.app.refresh_clock(session.app)
     read.assert_not_awaited()
 
 
-def test_refresh_clock_waits_for_initial_status(
+@pytest.mark.asyncio
+async def test_refresh_clock_waits_for_initial_status(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -358,11 +368,12 @@ def test_refresh_clock_waits_for_initial_status(
     session.app.reconcile_at = float("inf")
     read = unittest.mock.AsyncMock()
     monkeypatch.setattr(session.app, "refresh_files", read)
-    session.runner.run(peri_scribe.monitor.app.refresh_clock(session.app))
+    await peri_scribe.monitor.app.refresh_clock(session.app)
     read.assert_not_awaited()
 
 
-def test_watch_files_coalesces_notifications_without_reading_from_the_worker(
+@pytest.mark.asyncio
+async def test_watch_files_coalesces_notifications_without_reading_from_the_worker(
     file_watching_session: tuple[
         collections.abc.Callable[
             [peri_scribe.monitor.app.MonitorApp],
@@ -384,6 +395,6 @@ def test_watch_files_coalesces_notifications_without_reading_from_the_worker(
     session.app.files_changed = False
     read = unittest.mock.AsyncMock()
     monkeypatch.setattr(session.app, "refresh_files", read)
-    session.runner.run(watcher(session.app))
+    await watcher(session.app)
     assert session.app.files_changed
     read.assert_not_awaited()

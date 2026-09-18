@@ -22,7 +22,8 @@ def test_directories_excludes_unrelated_source_trees(tmp_path: pathlib.Path) -> 
     )
 
 
-def test_watch_restarts_when_a_watched_directory_is_created(
+@pytest.mark.asyncio
+async def test_watch_restarts_when_a_watched_directory_is_created(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -34,8 +35,9 @@ def test_watch_restarts_when_a_watched_directory_is_created(
     second = tests.helpers.doubles.peri_scribe.monitor.changes.notifications(stopped)
     watch = unittest.mock.Mock(side_effect=[first, second])
     monkeypatch.setattr(peri_scribe.monitor.changes.watchfiles, "awatch", watch)
-    result = asyncio.run(
-        tests.helpers.doubles.peri_scribe.monitor.changes.collect(tmp_path, stopped),
+    result = await tests.helpers.doubles.peri_scribe.monitor.changes.collect(
+        tmp_path,
+        stopped,
     )
     assert result == [None, None]
     assert watch.call_args_list[0].args == (tmp_path,)
@@ -47,7 +49,8 @@ def test_watch_restarts_when_a_watched_directory_is_created(
     "error",
     [OSError("Unavailable"), RuntimeError("Backend failed")],
 )
-def test_watch_retries_after_backend_failure(
+@pytest.mark.asyncio
+async def test_watch_retries_after_backend_failure(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
     error: Exception,
@@ -63,12 +66,16 @@ def test_watch_retries_after_backend_failure(
         "RECONCILE_INTERVAL",
         0 * units.seconds,
     )
-    assert asyncio.run(
-        tests.helpers.doubles.peri_scribe.monitor.changes.collect(tmp_path, stopped),
+    assert (
+        await tests.helpers.doubles.peri_scribe.monitor.changes.collect(
+            tmp_path,
+            stopped,
+        )
     ) == [None]
 
 
-def test_watch_stops_during_error_retry_wait(
+@pytest.mark.asyncio
+async def test_watch_stops_during_error_retry_wait(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -76,18 +83,16 @@ def test_watch_stops_during_error_retry_wait(
     watch = unittest.mock.Mock(side_effect=OSError("Unavailable"))
     monkeypatch.setattr(peri_scribe.monitor.changes.watchfiles, "awatch", watch)
     assert (
-        asyncio.run(
-            tests.helpers.doubles.peri_scribe.monitor.changes.stop_during_retry(
-                tmp_path,
-                stopped,
-            ),
+        await tests.helpers.doubles.peri_scribe.monitor.changes.stop_during_retry(
+            tmp_path,
+            stopped,
         )
-        == []
-    )
+    ) == []
     watch.assert_called_once()
 
 
-def test_watch_retries_until_year_directory_exists(
+@pytest.mark.asyncio
+async def test_watch_retries_until_year_directory_exists(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -103,16 +108,17 @@ def test_watch_retries_until_year_directory_exists(
         "RECONCILE_INTERVAL",
         0 * units.seconds,
     )
-    assert asyncio.run(
-        tests.helpers.doubles.peri_scribe.monitor.changes.create_during_retry(
+    assert (
+        await tests.helpers.doubles.peri_scribe.monitor.changes.create_during_retry(
             directory,
             stopped,
-        ),
+        )
     ) == [None]
     assert [call.args for call in watch.call_args_list] == [(directory,)]
 
 
-def test_watch_stops_during_missing_directory_retry_wait(
+@pytest.mark.asyncio
+async def test_watch_stops_during_missing_directory_retry_wait(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -124,18 +130,16 @@ def test_watch_stops_during_missing_directory_retry_wait(
     )
     monkeypatch.setattr(peri_scribe.monitor.changes.watchfiles, "awatch", watch)
     assert (
-        asyncio.run(
-            tests.helpers.doubles.peri_scribe.monitor.changes.stop_during_retry(
-                tmp_path / "2026",
-                stopped,
-            ),
+        await tests.helpers.doubles.peri_scribe.monitor.changes.stop_during_retry(
+            tmp_path / "2026",
+            stopped,
         )
-        == []
-    )
+    ) == []
     watch.assert_not_called()
 
 
-def test_watch_reattaches_when_a_watched_directory_is_replaced(
+@pytest.mark.asyncio
+async def test_watch_reattaches_when_a_watched_directory_is_replaced(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -149,8 +153,9 @@ def test_watch_reattaches_when_a_watched_directory_is_replaced(
     second = tests.helpers.doubles.peri_scribe.monitor.changes.notifications(stopped)
     watch = unittest.mock.Mock(side_effect=[first, second])
     monkeypatch.setattr(peri_scribe.monitor.changes.watchfiles, "awatch", watch)
-    result = asyncio.run(
-        tests.helpers.doubles.peri_scribe.monitor.changes.collect(tmp_path, stopped),
+    result = await tests.helpers.doubles.peri_scribe.monitor.changes.collect(
+        tmp_path,
+        stopped,
     )
     assert result == [None, None]
     assert [call.args for call in watch.call_args_list] == [(tmp_path, directory)] * 2

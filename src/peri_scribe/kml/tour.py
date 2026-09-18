@@ -219,20 +219,19 @@ def progression_tour(
     """
     ring_ids = [interior_ring_id(folder_id, index) for index in range(len(ring_times))]
     playback_rate = tour_playback_rate(ring_times)
-    parts = writer.parts
-    parts.append("<gx:Tour>")
+    writer.write("<gx:Tour>")
     if not visible:
-        parts.append("<visibility>0</visibility>")
-    parts.append(f"<name>{PROGRESSION_TOUR_NAME}</name><gx:Playlist>")
+        writer.write("<visibility>0</visibility>")
+    writer.write(f"<name>{PROGRESSION_TOUR_NAME}</name><gx:Playlist>")
     for index, ring_time in enumerate(ring_times):
-        parts.append("<gx:AnimatedUpdate><Update><targetHref></targetHref><Change>")
-        parts.append(visibility_change(ring_ids, index))
-        parts.append("</Change></Update></gx:AnimatedUpdate>")
+        writer.write("<gx:AnimatedUpdate><Update><targetHref></targetHref><Change>")
+        writer.write(visibility_change(ring_ids, index))
+        writer.write("</Change></Update></gx:AnimatedUpdate>")
         if index + 1 < len(ring_times):
             wait = tour_wait(ring_time, ring_times[index + 1], playback_rate)
         else:
             wait = FINAL_TOUR_WAIT
-        parts.append(
+        writer.write(
             f"<gx:Wait><gx:duration>{wait.m_as('second')}</gx:duration></gx:Wait>",
         )
-    parts.append("</gx:Playlist></gx:Tour>")
+    writer.write("</gx:Playlist></gx:Tour>")

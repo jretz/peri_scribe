@@ -2,7 +2,7 @@
 
 import typing
 
-import pytest
+import pytest_asyncio
 
 import peri_scribe.monitor.status_widgets
 import tests.helpers.doubles.peri_scribe.monitor.status_widgets
@@ -15,18 +15,18 @@ type Session = tests.helpers.textual.Session[
 ]
 
 
-@pytest.fixture
-def status_session() -> typing.Iterator[Session]:
+@pytest_asyncio.fixture
+async def status_session() -> typing.AsyncIterator[Session]:
     """Start status controls without observations or available artifacts.
 
     Yields:
         An isolated status pane whose evidence can be supplied directly.
     """
-    with tests.helpers.textual.mounted(
+    async with tests.helpers.textual.mounted(
         tests.helpers.doubles.peri_scribe.monitor.status_widgets.StatusApp(),
     ) as session:
         pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
-        session.call(
+        await tests.helpers.textual.invoke(
             pane.show_view,
             tests.helpers.factories.peri_scribe.monitor.status.view(),
         )

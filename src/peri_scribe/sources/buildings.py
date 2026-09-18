@@ -28,21 +28,23 @@ failure.
 
 from __future__ import annotations
 
+import asyncio
 import collections
 import compression.zstd
+import functools
 import pathlib
 import sqlite3
 import tempfile
+import threading
 import typing
 
-import ijson
 import numpy as np
 import shapely
 import stream_unzip
 import structlog
 
+import peri_scribe.concurrency
 import peri_scribe.exceptions
-import peri_scribe.fires.centroid_math
 import peri_scribe.fires.centroid_streaming
 import peri_scribe.logging
 import peri_scribe.phases
@@ -98,6 +100,9 @@ DATABASE_SCHEMA = (
     ");\n"
     f"{TILES_TABLE_SCHEMA};"
 )
+
+
+ARCHIVE_CONCURRENCY = 3
 
 
 def expected_metadata() -> dict[str, str]:
@@ -354,7 +359,8 @@ class PartitionFiles:
         Args:
             directory: The existing directory where partition files are accumulated.
         """
-        self._directory = directory
+        self.directory = directory
+        self.writing = threading.Lock()
         for partition in range(PARTITION_COUNT):
             (directory / partition_filename(partition)).touch()
 
@@ -365,7 +371,10 @@ class PartitionFiles:
             partition: The partition number.
             records: The concatenated record bytes, as any buffer of raw bytes.
         """
-        with (self._directory / partition_filename(partition)).open("ab") as file:
+        with (
+            self.writing,
+            (self.directory / partition_filename(partition)).open("ab") as file,
+        ):
             file.write(records)
 
     def __enter__(self) -> typing.Self:
@@ -408,6 +417,8 @@ def append_centroids_to_partitions(
 def convert_geometry_chunks_to_partitions(
     features_iter: typing.Iterator[typing.Any],
     partition_files: PartitionFiles,
+    *,
+    stopped: threading.Event,
 ) -> int:
     """Convert *features_iter*'s geometry dicts into records at *partition_files*.
 
@@ -417,61 +428,79 @@ def convert_geometry_chunks_to_partitions(
     Args:
         features_iter: The ijson geometry iterator, created by the caller.
         partition_files: The partition files to append to.
+        stopped: The worker's cooperative cancellation signal.
 
     Returns:
         The number of features converted.
     """
     feature_count = 0
-    while True:
-        chunk = peri_scribe.fires.centroid_streaming.collect_geometry_chunk(
-            features_iter,
-            peri_scribe.fires.centroid_streaming.FEATURE_CHUNK_SIZE,
-            peri_scribe.fires.centroid_streaming.MAXIMUM_VERTICES_PER_CHUNK,
-        )
-        if chunk is None:
-            break
-        centroids = peri_scribe.fires.centroid_math.polygon_centroids(chunk)
+    for centroids in peri_scribe.concurrency.cancellable(
+        peri_scribe.fires.centroid_streaming.centroid_chunks(features_iter),
+        stopped,
+    ):
         append_centroids_to_partitions(centroids, partition_files)
         feature_count += len(centroids)
     return feature_count
 
 
-def stream_zip_members_to_partitions(
-    bytes_source: typing.Iterable[bytes],
+async def stream_one_archive(
+    url: str,
     partition_files: PartitionFiles,
-) -> tuple[int, bool]:
-    """Convert the GeoJSON members of a zip archive streaming from *bytes_source*.
-
-    Each member named like ``*.geojson`` is parsed and converted; other members are
-    consumed so the archive's next member can be read from the stream.
+    limit: asyncio.Semaphore,
+) -> None:
+    """Let conversion demand pace each download inside a bounded worker set.
 
     Args:
-        bytes_source: An iterable of byte chunks of the zip archive, in order.
-        partition_files: The partition files to append to.
-
-    Returns:
-        The number of features converted and whether any were written.
+        url: The state archive URL.
+        partition_files: Shared partitions with serialized append operations.
+        limit: The maximum number of simultaneous converters.
     """
-    feature_count = 0
-    wrote_any = False
-    for filename, _size, chunks in stream_unzip.stream_unzip(bytes_source):
-        if not filename.endswith(
-            peri_scribe.fires.centroid_streaming.GEOJSON_MEMBER_SUFFIX,
-        ):
-            collections.deque(chunks, maxlen=0)
-            continue
-        features_iter = ijson.items(
-            peri_scribe.fires.centroid_streaming.ByteStream(chunks),
-            "features.item.geometry",
-            use_float=True,
+    async with limit:
+        stopped = threading.Event()
+        await peri_scribe.concurrency.run_blocking(
+            functools.partial(
+                stream_state_archive,
+                url,
+                partition_files,
+                stopped=stopped,
+            ),
+            stopped=stopped,
         )
-        count = convert_geometry_chunks_to_partitions(features_iter, partition_files)
-        wrote_any = wrote_any or count > 0
-        feature_count += count
-    return feature_count, wrote_any
 
 
-def stream_state_archive(url: str, partition_files: PartitionFiles) -> int:
+async def stream_state_archives(
+    urls: typing.Iterable[str],
+    partition_files: PartitionFiles,
+) -> None:
+    """Overlap network waits without buffering entire archives or centroid datasets.
+
+    Cancellation stops workers between download and conversion chunks. Each task waits
+    for its worker to exit so the temporary partitions outlive every write.
+
+    Args:
+        urls: Each state archive URL.
+        partition_files: Shared partitions with serialized append operations.
+
+    Raises:
+        ExternalDataError: An archive could not be downloaded or converted.
+    """
+    limit = asyncio.Semaphore(ARCHIVE_CONCURRENCY)
+    try:
+        async with asyncio.TaskGroup() as tasks:
+            for url in urls:
+                tasks.create_task(stream_one_archive(url, partition_files, limit))
+    except* peri_scribe.exceptions.ExternalDataError as errors:
+        raise peri_scribe.exceptions.ExternalDataError(
+            str(errors.exceptions[0]),
+        ) from errors
+
+
+def stream_state_archive(
+    url: str,
+    partition_files: PartitionFiles,
+    *,
+    stopped: threading.Event,
+) -> int:
     """Stream *url*'s archive and convert its records at *partition_files*.
 
     The archive's bytes are read from the response as they arrive and converted without
@@ -480,6 +509,7 @@ def stream_state_archive(url: str, partition_files: PartitionFiles) -> int:
     Args:
         url: The archive's URL.
         partition_files: The partition files to append to.
+        stopped: The worker's cooperative cancellation signal.
 
     Returns:
         The number of features converted.
@@ -492,13 +522,14 @@ def stream_state_archive(url: str, partition_files: PartitionFiles) -> int:
         url,
         stream=True,
     ) as response:
-        feature_count, wrote_any = convert_stream_to_partitions(
+        feature_count = convert_stream_to_partitions(
             response.iter_content(
                 chunk_size=peri_scribe.sources.network.DOWNLOAD_CHUNK_SIZE,
             ),
             partition_files,
+            stopped=stopped,
         )
-    if not wrote_any:
+    if not feature_count:
         message = "No GeoJSON data found in the streamed archive"
         raise peri_scribe.exceptions.ExternalDataError(message)
     return feature_count
@@ -507,7 +538,9 @@ def stream_state_archive(url: str, partition_files: PartitionFiles) -> int:
 def convert_stream_to_partitions(
     bytes_source: typing.Iterable[bytes],
     partition_files: PartitionFiles,
-) -> tuple[int, bool]:
+    *,
+    stopped: threading.Event,
+) -> int:
     """Convert the GeoJSON members of a zip archive streaming from *bytes_source*.
 
     Each member named like ``*.geojson`` is parsed and converted; other members are
@@ -516,16 +549,23 @@ def convert_stream_to_partitions(
     Args:
         bytes_source: An iterable of byte chunks of the zip archive, in order.
         partition_files: The partition files to append to.
+        stopped: The worker's cooperative cancellation signal.
 
     Returns:
-        The number of features converted and whether any were written.
+        The number of features converted.
 
     Raises:
         ExternalDataError: If the stream is not a zip archive or its GeoJSON cannot be
             read.
     """
     try:
-        return stream_zip_members_to_partitions(bytes_source, partition_files)
+        return convert_geometry_chunks_to_partitions(
+            peri_scribe.fires.centroid_streaming.zip_geometries(
+                peri_scribe.concurrency.cancellable(bytes_source, stopped),
+            ),
+            partition_files,
+            stopped=stopped,
+        )
     except stream_unzip.UnzipError as error:
         message = f"The streamed archive is not a zip file: {error}"
         raise peri_scribe.exceptions.ExternalDataError(message) from error
@@ -715,13 +755,15 @@ def fetch_buildings_database(
             partition_directory = directory / "partitions"
             partition_directory.mkdir()
             with PartitionFiles(partition_directory) as partition_files:
-                for state in source.states:
-                    url = peri_scribe.sources.downloading.state_download_url(
+                urls = (
+                    peri_scribe.sources.downloading.state_download_url(
                         source,
                         state,
                         state_urls,
                     )
-                    stream_state_archive(url, partition_files)
+                    for state in source.states
+                )
+                asyncio.run(stream_state_archives(urls, partition_files))
             database_path = directory / f"{output.stem}.tmp.sqlite"
             building_count = build_tiles_database(partition_directory, database_path)
             if not is_valid_database(database_path):

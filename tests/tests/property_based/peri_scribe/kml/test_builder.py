@@ -26,7 +26,11 @@ def test_write_archive_preserves_document_and_every_image(
     }
     with tempfile.TemporaryDirectory() as directory:
         path = pathlib.Path(directory) / "fires.kmz"
-        peri_scribe.kml.builder.write_archive(path, document, images)
+        peri_scribe.kml.builder.write_archive(
+            path,
+            lambda stream: stream.write(document),
+            images,
+        )
         with zipfile.ZipFile(path) as archive:
             assert archive.testzip() is None
             assert len(archive.namelist()) == len(expected)

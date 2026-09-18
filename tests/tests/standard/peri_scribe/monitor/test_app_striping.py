@@ -8,6 +8,7 @@ import textual.widgets
 
 import tests.helpers.assertions.peri_scribe.monitor.striping
 import tests.helpers.fixtures.peri_scribe.monitor.application
+import tests.helpers.textual
 
 
 @pytest.mark.parametrize("theme", ["flexoki", "textual-light"])
@@ -20,7 +21,8 @@ import tests.helpers.fixtures.peri_scribe.monitor.application
         ("runs", "#run-table", "row"),
     ],
 )
-def test_monitor_app_stripes_rows_across_the_full_width_after_scrolling(
+@pytest.mark.asyncio
+async def test_monitor_app_stripes_rows_across_the_full_width_after_scrolling(
     scrolling_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     theme: str,
     view: str,
@@ -28,13 +30,13 @@ def test_monitor_app_stripes_rows_across_the_full_width_after_scrolling(
     metadata: str,
 ) -> None:
     session = scrolling_session
-    session.call(setattr, session.app, "theme", theme)
-    session.call(session.app.action_view, view)
-    session.runner.run(session.pilot.pause())
+    await tests.helpers.textual.invoke(setattr, session.app, "theme", theme)
+    await tests.helpers.textual.invoke(session.app.action_view, view)
+    await session.pilot.pause()
     widget = session.app.query_one(selector)
     backgrounds = []
     for offset in (0, 1):
-        session.call(
+        await tests.helpers.textual.invoke(
             functools.partial(
                 widget.scroll_to,
                 y=offset,
@@ -42,13 +44,15 @@ def test_monitor_app_stripes_rows_across_the_full_width_after_scrolling(
                 immediate=True,
             ),
         )
-        session.runner.run(session.pilot.pause())
+        await session.pilot.pause()
         colors = [
-            session.call(
-                tests.helpers.assertions.peri_scribe.monitor.striping.row_backgrounds,
-                widget,
-                metadata,
-                index,
+            (
+                await tests.helpers.textual.invoke(
+                    tests.helpers.assertions.peri_scribe.monitor.striping.row_backgrounds,
+                    widget,
+                    metadata,
+                    index,
+                )
             )
             for index in (1, 2, 3)
         ]
@@ -60,42 +64,45 @@ def test_monitor_app_stripes_rows_across_the_full_width_after_scrolling(
 
 @pytest.mark.parametrize("theme", ["flexoki", "textual-light"])
 @pytest.mark.parametrize("palette", [False, True])
-def test_monitor_app_stripes_options_without_overwriting_selection(
+@pytest.mark.asyncio
+async def test_monitor_app_stripes_options_without_overwriting_selection(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     theme: str,
     *,
     palette: bool,
 ) -> None:
     session = monitor_session
-    session.call(setattr, session.app, "theme", theme)
+    await tests.helpers.textual.invoke(setattr, session.app, "theme", theme)
     if palette:
-        session.runner.run(session.pilot.resize_terminal(60, 42))
-        session.runner.run(session.pilot.press("ctrl+p"))
+        await session.pilot.resize_terminal(60, 42)
+        await session.pilot.press("ctrl+p")
         widget = session.app.screen.query_one(textual.command.CommandList)
     else:
         select = session.app.query_one(
             "#pipeline-stream .severity",
             textual.widgets.Select,
         )
-        session.call(select.action_show_overlay)
+        await tests.helpers.textual.invoke(select.action_show_overlay)
         widget = select.query_one(textual.widgets.OptionList)
-    session.call(setattr, widget, "highlighted", 0)
-    session.runner.run(session.pilot.pause())
+    await tests.helpers.textual.invoke(setattr, widget, "highlighted", 0)
+    await session.pilot.pause()
     colors = [
-        session.call(
-            tests.helpers.assertions.peri_scribe.monitor.striping.row_backgrounds,
-            widget,
-            "option",
-            index,
+        (
+            await tests.helpers.textual.invoke(
+                tests.helpers.assertions.peri_scribe.monitor.striping.row_backgrounds,
+                widget,
+                "option",
+                index,
+            )
         )
         for index in range(4)
     ]
     assert all(len(color) == 1 for color in colors)
     assert colors[1] == colors[3] != colors[2]
     assert colors[0] not in colors[1:]
-    session.call(setattr, widget, "highlighted", 1)
-    session.runner.run(session.pilot.pause())
-    selected = session.call(
+    await tests.helpers.textual.invoke(setattr, widget, "highlighted", 1)
+    await session.pilot.pause()
+    selected = await tests.helpers.textual.invoke(
         tests.helpers.assertions.peri_scribe.monitor.striping.row_backgrounds,
         widget,
         "option",

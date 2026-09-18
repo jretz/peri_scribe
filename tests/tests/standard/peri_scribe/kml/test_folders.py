@@ -11,7 +11,6 @@ import peri_scribe.kml.builder
 import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
-import peri_scribe.kml.geometry
 import peri_scribe.kml.perimeters
 import peri_scribe.kml.plot_rendering
 import peri_scribe.models
@@ -20,6 +19,7 @@ import peri_scribe.units
 import tests.helpers.assertions.peri_scribe.kml.parsing
 import tests.helpers.factories.geometry
 import tests.helpers.factories.peri_scribe.kml.folders
+import tests.helpers.factories.peri_scribe.kml.geometry
 import tests.helpers.factories.peri_scribe.kml.parsing
 import tests.helpers.peri_scribe.kml.folders
 import tests.helpers.peri_scribe.kml.parsing
@@ -89,7 +89,7 @@ def test_fire_folder_includes_point_perimeters_and_interior(
             ),
         ),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(
         writer,
         fire,
@@ -181,7 +181,7 @@ def test_fire_folder_shows_only_available_perimeters(
             ),
         ),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(
         writer,
         fire,
@@ -246,7 +246,7 @@ def test_fire_folder_draws_interior_from_difference_rings(
             ),
         ),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(
         writer,
         fire,
@@ -341,7 +341,7 @@ def test_fire_folder_falls_back_to_complete_perimeter_without_dated_rings(
             ),
         ),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(
         writer,
         fire,
@@ -370,7 +370,7 @@ def test_fire_folder_without_point_or_perimeters_is_empty(
         point=None,
         perimeters=(),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(
         writer,
         fire,
@@ -406,7 +406,7 @@ def test_fire_folder_lists_point_tour_and_interior_in_order(
             ),
         ),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(
         writer,
         fire,
@@ -487,7 +487,7 @@ def test_fire_folder_adds_tour_for_fallback_polygon(style_urls: dict[str, str]) 
             ),
         ),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(
         writer,
         fire,
@@ -528,7 +528,7 @@ def test_fire_folder_without_polygons_has_no_tour(style_urls: dict[str, str]) ->
         point=shapely.geometry.Point(1.0, 1.0),
         perimeters=(),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(
         writer,
         fire,
@@ -553,7 +553,7 @@ def test_fire_folder_without_rings_holds_point_only(style_urls: dict[str, str]) 
         point=shapely.geometry.Point(1.0, 1.0),
         perimeters=(),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(
         writer,
         fire,
@@ -617,7 +617,7 @@ def test_fire_folder_holds_point_and_ring_folders(style_urls: dict[str, str]) ->
     ring_style_urls = (
         tests.helpers.factories.peri_scribe.kml.folders.ring_style_urls_for(fire)
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(writer, fire, style_urls, ring_style_urls)
     bug_folder = tests.helpers.peri_scribe.kml.parsing.folder_named(
         tests.helpers.peri_scribe.kml.parsing.document_from_writer(writer),
@@ -740,7 +740,7 @@ def test_fire_folder_falls_back_to_latest_perimeter(style_urls: dict[str, str]) 
     ring_style_urls = (
         tests.helpers.factories.peri_scribe.kml.folders.ring_style_urls_for(fire)
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(writer, fire, style_urls, ring_style_urls)
     bug_folder = tests.helpers.peri_scribe.kml.parsing.folder_named(
         tests.helpers.peri_scribe.kml.parsing.document_from_writer(writer),
@@ -818,7 +818,7 @@ def test_fire_folder_lists_point_tour_and_rings_in_order(
             ),
         ),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(
         writer,
         fire,
@@ -922,7 +922,7 @@ def test_fire_folder_hides_its_tree(style_urls: dict[str, str]) -> None:
             ),
         ),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(
         writer,
         fire,
@@ -958,7 +958,7 @@ def test_fire_folder_can_load_visible(style_urls: dict[str, str]) -> None:
             ),
         ),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(
         writer,
         fire,
@@ -2239,7 +2239,7 @@ def test_top_fires_folder_holds_fires_visible_by_default(
         point=shapely.geometry.Point(0.0, 0.0),
         perimeters=(),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.top_fires_folder(
         writer,
         [fire],
@@ -2269,7 +2269,7 @@ def test_top_fires_folder_hides_whole_tree_when_unchecked(
         point=shapely.geometry.Point(0.0, 0.0),
         perimeters=(),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.top_fires_folder(
         writer,
         [fire],
@@ -2311,7 +2311,7 @@ def test_status_folder_filters_by_status(style_urls: dict[str, str]) -> None:
         point=None,
         perimeters=(),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.status_folder(
         writer,
         [active, inactive],
@@ -2335,7 +2335,7 @@ def test_status_folder_can_load_hidden(style_urls: dict[str, str]) -> None:
         point=None,
         perimeters=(),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.status_folder(
         writer,
         [active],
@@ -2386,7 +2386,7 @@ def test_status_folder_holds_every_fire(style_urls: dict[str, str]) -> None:
         point=None,
         perimeters=(),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.status_folder(
         writer,
         [with_rings, point_only, empty],
@@ -2429,7 +2429,7 @@ def test_fire_folder_applies_fire_balloon_to_point_and_outline_placemarks(
             ),
         ),
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(
         writer,
         fire,
@@ -2483,7 +2483,7 @@ def test_fire_folder_interior_ring_balloons_lead_with_added_area(
         ),
         description=description,
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(
         writer,
         fire,
@@ -2565,7 +2565,7 @@ def test_fire_folder_fallback_ring_balloon_leads_with_its_area(
         ),
         description=description,
     )
-    writer = peri_scribe.kml.geometry.KmlWriter()
+    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.fire_folder(
         writer,
         fire,

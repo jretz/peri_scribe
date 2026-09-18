@@ -1,14 +1,12 @@
 """Mouse-wheel steps keep content movement predictable across monitor panes."""
 
 import functools
-import typing
 
 import pytest
 import textual.events
 
-
-if typing.TYPE_CHECKING:
-    import tests.helpers.fixtures.peri_scribe.monitor.application
+import tests.helpers.fixtures.peri_scribe.monitor.application
+import tests.helpers.textual
 
 
 @pytest.mark.parametrize(
@@ -27,7 +25,8 @@ if typing.TYPE_CHECKING:
     ("event_type", "distance"),
     [(textual.events.MouseScrollDown, 1), (textual.events.MouseScrollUp, -1)],
 )
-def test_monitor_app_scrolls_one_row_per_wheel_event(
+@pytest.mark.asyncio
+async def test_monitor_app_scrolls_one_row_per_wheel_event(
     scrolling_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     view: str,
     selector: str,
@@ -36,14 +35,15 @@ def test_monitor_app_scrolls_one_row_per_wheel_event(
 ) -> None:
     session = scrolling_session
     if view == "palette":
-        session.runner.run(session.pilot.resize_terminal(80, 20))
-        session.call(session.app.search_themes)
+        await session.pilot.resize_terminal(80, 20)
+        await tests.helpers.textual.invoke(session.app.search_themes)
     else:
-        session.call(session.app.action_view, view)
-    session.runner.run(session.pilot.pause())
+        await tests.helpers.textual.invoke(session.app.action_view, view)
+        await session.app.refresh_files()
+    await session.refresh()
     pane = session.app.screen.query_one(selector)
     initial_offset = 3
-    session.call(
+    await tests.helpers.textual.invoke(
         functools.partial(
             pane.scroll_to,
             y=initial_offset,
@@ -51,9 +51,9 @@ def test_monitor_app_scrolls_one_row_per_wheel_event(
             immediate=True,
         ),
     )
-    session.runner.run(session.pilot.pause())
+    await session.pilot.pause()
     assert pane.scroll_offset.y == initial_offset
-    session.call(
+    await tests.helpers.textual.invoke(
         pane.post_message,
         event_type(
             pane,
@@ -67,5 +67,5 @@ def test_monitor_app_scrolls_one_row_per_wheel_event(
             ctrl=False,
         ),
     )
-    session.runner.run(session.pilot.pause())
+    await session.pilot.pause()
     assert pane.scroll_offset.y == initial_offset + distance

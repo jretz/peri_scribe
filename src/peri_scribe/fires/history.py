@@ -11,6 +11,8 @@ creates a version.
 from __future__ import annotations
 
 import concurrent.futures
+import functools
+import itertools
 import json
 import os
 import pathlib
@@ -492,26 +494,61 @@ def history_layer_rows(
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=HISTORY_ROW_WORKER_COUNT,
     ) as executor:
-        futures = {
-            id(fire): executor.submit(
-                history_rows_for_fire,
-                fire,
-                group,
-                full_rows,
-                full_paths,
+        results = executor.map(
+            functools.partial(
+                grouped_history_rows,
+                full_rows=full_rows,
+                full_paths=full_paths,
                 sources_directory=sources_directory,
-                classification=classifications.get(id(fire)),
-            )
-            for fire, group in non_complex_fires
-            if id(fire) not in reused
-        }
-        for fire, _group in non_complex_fires:
-            fire_perimeter_rows, fire_point_rows = (
-                reused[id(fire)] if id(fire) in reused else futures[id(fire)].result()
-            )
+                classifications=classifications,
+                reused=reused,
+            ),
+            non_complex_fires,
+            buffersize=2 * HISTORY_ROW_WORKER_COUNT,
+        )
+        for (fire, _group), (fire_perimeter_rows, fire_point_rows) in zip(
+            non_complex_fires,
+            results,
+            strict=True,
+        ):
             if derivation_keys is not None:
-                for row in (*fire_perimeter_rows, *fire_point_rows):
+                for row in itertools.chain(fire_perimeter_rows, fire_point_rows):
                     row[peri_scribe.fires.reuse.KEY_COLUMN] = derivation_keys[id(fire)]
             perimeter_rows.extend(fire_perimeter_rows)
             point_rows.extend(fire_point_rows)
     return perimeter_rows, point_rows
+
+
+def grouped_history_rows(
+    grouped_fire: tuple[peri_scribe.models.Fire, tuple[int, ...]],
+    *,
+    full_rows: list[peri_scribe.geo.package.FireRowRecord],
+    full_paths: list[pathlib.Path],
+    sources_directory: pathlib.Path,
+    classifications: dict[int, peri_scribe.models.FireClassification],
+    reused: dict[int, tuple[list[dict[str, object]], list[dict[str, object]]]],
+) -> tuple[list[dict[str, object]], list[dict[str, object]]]:
+    """Reuse complete histories without retaining every outstanding future.
+
+    Args:
+        grouped_fire: One fire and its source-record positions.
+        full_rows: All source observations.
+        full_paths: Source paths aligned with the observations.
+        sources_directory: Root for relative source paths.
+        classifications: Each fire's classification by identity.
+        reused: Validated histories by fire identity.
+
+    Returns:
+        The fire's perimeter and point rows.
+    """
+    fire, group = grouped_fire
+    if id(fire) in reused:
+        return reused[id(fire)]
+    return history_rows_for_fire(
+        fire,
+        group,
+        full_rows,
+        full_paths,
+        sources_directory=sources_directory,
+        classification=classifications.get(id(fire)),
+    )

@@ -15,6 +15,7 @@ import peri_scribe.sources.feed_types
 import peri_scribe.sources.fetching
 import peri_scribe.sources.snapshots
 import tests.helpers.doubles.arcgis
+import tests.helpers.doubles.concurrency
 import tests.helpers.factories.geography
 import tests.helpers.factories.peri_scribe.sources.feed_types
 import tests.helpers.factories.peri_scribe.sources.fetching
@@ -494,3 +495,25 @@ def make_failing_feed_layer_factory(
         )
 
     return layer_factory
+
+
+def fetch_with_probe(
+    probe: tests.helpers.doubles.concurrency.ConcurrentCalls,
+    feed: peri_scribe.sources.feed_types.Feed,
+) -> peri_scribe.sources.fetching.FeedOutcome:
+    """Return source outcomes after an observable overlap boundary.
+
+    Args:
+        probe: Gates and counters shared by the concurrent operations.
+        feed: The source whose outcome should remain in configured order.
+
+    Returns:
+        A failure for source 1 and a recognizable path for every other source.
+    """
+    name = probe.run(feed.name)
+    if name == "1":
+        return peri_scribe.sources.fetching.FeedOutcome(error="source unavailable")
+    return peri_scribe.sources.fetching.FeedOutcome(
+        path=pathlib.Path(name),
+        changed=True,
+    )

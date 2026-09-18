@@ -15,25 +15,6 @@ import tests.helpers.factories.peri_scribe.fires.centroid_streaming
 import tests.helpers.reference.peri_scribe.fires.centroid_streaming
 
 
-def test_byte_stream_read_across_chunk_boundaries() -> None:
-    stream = peri_scribe.fires.centroid_streaming.ByteStream([b"abcd", b"efgh"])
-    assert stream.read(2) == b"ab"
-    assert stream.read(5) == b"cdefg"
-    assert stream.read(-1) == b"h"
-    assert stream.read(1) == b""
-
-
-def test_byte_stream_read_all_remaining_with_pending_chunks() -> None:
-    stream = peri_scribe.fires.centroid_streaming.ByteStream([b"ab", b"cdef"])
-    assert stream.read(-1) == b"abcdef"
-    assert stream.read(1) == b""
-
-
-def test_byte_stream_read_from_empty_source() -> None:
-    stream = peri_scribe.fires.centroid_streaming.ByteStream([])
-    assert stream.read() == b""
-
-
 def test_collect_geometry_chunk_returns_none_at_end() -> None:
     chunk = peri_scribe.fires.centroid_streaming.collect_geometry_chunk(
         iter([]),
@@ -260,3 +241,15 @@ def test_convert_zip_stream_uses_reference_centroids(tmp_path: pathlib.Path) -> 
         )
         assert point.x == pytest.approx(expected_x, abs=1e-9)
         assert point.y == pytest.approx(expected_y, abs=1e-9)
+
+
+def test_centroid_chunks_does_not_read_ahead(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(peri_scribe.fires.centroid_streaming, "FEATURE_CHUNK_SIZE", 1)
+    geometries = iter([
+        tests.helpers.factories.peri_scribe.fires.centroid_streaming.SQUARE,
+        {"type": "Polygon", "coordinates": None},
+    ])
+    chunks = peri_scribe.fires.centroid_streaming.centroid_chunks(geometries)
+    assert next(chunks).shape == (1, 2)
+    with pytest.raises(TypeError):
+        next(chunks)

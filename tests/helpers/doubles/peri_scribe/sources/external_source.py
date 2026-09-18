@@ -15,6 +15,7 @@ class FakeResponse:
             body: HTTP response content in bytes.
         """
         self.body = body
+        self.closed = False
 
     def raise_for_status(self) -> None:
         """No-op; the response is treated as successful."""
@@ -39,3 +40,19 @@ class FakeResponse:
         """
         for offset in range(0, len(self.body), chunk_size):
             yield self.body[offset : offset + chunk_size]
+
+    def __enter__(self) -> typing.Self:
+        """Expose the response for the duration of its download.
+
+        Returns:
+            This response.
+        """
+        return self
+
+    def __exit__(self, *_error: object) -> None:
+        """Record cleanup after success or a partially consumed body.
+
+        Args:
+            _error: Exception details supplied by the context manager.
+        """
+        self.closed = True

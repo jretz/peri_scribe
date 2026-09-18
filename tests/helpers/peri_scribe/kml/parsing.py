@@ -13,7 +13,7 @@ import pytest
 if typing.TYPE_CHECKING:
     import xml.etree.ElementTree as ET
 
-    import peri_scribe.kml.geometry
+    import tests.helpers.factories.peri_scribe.kml.geometry
 
 
 KML_NAMESPACE = "http://www.opengis.net/kml/2.2"
@@ -62,7 +62,9 @@ def document_from(kml_text: str) -> ET.Element:
     return document
 
 
-def document_from_writer(writer: peri_scribe.kml.geometry.KmlWriter) -> ET.Element:
+def document_from_writer(
+    writer: tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter,
+) -> ET.Element:
     """Parse *writer*'s accumulated KML fragments into a document element.
 
     The writer holds document content without the enclosing ``<kml>`` and ``<Document>``

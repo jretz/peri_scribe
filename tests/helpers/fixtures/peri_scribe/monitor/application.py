@@ -1,4 +1,4 @@
-"""Run the real terminal adapter in an isolated, synchronous test harness."""
+"""Run the real terminal adapter on each async test's isolated event loop."""
 
 import collections.abc
 import dataclasses
@@ -8,6 +8,7 @@ import typing
 import unittest.mock
 
 import pytest
+import pytest_asyncio
 import textual.constants
 import textual.widgets
 import time_machine
@@ -26,11 +27,11 @@ class Session(tests.helpers.textual.Session[peri_scribe.monitor.app.MonitorApp])
     clock: collections.abc.Callable[[], object]
 
 
-@pytest.fixture
-def monitor_session(
+@pytest_asyncio.fixture
+async def monitor_session(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> typing.Iterator[Session]:
+) -> typing.AsyncIterator[Session]:
     """Control file refreshes and terminal capabilities independently of the host.
 
     Args:
@@ -38,7 +39,7 @@ def monitor_session(
         monkeypatch: Fixes color support and pauses automatic file reads.
 
     Yields:
-        A headless terminal and its explicit event-loop runner.
+        A headless terminal running on the current test's event loop.
     """
     monkeypatch.setattr(textual.constants, "COLOR_SYSTEM", "truecolor")
     monkeypatch.setattr(
@@ -57,22 +58,19 @@ def monitor_session(
         wraps=functools.partial(app.set_interval, pause=True),
     )
     monkeypatch.setattr(app, "set_interval", interval)
-    with (
-        time_machine.travel(
-            tests.helpers.factories.peri_scribe.monitor.status.NOW,
-            tick=False,
-        ),
-        tests.helpers.textual.mounted(app) as session,
+    with time_machine.travel(
+        tests.helpers.factories.peri_scribe.monitor.status.NOW,
+        tick=False,
     ):
-        session.call(app.action_view, "pipeline")
-        session.refresh()
-        yield Session(
-            app=app,
-            runner=session.runner,
-            pilot=session.pilot,
-            directory=directory,
-            clock=interval.call_args.args[1],
-        )
+        async with tests.helpers.textual.mounted(app) as session:
+            await tests.helpers.textual.invoke(app.action_view, "pipeline")
+            await session.refresh()
+            yield Session(
+                app=app,
+                pilot=session.pilot,
+                directory=directory,
+                clock=interval.call_args.args[1],
+            )
 
 
 async def remove_views(app: peri_scribe.monitor.app.MonitorApp) -> None:
@@ -102,8 +100,8 @@ def color_session(
     return request.getfixturevalue("monitor_session")
 
 
-@pytest.fixture
-def scrolling_session(monitor_session: Session) -> Session:
+@pytest_asyncio.fixture
+async def scrolling_session(monitor_session: Session) -> Session:
     """Give every pane enough content to exercise its scrollbar at several positions.
 
     Args:
@@ -132,9 +130,9 @@ def scrolling_session(monitor_session: Session) -> Session:
     )
     content = "\n\n".join(f"Paragraph {number}" for number in range(100))
     monitor_session.app.report_path.write_text(content)
-    monitor_session.runner.run(monitor_session.app.refresh_files())
+    await monitor_session.app.refresh_files()
     for selector in ("#details", "#decisions"):
-        monitor_session.call(
+        await tests.helpers.textual.invoke(
             monitor_session.app.query_one(selector, textual.widgets.Static).update,
             content,
         )

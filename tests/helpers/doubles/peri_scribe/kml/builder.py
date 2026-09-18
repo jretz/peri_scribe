@@ -2,94 +2,13 @@
 
 from __future__ import annotations
 
+import io
 import pathlib
 import typing
 
 
 if typing.TYPE_CHECKING:
     import geopandas
-
-
-def recording_archive_factory(
-    archives: list[FakeArchive],
-) -> typing.Callable[..., FakeArchive]:
-    """Return a zipfile stand-in that records every archive it opens.
-
-    Args:
-        archives: The list each opened archive is appended to.
-
-    Returns:
-        The stand-in for ``zipfile.ZipFile``.
-    """
-
-    def fake_zipfile(*args: object, **kwargs: object) -> FakeArchive:
-        """Capture archive construction and writes without creating a KMZ.
-
-        Args:
-            args: Positional archive constructor arguments.
-            kwargs: Named archive constructor options.
-
-        Returns:
-            The recorded in-memory archive.
-        """
-        archive = FakeArchive(*args, **kwargs)
-        archives.append(archive)
-        return archive
-
-    return fake_zipfile
-
-
-class FakeArchive:
-    """In-memory zip archive stand-in that records its writes."""
-
-    def __init__(self, *args: object, **kwargs: object) -> None:
-        """Retain archive options so compression choices can be asserted.
-
-        Args:
-            args: Positional archive constructor arguments.
-            kwargs: Named archive constructor options.
-        """
-        self.args = args
-        self.kwargs = kwargs
-        self.writes: list[tuple[str, str | bytes, int | None]] = []
-
-    def __enter__(self) -> typing.Self:
-        """Expose the in-memory archive to the writer context.
-
-        Returns:
-            This archive recorder.
-        """
-        return self
-
-    def __exit__(
-        self,
-        _exc_type: object,
-        _exc_value: object,
-        _traceback: object,
-    ) -> None:
-        """Let writer exceptions propagate out of the archive context.
-
-        Args:
-            _exc_type: Unused exception type from the context.
-            _exc_value: Unused exception instance from the context.
-            _traceback: Unused traceback from the context.
-        """
-        return
-
-    def writestr(
-        self,
-        name: str,
-        data: str | bytes,
-        compress_type: int | None = None,
-    ) -> None:
-        """Record archive contents and compression choices for assertions.
-
-        Args:
-            name: The member filename inside the KMZ.
-            data: The member content supplied by the writer.
-            compress_type: The optional per-member compression override.
-        """
-        self.writes.append((name, data, compress_type))
 
 
 def make_history_layer_reader(
@@ -158,3 +77,31 @@ def make_interrupted_archive_writer(
         raise OSError(message)
 
     return fail_after_partial_write
+
+
+def render_document(write: typing.Callable[[typing.TextIO], object]) -> str:
+    """Inspect a lazy document callback without writing a public archive.
+
+    Args:
+        write: The renderer handed to the archive boundary.
+
+    Returns:
+        Its generated document text.
+    """
+    with io.StringIO() as stream:
+        write(stream)
+        return stream.getvalue()
+
+
+def interrupted_document(stream: typing.TextIO) -> None:
+    """Fail after emitting XML to exercise cleanup of an open ZIP member.
+
+    Args:
+        stream: The actual streaming archive member.
+
+    Raises:
+        ValueError: After part of the XML has been emitted.
+    """
+    stream.write("<kml><Document>")
+    message = "serialization failed"
+    raise ValueError(message)
