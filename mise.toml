@@ -89,6 +89,7 @@ run = "uv run ty check"
 [tasks.pytest]
 description = "Run tests, then lint and typecheck"
 depends = ["venv"]
+env = { TEXTUAL_ANIMATIONS = "none" }
 run = "uv run --locked --module pytest"
 
 [tasks.test]

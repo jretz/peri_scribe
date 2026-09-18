@@ -12,7 +12,7 @@ Run the offline KMZ stage directly from the project root with the `python` that'
 path (that will get the one in .venv):
 
 ```bash
-.venv/bin/pytest;
+env TEXTUAL_ANIMATIONS=none .venv/bin/pytest;
 .venv/bin/coverage json --quiet --fail-under=100 -o .coverage/coverage.json;
 .venv/bin/ruff format --check --config 'lint.ignore = ["COM812"]';
 .venv/bin/ruff check;

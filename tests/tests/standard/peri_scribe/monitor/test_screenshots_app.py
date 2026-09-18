@@ -13,12 +13,13 @@ import peri_scribe.monitor.screenshots
 
 if typing.TYPE_CHECKING:
     import tests.helpers.fixtures.peri_scribe.monitor.application
+    import tests.helpers.fixtures.peri_scribe.monitor.screenshots
 
 
 def test_snapshot_app_get_system_commands_replaces_svg_with_ansi_screenshot(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    snapshot_session: tests.helpers.fixtures.peri_scribe.monitor.screenshots.Session,
 ) -> None:
-    app = monitor_session.app
+    app = snapshot_session.app
     commands = list(app.get_system_commands(app.screen))
     titles = {command.title for command in commands}
     assert {"Theme", "Quit", "Keys", "Take screenshot"} <= titles
@@ -26,9 +27,9 @@ def test_snapshot_app_get_system_commands_replaces_svg_with_ansi_screenshot(
 
 
 def test_snapshot_app_get_system_commands_excludes_snapshots_on_other_screens(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    snapshot_session: tests.helpers.fixtures.peri_scribe.monitor.screenshots.Session,
 ) -> None:
-    commands = monitor_session.app.get_system_commands(textual.screen.Screen())
+    commands = snapshot_session.app.get_system_commands(textual.screen.Screen())
     assert not {"Screenshot", "Take screenshot"} & {
         command.title for command in commands
     }
@@ -64,10 +65,13 @@ def test_snapshot_app_save_snapshot_from_palette_captures_monitor_after_palette_
 
 
 def test_snapshot_app_save_snapshot_reports_write_failure_without_exiting(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    snapshot_session: tests.helpers.fixtures.peri_scribe.monitor.screenshots.Session,
 ) -> None:
-    session = monitor_session
-    (session.directory / "screenshots").write_text("Not a directory", encoding="utf-8")
+    session = snapshot_session
+    (session.app.year_directory / "screenshots").write_text(
+        "Not a directory",
+        encoding="utf-8",
+    )
     screen = session.app.screen
     assert isinstance(screen, peri_scribe.monitor.screenshots.SnapshotScreen)
     with unittest.mock.patch.object(session.app, "notify") as notify:

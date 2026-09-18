@@ -8,7 +8,6 @@ import unittest.mock
 import pytest
 import rich.json
 import rich.text
-import textual.events
 import textual.widgets
 import time_machine
 
@@ -18,7 +17,6 @@ import peri_scribe.monitor.history
 import peri_scribe.monitor.status
 import peri_scribe.monitor.status_widgets
 import peri_scribe.monitor.storage
-import peri_scribe.monitor.theme
 import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.monitor.changes
 import tests.helpers.factories.peri_scribe.monitor.events
@@ -291,82 +289,6 @@ def test_monitor_app_status_fits_terminal_with_scrollable_details(
         assert region.height > 0
         assert region.right <= width
         assert region.bottom <= height
-
-
-def test_monitor_app_status_health_uses_colors_and_symbols(
-    color_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
-) -> None:
-    session = color_session
-    session.runner.run(session.pilot.press("1"))
-    text = session.app.query_one("#status-overview", textual.widgets.Static).content
-    assert isinstance(text, rich.text.Text)
-    assert peri_scribe.monitor.theme.RED in str(text.style)
-    assert "✗" in text.plain
-
-
-def test_monitor_app_status_empty_observations_do_not_navigate(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
-) -> None:
-    session = monitor_session
-    session.runner.run(session.pilot.press("1"))
-    link = session.app.query_one(
-        "#status-failure",
-        peri_scribe.monitor.status_widgets.StatusLink,
-    )
-    session.call(link.on_click)
-    session.call(link.on_key, textual.events.Key("x", "x"))
-    pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
-    table = pane.query_one("#status-exceptions", textual.widgets.DataTable)
-    session.call(
-        pane.select_evidence,
-        textual.widgets.DataTable.RowSelected(table, 0, next(iter(table.rows))),
-    )
-    session.runner.run(session.pilot.pause())
-    assert (
-        session.app.query_one("#views", textual.widgets.TabbedContent).active
-        == "status"
-    )
-
-
-def test_monitor_app_status_preserves_exception_selection_as_count_changes(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
-) -> None:
-    session = monitor_session
-    tests.helpers.factories.peri_scribe.monitor.events.write_log(
-        session.directory,
-        *tests.helpers.factories.peri_scribe.monitor.status.failed_run(run_id="first"),
-    )
-    session.runner.run(session.app.refresh_files())
-    table = session.app.query_one("#status-exceptions", textual.widgets.DataTable)
-    selected = table.coordinate_to_cell_key(table.cursor_coordinate).row_key
-    tests.helpers.factories.peri_scribe.monitor.events.write_log(
-        session.directory,
-        *tests.helpers.factories.peri_scribe.monitor.status.failed_run(run_id="latest"),
-    )
-    session.runner.run(session.app.refresh_files())
-    assert table.coordinate_to_cell_key(table.cursor_coordinate).row_key == selected
-    assert table.get_row(selected)[1] == "2"
-
-
-def test_monitor_app_status_unlinked_observations_are_readable(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
-) -> None:
-    session = monitor_session
-    pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
-    session.call(
-        pane.update_table,
-        "recent",
-        (
-            peri_scribe.monitor.status.Metric(
-                label="Unknown time",
-                text="History unavailable",
-                health=peri_scribe.monitor.status.Health.WARNING,
-            ),
-        ),
-    )
-    table = pane.query_one("#status-recent", textual.widgets.DataTable)
-    assert table.row_count == 1
-    assert not any(key[0] == "recent" for key in pane.targets)
 
 
 def test_refresh_clock_updates_freshness_without_reading_files(

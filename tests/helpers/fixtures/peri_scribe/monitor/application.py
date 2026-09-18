@@ -1,8 +1,6 @@
 """Run the real terminal adapter in an isolated, synchronous test harness."""
 
-import asyncio
 import collections.abc
-import contextlib
 import dataclasses
 import functools
 import pathlib
@@ -11,72 +9,21 @@ import unittest.mock
 
 import pytest
 import textual.constants
-import textual.pilot
-import textual.widget
 import textual.widgets
 import time_machine
 
 import peri_scribe.monitor.app
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.factories.peri_scribe.monitor.status
+import tests.helpers.textual
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class Session:
+class Session(tests.helpers.textual.Session[peri_scribe.monitor.app.MonitorApp]):
     """One event loop keeps terminal tasks alive between test actions."""
 
-    app: peri_scribe.monitor.app.MonitorApp
-    runner: asyncio.Runner
-    pilot: textual.pilot.Pilot[None]
     directory: pathlib.Path
     clock: collections.abc.Callable[[], object]
-
-    def call[Result](
-        self,
-        callback: collections.abc.Callable[..., Result],
-        *args: object,
-    ) -> Result:
-        """Keep synchronous widget actions inside Textual's running event loop.
-
-        Args:
-            callback: The user action or widget mutation.
-            args: Positional arguments for that action.
-
-        Returns:
-            The action's result after dispatch within the terminal event loop.
-        """
-        return self.runner.run(invoke(callback, *args))
-
-    def drag(self, divider: textual.widget.Widget, movement: tuple[int, int]) -> None:
-        """Exercise pointer capture by dragging outside the divider's original bounds.
-
-        Args:
-            divider: The visible divider to move.
-            movement: Horizontal and vertical pointer movement in terminal cells.
-        """
-        position = divider.region.offset
-        destination = (position.x + movement[0], position.y + movement[1])
-        self.runner.run(self.pilot.mouse_down(divider))
-        self.runner.run(self.pilot.hover(offset=destination))
-        self.runner.run(self.pilot.mouse_up(offset=destination))
-
-
-async def invoke[Result](
-    callback: collections.abc.Callable[..., Result],
-    *args: object,
-) -> Result:
-    """Allow synchronous UI actions to schedule terminal messages and timers.
-
-    Args:
-        callback: The action that requires a running event loop.
-        args: Positional arguments for that action.
-
-    Returns:
-        The result of the requested action.
-    """
-    result = callback(*args)
-    await asyncio.sleep(0)
-    return result
 
 
 @pytest.fixture
@@ -115,21 +62,17 @@ def monitor_session(
             tests.helpers.factories.peri_scribe.monitor.status.NOW,
             tick=False,
         ),
-        asyncio.Runner() as runner,
+        tests.helpers.textual.mounted(app) as session,
     ):
-        stack = contextlib.AsyncExitStack()
-        pilot = runner.run(stack.enter_async_context(app.run_test(size=(120, 42))))
-        try:
-            runner.run(pilot.press("2"))
-            yield Session(
-                app=app,
-                runner=runner,
-                pilot=pilot,
-                directory=directory,
-                clock=interval.call_args.args[1],
-            )
-        finally:
-            runner.run(stack.aclose())
+        session.call(app.action_view, "pipeline")
+        session.refresh()
+        yield Session(
+            app=app,
+            runner=session.runner,
+            pilot=session.pilot,
+            directory=directory,
+            clock=interval.call_args.args[1],
+        )
 
 
 async def remove_views(app: peri_scribe.monitor.app.MonitorApp) -> None:

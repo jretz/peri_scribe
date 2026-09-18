@@ -58,6 +58,23 @@ def history(*records: dict[str, object]) -> peri_scribe.monitor.history.History:
     )
 
 
+def view(*records: dict[str, object]) -> peri_scribe.monitor.status.View:
+    """Give widget tests fixed health evidence without file collection.
+
+    Args:
+        records: Chronological observations to present.
+
+    Returns:
+        A status projection with unavailable artifacts at the fixed observation time.
+    """
+    missing = peri_scribe.monitor.status.Output(missing=True)
+    return peri_scribe.monitor.status.project(
+        history(*records),
+        peri_scribe.monitor.status.Files(kmz=missing, report=missing),
+        NOW,
+    )
+
+
 def finished(
     phase: str,
     *,

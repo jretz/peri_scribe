@@ -62,16 +62,16 @@ def test_snapshot_screen_export_snapshot_preserves_unicode_and_scrolled_content(
     session = scrolling_session
     session.call(session.app.action_view, "report")
     session.runner.run(peri_scribe.monitor.app.render_report(session.app))
-    session.runner.run(session.pilot.pause())
+    session.refresh()
     viewer = session.app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
-    session.call(functools.partial(viewer.scroll_end, animate=False))
+    session.scroll_end(viewer)
     session.call(
         setattr,
         session.app,
         "title",
         "PeriScribe monitor · Café 火 🔥",
     )
-    session.runner.run(session.pilot.pause())
+    session.refresh()
     screen = session.app.screen
     assert isinstance(screen, peri_scribe.monitor.screenshots.SnapshotScreen)
     content = rich.text.Text.from_ansi(session.call(screen.export_snapshot)).plain
