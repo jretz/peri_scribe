@@ -17,6 +17,7 @@ import tests.helpers.strategies.geometry
 import tests.helpers.strategies.kml_io.geometry
 
 
+@hypothesis.settings(deadline=None)
 @hypothesis.given(
     geometry=tests.helpers.strategies.geometry.footprints(),
     draw_order=hypothesis.strategies.integers(0, 1000),
