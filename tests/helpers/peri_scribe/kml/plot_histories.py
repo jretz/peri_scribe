@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import typing
 
-import peri_scribe.units
+import spatial_data.measurements
 
 
 if typing.TYPE_CHECKING:
@@ -20,6 +20,6 @@ def exterior_length(geometry: shapely.Geometry) -> float:
     Returns:
         The exterior perimeter length in miles.
     """
-    length = peri_scribe.units.exterior_perimeter(geometry)
+    length = spatial_data.measurements.exterior_perimeter(geometry)
     assert length is not None
     return length.m_as("miles")

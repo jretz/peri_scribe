@@ -20,7 +20,7 @@ import tests.helpers.doubles.peri_scribe.main_run
 import tests.helpers.doubles.peri_scribe.main_source
 import tests.helpers.doubles.peri_scribe.main_write_reports
 import tests.helpers.factories.peri_scribe.sources.snapshots
-from peri_scribe.units import units
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:

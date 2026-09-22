@@ -6,7 +6,7 @@ import hypothesis
 import hypothesis.strategies
 
 import peri_scribe.perimeters.size_filtering
-from peri_scribe.units import units
+from measurement_units import units
 
 
 @hypothesis.given(

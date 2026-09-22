@@ -2,33 +2,8 @@
 
 from __future__ import annotations
 
-import typing
-
-import simplekml
-
-from peri_scribe.units import units
-
-
-if typing.TYPE_CHECKING:
-    import pint
-
-
-class Style(simplekml.Style):
-    """A style whose id is assigned by the application.
-
-    simplekml otherwise numbers every style's id itself; placemarks need stable ids so
-    they can reference styles by URL.
-    """
-
-    def __init__(self, style_id: str) -> None:
-        """Give placemarks a stable identifier for referencing this style.
-
-        Args:
-            style_id: The application-assigned identifier serialized with the style.
-        """
-        super().__init__()
-        # simplekml reads this attribute when serializing the style's id.
-        self._id = style_id
+import kml_io.styles
+from measurement_units import units
 
 
 POINT_ICON_URL = "http://maps.google.com/mapfiles/kml/shapes/firedept.png"
@@ -81,27 +56,6 @@ OUTLINE_OPACITY = 80 * units.percent
 OUTLINE_WIDTH = 1.5
 
 
-def kml_color(red_green_blue: str, opacity: pint.Quantity[float]) -> str:
-    """Return the KML ``aabbggrr`` color for *red_green_blue* at an opacity.
-
-    Args:
-        red_green_blue: The color as ``#RRGGBB``.
-        opacity: The opacity from 0 (transparent) to 100 (opaque).
-
-    Returns:
-        The KML color string.
-
-    Examples:
-        >>> kml_color("#FF0080", 50 * units.percent)
-        '7f8000ff'
-    """
-    red = red_green_blue[1:3]
-    green = red_green_blue[3:5]
-    blue = red_green_blue[5:7]
-    alpha = int(opacity.m_as("percent") * 255 // 100)
-    return f"{alpha:02x}{blue}{green}{red}".lower()
-
-
 def outline_draw_order(outline_count: int, newest_first_index: int) -> int:
     """Return the draw order of the outline at *newest_first_index*.
 
@@ -131,18 +85,16 @@ def point_draw_order(outline_count: int) -> int:
     return outline_count + 1
 
 
-def point_style() -> Style:
+def point_style() -> kml_io.styles.Style:
     """Return the style for the fictional point location.
 
     Returns:
         The style, holding the point's icon.
     """
-    style = Style(POINT_STYLE_ID)
-    style.iconstyle.icon.href = POINT_ICON_URL
-    return style
+    return kml_io.styles.icon_style(POINT_STYLE_ID, POINT_ICON_URL)
 
 
-def filled_polygon_style(style_id: str, color: str) -> Style:
+def filled_polygon_style(style_id: str, color: str) -> kml_io.styles.Style:
     """Return the polygon fill style with *style_id* and *color*.
 
     The polygon fills at :data:`FILL_OPACITY` with no outline, so wherever fills overlap
@@ -155,14 +107,10 @@ def filled_polygon_style(style_id: str, color: str) -> Style:
     Returns:
         The style, with a filled polygon style.
     """
-    style = Style(style_id)
-    style.polystyle.color = kml_color(color, FILL_OPACITY)
-    style.polystyle.fill = 1
-    style.polystyle.outline = 0
-    return style
+    return kml_io.styles.filled_polygon_style(style_id, color, FILL_OPACITY)
 
 
-def outlined_perimeter_style(style_id: str, color: str) -> Style:
+def outlined_perimeter_style(style_id: str, color: str) -> kml_io.styles.Style:
     """Return the outline style with *style_id* and *color*.
 
     The polygon fills in the outline color at zero opacity, so the fill never shows on
@@ -176,16 +124,15 @@ def outlined_perimeter_style(style_id: str, color: str) -> Style:
     Returns:
         The style, with a line style and a transparently filled polygon style.
     """
-    style = Style(style_id)
-    style.linestyle.color = kml_color(color, OUTLINE_OPACITY)
-    style.linestyle.width = OUTLINE_WIDTH
-    style.polystyle.color = kml_color(color, 0 * units.percent)
-    style.polystyle.fill = 1
-    style.polystyle.outline = 1
-    return style
+    return kml_io.styles.outlined_polygon_style(
+        style_id,
+        color,
+        OUTLINE_OPACITY,
+        OUTLINE_WIDTH,
+    )
 
 
-def symbolization_styles() -> tuple[Style, ...]:
+def symbolization_styles() -> tuple[kml_io.styles.Style, ...]:
     """Return the application's fixed fire-symbolization styles.
 
     Returns:

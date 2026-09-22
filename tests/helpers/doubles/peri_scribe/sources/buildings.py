@@ -2,15 +2,14 @@
 
 from __future__ import annotations
 
-import sqlite3
 import threading
 import typing
 
 import numpy as np
 
 import peri_scribe.exceptions
-import peri_scribe.sources.buildings
 import peri_scribe.sources.catalog
+import spatial_data.point_store
 import tests.helpers.doubles.concurrency
 import tests.helpers.doubles.peri_scribe.sources.external_source
 
@@ -48,40 +47,6 @@ class PausedArchiveResponse(
         for chunk in super().iter_content(chunk_size):
             self.chunks_read += 1
             yield chunk
-
-
-def make_tile_read_recorder(
-    *,
-    identifiers: list[int],
-    read_tile_points: typing.Callable[..., np.ndarray | None],
-) -> typing.Callable[..., np.ndarray | None]:
-    """Create a callback with controlled dependencies.
-
-    Count tile reads while preserving real building coordinates.
-
-    Args:
-        identifiers: Shared list recording building tiles read from storage.
-        read_tile_points: Original tile reader used to preserve stored building
-            coordinates.
-
-    Returns:
-        The callback bound to the supplied dependencies.
-    """
-
-    def read(connection: sqlite3.Connection, tile_id: int) -> np.ndarray | None:
-        """Count tile reads while preserving real building coordinates.
-
-        Args:
-            connection: Open building-database connection used for the tile read.
-            tile_id: Identifier of the building tile to read.
-
-        Returns:
-            The building coordinates stored in the selected tile.
-        """
-        identifiers.append(tile_id)
-        return read_tile_points(connection, tile_id)
-
-    return read
 
 
 def make_state_archive_responder(
@@ -136,7 +101,7 @@ def make_state_archive_responder(
 def archive_with_probe(
     probe: tests.helpers.doubles.concurrency.ConcurrentCalls,
     url: str,
-    partitions: peri_scribe.sources.buildings.PartitionFiles,
+    partitions: spatial_data.point_store.PartitionFiles,
     *,
     stopped: threading.Event,
 ) -> int:
@@ -154,7 +119,7 @@ def archive_with_probe(
     probe.run(url)
     assert not stopped.is_set()
     points = np.zeros((10_000, 2))
-    peri_scribe.sources.buildings.append_centroids_to_partitions(points, partitions)
+    spatial_data.point_store.append_centroids_to_partitions(points, partitions)
     return len(points)
 
 
@@ -162,7 +127,7 @@ def interrupted_archives(
     operation: tests.helpers.doubles.concurrency.BlockedOperation,
     cancellation: threading.Event,
     url: str,
-    partitions: peri_scribe.sources.buildings.PartitionFiles,
+    partitions: spatial_data.point_store.PartitionFiles,
     *,
     stopped: threading.Event,
 ) -> int:

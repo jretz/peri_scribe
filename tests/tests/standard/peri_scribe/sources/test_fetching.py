@@ -15,22 +15,22 @@ import pytest
 import shapely.geometry
 import structlog
 
+import arcgis_access.data
+import arcgis_access.retry
 import peri_scribe.fires.index
 import peri_scribe.geo.data
 import peri_scribe.logging
-import peri_scribe.models
-import peri_scribe.output
-import peri_scribe.retry
 import peri_scribe.sources.feed_state
 import peri_scribe.sources.feeds
 import peri_scribe.sources.fetching
 import peri_scribe.sources.snapshots
+import spatial_data.layers
 import tests.helpers.doubles.arcgis
 import tests.helpers.doubles.peri_scribe.snapshot_storage
 import tests.helpers.doubles.peri_scribe.sources.fetching
 import tests.helpers.factories.arcgis
+import tests.helpers.factories.arcgis_access.retry
 import tests.helpers.factories.geography
-import tests.helpers.factories.peri_scribe.retry
 import tests.helpers.factories.peri_scribe.sources.feed_types
 import tests.helpers.factories.peri_scribe.sources.fetching
 import tests.helpers.factories.peri_scribe.sources.snapshots
@@ -64,7 +64,7 @@ def test_fetch_feed_dataframe_returns_none_without_changed_ids(
         lambda _directory, _feed: None,
     )
     monkeypatch.setattr(
-        peri_scribe.geo.data,
+        arcgis_access.data,
         "query_object_ids_with_retry",
         lambda *_args, **_kwargs: [],
     )
@@ -92,7 +92,7 @@ def test_fetch_feed_dataframe_returns_none_when_dedupe_removes_all(
         lambda _directory, _feed: None,
     )
     monkeypatch.setattr(
-        peri_scribe.geo.data,
+        arcgis_access.data,
         "query_object_ids_with_retry",
         lambda *_args, **_kwargs: [1],
     )
@@ -143,7 +143,7 @@ def test_fetch_feed_dataframe_queries_null_modified_rows(
     )
 
     monkeypatch.setattr(
-        peri_scribe.geo.data,
+        arcgis_access.data,
         "query_object_ids_with_retry",
         capture_where,
     )
@@ -180,7 +180,7 @@ def test_fetch_feed_dataframe_fetches_ids_present_but_not_stored(
     # First call (timestamp query) finds no changed rows; second call (full layer)
     # reports OBJECTID 3 as present in the layer but never stored.
     monkeypatch.setattr(
-        peri_scribe.geo.data,
+        arcgis_access.data,
         "query_object_ids_with_retry",
         lambda *_args, **kwargs: [] if kwargs["where"] != "1=1" else [3],
     )
@@ -238,7 +238,7 @@ def test_fetch_feed_dataframe_fetches_stored_active_rows_now_inactive(
         )
     )
 
-    monkeypatch.setattr(peri_scribe.geo.data, "query_object_ids_with_retry", query_ids)
+    monkeypatch.setattr(arcgis_access.data, "query_object_ids_with_retry", query_ids)
     fetched: dict[str, object] = {}
     monkeypatch.setattr(
         peri_scribe.geo.data,
@@ -290,7 +290,7 @@ def test_fetch_feed_dataframe_returns_none_when_flip_candidates_are_unchanged(
         lambda _directory, _feed: existing,
     )
     monkeypatch.setattr(
-        peri_scribe.geo.data,
+        arcgis_access.data,
         "query_object_ids_with_retry",
         lambda *_args, **kwargs: [1, 2] if kwargs["where"] == "1=1" else [],
     )
@@ -324,7 +324,7 @@ def test_fetch_feed_dataframe_skips_flip_query_without_stored_inactive(
     )
     wheres: list[str] = []
     monkeypatch.setattr(
-        peri_scribe.geo.data,
+        arcgis_access.data,
         "query_object_ids_with_retry",
         lambda *_args, **kwargs: (
             wheres.append(str(kwargs["where"]))
@@ -379,9 +379,9 @@ def test_fetch_all_feeds_complete_writes_each_feed_in_full(
     ]
     monkeypatch.setattr(peri_scribe.sources.feeds, "FEEDS", feeds)
     tests.helpers.doubles.peri_scribe.sources.fetching.stub_complete_fetch(monkeypatch)
-    written: list[tuple[pathlib.Path, list[peri_scribe.models.LayerData]]] = []
+    written: list[tuple[pathlib.Path, list[spatial_data.layers.LayerData]]] = []
     monkeypatch.setattr(
-        peri_scribe.output,
+        spatial_data.layers,
         "write_geopackage",
         lambda path, layers: written.append((path, layers)),
     )
@@ -422,7 +422,7 @@ def test_fetch_all_feeds_complete_reports_failures_and_continues(
     tests.helpers.doubles.peri_scribe.sources.fetching.stub_complete_fetch(monkeypatch)
     written: list[pathlib.Path] = []
     monkeypatch.setattr(
-        peri_scribe.output,
+        spatial_data.layers,
         "write_geopackage",
         lambda path, _layers: written.append(path),
     )
@@ -595,7 +595,7 @@ def test_fetch_all_feeds_retries_on_rate_limit(
     sleep_calls: list[float] = []
     monkeypatch.setattr(time, "sleep", sleep_calls.append)
     rate_limit_error = ValueError(
-        tests.helpers.factories.peri_scribe.retry.RATE_LIMIT_ERROR_PAYLOAD,
+        tests.helpers.factories.arcgis_access.retry.RATE_LIMIT_ERROR_PAYLOAD,
     )
     outcomes: list[arcgis.features.FeatureSet | Exception] = [
         rate_limit_error,
@@ -637,9 +637,9 @@ def test_fetch_all_feeds_exhausts_retries(
     sleep_calls: list[float] = []
     monkeypatch.setattr(time, "sleep", sleep_calls.append)
     rate_limit_error = ValueError(
-        tests.helpers.factories.peri_scribe.retry.RATE_LIMIT_ERROR_PAYLOAD,
+        tests.helpers.factories.arcgis_access.retry.RATE_LIMIT_ERROR_PAYLOAD,
     )
-    maximum_retries = peri_scribe.retry.DEFAULT_MAXIMUM_RETRIES
+    maximum_retries = arcgis_access.retry.DEFAULT_MAXIMUM_RETRIES
     outcomes: list[arcgis.features.FeatureSet | Exception] = [rate_limit_error] * (
         maximum_retries + 2
     )

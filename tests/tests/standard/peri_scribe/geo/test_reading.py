@@ -6,9 +6,7 @@ import os
 import pathlib
 import sqlite3
 
-import geopandas
 import pytest
-import shapely.geometry
 
 import peri_scribe.geo.database
 import peri_scribe.geo.package
@@ -16,86 +14,9 @@ import peri_scribe.geo.reading
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.snapshots
 import tests.helpers.doubles.peri_scribe.geo.package
-import tests.helpers.doubles.peri_scribe.geo.reading
-import tests.helpers.factories.geography
 import tests.helpers.factories.peri_scribe.geo.package
-import tests.helpers.factories.peri_scribe.geo.reading
 import tests.helpers.factories.peri_scribe.sources.feed_types
 import tests.helpers.peri_scribe.geo.package
-
-
-def test_read_layer_reads_named_layer(monkeypatch: pytest.MonkeyPatch) -> None:
-    frame = tests.helpers.factories.geography.geo_frame(
-        {"fire_name": ["Bug"]},
-        [shapely.geometry.Point(0, 0)],
-    )
-    calls: list[tuple[pathlib.Path, str]] = []
-
-    read_file = (
-        tests.helpers.doubles.peri_scribe.geo.reading.make_recording_layer_reader(
-            calls=calls,
-            frame=frame,
-        )
-    )
-
-    monkeypatch.setattr(peri_scribe.geo.package.geopandas, "read_file", read_file)
-    path = pathlib.Path("/derived/full.gpkg")
-    assert peri_scribe.geo.reading.read_layer(path, "perimeter_history") is frame
-    assert calls == [(path, "perimeter_history")]
-
-
-def test_read_layer_chunks_yields_bounded_chunks(tmp_path: pathlib.Path) -> None:
-    dataframe = tests.helpers.factories.geography.geo_frame(
-        {"a": [1, 2, 3, 4, 5]},
-        [shapely.geometry.Point(index, 0) for index in range(5)],
-    )
-    path = tmp_path / "layer.gpkg"
-    dataframe.to_file(path, layer="features")
-
-    chunks = list(
-        peri_scribe.geo.reading.read_layer_chunks(path, "features", chunk_size=2),
-    )
-
-    assert [len(chunk) for chunk in chunks] == [2, 2, 1]
-    assert [chunk.iloc[0]["a"] for chunk in chunks] == [1, 3, 5]
-
-
-def test_read_layer_chunks_limits_rows_when_feature_ids_have_gaps(
-    tmp_path: pathlib.Path,
-) -> None:
-    path = tmp_path / "layer.gpkg"
-    tests.helpers.factories.peri_scribe.geo.reading.write_sparse_layer(path, [1, 3, 4])
-    chunks = list(peri_scribe.geo.reading.read_layer_chunks(path, "features", 2))
-    assert [chunk["value"].tolist() for chunk in chunks] == [[1, 3], [4]]
-
-
-def test_read_layer_chunks_reads_default_layer_without_name(
-    tmp_path: pathlib.Path,
-) -> None:
-    dataframe = tests.helpers.factories.geography.geo_frame(
-        {"a": [1, 2, 3]},
-        [shapely.geometry.Point(index, 0) for index in range(3)],
-    )
-    path = tmp_path / "layer.gpkg"
-    dataframe.to_file(path, layer="features")
-
-    chunks = list(peri_scribe.geo.reading.read_layer_chunks(path, None, chunk_size=2))
-
-    assert [len(chunk) for chunk in chunks] == [2, 1]
-
-
-def test_read_layer_chunks_yields_nothing_for_empty_layer(
-    tmp_path: pathlib.Path,
-) -> None:
-    dataframe = geopandas.GeoDataFrame(geometry=[], crs="EPSG:4326")
-    path = tmp_path / "layer.gpkg"
-    dataframe.to_file(path, layer="features")
-
-    chunks = list(
-        peri_scribe.geo.reading.read_layer_chunks(path, "features", chunk_size=2),
-    )
-
-    assert chunks == []
 
 
 def test_read_layer_dataframe_reads_feed_layer(

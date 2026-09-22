@@ -1,9 +1,4 @@
-"""Turning a year's history layers into the geometry each fire symbolizes.
-
-These helpers group perimeters and point locations by fire, derive each fire's latest
-state for its balloon description, and assemble one FireGeometry per indexed fire
-together with its rendered plot images.
-"""
+"""Attach map imagery and progression colors to shared fire summaries."""
 
 from __future__ import annotations
 
@@ -12,120 +7,29 @@ import functools
 import typing
 
 import peri_scribe.areas
-import peri_scribe.fires.scoring
 import peri_scribe.kml.colormap
-import peri_scribe.kml.descriptions
-import peri_scribe.kml.history_index
-import peri_scribe.kml.perimeters
 import peri_scribe.kml.plot_data
 import peri_scribe.kml.plot_rendering
-import peri_scribe.kml.selection
-import peri_scribe.kml.text
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.perimeters.progression
 import peri_scribe.phases
+import peri_scribe.presentation.fire_data
+import peri_scribe.presentation.history_index
+import peri_scribe.presentation.perimeters
+import peri_scribe.presentation.selection
 
 
 if typing.TYPE_CHECKING:
     import geopandas
     import pint
-    import shapely
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class FireGeometry:
-    """One fire's point, perimeters, growth rings, and plots, ready to symbolize.
+class FireGeometry(peri_scribe.presentation.fire_data.FireSummary):
+    """A fire's shared facts together with the plot images embedded in its map."""
 
-    ``type_one`` records whether the fire's latest point-history row marks it a Type 1
-    Incident, the concept scoring uses, so the map's Type 1 view carries each active
-    fire that is currently designated Type 1.
-    """
-
-    name: str
-    status: peri_scribe.models.FireStatus
-    point: shapely.Point | None
-    perimeters: tuple[peri_scribe.kml.perimeters.Perimeter, ...]
-    progression_rings: tuple[peri_scribe.perimeters.progression.Ring, ...] = ()
-    description: peri_scribe.kml.descriptions.FireDescription | None = None
     images: tuple[peri_scribe.kml.plot_rendering.PlotImage, ...] = ()
-    identifiers: frozenset[str] = frozenset()
-    type_one: bool = False
-
-
-class NamedFire(typing.Protocol):
-    """Anything the fire views order by name."""
-
-    @property
-    def name(self) -> str:
-        """The fire's name.
-
-        Returns:
-            The display name of the fire.
-        """
-        ...
-
-
-def fire_name_key(named: NamedFire) -> str:
-    """Return the ordering key that sorts fires by name, ignoring case.
-
-    Folding case keeps the order stable when two names differ only in case, so every
-    view lists the same fires in the same order.
-
-    Args:
-        named: The fire to key.
-
-    Returns:
-        The fire's case-folded name.
-    """
-    return named.name.casefold()
-
-
-def descending_value_name_key(ranked: tuple[FireGeometry, float]) -> tuple[float, str]:
-    """Return the ordering key that ranks fires by value, then by name.
-
-    The largest value comes first, and fires whose values tie keep one stable order.
-
-    Args:
-        ranked: A fire and the value it is ranked by.
-
-    Returns:
-        The key: the negated value followed by the case-folded name.
-    """
-    fire, value = ranked
-    return (-value, fire_name_key(fire))
-
-
-# A differential ring smaller than this adds nothing visible to the map, so it is
-# dropped rather than carried into the KMZ.
-MINIMUM_RING_AREA = peri_scribe.perimeters.progression.MINIMUM_RING_AREA
-
-
-def progression_ring(
-    perimeter: peri_scribe.kml.perimeters.Perimeter,
-) -> peri_scribe.perimeters.progression.Ring | None:
-    """Return *perimeter* as a growth ring, or None when it is too small.
-
-    The ring's area is measured geodesically from its geometry so the growth-window and
-    color logic later work in true map area rather than whatever acreage the source
-    reported.
-
-    Args:
-        perimeter: The differential perimeter to turn into a ring.
-
-    Returns:
-        The ring, or None when its area is at most one square meter.
-    """
-    area = perimeter.measured_area
-    if area <= MINIMUM_RING_AREA:
-        return None
-    return peri_scribe.perimeters.progression.Ring(
-        geometry=perimeter.geometry,
-        observation_time=perimeter.observation_time,
-        area=area,
-        added_area=perimeter.added_area,
-        sequence_digest=perimeter.sequence_digest,
-    )
 
 
 @functools.cache
@@ -180,7 +84,7 @@ def ring_added_areas(
 
 def interior_ring_colors(
     rings: typing.Sequence[peri_scribe.perimeters.progression.Ring],
-    perimeters: typing.Sequence[peri_scribe.kml.perimeters.Perimeter],
+    perimeters: typing.Sequence[peri_scribe.presentation.perimeters.Perimeter],
 ) -> tuple[tuple[peri_scribe.perimeters.progression.Ring, str], ...]:
     """Return the (ring, color) pairs a fire's interior folder draws.
 
@@ -225,178 +129,9 @@ def interior_ring_colors(
     return ()
 
 
-def fire_perimeters(
-    fire_identifiers: frozenset[str],
-    entry_name: str,
-    perimeter_by_identifier: dict[str, list[peri_scribe.kml.perimeters.Perimeter]],
-    perimeter_by_name: dict[str, list[peri_scribe.kml.perimeters.Perimeter]],
-) -> tuple[peri_scribe.kml.perimeters.Perimeter, ...]:
-    """Return one fire's perimeters in chronological order.
-
-    Args:
-        fire_identifiers: The fire's identifiers.
-        entry_name: The fire's name.
-        perimeter_by_identifier: Perimeters keyed by identifier.
-        perimeter_by_name: Perimeters keyed by name.
-
-    Returns:
-        The fire's perimeters, oldest first.
-    """
-    perimeters: list[peri_scribe.kml.perimeters.Perimeter] = []
-    for identifier in sorted(fire_identifiers):
-        perimeters.extend(perimeter_by_identifier.get(identifier, []))
-    if not fire_identifiers:
-        perimeters.extend(perimeter_by_name.get(entry_name, []))
-    return tuple(perimeters)
-
-
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class PendingFire:
-    """Retain shared evidence while each fire's charts are rendered.
-
-    Attributes:
-        entry: The fire's indexed identity and status.
-        identifiers: Its canonical identifier and aliases.
-        perimeters: Full mapping observations for the output folders.
-        progression_rings: Differential rings available for progression views.
-        perimeter_positions: Row positions used to recover descriptive perimeter fields.
-        point_positions: Row positions used to recover descriptive point fields.
-        history: Prepared reports and area decisions, when presentation is needed.
-    """
-
-    entry: peri_scribe.models.FireIndexEntry
-    identifiers: frozenset[str]
-    perimeters: tuple[peri_scribe.kml.perimeters.Perimeter, ...]
-    progression_rings: tuple[peri_scribe.perimeters.progression.Ring, ...]
-    perimeter_positions: tuple[int, ...]
-    point_positions: tuple[int, ...]
-    history: peri_scribe.areas.PreparedHistory | None = None
-
-
-# One fire's rendered plots: the filename prefix and the plots to draw.
-PlotBundle = tuple[str, tuple[peri_scribe.kml.plot_data.FirePlot, ...]]
-
-
-def prepare_fire_bundles(
-    *,
-    index: peri_scribe.models.FireIndex,
-    perimeters: geopandas.GeoDataFrame,
-    points: geopandas.GeoDataFrame,
-    perimeter_by_identifier: dict[str, list[peri_scribe.kml.perimeters.Perimeter]],
-    perimeter_by_name: dict[str, list[peri_scribe.kml.perimeters.Perimeter]],
-    ring_by_identifier: dict[str, list[peri_scribe.kml.perimeters.Perimeter]],
-    ring_by_name: dict[str, list[peri_scribe.kml.perimeters.Perimeter]],
-    incident_rows: geopandas.GeoDataFrame | None = None,
-    histories: typing.Mapping[
-        peri_scribe.kml.selection.AreaKey,
-        peri_scribe.areas.PreparedHistory,
-    ]
-    | None = None,
-) -> tuple[list[PendingFire], list[PlotBundle]]:
-    """Return each fire's pending entry and plot bundle.
-
-    One pass indexes the history layers by row position, then each fire's rows are
-    looked up and sliced without scanning the full frames. The pending entries retain
-    row positions and prepared evidence, so chart and description consumers share
-    decisions without retaining duplicate frame slices.
-
-    Args:
-        index: The fire index that names each fire and its status.
-        perimeters: The perimeter history layer.
-        points: The point history layer.
-        perimeter_by_identifier: Perimeters keyed by identifier.
-        perimeter_by_name: Perimeters keyed by name.
-        ring_by_identifier: Differential perimeters keyed by identifier.
-        ring_by_name: Differential perimeters keyed by name.
-        incident_rows: The optional independent incident history layer.
-        histories: Already prepared histories keyed by fire identity, when available.
-
-    Returns:
-        Each fire's pending entry and each fire's plot bundle, in index order.
-    """
-    perimeter_index = peri_scribe.kml.history_index.HistoryRowIndex.from_frame(
-        perimeters,
-    )
-    point_index = peri_scribe.kml.history_index.HistoryRowIndex.from_frame(points)
-    incident_index = optional_history_index(incident_rows)
-    pending: list[PendingFire] = []
-    plot_bundles: list[PlotBundle] = []
-    used_prefixes: set[str] = set()
-    for entry in index.fires:
-        fire_identifiers = peri_scribe.kml.selection.identifiers(entry)
-        perimeter_observations = fire_perimeters(
-            fire_identifiers,
-            entry.name,
-            perimeter_by_identifier,
-            perimeter_by_name,
-        )
-        prefix = peri_scribe.kml.selection.unique_filename_prefix(
-            entry.identifier,
-            entry.name,
-            frozenset(used_prefixes),
-        )
-        used_prefixes.add(prefix)
-        progression_rings = tuple(
-            ring
-            for observation in fire_perimeters(
-                fire_identifiers,
-                entry.name,
-                ring_by_identifier,
-                ring_by_name,
-            )
-            if (ring := progression_ring(observation)) is not None
-        )
-        perimeter_positions = perimeter_index.positions_for(
-            fire_identifiers,
-            entry.name,
-        )
-        point_positions = point_index.positions_for(fire_identifiers, entry.name)
-        perimeter_rows = peri_scribe.kml.history_index.select_rows(
-            perimeters,
-            perimeter_positions,
-        )
-        point_rows = peri_scribe.kml.history_index.select_rows(points, point_positions)
-        history = (
-            None
-            if histories is None
-            else histories.get(
-                peri_scribe.kml.selection.fire_area_key(entry.identifier, entry.name),
-            )
-        )
-        if history is None:
-            history = peri_scribe.areas.prepare_history(
-                perimeter_rows,
-                point_rows,
-                selected_incidents(
-                    incident_rows,
-                    incident_index,
-                    fire_identifiers,
-                    entry.name,
-                ),
-            )
-        pending.append(
-            PendingFire(
-                entry=entry,
-                identifiers=fire_identifiers,
-                perimeters=perimeter_observations,
-                progression_rings=progression_rings,
-                perimeter_positions=perimeter_positions,
-                point_positions=point_positions,
-                history=history,
-            ),
-        )
-        plot_bundles.append((
-            prefix,
-            peri_scribe.kml.plot_data.fire_plots(
-                perimeter_rows,
-                point_rows,
-                history=history,
-            ),
-        ))
-    return pending, plot_bundles
-
-
-def precompute_interior_added_areas(pending: list[PendingFire]) -> None:
+def precompute_interior_added_areas(
+    fires: typing.Sequence[peri_scribe.presentation.fire_data.FireSummary],
+) -> None:
     """Warm the added-area cache for every pending fire's drawn rings.
 
     The folder-writing phase asks each fire for the same added areas, and computing them
@@ -405,10 +140,10 @@ def precompute_interior_added_areas(pending: list[PendingFire]) -> None:
     done and the folder's requests hit the cache.
 
     Args:
-        pending: The prepared fires with their perimeter observations and progression
+        fires: The prepared fires with their perimeter observations and progression
             rings awaiting plot and folder generation.
     """
-    for fire in pending:
+    for fire in fires:
         sequence = tuple(
             ring
             for ring, _color in interior_ring_colors(
@@ -420,6 +155,34 @@ def precompute_interior_added_areas(pending: list[PendingFire]) -> None:
             added_areas_for_rings(sequence)
 
 
+def unique_filename_prefix(
+    identifier: str | None,
+    name: str,
+    used_prefixes: frozenset[str],
+) -> str:
+    """Return a filename prefix for a fire that avoids *used_prefixes*.
+
+    The fire's canonical identifier is preferred, with its name as a fallback; when that
+    base prefix is already taken, a numeric suffix is appended until the result is
+    unused, so every fire's plot images land in distinct files.
+
+    Args:
+        identifier: The fire's canonical identifier, or None.
+        name: The fire's name.
+        used_prefixes: Every prefix already assigned in the output.
+
+    Returns:
+        A prefix not present in *used_prefixes*.
+    """
+    prefix = peri_scribe.kml.plot_rendering.filename_prefix(identifier, name)
+    candidate = prefix
+    counter = 2
+    while candidate in used_prefixes:
+        candidate = f"{prefix}-{counter}"
+        counter += 1
+    return candidate
+
+
 def fire_geometries(
     index: peri_scribe.models.FireIndex,
     perimeters: geopandas.GeoDataFrame,
@@ -427,174 +190,81 @@ def fire_geometries(
     differential_perimeters: geopandas.GeoDataFrame,
     scores: peri_scribe.models.FireScores | None = None,
     *,
-    render_plots: bool = True,
     incident_rows: geopandas.GeoDataFrame | None = None,
     histories: typing.Mapping[
-        peri_scribe.kml.selection.AreaKey,
+        peri_scribe.presentation.selection.AreaKey,
         peri_scribe.areas.PreparedHistory,
     ]
     | None = None,
 ) -> list[FireGeometry]:
-    """Return each indexed fire's geometry and plots, sorted by case-folded name.
-
-    Each fire's point is its last known location, or a representative point of its
-    latest perimeter when no location is known. The full perimeters feed the latest
-    perimeters folder, the differential growth rings feed the progression maps, and the
-    point and perimeter histories feed the line plots embedded in each fire's balloon.
-    When *render_plots* is True the fires' plots are rendered, precomputing each fire's
-    interior added areas first so the folder-writing phase finds them already cached.
-    When scores are supplied, each fire's score explanation is shown as the final row of
-    its balloon, matched by identifier and falling back to name.
+    """Render chart images for the shared fire facts shown on the map.
 
     Args:
-        index: The fire index that names each fire and its status.
-        perimeters: The perimeter history layer.
-        points: The point history layer.
-        differential_perimeters: The differential perimeter history layer.
-        scores: The saved score for each fire, or None.
-        render_plots: Whether to render each fire's plot images. Callers that only need
-            each fire's description and perimeters pass False to skip the rendering
-            step.
-        incident_rows: The optional independent incident history layer.
-        histories: Already prepared histories keyed by fire identity, when available.
+        index: Fire identities and current status.
+        perimeters: The full perimeter history.
+        points: The point history.
+        differential_perimeters: Differential growth rings.
+        scores: Saved scores and their explanations, when available.
+        incident_rows: The optional independent incident history.
+        histories: Already prepared reporting evidence keyed by fire identity.
 
     Returns:
-        One entry per indexed fire, sorted by case-folded name.
+        The named and sorted fires, with each fire's rendered map images.
     """
-    notes_by_identifier = (
-        {
-            entry.identifier: entry.explanation
-            for entry in scores.fires
-            if entry.identifier is not None
-        }
-        if scores is not None
-        else {}
-    )
-    notes_by_name = (
-        {
-            entry.name: entry.explanation
-            for entry in scores.fires
-            if entry.identifier is None
-        }
-        if scores is not None
-        else {}
-    )
-    perimeter_by_identifier, perimeter_by_name = (
-        peri_scribe.kml.selection.perimeter_groups(perimeters)
-    )
-    ring_by_identifier, ring_by_name = peri_scribe.kml.selection.perimeter_groups(
-        differential_perimeters,
-    )
-    point_by_identifier, point_by_name = peri_scribe.kml.selection.point_locations(
+    prepared = peri_scribe.presentation.fire_data.prepare_fire_data(
+        index,
+        perimeters,
         points,
-    )
-    pending, plot_bundles = prepare_fire_bundles(
-        index=index,
-        perimeters=perimeters,
-        points=points,
-        perimeter_by_identifier=perimeter_by_identifier,
-        perimeter_by_name=perimeter_by_name,
-        ring_by_identifier=ring_by_identifier,
-        ring_by_name=ring_by_name,
+        differential_perimeters,
+        scores,
         incident_rows=incident_rows,
         histories=histories,
     )
-    if render_plots:
-        with peri_scribe.logging.log_phase(
-            peri_scribe.phases.Phase.PREPARE_PLOT_IMAGES,
-        ):
-            image_bundles = peri_scribe.kml.plot_rendering.plot_image_bundles(
-                tuple(plot_bundles),
-                before_rendering=functools.partial(
-                    precompute_interior_added_areas,
-                    pending,
-                ),
-            )
-    else:
-        image_bundles = tuple(() for _plot_bundle in plot_bundles)
-    fires: list[FireGeometry] = []
-    for prepared, images in zip(pending, image_bundles, strict=True):
-        perimeter_rows = peri_scribe.kml.history_index.select_rows(
-            perimeters,
-            prepared.perimeter_positions,
+    bundles: list[tuple[str, tuple[peri_scribe.kml.plot_data.FirePlot, ...]]] = []
+    used_prefixes: set[str] = set()
+    for fire in prepared:
+        prefix = unique_filename_prefix(
+            fire.identifier,
+            fire.summary.name,
+            frozenset(used_prefixes),
         )
-        point_rows = peri_scribe.kml.history_index.select_rows(
-            points,
-            prepared.point_positions,
-        )
-        fires.append(
-            FireGeometry(
-                name=prepared.entry.name,
-                status=peri_scribe.models.FireStatus(prepared.entry.status),
-                point=peri_scribe.kml.selection.fire_point_location(
-                    prepared.identifiers,
-                    prepared.entry.name,
-                    point_by_identifier,
-                    point_by_name,
-                    prepared.perimeters,
+        used_prefixes.add(prefix)
+        bundles.append((
+            prefix,
+            peri_scribe.kml.plot_data.fire_plots(
+                peri_scribe.presentation.history_index.select_rows(
+                    perimeters,
+                    fire.perimeter_positions,
                 ),
-                perimeters=prepared.perimeters,
-                progression_rings=prepared.progression_rings,
-                identifiers=prepared.identifiers,
-                description=peri_scribe.kml.text.fire_description(
-                    prepared.entry,
-                    perimeter_rows,
-                    point_rows,
-                    history=prepared.history,
-                    of_note=peri_scribe.kml.text.score_explanation_for(
-                        notes_by_identifier,
-                        notes_by_name,
-                        prepared.identifiers,
-                        prepared.entry.name,
-                    ),
+                peri_scribe.presentation.history_index.select_rows(
+                    points,
+                    fire.point_positions,
                 ),
-                type_one=peri_scribe.fires.scoring.fire_is_type_one_incident(
-                    point_rows,
-                ),
-                images=images,
+                history=fire.history,
+            ),
+        ))
+    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.PREPARE_PLOT_IMAGES):
+        images = peri_scribe.kml.plot_rendering.plot_image_bundles(
+            tuple(bundles),
+            before_rendering=functools.partial(
+                precompute_interior_added_areas,
+                [fire.summary for fire in prepared],
             ),
         )
-    return sorted(fires, key=fire_name_key)
-
-
-def optional_history_index(
-    frame: geopandas.GeoDataFrame | None,
-) -> peri_scribe.kml.history_index.HistoryRowIndex | None:
-    """Keep independent incident history optional for geography-only inputs.
-
-    Args:
-        frame: The reporting layer, if available.
-
-    Returns:
-        An index for a populated frame, or None so callers can use fallback sources.
-    """
-    return (
-        None
-        if frame is None or frame.empty
-        else peri_scribe.kml.history_index.HistoryRowIndex.from_frame(frame)
-    )
-
-
-def selected_incidents(
-    frame: geopandas.GeoDataFrame | None,
-    index: peri_scribe.kml.history_index.HistoryRowIndex | None,
-    identifiers: frozenset[str],
-    name: str,
-) -> geopandas.GeoDataFrame | None:
-    """Select a fire's reports using the identity rules shared with its geography.
-
-    Args:
-        frame: The optional independent incident-history layer.
-        index: The row index for that layer, if it is available.
-        identifiers: Identifiers and aliases associated with this fire.
-        name: The fire name used when identifiers do not resolve its history.
-
-    Returns:
-        The matching report rows, possibly empty, or None without an indexed layer.
-    """
-    if frame is None or index is None:
-        return None
-    return peri_scribe.kml.history_index.select_rows(
-        frame,
-        index.positions_for(identifiers, name),
+    return sorted(
+        [
+            FireGeometry(
+                name=fire.summary.name,
+                status=fire.summary.status,
+                point=fire.summary.point,
+                perimeters=fire.summary.perimeters,
+                progression_rings=fire.summary.progression_rings,
+                description=fire.summary.description,
+                identifiers=fire.summary.identifiers,
+                type_one=fire.summary.type_one,
+                images=fire_images,
+            )
+            for fire, fire_images in zip(prepared, images, strict=True)
+        ],
+        key=peri_scribe.presentation.fire_data.fire_name_key,
     )

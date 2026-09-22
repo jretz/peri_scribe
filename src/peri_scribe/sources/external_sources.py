@@ -50,17 +50,17 @@ import arcgis.features
 import arcgis.gis
 import structlog
 
+import arcgis_access.data
 import peri_scribe.exceptions
 import peri_scribe.geo.data
 import peri_scribe.logging
-import peri_scribe.models
-import peri_scribe.output
 import peri_scribe.phases
 import peri_scribe.sources.buildings
 import peri_scribe.sources.catalog
 import peri_scribe.sources.digests
 import peri_scribe.sources.downloading
 import peri_scribe.sources.external_data
+import spatial_data.layers
 
 
 logger = structlog.get_logger()
@@ -174,9 +174,14 @@ def fetch_arcgis_source(
             peri_scribe.phases.Phase.WRITE_SNAPSHOT,
             source=source.name,
         ):
-            peri_scribe.output.write_geopackage(
+            spatial_data.layers.write_geopackage(
                 temporary,
-                [peri_scribe.models.LayerData(name=layer_name, dataframe=geodataframe)],
+                [
+                    spatial_data.layers.LayerData(
+                        name=layer_name,
+                        dataframe=geodataframe,
+                    ),
+                ],
             )
             temporary.replace(output)
     finally:
@@ -262,7 +267,7 @@ def query_arcgis_source(
         feature_set = peri_scribe.geo.data.query_with_retry(
             source.name,
             layer,
-            parameters=peri_scribe.geo.data.wgs84_query_parameters(
+            parameters=arcgis_access.data.wgs84_query_parameters(
                 source.where or "1=1",
             ),
         )
@@ -276,4 +281,4 @@ def query_arcgis_source(
         peri_scribe.phases.Phase.CONVERT_FEATURES,
         source=source.name,
     ):
-        return peri_scribe.geo.data.geo_data_frame_from_feature_set(feature_set)
+        return arcgis_access.data.geo_data_frame_from_feature_set(feature_set)

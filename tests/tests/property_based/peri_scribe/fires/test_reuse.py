@@ -1,22 +1,28 @@
 """Cache identity includes every dependency and output publication is recoverable."""
 
+from __future__ import annotations
+
 import pathlib
 import tempfile
+import typing
 
 import hypothesis
 
 import peri_scribe.fires.reuse
-import peri_scribe.models
 import tests.helpers.strategies.peri_scribe.fires.reuse
 
 
 # File I/O has host-dependent latency; bound examples rather than elapsed time.
+if typing.TYPE_CHECKING:
+    import spatial_data.layers
+
+
 @hypothesis.settings(max_examples=25, deadline=None)
 @hypothesis.given(
     layers=tests.helpers.strategies.peri_scribe.fires.reuse.history_layers(),
 )
 def test_read_rows_preserves_layer_and_fire_partitions(
-    layers: list[peri_scribe.models.LayerData],
+    layers: list[spatial_data.layers.LayerData],
 ) -> None:
     with tempfile.TemporaryDirectory() as directory:
         path = pathlib.Path(directory) / "history.gpkg"

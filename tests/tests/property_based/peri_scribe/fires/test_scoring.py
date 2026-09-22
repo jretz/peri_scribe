@@ -7,7 +7,7 @@ import hypothesis.strategies
 import pytest
 
 import peri_scribe.fires.scoring
-from peri_scribe.units import units
+from measurement_units import units
 
 
 @hypothesis.given(

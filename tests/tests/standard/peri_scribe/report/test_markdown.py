@@ -5,12 +5,12 @@ from __future__ import annotations
 import datetime
 import pathlib
 
-import peri_scribe.kml.descriptions
 import peri_scribe.models
+import peri_scribe.presentation.descriptions
 import peri_scribe.report.gathering
 import peri_scribe.report.markdown
 import tests.helpers.factories.peri_scribe.report.markdown
-from peri_scribe.units import units
+from measurement_units import units
 
 
 # The summary sections whose location column headings appear when the report holds a
@@ -249,7 +249,7 @@ def test_fire_table_section_marks_empty_section() -> None:
 
 
 def test_fire_detail_rows_show_the_balloon_facts() -> None:
-    description = peri_scribe.kml.descriptions.FireDescription(
+    description = peri_scribe.presentation.descriptions.FireDescription(
         identifier="2026-idipf-000347",
         source="WFIGS",
         mission="B-1",
@@ -671,7 +671,7 @@ def test_markdown_text_shows_location_in_sections_and_details() -> None:
 def test_fire_detail_lines_includes_area_basis() -> None:
     entry = tests.helpers.factories.peri_scribe.report.markdown.make_entry(
         "Example",
-        description=peri_scribe.kml.descriptions.FireDescription(
+        description=peri_scribe.presentation.descriptions.FireDescription(
             area=200 * units.acres,
             area_basis="Reported; 09/02 17:00 PDT",
         ),

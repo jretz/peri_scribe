@@ -10,10 +10,10 @@ import typing
 import arcgis.features
 
 import peri_scribe.exceptions
-import peri_scribe.output
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.fetching
 import peri_scribe.sources.snapshots
+import spatial_data.layers
 import tests.helpers.doubles.arcgis
 import tests.helpers.doubles.concurrency
 import tests.helpers.factories.geography
@@ -108,7 +108,7 @@ def stub_complete_fetch(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(peri_scribe.sources.fetching.arcgis.gis, "GIS", object)
     monkeypatch.setattr(pathlib.Path, "mkdir", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
-        peri_scribe.output,
+        spatial_data.layers,
         "write_geopackage",
         lambda _path, _layers: None,
     )

@@ -11,21 +11,21 @@ import shapely.geometry
 
 import peri_scribe.fires.sources
 import peri_scribe.geo.package
-import peri_scribe.models
 import peri_scribe.sources.feed_types
+import spatial_data.layers
 import tests.helpers.factories.geography
 import tests.helpers.factories.peri_scribe.models
 
 
 @pytest.fixture
-def cached_layers() -> list[peri_scribe.models.LayerData]:
+def cached_layers() -> list[spatial_data.layers.LayerData]:
     """Supply an isolated cache payload.
 
     Returns:
         Small independent histories with stable derivation keys.
     """
     return [
-        peri_scribe.models.LayerData(
+        spatial_data.layers.LayerData(
             name="perimeters",
             dataframe=geopandas.GeoDataFrame(
                 {"derivation_key": ["first", "second"], "revision": [1, 2]},

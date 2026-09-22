@@ -18,16 +18,16 @@ import geopandas
 import peri_scribe.fires.derived_layers
 import peri_scribe.fires.index
 import peri_scribe.fires.score_files
-import peri_scribe.geo.reading
-import peri_scribe.kml.builder
-import peri_scribe.kml.descriptions
-import peri_scribe.kml.fire_data
-import peri_scribe.kml.folders
-import peri_scribe.kml.selection
 import peri_scribe.models
+import peri_scribe.presentation.descriptions
+import peri_scribe.presentation.fire_data
+import peri_scribe.presentation.index
+import peri_scribe.presentation.selection
+import peri_scribe.presentation.views
 import peri_scribe.report.locations
 import peri_scribe.sources.catalog
 import peri_scribe.sources.external_data
+import spatial_data.layers
 
 
 if typing.TYPE_CHECKING:
@@ -47,7 +47,7 @@ class FireReportEntry:
     name: str
     identifier: str | None = None
     status: peri_scribe.models.FireStatus
-    description: peri_scribe.kml.descriptions.FireDescription | None = None
+    description: peri_scribe.presentation.descriptions.FireDescription | None = None
     growth: pint.Quantity[float] | None = None
     growth_percent: pint.Quantity[float] | None = None
     score: int | None = None
@@ -72,8 +72,8 @@ class FireReport:
 
 
 def fire_identity(
-    fire: peri_scribe.kml.fire_data.FireGeometry,
-) -> peri_scribe.kml.selection.AreaKey:
+    fire: peri_scribe.presentation.fire_data.FireSummary,
+) -> peri_scribe.presentation.selection.AreaKey:
     """Return the tagged report identity of *fire*.
 
     The identity is the one the report uses to tell fires apart, so two fires that share
@@ -87,7 +87,7 @@ def fire_identity(
         The fire's report identity.
     """
     identifier = peri_scribe.models.canonical_fire_identifier(fire.identifiers)
-    return peri_scribe.kml.selection.fire_area_key(identifier, fire.name)
+    return peri_scribe.presentation.selection.fire_area_key(identifier, fire.name)
 
 
 def read_cities_layer(year_directory: pathlib.Path) -> geopandas.GeoDataFrame:
@@ -107,11 +107,11 @@ def read_cities_layer(year_directory: pathlib.Path) -> geopandas.GeoDataFrame:
     path = peri_scribe.sources.external_data.output_path(year_directory, source)
     if not path.is_file():
         return geopandas.GeoDataFrame()
-    return peri_scribe.geo.reading.read_layer(path, source.layer_name or source.name)
+    return spatial_data.layers.read_layer(path, source.layer_name or source.name)
 
 
 def fire_location(
-    fire: peri_scribe.kml.fire_data.FireGeometry,
+    fire: peri_scribe.presentation.fire_data.FireSummary,
     cities: geopandas.GeoDataFrame,
 ) -> str | None:
     """Return *fire*'s nearest-city location phrase, or None when it has none.
@@ -144,9 +144,9 @@ def fire_location(
 
 
 def fire_locations(
-    fires: typing.Iterable[peri_scribe.kml.fire_data.FireGeometry],
+    fires: typing.Iterable[peri_scribe.presentation.fire_data.FireSummary],
     cities: geopandas.GeoDataFrame,
-) -> dict[peri_scribe.kml.selection.AreaKey, str]:
+) -> dict[peri_scribe.presentation.selection.AreaKey, str]:
     """Return each located fire's phrase keyed by its report identity.
 
     A fire without an interior or without a usable city contributes no entry, and a fire
@@ -160,7 +160,7 @@ def fire_locations(
     Returns:
         The location phrase of each located fire, keyed by report identity.
     """
-    locations_by_identity: dict[peri_scribe.kml.selection.AreaKey, str] = {}
+    locations_by_identity: dict[peri_scribe.presentation.selection.AreaKey, str] = {}
     for fire in fires:
         location = fire_location(fire, cities)
         if location is not None:
@@ -169,7 +169,7 @@ def fire_locations(
 
 
 def report_entry(
-    fire: peri_scribe.kml.fire_data.FireGeometry,
+    fire: peri_scribe.presentation.fire_data.FireSummary,
     scores_by_identifier: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
     scores_by_name: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
     reference_time: datetime.datetime,
@@ -193,7 +193,10 @@ def report_entry(
     Returns:
         The fire's report facts.
     """
-    growth, growth_percent = peri_scribe.kml.folders.fire_growth(fire, reference_time)
+    growth, growth_percent = peri_scribe.presentation.views.fire_growth(
+        fire,
+        reference_time,
+    )
     return FireReportEntry(
         name=fire.name,
         identifier=peri_scribe.models.canonical_fire_identifier(fire.identifiers),
@@ -201,7 +204,7 @@ def report_entry(
         description=fire.description,
         growth=growth,
         growth_percent=growth_percent,
-        score=peri_scribe.kml.folders.score_value_for_fire(
+        score=peri_scribe.presentation.views.score_value_for_fire(
             fire,
             scores_by_identifier,
             scores_by_name,
@@ -211,12 +214,15 @@ def report_entry(
 
 
 def report_entries(
-    fires: typing.Iterable[peri_scribe.kml.fire_data.FireGeometry],
+    fires: typing.Iterable[peri_scribe.presentation.fire_data.FireSummary],
     scores_by_identifier: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
     scores_by_name: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
     reference_time: datetime.datetime,
     *,
-    locations_by_identity: typing.Mapping[peri_scribe.kml.selection.AreaKey, str]
+    locations_by_identity: typing.Mapping[
+        peri_scribe.presentation.selection.AreaKey,
+        str,
+    ]
     | None = None,
 ) -> tuple[FireReportEntry, ...]:
     """Return the report facts for each fire, preserving the input order.
@@ -253,7 +259,7 @@ def report_entries(
 
 
 def located_entries(
-    fires: typing.Iterable[peri_scribe.kml.fire_data.FireGeometry],
+    fires: typing.Iterable[peri_scribe.presentation.fire_data.FireSummary],
     scores_by_identifier: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
     scores_by_name: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
     reference_time: datetime.datetime,
@@ -298,10 +304,13 @@ def report_details(*args: tuple[FireReportEntry, ...]) -> tuple[FireReportEntry,
     Returns:
         One entry per distinct fire, ordered by name.
     """
-    entries_by_identity: dict[peri_scribe.kml.selection.AreaKey, FireReportEntry] = {}
+    entries_by_identity: dict[
+        peri_scribe.presentation.selection.AreaKey,
+        FireReportEntry,
+    ] = {}
     for section in args:
         for entry in section:
-            identity = peri_scribe.kml.selection.fire_area_key(
+            identity = peri_scribe.presentation.selection.fire_area_key(
                 entry.identifier,
                 entry.name,
             )
@@ -339,13 +348,13 @@ def gather_report(year_directory: pathlib.Path) -> FireReport:
     )
     perimeters = layers.perimeters
     points = layers.points
-    histories = peri_scribe.kml.builder.prepare_histories(
+    histories = peri_scribe.presentation.index.prepare_histories(
         index,
         perimeters,
         points,
         layers.incidents,
     )
-    index = peri_scribe.kml.builder.area_qualified_index(
+    index = peri_scribe.presentation.index.area_qualified_index(
         index,
         perimeters,
         points,
@@ -355,50 +364,59 @@ def gather_report(year_directory: pathlib.Path) -> FireReport:
     fire_scores = peri_scribe.fires.score_files.load_fire_scores(
         year_directory,
     ) or peri_scribe.models.FireScores(version="", fires=[])
-    fires = peri_scribe.kml.fire_data.fire_geometries(
+    fires = peri_scribe.presentation.fire_data.fire_summaries(
         index,
         perimeters,
         points,
         layers.differential_perimeters,
         scores=fire_scores,
-        render_plots=False,
         incident_rows=layers.incidents,
         histories=histories,
     )
-    scores_by_identifier, scores_by_name = peri_scribe.kml.folders.score_maps(
+    scores_by_identifier, scores_by_name = peri_scribe.presentation.views.score_maps(
         fire_scores,
     )
     reference_time = datetime.datetime.now(datetime.UTC)
     new_notable_entries = located_entries(
-        peri_scribe.kml.folders.new_notable_fires(fires, fire_scores, reference_time),
+        peri_scribe.presentation.views.new_notable_fires(
+            fires,
+            fire_scores,
+            reference_time,
+        ),
         scores_by_identifier,
         scores_by_name,
         reference_time,
         year_directory,
     )
     type_one_entries = located_entries(
-        peri_scribe.kml.folders.type_one_fires(fires),
+        peri_scribe.presentation.views.type_one_fires(fires),
         scores_by_identifier,
         scores_by_name,
         reference_time,
         year_directory,
     )
     fast_growing_by_acres_entries = located_entries(
-        peri_scribe.kml.folders.fast_growing_fires_by_acres(fires, reference_time),
+        peri_scribe.presentation.views.fast_growing_fires_by_acres(
+            fires,
+            reference_time,
+        ),
         scores_by_identifier,
         scores_by_name,
         reference_time,
         year_directory,
     )
     fast_growing_by_percent_entries = located_entries(
-        peri_scribe.kml.folders.fast_growing_fires_by_percent(fires, reference_time),
+        peri_scribe.presentation.views.fast_growing_fires_by_percent(
+            fires,
+            reference_time,
+        ),
         scores_by_identifier,
         scores_by_name,
         reference_time,
         year_directory,
     )
     top_fire_entries = located_entries(
-        peri_scribe.kml.folders.top_fires(fires, fire_scores),
+        peri_scribe.presentation.views.top_fires(fires, fire_scores),
         scores_by_identifier,
         scores_by_name,
         reference_time,

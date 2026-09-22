@@ -5,8 +5,8 @@ from __future__ import annotations
 import geopandas
 import shapely.affinity
 
-import peri_scribe.models
 import peri_scribe.perimeters.classification_data
+import spatial_data.reference
 
 
 def full_projected_union(
@@ -33,7 +33,7 @@ def full_projected_union(
         geometry
         for reference, geometries in by_reference.items()
         for geometry in geopandas.GeoSeries(geometries, crs=reference).to_crs(
-            peri_scribe.models.CALIFORNIA_ALBERS_SPATIAL_REFERENCE_ID,
+            spatial_data.reference.CALIFORNIA_ALBERS_SPATIAL_REFERENCE_ID,
         )
     ]
     return shapely.union_all(projected) if projected else None

@@ -4,12 +4,15 @@ import pathlib
 import typing
 
 import peri_scribe.fires.reuse
-import peri_scribe.models
+
+
+if typing.TYPE_CHECKING:
+    import spatial_data.layers
 
 
 def write_partial_output_and_fail(
     path: pathlib.Path,
-    _layers: list[peri_scribe.models.LayerData],
+    _layers: list[spatial_data.layers.LayerData],
 ) -> None:
     """Simulate an interrupted write that leaves incomplete output.
 

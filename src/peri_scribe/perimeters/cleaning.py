@@ -15,8 +15,8 @@ import typing
 import pyproj
 import shapely
 
-import peri_scribe.geo.geometry
-from peri_scribe.units import units
+import spatial_data.geometry
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
@@ -129,7 +129,7 @@ def clean_perimeter(
     """
     if geometry is None or geometry.is_empty:
         return geometry
-    parts = peri_scribe.geo.geometry.polygonal_parts(geometry)
+    parts = spatial_data.geometry.polygonal_parts(geometry)
     if not parts:
         return geometry
     kept = [

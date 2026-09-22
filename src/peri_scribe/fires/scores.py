@@ -35,17 +35,17 @@ import peri_scribe.areas
 import peri_scribe.fires.buffering
 import peri_scribe.fires.derived_layers
 import peri_scribe.fires.identity
-import peri_scribe.fires.overlaps
 import peri_scribe.fires.score_files
 import peri_scribe.fires.scoring
 import peri_scribe.geo.parsing
 import peri_scribe.logging
 import peri_scribe.output
 import peri_scribe.phases
-import peri_scribe.sources.buildings
 import peri_scribe.sources.catalog
 import peri_scribe.sources.external_data
-from peri_scribe.units import units
+import spatial_data.overlaps
+import spatial_data.point_store
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
@@ -115,7 +115,7 @@ def external_signals(
         peri_scribe.sources.catalog.BUILDINGS_SOURCE,
     )
     if buildings_path.is_file():
-        building_counts = peri_scribe.sources.buildings.building_counts_within(
+        building_counts = spatial_data.point_store.point_counts_within(
             buffered,
             buildings_path,
         )
@@ -126,7 +126,7 @@ def external_signals(
         peri_scribe.sources.catalog.EVACUATIONS_SOURCE,
     )
     evacuation_indices = (
-        peri_scribe.fires.overlaps.overlapping_fire_indices(
+        spatial_data.overlaps.overlapping_layer_indices(
             geometries,
             evacuations[0],
             evacuations[1],

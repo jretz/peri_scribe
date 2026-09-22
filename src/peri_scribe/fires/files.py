@@ -17,9 +17,9 @@ import peri_scribe.fires.sources
 import peri_scribe.geo.measurements
 import peri_scribe.incidents
 import peri_scribe.logging
-import peri_scribe.models
 import peri_scribe.phases
 import peri_scribe.sources.snapshots
+import spatial_data.layers
 
 
 PERIMETER_LAYER_NAME = "perimeter_history"
@@ -199,15 +199,15 @@ def write_history_of_full_geography(
     peri_scribe.fires.reuse.write_layers(
         output_path,
         [
-            peri_scribe.models.LayerData(
+            spatial_data.layers.LayerData(
                 name=PERIMETER_LAYER_NAME,
                 dataframe=perimeter_dataframe,
             ),
-            peri_scribe.models.LayerData(
+            spatial_data.layers.LayerData(
                 name=POINT_LAYER_NAME,
                 dataframe=point_dataframe,
             ),
-            peri_scribe.models.LayerData(
+            spatial_data.layers.LayerData(
                 name=peri_scribe.incidents.LAYER_NAME,
                 dataframe=peri_scribe.fires.history.build_dataframe(
                     peri_scribe.fires.incident_history.incident_layer_rows(

@@ -12,7 +12,7 @@ import peri_scribe.models
 import tests.helpers.factories.geography
 import tests.helpers.factories.geometry
 import tests.helpers.factories.peri_scribe.fires.scores
-from peri_scribe.units import units
+from measurement_units import units
 
 
 def test_tiered_points_returns_zero_for_missing() -> None:

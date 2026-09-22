@@ -12,6 +12,7 @@ import requests
 
 import peri_scribe.exceptions
 import peri_scribe.sources.catalog
+import peri_scribe.sources.downloading
 import peri_scribe.sources.external_sources
 import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.sources.downloading
@@ -243,3 +244,23 @@ def test_stream_download_and_convert_raises_when_download_fails(
         match="Failed to download",
     ):
         peri_scribe.sources.external_sources.fetch_external_source(source, tmp_path)
+
+
+def test_stream_download_and_convert_preserves_application_error_contract(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    response = tests.helpers.doubles.peri_scribe.sources.external_source.FakeResponse(
+        b"not a zip archive",
+    )
+    monkeypatch.setattr(requests, "get", lambda _url, **_kwargs: response)
+    with pytest.raises(
+        peri_scribe.exceptions.ExternalDataError,
+        match="The streamed archive is not a zip file",
+    ):
+        peri_scribe.sources.downloading.stream_download_and_convert(
+            "https://example.com/polygons.zip",
+            tmp_path / "centroids.gpkg",
+            "points",
+            append=False,
+        )

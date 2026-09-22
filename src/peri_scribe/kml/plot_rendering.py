@@ -12,7 +12,8 @@ import re
 import typing
 
 import peri_scribe.kml.plot_data
-import peri_scribe.kml.plot_drawing
+import svg_charts.models
+import svg_charts.time_series
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -35,7 +36,7 @@ class PlotRequest:
     filename_prefix: str
     filename_suffix: str
     y_axis_label: str
-    series: tuple[peri_scribe.kml.plot_data.PlotSeries, ...]
+    series: tuple[svg_charts.models.PlotSeries, ...]
 
 
 def render_plot_request(request: PlotRequest) -> PlotImage:
@@ -49,7 +50,7 @@ def render_plot_request(request: PlotRequest) -> PlotImage:
     """
     return PlotImage(
         filename=plot_filename(request.filename_prefix, request.filename_suffix),
-        content=peri_scribe.kml.plot_drawing.draw_plot(
+        content=svg_charts.time_series.draw_plot(
             request.series,
             y_axis_label=request.y_axis_label,
         ),
@@ -131,7 +132,7 @@ def plot_filename(filename_prefix: str, filename_suffix: str) -> str:
     Returns:
         The filename, like ``2026-cabug-000001-area.svg``.
     """
-    image_format = peri_scribe.kml.plot_drawing.IMAGE_FORMAT
+    image_format = svg_charts.time_series.IMAGE_FORMAT
     return f"{filename_prefix}-{filename_suffix}.{image_format}"
 
 

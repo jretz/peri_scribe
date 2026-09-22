@@ -14,8 +14,8 @@ import structlog
 import time_machine
 
 import peri_scribe.exceptions
-import peri_scribe.models
 import peri_scribe.sources.administrative_boundaries
+import spatial_data.reference
 import tests.helpers.doubles.peri_scribe.snapshot_storage
 import tests.helpers.doubles.peri_scribe.sources.administrative_boundaries
 import tests.helpers.factories.peri_scribe.sources.administrative_boundaries
@@ -282,7 +282,7 @@ def test_ensure_administrative_boundaries_builds_when_file_unusable(
     assert list(written["NEIGHBOR"]) == ["Arizona", "Nevada", "Oregon"]
     assert list(written["NEIGHBOR_ABBR"]) == ["AZ", "NV", "OR"]
     assert list(written.columns) == ["NEIGHBOR", "NEIGHBOR_ABBR", "LENGTH_KM", "geom"]
-    assert written.crs.to_epsg() == peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID
+    assert written.crs.to_epsg() == spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID
 
 
 def test_ensure_administrative_boundaries_raises_when_fetch_fails(

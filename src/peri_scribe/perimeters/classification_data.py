@@ -10,9 +10,9 @@ import typing
 
 import pyproj
 
-import peri_scribe.geo.geometry
-import peri_scribe.models
-from peri_scribe.units import units
+import spatial_data.geometry
+import spatial_data.reference
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
@@ -29,9 +29,9 @@ class FireSourceKind(enum.Enum):
 
 
 SOURCE_SPATIAL_REFERENCE_IDS = {
-    FireSourceKind.FIRIS_PERIMETER: peri_scribe.models.NAD83_SPATIAL_REFERENCE_ID,
-    FireSourceKind.WFIGS_PERIMETER: peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
-    FireSourceKind.WFIGS_LOCATION: peri_scribe.models.NAD83_SPATIAL_REFERENCE_ID,
+    FireSourceKind.FIRIS_PERIMETER: spatial_data.reference.NAD83_SPATIAL_REFERENCE_ID,
+    FireSourceKind.WFIGS_PERIMETER: spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID,
+    FireSourceKind.WFIGS_LOCATION: spatial_data.reference.NAD83_SPATIAL_REFERENCE_ID,
 }
 
 
@@ -111,7 +111,7 @@ def transformer_for_spatial_reference_id(
     """
     return pyproj.Transformer.from_crs(
         source_spatial_reference_id,
-        peri_scribe.models.CALIFORNIA_ALBERS_SPATIAL_REFERENCE_ID,
+        spatial_data.reference.CALIFORNIA_ALBERS_SPATIAL_REFERENCE_ID,
         always_xy=True,
     )
 
@@ -130,4 +130,4 @@ def reproject_to_california_albers(
         The geometry in California Albers.
     """
     transformer = transformer_for_spatial_reference_id(source_spatial_reference_id)
-    return peri_scribe.geo.geometry.transform_coordinates(geometry, transformer)
+    return spatial_data.geometry.transform_coordinates(geometry, transformer)

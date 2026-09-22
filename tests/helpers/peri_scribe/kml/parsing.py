@@ -13,7 +13,7 @@ import pytest
 if typing.TYPE_CHECKING:
     import xml.etree.ElementTree as ET
 
-    import tests.helpers.factories.peri_scribe.kml.geometry
+    import tests.helpers.factories.kml_io.geometry
 
 
 KML_NAMESPACE = "http://www.opengis.net/kml/2.2"
@@ -63,7 +63,7 @@ def document_from(kml_text: str) -> ET.Element:
 
 
 def document_from_writer(
-    writer: tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter,
+    writer: tests.helpers.factories.kml_io.geometry.MemoryKmlWriter,
 ) -> ET.Element:
     """Parse *writer*'s accumulated KML fragments into a document element.
 

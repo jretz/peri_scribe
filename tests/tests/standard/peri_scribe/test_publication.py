@@ -18,11 +18,11 @@ import peri_scribe.publication
 import peri_scribe.sources.catalog
 import peri_scribe.sources.external_data
 import peri_scribe.sources.feeds
-import peri_scribe.units
+import spatial_data.measurements
 import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.publication
 import tests.helpers.factories.peri_scribe.publication
-from peri_scribe.units import units
+from measurement_units import units
 
 
 def test_first_captures_propagates_the_earliest_date_through_an_alias_bridge() -> None:
@@ -386,7 +386,9 @@ def test_collect_recomputes_measurements_from_version_two_cache(
     outdated["mappings"][relative][0]["area_square_meters"] = 0.0
     peri_scribe.publication.collection_path(tmp_path).write_text(json.dumps(outdated))
     refreshed = peri_scribe.publication.collect(tmp_path)
-    expected = peri_scribe.units.area(first) + peri_scribe.units.area(second)
+    expected = spatial_data.measurements.area(first) + spatial_data.measurements.area(
+        second,
+    )
     assert refreshed.mappings[relative][0].area_square_meters == pytest.approx(
         expected.m_as("meters**2"),
     )
@@ -454,13 +456,15 @@ def test_multipart_ring_directions_do_not_cancel_area() -> None:
     geometry = shapely.MultiPolygon([left, shapely.reverse(right)])
     digest, area = peri_scribe.publication.shape_measurement(geometry)
     assert digest
-    expected = peri_scribe.units.area(left) + peri_scribe.units.area(right)
+    expected = spatial_data.measurements.area(left) + spatial_data.measurements.area(
+        right,
+    )
     assert area == pytest.approx(expected.m_as("meters ** 2"))
 
 
 def test_nonfinite_area_cannot_authorize_skip(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        peri_scribe.units,
+        spatial_data.measurements,
         "area",
         lambda _geometry: float("nan") * units.Unit("meters ** 2"),
     )
@@ -589,7 +593,7 @@ def test_decide_preserves_valid_area_changes_after_collapse_check(
     path = tests.helpers.factories.peri_scribe.publication.write_perimeter_snapshot(
         tmp_path,
         geometry,
-        {"poly_Acres_AutoCalc": peri_scribe.units.area(geometry).m_as("acres")},
+        {"poly_Acres_AutoCalc": spatial_data.measurements.area(geometry).m_as("acres")},
         serial=2,
     )
     (observed,) = peri_scribe.publication.snapshot_mappings(

@@ -10,7 +10,7 @@ import shapely
 import structlog
 
 import peri_scribe.models
-from peri_scribe.units import units
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:

@@ -6,7 +6,7 @@ import datetime
 import typing
 
 import peri_scribe.kml.tour
-import tests.helpers.factories.peri_scribe.kml.geometry
+import tests.helpers.factories.kml_io.geometry
 import tests.helpers.peri_scribe.kml.parsing
 
 
@@ -23,7 +23,7 @@ def rendered_tour(times: list[datetime.datetime | None]) -> ET.Element:
     Returns:
         The parsed progression tour element.
     """
-    writer = tests.helpers.factories.peri_scribe.kml.geometry.MemoryKmlWriter()
+    writer = tests.helpers.factories.kml_io.geometry.MemoryKmlWriter()
     with writer.folder("River") as folder_id:
         peri_scribe.kml.tour.progression_tour(writer, folder_id, times)
     folder = tests.helpers.peri_scribe.kml.parsing.folder_named(

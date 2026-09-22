@@ -8,66 +8,21 @@ import typing
 import geopandas
 
 import peri_scribe.areas
-import peri_scribe.kml.fire_data
-import peri_scribe.kml.selection
 import peri_scribe.models
+import peri_scribe.presentation.fire_data
+import peri_scribe.presentation.selection
 import peri_scribe.report.locations
-from peri_scribe.units import units
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
     import shapely.geometry
 
 
-def make_plot_option_recorder(
-    *,
-    render_plots_values: list[bool],
-) -> typing.Callable[..., list[peri_scribe.kml.fire_data.FireGeometry]]:
-    """Create a callback with controlled dependencies.
-
-    Capture report-stage options without constructing fire geometry.
-
-    Args:
-        render_plots_values: Shared list recording whether plot generation was
-            requested.
-
-    Returns:
-        The callback bound to the supplied dependencies.
-    """
-
-    def fire_geometries(
-        *args: object,
-        scores: peri_scribe.models.FireScores,
-        render_plots: bool,
-        incident_rows: geopandas.GeoDataFrame | None = None,
-        histories: typing.Mapping[
-            peri_scribe.kml.selection.AreaKey,
-            peri_scribe.areas.PreparedHistory,
-        ]
-        | None = None,
-    ) -> list[peri_scribe.kml.fire_data.FireGeometry]:
-        """Capture report-stage options without constructing fire geometry.
-
-        Args:
-            args: Unused positional geometry inputs.
-            render_plots: Whether the report stage requested image rendering.
-            incident_rows: Optional independent incident rows supplied by the stage.
-            histories: Prepared area and reporting evidence passed through the stage.
-            scores: Saved scores supplied by the report stage.
-
-        Returns:
-            An empty fire list for the isolated report-stage assertion.
-        """
-        render_plots_values.append(render_plots)
-        return []
-
-    return fire_geometries
-
-
 def make_scores_recorder(
     *,
     scores_values: list[peri_scribe.models.FireScores],
-) -> typing.Callable[..., list[peri_scribe.kml.fire_data.FireGeometry]]:
+) -> typing.Callable[..., list[peri_scribe.presentation.fire_data.FireSummary]]:
     """Create a callback with controlled dependencies.
 
     Capture report-stage options without constructing fire geometry.
@@ -82,19 +37,17 @@ def make_scores_recorder(
     def fire_geometries(
         *args: object,
         scores: peri_scribe.models.FireScores,
-        render_plots: bool,
         incident_rows: geopandas.GeoDataFrame | None = None,
         histories: typing.Mapping[
-            peri_scribe.kml.selection.AreaKey,
+            peri_scribe.presentation.selection.AreaKey,
             peri_scribe.areas.PreparedHistory,
         ]
         | None = None,
-    ) -> list[peri_scribe.kml.fire_data.FireGeometry]:
+    ) -> list[peri_scribe.presentation.fire_data.FireSummary]:
         """Capture report-stage options without constructing fire geometry.
 
         Args:
             args: Unused positional geometry inputs.
-            render_plots: Whether the report stage requested image rendering.
             incident_rows: Optional independent incident rows supplied by the stage.
             histories: Prepared area and reporting evidence passed through the stage.
             scores: Saved scores supplied by the report stage.

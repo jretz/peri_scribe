@@ -3,15 +3,18 @@
 from __future__ import annotations
 
 import pathlib
+import typing
 
 import geopandas
 import pyproj
 import shapely
 import shapely.geometry
 
-import peri_scribe.models
-import peri_scribe.output
-import peri_scribe.sources.feed_types
+import spatial_data.layers
+
+
+if typing.TYPE_CHECKING:
+    import peri_scribe.sources.feed_types
 
 
 def wgs84_dataframe(
@@ -58,10 +61,10 @@ def write_cache_snapshot(
         / f"{serial_number:06d},lastEdit=0.gpkg"
     )
     path.parent.mkdir(parents=True, exist_ok=True)
-    peri_scribe.output.write_geopackage(
+    spatial_data.layers.write_geopackage(
         path,
         [
-            peri_scribe.models.LayerData(
+            spatial_data.layers.LayerData(
                 name=feed.name,
                 dataframe=geopandas.GeoDataFrame(
                     {

@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import datetime
 
-import peri_scribe.kml.descriptions
 import peri_scribe.models
+import peri_scribe.presentation.descriptions
 import peri_scribe.report.gathering
-from peri_scribe.units import units
+from measurement_units import units
 
 
 REPORT_SECTION_COUNT = 6
@@ -23,7 +23,7 @@ def make_entry(
     name: str,
     *,
     identifier: str | None = None,
-    description: peri_scribe.kml.descriptions.FireDescription | None = None,
+    description: peri_scribe.presentation.descriptions.FireDescription | None = None,
     area: float | None = None,
     percent_contained: float | None = None,
     discovery_time: datetime.datetime | None = None,
@@ -54,7 +54,7 @@ def make_entry(
         An active fire entry carrying the requested facts.
     """
     if description is None:
-        description = peri_scribe.kml.descriptions.FireDescription(
+        description = peri_scribe.presentation.descriptions.FireDescription(
             identifier=identifier,
             area=None if area is None else area * units.acres,
             percent_contained=percent_contained,

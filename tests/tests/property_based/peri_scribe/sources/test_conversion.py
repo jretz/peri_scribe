@@ -12,8 +12,8 @@ import hypothesis
 import hypothesis.strategies
 import pandas as pd
 
-import peri_scribe.models
 import peri_scribe.sources.conversion
+import spatial_data.reference
 import tests.helpers.factories.geography
 import tests.helpers.peri_scribe.sources.conversion
 import tests.helpers.strategies.geometry
@@ -44,7 +44,7 @@ def test_geojson_feature_chunks_preserves_features_across_chunk_boundaries(
     if features:
         expected = geopandas.GeoDataFrame.from_features(
             features,
-            crs=peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+            crs=spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID,
         )
         actual = pd.concat(chunks, ignore_index=True)
         assert isinstance(actual, geopandas.GeoDataFrame)

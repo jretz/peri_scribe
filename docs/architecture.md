@@ -6,6 +6,63 @@ PeriScribe is a command-line application. `src/peri_scribe/main.py` defines the 
 coordinates the pipeline; domain logic is divided among source retrieval, geography
 processing, fire scoring, and KML modules.
 
+The top-level packages express reusable responsibilities. They ship together in the
+same distribution, with one dependency set and release cycle:
+
+- `peri_scribe` owns feeds, fire schemas, reconciliation, scoring, download and refresh
+  policy, pipeline logging, reports, and map composition.
+- `spatial_data` owns geometry transformation and interning, geodesic measurements,
+  coordinate systems, bounded layer reads and GeoPackage writes, streamed polygon
+  centroids, indexed overlap queries, and compact tiled point storage.
+- `arcgis_access` owns FeatureServer metadata and feature queries, retries, conversion
+  to GeoDataFrames, and interpretation of ambiguous ArcGIS spatial-reference metadata.
+  Callers supply request identity, timeouts, layer names, and geometry-column names.
+- `svg_charts` owns generic time-series and distribution plots, chart models, drawing,
+  and SVG metrics. Callers supply labels, values, units, colors, line styles, and
+  annotations; fire measurement and provenance decisions stay in the application.
+- `kml_io` owns streaming KML document and folder envelopes, geometry serialization and
+  caching, generic styles, timed reveal tours, and atomic KMZ publication.
+- `measurement_units` owns the single Pint registry, including the currency unit shared
+  by application observations and library calculations.
+
+These libraries do not import `peri_scribe`. `arcgis_access` uses `spatial_data` for
+coordinate systems; geometry measurements and charts use `measurement_units`. Package
+initializers expose no rendering or spatial I/O backends, so callers import the modules
+they need. Import-boundary tests enforce these dependencies.
+
+### Spatial package boundary
+
+Geospatial primitives and spatial streaming/storage share one `spatial_data` package.
+The storage paths already depend directly on coordinate-system construction, geometry
+conversion, and projection-aware centroid math. The pure foundation is small, and a
+second package would add another API boundary without separating an independent
+workflow. Individual modules keep pure geometry and measurements apart from layer I/O,
+stream parsing, and point storage; a caller can use the former without importing the
+latter.
+
+The trade-off is a broader spatial package whose I/O modules require heavier libraries.
+The distribution still installs the complete application's dependencies; this extraction
+does not create separately installable products or optional dependency sets. A future
+consumer that needs only geometry could justify splitting the pure modules then.
+
+Point storage accepts WGS84 points and retains its existing coordinate quantization,
+tile layout, metadata, compression, and database schema. Building dataset URLs,
+concurrent downloads, cooperative cancellation, validation before atomic publication,
+and refresh policy remain in `peri_scribe/sources/buildings.py`.
+
+### Shared fire presentation
+
+`peri_scribe/presentation/` owns fire qualification, prepared histories, summary facts,
+ranking, row selection, and descriptive text shared by reports and maps. Its
+`FireSummary` contains facts without rendered images. Both output paths use this layer;
+reports do not import KML modules or chart rendering through it.
+
+`peri_scribe/kml/` supplies map folders, balloon HTML, colors, progression timing, and
+fire-specific chart preparation. It adds images to shared summaries and passes neutral
+geometry, styles, and playback durations to `kml_io`. `peri_scribe/report/` supplies
+Markdown layout and report-specific location descriptions. Pipeline phase logging stays
+with the application adapters.
+
 The primary workflow is:
 
 ```text
@@ -101,7 +158,8 @@ The geography stage reads and groups all source observations before deciding whi
 can reuse previous results. Each fire's `derivation_key` covers its complete ordered
 source records, geometry, attributes and provenance, including observations discarded
 during reconciliation. It also covers fire identity and complex membership, package
-source code, relevant geospatial library versions, boundary data, and cleaning,
+source code (including `arcgis_access`, `spatial_data`, and `measurement_units`),
+relevant geospatial library versions, boundary data, and cleaning,
 size-filtering, and classification settings.
 
 Matching fires retain their full point, perimeter, and incident rows and differential

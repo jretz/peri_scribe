@@ -2,91 +2,17 @@
 
 from __future__ import annotations
 
-import time
 import typing
 import urllib.parse
 
 import pydantic
-import requests
-import structlog
 
-import peri_scribe.retry
+import arcgis_access.metadata
 import peri_scribe.sources.network
-
-
-logger = structlog.get_logger()
 
 
 PERI_SCRIBE_VERSION = "0.1"
 USER_AGENT = f"peri_scribe-watcher/{PERI_SCRIBE_VERSION}"
-
-
-def fetch_layer_metadata(url: str) -> object:
-    """Fetch and parse the layer metadata for *url*.
-
-    Args:
-        url: The layer's REST endpoint URL.
-
-    Returns:
-        The parsed JSON metadata payload.
-    """
-    parameters = {"f": "json", "_cb": time.time_ns()}
-    response = requests.get(
-        url,
-        params=parameters,
-        headers={"User-Agent": USER_AGENT},
-        timeout=peri_scribe.sources.network.REQUEST_TIMEOUT_SECONDS,
-    )
-    response.raise_for_status()
-    return response.json()
-
-
-def observe_layer_last_edit_timestamp(url: str, name: str) -> int | None:
-    """Observe and return the layer's ``editingInfo.lastEditDate`` value.
-
-    The timestamp is in epoch milliseconds. The server only updates it when the data is
-    actually edited. Transient network failures and rate-limit responses are retried
-    before giving up.
-
-    Args:
-        url: The layer's REST endpoint URL.
-        name: Human-readable layer identifier for log messages.
-
-    Returns:
-        The observed last-edit timestamp, or None when an observation fails.
-    """
-    try:
-        payload = peri_scribe.retry.run_with_retry(
-            name,
-            lambda: fetch_layer_metadata(url),
-        )
-    except (requests.exceptions.RequestException, ValueError) as error:
-        logger.warning(
-            "Last-edit timestamp check failed",
-            url=url,
-            error=str(error),
-            exc_info=True,
-        )
-        return None
-    if not isinstance(payload, dict):
-        logger.warning(
-            "Last-edit timestamp check failed",
-            url=url,
-            error="unexpected response shape",
-        )
-        return None
-    editing_info = payload.get("editingInfo")
-    last_edit = (
-        editing_info.get("lastEditDate") if isinstance(editing_info, dict) else None
-    )
-    if last_edit is None:
-        logger.warning(
-            "Last-edit timestamp check failed",
-            url=url,
-            error="no editingInfo.lastEditDate",
-        )
-        return None
-    return int(last_edit)
 
 
 @typing.runtime_checkable
@@ -288,4 +214,9 @@ class ArcGISFeed(pydantic.BaseModel):
         Returns:
             The observed last-edit timestamp, or None when an observation fails.
         """
-        return observe_layer_last_edit_timestamp(self.url, self.name)
+        return arcgis_access.metadata.observe_layer_last_edit_timestamp(
+            self.url,
+            self.name,
+            user_agent=USER_AGENT,
+            timeout_seconds=peri_scribe.sources.network.REQUEST_TIMEOUT_SECONDS,
+        )

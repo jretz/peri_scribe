@@ -26,6 +26,7 @@ import peri_scribe.perimeters.signals
 import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.borders
 import peri_scribe.sources.snapshots
+import spatial_data.reference
 
 
 def source_kind_for_feed_name(
@@ -90,11 +91,11 @@ def load_boundaries(
     return peri_scribe.perimeters.classification_data.Boundaries(
         box=peri_scribe.perimeters.classification_data.reproject_to_california_albers(
             box,
-            peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+            spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID,
         ),
         border=peri_scribe.perimeters.classification_data.reproject_to_california_albers(
             border,
-            peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+            spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID,
         ),
     )
 

@@ -4,7 +4,7 @@ import pytest
 import shapely
 
 import peri_scribe.geo.measurements
-import peri_scribe.units
+import spatial_data.measurements
 
 
 @pytest.mark.parametrize("stored", [None, float("nan"), "missing"])
@@ -13,7 +13,7 @@ def test_area_measures_without_a_stored_number(stored: object) -> None:
     assert peri_scribe.geo.measurements.area(
         geometry,
         stored,
-    ) == peri_scribe.units.area(geometry)
+    ) == spatial_data.measurements.area(geometry)
 
 
 def test_area_uses_a_persisted_measurement() -> None:

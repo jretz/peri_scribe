@@ -15,13 +15,11 @@ import structlog
 
 import peri_scribe.fires.sources
 import peri_scribe.geo.parsing
-import peri_scribe.geo.reading
-import peri_scribe.models
-import peri_scribe.output
 import peri_scribe.perimeters.classification_data
 import peri_scribe.perimeters.cleaning
 import peri_scribe.perimeters.size_filtering
 import peri_scribe.sources.administrative_boundaries
+import spatial_data.layers
 
 
 logger = structlog.get_logger()
@@ -74,7 +72,7 @@ def derivation_context(year_directory: pathlib.Path) -> str:
     Returns:
         The derivation environment's fingerprint.
     """
-    source_root = pathlib.Path(__file__).parents[1]
+    source_root = pathlib.Path(__file__).parents[2]
     boundary = peri_scribe.sources.administrative_boundaries.output_geopackage_path(
         year_directory,
     )
@@ -82,7 +80,13 @@ def derivation_context(year_directory: pathlib.Path) -> str:
         "version": CACHE_VERSION,
         "code": [
             (str(path.relative_to(source_root)), file_digest(path))
-            for path in sorted(source_root.rglob("*.py"))
+            for package in (
+                "peri_scribe",
+                "arcgis_access",
+                "measurement_units",
+                "spatial_data",
+            )
+            for path in sorted((source_root / package).rglob("*.py"))
         ],
         "libraries": {
             name: importlib.metadata.version(name)
@@ -237,7 +241,7 @@ def validated_rows(path: pathlib.Path, layer_names: tuple[str, ...]) -> CachedRo
         return {}
     result: CachedRows = {}
     for name in layer_names:
-        frame = peri_scribe.geo.reading.read_layer(path, name)
+        frame = spatial_data.layers.read_layer(path, name)
         if frame.empty:
             result[name] = {}
             continue
@@ -253,7 +257,7 @@ def validated_rows(path: pathlib.Path, layer_names: tuple[str, ...]) -> CachedRo
 
 def write_layers(
     path: pathlib.Path,
-    layers: list[peri_scribe.models.LayerData],
+    layers: list[spatial_data.layers.LayerData],
 ) -> None:
     """Publish complete geometry files before marking their contents reusable.
 
@@ -264,7 +268,7 @@ def write_layers(
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=path.parent) as directory:
         temporary = pathlib.Path(directory) / path.name
-        peri_scribe.output.write_geopackage(temporary, layers)
+        spatial_data.layers.write_geopackage(temporary, layers)
         signature = Signature(version=CACHE_VERSION, checksum=file_digest(temporary))
         metadata = signature_path(temporary)
         metadata.write_text(signature.model_dump_json())

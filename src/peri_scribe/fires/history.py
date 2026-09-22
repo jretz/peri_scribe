@@ -24,13 +24,13 @@ import peri_scribe.fires.sources
 import peri_scribe.geo.measurements
 import peri_scribe.geo.package
 import peri_scribe.geo.parsing
-import peri_scribe.geo.spatial_reference
 import peri_scribe.models
 import peri_scribe.perimeters.cleaning
 import peri_scribe.perimeters.history_attributes
 import peri_scribe.perimeters.size_filtering
 import peri_scribe.perimeters.versions
-import peri_scribe.units
+import spatial_data.measurements
+import spatial_data.reference
 
 
 IDENTITY_COLUMNS = [
@@ -235,10 +235,10 @@ def perimeter_row(
         "geometry": geometry,
     })
     if geometry is not None:
-        row[peri_scribe.geo.measurements.AREA_COLUMN] = peri_scribe.units.area(
+        row[peri_scribe.geo.measurements.AREA_COLUMN] = spatial_data.measurements.area(
             geometry,
         ).m_as("meters ** 2")
-        exterior = peri_scribe.units.exterior_perimeter(geometry)
+        exterior = spatial_data.measurements.exterior_perimeter(geometry)
         row[peri_scribe.geo.measurements.EXTERIOR_COLUMN] = (
             None if exterior is None else exterior.m_as("meters")
         )
@@ -374,7 +374,7 @@ def build_dataframe(
     return geopandas.GeoDataFrame(
         attribute_rows,
         geometry=geometries,
-        crs=peri_scribe.geo.spatial_reference.WGS84_SPATIAL_REFERENCE,
+        crs=spatial_data.reference.WGS84_SPATIAL_REFERENCE,
     )
 
 

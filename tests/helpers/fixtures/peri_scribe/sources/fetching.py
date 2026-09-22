@@ -7,11 +7,10 @@ import typing
 import pytest
 
 import peri_scribe.fires.index
-import peri_scribe.models
-import peri_scribe.output
 import peri_scribe.sources.feeds
 import peri_scribe.sources.fetching
 import peri_scribe.sources.snapshots
+import spatial_data.layers
 import tests.helpers.doubles.arcgis
 import tests.helpers.doubles.peri_scribe.sources.fetching
 import tests.helpers.factories.arcgis
@@ -96,10 +95,10 @@ def full_fetch(
     )
     source_path = tmp_path / source_file.relative_path
     source_path.parent.mkdir(parents=True)
-    peri_scribe.output.write_geopackage(
+    spatial_data.layers.write_geopackage(
         source_path,
         [
-            peri_scribe.models.LayerData(
+            spatial_data.layers.LayerData(
                 name=feed.name,
                 dataframe=tests.helpers.factories.peri_scribe.sources.changes.change_dataframe([
                     (1, "stored", (0.0, 0.0)),

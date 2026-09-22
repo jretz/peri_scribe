@@ -13,19 +13,19 @@ import peri_scribe.fires.differential
 import peri_scribe.fires.files
 import peri_scribe.fires.index
 import peri_scribe.fires.score_files
-import peri_scribe.geo.reading
-import peri_scribe.kml.fire_data
-import peri_scribe.kml.folders
-import peri_scribe.kml.perimeters
 import peri_scribe.models
+import peri_scribe.presentation.fire_data
+import peri_scribe.presentation.perimeters
+import peri_scribe.presentation.views
 import peri_scribe.report.gathering
 import peri_scribe.report.locations
 import peri_scribe.sources.catalog
 import peri_scribe.sources.external_data
+import spatial_data.layers
 import tests.helpers.doubles.peri_scribe.report.gathering
 import tests.helpers.factories.peri_scribe.kml.parsing
 import tests.helpers.factories.peri_scribe.report.gathering
-from peri_scribe.units import units
+from measurement_units import units
 
 
 def test_located_entries_keeps_a_fire_from_a_single_use_iterator(
@@ -63,7 +63,7 @@ def test_report_details_distinguishes_a_name_from_a_matching_identifier() -> Non
 def test_fire_locations_distinguishes_a_name_from_a_matching_identifier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    unidentified = peri_scribe.kml.fire_data.FireGeometry(
+    unidentified = peri_scribe.presentation.fire_data.FireSummary(
         name="2026-a",
         status=peri_scribe.models.FireStatus.ACTIVE,
         point=None,
@@ -94,12 +94,12 @@ def test_report_entry_captures_fire_facts(monkeypatch: pytest.MonkeyPatch) -> No
         "2026-casnd-150541",
     )
     monkeypatch.setattr(
-        peri_scribe.kml.folders,
+        peri_scribe.presentation.views,
         "fire_growth",
         lambda _fire, _reference_time: (50.0 * units.acres, 10.0 * units.percent),
     )
     monkeypatch.setattr(
-        peri_scribe.kml.folders,
+        peri_scribe.presentation.views,
         "score_value_for_fire",
         lambda _fire, _by_identifier, _by_name: 400,
     )
@@ -135,7 +135,7 @@ def test_report_entry_captures_fire_facts(monkeypatch: pytest.MonkeyPatch) -> No
 def test_report_entry_prefers_unique_fire_identifier(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    fire = peri_scribe.kml.fire_data.FireGeometry(
+    fire = peri_scribe.presentation.fire_data.FireSummary(
         name="Bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
         point=None,
@@ -146,12 +146,12 @@ def test_report_entry_prefers_unique_fire_identifier(
         }),
     )
     monkeypatch.setattr(
-        peri_scribe.kml.folders,
+        peri_scribe.presentation.views,
         "fire_growth",
         lambda _fire, _reference_time: (None, None),
     )
     monkeypatch.setattr(
-        peri_scribe.kml.folders,
+        peri_scribe.presentation.views,
         "score_value_for_fire",
         lambda _fire, _by_identifier, _by_name: None,
     )
@@ -198,7 +198,7 @@ def test_gather_report_assembles_each_fire_list(
         lambda _directory: pathlib.Path("/derived/differential.gpkg"),
     )
     monkeypatch.setattr(
-        peri_scribe.geo.reading,
+        spatial_data.layers,
         "read_layer",
         lambda _path, _layer_name: (
             tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([])
@@ -209,32 +209,32 @@ def test_gather_report_assembles_each_fire_list(
         "id-bug",
     )
     monkeypatch.setattr(
-        peri_scribe.kml.fire_data,
-        "fire_geometries",
+        peri_scribe.presentation.fire_data,
+        "fire_summaries",
         lambda *_args, **_kwargs: [fire],
     )
     monkeypatch.setattr(
-        peri_scribe.kml.folders,
+        peri_scribe.presentation.views,
         "new_notable_fires",
         lambda _fires, _scores, _reference_time: [fire],
     )
     monkeypatch.setattr(
-        peri_scribe.kml.folders,
+        peri_scribe.presentation.views,
         "type_one_fires",
         lambda _fires: [fire],
     )
     monkeypatch.setattr(
-        peri_scribe.kml.folders,
+        peri_scribe.presentation.views,
         "fast_growing_fires_by_acres",
         lambda _fires, _reference_time: [fire],
     )
     monkeypatch.setattr(
-        peri_scribe.kml.folders,
+        peri_scribe.presentation.views,
         "fast_growing_fires_by_percent",
         lambda _fires, _reference_time: [fire],
     )
     monkeypatch.setattr(
-        peri_scribe.kml.folders,
+        peri_scribe.presentation.views,
         "top_fires",
         lambda _fires, _scores: [fire],
     )
@@ -296,51 +296,6 @@ def test_report_details_identifies_unnamed_fire_by_name() -> None:
     assert details == (bug,)
 
 
-def test_gather_report_skips_plot_rendering(monkeypatch: pytest.MonkeyPatch) -> None:
-    year_directory = pathlib.Path("data/2026")
-    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([])
-    monkeypatch.setattr(
-        peri_scribe.fires.index,
-        "load_fire_index",
-        lambda _directory: index,
-    )
-    monkeypatch.setattr(
-        peri_scribe.fires.score_files,
-        "load_fire_scores",
-        lambda _directory: None,
-    )
-    monkeypatch.setattr(
-        peri_scribe.fires.files,
-        "history_geopackage_path",
-        lambda _directory: pathlib.Path("/derived/full.gpkg"),
-    )
-    monkeypatch.setattr(
-        peri_scribe.fires.differential,
-        "differential_geopackage_path",
-        lambda _directory: pathlib.Path("/derived/differential.gpkg"),
-    )
-    monkeypatch.setattr(
-        peri_scribe.geo.reading,
-        "read_layer",
-        lambda _path, _layer_name: (
-            tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([])
-        ),
-    )
-    render_plots_values: list[bool] = []
-
-    fire_geometries = (
-        tests.helpers.doubles.peri_scribe.report.gathering.make_plot_option_recorder(
-            render_plots_values=render_plots_values,
-        )
-    )
-
-    monkeypatch.setattr(peri_scribe.kml.fire_data, "fire_geometries", fire_geometries)
-
-    peri_scribe.report.gathering.gather_report(year_directory)
-
-    assert render_plots_values == [False]
-
-
 def test_gather_report_uses_empty_scores_when_missing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -367,7 +322,7 @@ def test_gather_report_uses_empty_scores_when_missing(
         lambda _directory: pathlib.Path("/derived/differential.gpkg"),
     )
     monkeypatch.setattr(
-        peri_scribe.geo.reading,
+        spatial_data.layers,
         "read_layer",
         lambda _path, _layer_name: (
             tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([])
@@ -381,7 +336,11 @@ def test_gather_report_uses_empty_scores_when_missing(
         )
     )
 
-    monkeypatch.setattr(peri_scribe.kml.fire_data, "fire_geometries", fire_geometries)
+    monkeypatch.setattr(
+        peri_scribe.presentation.fire_data,
+        "fire_summaries",
+        fire_geometries,
+    )
 
     peri_scribe.report.gathering.gather_report(year_directory)
 
@@ -418,7 +377,7 @@ def test_fire_identity_prefers_canonical_identifier() -> None:
 
 
 def test_fire_identity_uses_name_without_identifier() -> None:
-    fire = peri_scribe.kml.fire_data.FireGeometry(
+    fire = peri_scribe.presentation.fire_data.FireSummary(
         name="Bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
         point=None,
@@ -468,12 +427,12 @@ def test_fire_location_returns_none_without_geometry() -> None:
 
 
 def test_fire_location_returns_none_with_empty_perimeter() -> None:
-    fire = peri_scribe.kml.fire_data.FireGeometry(
+    fire = peri_scribe.presentation.fire_data.FireSummary(
         name="Bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
         point=None,
         perimeters=(
-            peri_scribe.kml.perimeters.Perimeter(
+            peri_scribe.presentation.perimeters.Perimeter(
                 geometry=shapely.geometry.Polygon(),
                 observation_time=None,
             ),
@@ -502,7 +461,7 @@ def test_fire_location_measures_from_point_without_perimeter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     point = shapely.geometry.Point(-122.6750, 45.5051)
-    fire = peri_scribe.kml.fire_data.FireGeometry(
+    fire = peri_scribe.presentation.fire_data.FireSummary(
         name="Bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
         point=point,
@@ -532,12 +491,12 @@ def test_fire_location_falls_back_to_point_for_empty_perimeter(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     point = shapely.geometry.Point(-122.6750, 45.5051)
-    fire = peri_scribe.kml.fire_data.FireGeometry(
+    fire = peri_scribe.presentation.fire_data.FireSummary(
         name="Bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
         point=point,
         perimeters=(
-            peri_scribe.kml.perimeters.Perimeter(
+            peri_scribe.presentation.perimeters.Perimeter(
                 geometry=shapely.geometry.Polygon(),
                 observation_time=None,
             ),
@@ -565,7 +524,7 @@ def test_fire_location_falls_back_to_point_for_empty_perimeter(
 
 def test_fire_location_measures_point_to_nearest_city() -> None:
     point = shapely.geometry.Point(-122.6750, 45.5051)
-    fire = peri_scribe.kml.fire_data.FireGeometry(
+    fire = peri_scribe.presentation.fire_data.FireSummary(
         name="Bug",
         status=peri_scribe.models.FireStatus.ACTIVE,
         point=point,
@@ -671,7 +630,7 @@ def test_read_cities_layer_reads_stored_layer(
         )
     )
 
-    monkeypatch.setattr(peri_scribe.geo.reading, "read_layer", read_layer)
+    monkeypatch.setattr(spatial_data.layers, "read_layer", read_layer)
 
     frame = peri_scribe.report.gathering.read_cities_layer(year_directory)
 

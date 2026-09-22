@@ -12,11 +12,12 @@ import pyproj
 import shapely
 import us
 
+import arcgis_access.data
 import peri_scribe.exceptions
 import peri_scribe.geo.data
-import peri_scribe.geo.spatial_reference
 import peri_scribe.models
-from peri_scribe.units import units
+import spatial_data.reference
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
@@ -179,12 +180,12 @@ def layer_dataframe(
     feature_set = peri_scribe.geo.data.query_with_retry(
         layer_name,
         layer,
-        parameters=peri_scribe.geo.data.wgs84_query_parameters(where),
+        parameters=arcgis_access.data.wgs84_query_parameters(where),
     )
     if not feature_set.features:
         message = f"Layer {layer_name} returned no features; no border was computed"
         raise peri_scribe.exceptions.AdministrativeBoundariesError(message)
-    return peri_scribe.geo.data.geo_data_frame_from_feature_set(feature_set)
+    return arcgis_access.data.geo_data_frame_from_feature_set(feature_set)
 
 
 def boundary_geometries(layer: arcgis.features.FeatureLayer) -> geopandas.GeoDataFrame:
@@ -293,7 +294,7 @@ def border_dataframe(
             LENGTH_COLUMN_NAME: lengths,
         },
         geometry=borders,
-        crs=peri_scribe.geo.spatial_reference.WGS84_SPATIAL_REFERENCE,
+        crs=spatial_data.reference.WGS84_SPATIAL_REFERENCE,
     )
     return typing.cast(
         "geopandas.GeoDataFrame",

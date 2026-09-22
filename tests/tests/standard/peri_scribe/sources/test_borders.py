@@ -10,8 +10,8 @@ import shapely.geometry
 import structlog
 
 import peri_scribe.exceptions
-import peri_scribe.models
 import peri_scribe.sources.borders
+import spatial_data.reference
 import tests.helpers.doubles.peri_scribe.sources.administrative_boundaries
 import tests.helpers.factories.peri_scribe.sources.administrative_boundaries
 
@@ -123,7 +123,7 @@ def test_border_dataframe_builds_neighbor_rows() -> None:
     assert list(border["NEIGHBOR"]) == neighbor_state_names
     assert list(border["NEIGHBOR_ABBR"]) == neighbor_state_abbreviations
     assert border.geometry.name == "geom"
-    assert border.crs.to_epsg() == peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID
+    assert border.crs.to_epsg() == spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID
     assert all(border["LENGTH_KM"] > 0)
 
 
@@ -148,7 +148,7 @@ def test_layer_dataframe_queries_features_in_wgs84() -> None:
         where="STATE_ABBR IN ('AZ','NV','OR')",
     )
     assert len(dataframe) == 1
-    assert dataframe.crs.to_epsg() == peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID
+    assert dataframe.crs.to_epsg() == spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID
     assert dataframe.geometry.name == "geom"
     assert layer.queries == [
         {

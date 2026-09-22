@@ -10,7 +10,7 @@ import pydantic
 import pytest
 import requests
 
-import peri_scribe.retry
+import arcgis_access.retry
 import peri_scribe.sources.feed_types
 import tests.helpers.factories.peri_scribe.sources.feed_types
 
@@ -189,7 +189,7 @@ def test_arc_gis_feed_current_last_edit_timestamp_retries_on_transient_error(
         feed.current_last_edit_timestamp
         == tests.helpers.factories.peri_scribe.sources.feed_types.SAMPLE_LAST_EDIT_DATE
     )
-    assert sleep_calls == [peri_scribe.retry.BACKOFF_BASE.m_as("seconds")]
+    assert sleep_calls == [arcgis_access.retry.BACKOFF_BASE.m_as("seconds")]
 
 
 def test_arc_gis_feed_current_last_edit_timestamp_returns_none_on_get_error(

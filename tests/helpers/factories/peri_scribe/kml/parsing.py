@@ -7,8 +7,8 @@ import typing
 
 import geopandas
 
-import peri_scribe.kml.perimeters
 import peri_scribe.models
+import peri_scribe.presentation.perimeters
 
 
 if typing.TYPE_CHECKING:
@@ -18,7 +18,7 @@ if typing.TYPE_CHECKING:
 def perimeter_with_time(
     geometry: shapely.Geometry,
     observation_time: datetime.datetime | None = None,
-) -> peri_scribe.kml.perimeters.Perimeter:
+) -> peri_scribe.presentation.perimeters.Perimeter:
     """Build a perimeter with *geometry* and *observation_time*.
 
     Args:
@@ -28,7 +28,7 @@ def perimeter_with_time(
     Returns:
         The perimeter.
     """
-    return peri_scribe.kml.perimeters.Perimeter(
+    return peri_scribe.presentation.perimeters.Perimeter(
         geometry=geometry,
         observation_time=observation_time,
     )

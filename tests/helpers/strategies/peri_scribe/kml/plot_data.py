@@ -9,7 +9,7 @@ import hypothesis.strategies
 
 import peri_scribe.incidents
 import peri_scribe.kml.plot_data
-from peri_scribe.units import units
+from measurement_units import units
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -91,21 +91,3 @@ def containment_histories(draw: hypothesis.strategies.DrawFn) -> ContainmentHist
             if percent is not None
         },
     )
-
-
-def series_points() -> hypothesis.strategies.SearchStrategy[
-    tuple[peri_scribe.kml.plot_data.SeriesPoint, ...]
-]:
-    """Include reported and mapped measurements when testing plot transformations.
-
-    Returns:
-        Points with inferred observation times and bounded finite measurement values.
-    """
-    return hypothesis.strategies.lists(
-        hypothesis.strategies.builds(
-            peri_scribe.kml.plot_data.SeriesPoint,
-            value=hypothesis.strategies.floats(-1_000_000, 1_000_000),
-            reported=...,
-        ),
-        max_size=20,
-    ).map(tuple)

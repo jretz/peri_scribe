@@ -1,0 +1,362 @@
+"""Tests for peri_scribe.presentation.row_values."""
+
+from __future__ import annotations
+
+import datetime
+import json
+
+import pandas as pd
+import pytest
+import shapely.geometry
+
+import peri_scribe.presentation.row_values
+import peri_scribe.presentation.text
+import tests.helpers.factories.geography
+import tests.helpers.factories.geometry
+import tests.helpers.factories.peri_scribe.kml.parsing
+
+
+def test_column_value_returns_none_for_missing_row_or_column() -> None:
+    frame = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([
+        ("id-a", "Bug", tests.helpers.factories.geometry.square(1.0)),
+    ])
+    row = frame.iloc[0]
+    assert peri_scribe.presentation.row_values.column_value(row, "fire_name") == "Bug"
+    assert peri_scribe.presentation.row_values.column_value(row, "not_a_column") is None
+    assert peri_scribe.presentation.row_values.column_value(None, "fire_name") is None
+
+
+def test_text_value_returns_none_for_blank() -> None:
+    frame = tests.helpers.factories.geography.geo_frame(
+        {"fire_identifier": ["id-a"], "fire_name": ["Bug"], "mission": ["  "]},
+        [tests.helpers.factories.geometry.square(1.0)],
+    )
+    row = frame.iloc[0]
+    assert peri_scribe.presentation.row_values.text_value(row, "mission") is None
+    assert peri_scribe.presentation.row_values.text_value(row, "fire_name") == "Bug"
+    assert peri_scribe.presentation.row_values.text_value(None, "fire_name") is None
+
+
+def test_as_datetime_parses_strings_and_timestamps() -> None:
+    expected = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
+    assert peri_scribe.presentation.row_values.as_datetime(None) is None
+    assert (
+        peri_scribe.presentation.row_values.as_datetime("2026-08-05T20:30:00Z")
+        == expected
+    )
+    assert (
+        peri_scribe.presentation.row_values.as_datetime(
+            pd.Timestamp("2026-08-05T20:30:00Z"),
+        )
+        == expected
+    )
+    assert peri_scribe.presentation.row_values.as_datetime("not a date") is None
+
+
+def test_datetime_value_reads_a_column() -> None:
+    expected = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
+    frame = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame(
+        [("id-a", "Bug", tests.helpers.factories.geometry.square(1.0))],
+        observation_times=[expected],
+    )
+    assert (
+        peri_scribe.presentation.row_values.datetime_value(
+            frame.iloc[0],
+            "observation_time",
+        )
+        == expected
+    )
+    assert (
+        peri_scribe.presentation.row_values.datetime_value(None, "observation_time")
+        is None
+    )
+
+
+def test_source_attribute_value_reads_json() -> None:
+    frame = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({"POOJurisdictionalUnit": "CANOD"})],
+        },
+        [tests.helpers.factories.geometry.square(1.0)],
+    )
+    assert (
+        peri_scribe.presentation.row_values.source_attribute_value(
+            frame.iloc[0],
+            "POOJurisdictionalUnit",
+        )
+        == "CANOD"
+    )
+    assert (
+        peri_scribe.presentation.row_values.source_attribute_value(
+            frame.iloc[0],
+            "Missing",
+        )
+        is None
+    )
+    assert (
+        peri_scribe.presentation.row_values.source_attribute_value(
+            None,
+            "POOJurisdictionalUnit",
+        )
+        is None
+    )
+
+
+def test_source_attribute_value_rejects_invalid_json() -> None:
+    frame = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": ["not json"],
+        },
+        [tests.helpers.factories.geometry.square(1.0)],
+    )
+    assert (
+        peri_scribe.presentation.row_values.source_attribute_value(frame.iloc[0], "X")
+        is None
+    )
+
+
+def test_source_attribute_value_accepts_decoded_dict() -> None:
+    frame = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [{"POOJurisdictionalUnit": "CANOD"}],
+        },
+        [tests.helpers.factories.geometry.square(1.0)],
+    )
+    assert (
+        peri_scribe.presentation.row_values.source_attribute_value(
+            frame.iloc[0],
+            "POOJurisdictionalUnit",
+        )
+        == "CANOD"
+    )
+
+
+def test_source_attribute_value_rejects_non_dict_json() -> None:
+    frame = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps(["a", "b"])],
+        },
+        geometry=[tests.helpers.factories.geometry.square(1.0)],
+    )
+    assert (
+        peri_scribe.presentation.row_values.source_attribute_value(frame.iloc[0], "X")
+        is None
+    )
+
+
+def test_source_text_value_returns_none_for_blank() -> None:
+    frame = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({"Unit": "  "})],
+        },
+        [tests.helpers.factories.geometry.square(1.0)],
+    )
+    assert (
+        peri_scribe.presentation.row_values.source_text_value(frame.iloc[0], "Unit")
+        is None
+    )
+    assert (
+        peri_scribe.presentation.row_values.source_text_value(frame.iloc[0], "Missing")
+        is None
+    )
+
+
+def test_numbered_source_text_orders_by_slot_number_and_dedupes() -> None:
+    perimeter = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [
+                json.dumps({
+                    "attr_FireBehaviorGeneral": "Active",
+                    "attr_FireBehaviorGeneral2": "Running",
+                }),
+            ],
+        },
+        [tests.helpers.factories.geometry.square(1.0)],
+    )
+    point = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [
+                json.dumps({
+                    "FireBehaviorGeneral2": "Running",
+                    "FireBehaviorGeneral3": "Smoldering",
+                }),
+            ],
+        },
+        [shapely.geometry.Point(1.0, 1.0)],
+    )
+    assert (
+        peri_scribe.presentation.row_values.numbered_source_text(
+            perimeter.iloc[0],
+            point.iloc[0],
+            peri_scribe.presentation.text.FIRE_BEHAVIOR_ATTRIBUTE_KEYS,
+        )
+        == "Active; Running; Smoldering"
+    )
+    empty = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({})],
+        },
+        [shapely.geometry.Point(1.0, 1.0)],
+    )
+    assert (
+        peri_scribe.presentation.row_values.numbered_source_text(
+            None,
+            empty.iloc[0],
+            peri_scribe.presentation.text.FIRE_BEHAVIOR_ATTRIBUTE_KEYS,
+        )
+        is None
+    )
+
+
+def test_source_label_names_known_sources() -> None:
+    assert (
+        peri_scribe.presentation.row_values.source_label("firis_perimeter")
+        == "FIRIS / NIFC"
+    )
+    assert (
+        peri_scribe.presentation.row_values.source_label("wfigs_perimeter") == "WFIGS"
+    )
+    assert peri_scribe.presentation.row_values.source_label("unknown") is None
+    assert peri_scribe.presentation.row_values.source_label(None) is None
+
+
+def test_source_attributes_dictionary_parses_json_strings() -> None:
+    assert peri_scribe.presentation.row_values.source_attributes_dictionary(
+        json.dumps({"TotalIncidentPersonnel": 400}),
+    ) == {"TotalIncidentPersonnel": 400}
+
+
+def test_source_attributes_dictionary_accepts_decoded_dict() -> None:
+    assert peri_scribe.presentation.row_values.source_attributes_dictionary({
+        "TotalIncidentPersonnel": 400,
+    }) == {"TotalIncidentPersonnel": 400}
+
+
+def test_source_attributes_dictionary_rejects_missing_or_invalid_values() -> None:
+    assert (
+        peri_scribe.presentation.row_values.source_attributes_dictionary(None) is None
+    )
+    assert (
+        peri_scribe.presentation.row_values.source_attributes_dictionary("not json")
+        is None
+    )
+    assert (
+        peri_scribe.presentation.row_values.source_attributes_dictionary(
+            json.dumps([1, 2]),
+        )
+        is None
+    )
+
+
+def test_source_attribute_number_reads_numeric_attributes() -> None:
+    frame = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [
+                json.dumps({"TotalIncidentPersonnel": 400, "Unit": "CANOD"}),
+            ],
+        },
+        [tests.helpers.factories.geometry.square(1.0)],
+    )
+    row = frame.iloc[0]
+    assert peri_scribe.presentation.row_values.source_attribute_number(
+        row,
+        "TotalIncidentPersonnel",
+    ) == pytest.approx(400.0)
+    assert (
+        peri_scribe.presentation.row_values.source_attribute_number(row, "Unit") is None
+    )
+    assert (
+        peri_scribe.presentation.row_values.source_attribute_number(row, "Missing")
+        is None
+    )
+    assert (
+        peri_scribe.presentation.row_values.source_attribute_number(None, "Unit")
+        is None
+    )
+
+
+def test_first_source_number_prefers_point_feed() -> None:
+    perimeter = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({"attr_TotalIncidentPersonnel": 400})],
+        },
+        [tests.helpers.factories.geometry.square(1.0)],
+    )
+    point = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({"TotalIncidentPersonnel": 500})],
+        },
+        [shapely.geometry.Point(1.0, 1.0)],
+    )
+    assert peri_scribe.presentation.row_values.first_source_number(
+        perimeter.iloc[0],
+        point.iloc[0],
+        "TotalIncidentPersonnel",
+        "attr_TotalIncidentPersonnel",
+    ) == pytest.approx(500.0)
+
+
+def test_first_source_number_falls_back_to_perimeter_feed() -> None:
+    perimeter = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({"attr_TotalIncidentPersonnel": 400})],
+        },
+        [tests.helpers.factories.geometry.square(1.0)],
+    )
+    point = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["id-a"],
+            "fire_name": ["Bug"],
+            "source_attributes": [json.dumps({})],
+        },
+        [shapely.geometry.Point(1.0, 1.0)],
+    )
+    assert peri_scribe.presentation.row_values.first_source_number(
+        perimeter.iloc[0],
+        point.iloc[0],
+        "TotalIncidentPersonnel",
+        "attr_TotalIncidentPersonnel",
+    ) == pytest.approx(400.0)
+
+
+def test_first_source_number_returns_none_without_keys() -> None:
+    assert (
+        peri_scribe.presentation.row_values.first_source_number(None, None, None, None)
+        is None
+    )
+
+
+def test_first_source_number_returns_none_for_missing_rows() -> None:
+    assert (
+        peri_scribe.presentation.row_values.first_source_number(
+            None,
+            None,
+            "TotalIncidentPersonnel",
+            "attr_TotalIncidentPersonnel",
+        )
+        is None
+    )

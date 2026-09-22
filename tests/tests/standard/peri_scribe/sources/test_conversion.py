@@ -10,8 +10,8 @@ import pandas as pd
 import pytest
 import shapely.geometry
 
-import peri_scribe.models
 import peri_scribe.sources.conversion
+import spatial_data.reference
 import tests.helpers.factories.geography
 
 
@@ -40,7 +40,7 @@ def test_geojson_feature_chunks_streams_features_in_chunks(
     assert [len(chunk) for chunk in chunks] == [2, 2, 1]
     assert [chunk.iloc[0]["OBJECTID"] for chunk in chunks] == [1, 3, 5]
     assert all(
-        chunk.crs.to_epsg() == peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID
+        chunk.crs.to_epsg() == spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID
         for chunk in chunks
     )
 

@@ -22,12 +22,11 @@ import peri_scribe.fires.history
 import peri_scribe.fires.reuse
 import peri_scribe.geo.measurements
 import peri_scribe.geo.parsing
-import peri_scribe.geo.reading
 import peri_scribe.logging
-import peri_scribe.models
 import peri_scribe.perimeters.progression
 import peri_scribe.phases
-import peri_scribe.units
+import spatial_data.layers
+import spatial_data.measurements
 
 
 if typing.TYPE_CHECKING:
@@ -400,10 +399,10 @@ def differential_rows_for_fire(
                     for earlier in reversed(survivors[:position])
                 ],
             )
-        row["area_acres_from_geometry"] = peri_scribe.units.area(
+        row["area_acres_from_geometry"] = spatial_data.measurements.area(
             cumulative_geometry,
         ).m_as("acres")
-        ring_area = peri_scribe.units.area(differential_geometry)
+        ring_area = spatial_data.measurements.area(differential_geometry)
         row["area_acres_from_geometry_differential"] = ring_area.m_as("acres")
         row[peri_scribe.geo.measurements.AREA_COLUMN] = ring_area.m_as("meters ** 2")
         rows.append(row)
@@ -534,11 +533,11 @@ def write_history_of_differential_geography(
             unconditional=unconditional,
         )
     with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.DIFFERENTIAL_HISTORY):
-        full_perimeters = peri_scribe.geo.reading.read_layer(
+        full_perimeters = spatial_data.layers.read_layer(
             full_path,
             peri_scribe.fires.files.PERIMETER_LAYER_NAME,
         )
-        full_points = peri_scribe.geo.reading.read_layer(
+        full_points = spatial_data.layers.read_layer(
             full_path,
             peri_scribe.fires.files.POINT_LAYER_NAME,
         )
@@ -551,7 +550,7 @@ def write_history_of_differential_geography(
         peri_scribe.fires.reuse.write_layers(
             output_path,
             [
-                peri_scribe.models.LayerData(
+                spatial_data.layers.LayerData(
                     name=peri_scribe.fires.files.PERIMETER_LAYER_NAME,
                     dataframe=differential_perimeter_dataframe(
                         full_perimeters,
@@ -561,7 +560,7 @@ def write_history_of_differential_geography(
                         ),
                     ),
                 ),
-                peri_scribe.models.LayerData(
+                spatial_data.layers.LayerData(
                     name=peri_scribe.fires.files.POINT_LAYER_NAME,
                     dataframe=full_points,
                 ),

@@ -10,7 +10,7 @@ import us.states
 
 import peri_scribe.models
 import peri_scribe.perimeters.classification_data
-from peri_scribe.units import units
+from measurement_units import units
 
 
 CALIFORNIA_STATE_ABBREVIATION = us.states.CA.abbr.casefold()

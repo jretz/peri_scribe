@@ -10,11 +10,10 @@ import geopandas
 import pandas as pd
 import shapely.geometry
 
-import peri_scribe.models
-import peri_scribe.output
 import peri_scribe.sources.catalog
 import peri_scribe.sources.digests
 import peri_scribe.sources.external_data
+import spatial_data.layers
 import tests.helpers.factories.geography
 import tests.helpers.factories.peri_scribe.sources.digests
 import tests.helpers.factories.peri_scribe.sources.external_source
@@ -99,10 +98,10 @@ def test_stored_geopackage_digest_digests_file_contents(tmp_path: pathlib.Path) 
     frame = (
         tests.helpers.factories.peri_scribe.sources.external_source
     ).sample_arcgis_dataframe()
-    peri_scribe.output.write_geopackage(
+    spatial_data.layers.write_geopackage(
         output,
         [
-            peri_scribe.models.LayerData(
+            spatial_data.layers.LayerData(
                 name="evacuations",
                 dataframe=frame,
             ),

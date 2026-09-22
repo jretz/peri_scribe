@@ -5,7 +5,7 @@ import shapely.geometry
 
 import peri_scribe.perimeters.cleaning
 import tests.helpers.factories.peri_scribe.perimeters.cleaning
-from peri_scribe.units import units
+from measurement_units import units
 
 
 def test_clean_perimeter_returns_none_for_missing() -> None:

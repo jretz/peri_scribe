@@ -5,8 +5,8 @@ from __future__ import annotations
 import typing
 
 import peri_scribe.geo.parsing
-import peri_scribe.units
-from peri_scribe.units import units
+import spatial_data.measurements
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
@@ -32,7 +32,7 @@ def area(geometry: shapely.Geometry, stored: object = None) -> pint.Quantity[flo
     value = peri_scribe.geo.parsing.numeric_value(stored)
     if value is not None:
         return value * units.Unit("meters ** 2")
-    return peri_scribe.units.area(geometry)
+    return spatial_data.measurements.area(geometry)
 
 
 def exterior_perimeter(
@@ -52,4 +52,4 @@ def exterior_perimeter(
     value = peri_scribe.geo.parsing.numeric_value(stored)
     if value is not None:
         return value * units.meters
-    return peri_scribe.units.exterior_perimeter(geometry)
+    return spatial_data.measurements.exterior_perimeter(geometry)

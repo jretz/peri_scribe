@@ -9,16 +9,16 @@ import shapely
 import peri_scribe.fires.reuse
 import peri_scribe.fires.sources
 import peri_scribe.models
-import peri_scribe.output
 import peri_scribe.perimeters.cleaning
 import peri_scribe.sources.administrative_boundaries
+import spatial_data.layers
 import tests.helpers.doubles.peri_scribe.fires.reuse
 import tests.helpers.peri_scribe.fires.reuse
 
 
 def test_read_rows_round_trips_complete_output(
     tmp_path: pathlib.Path,
-    cached_layers: list[peri_scribe.models.LayerData],
+    cached_layers: list[spatial_data.layers.LayerData],
 ) -> None:
     path = tmp_path / "history.gpkg"
     peri_scribe.fires.reuse.write_layers(path, cached_layers)
@@ -39,7 +39,7 @@ def test_read_rows_round_trips_complete_output(
 )
 def test_read_rows_recomputes_unusable_results(
     tmp_path: pathlib.Path,
-    cached_layers: list[peri_scribe.models.LayerData],
+    cached_layers: list[spatial_data.layers.LayerData],
     damage: str,
 ) -> None:
     path = tmp_path / "history.gpkg"
@@ -73,7 +73,7 @@ def test_read_rows_recomputes_unusable_results(
 def test_write_layers_preserves_old_output_when_generation_fails(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
-    cached_layers: list[peri_scribe.models.LayerData],
+    cached_layers: list[spatial_data.layers.LayerData],
 ) -> None:
     path = tmp_path / "history.gpkg"
     peri_scribe.fires.reuse.write_layers(path, cached_layers)
@@ -81,7 +81,7 @@ def test_write_layers_preserves_old_output_when_generation_fails(
 
     fail = tests.helpers.doubles.peri_scribe.fires.reuse.write_partial_output_and_fail
 
-    monkeypatch.setattr(peri_scribe.output, "write_geopackage", fail)
+    monkeypatch.setattr(spatial_data.layers, "write_geopackage", fail)
     with pytest.raises(RuntimeError, match="interrupted"):
         peri_scribe.fires.reuse.write_layers(path, cached_layers)
     assert path.read_bytes() == original
@@ -127,7 +127,7 @@ def test_derivation_context_changes_when_settings_change(
 def test_write_layers_does_not_trust_unpublished_metadata(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
-    cached_layers: list[peri_scribe.models.LayerData],
+    cached_layers: list[spatial_data.layers.LayerData],
 ) -> None:
     path = tmp_path / "history.gpkg"
     peri_scribe.fires.reuse.write_layers(path, cached_layers)
@@ -203,3 +203,23 @@ def test_fire_keys_invalidate_changed_dependencies(
         changed,
         "changed" if change == "context" else "context",
     )
+
+
+@pytest.mark.parametrize(
+    "package",
+    ["peri_scribe", "arcgis_access", "measurement_units", "spatial_data"],
+)
+def test_derivation_context_tracks_extracted_package_code(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    package: str,
+) -> None:
+    source_root = tmp_path / "src"
+    module_path = source_root / "peri_scribe" / "fires" / "reuse.py"
+    monkeypatch.setattr(peri_scribe.fires.reuse, "__file__", str(module_path))
+    dependency = source_root / package / "geometry.py"
+    dependency.parent.mkdir(parents=True)
+    dependency.write_text("algorithm = 1\n")
+    first = peri_scribe.fires.reuse.derivation_context(tmp_path)
+    dependency.write_text("algorithm = 2\n")
+    assert peri_scribe.fires.reuse.derivation_context(tmp_path) != first

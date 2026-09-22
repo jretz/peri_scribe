@@ -11,8 +11,8 @@ import typing
 import peri_scribe.geo.measurements
 import peri_scribe.geo.parsing
 import peri_scribe.incidents
-import peri_scribe.units
-from peri_scribe.units import units
+import spatial_data.measurements
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
@@ -246,7 +246,7 @@ def mapping_history(
         geometry = row.geometry
         surveyed = previous is None or new_survey(row, previous.time)
         if not surveyed and previous is not None:
-            difference = peri_scribe.units.area(
+            difference = spatial_data.measurements.area(
                 geometry.symmetric_difference(previous.geometry),
             )
             surveyed = difference >= max(

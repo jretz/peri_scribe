@@ -11,7 +11,7 @@ import peri_scribe.monitor.presentation
 import peri_scribe.monitor.storage
 import peri_scribe.phases
 import tests.helpers.factories.peri_scribe.monitor.events
-from peri_scribe.units import units
+from measurement_units import units
 
 
 @pytest.mark.parametrize("status", peri_scribe.monitor.model.Status)

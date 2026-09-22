@@ -20,7 +20,7 @@ import peri_scribe.perimeters.classification_data
 import peri_scribe.perimeters.history_attributes
 import peri_scribe.sources.changes
 import peri_scribe.sources.snapshots
-from peri_scribe.units import units
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:

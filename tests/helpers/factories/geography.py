@@ -9,7 +9,7 @@ import pyproj
 import shapely
 import shapely.geometry
 
-from peri_scribe.units import units
+from measurement_units import units
 
 
 WEB_MERCATOR_WKID = 3857

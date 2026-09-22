@@ -7,46 +7,11 @@ import typing
 
 import shapely.geometry
 
-import peri_scribe.kml.plot_data
 import tests.helpers.factories.geography
 
 
 if typing.TYPE_CHECKING:
     import geopandas
-
-
-def observation_time(day: int, hour: int = 0) -> datetime.datetime:
-    """Return an aware UTC observation time on August *day*.
-
-    Args:
-        day: The day of the month.
-        hour: The hour of the day.
-
-    Returns:
-        The observation time.
-    """
-    return datetime.datetime(2026, 8, day, hour, tzinfo=datetime.UTC)
-
-
-def series_point(
-    day: int,
-    value: float,
-    hour: int = 0,
-) -> peri_scribe.kml.plot_data.SeriesPoint:
-    """Return a series point at *day* with *value*.
-
-    Args:
-        day: The day of the observation.
-        value: The measurement.
-        hour: The hour of the observation.
-
-    Returns:
-        The point.
-    """
-    return peri_scribe.kml.plot_data.SeriesPoint(
-        observation_time=observation_time(day, hour),
-        value=value,
-    )
 
 
 def perimeter_frame_from_observations(

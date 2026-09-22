@@ -16,8 +16,8 @@ import geopandas
 
 import peri_scribe.fires.differential
 import peri_scribe.fires.files
-import peri_scribe.geo.reading
 import peri_scribe.incidents
+import spatial_data.layers
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -47,7 +47,7 @@ def read_layer_if_present(
     """
     if not path.is_file():
         return geopandas.GeoDataFrame()
-    return peri_scribe.geo.reading.read_layer(path, layer_name)
+    return spatial_data.layers.read_layer(path, layer_name)
 
 
 def read_derived_layers(
@@ -70,10 +70,7 @@ def read_derived_layers(
     Returns:
         The full perimeter, point, and incident histories and differential perimeters.
     """
-    if tolerate_missing:
-        read = read_layer_if_present
-    else:
-        read = peri_scribe.geo.reading.read_layer
+    read = read_layer_if_present if tolerate_missing else spatial_data.layers.read_layer
     history_path = peri_scribe.fires.files.history_geopackage_path(year_directory)
     differential_path = peri_scribe.fires.differential.differential_geopackage_path(
         year_directory,
@@ -109,4 +106,4 @@ def read_incident_layer(path: pathlib.Path) -> geopandas.GeoDataFrame:
         ).fetchone()
     if present is None:
         return geopandas.GeoDataFrame()
-    return peri_scribe.geo.reading.read_layer(path, peri_scribe.incidents.LAYER_NAME)
+    return spatial_data.layers.read_layer(path, peri_scribe.incidents.LAYER_NAME)

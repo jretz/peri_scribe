@@ -10,9 +10,10 @@ import pytest
 
 import peri_scribe.kml.plot_data
 import peri_scribe.kml.plot_rendering
+import svg_charts.models
 import tests.helpers.doubles.peri_scribe.kml.plot_rendering
-import tests.helpers.factories.peri_scribe.kml.plot_histories
 import tests.helpers.factories.peri_scribe.kml.plot_rendering
+import tests.helpers.factories.svg_charts.models
 
 
 def test_plot_filename_joins_prefix_and_suffix() -> None:
@@ -44,14 +45,14 @@ def test_plot_image_bundles_renders_each_fire_in_order() -> None:
     area_plot = peri_scribe.kml.plot_data.FirePlot(
         filename_suffix="area",
         series=(
-            peri_scribe.kml.plot_data.PlotSeries(
+            svg_charts.models.PlotSeries(
                 label="Area",
                 points=(
-                    tests.helpers.factories.peri_scribe.kml.plot_histories.series_point(
+                    tests.helpers.factories.svg_charts.models.series_point(
                         1,
                         10.0,
                     ),
-                    tests.helpers.factories.peri_scribe.kml.plot_histories.series_point(
+                    tests.helpers.factories.svg_charts.models.series_point(
                         2,
                         20.0,
                     ),
@@ -63,27 +64,27 @@ def test_plot_image_bundles_renders_each_fire_in_order() -> None:
     perimeter_plot = peri_scribe.kml.plot_data.FirePlot(
         filename_suffix="perimeter",
         series=(
-            peri_scribe.kml.plot_data.PlotSeries(
+            svg_charts.models.PlotSeries(
                 label="Exterior perimeter",
                 points=(
-                    tests.helpers.factories.peri_scribe.kml.plot_histories.series_point(
+                    tests.helpers.factories.svg_charts.models.series_point(
                         1,
                         5.0,
                     ),
-                    tests.helpers.factories.peri_scribe.kml.plot_histories.series_point(
+                    tests.helpers.factories.svg_charts.models.series_point(
                         2,
                         8.0,
                     ),
                 ),
             ),
-            peri_scribe.kml.plot_data.PlotSeries(
+            svg_charts.models.PlotSeries(
                 label="Contained perimeter",
                 points=(
-                    tests.helpers.factories.peri_scribe.kml.plot_histories.series_point(
+                    tests.helpers.factories.svg_charts.models.series_point(
                         1,
                         2.0,
                     ),
-                    tests.helpers.factories.peri_scribe.kml.plot_histories.series_point(
+                    tests.helpers.factories.svg_charts.models.series_point(
                         2,
                         3.0,
                     ),
@@ -95,10 +96,10 @@ def test_plot_image_bundles_renders_each_fire_in_order() -> None:
     single_observation_plot = peri_scribe.kml.plot_data.FirePlot(
         filename_suffix="cost",
         series=(
-            peri_scribe.kml.plot_data.PlotSeries(
+            svg_charts.models.PlotSeries(
                 label="Cost to date",
                 points=(
-                    tests.helpers.factories.peri_scribe.kml.plot_histories.series_point(
+                    tests.helpers.factories.svg_charts.models.series_point(
                         1,
                         1_000.0,
                     ),
@@ -125,14 +126,14 @@ def test_plot_image_bundles_runs_before_rendering() -> None:
     plot = peri_scribe.kml.plot_data.FirePlot(
         filename_suffix="area",
         series=(
-            peri_scribe.kml.plot_data.PlotSeries(
+            svg_charts.models.PlotSeries(
                 label="Area",
                 points=(
-                    tests.helpers.factories.peri_scribe.kml.plot_histories.series_point(
+                    tests.helpers.factories.svg_charts.models.series_point(
                         1,
                         10.0,
                     ),
-                    tests.helpers.factories.peri_scribe.kml.plot_histories.series_point(
+                    tests.helpers.factories.svg_charts.models.series_point(
                         2,
                         20.0,
                     ),
@@ -161,10 +162,10 @@ def test_plot_image_bundles_returns_empty_bundles_without_requests() -> None:
     single_observation_plot = peri_scribe.kml.plot_data.FirePlot(
         filename_suffix="area",
         series=(
-            peri_scribe.kml.plot_data.PlotSeries(
+            svg_charts.models.PlotSeries(
                 label="Area",
                 points=(
-                    tests.helpers.factories.peri_scribe.kml.plot_histories.series_point(
+                    tests.helpers.factories.svg_charts.models.series_point(
                         1,
                         10.0,
                     ),
@@ -225,7 +226,7 @@ def test_plot_image_bundles_keeps_colors_when_primary_series_is_missing(
             dataclasses.replace(
                 source,
                 label=secondary_label,
-                color=peri_scribe.kml.plot_data.SeriesColor.ORANGE,
+                color=svg_charts.models.SeriesColor.ORANGE,
             ),
         ),
     )
@@ -275,10 +276,10 @@ def test_plot_requests_indexes_each_plot_by_its_fire() -> None:
 
 
 def test_plot_requests_skips_plots_without_enough_observations() -> None:
-    one_point = peri_scribe.kml.plot_data.PlotSeries(
+    one_point = svg_charts.models.PlotSeries(
         label="Area",
         points=(
-            peri_scribe.kml.plot_data.SeriesPoint(
+            svg_charts.models.SeriesPoint(
                 observation_time=datetime.datetime(2026, 7, 8, tzinfo=datetime.UTC),
                 value=1.0,
             ),

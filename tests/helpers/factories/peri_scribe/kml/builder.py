@@ -6,10 +6,10 @@ import datetime
 
 import shapely.geometry
 
-import peri_scribe.kml.descriptions
 import peri_scribe.kml.fire_data
-import peri_scribe.kml.perimeters
 import peri_scribe.models
+import peri_scribe.presentation.descriptions
+import peri_scribe.presentation.perimeters
 import tests.helpers.factories.geometry
 
 
@@ -30,16 +30,16 @@ def new_folder_scenario() -> tuple[
         status=peri_scribe.models.FireStatus.ACTIVE,
         point=shapely.geometry.Point(0.0, 0.0),
         perimeters=(
-            peri_scribe.kml.perimeters.Perimeter(
+            peri_scribe.presentation.perimeters.Perimeter(
                 geometry=tests.helpers.factories.geometry.square(0.02),
                 observation_time=SCENARIO_TIME - datetime.timedelta(hours=48),
             ),
-            peri_scribe.kml.perimeters.Perimeter(
+            peri_scribe.presentation.perimeters.Perimeter(
                 geometry=tests.helpers.factories.geometry.square(0.03),
                 observation_time=SCENARIO_TIME,
             ),
         ),
-        description=peri_scribe.kml.descriptions.FireDescription(
+        description=peri_scribe.presentation.descriptions.FireDescription(
             discovery_time=SCENARIO_TIME - datetime.timedelta(days=1),
             observation_time=SCENARIO_TIME,
             total_personnel=50.0,

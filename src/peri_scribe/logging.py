@@ -28,7 +28,7 @@ import structlog
 
 import peri_scribe.phases
 import peri_scribe.pipeline_stages
-from peri_scribe.units import units
+from measurement_units import units
 
 
 logger = structlog.get_logger()

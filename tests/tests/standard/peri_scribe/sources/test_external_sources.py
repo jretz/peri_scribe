@@ -15,14 +15,15 @@ import pytest
 import requests
 import shapely.geometry
 
+import arcgis_access.data
 import peri_scribe.exceptions
 import peri_scribe.geo.data
-import peri_scribe.models
-import peri_scribe.output
 import peri_scribe.sources.catalog
 import peri_scribe.sources.external_data
 import peri_scribe.sources.external_sources
 import peri_scribe.sources.snapshots
+import spatial_data.layers
+import spatial_data.reference
 import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.sources.external_source
 import tests.helpers.doubles.peri_scribe.sources.external_sources
@@ -70,20 +71,20 @@ def test_fetch_arcgis_source_writes_snapshot(monkeypatch: pytest.MonkeyPatch) ->
 
     monkeypatch.setattr(peri_scribe.geo.data, "query_with_retry", query)
     monkeypatch.setattr(
-        peri_scribe.geo.data,
+        arcgis_access.data,
         "extract_geometries",
         lambda dataframe: (dataframe, [], None),
     )
     monkeypatch.setattr(
-        peri_scribe.geo.data,
+        arcgis_access.data,
         "geo_data_frame_from",
-        lambda *_args: (
+        lambda *_args, **_kwargs: (
             tests.helpers.factories.peri_scribe.sources.external_source.sample_arcgis_dataframe()
         ),
     )
-    writes: list[tuple[pathlib.Path, list[peri_scribe.models.LayerData]]] = []
+    writes: list[tuple[pathlib.Path, list[spatial_data.layers.LayerData]]] = []
     monkeypatch.setattr(
-        peri_scribe.output,
+        spatial_data.layers,
         "write_geopackage",
         lambda path, layer_data: writes.append((path, layer_data)),
     )
@@ -111,7 +112,7 @@ def test_fetch_arcgis_source_writes_snapshot(monkeypatch: pytest.MonkeyPatch) ->
             "evacuations",
             {
                 "where": "1=1",
-                "out_sr": peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+                "out_sr": spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID,
                 "order_by_fields": "OBJECTID",
             },
         ),
@@ -148,19 +149,19 @@ def test_fetch_arcgis_source_passes_where_clause(
 
     monkeypatch.setattr(peri_scribe.geo.data, "query_with_retry", query)
     monkeypatch.setattr(
-        peri_scribe.geo.data,
+        arcgis_access.data,
         "extract_geometries",
         lambda dataframe: (dataframe, [], None),
     )
     monkeypatch.setattr(
-        peri_scribe.geo.data,
+        arcgis_access.data,
         "geo_data_frame_from",
-        lambda *_args: (
+        lambda *_args, **_kwargs: (
             tests.helpers.factories.peri_scribe.sources.external_source.sample_arcgis_dataframe()
         ),
     )
     monkeypatch.setattr(
-        peri_scribe.output,
+        spatial_data.layers,
         "write_geopackage",
         lambda _path, _layer_data: None,
     )
@@ -174,7 +175,7 @@ def test_fetch_arcgis_source_passes_where_clause(
     assert queries == [
         {
             "where": "Event IN ('Red Flag Warning', 'Fire Weather Watch')",
-            "out_sr": peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+            "out_sr": spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID,
             "order_by_fields": "OBJECTID",
         },
     ]
@@ -246,19 +247,19 @@ def test_fetch_arcgis_source_logs_geometry_warning(
         lambda *_args, **_kwargs: feature_set,
     )
     monkeypatch.setattr(
-        peri_scribe.geo.data,
+        arcgis_access.data,
         "extract_geometries",
         lambda dataframe: (dataframe, [], "warning text"),
     )
     monkeypatch.setattr(
-        peri_scribe.geo.data,
+        arcgis_access.data,
         "geo_data_frame_from",
-        lambda *_args: (
+        lambda *_args, **_kwargs: (
             tests.helpers.factories.peri_scribe.sources.external_source.sample_arcgis_dataframe()
         ),
     )
     monkeypatch.setattr(
-        peri_scribe.output,
+        spatial_data.layers,
         "write_geopackage",
         lambda _path, _layer_data: None,
     )
@@ -317,9 +318,9 @@ def test_fetch_arcgis_source_replaces_current_version_when_content_changed(
     ).sample_arcgis_dataframe()
     changed.loc[0, "OBJECTID"] = 99
     monkeypatch.setattr(
-        peri_scribe.geo.data,
+        arcgis_access.data,
         "geo_data_frame_from",
-        lambda *_args: changed,
+        lambda *_args, **_kwargs: changed,
     )
     second = peri_scribe.sources.external_sources.fetch_external_source(
         source,
@@ -477,7 +478,7 @@ def test_fetch_buildings_combines_state_centroids_into_single_geopackage(
     converted = geopandas.read_file(output, layer="buildings")
     assert list(converted.columns) == ["geometry"]
     assert list(converted.geometry.geom_type) == ["Point"] * 4
-    assert converted.crs.to_epsg() == peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID
+    assert converted.crs.to_epsg() == spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID
     assert sorted(converted.geometry.x) == pytest.approx(
         [1.0, 1.0, 11.0, 11.0],
         abs=1e-2,
@@ -602,7 +603,7 @@ def test_fetch_buildings_combines_projected_centroids_into_wgs84(
     converted = geopandas.read_file(output, layer="buildings")
     assert list(converted.columns) == ["geometry"]
     assert converted.geometry.geom_type.iloc[0] == "Point"
-    assert converted.crs.to_epsg() == peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID
+    assert converted.crs.to_epsg() == spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID
     longitude, latitude = pyproj.Transformer.from_crs(
         tests.helpers.doubles.peri_scribe.sources.external_sources.WEB_MERCATOR_WKID,
         4326,

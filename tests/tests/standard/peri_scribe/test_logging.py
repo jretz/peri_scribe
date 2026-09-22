@@ -24,7 +24,7 @@ import peri_scribe.logging
 import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.logging
 import tests.helpers.factories.peri_scribe.logging
-from peri_scribe.units import units
+from measurement_units import units
 
 
 def test_configure_logging_filters_below_configured_level() -> None:

@@ -10,9 +10,9 @@ import pytest
 
 import peri_scribe.geo.reading
 import peri_scribe.models
-import peri_scribe.output
 import peri_scribe.sources.feed_state
 import peri_scribe.sources.snapshots
+import spatial_data.layers
 import tests.helpers.doubles.peri_scribe.sources.changes
 import tests.helpers.factories.peri_scribe.sources.changes
 import tests.helpers.factories.peri_scribe.sources.feed_types
@@ -406,10 +406,10 @@ def test_read_current_features_rebuilds_when_state_is_stale(
     # A state file covering only the first snapshot, with stale content.
     state_path = peri_scribe.sources.snapshots.current_state_path(directory, 0)
     state_path.parent.mkdir(parents=True, exist_ok=True)
-    peri_scribe.output.write_geopackage(
+    spatial_data.layers.write_geopackage(
         state_path,
         [
-            peri_scribe.models.LayerData(
+            spatial_data.layers.LayerData(
                 name=feed.name,
                 dataframe=tests.helpers.factories.peri_scribe.sources.changes.change_dataframe([
                     (1, "old", (0.0, 0.0)),
@@ -569,10 +569,10 @@ def test_write_current_state_skips_without_object_id_column(
     ).relative_path
     path = directory / relative_path
     path.parent.mkdir(parents=True, exist_ok=True)
-    peri_scribe.output.write_geopackage(
+    spatial_data.layers.write_geopackage(
         path,
         [
-            peri_scribe.models.LayerData(
+            spatial_data.layers.LayerData(
                 name=feed.name,
                 dataframe=typing.cast(
                     "geopandas.GeoDataFrame",
@@ -653,10 +653,10 @@ def test_write_current_state_ignores_missing_old_state_file(
     current_path = peri_scribe.sources.snapshots.current_state_path(directory, 1)
     stale_path.parent.mkdir(parents=True, exist_ok=True)
     for path in (stale_path, current_path):
-        peri_scribe.output.write_geopackage(
+        spatial_data.layers.write_geopackage(
             path,
             [
-                peri_scribe.models.LayerData(
+                spatial_data.layers.LayerData(
                     name=feed.name,
                     dataframe=tests.helpers.factories.peri_scribe.sources.changes.change_dataframe([
                         (9, "stale", (9.0, 9.0)),

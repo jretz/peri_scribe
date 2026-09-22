@@ -33,19 +33,6 @@ There are a number of skills available for use in this project. They help get ar
 limitations of the sandbox and provide a more structured way to perform tasks. Use them
 when appropriate.
 
-## Off Limits
-
-Do not modify any of the following files. Tell me when you need a change and I will make
-it for you.
-
-- .gitignore
-- pyproject.toml
-- uv.lock
-- mise.toml
-- mise.lock
-- tests/test_no_pragmas.py
-- any markdown files (AGENTS.md, README.md, docs/*.md, etc.)
-
 ## Geographic Area of Interest
 
 This project is about the entire United States. It might appear to be about California

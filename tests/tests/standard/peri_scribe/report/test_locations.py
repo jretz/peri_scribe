@@ -9,7 +9,7 @@ import shapely
 
 import peri_scribe.report.locations
 import tests.helpers.factories.peri_scribe.report.locations
-from peri_scribe.units import units
+from measurement_units import units
 
 
 def test_nearest_city_ignores_empty_point_alongside_usable_city() -> None:

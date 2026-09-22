@@ -8,14 +8,15 @@ import urllib.parse
 
 import structlog
 
-import peri_scribe.fires.centroid_streaming
-import peri_scribe.geo.reading
-import peri_scribe.geo.spatial_reference
-import peri_scribe.output
+import peri_scribe.exceptions
 import peri_scribe.sources.archives
 import peri_scribe.sources.conversion
 import peri_scribe.sources.external_data
 import peri_scribe.sources.network
+import spatial_data.centroid_streaming
+import spatial_data.exceptions
+import spatial_data.layers
+import spatial_data.reference
 
 
 logger = structlog.get_logger()
@@ -157,7 +158,7 @@ def stream_download_and_convert(
     """Stream *url*'s archive and convert it to centroid points at *output*.
 
     The archive's bytes are read from the response as they arrive and converted by
-    ``peri_scribe.fires.centroid_streaming`` without ever writing the archive or its
+    ``spatial_data.centroid_streaming`` without ever writing the archive or its
     GeoJSON to disk.
 
     Args:
@@ -168,16 +169,25 @@ def stream_download_and_convert(
 
     Returns:
         The number of features converted.
+
+    Raises:
+        ExternalDataError: The download or its streamed geometry cannot be read.
     """
-    with peri_scribe.sources.network.downloaded_response(url, stream=True) as response:
-        return peri_scribe.fires.centroid_streaming.convert_zip_stream(
-            response.iter_content(
-                chunk_size=peri_scribe.sources.network.DOWNLOAD_CHUNK_SIZE,
-            ),
-            output,
-            layer_name,
-            first=not append,
-        )
+    try:
+        with peri_scribe.sources.network.downloaded_response(
+            url,
+            stream=True,
+        ) as response:
+            return spatial_data.centroid_streaming.convert_zip_stream(
+                response.iter_content(
+                    chunk_size=peri_scribe.sources.network.DOWNLOAD_CHUNK_SIZE,
+                ),
+                output,
+                layer_name,
+                first=not append,
+            )
+    except spatial_data.exceptions.GeometryStreamError as error:
+        raise peri_scribe.exceptions.ExternalDataError(str(error)) from error
 
 
 def combine_downloaded_source(
@@ -215,15 +225,15 @@ def combine_downloaded_source(
             state_output = temporary_path / f"{state}.gpkg"
             url = state_download_url(source, state, state_urls)
             download_and_convert(source, temporary_path, url, state_output)
-            for chunk in peri_scribe.geo.reading.read_layer_chunks(
+            for chunk in spatial_data.layers.read_layer_chunks(
                 state_output,
                 layer_name,
                 peri_scribe.sources.conversion.CONVERSION_CHUNK_SIZE,
             ):
                 dataframe = chunk.to_crs(
-                    peri_scribe.geo.spatial_reference.WGS84_SPATIAL_REFERENCE,
+                    spatial_data.reference.WGS84_SPATIAL_REFERENCE,
                 )
-                peri_scribe.output.append_geopackage_chunk(
+                spatial_data.layers.append_geopackage_chunk(
                     output,
                     layer_name,
                     dataframe,

@@ -16,8 +16,8 @@ import zoneinfo
 
 import shapely
 
-import peri_scribe.units
-from peri_scribe.units import units
+import spatial_data.measurements
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
@@ -82,7 +82,7 @@ def added_areas(
     added: list[pint.Quantity[float]] = []
     for geometry in geometries:
         combined = geometry if combined is None else shapely.union(combined, geometry)
-        cumulative = peri_scribe.units.area(combined)
+        cumulative = spatial_data.measurements.area(combined)
         added.append(max(0 * units.Unit("meters ** 2"), cumulative - previous))
         previous = cumulative
     return tuple(added)

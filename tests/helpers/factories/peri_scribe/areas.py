@@ -12,7 +12,7 @@ import shapely
 
 import tests.helpers.factories.geography
 import tests.helpers.factories.time
-from peri_scribe.units import units
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:

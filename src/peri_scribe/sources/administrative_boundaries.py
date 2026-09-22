@@ -13,11 +13,11 @@ import shapely
 import structlog
 
 import peri_scribe.exceptions
-import peri_scribe.models
-import peri_scribe.output
 import peri_scribe.paths
 import peri_scribe.sources.borders
 import peri_scribe.sources.snapshots
+import spatial_data.layers
+import spatial_data.reference
 
 
 logger = structlog.get_logger()
@@ -80,7 +80,8 @@ def is_usable(path: pathlib.Path) -> bool:
             and not dataframe.geometry.isna().any()
             and not dataframe.geometry.is_empty.any()
             and dataframe.crs is not None
-            and dataframe.crs.to_epsg() == peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID
+            and dataframe.crs.to_epsg()
+            == spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID
         )
     except (OSError, RuntimeError, ValueError) as error:
         logger.warning(
@@ -137,9 +138,9 @@ def ensure_administrative_boundaries(
         raise peri_scribe.exceptions.AdministrativeBoundariesError(message) from error
     border = peri_scribe.sources.borders.border_dataframe(california, neighbors)
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    peri_scribe.output.write_geopackage(
+    spatial_data.layers.write_geopackage(
         output_path,
-        [peri_scribe.models.LayerData(name=OUTPUT_LAYER_NAME, dataframe=border)],
+        [spatial_data.layers.LayerData(name=OUTPUT_LAYER_NAME, dataframe=border)],
     )
     logger.debug(
         "Wrote administrative boundaries",

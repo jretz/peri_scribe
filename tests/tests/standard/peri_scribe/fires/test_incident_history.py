@@ -13,9 +13,8 @@ import peri_scribe.fires.history
 import peri_scribe.fires.incident_history
 import peri_scribe.fires.sources
 import peri_scribe.incidents
-import peri_scribe.models
-import peri_scribe.output
 import peri_scribe.sources.feeds
+import spatial_data.layers
 import tests.helpers.factories.time
 
 
@@ -118,10 +117,10 @@ def test_incident_layer_rows_preserves_measurement_confirmation_through_storage(
         tmp_path,
     )
     path = tmp_path / "history.gpkg"
-    peri_scribe.output.write_geopackage(
+    spatial_data.layers.write_geopackage(
         path,
         [
-            peri_scribe.models.LayerData(
+            spatial_data.layers.LayerData(
                 name=peri_scribe.incidents.LAYER_NAME,
                 dataframe=peri_scribe.fires.history.build_dataframe(
                     rows,

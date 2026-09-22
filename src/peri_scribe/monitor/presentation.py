@@ -9,7 +9,7 @@ import peri_scribe.monitor.events
 import peri_scribe.monitor.model
 import peri_scribe.monitor.storage
 import peri_scribe.monitor.theme
-from peri_scribe.units import units
+from measurement_units import units
 
 
 PHASE_STYLES = {

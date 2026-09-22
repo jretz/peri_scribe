@@ -13,12 +13,13 @@ import peri_scribe.perimeters.border_classification
 import peri_scribe.perimeters.classification_data
 import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.borders
+import spatial_data.reference
 import tests.helpers.assertions.peri_scribe.perimeters.classification
 import tests.helpers.doubles.peri_scribe.perimeters.classification
 import tests.helpers.factories.peri_scribe.perimeters.classification
 import tests.helpers.factories.peri_scribe.perimeters.signals
 import tests.helpers.reference.peri_scribe.perimeters.classification
-from peri_scribe.units import units
+from measurement_units import units
 
 
 @pytest.mark.parametrize(
@@ -214,7 +215,7 @@ def test_unioned_observation_geometry_returns_single_geometry_directly(
     assert union == (
         peri_scribe.perimeters.classification_data.reproject_to_california_albers(
             location,
-            peri_scribe.models.NAD83_SPATIAL_REFERENCE_ID,
+            spatial_data.reference.NAD83_SPATIAL_REFERENCE_ID,
         )
     )
 

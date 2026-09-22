@@ -9,10 +9,9 @@ import geopandas
 import pyproj
 import shapely.geometry
 
-import peri_scribe.models
-import peri_scribe.output
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.snapshots
+import spatial_data.layers
 
 
 def change_dataframe(
@@ -119,10 +118,10 @@ def write_snapshot(
     ).relative_path
     path = source_directory / relative_path
     path.parent.mkdir(parents=True, exist_ok=True)
-    peri_scribe.output.write_geopackage(
+    spatial_data.layers.write_geopackage(
         path,
         [
-            peri_scribe.models.LayerData(
+            spatial_data.layers.LayerData(
                 name=feed.name,
                 dataframe=change_dataframe(rows),
             ),

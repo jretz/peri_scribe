@@ -7,16 +7,19 @@ import pathlib
 import re
 import typing
 
-import peri_scribe.kml.descriptions
-import peri_scribe.kml.folders
 import peri_scribe.paths
+import peri_scribe.presentation.descriptions
+import peri_scribe.presentation.views
 import peri_scribe.report.gathering
-from peri_scribe.units import units
+from measurement_units import units
 
 
 # The fast-growth window, expressed in whole hours for the report's prose.
 FAST_GROWTH_WINDOW = (
-    int(peri_scribe.kml.folders.FAST_GROWTH_LOOKBACK / datetime.timedelta(hours=1))
+    int(
+        peri_scribe.presentation.views.FAST_GROWTH_LOOKBACK
+        / datetime.timedelta(hours=1),
+    )
     * units.hours
 )
 
@@ -33,8 +36,8 @@ GROWTH_IN_PERCENT_LABEL = f"{GROWTH_LABEL} (%)"
 
 # The labels the summary tables' headings borrow from the fire's balloon facts, kept as
 # aliases here so a heading and the same fact's details row cannot drift apart.
-AREA_LABEL = peri_scribe.kml.descriptions.AREA_LABEL
-DISCOVERY_LABEL = peri_scribe.kml.descriptions.DISCOVERY_LABEL
+AREA_LABEL = peri_scribe.presentation.descriptions.AREA_LABEL
+DISCOVERY_LABEL = peri_scribe.presentation.descriptions.DISCOVERY_LABEL
 
 # The label for the fire's nearest-city location, spelled once here so the summary
 # tables' column heading and the details tables' row label stay in step. The location is
@@ -61,7 +64,7 @@ def discovery_cell(entry: peri_scribe.report.gathering.FireReportEntry) -> str |
     """
     if entry.description is None:
         return None
-    return peri_scribe.kml.descriptions.format_pacific_time(
+    return peri_scribe.presentation.descriptions.format_pacific_time(
         entry.description.discovery_time,
     )
 
@@ -77,7 +80,7 @@ def growth_cell(entry: peri_scribe.report.gathering.FireReportEntry) -> str | No
     """
     if entry.growth is None:
         return None
-    return f"+{peri_scribe.kml.descriptions.format_area(entry.growth)}"
+    return f"+{peri_scribe.presentation.descriptions.format_area(entry.growth)}"
 
 
 def growth_percent_cell(
@@ -94,7 +97,7 @@ def growth_percent_cell(
     growth_percent = entry.growth_percent
     if growth_percent is None:
         return None
-    formatted = peri_scribe.kml.descriptions.format_percent(
+    formatted = peri_scribe.presentation.descriptions.format_percent(
         growth_percent.m_as("percent"),
     )
     return f"+{formatted}"
@@ -123,7 +126,7 @@ def area_fact(entry: peri_scribe.report.gathering.FireReportEntry) -> str | None
     """
     if entry.description is None:
         return None
-    return peri_scribe.kml.descriptions.format_area(entry.description.area)
+    return peri_scribe.presentation.descriptions.format_area(entry.description.area)
 
 
 def fire_heading(entry: peri_scribe.report.gathering.FireReportEntry) -> str:
@@ -312,7 +315,7 @@ def fire_detail_rows(
     if entry.location is not None:
         rows.append((LOCATION_LABEL, entry.location))
     if entry.description is not None:
-        for label, value in peri_scribe.kml.descriptions.description_rows(
+        for label, value in peri_scribe.presentation.descriptions.description_rows(
             entry.description,
         ):
             if value is not None:

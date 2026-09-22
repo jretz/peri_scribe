@@ -11,10 +11,8 @@ import shapely
 import structlog
 
 import peri_scribe.exceptions
-import peri_scribe.geo.reading
-import peri_scribe.geo.spatial_reference
-import peri_scribe.models
-import peri_scribe.output
+import spatial_data.layers
+import spatial_data.reference
 
 
 logger = structlog.get_logger()
@@ -43,7 +41,7 @@ def geodata_chunks(
     if geodata_path.suffix.lower() in {".geojson", ".json"}:
         yield from geojson_feature_chunks(geodata_path, chunk_size)
     else:
-        yield from peri_scribe.geo.reading.read_layer_chunks(
+        yield from spatial_data.layers.read_layer_chunks(
             geodata_path,
             None,
             chunk_size,
@@ -107,7 +105,7 @@ def geojson_chunk_dataframe(
     return geopandas.GeoDataFrame(
         rows,
         geometry=geometries,
-        crs=peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+        crs=spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID,
     )
 
 
@@ -145,7 +143,7 @@ def convert_to_geopackage(
                 centroids=centroids,
                 keep_attributes=keep_attributes,
             )
-            peri_scribe.output.append_geopackage_chunk(
+            spatial_data.layers.append_geopackage_chunk(
                 output,
                 layer_name,
                 dataframe,
@@ -157,12 +155,12 @@ def convert_to_geopackage(
         message = f"Failed to read {geodata_path}: {error}"
         raise peri_scribe.exceptions.ExternalDataError(message) from error
     if not wrote_any:
-        peri_scribe.output.append_geopackage_chunk(
+        spatial_data.layers.append_geopackage_chunk(
             output,
             layer_name,
             geopandas.GeoDataFrame(
                 geometry=[],
-                crs=peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
+                crs=spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID,
             ),
             replace=True,
         )
@@ -211,7 +209,7 @@ def centroid_dataframe(dataframe: geopandas.GeoDataFrame) -> geopandas.GeoDataFr
     crs = dataframe.crs
     if crs is not None and crs.is_geographic:
         projected = dataframe.to_crs(
-            peri_scribe.geo.spatial_reference.WEB_MERCATOR_SPATIAL_REFERENCE,
+            spatial_data.reference.WEB_MERCATOR_SPATIAL_REFERENCE,
         )
         projected.geometry = projected.geometry.centroid
         return projected.to_crs(crs)

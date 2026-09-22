@@ -11,38 +11,33 @@ import datetime
 import functools
 import io
 import pathlib
-import tempfile
 import typing
-import zipfile
 
 import structlog
 
-import peri_scribe.areas
+import kml_io.geometry
+import kml_io.kmz
 import peri_scribe.fires.derived_layers
 import peri_scribe.fires.index
 import peri_scribe.fires.score_files
 import peri_scribe.kml.colormap
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
-import peri_scribe.kml.geometry
 import peri_scribe.kml.icons
-import peri_scribe.kml.selection
 import peri_scribe.kml.styles
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.paths
 import peri_scribe.phases
+import peri_scribe.presentation.fire_data
+import peri_scribe.presentation.index
+import peri_scribe.presentation.selection
+import peri_scribe.presentation.views
 import peri_scribe.publication
-
-
-if typing.TYPE_CHECKING:
-    import geopandas
 
 
 logger = structlog.get_logger()
 
-
-KMZ_DOCUMENT_FILENAME = "doc.kml"
 
 FIRIS_SOURCE_URL = (
     "https://services1.arcgis.com/jUJYIo9tSA7EHvfZ/ArcGIS/rest/services/"
@@ -127,20 +122,9 @@ ROOT_DOCUMENT_ATTRIBUTION = f"""<![CDATA[
     </p>
 ]]>"""
 
-# DEFLATE is the compression Google Earth expects inside a KMZ. Level 6 is used instead
-# of the maximum 9: the output is within 1% of level 9's size but compresses several
-# times faster.
-KMZ_COMPRESSION = zipfile.ZIP_DEFLATED
-KMZ_COMPRESSION_LEVEL = 6
-
-# Raster formats that are already compressed, so passing them through DEFLATE again
-# costs time for no size benefit. Everything else the archive carries -- the KML
-# document and the SVG plots -- is text, which DEFLATE shrinks by roughly two thirds.
-ALREADY_COMPRESSED_IMAGE_SUFFIXES = (".gif", ".jpeg", ".jpg", ".png")
-
 
 def fire_view_folders(
-    writer: peri_scribe.kml.geometry.KmlWriter,
+    writer: kml_io.geometry.KmlWriter,
     fires: list[peri_scribe.kml.fire_data.FireGeometry],
     scores: peri_scribe.models.FireScores,
     style_urls: typing.Mapping[str, str],
@@ -162,28 +146,30 @@ def fire_view_folders(
             ``#RRGGBB`` color.
     """
     wall_clock_time = datetime.datetime.now(datetime.UTC)
-    new_notable = peri_scribe.kml.folders.new_notable_fires(
+    new_notable = peri_scribe.presentation.views.new_notable_fires(
         fires,
         scores,
         wall_clock_time,
     )
-    type_one = peri_scribe.kml.folders.type_one_fires(fires)
-    fast_growing_by_acres = peri_scribe.kml.folders.fast_growing_fires_by_acres(
+    type_one = peri_scribe.presentation.views.type_one_fires(fires)
+    fast_growing_by_acres = peri_scribe.presentation.views.fast_growing_fires_by_acres(
         fires,
         wall_clock_time,
     )
-    fast_growing_by_percent = peri_scribe.kml.folders.fast_growing_fires_by_percent(
+    fast_growing_by_percent = (
+        peri_scribe.presentation.views.fast_growing_fires_by_percent(
+            fires,
+            wall_clock_time,
+        )
+    )
+    most_personnel = peri_scribe.presentation.views.most_personnel_fires(
         fires,
         wall_clock_time,
     )
-    most_personnel = peri_scribe.kml.folders.most_personnel_fires(
-        fires,
-        wall_clock_time,
-    )
-    score_sorted_fires = peri_scribe.kml.folders.top_fires(fires, scores)
+    score_sorted_fires = peri_scribe.presentation.views.top_fires(fires, scores)
     top_by_name_fires = sorted(
         score_sorted_fires,
-        key=peri_scribe.kml.fire_data.fire_name_key,
+        key=peri_scribe.presentation.fire_data.fire_name_key,
     )
     if new_notable:
         peri_scribe.kml.folders.top_fires_folder(
@@ -257,7 +243,7 @@ def fire_view_folders(
 
 
 def fire_status_folders(
-    writer: peri_scribe.kml.geometry.KmlWriter,
+    writer: kml_io.geometry.KmlWriter,
     fires: list[peri_scribe.kml.fire_data.FireGeometry],
     style_urls: typing.Mapping[str, str],
     ring_style_urls: typing.Mapping[str, str],
@@ -353,31 +339,29 @@ def write_fire_kml(
     """
     if ring_style_urls is None:
         ring_style_urls = ring_style_urls_for(fires)
-    writer = peri_scribe.kml.geometry.KmlWriter(stream)
-    writer.write(
-        f'<kml xmlns="{peri_scribe.kml.geometry.KML_NAMESPACE}" '
-        f'xmlns:gx="{peri_scribe.kml.geometry.GX_NAMESPACE}">'
-        "<Document>",
+    writer = kml_io.geometry.KmlWriter(stream)
+    styles = (
+        *peri_scribe.kml.styles.symbolization_styles(),
+        *(
+            peri_scribe.kml.styles.filled_polygon_style(
+                peri_scribe.kml.styles.progression_ring_style_id(color),
+                color,
+            )
+            for color in ring_style_urls
+        ),
     )
-    for style in peri_scribe.kml.styles.symbolization_styles():
-        writer.write(str(style))
-    for color in ring_style_urls:
-        writer.write(
-            str(
-                peri_scribe.kml.styles.filled_polygon_style(
-                    peri_scribe.kml.styles.progression_ring_style_id(color),
-                    color,
-                ),
-            ),
-        )
-    writer.write(f"<name>{peri_scribe.kml.geometry.escape_text(name)}</name>")
-    writer.write(f"<description>{ROOT_DOCUMENT_ATTRIBUTION}</description>")
-
     # The top-level folder holds the fire views as radio options, each created only when
     # it holds fires. Google Earth checks the last radio option that has any visible
     # content, so exactly one folder loads checked: the top fires by name when scores
     # are present, else the active fires, else the inactive fires.
-    with writer.folder(name, list_item_type="radioFolder"):
+    with (
+        writer.document(
+            name,
+            (str(style) for style in styles),
+            description=ROOT_DOCUMENT_ATTRIBUTION,
+        ),
+        writer.folder(name, list_item_type="radioFolder"),
+    ):
         if scores is not None:
             fire_view_folders(
                 writer,
@@ -394,146 +378,25 @@ def write_fire_kml(
                 ring_style_urls,
                 top_fires_present=False,
             )
-    writer.write("</Document></kml>")
 
 
-def write_kmz(
-    path: pathlib.Path,
-    write_document: typing.Callable[[typing.TextIO], object],
-    images: typing.Mapping[str, bytes] | None = None,
-) -> None:
-    """Write the generated document and *images* as a compressed KMZ file at *path*.
-
-    Args:
-        path: The KMZ file to write.
-        write_document: A renderer that writes XML to the supplied stream.
-        images: Each plot image's filename and its bytes, or None for none.
-    """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=path.parent) as directory:
-        temporary = pathlib.Path(directory) / path.name
-        write_archive(temporary, write_document, images)
-        temporary.replace(path)
-
-
-def write_archive(
-    path: pathlib.Path,
-    write_document: typing.Callable[[typing.TextIO], object],
-    images: typing.Mapping[str, bytes] | None,
-) -> None:
-    """Keep incomplete archive bytes away from the public KMZ path.
-
-    Args:
-        path: The temporary archive path, separate from the published KMZ.
-        write_document: A renderer that writes XML to the supplied stream.
-        images: Plot image filenames and bytes, or None when no images are needed.
-    """
-    with zipfile.ZipFile(
-        path,
-        "w",
-        compression=KMZ_COMPRESSION,
-        compresslevel=KMZ_COMPRESSION_LEVEL,
-        allowZip64=False,
-    ) as archive:
-        with (
-            archive.open(KMZ_DOCUMENT_FILENAME, "w") as member,
-            io.TextIOWrapper(member, encoding="utf-8", newline="") as stream,
-            peri_scribe.logging.log_phase(peri_scribe.phases.Phase.BUILD_KML),
-        ):
-            write_document(stream)
-        if images:
-            for filename, content in images.items():
-                archive.writestr(
-                    filename,
-                    content,
-                    compress_type=(
-                        zipfile.ZIP_STORED
-                        if filename.casefold().endswith(
-                            ALREADY_COMPRESSED_IMAGE_SUFFIXES,
-                        )
-                        else KMZ_COMPRESSION
-                    ),
-                )
-
-
-def prepare_histories(
-    index: peri_scribe.models.FireIndex,
-    perimeters: geopandas.GeoDataFrame,
-    points: geopandas.GeoDataFrame,
-    incident_rows: geopandas.GeoDataFrame | None = None,
-) -> dict[peri_scribe.kml.selection.AreaKey, peri_scribe.areas.PreparedHistory]:
-    """Let filtering and presentation share each fire's complete reporting evidence.
-
-    Args:
-        index: Fire identities and aliases used to combine history rows.
-        perimeters: The full perimeter history layer.
-        points: The point history layer.
-        incident_rows: The optional independent incident history.
-
-    Returns:
-        Prepared reporting and area decisions keyed by canonical identity.
-    """
-    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.PREPARE_FIRE_HISTORIES):
-        return peri_scribe.kml.selection.prepare_histories(
-            perimeters,
-            points,
-            incident_rows,
-            aliases={
-                identifier: entry.identifier or identifier
-                for entry in index.fires
-                for identifier in peri_scribe.kml.selection.identifiers(entry)
-            },
-        )
-
-
-def area_qualified_index(
-    index: peri_scribe.models.FireIndex,
-    perimeters: geopandas.GeoDataFrame,
-    points: geopandas.GeoDataFrame,
-    incident_rows: geopandas.GeoDataFrame | None = None,
+def write_kmz_document(
+    fires: list[peri_scribe.kml.fire_data.FireGeometry],
+    name: str,
+    stream: typing.TextIO,
     *,
-    histories: typing.Mapping[
-        peri_scribe.kml.selection.AreaKey,
-        peri_scribe.areas.PreparedHistory,
-    ]
-    | None = None,
-) -> peri_scribe.models.FireIndex:
-    """Return *index* with every fire lacking a qualifying area indication removed.
-
-    A fire stays when the shared area policy selects an estimate at least the minimum
-    anywhere in its history. Later corrections cannot erase that qualification.
+    scores: peri_scribe.models.FireScores,
+) -> None:
+    """Keep application phase observations outside the archive writer.
 
     Args:
-        index: The fire index to filter.
-        perimeters: The perimeter history layer.
-        points: The point history layer.
-        incident_rows: The optional independent incident history.
-        histories: Already prepared histories keyed by fire identity, when available.
-
-    Returns:
-        The index holding only the qualifying fires.
+        fires: The fires to symbolize.
+        name: The document name.
+        stream: The archive's document stream.
+        scores: The saved scores selecting the fire views.
     """
-    if histories is None:
-        histories = prepare_histories(index, perimeters, points, incident_rows)
-    qualifying_keys = peri_scribe.kml.selection.fires_with_qualifying_area(
-        perimeters,
-        points,
-        peri_scribe.kml.selection.MINIMUM_FIRE_AREA,
-        incident_rows,
-        histories=histories,
-    )
-    return peri_scribe.models.FireIndex(
-        version=index.version,
-        fires=[
-            entry
-            for entry in index.fires
-            if peri_scribe.kml.selection.fire_qualifies(
-                peri_scribe.kml.selection.identifiers(entry),
-                entry.name,
-                qualifying_keys,
-            )
-        ],
-    )
+    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.BUILD_KML):
+        write_fire_kml(fires, name, stream, scores)
 
 
 def ring_style_urls_for(
@@ -600,8 +463,13 @@ def create_kmz(
     points = layers.points
     differential_perimeters = layers.differential_perimeters
     fire_count = len(index.fires)
-    histories = prepare_histories(index, perimeters, points, layers.incidents)
-    index = area_qualified_index(
+    histories = peri_scribe.presentation.index.prepare_histories(
+        index,
+        perimeters,
+        points,
+        layers.incidents,
+    )
+    index = peri_scribe.presentation.index.area_qualified_index(
         index,
         perimeters,
         points,
@@ -612,7 +480,7 @@ def create_kmz(
         "Excluded fires without a qualifying area",
         fires=len(index.fires),
         excluded_fires=fire_count - len(index.fires),
-        minimum_area=peri_scribe.kml.selection.MINIMUM_FIRE_AREA,
+        minimum_area=peri_scribe.presentation.selection.MINIMUM_FIRE_AREA,
     )
     with peri_scribe.logging.log_phase(
         peri_scribe.phases.Phase.PREPARE_FIRE_GEOMETRIES,
@@ -644,10 +512,10 @@ def create_kmz(
     with peri_scribe.logging.log_phase(
         peri_scribe.phases.Phase.SERIALIZE_AND_WRITE_KMZ,
     ):
-        write_kmz(
+        kml_io.kmz.write_kmz(
             output_path,
             functools.partial(
-                write_fire_kml,
+                write_kmz_document,
                 geometries,
                 output_path.stem,
                 scores=scores or peri_scribe.models.FireScores(version="", fires=[]),

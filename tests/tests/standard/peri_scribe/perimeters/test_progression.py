@@ -8,9 +8,9 @@ import pytest
 import shapely
 
 import peri_scribe.perimeters.progression
-import peri_scribe.units
+import spatial_data.measurements
 import tests.helpers.factories.geometry
-from peri_scribe.units import units
+from measurement_units import units
 
 
 def test_added_areas_preserves_growth_after_duplicate_ring() -> None:
@@ -18,7 +18,7 @@ def test_added_areas_preserves_growth_after_duplicate_ring() -> None:
     second = shapely.box(-100, 40.02, -99.99, 40.03)
     additions = peri_scribe.perimeters.progression.added_areas([first, first, second])
     assert additions[-1].m_as("meters**2") == pytest.approx(
-        peri_scribe.units.area(second).m_as("meters**2"),
+        spatial_data.measurements.area(second).m_as("meters**2"),
     )
 
 

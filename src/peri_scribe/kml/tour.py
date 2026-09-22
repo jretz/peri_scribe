@@ -10,10 +10,11 @@ from __future__ import annotations
 import datetime
 import typing
 
-import peri_scribe.kml.geometry
+import kml_io.geometry
+import kml_io.tour
 import peri_scribe.kml.styles
 import peri_scribe.perimeters.progression
-from peri_scribe.units import units
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
@@ -170,32 +171,8 @@ def tour_wait(
     return gap_in_days * playback_rate * units.seconds
 
 
-def visibility_change(ring_ids: typing.Sequence[str], shown_through: int) -> str:
-    """Return the update text that reveals rings through *shown_through*.
-
-    Each ring through *shown_through* is shown and every later ring is hidden, so each
-    step names the whole interior state rather than only the one ring it reveals.
-
-    Args:
-        ring_ids: Every interior ring's placemark id, oldest first.
-        shown_through: The index of the newest ring to show.
-
-    Returns:
-        The ``<Placemark targetId=...>`` visibility text for every ring.
-    """
-    updates: list[str] = []
-    for index, ring_id in enumerate(ring_ids):
-        visibility = "1" if index <= shown_through else "0"
-        updates.append(
-            f'<Placemark targetId="{ring_id}">'
-            f"<visibility>{visibility}</visibility>"
-            "</Placemark>",
-        )
-    return "".join(updates)
-
-
 def progression_tour(
-    writer: peri_scribe.kml.geometry.KmlWriter,
+    writer: kml_io.geometry.KmlWriter,
     folder_id: str,
     ring_times: typing.Sequence[datetime.datetime | None],
     *,
@@ -219,19 +196,16 @@ def progression_tour(
     """
     ring_ids = [interior_ring_id(folder_id, index) for index in range(len(ring_times))]
     playback_rate = tour_playback_rate(ring_times)
-    writer.write("<gx:Tour>")
-    if not visible:
-        writer.write("<visibility>0</visibility>")
-    writer.write(f"<name>{PROGRESSION_TOUR_NAME}</name><gx:Playlist>")
-    for index, ring_time in enumerate(ring_times):
-        writer.write("<gx:AnimatedUpdate><Update><targetHref></targetHref><Change>")
-        writer.write(visibility_change(ring_ids, index))
-        writer.write("</Change></Update></gx:AnimatedUpdate>")
-        if index + 1 < len(ring_times):
-            wait = tour_wait(ring_time, ring_times[index + 1], playback_rate)
-        else:
-            wait = FINAL_TOUR_WAIT
-        writer.write(
-            f"<gx:Wait><gx:duration>{wait.m_as('second')}</gx:duration></gx:Wait>",
-        )
-    writer.write("</gx:Playlist></gx:Tour>")
+    waits = tuple(
+        tour_wait(ring_time, ring_times[index + 1], playback_rate)
+        if index + 1 < len(ring_times)
+        else FINAL_TOUR_WAIT
+        for index, ring_time in enumerate(ring_times)
+    )
+    kml_io.tour.reveal_tour(
+        writer,
+        PROGRESSION_TOUR_NAME,
+        ring_ids,
+        waits,
+        visible=visible,
+    )

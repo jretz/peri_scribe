@@ -7,59 +7,19 @@ import pathlib
 import shutil
 import typing
 
-import pytest
 import structlog
 
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.output
+import svg_charts.distribution
 import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.output
 import tests.helpers.factories.peri_scribe.output
 
 
-def test_write_geopackage_writes_every_layer(
-    monkeypatch: pytest.MonkeyPatch,
-    layer_data_factory: typing.Callable[[str], peri_scribe.models.LayerData],
-) -> None:
-    path = pathlib.Path("/out.gpkg")
-    calls = tests.helpers.doubles.peri_scribe.output.stub_to_file(monkeypatch)
-    monkeypatch.setattr(pathlib.Path, "exists", lambda _self: False)
-    with structlog.testing.capture_logs() as captured:
-        peri_scribe.output.write_geopackage(
-            path,
-            [layer_data_factory("first_layer"), layer_data_factory("second_layer")],
-        )
-    assert calls == [
-        (path, "GPKG", "first_layer", "w"),
-        (path, "GPKG", "second_layer", "a"),
-    ]
-    assert [event["event"] for event in captured] == ["Wrote layer", "Wrote layer"]
-    assert [event["layer"] for event in captured] == ["first_layer", "second_layer"]
-
-
-def test_write_geopackage_replaces_existing_file(
-    monkeypatch: pytest.MonkeyPatch,
-    layer_data_factory: typing.Callable[[str], peri_scribe.models.LayerData],
-) -> None:
-    path = pathlib.Path("/out.gpkg")
-    unlinked: list[pathlib.Path] = []
-    calls = tests.helpers.doubles.peri_scribe.output.stub_to_file(monkeypatch)
-    monkeypatch.setattr(pathlib.Path, "exists", lambda _self: True)
-
-    fake_unlink = tests.helpers.doubles.peri_scribe.output.make_unlink_recorder(
-        unlinked=unlinked,
-    )
-
-    monkeypatch.setattr(pathlib.Path, "unlink", fake_unlink)
-    with structlog.testing.capture_logs() as captured:
-        peri_scribe.output.write_geopackage(
-            path,
-            [layer_data_factory("replacement_layer")],
-        )
-    assert "Replaced existing" in [event["event"] for event in captured]
-    assert unlinked == [path]
-    assert calls == [(path, "GPKG", "replacement_layer", "w")]
+if typing.TYPE_CHECKING:
+    import pytest
 
 
 def test_remove_directory_tree_removes_existing_directory(
@@ -110,31 +70,6 @@ def test_write_document_writes_pretty_printed_json(
     assert captured[0]["fires"] == 1
 
 
-def test_curve_knees_finds_two_breakpoints() -> None:
-    assert peri_scribe.output.curve_knees(
-        [10] * 4 + [50] * 2 + [100, 200, 300, 500],
-    ) == [(100, pytest.approx(0.3)), (300, pytest.approx(0.1))]
-
-
-def test_curve_knees_returns_empty_without_a_bend() -> None:
-    assert peri_scribe.output.curve_knees([]) == []
-    assert peri_scribe.output.curve_knees([5, 5, 5]) == []
-    assert peri_scribe.output.curve_knees([10, 20]) == []
-    assert (
-        peri_scribe.output.curve_knees(
-            [10] * 20 + [50] * 5 + [100] * 3 + [200] * 2 + [500],
-        )
-        == []
-    )
-
-
-def test_curve_knees_selects_the_best_fit_among_multiple_candidates() -> None:
-    assert peri_scribe.output.curve_knees(list(range(1, 11))) == [
-        (6, pytest.approx(0.4)),
-        (8, pytest.approx(0.2)),
-    ]
-
-
 def test_write_fire_scores_ccdf_writes_an_html_page(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "fire_scores_ccdf.html"
     with structlog.testing.capture_logs() as captured:
@@ -154,8 +89,8 @@ def test_ccdf_svg_uses_the_configured_chart_size() -> None:
     svg = peri_scribe.output.ccdf_svg(
         tests.helpers.factories.peri_scribe.output.fire_scores_document([12]),
     )
-    width = int(peri_scribe.output.CCDF_CHART_WIDTH.magnitude)
-    height = int(peri_scribe.output.CCDF_CHART_HEIGHT.magnitude)
+    width = int(svg_charts.distribution.CCDF_CHART_WIDTH.magnitude)
+    height = int(svg_charts.distribution.CCDF_CHART_HEIGHT.magnitude)
     assert f'width="{width}"' in svg
     assert f'height="{height}"' in svg
 
@@ -183,7 +118,7 @@ def test_ccdf_svg_labels_the_curve_knees() -> None:
 
 def test_ccdf_svg_still_draws_when_knees_fail(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(
-        peri_scribe.output,
+        svg_charts.distribution,
         "curve_knees",
         tests.helpers.doubles.errors.raising_stub(RuntimeError("knee failure")),
     )
@@ -204,7 +139,7 @@ def test_ccdf_svg_preserves_tracebacks_with_json_logging(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setattr(
-        peri_scribe.output,
+        svg_charts.distribution,
         "curve_knees",
         tests.helpers.doubles.errors.raising_stub(RuntimeError("knee failure")),
     )

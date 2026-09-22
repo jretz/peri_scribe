@@ -10,7 +10,7 @@ import struct
 import zlib
 
 import peri_scribe.kml.colormap
-from peri_scribe.units import units
+from measurement_units import units
 
 
 # Each "Interior" folder's icon is a square of this many pixels on a side.

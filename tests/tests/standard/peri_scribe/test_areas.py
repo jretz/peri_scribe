@@ -14,7 +14,7 @@ import peri_scribe.areas
 import peri_scribe.incidents
 import tests.helpers.factories.peri_scribe.areas
 import tests.helpers.peri_scribe.areas
-from peri_scribe.units import units
+from measurement_units import units
 
 
 def test_area_history_does_not_emit_estimates_before_the_first_observation() -> None:

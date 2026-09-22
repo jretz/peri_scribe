@@ -3,10 +3,11 @@
 from __future__ import annotations
 
 import peri_scribe.kml.descriptions
+import peri_scribe.presentation.descriptions
 
 
 def balloon_text(
-    description: peri_scribe.kml.descriptions.FireDescription,
+    description: peri_scribe.presentation.descriptions.FireDescription,
     image_filenames: tuple[str, ...] = (),
     leading_rows: tuple[tuple[str, str | None], ...] = (),
 ) -> str:

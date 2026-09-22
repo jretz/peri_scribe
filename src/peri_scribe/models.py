@@ -11,12 +11,8 @@ import typing
 
 import pydantic
 
-from peri_scribe.units import units
-
 
 if typing.TYPE_CHECKING:
-    import geopandas
-    import pyproj
     import shapely
 
 
@@ -30,21 +26,6 @@ GEOPACKAGE_GEOMETRY_COLUMN_NAME = "geometry"
 
 # Column names used by the ArcGIS feature services and the GeoPackages that store them.
 OBJECT_ID_COLUMN_NAME = "OBJECTID"
-SHAPE_COLUMN_NAME = "SHAPE"
-
-# Minimum plausible coordinate magnitude, in meters, for a projected reference. Smaller
-# magnitudes are indistinguishable from degrees.
-MINIMUM_PROJECTED_MAGNITUDE = 1.0 * units.km
-
-# Fallback maximum coordinate magnitude, in meters, for a projected reference with no
-# known area of use; roughly the widest extent any Earth-based projection produces.
-PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK = 25_000.0 * units.km
-
-# EPSG ids for the spatial references the project reads and writes.
-WGS84_SPATIAL_REFERENCE_ID = 4326
-NAD83_SPATIAL_REFERENCE_ID = 4269
-CALIFORNIA_ALBERS_SPATIAL_REFERENCE_ID = 3310
-WEB_MERCATOR_SPATIAL_REFERENCE_ID = 3857
 
 # The earliest representable aware UTC datetime, used as an ordering floor when a fire
 # observation has no timestamp.
@@ -78,14 +59,6 @@ def times_are_contemporaneous(
         left = left.astimezone(datetime.UTC)
         right = right.astimezone(datetime.UTC)
     return abs(left - right) <= tolerance
-
-
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class LayerData:
-    """A named geospatial layer ready for GeoPackage output."""
-
-    name: str
-    dataframe: geopandas.GeoDataFrame
 
 
 class FireStatus(enum.Enum):
@@ -367,25 +340,3 @@ class FireScores(pydantic.BaseModel):
 
     version: str
     fires: list[FireScoreEntry]
-
-
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class SpatialReferenceDomain:
-    """Plausible coordinate magnitude bands for a spatial reference."""
-
-    crs: pyproj.CRS
-    bands: tuple[float, float, float, float]  # x and y (minimum, maximum) magnitudes
-    description: str
-
-
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class SpatialReferenceSelection:
-    """Result of selecting a spatial reference wkid from candidates.
-
-    When a wkid is chosen, ``warning`` holds the text to log about excluded candidates,
-    if any. When no wkid can be chosen, ``failure_message`` explains why.
-    """
-
-    wkid: int | None
-    warning: str | None = None
-    failure_message: str = ""

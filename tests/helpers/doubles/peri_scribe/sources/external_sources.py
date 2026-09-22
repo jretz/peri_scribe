@@ -6,6 +6,7 @@ import pathlib
 import types
 import typing
 
+import arcgis_access.data
 import peri_scribe.geo.data
 import peri_scribe.sources.catalog
 import peri_scribe.sources.external_sources
@@ -45,14 +46,14 @@ def install_arcgis_query_stubs(
         lambda *_args, **_kwargs: feature_set,
     )
     monkeypatch.setattr(
-        peri_scribe.geo.data,
+        arcgis_access.data,
         "extract_geometries",
         lambda dataframe: (dataframe, [], None),
     )
     monkeypatch.setattr(
-        peri_scribe.geo.data,
+        arcgis_access.data,
         "geo_data_frame_from",
-        lambda *_args: dataframe,
+        lambda *_args, **_kwargs: dataframe,
     )
 
 

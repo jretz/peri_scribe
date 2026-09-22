@@ -9,14 +9,14 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
-import enum
 import typing
 
 import peri_scribe.areas
 import peri_scribe.geo.measurements
 import peri_scribe.geo.parsing
 import peri_scribe.incidents
-from peri_scribe.units import units
+import svg_charts.models
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
@@ -61,15 +61,6 @@ PERSONNEL_AXIS_LABEL = "Personnel"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class SeriesPoint:
-    """One measurement at one observation time."""
-
-    observation_time: datetime.datetime
-    value: float
-    reported: bool = False
-
-
-@dataclasses.dataclass(frozen=True, kw_only=True)
 class ExteriorMeasurement:
     """One perimeter row's observation time and exterior length."""
 
@@ -77,29 +68,12 @@ class ExteriorMeasurement:
     length: pint.Quantity[float] | None
 
 
-class SeriesColor(enum.StrEnum):
-    """Keep measurement colors stable when other series are absent from a chart."""
-
-    BLUE = "#4c72b0"
-    ORANGE = "#dd8452"
-
-
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class PlotSeries:
-    """One line to draw: a label and its measurements over time."""
-
-    label: str
-    points: tuple[SeriesPoint, ...]
-    reported_label: str | None = None
-    color: SeriesColor = SeriesColor.BLUE
-
-
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class FirePlot:
     """One plot for a fire: its lines, axis label, and the filename suffix."""
 
     filename_suffix: str
-    series: tuple[PlotSeries, ...]
+    series: tuple[svg_charts.models.PlotSeries, ...]
     y_axis_label: str
 
 
@@ -148,7 +122,7 @@ def exterior_perimeter_measurements(
 def exterior_perimeter_points(
     frame: geopandas.GeoDataFrame,
     exterior_measurements: tuple[ExteriorMeasurement, ...] | None = None,
-) -> tuple[SeriesPoint, ...]:
+) -> tuple[svg_charts.models.SeriesPoint, ...]:
     """Return each perimeter's exterior length in miles over time.
 
     When *exterior_measurements* is supplied it is used instead of measuring *frame*
@@ -163,13 +137,13 @@ def exterior_perimeter_points(
     """
     if exterior_measurements is None:
         exterior_measurements = exterior_perimeter_measurements(frame)
-    points: list[SeriesPoint] = []
+    points: list[svg_charts.models.SeriesPoint] = []
     for measurement in exterior_measurements:
         observation_time = measurement.observation_time
         length = measurement.length
         if observation_time is not None and length is not None:
             points.append(
-                SeriesPoint(
+                svg_charts.models.SeriesPoint(
                     observation_time=observation_time,
                     value=length.m_as("miles"),
                 ),
@@ -184,7 +158,7 @@ def contained_perimeter_points(
     point_rows: geopandas.GeoDataFrame | None = None,
     incident_rows: geopandas.GeoDataFrame | None = None,
     updates: tuple[peri_scribe.incidents.IncidentUpdate, ...] | None = None,
-) -> tuple[SeriesPoint, ...]:
+) -> tuple[svg_charts.models.SeriesPoint, ...]:
     """Estimate contained length from independently updated mapping and containment.
 
     Each event uses the latest available exterior length and containment percentage.
@@ -222,13 +196,13 @@ def contained_perimeter_points(
     }
     length = None
     percent = None
-    points: list[SeriesPoint] = []
+    points: list[svg_charts.models.SeriesPoint] = []
     for time in sorted(lengths.keys() | percentages.keys()):
         length = lengths.get(time, length)
         percent = percentages.get(time, percent)
         if length is not None and percent is not None:
             points.append(
-                SeriesPoint(
+                svg_charts.models.SeriesPoint(
                     observation_time=time,
                     value=length.m_as("miles")
                     * percent
@@ -241,7 +215,7 @@ def contained_perimeter_points(
 def incident_points(
     updates: tuple[peri_scribe.incidents.IncidentUpdate, ...],
     column: str,
-) -> tuple[SeriesPoint, ...]:
+) -> tuple[svg_charts.models.SeriesPoint, ...]:
     """Preserve a metric's reporting times without inventing values for missing fields.
 
     Args:
@@ -252,7 +226,7 @@ def incident_points(
         Points for updates that supply the field, retaining its source units.
     """
     return tuple(
-        SeriesPoint(
+        svg_charts.models.SeriesPoint(
             observation_time=update.observation_time,
             value=update.measurements[column],
         )
@@ -262,9 +236,9 @@ def incident_points(
 
 
 def scaled_points(
-    points: tuple[SeriesPoint, ...],
+    points: tuple[svg_charts.models.SeriesPoint, ...],
     divisor: float,
-) -> tuple[SeriesPoint, ...]:
+) -> tuple[svg_charts.models.SeriesPoint, ...]:
     """Return *points* with each value divided by *divisor*.
 
     Args:
@@ -308,10 +282,14 @@ def fire_plots(
             incident_rows,
         )
     area_points = tuple(
-        SeriesPoint(
+        svg_charts.models.SeriesPoint(
             observation_time=estimate.time,
             value=estimate.area.m_as("acres") / ACRES_PER_THOUSAND,
-            reported=estimate.source is peri_scribe.areas.AreaSource.REPORTED,
+            style=(
+                svg_charts.models.StrokeStyle.DASHED
+                if estimate.source is peri_scribe.areas.AreaSource.REPORTED
+                else svg_charts.models.StrokeStyle.SOLID
+            ),
         )
         for estimate in history.estimates
     )
@@ -331,10 +309,10 @@ def fire_plots(
         FirePlot(
             filename_suffix=AREA_PLOT_SUFFIX,
             series=(
-                PlotSeries(
+                svg_charts.models.PlotSeries(
                     label=AREA_SERIES_LABEL,
                     points=area_points,
-                    reported_label=REPORTED_AREA_SERIES_LABEL,
+                    dashed_label=REPORTED_AREA_SERIES_LABEL,
                 ),
             ),
             y_axis_label=AREA_AXIS_LABEL,
@@ -342,16 +320,16 @@ def fire_plots(
         FirePlot(
             filename_suffix=PERIMETER_PLOT_SUFFIX,
             series=(
-                PlotSeries(
+                svg_charts.models.PlotSeries(
                     label=EXTERIOR_PERIMETER_SERIES_LABEL,
                     points=exterior_perimeter_points(
                         perimeter_rows,
                         exterior_measurements,
                     ),
                 ),
-                PlotSeries(
+                svg_charts.models.PlotSeries(
                     label=CONTAINED_PERIMETER_SERIES_LABEL,
-                    color=SeriesColor.ORANGE,
+                    color=svg_charts.models.SeriesColor.ORANGE,
                     points=contained_perimeter_points(
                         perimeter_rows,
                         exterior_measurements,
@@ -366,11 +344,14 @@ def fire_plots(
         FirePlot(
             filename_suffix=COST_PLOT_SUFFIX,
             series=(
-                PlotSeries(label=COST_TO_DATE_SERIES_LABEL, points=cost_to_date_points),
-                PlotSeries(
+                svg_charts.models.PlotSeries(
+                    label=COST_TO_DATE_SERIES_LABEL,
+                    points=cost_to_date_points,
+                ),
+                svg_charts.models.PlotSeries(
                     label=ESTIMATED_FINAL_COST_SERIES_LABEL,
                     points=estimated_final_cost_points,
-                    color=SeriesColor.ORANGE,
+                    color=svg_charts.models.SeriesColor.ORANGE,
                 ),
             ),
             y_axis_label=COST_AXIS_LABEL,
@@ -378,7 +359,7 @@ def fire_plots(
         FirePlot(
             filename_suffix=PERSONNEL_PLOT_SUFFIX,
             series=(
-                PlotSeries(
+                svg_charts.models.PlotSeries(
                     label=PERSONNEL_SERIES_LABEL,
                     points=personnel_points,
                 ),
@@ -388,7 +369,9 @@ def fire_plots(
     )
 
 
-def has_multiple_observation_times(points: tuple[SeriesPoint, ...]) -> bool:
+def has_multiple_observation_times(
+    points: tuple[svg_charts.models.SeriesPoint, ...],
+) -> bool:
     """Return whether *points* span at least two distinct observation times.
 
     Args:
@@ -402,7 +385,9 @@ def has_multiple_observation_times(points: tuple[SeriesPoint, ...]) -> bool:
     )
 
 
-def retained_series(series_list: typing.Iterable[PlotSeries]) -> tuple[PlotSeries, ...]:
+def retained_series(
+    series_list: typing.Iterable[svg_charts.models.PlotSeries],
+) -> tuple[svg_charts.models.PlotSeries, ...]:
     """Return the series in *series_list* that span enough observation times.
 
     Args:

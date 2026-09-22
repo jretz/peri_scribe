@@ -5,13 +5,14 @@ from __future__ import annotations
 import pathlib
 import typing
 
-import peri_scribe.models
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.snapshots
 
 
 if typing.TYPE_CHECKING:
     import geopandas
+
+    import spatial_data.layers
 
 
 class GeoPackageStore:
@@ -28,7 +29,7 @@ class GeoPackageStore:
     def write(
         self,
         path: pathlib.Path,
-        layers: list[peri_scribe.models.LayerData],
+        layers: list[spatial_data.layers.LayerData],
     ) -> None:
         """Record *layers* as the contents of the GeoPackage at *path*.
 

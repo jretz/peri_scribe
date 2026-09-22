@@ -7,7 +7,7 @@ import pathlib
 
 import watchfiles
 
-from peri_scribe.units import units
+from measurement_units import units
 
 
 RECONCILE_INTERVAL = 30 * units.seconds

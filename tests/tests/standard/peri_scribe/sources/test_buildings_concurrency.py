@@ -10,9 +10,10 @@ import pytest
 import shapely.geometry
 
 import peri_scribe.exceptions
-import peri_scribe.fires.centroid_streaming
 import peri_scribe.sources.buildings
 import peri_scribe.sources.network
+import spatial_data.centroid_streaming
+import spatial_data.point_store
 import tests.helpers.doubles.concurrency
 import tests.helpers.doubles.peri_scribe.sources.buildings
 import tests.helpers.factories.peri_scribe.sources.buildings
@@ -43,7 +44,7 @@ async def test_stream_one_archive_stops_download_on_cancellation(
         "get",
         unittest.mock.Mock(return_value=response),
     )
-    with peri_scribe.sources.buildings.PartitionFiles(tmp_path) as partitions:
+    with spatial_data.point_store.PartitionFiles(tmp_path) as partitions:
         task = asyncio.create_task(
             peri_scribe.sources.buildings.stream_one_archive(
                 "https://example.com/buildings.zip",
@@ -84,7 +85,7 @@ async def test_stream_state_archives_bounds_overlap_and_preserves_shared_tiles(
             probe,
         ),
     )
-    with peri_scribe.sources.buildings.PartitionFiles(tmp_path) as partitions:
+    with spatial_data.point_store.PartitionFiles(tmp_path) as partitions:
         task = asyncio.create_task(
             peri_scribe.sources.buildings.stream_state_archives(
                 (str(index) for index in range(5)),
@@ -101,10 +102,10 @@ async def test_stream_state_archives_bounds_overlap_and_preserves_shared_tiles(
     database = tmp_path / "buildings.sqlite"
     expected_count = 50_000
     assert (
-        peri_scribe.sources.buildings.build_tiles_database(tmp_path, database)
+        spatial_data.point_store.build_tiles_database(tmp_path, database)
         == expected_count
     )
-    assert peri_scribe.sources.buildings.building_counts_within(
+    assert spatial_data.point_store.point_counts_within(
         [shapely.geometry.box(-1, -1, 1, 1)],
         database,
     ) == [expected_count]
@@ -126,7 +127,7 @@ async def test_stream_state_archives_keeps_partitions_until_workers_finish(
             cancellation,
         ),
     )
-    with peri_scribe.sources.buildings.PartitionFiles(tmp_path) as partitions:
+    with spatial_data.point_store.PartitionFiles(tmp_path) as partitions:
         task = asyncio.create_task(
             peri_scribe.sources.buildings.stream_state_archives(
                 ["pending", "broken"],
@@ -157,14 +158,14 @@ def test_convert_geometry_chunks_to_partitions_stops_before_next_batch(
     first = shapely.geometry.mapping(shapely.geometry.box(0, 0, 1, 1))
     second = shapely.geometry.mapping(shapely.geometry.box(1, 1, 2, 2))
     geometries = iter([first, second])
-    monkeypatch.setattr(peri_scribe.fires.centroid_streaming, "FEATURE_CHUNK_SIZE", 1)
+    monkeypatch.setattr(spatial_data.centroid_streaming, "FEATURE_CHUNK_SIZE", 1)
     monkeypatch.setattr(
-        peri_scribe.sources.buildings,
+        spatial_data.point_store,
         "append_centroids_to_partitions",
         lambda *_args: stopped.set(),
     )
     with (
-        peri_scribe.sources.buildings.PartitionFiles(tmp_path) as partitions,
+        spatial_data.point_store.PartitionFiles(tmp_path) as partitions,
         pytest.raises(asyncio.CancelledError),
     ):
         peri_scribe.sources.buildings.convert_geometry_chunks_to_partitions(

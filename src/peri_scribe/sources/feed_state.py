@@ -14,10 +14,10 @@ import peri_scribe.geo.parsing
 import peri_scribe.geo.reading
 import peri_scribe.logging
 import peri_scribe.models
-import peri_scribe.output
 import peri_scribe.phases
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.snapshots
+import spatial_data.layers
 
 
 logger = structlog.get_logger()
@@ -214,9 +214,9 @@ def write_current_state(
         newest_serial_number,
     )
     state_path.parent.mkdir(parents=True, exist_ok=True)
-    peri_scribe.output.write_geopackage(
+    spatial_data.layers.write_geopackage(
         state_path,
-        [peri_scribe.models.LayerData(name=feed.name, dataframe=merged)],
+        [spatial_data.layers.LayerData(name=feed.name, dataframe=merged)],
     )
     for _old_serial_number, old_path in state_files:
         if old_path != state_path:

@@ -10,6 +10,7 @@ import shapely.geometry
 
 import peri_scribe.models
 import peri_scribe.perimeters.classification_data
+import spatial_data.reference
 
 
 CALIFORNIA_BOX_WGS84 = shapely.geometry.box(-126.0, 31.0, -119.0, 40.0)
@@ -60,8 +61,8 @@ def projected_boundaries() -> peri_scribe.perimeters.classification_data.Boundar
     """
     projected = geopandas.GeoSeries(
         [CALIFORNIA_BOX_WGS84, CA_BORDER_WGS84],
-        crs=peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID,
-    ).to_crs(peri_scribe.models.CALIFORNIA_ALBERS_SPATIAL_REFERENCE_ID)
+        crs=spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID,
+    ).to_crs(spatial_data.reference.CALIFORNIA_ALBERS_SPATIAL_REFERENCE_ID)
     return peri_scribe.perimeters.classification_data.Boundaries(
         box=projected.iloc[0],
         border=projected.iloc[1],

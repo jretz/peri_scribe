@@ -10,7 +10,7 @@ import typing
 import peri_scribe.publication
 import peri_scribe.sources.feeds
 import tests.helpers.factories.geography
-from peri_scribe.units import units
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:

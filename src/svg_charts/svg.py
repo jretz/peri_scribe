@@ -1,0 +1,189 @@
+"""Text measurement, escaping, and tick spacing for SVG charts.
+
+Helvetica advance widths keep text placement deterministic without requiring a browser
+or font engine. Viewers may substitute fonts, so text anchors preserve alignment.
+"""
+
+from __future__ import annotations
+
+import html
+import math
+
+
+# Font fallbacks preserve readability when Helvetica is unavailable.
+FONT_STACK = "Helvetica, Arial, sans-serif"
+
+# Helvetica advance widths in 1/1000 em, from the font's AFM metrics. The table covers
+# printable ASCII; anything else falls back to DEFAULT_ADVANCE. Every entry matches the
+# advances the system Helvetica reports for the same character, so a viewer that renders
+# the declared font lays the chart out at the width this module measured.
+HELVETICA_ADVANCES: dict[str, int] = {
+    " ": 278,
+    "!": 278,
+    '"': 355,
+    "#": 556,
+    "$": 556,
+    "%": 889,
+    "&": 667,
+    "'": 191,
+    "(": 333,
+    ")": 333,
+    "*": 389,
+    "+": 584,
+    ",": 278,
+    "-": 333,
+    ".": 278,
+    "/": 278,
+    "0": 556,
+    "1": 556,
+    "2": 556,
+    "3": 556,
+    "4": 556,
+    "5": 556,
+    "6": 556,
+    "7": 556,
+    "8": 556,
+    "9": 556,
+    ":": 278,
+    ";": 278,
+    "<": 584,
+    "=": 584,
+    ">": 584,
+    "?": 556,
+    "@": 1015,
+    "A": 667,
+    "B": 667,
+    "C": 722,
+    "D": 722,
+    "E": 667,
+    "F": 611,
+    "G": 778,
+    "H": 722,
+    "I": 278,
+    "J": 500,
+    "K": 667,
+    "L": 556,
+    "M": 833,
+    "N": 722,
+    "O": 778,
+    "P": 667,
+    "Q": 778,
+    "R": 722,
+    "S": 667,
+    "T": 611,
+    "U": 722,
+    "V": 667,
+    "W": 944,
+    "X": 667,
+    "Y": 667,
+    "Z": 611,
+    "[": 278,
+    "\\": 278,
+    "]": 278,
+    "^": 469,
+    "_": 556,
+    "`": 333,
+    "a": 556,
+    "b": 556,
+    "c": 500,
+    "d": 556,
+    "e": 556,
+    "f": 278,
+    "g": 556,
+    "h": 556,
+    "i": 222,
+    "j": 222,
+    "k": 500,
+    "l": 222,
+    "m": 833,
+    "n": 556,
+    "o": 556,
+    "p": 556,
+    "q": 556,
+    "r": 333,
+    "s": 500,
+    "t": 278,
+    "u": 556,
+    "v": 500,
+    "w": 722,
+    "x": 500,
+    "y": 500,
+    "z": 500,
+    "{": 334,
+    "|": 260,
+    "}": 334,
+    "~": 584,
+}
+
+# The advance assumed for a character the table does not cover.
+DEFAULT_ADVANCE = 556
+
+
+def escape_text(value: str) -> str:
+    """Return *value* escaped for use as SVG text or an XML attribute.
+
+    Args:
+        value: The text to escape.
+
+    Returns:
+        The escaped text.
+
+    Examples:
+        >>> escape_text("Miles & acres")
+        'Miles &amp; acres'
+        >>> escape_text('say "hi"')
+        'say &quot;hi&quot;'
+    """
+    return html.escape(value, quote=True)
+
+
+def text_width(text: str, font_size: float) -> float:
+    """Return the width *text* occupies when drawn at *font_size* pixels.
+
+    Args:
+        text: The text to measure.
+        font_size: The font size the text is drawn at, in pixels.
+
+    Returns:
+        The width in pixels.
+
+    Examples:
+        >>> round(text_width("Miles", 14), 3)
+        32.662
+        >>> text_width("", 14)
+        0.0
+    """
+    advances = sum(
+        HELVETICA_ADVANCES.get(character, DEFAULT_ADVANCE) for character in text
+    )
+    return advances / 1000.0 * font_size
+
+
+def nice_step(span: float, target_intervals: int) -> float:
+    """Return a 1/2/2.5/5/10 x 10**n axis step covering *span* in even intervals.
+
+    Args:
+        span: The data range the axis must cover.
+        target_intervals: The approximate number of intervals wanted.
+
+    Returns:
+        The step between ticks.
+
+    Examples:
+        >>> round(nice_step(500.0, 8), 3)
+        100.0
+        >>> round(nice_step(1.0, 8), 3)
+        0.2
+    """
+    if span <= 0:
+        return 1.0
+    raw = span / target_intervals
+    magnitude = 10.0 ** math.floor(math.log10(raw))
+    # Dividing by the decade's magnitude always leaves a value below ten, and the ladder
+    # ends at ten, so one rung always covers *raw*.
+    multiple = next(
+        multiple
+        for multiple in (1.0, 2.0, 2.5, 5.0, 10.0)
+        if raw <= multiple * magnitude
+    )
+    return multiple * magnitude

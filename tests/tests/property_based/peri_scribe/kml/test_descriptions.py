@@ -7,23 +7,24 @@ import hypothesis
 import hypothesis.strategies
 
 import peri_scribe.kml.descriptions
-import tests.helpers.strategies.peri_scribe.kml.descriptions
+import peri_scribe.presentation.descriptions
+import tests.helpers.strategies.peri_scribe.presentation.descriptions
 
 
 @hypothesis.given(
-    note=tests.helpers.strategies.peri_scribe.kml.descriptions.balloon_text(),
+    note=tests.helpers.strategies.peri_scribe.presentation.descriptions.balloon_text(),
     leading_rows=hypothesis.strategies.lists(
         hypothesis.strategies.tuples(
-            tests.helpers.strategies.peri_scribe.kml.descriptions.balloon_text(),
+            tests.helpers.strategies.peri_scribe.presentation.descriptions.balloon_text(),
             hypothesis.strategies.one_of(
                 hypothesis.strategies.none(),
-                tests.helpers.strategies.peri_scribe.kml.descriptions.balloon_text(),
+                tests.helpers.strategies.peri_scribe.presentation.descriptions.balloon_text(),
             ),
         ),
         max_size=5,
     ),
     filenames=hypothesis.strategies.lists(
-        tests.helpers.strategies.peri_scribe.kml.descriptions.balloon_text(),
+        tests.helpers.strategies.peri_scribe.presentation.descriptions.balloon_text(),
         max_size=3,
     ),
 )
@@ -34,7 +35,7 @@ def test_description_html_preserves_text_through_kml_and_html_parsing(
 ) -> None:
     image_filenames = tuple(f"plot-{filename}.svg" for filename in filenames)
     encoded = peri_scribe.kml.descriptions.description_html(
-        peri_scribe.kml.descriptions.FireDescription(of_note=note),
+        peri_scribe.presentation.descriptions.FireDescription(of_note=note),
         image_filenames,
         tuple(leading_rows),
     )

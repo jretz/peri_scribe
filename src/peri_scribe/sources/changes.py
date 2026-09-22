@@ -8,7 +8,7 @@ import typing
 import peri_scribe.geo.parsing
 import peri_scribe.models
 import peri_scribe.sources.feed_types
-from peri_scribe.units import units
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:

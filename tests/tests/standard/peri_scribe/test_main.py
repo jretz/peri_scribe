@@ -39,7 +39,7 @@ import tests.helpers.factories.peri_scribe.publication
 import tests.helpers.factories.peri_scribe.sources.snapshots
 import tests.helpers.peri_scribe.main
 import tests.helpers.peri_scribe.main_publication
-from peri_scribe.units import units
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
@@ -677,6 +677,11 @@ def test_run_logs_each_executed_phase_inside_command_boundaries(
         peri_scribe.pipeline,
         "refresh_external_sources",
         lambda _year_directory: False,
+    )
+    monkeypatch.setattr(
+        peri_scribe.pipeline,
+        "prepare_administrative_boundaries",
+        lambda _year_directory: None,
     )
     ticks = itertools.count()
     monkeypatch.setattr(peri_scribe.logging.time, "perf_counter", lambda: next(ticks))
@@ -1317,7 +1322,11 @@ def test_run_stops_when_fetch_fails(
     assert result.exit_code == 1
     assert "boom" in result.output
     assert stubs.external_calls == []
-    assert stubs.ensure_boundary_calls == []
+    assert stubs.ensure_boundary_calls == [
+        tests.helpers.factories.peri_scribe.sources.snapshots.BASE_DIRECTORY
+        / "data"
+        / "2026",
+    ]
     assert stubs.history_calls == []
     assert stubs.scores_calls == []
     assert stubs.kmz_calls == []
@@ -1339,7 +1348,11 @@ def test_run_stops_when_external_source_fetch_fails(
     result = runner.invoke(peri_scribe.main.cli, ["run"])
     assert result.exit_code == 1
     assert isinstance(result.exception, peri_scribe.exceptions.ExternalDataError)
-    assert stubs.ensure_boundary_calls == []
+    assert stubs.ensure_boundary_calls == [
+        tests.helpers.factories.peri_scribe.sources.snapshots.BASE_DIRECTORY
+        / "data"
+        / "2026",
+    ]
     assert stubs.history_calls == []
     assert stubs.scores_calls == []
     assert stubs.kmz_calls == []

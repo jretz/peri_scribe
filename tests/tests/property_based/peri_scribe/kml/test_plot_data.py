@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import typing
 
 import hypothesis
 import hypothesis.strategies
@@ -11,6 +12,11 @@ import pytest
 import peri_scribe.kml.plot_data
 import tests.helpers.factories.geography
 import tests.helpers.strategies.peri_scribe.kml.plot_data
+import tests.helpers.strategies.svg_charts.models
+
+
+if typing.TYPE_CHECKING:
+    import svg_charts.models
 
 
 @hypothesis.given(
@@ -45,11 +51,11 @@ def test_contained_perimeter_points_matches_latest_available_evidence(
 
 
 @hypothesis.given(
-    points=tests.helpers.strategies.peri_scribe.kml.plot_data.series_points(),
+    points=tests.helpers.strategies.svg_charts.models.series_points(),
     divisor=hypothesis.strategies.floats(0.001, 1_000_000),
 )
 def test_scaled_points_preserves_observation_metadata(
-    points: tuple[peri_scribe.kml.plot_data.SeriesPoint, ...],
+    points: tuple[svg_charts.models.SeriesPoint, ...],
     divisor: float,
 ) -> None:
     scaled = peri_scribe.kml.plot_data.scaled_points(points, divisor)

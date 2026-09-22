@@ -17,11 +17,14 @@ import geopandas
 import structlog
 
 import peri_scribe.exceptions
-import peri_scribe.geo.geometry_pool
 import peri_scribe.geo.parsing
 import peri_scribe.models
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.feeds
+
+
+if typing.TYPE_CHECKING:
+    import spatial_data.geometry_pool
 
 
 logger = structlog.get_logger()
@@ -69,7 +72,7 @@ class FireRowRecord:
         cls,
         row: sqlite3.Row,
         *,
-        geometry_pool: peri_scribe.geo.geometry_pool.GeometryPool,
+        geometry_pool: spatial_data.geometry_pool.GeometryPool,
     ) -> FireRowRecord:
         """Return the row described by one record cache database row.
 

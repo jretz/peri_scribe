@@ -3,14 +3,14 @@
 import hypothesis.strategies
 import shapely
 
-import peri_scribe.models
+import spatial_data.layers
 import tests.helpers.factories.geography
 
 
 @hypothesis.strategies.composite
 def history_layers(
     draw: hypothesis.strategies.DrawFn,
-) -> list[peri_scribe.models.LayerData]:
+) -> list[spatial_data.layers.LayerData]:
     """Interleave cached fires across layers with missing geometry and empty histories.
 
     Args:
@@ -42,7 +42,7 @@ def history_layers(
         ),
     )
     return [
-        peri_scribe.models.LayerData(
+        spatial_data.layers.LayerData(
             name=name,
             dataframe=tests.helpers.factories.geography.geo_frame(
                 {

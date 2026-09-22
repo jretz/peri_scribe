@@ -4,40 +4,10 @@ from __future__ import annotations
 
 import io
 import json
-import pathlib
-import tempfile
-import typing
 import zipfile
 
-import peri_scribe.sources.buildings
 import peri_scribe.sources.catalog
 import tests.helpers.factories.peri_scribe.sources.external_source
-
-
-if typing.TYPE_CHECKING:
-    import numpy as np
-
-
-def write_database(points: np.ndarray, path: pathlib.Path) -> None:
-    """Build a compact buildings database at *path* holding *points*.
-
-    The points are appended to temporary partition files and processed through the
-    production database build, so the resulting file is a real compact database.
-
-    Args:
-        points: The ``(n, 2)`` longitude/latitude pairs in degrees.
-        path: The database path to write.
-    """
-    with tempfile.TemporaryDirectory() as temporary_directory:
-        partition_directory = pathlib.Path(temporary_directory)
-        with peri_scribe.sources.buildings.PartitionFiles(
-            partition_directory,
-        ) as partition_files:
-            peri_scribe.sources.buildings.append_centroids_to_partitions(
-                points,
-                partition_files,
-            )
-        peri_scribe.sources.buildings.build_tiles_database(partition_directory, path)
 
 
 def zip_bytes(members: dict[str, bytes]) -> bytes:
@@ -119,21 +89,3 @@ def buildings_fetch_page() -> str:
             links,
         )
     )
-
-
-# The encoded coordinate values the quantization tests expect.
-
-
-QUANTIZED_ONE_POINT_FIVE_DEGREES = 150_000
-
-
-QUANTIZED_NEGATIVE_HALF_DEGREE = -50_000
-
-
-QUANTIZED_FORTY_POINT_TWENTY_FIVE_DEGREES = 4_025_000
-
-
-QUANTIZED_NEGATIVE_NINETY_DEGREES = -9_000_000
-
-
-QUANTIZED_HALF_DEGREE = 50_000

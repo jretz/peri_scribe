@@ -17,8 +17,8 @@ import peri_scribe.exceptions
 import peri_scribe.geo.package
 import peri_scribe.geo.reading
 import peri_scribe.models
-import peri_scribe.output
 import peri_scribe.sources.feed_types
+import spatial_data.layers
 import tests.helpers.doubles.peri_scribe.geo.package
 import tests.helpers.factories.peri_scribe.geo.package
 import tests.helpers.factories.peri_scribe.models
@@ -401,9 +401,9 @@ def test_read_geopackage_cached_round_trips_memberships(
         "IsCpxChild": [1, 0],
     })
     dataframe.crs = pyproj.CRS.from_epsg(4326)
-    peri_scribe.output.write_geopackage(
+    spatial_data.layers.write_geopackage(
         path,
-        [peri_scribe.models.LayerData(name=feed.name, dataframe=dataframe)],
+        [spatial_data.layers.LayerData(name=feed.name, dataframe=dataframe)],
     )
     direct = peri_scribe.geo.package.read_geopackage(path)
     cached = peri_scribe.geo.reading.read_geopackage_cached(path)

@@ -13,13 +13,13 @@ import arcgis.features
 import arcgis.gis
 import structlog
 
+import arcgis_access.data
 import peri_scribe.concurrency
 import peri_scribe.exceptions
 import peri_scribe.fires.index
 import peri_scribe.geo.data
 import peri_scribe.logging
 import peri_scribe.models
-import peri_scribe.output
 import peri_scribe.paths
 import peri_scribe.phases
 import peri_scribe.sources.changes
@@ -27,6 +27,7 @@ import peri_scribe.sources.feed_state
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.feeds
 import peri_scribe.sources.snapshots
+import spatial_data.layers
 
 
 if typing.TYPE_CHECKING:
@@ -112,7 +113,7 @@ def fetch_feed_dataframe(
     )
     cutoff = peri_scribe.sources.changes.incremental_cutoff(existing, feed)
     where = peri_scribe.sources.feed_state.where_clause_for(change_columns, cutoff)
-    changed_ids = peri_scribe.geo.data.query_object_ids_with_retry(
+    changed_ids = arcgis_access.data.query_object_ids_with_retry(
         feed.name,
         layer,
         where=where,
@@ -123,7 +124,7 @@ def fetch_feed_dataframe(
     # the layer's full OBJECTID set against the stored set to catch them.
     stored_ids = peri_scribe.sources.feed_state.stored_object_ids(existing)
     layer_ids = set(
-        peri_scribe.geo.data.query_object_ids_with_retry(feed.name, layer, where="1=1"),
+        arcgis_access.data.query_object_ids_with_retry(feed.name, layer, where="1=1"),
     )
     missing_ids = sorted(layer_ids - stored_ids)
     if missing_ids:
@@ -146,7 +147,7 @@ def fetch_feed_dataframe(
     if active_ids and inactive_literals:
         # A source may flip a stored feature's status to inactive without updating its
         # modified timestamp, so re-check the stored-active features' statuses.
-        flipped_ids = peri_scribe.geo.data.query_object_ids_with_retry(
+        flipped_ids = arcgis_access.data.query_object_ids_with_retry(
             feed.name,
             layer,
             where=(
@@ -395,10 +396,10 @@ def fetch_feed_snapshot(
             rows=len(geodataframe),
             crs=geodataframe.crs,
         ):
-            peri_scribe.output.write_geopackage(
+            spatial_data.layers.write_geopackage(
                 output_path,
                 [
-                    peri_scribe.models.LayerData(
+                    spatial_data.layers.LayerData(
                         name=feed.name,
                         dataframe=geodataframe,
                     ),
@@ -574,8 +575,8 @@ def fetch_validation_feed(
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     logger.debug("Writing layer", feed=feed.name, path=output_path)
-    peri_scribe.output.write_geopackage(
+    spatial_data.layers.write_geopackage(
         output_path,
-        [peri_scribe.models.LayerData(name=feed.name, dataframe=geodataframe)],
+        [spatial_data.layers.LayerData(name=feed.name, dataframe=geodataframe)],
     )
     return FeedOutcome(path=output_path, changed=True)

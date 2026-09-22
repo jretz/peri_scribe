@@ -63,7 +63,7 @@ data source, it's fine to work with it in it's native form. But when deriving in
 DataFrames or arrays, they should use `pint` units as well.
 
 An exception to the ban on `from <module> import <name>` is the units registry. Use
-`from peri_scribe.units import units` everywhere.
+`from measurement_units import units` everywhere.
 
 ## Calling Functions and Methods
 

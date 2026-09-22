@@ -11,13 +11,13 @@ import pathlib
 
 import peri_scribe.exceptions
 import peri_scribe.fires.grouping
-import peri_scribe.geo.geometry_pool
 import peri_scribe.geo.package
 import peri_scribe.geo.reading
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.phases
 import peri_scribe.sources.snapshots
+import spatial_data.geometry_pool
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -43,7 +43,7 @@ class ReadFireSources:
 def read_fire_geopackage(
     path: pathlib.Path,
     *,
-    geometry_pool: peri_scribe.geo.geometry_pool.GeometryPool,
+    geometry_pool: spatial_data.geometry_pool.GeometryPool,
 ) -> peri_scribe.geo.package.GeopackageContents:
     """Read one GeoPackage, translating read failures into a readable message.
 
@@ -92,7 +92,7 @@ def read_fire_sources(directory: pathlib.Path) -> ReadFireSources:
     files = peri_scribe.sources.snapshots.geo_package_files(directory)
     read = functools.partial(
         read_fire_geopackage,
-        geometry_pool=peri_scribe.geo.geometry_pool.GeometryPool(),
+        geometry_pool=spatial_data.geometry_pool.GeometryPool(),
     )
     # GeoPackage reads release the GIL, so the files are read in parallel and the
     # results are collected in file order to keep rows, paths, and memberships aligned.

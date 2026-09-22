@@ -7,8 +7,8 @@ import pathlib
 import pytest
 
 import peri_scribe.geo.reading
-import peri_scribe.output
 import peri_scribe.sources.snapshots
+import spatial_data.layers
 import tests.helpers.doubles.peri_scribe.snapshot_storage
 
 
@@ -25,7 +25,7 @@ def geo_package_store(
         The store recording written GeoPackage layers.
     """
     store = tests.helpers.doubles.peri_scribe.snapshot_storage.GeoPackageStore()
-    monkeypatch.setattr(peri_scribe.output, "write_geopackage", store.write)
+    monkeypatch.setattr(spatial_data.layers, "write_geopackage", store.write)
     monkeypatch.setattr(
         peri_scribe.sources.snapshots,
         "existing_source_files",

@@ -8,8 +8,8 @@ import os
 import geopandas
 import shapely
 
-import peri_scribe.geo.spatial_reference
-from peri_scribe.units import units
+import spatial_data.reference
+from measurement_units import units
 
 
 # The distance around each fire geometry within which nearby buildings are counted.
@@ -62,16 +62,16 @@ def buffered_fire_geometries(
         return result
     metric = geopandas.GeoSeries(
         [geometry for _index, geometry in present],
-        crs=peri_scribe.geo.spatial_reference.WGS84_SPATIAL_REFERENCE,
-    ).to_crs(peri_scribe.geo.spatial_reference.WEB_MERCATOR_SPATIAL_REFERENCE)
+        crs=spatial_data.reference.WGS84_SPATIAL_REFERENCE,
+    ).to_crs(spatial_data.reference.WEB_MERCATOR_SPATIAL_REFERENCE)
     with concurrent.futures.ThreadPoolExecutor(
         max_workers=buffer_worker_count(),
     ) as executor:
         buffered_metric = list(executor.map(buffer_geometry, metric))
     buffered = geopandas.GeoSeries(
         buffered_metric,
-        crs=peri_scribe.geo.spatial_reference.WEB_MERCATOR_SPATIAL_REFERENCE,
-    ).to_crs(peri_scribe.geo.spatial_reference.WGS84_SPATIAL_REFERENCE)
+        crs=spatial_data.reference.WEB_MERCATOR_SPATIAL_REFERENCE,
+    ).to_crs(spatial_data.reference.WGS84_SPATIAL_REFERENCE)
     for (index, _geometry), buffered_geometry in zip(present, buffered, strict=True):
         result[index] = buffered_geometry
     return result

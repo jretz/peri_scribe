@@ -7,8 +7,8 @@ import typing
 
 import peri_scribe.perimeters.history_attributes
 import peri_scribe.perimeters.versions
-import peri_scribe.units
-from peri_scribe.units import units
+import spatial_data.measurements
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
@@ -53,7 +53,7 @@ def geometry_area(geometry: shapely.Geometry | None) -> pint.Quantity[float] | N
     """
     if geometry is None or geometry.is_empty:
         return None
-    return peri_scribe.units.area(geometry)
+    return spatial_data.measurements.area(geometry)
 
 
 def computed_area(attributes: dict[str, object]) -> pint.Quantity[float] | None:

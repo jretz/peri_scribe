@@ -2,188 +2,9 @@
 
 from __future__ import annotations
 
-import datetime
-import math
-
-import pytest
-
 import peri_scribe.kml.descriptions
-import tests.helpers.factories.peri_scribe.kml.descriptions
-from peri_scribe.units import units
-
-
-def test_format_number_returns_none_for_none() -> None:
-    assert peri_scribe.kml.descriptions.format_number(None) is None
-
-
-def test_format_number_rounds_to_whole_number() -> None:
-    assert peri_scribe.kml.descriptions.format_number(1234567.89) == "1,234,568"
-
-
-def test_format_number_keeps_decimal_places_and_separators() -> None:
-    assert peri_scribe.kml.descriptions.format_number(1234567.89, 2) == "1,234,567.89"
-
-
-def test_format_number_drops_trailing_zeros() -> None:
-    assert peri_scribe.kml.descriptions.format_number(6.0, 1) == "6"
-
-
-def test_format_area_returns_none_for_none() -> None:
-    assert peri_scribe.kml.descriptions.format_area(None) is None
-
-
-def test_format_area_uses_whole_acres_for_large_fires() -> None:
-    assert (
-        peri_scribe.kml.descriptions.format_area(102003.46 * units.acres)
-        == "102,003 acres"
-    )
-
-
-def test_format_area_uses_one_decimal_for_small_fires() -> None:
-    assert peri_scribe.kml.descriptions.format_area(6.5 * units.acres) == "6.5 acres"
-
-
-def test_format_area_uses_two_decimals_for_fractional_acres() -> None:
-    assert peri_scribe.kml.descriptions.format_area(0.017 * units.acres) == "0.02 acres"
-
-
-def test_format_percent_returns_none_for_none() -> None:
-    assert peri_scribe.kml.descriptions.format_percent(None) is None
-
-
-def test_format_percent_uses_whole_percent() -> None:
-    assert peri_scribe.kml.descriptions.format_percent(77.0) == "77%"
-
-
-def test_format_percent_uses_one_decimal_for_fractional_percent() -> None:
-    assert peri_scribe.kml.descriptions.format_percent(0.5) == "0.5%"
-
-
-def test_format_miles_returns_none_for_none() -> None:
-    assert peri_scribe.kml.descriptions.format_miles(None) is None
-
-
-def test_format_miles_adds_unit_and_one_decimal() -> None:
-    assert peri_scribe.kml.descriptions.format_miles(33.1 * units.miles) == "33.1 miles"
-
-
-def test_format_miles_drops_trailing_zero() -> None:
-    assert peri_scribe.kml.descriptions.format_miles(33.0 * units.miles) == "33 miles"
-
-
-def test_format_perimeter_length_returns_none_for_none() -> None:
-    assert peri_scribe.kml.descriptions.format_perimeter_length(None) is None
-
-
-def test_round_to_significant_digits_returns_zero_for_zero() -> None:
-    assert peri_scribe.kml.descriptions.round_to_significant_digits(
-        0.0,
-        3,
-    ) == pytest.approx(0.0)
-
-
-def test_round_to_significant_digits_rounds_to_requested_digits() -> None:
-    assert peri_scribe.kml.descriptions.round_to_significant_digits(
-        1234.0,
-        3,
-    ) == pytest.approx(1230.0)
-
-
-def test_format_perimeter_length_keeps_one_decimal_for_small_lengths() -> None:
-    assert (
-        peri_scribe.kml.descriptions.format_perimeter_length(0.1499 * units.miles)
-        == "0.1"
-    )
-    assert (
-        peri_scribe.kml.descriptions.format_perimeter_length(math.pi * units.miles)
-        == "3.1"
-    )
-
-
-def test_format_perimeter_length_caps_significant_digits() -> None:
-    assert (
-        peri_scribe.kml.descriptions.format_perimeter_length(123.6 * units.miles)
-        == "124"
-    )
-    assert (
-        peri_scribe.kml.descriptions.format_perimeter_length(5678.123 * units.miles)
-        == "5,680"
-    )
-
-
-def test_format_miles_caps_large_lengths_to_three_significant_digits() -> None:
-    assert peri_scribe.kml.descriptions.format_miles(123.6 * units.miles) == "124 miles"
-    assert (
-        peri_scribe.kml.descriptions.format_miles(5678.123 * units.miles)
-        == "5,680 miles"
-    )
-
-
-def test_format_miles_keeps_small_lengths_at_one_decimal() -> None:
-    assert (
-        peri_scribe.kml.descriptions.format_miles(0.1499 * units.miles) == "0.1 miles"
-    )
-    assert (
-        peri_scribe.kml.descriptions.format_miles(math.pi * units.miles) == "3.1 miles"
-    )
-
-
-def test_format_containment_returns_none_without_percent() -> None:
-    assert (
-        peri_scribe.kml.descriptions.format_containment(None, 33.1 * units.miles)
-        is None
-    )
-
-
-def test_format_containment_uses_bare_percent_without_length() -> None:
-    assert peri_scribe.kml.descriptions.format_containment(68.0, None) == "68%"
-
-
-def test_format_containment_annotates_contained_length() -> None:
-    assert (
-        peri_scribe.kml.descriptions.format_containment(68.0, 33.1 * units.miles)
-        == "68% (22.5 of 33.1 miles)"
-    )
-
-
-def test_format_containment_drops_annotation_at_full_containment() -> None:
-    assert (
-        peri_scribe.kml.descriptions.format_containment(100.0, 33.1 * units.miles)
-        == "100%"
-    )
-
-
-def test_format_cost_returns_none_for_none() -> None:
-    assert peri_scribe.kml.descriptions.format_cost(None) is None
-
-
-def test_format_cost_adds_dollar_sign_and_separators() -> None:
-    assert (
-        peri_scribe.kml.descriptions.format_cost(104_600_000.0 * units.dollars)
-        == "$104,600,000"
-    )
-
-
-def test_format_personnel_count_returns_none_for_none() -> None:
-    assert peri_scribe.kml.descriptions.format_personnel_count(None) is None
-
-
-def test_format_personnel_count_uses_whole_numbers_with_separators() -> None:
-    assert peri_scribe.kml.descriptions.format_personnel_count(1234.0) == "1,234"
-
-
-def test_format_pacific_time_returns_none_for_none() -> None:
-    assert peri_scribe.kml.descriptions.format_pacific_time(None) is None
-
-
-def test_format_pacific_time_marks_pacific_daylight_time() -> None:
-    value = datetime.datetime(2026, 8, 5, 20, 30, tzinfo=datetime.UTC)
-    assert peri_scribe.kml.descriptions.format_pacific_time(value) == "08/05 13:30 PDT"
-
-
-def test_format_pacific_time_marks_pacific_standard_time() -> None:
-    value = datetime.datetime(2026, 1, 15, 20, 30, tzinfo=datetime.UTC)
-    assert peri_scribe.kml.descriptions.format_pacific_time(value) == "01/15 12:30 PST"
+import peri_scribe.presentation.descriptions
+import tests.helpers.factories.peri_scribe.presentation.descriptions
 
 
 def test_escape_html_text_escapes_html_characters() -> None:
@@ -192,60 +13,9 @@ def test_escape_html_text_escapes_html_characters() -> None:
     )
 
 
-def test_description_rows_includes_every_present_value() -> None:
-    assert peri_scribe.kml.descriptions.description_rows(
-        tests.helpers.factories.peri_scribe.kml.descriptions.full_description(),
-    ) == [
-        ("Area", "102,003 acres"),
-        ("Exterior perimeter", "33.1 miles"),
-        ("Containment", "77% (25.5 of 33.1 miles)"),
-        ("Cost to date", "$104,600,000"),
-        ("Estimated final cost", "$120,000,000"),
-        ("Personnel", "1,234"),
-        ("Source", "FIRIS / NIFC"),
-        ("Identifier", "2026-cabug-000001"),
-        ("Mission", "CA-BUG-000001"),
-        ("Protecting unit", "CALMU"),
-        ("Discovery", "06/29 05:04 PDT"),
-        ("Last update", "08/01 22:30 PDT"),
-        ("Initial response", "07/27 12:24 PDT"),
-        ("Incident type", "Wildfire"),
-        ("Incident complexity", "Type 3 Incident; Type 4 Incident; Type 3 Team"),
-        ("Fuel model", "Timber (Litter and Understory); Brush (2 feet); GS1; Grass"),
-        ("Fire behavior", "Active; Creeping; Smoldering"),
-        ("Landowner category", "Federal"),
-        ("Of note", "Over 100,000 acres, and a Type 1 Incident."),
-    ]
-
-
-def test_description_rows_returns_none_for_missing_values() -> None:
-    description = peri_scribe.kml.descriptions.FireDescription()
-    assert peri_scribe.kml.descriptions.description_rows(description) == [
-        ("Area", None),
-        ("Exterior perimeter", None),
-        ("Containment", None),
-        ("Cost to date", None),
-        ("Estimated final cost", None),
-        ("Personnel", None),
-        ("Source", None),
-        ("Identifier", None),
-        ("Mission", None),
-        ("Protecting unit", None),
-        ("Discovery", None),
-        ("Last update", None),
-        ("Initial response", None),
-        ("Incident type", None),
-        ("Incident complexity", None),
-        ("Fuel model", None),
-        ("Fire behavior", None),
-        ("Landowner category", None),
-        ("Of note", None),
-    ]
-
-
 def test_description_html_wraps_table_in_cdata() -> None:
     html = peri_scribe.kml.descriptions.description_html(
-        tests.helpers.factories.peri_scribe.kml.descriptions.full_description(),
+        tests.helpers.factories.peri_scribe.presentation.descriptions.full_description(),
     )
     assert html.startswith("<![CDATA[")
     assert html.endswith("]]>")
@@ -257,7 +27,7 @@ def test_description_html_wraps_table_in_cdata() -> None:
 
 def test_description_html_sizes_the_text() -> None:
     html = peri_scribe.kml.descriptions.description_html(
-        tests.helpers.factories.peri_scribe.kml.descriptions.full_description(),
+        tests.helpers.factories.peri_scribe.presentation.descriptions.full_description(),
     )
     body_size = peri_scribe.kml.descriptions.BODY_FONT_SIZE.magnitude
     assert (
@@ -268,7 +38,7 @@ def test_description_html_sizes_the_text() -> None:
 
 def test_description_html_alternates_row_backgrounds() -> None:
     html = peri_scribe.kml.descriptions.description_html(
-        tests.helpers.factories.peri_scribe.kml.descriptions.full_description(),
+        tests.helpers.factories.peri_scribe.presentation.descriptions.full_description(),
     )
     color = peri_scribe.kml.descriptions.ALT_ROW_BACKGROUND_COLOR
     background = f'<tr style="background-color:{color};"'
@@ -280,7 +50,7 @@ def test_description_html_alternates_row_backgrounds() -> None:
 
 def test_description_html_leads_with_given_rows() -> None:
     html = peri_scribe.kml.descriptions.description_html(
-        tests.helpers.factories.peri_scribe.kml.descriptions.full_description(),
+        tests.helpers.factories.peri_scribe.presentation.descriptions.full_description(),
         leading_rows=((peri_scribe.kml.descriptions.ADDED_AREA_LABEL, "8,523 acres"),),
     )
     color = peri_scribe.kml.descriptions.ALT_ROW_BACKGROUND_COLOR
@@ -295,7 +65,7 @@ def test_description_html_leads_with_given_rows() -> None:
 
 def test_description_html_continues_row_alternation_after_leading_rows() -> None:
     html = peri_scribe.kml.descriptions.description_html(
-        tests.helpers.factories.peri_scribe.kml.descriptions.full_description(),
+        tests.helpers.factories.peri_scribe.presentation.descriptions.full_description(),
         leading_rows=(
             (peri_scribe.kml.descriptions.ADDED_AREA_LABEL, "0.5 acres"),
             ("Earlier note", "yes"),
@@ -309,15 +79,15 @@ def test_description_html_continues_row_alternation_after_leading_rows() -> None
 
 
 def test_description_html_shows_hyphens_for_missing_values() -> None:
-    description = peri_scribe.kml.descriptions.FireDescription()
+    description = peri_scribe.presentation.descriptions.FireDescription()
     html = peri_scribe.kml.descriptions.description_html(description)
-    missing_rows = peri_scribe.kml.descriptions.description_rows(description)
+    missing_rows = peri_scribe.presentation.descriptions.description_rows(description)
     assert html.count("<td>--</td>") == len(missing_rows)
 
 
 def test_description_html_shows_hyphens_for_missing_leading_values() -> None:
     html = peri_scribe.kml.descriptions.description_html(
-        tests.helpers.factories.peri_scribe.kml.descriptions.full_description(),
+        tests.helpers.factories.peri_scribe.presentation.descriptions.full_description(),
         leading_rows=((peri_scribe.kml.descriptions.ADDED_AREA_LABEL, None),),
     )
     assert html.index("<td><b>Added area</b></td>") < html.index("<td>--</td>")
@@ -325,7 +95,7 @@ def test_description_html_shows_hyphens_for_missing_leading_values() -> None:
 
 def test_description_html_includes_images_after_table() -> None:
     html = peri_scribe.kml.descriptions.description_html(
-        tests.helpers.factories.peri_scribe.kml.descriptions.full_description(),
+        tests.helpers.factories.peri_scribe.presentation.descriptions.full_description(),
         ("id-bug-area.png", "id-bug-cost.png"),
     )
     assert html.index("</table>") < html.index("id-bug-area.png")
@@ -335,7 +105,7 @@ def test_description_html_includes_images_after_table() -> None:
 
 def test_description_html_escapes_image_filenames() -> None:
     html = peri_scribe.kml.descriptions.description_html(
-        tests.helpers.factories.peri_scribe.kml.descriptions.full_description(),
+        tests.helpers.factories.peri_scribe.presentation.descriptions.full_description(),
         ('a&b"c.png',),
     )
     assert '<img src="a&amp;b&quot;c.png" />' in html

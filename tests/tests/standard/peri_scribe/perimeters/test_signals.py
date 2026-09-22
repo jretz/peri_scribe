@@ -10,7 +10,7 @@ import shapely.geometry
 import peri_scribe.perimeters.classification_data
 import peri_scribe.perimeters.signals
 import tests.helpers.factories.peri_scribe.perimeters.signals
-from peri_scribe.units import units
+from measurement_units import units
 
 
 def test_geometry_signal_inside_california(

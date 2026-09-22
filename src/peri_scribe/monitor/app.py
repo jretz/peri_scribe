@@ -31,7 +31,7 @@ import peri_scribe.monitor.theme
 import peri_scribe.monitor.widgets
 import peri_scribe.paths
 import peri_scribe.phases
-from peri_scribe.units import units
+from measurement_units import units
 
 
 POLL_INTERVAL = 500 * units.milliseconds

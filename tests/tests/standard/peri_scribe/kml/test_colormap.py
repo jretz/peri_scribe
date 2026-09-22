@@ -9,7 +9,7 @@ import pytest
 import peri_scribe.kml.colormap
 import tests.helpers.factories.peri_scribe.kml.colormap
 import tests.helpers.peri_scribe.kml.colormap
-from peri_scribe.units import units
+from measurement_units import units
 
 
 def test_turbo_colormap_keeps_the_full_table() -> None:

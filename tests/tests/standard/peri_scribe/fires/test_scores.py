@@ -13,16 +13,16 @@ import pytest
 
 import peri_scribe.fires.identity
 import peri_scribe.fires.scores
-import peri_scribe.sources.buildings
 import peri_scribe.sources.catalog
 import peri_scribe.sources.external_data
-import peri_scribe.units
+import spatial_data.measurements
+import spatial_data.point_store
 import tests.helpers.doubles.peri_scribe.fires.scores
 import tests.helpers.factories.geography
 import tests.helpers.factories.geometry
 import tests.helpers.factories.peri_scribe.fires.scores
 import tests.helpers.factories.time
-from peri_scribe.units import units
+from measurement_units import units
 
 
 def test_latest_snapshot_layer_returns_none_without_layer_name() -> None:
@@ -86,9 +86,9 @@ def test_score_fires_writes_current_scores(
                 "fire_name": "Bug",
                 "fire_identifier": "2026-a",
                 "area_acres": 120_000.0,
-                "geometry_area_square_meters": (
-                    120_000.0 * peri_scribe.units.units.acres
-                ).m_as("meters**2"),
+                "geometry_area_square_meters": (120_000.0 * units.acres).m_as(
+                    "meters**2",
+                ),
                 "area_acres_differential": 0.0,
                 "observation_time": datetime.datetime(2026, 8, 1),
             },
@@ -96,7 +96,7 @@ def test_score_fires_writes_current_scores(
         [tests.helpers.factories.geometry.square(0.01)],
     )
     perimeters = perimeters.assign(
-        geometry_area_square_meters=(120_000.0 * peri_scribe.units.units.acres).m_as(
+        geometry_area_square_meters=(120_000.0 * units.acres).m_as(
             "meters**2",
         ),
     )
@@ -137,9 +137,9 @@ def test_score_fires_streams_external_signals(
                 "fire_name": "Bug",
                 "fire_identifier": "2026-a",
                 "area_acres": 120_000.0,
-                "geometry_area_square_meters": (
-                    120_000.0 * peri_scribe.units.units.acres
-                ).m_as("meters**2"),
+                "geometry_area_square_meters": (120_000.0 * units.acres).m_as(
+                    "meters**2",
+                ),
                 "area_acres_differential": 0.0,
                 "observation_time": datetime.datetime(2026, 8, 1),
             },
@@ -147,7 +147,7 @@ def test_score_fires_streams_external_signals(
         [tests.helpers.factories.geometry.square(0.01)],
     )
     perimeters = perimeters.assign(
-        geometry_area_square_meters=(120_000.0 * peri_scribe.units.units.acres).m_as(
+        geometry_area_square_meters=(120_000.0 * units.acres).m_as(
             "meters**2",
         ),
     )
@@ -168,14 +168,14 @@ def test_score_fires_streams_external_signals(
     buildings_path.parent.mkdir(parents=True)
     with tempfile.TemporaryDirectory() as temporary_directory:
         partition_directory = pathlib.Path(temporary_directory)
-        with peri_scribe.sources.buildings.PartitionFiles(
+        with spatial_data.point_store.PartitionFiles(
             partition_directory,
         ) as partition_files:
-            peri_scribe.sources.buildings.append_centroids_to_partitions(
+            spatial_data.point_store.append_centroids_to_partitions(
                 np.asarray([[0.0, 0.0]] * 5),
                 partition_files,
             )
-        peri_scribe.sources.buildings.build_tiles_database(
+        spatial_data.point_store.build_tiles_database(
             partition_directory,
             buildings_path,
         )
@@ -219,9 +219,9 @@ def test_score_fires_sorts_entries_by_score_descending(
                 "fire_name": "Big",
                 "fire_identifier": "2026-a",
                 "area_acres": 120_000.0,
-                "geometry_area_square_meters": (
-                    120_000.0 * peri_scribe.units.units.acres
-                ).m_as("meters**2"),
+                "geometry_area_square_meters": (120_000.0 * units.acres).m_as(
+                    "meters**2",
+                ),
                 "area_acres_differential": 0.0,
                 "observation_time": datetime.datetime(2026, 8, 1),
             },
@@ -350,7 +350,9 @@ def test_displayed_areas_prefers_latest_perimeter_measured_area() -> None:
     area = areas[0]
     assert area is not None
     assert area.m_as("acres") == pytest.approx(
-        peri_scribe.units.area(tests.helpers.factories.geometry.square(0.02)).m_as(
+        spatial_data.measurements.area(
+            tests.helpers.factories.geometry.square(0.02),
+        ).m_as(
             "acres",
         ),
     )

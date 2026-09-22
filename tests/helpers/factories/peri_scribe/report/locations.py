@@ -6,7 +6,7 @@ import geopandas
 import pyproj
 import shapely
 
-from peri_scribe.units import units
+from measurement_units import units
 
 
 GEODESIC = pyproj.Geod(ellps="WGS84")

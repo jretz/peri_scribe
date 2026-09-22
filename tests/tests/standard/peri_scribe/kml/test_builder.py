@@ -3,23 +3,28 @@
 from __future__ import annotations
 
 import datetime
+import io
 import pathlib
+import typing
 import zipfile
 
 import pytest
 import shapely.geometry
 import time_machine
 
+import kml_io.kmz
 import peri_scribe.fires.files
 import peri_scribe.fires.index
 import peri_scribe.fires.score_files
-import peri_scribe.geo.reading
 import peri_scribe.kml.builder
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.icons
+import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.paths
+import peri_scribe.phases
 import peri_scribe.publication
+import spatial_data.layers
 import tests.helpers.assertions.peri_scribe.kml.parsing
 import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.kml.builder
@@ -29,6 +34,48 @@ import tests.helpers.factories.peri_scribe.kml.builder
 import tests.helpers.factories.peri_scribe.kml.parsing
 import tests.helpers.factories.time
 import tests.helpers.peri_scribe.kml.parsing
+
+
+if typing.TYPE_CHECKING:
+    import structlog.testing
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_write_kmz_document_records_nested_build_phase_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+    log_output: structlog.testing.LogCapture,
+    *,
+    fail: bool,
+) -> None:
+    scores = peri_scribe.models.FireScores(version="test", fires=[])
+    if fail:
+        monkeypatch.setattr(
+            peri_scribe.kml.builder,
+            "write_fire_kml",
+            tests.helpers.doubles.errors.raising_stub(OSError("rendering failed")),
+        )
+    with (
+        io.StringIO() as stream,
+        peri_scribe.logging.log_phase(
+            peri_scribe.phases.Phase.SERIALIZE_AND_WRITE_KMZ,
+        ),
+    ):
+        if fail:
+            with pytest.raises(OSError, match="rendering failed"):
+                peri_scribe.kml.builder.write_kmz_document(
+                    [],
+                    "Map",
+                    stream,
+                    scores=scores,
+                )
+        else:
+            peri_scribe.kml.builder.write_kmz_document([], "Map", stream, scores=scores)
+    entries = [
+        entry for entry in log_output.entries if entry.get("phase") == "build-kml"
+    ]
+    assert [entry["event"] for entry in entries] == ["Starting phase", "Finished phase"]
+    assert entries[-1]["status"] == ("failed" if fail else "completed")
+    assert entries[-1]["phase_path"] == "serialize-and-write-kmz.build-kml"
 
 
 def test_fire_kml_names_the_document() -> None:
@@ -176,7 +223,6 @@ def test_fire_kml_ranks_growth_with_a_missing_baseline_geometry() -> None:
         perimeters,
         perimeters.iloc[0:0],
         perimeters.iloc[0:0],
-        render_plots=False,
     )
     with time_machine.travel(latest_time):
         document = tests.helpers.peri_scribe.kml.parsing.document_from(
@@ -661,32 +707,6 @@ def test_fire_kml_shows_derived_point_for_inactive_fire_without_location() -> No
     )
 
 
-def test_write_archive_writes_compressed_document(tmp_path: pathlib.Path) -> None:
-    path = tmp_path / "output.kmz"
-    peri_scribe.kml.builder.write_archive(
-        path,
-        lambda stream: stream.write("<kml/>"),
-        None,
-    )
-    with zipfile.ZipFile(path) as archive:
-        assert archive.read("doc.kml") == b"<kml/>"
-        assert archive.getinfo("doc.kml").compress_type == zipfile.ZIP_DEFLATED
-
-
-def test_write_archive_writes_images(tmp_path: pathlib.Path) -> None:
-    path = tmp_path / "output.kmz"
-    images = {"area.png": b"\x89PNG\r\n\x1a\n", "area.svg": b"<svg/>"}
-    peri_scribe.kml.builder.write_archive(
-        path,
-        lambda stream: stream.write("<kml/>"),
-        images,
-    )
-    with zipfile.ZipFile(path) as archive:
-        assert {name: archive.read(name) for name in images} == images
-        assert archive.getinfo("area.png").compress_type == zipfile.ZIP_STORED
-        assert archive.getinfo("area.svg").compress_type == zipfile.ZIP_DEFLATED
-
-
 def test_create_kmz_reads_history_and_writes_kmz(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -728,10 +748,10 @@ def test_create_kmz_reads_history_and_writes_kmz(
         )
     )
 
-    monkeypatch.setattr(peri_scribe.geo.reading, "read_layer", read_layer)
+    monkeypatch.setattr(spatial_data.layers, "read_layer", read_layer)
     writes: list[tuple[pathlib.Path, str, dict[str, bytes]]] = []
     monkeypatch.setattr(
-        peri_scribe.kml.builder,
+        kml_io.kmz,
         "write_kmz",
         lambda path, render, images: writes.append((
             path,
@@ -802,10 +822,10 @@ def test_create_kmz_excludes_fires_without_qualifying_area(
         )
     )
 
-    monkeypatch.setattr(peri_scribe.geo.reading, "read_layer", read_layer)
+    monkeypatch.setattr(spatial_data.layers, "read_layer", read_layer)
     writes: list[tuple[pathlib.Path, str, dict[str, bytes]]] = []
     monkeypatch.setattr(
-        peri_scribe.kml.builder,
+        kml_io.kmz,
         "write_kmz",
         lambda path, render, images: writes.append((
             path,
@@ -820,70 +840,6 @@ def test_create_kmz_excludes_fires_without_qualifying_area(
     assert "Bug" in kml_text
     assert "Tiny" not in kml_text
     assert not any(filename.startswith("id-tiny") for filename in images)
-
-
-def test_area_qualified_index_includes_independent_incident_history() -> None:
-    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
-        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
-            "Example",
-            "active",
-            identifier="example",
-        ),
-    ])
-    empty = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([])
-    incidents = tests.helpers.factories.geography.geo_frame(
-        {
-            "fire_identifier": ["example"],
-            "fire_name": ["Example"],
-            "observation_time": [tests.helpers.factories.time.utc(2026, 9, 1, 0)],
-            "incident_size": [100],
-            "report_confirmed": [False],
-        },
-        [None],
-    )
-    assert (
-        peri_scribe.kml.builder.area_qualified_index(index, empty, empty, incidents)
-        == index
-    )
-
-
-def test_kmz_atomic_replacement_and_failed_write_preserve_complete_file(
-    tmp_path: pathlib.Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    output = tmp_path / "maps/output.kmz"
-    peri_scribe.kml.builder.write_kmz(
-        output,
-        lambda stream: stream.write("<kml>old</kml>"),
-    )
-    previous = output.read_bytes()
-
-    fail_after_partial_write = (
-        tests.helpers.doubles.peri_scribe.kml.builder.make_interrupted_archive_writer(
-            output=output,
-            previous=previous,
-        )
-    )
-
-    with monkeypatch.context() as patch:
-        patch.setattr(
-            peri_scribe.kml.builder,
-            "write_archive",
-            fail_after_partial_write,
-        )
-        with pytest.raises(OSError, match="disk failure"):
-            peri_scribe.kml.builder.write_kmz(
-                output,
-                lambda stream: stream.write("<kml>new</kml>"),
-            )
-    assert output.read_bytes() == previous
-    assert list(output.parent.iterdir()) == [output]
-    peri_scribe.kml.builder.write_kmz(
-        output,
-        lambda stream: stream.write("<kml>new</kml>"),
-    )
-    with zipfile.ZipFile(output) as archive:
-        assert archive.read("doc.kml") == b"<kml>new</kml>"
 
 
 @pytest.mark.parametrize("fail", [False, True])
@@ -904,7 +860,7 @@ def test_create_kmz_advances_checkpoint_only_after_file_completion(
         lambda _year: None,
     )
     monkeypatch.setattr(
-        peri_scribe.geo.reading,
+        spatial_data.layers,
         "read_layer",
         lambda *_args: empty,
     )
@@ -913,7 +869,7 @@ def test_create_kmz_advances_checkpoint_only_after_file_completion(
     checkpoint.write_bytes(b"previous checkpoint")
     if fail:
         monkeypatch.setattr(
-            peri_scribe.kml.builder,
+            kml_io.kmz,
             "write_kmz",
             tests.helpers.doubles.errors.raising_stub(OSError("disk failure")),
         )
@@ -928,32 +884,3 @@ def test_create_kmz_advances_checkpoint_only_after_file_completion(
         assert published.fires == {}
         with zipfile.ZipFile(output) as archive:
             assert b"PeriScribe Fires 2026" in archive.read("doc.kml")
-
-
-def test_write_kmz_uses_zip_2_0_for_reader_compatibility(
-    tmp_path: pathlib.Path,
-) -> None:
-    output = tmp_path / "fires.kmz"
-    peri_scribe.kml.builder.write_kmz(
-        output,
-        lambda stream: stream.write("<kml/>"),
-        {"plot.png": b"plot image"},
-    )
-    with zipfile.ZipFile(output) as archive:
-        zip_2_0 = 20
-        assert all(member.extract_version <= zip_2_0 for member in archive.infolist())
-
-
-def test_write_kmz_preserves_public_archive_after_serialization_failure(
-    tmp_path: pathlib.Path,
-) -> None:
-    output = tmp_path / "fires.kmz"
-    peri_scribe.kml.builder.write_kmz(output, lambda stream: stream.write("<kml/>"))
-    previous = output.read_bytes()
-    with pytest.raises(ValueError, match="serialization failed"):
-        peri_scribe.kml.builder.write_kmz(
-            output,
-            tests.helpers.doubles.peri_scribe.kml.builder.interrupted_document,
-        )
-    assert output.read_bytes() == previous
-    assert list(tmp_path.iterdir()) == [output]

@@ -6,7 +6,7 @@ import peri_scribe.monitor.events
 import peri_scribe.monitor.model
 import peri_scribe.phases
 import tests.helpers.factories.peri_scribe.monitor.events
-from peri_scribe.units import units
+from measurement_units import units
 
 
 def test_append_records_keeps_overlapping_commands_separate() -> None:

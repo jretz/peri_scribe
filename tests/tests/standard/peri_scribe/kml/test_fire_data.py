@@ -11,143 +11,14 @@ import peri_scribe.kml.colormap
 import peri_scribe.kml.fire_data
 import peri_scribe.models
 import peri_scribe.perimeters.progression
-import peri_scribe.units
+import peri_scribe.presentation.fire_data
+import spatial_data.measurements
 import tests.helpers.doubles.peri_scribe.kml.fire_data
 import tests.helpers.factories.geography
 import tests.helpers.factories.geometry
-import tests.helpers.factories.peri_scribe.kml.fire_data
 import tests.helpers.factories.peri_scribe.kml.parsing
+import tests.helpers.factories.peri_scribe.presentation.fire_data
 import tests.helpers.factories.time
-
-
-def test_fire_perimeters_matches_identifier() -> None:
-    perimeters = (
-        tests.helpers.factories.peri_scribe.kml.parsing.perimeter_with_time(
-            tests.helpers.factories.geometry.square(1.0),
-        ),
-        tests.helpers.factories.peri_scribe.kml.parsing.perimeter_with_time(
-            tests.helpers.factories.geometry.square(2.0),
-        ),
-    )
-    result = peri_scribe.kml.fire_data.fire_perimeters(
-        frozenset({"id-a"}),
-        "Bug",
-        {"id-a": list(perimeters)},
-        {},
-    )
-    assert result == perimeters
-
-
-def test_fire_perimeters_falls_back_to_name() -> None:
-    perimeters = (
-        tests.helpers.factories.peri_scribe.kml.parsing.perimeter_with_time(
-            tests.helpers.factories.geometry.square(1.0),
-        ),
-    )
-    result = peri_scribe.kml.fire_data.fire_perimeters(
-        frozenset(),
-        "Bug",
-        {},
-        {"Bug": list(perimeters)},
-    )
-    assert result == perimeters
-
-
-def test_fire_perimeters_returns_empty_when_unknown() -> None:
-    assert (
-        peri_scribe.kml.fire_data.fire_perimeters(frozenset({"id-a"}), "Bug", {}, {})
-        == ()
-    )
-
-
-def test_fire_geometries_matches_aliases_and_sorts_by_name() -> None:
-    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
-        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
-            "Sorrento",
-            "active",
-            identifier="2026-casnd-150541",
-            aliases=["2026-casnd-26150541"],
-        ),
-        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
-            "Bug",
-            "inactive",
-            identifier="id-bug",
-        ),
-    ])
-    sorrento_perimeter = tests.helpers.factories.geometry.square(3.0)
-    perimeters = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([
-        ("2026-casnd-26150541", "Sorrento", sorrento_perimeter),
-        ("id-bug", "Bug", tests.helpers.factories.geometry.square(1.0)),
-    ])
-    bug_point = shapely.geometry.Point(1.0, 1.0)
-    points = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([
-        ("id-bug", "Bug", bug_point),
-    ])
-    fires = peri_scribe.kml.fire_data.fire_geometries(
-        index,
-        perimeters,
-        points,
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-    )
-    assert [fire.name for fire in fires] == ["Bug", "Sorrento"]
-    bug, sorrento = fires
-    assert bug.status is peri_scribe.models.FireStatus.INACTIVE
-    assert bug.point is bug_point
-    assert bug.perimeters == (
-        tests.helpers.factories.peri_scribe.kml.parsing.perimeter_with_time(
-            tests.helpers.factories.geometry.square(1.0),
-        ),
-    )
-    assert sorrento.status is peri_scribe.models.FireStatus.ACTIVE
-    assert sorrento.point == sorrento_perimeter.representative_point()
-    assert sorrento.perimeters == (
-        tests.helpers.factories.peri_scribe.kml.parsing.perimeter_with_time(
-            sorrento_perimeter,
-        ),
-    )
-
-
-def test_fire_geometries_derives_point_for_inactive_fire_without_location() -> None:
-    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
-        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
-            "ALTA",
-            "inactive",
-            identifier="id-alta",
-        ),
-    ])
-    perimeter = tests.helpers.factories.geometry.square(2.0)
-    fires = peri_scribe.kml.fire_data.fire_geometries(
-        index,
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([
-            ("id-alta", "ALTA", perimeter),
-        ]),
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-    )
-    (fire,) = fires
-    assert fire.status is peri_scribe.models.FireStatus.INACTIVE
-    assert fire.point == perimeter.representative_point()
-    assert fire.perimeters == (
-        tests.helpers.factories.peri_scribe.kml.parsing.perimeter_with_time(perimeter),
-    )
-
-
-def test_fire_geometries_sorts_by_case_folded_name() -> None:
-    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
-        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
-            name,
-            "active",
-            identifier=f"id-{name}",
-        )
-        for name in ("aB", "Ac", "AD", "ae")
-    ])
-    fires = peri_scribe.kml.fire_data.fire_geometries(
-        index,
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-    )
-    assert [fire.name for fire in fires] == ["aB", "Ac", "AD", "ae"]
 
 
 def test_fire_geometries_attaches_plot_images() -> None:
@@ -184,37 +55,6 @@ def test_fire_geometries_attaches_plot_images() -> None:
     assert fire.description.identifier == "id-bug"
 
 
-def test_fire_geometries_skips_plot_images_when_render_plots_is_false() -> None:
-    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
-        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
-            "Bug",
-            "active",
-            identifier="id-bug",
-        ),
-    ])
-    perimeters = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame(
-        [
-            ("id-bug", "Bug", tests.helpers.factories.geometry.square(1.0)),
-            ("id-bug", "Bug", tests.helpers.factories.geometry.square(2.0)),
-        ],
-        observation_times=[
-            datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC),
-            datetime.datetime(2026, 8, 6, 20, 0, tzinfo=datetime.UTC),
-        ],
-    )
-    fires = peri_scribe.kml.fire_data.fire_geometries(
-        index,
-        perimeters,
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-        render_plots=False,
-    )
-    (fire,) = fires
-    assert fire.images == ()
-    assert fire.description is not None
-    assert fire.description.identifier == "id-bug"
-
-
 def test_fire_geometries_matches_identifier_less_fire_by_name() -> None:
     index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
         tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
@@ -224,8 +64,12 @@ def test_fire_geometries_matches_identifier_less_fire_by_name() -> None:
     ])
     # The fire has no identifier, yet its history rows carry one; the name match must
     # still include those rows for the plots and description.
-    first_area = peri_scribe.units.area(tests.helpers.factories.geometry.square(1.0))
-    second_area = peri_scribe.units.area(tests.helpers.factories.geometry.square(2.0))
+    first_area = spatial_data.measurements.area(
+        tests.helpers.factories.geometry.square(1.0),
+    )
+    second_area = spatial_data.measurements.area(
+        tests.helpers.factories.geometry.square(2.0),
+    )
     perimeters = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame(
         [
             ("id-bug", "Bug", tests.helpers.factories.geometry.square(1.0)),
@@ -252,196 +96,6 @@ def test_fire_geometries_matches_identifier_less_fire_by_name() -> None:
     )
 
 
-def test_fire_geometries_puts_score_explanation_in_balloon() -> None:
-    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
-        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
-            "Bug",
-            "active",
-            identifier="id-bug",
-        ),
-    ])
-    perimeters = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([
-        ("id-bug", "Bug", tests.helpers.factories.geometry.square(1.0)),
-    ])
-    scores = peri_scribe.models.FireScores(
-        version="test",
-        fires=[
-            peri_scribe.models.FireScoreEntry(
-                name="Bug",
-                identifier="id-bug",
-                score=389,
-                explanation="Over 100,000 acres, and a Type 1 Incident.",
-            ),
-        ],
-    )
-    (with_scores,) = peri_scribe.kml.fire_data.fire_geometries(
-        index,
-        perimeters,
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-        scores=scores,
-    )
-    assert with_scores.description is not None
-    assert (
-        with_scores.description.of_note == "Over 100,000 acres, and a Type 1 Incident."
-    )
-    (without_scores,) = peri_scribe.kml.fire_data.fire_geometries(
-        index,
-        perimeters,
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-    )
-    assert without_scores.description is not None
-    assert without_scores.description.of_note is None
-
-
-def test_fire_geometries_marks_type_one_incident_from_point_rows() -> None:
-    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
-        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
-            "Bug",
-            "active",
-            identifier="id-bug",
-        ),
-    ])
-    perimeters = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([
-        ("id-bug", "Bug", tests.helpers.factories.geometry.square(1.0)),
-    ])
-
-    (fire,) = peri_scribe.kml.fire_data.fire_geometries(
-        index,
-        perimeters,
-        tests.helpers.factories.peri_scribe.kml.fire_data.type_one_point_frame(
-            "Type 1 Incident",
-        ),
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-    )
-
-    assert fire.type_one
-
-
-def test_fire_geometries_leaves_lower_complexity_fire_unmarked() -> None:
-    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
-        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
-            "Bug",
-            "active",
-            identifier="id-bug",
-        ),
-    ])
-    perimeters = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([
-        ("id-bug", "Bug", tests.helpers.factories.geometry.square(1.0)),
-    ])
-
-    (fire,) = peri_scribe.kml.fire_data.fire_geometries(
-        index,
-        perimeters,
-        tests.helpers.factories.peri_scribe.kml.fire_data.type_one_point_frame(
-            "Type 2 Incident",
-        ),
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-    )
-
-    assert not fire.type_one
-
-
-def test_fire_geometries_leaves_fire_unmarked_without_complexity_level() -> None:
-    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
-        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
-            "Bug",
-            "active",
-            identifier="id-bug",
-        ),
-    ])
-    perimeters = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([
-        ("id-bug", "Bug", tests.helpers.factories.geometry.square(1.0)),
-    ])
-
-    (fire,) = peri_scribe.kml.fire_data.fire_geometries(
-        index,
-        perimeters,
-        tests.helpers.factories.peri_scribe.kml.fire_data.type_one_point_frame(None),
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-    )
-
-    assert not fire.type_one
-
-
-def test_fire_geometries_leaves_fire_unmarked_without_point_attributes() -> None:
-    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
-        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
-            "Bug",
-            "active",
-            identifier="id-bug",
-        ),
-    ])
-    perimeters = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([
-        ("id-bug", "Bug", tests.helpers.factories.geometry.square(1.0)),
-    ])
-    points = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([
-        ("id-bug", "Bug", shapely.geometry.Point(1.0, 1.0)),
-    ])
-
-    (fire,) = peri_scribe.kml.fire_data.fire_geometries(
-        index,
-        perimeters,
-        points,
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-    )
-
-    assert not fire.type_one
-
-
-def test_fire_geometries_matches_score_explanation_by_identifier() -> None:
-    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
-        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
-            "Timber",
-            "active",
-            identifier="id-big",
-        ),
-        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
-            "Timber",
-            "inactive",
-            identifier="id-small",
-        ),
-    ])
-    perimeters = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([
-        ("id-big", "Timber", tests.helpers.factories.geometry.square(2.0)),
-        ("id-small", "Timber", tests.helpers.factories.geometry.square(1.0)),
-    ])
-    scores = peri_scribe.models.FireScores(
-        version="test",
-        fires=[
-            peri_scribe.models.FireScoreEntry(
-                name="Timber",
-                identifier="id-small",
-                score=4,
-                explanation="Over 5 structures within a mile.",
-            ),
-            peri_scribe.models.FireScoreEntry(
-                name="Timber",
-                identifier="id-big",
-                score=470,
-                explanation=(
-                    "Over 250 structures within a mile, and a Type 1 Incident."
-                ),
-            ),
-        ],
-    )
-    big, small = peri_scribe.kml.fire_data.fire_geometries(
-        index,
-        perimeters,
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-        scores=scores,
-    )
-    assert big.description is not None
-    assert (
-        big.description.of_note
-        == "Over 250 structures within a mile, and a Type 1 Incident."
-    )
-    assert small.description is not None
-    assert small.description.of_note == "Over 5 structures within a mile."
-
-
 def test_fire_geometries_skips_images_without_enough_dates() -> None:
     index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
         tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
@@ -462,69 +116,6 @@ def test_fire_geometries_skips_images_without_enough_dates() -> None:
     assert fire.images == ()
 
 
-def test_fire_geometries_includes_progression_rings() -> None:
-    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
-        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
-            "Bug",
-            "active",
-            identifier="id-bug",
-        ),
-    ])
-    first_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
-    second_time = datetime.datetime(2026, 8, 7, 20, 0, tzinfo=datetime.UTC)
-    rings = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame(
-        [
-            ("id-bug", "Bug", tests.helpers.factories.geometry.square(1.0)),
-            ("id-bug", "Bug", tests.helpers.factories.geometry.square(2.0)),
-        ],
-        observation_times=[first_time, second_time],
-    )
-    fires = peri_scribe.kml.fire_data.fire_geometries(
-        index,
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-        rings,
-    )
-    (fire,) = fires
-    assert [
-        (ring.geometry, ring.observation_time) for ring in fire.progression_rings
-    ] == [
-        (tests.helpers.factories.geometry.square(1.0), first_time),
-        (tests.helpers.factories.geometry.square(2.0), second_time),
-    ]
-    assert [ring.area for ring in fire.progression_rings] == [
-        peri_scribe.units.area(ring.geometry) for ring in fire.progression_rings
-    ]
-
-
-def test_fire_geometries_drops_tiny_rings() -> None:
-    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
-        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
-            "Bug",
-            "active",
-            identifier="id-bug",
-        ),
-    ])
-    observation_time = datetime.datetime(2026, 8, 5, 20, 0, tzinfo=datetime.UTC)
-    rings = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame(
-        [
-            ("id-bug", "Bug", tests.helpers.factories.geometry.square(1.0)),
-            ("id-bug", "Bug", shapely.geometry.box(0.0, 0.0, 1e-6, 1e-6)),
-        ],
-        observation_times=[observation_time, observation_time],
-    )
-    fires = peri_scribe.kml.fire_data.fire_geometries(
-        index,
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-        tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([]),
-        rings,
-    )
-    (fire,) = fires
-    assert [ring.geometry for ring in fire.progression_rings] == [
-        tests.helpers.factories.geometry.square(1.0),
-    ]
-
-
 def test_ring_added_areas_measure_disjoint_rings_own_areas() -> None:
     first_geometry = tests.helpers.factories.geometry.square(1.0)
     second_geometry = shapely.geometry.box(2.0, -0.5, 3.0, 0.5)
@@ -540,15 +131,15 @@ def test_ring_added_areas_measure_disjoint_rings_own_areas() -> None:
     ))
     magnitudes = [area.m_as("meters ** 2") for area in added_areas_in_acres]
     assert magnitudes == pytest.approx([
-        peri_scribe.units.area(first_geometry).m_as("meters ** 2"),
-        peri_scribe.units.area(second_geometry).m_as("meters ** 2"),
+        spatial_data.measurements.area(first_geometry).m_as("meters ** 2"),
+        spatial_data.measurements.area(second_geometry).m_as("meters ** 2"),
     ])
 
 
 def test_ring_added_areas_measure_net_of_earlier_fire_when_overlapping() -> None:
     inner_geometry = tests.helpers.factories.geometry.square(1.0)
     outer_geometry = tests.helpers.factories.geometry.square(2.0)
-    inner_area = peri_scribe.units.area(inner_geometry)
+    inner_area = spatial_data.measurements.area(inner_geometry)
     added_areas_in_acres = peri_scribe.kml.fire_data.ring_added_areas((
         peri_scribe.perimeters.progression.Ring(
             geometry=inner_geometry,
@@ -564,7 +155,9 @@ def test_ring_added_areas_measure_net_of_earlier_fire_when_overlapping() -> None
     magnitudes = [area.m_as("meters ** 2") for area in added_areas_in_acres]
     assert magnitudes == pytest.approx([
         inner_area.m_as("meters ** 2"),
-        (peri_scribe.units.area(outer_geometry) - inner_area).m_as("meters ** 2"),
+        (spatial_data.measurements.area(outer_geometry) - inner_area).m_as(
+            "meters ** 2",
+        ),
     ])
 
 
@@ -586,7 +179,7 @@ def test_ring_added_areas_measure_zero_for_ground_already_claimed() -> None:
     ))
     magnitudes = [area.m_as("meters ** 2") for area in added_areas_in_acres]
     assert magnitudes == pytest.approx(
-        [peri_scribe.units.area(geometry).m_as("meters ** 2"), 0.0],
+        [spatial_data.measurements.area(geometry).m_as("meters ** 2"), 0.0],
         abs=1e-6,
     )
 
@@ -594,17 +187,13 @@ def test_ring_added_areas_measure_zero_for_ground_already_claimed() -> None:
 def test_interior_ring_colors_draws_only_dated_rings() -> None:
     first_time = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     second_time = datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC)
-    first_ring = (
-        tests.helpers.factories.peri_scribe.kml.fire_data.dated_progression_ring(
-            1.0,
-            first_time,
-        )
+    first_ring = tests.helpers.factories.peri_scribe.presentation.fire_data.dated_ring(
+        1.0,
+        first_time,
     )
-    second_ring = (
-        tests.helpers.factories.peri_scribe.kml.fire_data.dated_progression_ring(
-            2.0,
-            second_time,
-        )
+    second_ring = tests.helpers.factories.peri_scribe.presentation.fire_data.dated_ring(
+        2.0,
+        second_time,
     )
     undated_ring = peri_scribe.perimeters.progression.Ring(
         geometry=tests.helpers.factories.geometry.square(3.0),
@@ -667,31 +256,27 @@ def test_interior_ring_colors_returns_nothing_without_rings_or_perimeters() -> N
 def test_precompute_interior_added_areas_warms_drawn_ring_sequences() -> None:
     first_time = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     second_time = datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC)
-    first_ring = (
-        tests.helpers.factories.peri_scribe.kml.fire_data.dated_progression_ring(
-            1.0,
-            first_time,
-        )
+    first_ring = tests.helpers.factories.peri_scribe.presentation.fire_data.dated_ring(
+        1.0,
+        first_time,
     )
-    second_ring = (
-        tests.helpers.factories.peri_scribe.kml.fire_data.dated_progression_ring(
-            2.0,
-            second_time,
-        )
+    second_ring = tests.helpers.factories.peri_scribe.presentation.fire_data.dated_ring(
+        2.0,
+        second_time,
     )
     entry = tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
         "Bug",
         "active",
         identifier="id-bug",
     )
-    pending: list[peri_scribe.kml.fire_data.PendingFire] = [
-        peri_scribe.kml.fire_data.PendingFire(
-            entry=entry,
+    pending: list[peri_scribe.presentation.fire_data.FireSummary] = [
+        peri_scribe.presentation.fire_data.FireSummary(
+            name=entry.name,
+            status=peri_scribe.models.FireStatus(entry.status),
+            point=None,
             identifiers=frozenset({"id-bug"}),
             perimeters=(),
             progression_rings=(first_ring, second_ring),
-            perimeter_positions=(),
-            point_positions=(),
         ),
     ]
     cache = peri_scribe.kml.fire_data.added_areas_for_rings
@@ -714,9 +299,11 @@ def test_precompute_interior_added_areas_warms_latest_perimeter_fallback() -> No
         "active",
         identifier="id-bug",
     )
-    pending: list[peri_scribe.kml.fire_data.PendingFire] = [
-        peri_scribe.kml.fire_data.PendingFire(
-            entry=entry,
+    pending: list[peri_scribe.presentation.fire_data.FireSummary] = [
+        peri_scribe.presentation.fire_data.FireSummary(
+            name=entry.name,
+            status=peri_scribe.models.FireStatus(entry.status),
+            point=None,
             identifiers=frozenset({"id-bug"}),
             perimeters=(
                 tests.helpers.factories.peri_scribe.kml.parsing.perimeter_with_time(
@@ -725,8 +312,6 @@ def test_precompute_interior_added_areas_warms_latest_perimeter_fallback() -> No
                 ),
             ),
             progression_rings=(),
-            perimeter_positions=(),
-            point_positions=(),
         ),
     ]
     cache = peri_scribe.kml.fire_data.added_areas_for_rings
@@ -744,14 +329,14 @@ def test_precompute_interior_added_areas_leaves_fire_without_drawn_rings_alone()
         "active",
         identifier="id-bug",
     )
-    pending: list[peri_scribe.kml.fire_data.PendingFire] = [
-        peri_scribe.kml.fire_data.PendingFire(
-            entry=entry,
+    pending: list[peri_scribe.presentation.fire_data.FireSummary] = [
+        peri_scribe.presentation.fire_data.FireSummary(
+            name=entry.name,
+            status=peri_scribe.models.FireStatus(entry.status),
+            point=None,
             identifiers=frozenset({"id-bug"}),
             perimeters=(),
             progression_rings=(),
-            perimeter_positions=(),
-            point_positions=(),
         ),
     ]
     cache = peri_scribe.kml.fire_data.added_areas_for_rings
@@ -835,3 +420,29 @@ def test_fire_geometries_uses_independent_incident_history() -> None:
         "id-bug-area.svg",
         "id-bug-cost.svg",
     ]
+
+
+def test_unique_filename_prefix_uses_identifier() -> None:
+    assert (
+        peri_scribe.kml.fire_data.unique_filename_prefix("id-bug", "Bug", frozenset())
+        == "id-bug"
+    )
+
+
+def test_unique_filename_prefix_avoids_collisions() -> None:
+    assert (
+        peri_scribe.kml.fire_data.unique_filename_prefix(
+            None,
+            "Bug",
+            frozenset({"bug"}),
+        )
+        == "bug-2"
+    )
+    assert (
+        peri_scribe.kml.fire_data.unique_filename_prefix(
+            None,
+            "Bug",
+            frozenset({"bug", "bug-2"}),
+        )
+        == "bug-3"
+    )

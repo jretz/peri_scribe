@@ -8,7 +8,7 @@ import pytest
 
 import peri_scribe.monitor.changes
 import tests.helpers.doubles.peri_scribe.monitor.changes
-from peri_scribe.units import units
+from measurement_units import units
 
 
 def test_directories_excludes_unrelated_source_trees(tmp_path: pathlib.Path) -> None:

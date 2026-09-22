@@ -6,7 +6,7 @@ import datetime
 import typing
 
 import peri_scribe.perimeters.classification_data
-from peri_scribe.units import units
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:

@@ -39,7 +39,7 @@ import peri_scribe.sources.fetching
 import peri_scribe.sources.full_fetch_state
 import peri_scribe.sources.snapshots
 import peri_scribe.sources.validation
-from peri_scribe.units import units
+from measurement_units import units
 
 
 logger = structlog.get_logger()
@@ -252,6 +252,20 @@ def write_reports(year_directory: pathlib.Path) -> pathlib.Path:
     return peri_scribe.report.markdown.render_markdown_report(report, year_directory)
 
 
+def prepare_administrative_boundaries(year_directory: pathlib.Path) -> None:
+    """Make the boundary data available before source indexing classifies fires.
+
+    Args:
+        year_directory: The year directory holding the administrative boundary data.
+    """
+    with peri_scribe.logging.log_phase(
+        peri_scribe.phases.Phase.ADMINISTRATIVE_BOUNDARIES,
+    ):
+        peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries(
+            year_directory,
+        )
+
+
 def fetch_fire_sources(
     year_directory: pathlib.Path,
     *,
@@ -303,6 +317,7 @@ def fetch_fire_sources(
                 build_index=False,
             )
         else:
+            prepare_administrative_boundaries(year_directory)
             result = peri_scribe.sources.fetching.fetch_all_feeds(
                 base_directory,
                 year=year,
@@ -443,6 +458,7 @@ def run_gated_fetch_stage(
         peri_scribe.pipeline_state.DERIVED_STAGES,
     )
     with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.DEFERRED_FETCH):
+        prepare_administrative_boundaries(year_directory)
         peri_scribe.fires.index.index_fire_sources(year_directory)
         if full:
             peri_scribe.sources.full_fetch_state.write_state(
@@ -507,12 +523,6 @@ def refresh_external_sources(
             ):
                 continue
             fetch_external_source(source, year_directory)
-        with peri_scribe.logging.log_phase(
-            peri_scribe.phases.Phase.ADMINISTRATIVE_BOUNDARIES,
-        ):
-            peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries(
-                year_directory,
-            )
         return (
             include_evacuations
             and stored_evacuations_digest(year_directory) != evacuations_digest_before

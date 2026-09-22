@@ -3,10 +3,6 @@
 import pathlib
 
 
-class NoFeaturesError(ValueError):
-    """Raised when a feed returns no features."""
-
-
 class FeedFetchError(ValueError):
     """Raised when a configured feed cannot be fetched."""
 
@@ -17,18 +13,6 @@ class AdministrativeBoundariesError(ValueError):
 
 class ExternalDataError(ValueError):
     """Raised when an external (non-fire) dataset cannot be retrieved."""
-
-
-class NoSpatialReferenceError(ValueError):
-    """Raised when a layer's spatial reference cannot be determined."""
-
-    def __init__(self, message: str = "no usable spatial reference wkid") -> None:
-        """Preserve the reason a spatial reference could not be selected.
-
-        Args:
-            message: The explanation to include in the error.
-        """
-        super().__init__(message)
 
 
 class UnknownLayerError(ValueError):

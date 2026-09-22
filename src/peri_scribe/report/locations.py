@@ -28,9 +28,9 @@ import pyproj
 import shapely
 import shapely.ops
 
-import peri_scribe.geo.geometry
-import peri_scribe.geo.spatial_reference
-from peri_scribe.units import units
+import spatial_data.geometry
+import spatial_data.reference
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
@@ -211,11 +211,11 @@ def distance_and_bearing_from_point(
     """
     projection = azimuthal_equidistant_projection(longitude, latitude)
     transformer = pyproj.Transformer.from_crs(
-        peri_scribe.geo.spatial_reference.WGS84_SPATIAL_REFERENCE,
+        spatial_data.reference.WGS84_SPATIAL_REFERENCE,
         projection,
         always_xy=True,
     )
-    projected_interior = peri_scribe.geo.geometry.transform_coordinates(
+    projected_interior = spatial_data.geometry.transform_coordinates(
         geometry,
         transformer,
     )

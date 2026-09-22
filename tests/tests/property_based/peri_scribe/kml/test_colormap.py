@@ -11,7 +11,7 @@ import hypothesis.strategies
 import peri_scribe.kml.colormap
 import peri_scribe.perimeters.progression
 import tests.helpers.strategies.peri_scribe.kml.colormap
-from peri_scribe.units import units
+from measurement_units import units
 
 
 @hypothesis.given(

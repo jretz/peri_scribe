@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import shapely.affinity
 
-from peri_scribe.units import units
+from measurement_units import units
 
 
 def assert_same_projected_coverage(

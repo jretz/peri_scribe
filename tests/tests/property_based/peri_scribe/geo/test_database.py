@@ -9,10 +9,10 @@ import hypothesis
 import hypothesis.strategies
 
 import peri_scribe.geo.database
-import peri_scribe.geo.geometry_pool
 import peri_scribe.geo.package
 import peri_scribe.geo.reading
 import peri_scribe.sources.snapshots
+import spatial_data.geometry_pool
 import tests.helpers.strategies.peri_scribe.geo.database
 
 
@@ -54,7 +54,7 @@ def test_write_snapshot_matches_last_write_wins_model(
             assert [tuple(row) for row in stored] == [
                 metadata[key] for key in sorted(metadata)
             ]
-            pool = peri_scribe.geo.geometry_pool.GeometryPool()
+            pool = spatial_data.geometry_pool.GeometryPool()
             for key, snapshot in expected.items():
                 actual = peri_scribe.geo.reading.read_snapshot_contents(
                     connection,

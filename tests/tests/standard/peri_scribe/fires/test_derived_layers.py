@@ -6,7 +6,7 @@ import pathlib
 import typing
 
 import peri_scribe.fires.derived_layers
-import peri_scribe.geo.reading
+import spatial_data.layers
 import tests.helpers.factories.geography
 import tests.helpers.factories.geometry
 import tests.helpers.factories.peri_scribe.fires.scores
@@ -36,7 +36,7 @@ def test_read_layer_if_present_reads_existing_file(
     )
     monkeypatch.setattr(pathlib.Path, "is_file", lambda _self: True)
     monkeypatch.setattr(
-        peri_scribe.geo.reading,
+        spatial_data.layers,
         "read_layer",
         lambda _path, _layer_name: frame,
     )

@@ -10,8 +10,7 @@ import shapely.geometry
 import peri_scribe.fires.differential
 import peri_scribe.fires.files
 import peri_scribe.fires.reuse
-import peri_scribe.geo.reading
-import peri_scribe.models
+import spatial_data.layers
 import tests.helpers.doubles.peri_scribe.fires.differential
 import tests.helpers.factories.geography
 import tests.helpers.factories.geometry
@@ -447,13 +446,13 @@ def test_write_history_of_differential_geography_writes_two_layers(
         [shapely.geometry.Point(0, 0)],
     )
     monkeypatch.setattr(
-        peri_scribe.geo.reading,
+        spatial_data.layers,
         "read_layer",
         lambda _path, layer_name: (
             perimeters if layer_name == "perimeter_history" else points
         ),
     )
-    written: list[tuple[pathlib.Path, list[peri_scribe.models.LayerData]]] = []
+    written: list[tuple[pathlib.Path, list[spatial_data.layers.LayerData]]] = []
     monkeypatch.setattr(
         peri_scribe.fires.reuse,
         "write_layers",

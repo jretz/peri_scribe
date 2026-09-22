@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
+import typing
 
 import pytest
 import shapely
@@ -21,6 +22,10 @@ import tests.helpers.assertions.peri_scribe.fires.files
 import tests.helpers.doubles.peri_scribe.fires.files
 import tests.helpers.factories.peri_scribe.models
 import tests.helpers.factories.time
+
+
+if typing.TYPE_CHECKING:
+    import spatial_data.layers
 
 
 def test_write_history_of_full_geography_reuses_unchanged_fires(
@@ -176,7 +181,7 @@ def test_write_history_of_full_geography_writes_geography_and_incidents(
         "classify_fire_sources",
         lambda *_args: {},
     )
-    written: list[tuple[pathlib.Path, list[peri_scribe.models.LayerData]]] = []
+    written: list[tuple[pathlib.Path, list[spatial_data.layers.LayerData]]] = []
     monkeypatch.setattr(
         peri_scribe.fires.reuse,
         "write_layers",

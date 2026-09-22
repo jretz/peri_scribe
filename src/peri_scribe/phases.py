@@ -53,6 +53,7 @@ type Identifier = Phase | peri_scribe.pipeline_stages.Stage
 CHILDREN: collections.abc.Mapping[Identifier, tuple[Identifier, ...]] = (
     types.MappingProxyType({
         peri_scribe.pipeline_stages.Stage.FETCH: (
+            Phase.ADMINISTRATIVE_BOUNDARIES,
             Phase.FIRE_COLLECTION,
             Phase.SOURCE_INDEX,
             Phase.EXTERNAL_SOURCE_REFRESH,
@@ -61,6 +62,7 @@ CHILDREN: collections.abc.Mapping[Identifier, tuple[Identifier, ...]] = (
             Phase.DEFERRED_FETCH,
         ),
         Phase.FIRE_COLLECTION: (Phase.COLLECT_FEED,),
+        Phase.ADMINISTRATIVE_BOUNDARIES: (Phase.QUERY_FEATURES,),
         Phase.COLLECT_FEED: (
             Phase.CHECK_METADATA,
             Phase.READ_CURRENT_STATE,
@@ -71,17 +73,18 @@ CHILDREN: collections.abc.Mapping[Identifier, tuple[Identifier, ...]] = (
             Phase.UPDATE_CURRENT_STATE,
         ),
         Phase.EVACUATION_CHECK: (Phase.COLLECT_EXTERNAL_SOURCE,),
-        Phase.DEFERRED_FETCH: (Phase.SOURCE_INDEX, Phase.EXTERNAL_SOURCE_REFRESH),
+        Phase.DEFERRED_FETCH: (
+            Phase.ADMINISTRATIVE_BOUNDARIES,
+            Phase.SOURCE_INDEX,
+            Phase.EXTERNAL_SOURCE_REFRESH,
+        ),
         Phase.SOURCE_INDEX: (
             Phase.LOAD_AND_GROUP_SOURCES,
             Phase.CLASSIFY_FIRES,
             Phase.WRITE_INDEX,
         ),
         Phase.LOAD_AND_GROUP_SOURCES: (Phase.READ_SOURCES, Phase.GROUP_SOURCES),
-        Phase.EXTERNAL_SOURCE_REFRESH: (
-            Phase.COLLECT_EXTERNAL_SOURCE,
-            Phase.ADMINISTRATIVE_BOUNDARIES,
-        ),
+        Phase.EXTERNAL_SOURCE_REFRESH: (Phase.COLLECT_EXTERNAL_SOURCE,),
         Phase.COLLECT_EXTERNAL_SOURCE: (
             Phase.BUILDINGS_DATABASE,
             Phase.QUERY_FEATURES,
@@ -104,13 +107,17 @@ CHILDREN: collections.abc.Mapping[Identifier, tuple[Identifier, ...]] = (
             Phase.SPATIAL_SIGNALS,
         ),
         peri_scribe.pipeline_stages.Stage.KMZ: (
+            Phase.SOURCE_INDEX,
             Phase.PREPARE_FIRE_HISTORIES,
             Phase.PREPARE_FIRE_GEOMETRIES,
             Phase.SERIALIZE_AND_WRITE_KMZ,
         ),
         Phase.PREPARE_FIRE_GEOMETRIES: (Phase.PREPARE_PLOT_IMAGES,),
         Phase.SERIALIZE_AND_WRITE_KMZ: (Phase.BUILD_KML,),
-        peri_scribe.pipeline_stages.Stage.REPORTS: (Phase.PREPARE_FIRE_HISTORIES,),
+        peri_scribe.pipeline_stages.Stage.REPORTS: (
+            Phase.SOURCE_INDEX,
+            Phase.PREPARE_FIRE_HISTORIES,
+        ),
     })
 )
 
@@ -184,7 +191,11 @@ def planned_paths(
         children = CHILDREN.get(identifier, ())
         if identifier == peri_scribe.pipeline_stages.Stage.FETCH:
             excluded = (
-                (Phase.SOURCE_INDEX, Phase.EXTERNAL_SOURCE_REFRESH)
+                (
+                    Phase.ADMINISTRATIVE_BOUNDARIES,
+                    Phase.SOURCE_INDEX,
+                    Phase.EXTERNAL_SOURCE_REFRESH,
+                )
                 if gated
                 else (
                     Phase.EVACUATION_CHECK,

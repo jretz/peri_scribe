@@ -24,8 +24,9 @@ import peri_scribe.sources.catalog
 import peri_scribe.sources.external_data
 import peri_scribe.sources.feeds
 import peri_scribe.sources.snapshots
-import peri_scribe.units
-from peri_scribe.units import units
+import spatial_data.measurements
+import spatial_data.reference
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
@@ -320,7 +321,7 @@ def shape_measurement(geometry: shapely.Geometry | None) -> tuple[str, float | N
     shape = hashlib.sha256(shapely.normalize(geometry).wkb).hexdigest()
     if not geometry.is_valid or geometry.geom_type not in {"Polygon", "MultiPolygon"}:
         return shape, None
-    area = peri_scribe.units.area(shapely.orient_polygons(geometry))
+    area = spatial_data.measurements.area(shapely.orient_polygons(geometry))
     return shape, area.m_as("meters ** 2") if math.isfinite(area.magnitude) else None
 
 
@@ -344,7 +345,7 @@ def snapshot_mappings(
     for feed, source_frame in peri_scribe.geo.package.layers_by_feed(path):
         if feed == peri_scribe.sources.feeds.WFIGS_INCIDENT_LOCATIONS_FEED:
             continue
-        frame = source_frame.to_crs(peri_scribe.models.WGS84_SPATIAL_REFERENCE_ID)
+        frame = source_frame.to_crs(spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID)
         geometry_name = str(frame.geometry.name)
         for _, row in frame.iterrows():
             record = peri_scribe.geo.parsing.fire_record_from_row(

@@ -12,7 +12,7 @@ import peri_scribe.publication
 import tests.helpers.factories.peri_scribe.publication
 import tests.helpers.reference.peri_scribe.publication
 import tests.helpers.strategies.peri_scribe.publication
-from peri_scribe.units import units
+from measurement_units import units
 
 
 @hypothesis.given(
