@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import kml_io.styles
+import peri_scribe.kml.icons
 from measurement_units import units
 
 
@@ -53,7 +54,7 @@ FILL_OPACITY = 50 * units.percent
 OUTLINE_OPACITY = 80 * units.percent
 
 
-OUTLINE_WIDTH = 1.5
+OUTLINE_WIDTH = 2.0
 
 
 def outline_draw_order(outline_count: int, newest_first_index: int) -> int:
@@ -113,23 +114,26 @@ def filled_polygon_style(style_id: str, color: str) -> kml_io.styles.Style:
 def outlined_perimeter_style(style_id: str, color: str) -> kml_io.styles.Style:
     """Return the outline style with *style_id* and *color*.
 
-    The polygon fills in the outline color at zero opacity, so the fill never shows on
-    the map while Google Earth's list icon, which reads the fill color, matches the
-    outline.
+    An explicit list icon matches the outline color while polygon filling stays
+    disabled.
 
     Args:
         style_id: The style's identifier.
         color: The outline color as ``#RRGGBB``.
 
     Returns:
-        The style, with a line style and a transparently filled polygon style.
+        The style, with an outline, no fill, and a matching list icon.
     """
-    return kml_io.styles.outlined_polygon_style(
+    style = kml_io.styles.outlined_polygon_style(
         style_id,
         color,
         OUTLINE_OPACITY,
         OUTLINE_WIDTH,
     )
+    style.liststyle.itemicon.href = (
+        peri_scribe.kml.icons.outlined_perimeter_icon_filename(color)
+    )
+    return style
 
 
 def symbolization_styles() -> tuple[kml_io.styles.Style, ...]:

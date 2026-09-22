@@ -44,7 +44,7 @@ def test_filled_polygon_style_uses_supplied_color_and_opacity() -> None:
     assert style.polystyle.outline == 0
 
 
-def test_outlined_polygon_style_keeps_transparent_fill_for_list_icon() -> None:
+def test_outlined_polygon_style_disables_fill() -> None:
     style = kml_io.styles.outlined_polygon_style(
         "border",
         "#123456",
@@ -54,6 +54,5 @@ def test_outlined_polygon_style_keeps_transparent_fill_for_list_icon() -> None:
     assert style.id == "border"
     assert style.linestyle.color == "7f563412"
     assert style.linestyle.width == pytest.approx(3.0)
-    assert style.polystyle.color == "00563412"
-    assert style.polystyle.fill == 1
+    assert style.polystyle.fill == 0
     assert style.polystyle.outline == 1

@@ -1,33 +1,54 @@
-"""Generating the folder icons embedded in the KMZ output.
+"""Supply folder and perimeter icons embedded in the KMZ output.
 
 Each folder in the output carries a small square icon colored to match the geometry it
-holds. The icons are generated in memory as PNG bytes on every KMZ build.
+holds. All icons are generated in memory on every KMZ build. Perimeter icons use
+four-pixel diagonal lines, one-pixel black outlines, and transparent backgrounds.
 """
 
 from __future__ import annotations
 
+import dataclasses
 import struct
+import typing
 import zlib
+
+import numpy as np
 
 import peri_scribe.kml.colormap
 from measurement_units import units
 
 
+if typing.TYPE_CHECKING:
+    import pint
+
+
 # Each "Interior" folder's icon is a square of this many pixels on a side.
 PROGRESSION_ICON_SIDE_LENGTH = 16 * units.pixels
 
-# The "Perimeters" folder icon's background color.
-PERIMETERS_ICON_BACKGROUND_COLOR = (0x32, 0x4B, 0x32)
+PERIMETER_ICON_SIDE_LENGTH = 16 * units.pixels
+PERIMETER_ICON_LINE_WIDTH = 4 * units.pixels
+PERIMETER_ICON_OUTLINE_WIDTH = 1 * units.pixels
 
-# The "Perimeters" folder icon's line colors: the latest perimeter outline's color on
-# top and the penultimate's below. The template's outline perimeters are generated in
-# these same colors, so the icon matches the outlines it symbolizes.
-LATEST_PERIMETER_COLOR = (0xFF, 0x00, 0x00)
-PENULTIMATE_PERIMETER_COLOR = (0xFF, 0xFF, 0x00)
-
+# Subpixel sampling preserves smooth edges at list-icon sizes.
+ICON_SAMPLES_PER_PIXEL_SIDE = 16
 
 # The eight bytes every PNG file starts with.
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class DiagonalLine:
+    """Keep each icon stroke's color and placement together.
+
+    Attributes:
+        color: The stroke color as ``#RRGGBB``.
+        center: The midpoint's shared horizontal and vertical coordinate.
+        half_span: The horizontal and vertical offset from the midpoint to either end.
+    """
+
+    color: str
+    center: pint.Quantity[float]
+    half_span: pint.Quantity[float]
 
 
 def interior_progression_icon_filename() -> str:
@@ -46,6 +67,75 @@ def perimeters_icon_filename() -> str:
         The icon filename.
     """
     return "perimeters.png"
+
+
+def outlined_perimeter_icon_filename(color: str) -> str:
+    """Keep each outline's list icon reference stable across KMZ builds.
+
+    Args:
+        color: The outline color as ``#RRGGBB``.
+
+    Returns:
+        The matching PNG filename in the archive.
+    """
+    return f"perimeter-outline-{color[1:].lower()}.png"
+
+
+def outlined_perimeter_icon(color: str) -> bytes:
+    """Match a perimeter's list entry to its outline color.
+
+    Args:
+        color: The outline color as ``#RRGGBB``.
+
+    Returns:
+        The icon's PNG bytes.
+    """
+    return diagonal_lines_icon((
+        DiagonalLine(
+            color=color,
+            center=PERIMETER_ICON_SIDE_LENGTH / 2,
+            half_span=5 * units.pixels,
+        ),
+    ))
+
+
+def diagonal_lines_icon(lines: tuple[DiagonalLine, ...]) -> bytes:
+    """Keep colored strokes visible on any background with smooth black borders.
+
+    Args:
+        lines: Diagonal strokes in back-to-front drawing order.
+
+    Returns:
+        A transparent PNG with round-ended, outlined strokes.
+    """
+    side = int(PERIMETER_ICON_SIDE_LENGTH.m_as("pixels"))
+    samples = ICON_SAMPLES_PER_PIXEL_SIDE
+    rows, columns = (np.indices((side * samples, side * samples)) + 0.5) / samples
+    image = np.zeros((side * samples, side * samples, 4), dtype=np.uint8)
+    radius = PERIMETER_ICON_LINE_WIDTH.m_as("pixels") / 2
+    outer_radius = radius + PERIMETER_ICON_OUTLINE_WIDTH.m_as("pixels")
+    for line in lines:
+        center = line.center.m_as("pixels")
+        half_span = line.half_span.m_as("pixels")
+        position = np.clip((columns - rows) / 2, -half_span, half_span)
+        distance_squared = (columns - center - position) ** 2 + (
+            rows - center + position
+        ) ** 2
+        image[distance_squared <= outer_radius**2] = (0, 0, 0, 255)
+        image[distance_squared <= radius**2] = (*bytes.fromhex(line.color[1:]), 255)
+
+    totals = image.reshape(side, samples, side, samples, 4).sum(axis=(1, 3))
+    covered = totals[:, :, 3:4] / 255
+    # Unpremultiplied channels let partially covered pixels blend on any background.
+    colors = np.divide(
+        totals[:, :, :3],
+        covered,
+        out=np.zeros((side, side, 3)),
+        where=covered > 0,
+    )
+    pixels = np.concatenate((colors, 255 * covered / samples**2), axis=2)
+    pixels = np.rint(pixels).astype(np.uint8)
+    return png_from_rows([b"\x00" + row.tobytes() for row in pixels], side)
 
 
 def png_chunk(chunk_type: bytes, data: bytes) -> bytes:
@@ -104,26 +194,22 @@ def interior_progression_icon() -> bytes:
 def perimeters_icon() -> bytes:
     """Return the "Perimeters" folder icon as a PNG.
 
-    The icon is a square with a #324B32 background and two horizontal, one-pixel-thick
-    lines spanning its full width: a line a third of the way down from the top colored
-    like the latest perimeter outline and a line a third of the way up from the bottom
-    colored like the penultimate perimeter outline. The icon is generated in memory on
-    every KMZ build.
+    Red and yellow diagonal lines match the latest and penultimate perimeters. Each
+    four-pixel line has a one-pixel black outline so it remains visible against any
+    background.
 
     Returns:
         The icon's PNG bytes.
     """
-    side_in_pixels = int(PROGRESSION_ICON_SIDE_LENGTH.magnitude)
-    top_line_row = side_in_pixels // 3
-    bottom_line_row = side_in_pixels - 1 - top_line_row
-    background_pixel = bytes((*PERIMETERS_ICON_BACKGROUND_COLOR, 255))
-    rows: list[bytes] = []
-    for row_index in range(side_in_pixels):
-        if row_index == top_line_row:
-            row = b"\x00" + bytes((*LATEST_PERIMETER_COLOR, 255)) * side_in_pixels
-        elif row_index == bottom_line_row:
-            row = b"\x00" + bytes((*PENULTIMATE_PERIMETER_COLOR, 255)) * side_in_pixels
-        else:
-            row = b"\x00" + background_pixel * side_in_pixels
-        rows.append(row)
-    return png_from_rows(rows, side_in_pixels)
+    return diagonal_lines_icon((
+        DiagonalLine(
+            color="#FF0000",
+            center=5.25 * units.pixels,
+            half_span=2.25 * units.pixels,
+        ),
+        DiagonalLine(
+            color="#FFFF00",
+            center=10.75 * units.pixels,
+            half_span=2.25 * units.pixels,
+        ),
+    ))

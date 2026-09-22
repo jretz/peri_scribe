@@ -503,6 +503,10 @@ def create_kmz(
     images[peri_scribe.kml.icons.perimeters_icon_filename()] = (
         peri_scribe.kml.icons.perimeters_icon()
     )
+    for color in peri_scribe.kml.styles.OUTLINED_PERIMETER_COLORS:
+        images[peri_scribe.kml.icons.outlined_perimeter_icon_filename(color)] = (
+            peri_scribe.kml.icons.outlined_perimeter_icon(color)
+        )
     output_path = peri_scribe.paths.kmz_path(year_directory)
     published = (
         peri_scribe.publication.published_fires(publication_inputs, perimeters, index)

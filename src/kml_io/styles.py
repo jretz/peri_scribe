@@ -85,7 +85,7 @@ def outlined_polygon_style(
     opacity: pint.Quantity[float],
     width: float,
 ) -> Style:
-    """Match Google Earth's list icon to the outline without filling the polygon.
+    """Draw polygon boundaries with no interior fill.
 
     Args:
         style_id: The identifier referenced by placemarks.
@@ -94,13 +94,11 @@ def outlined_polygon_style(
         width: The KML line width.
 
     Returns:
-        An outlined polygon style with a transparent fill of the same color.
+        An outlined polygon style with filling disabled.
     """
     style = Style(style_id)
-    line_color = kml_color(color, opacity)
-    style.linestyle.color = line_color
+    style.linestyle.color = kml_color(color, opacity)
     style.linestyle.width = width
-    style.polystyle.color = f"00{line_color[2:]}"
-    style.polystyle.fill = 1
+    style.polystyle.fill = 0
     style.polystyle.outline = 1
     return style

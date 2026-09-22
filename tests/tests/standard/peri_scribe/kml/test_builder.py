@@ -19,6 +19,7 @@ import peri_scribe.fires.score_files
 import peri_scribe.kml.builder
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.icons
+import peri_scribe.kml.styles
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.paths
@@ -771,6 +772,10 @@ def test_create_kmz_reads_history_and_writes_kmz(
     assert set(images) == {
         peri_scribe.kml.icons.interior_progression_icon_filename(),
         peri_scribe.kml.icons.perimeters_icon_filename(),
+        *map(
+            peri_scribe.kml.icons.outlined_perimeter_icon_filename,
+            peri_scribe.kml.styles.OUTLINED_PERIMETER_COLORS,
+        ),
     }
     assert all(content.startswith(b"\x89PNG\r\n\x1a\n") for content in images.values())
 
