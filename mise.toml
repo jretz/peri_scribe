@@ -56,7 +56,7 @@ run = [
 [tasks.sync-kmz]
 description = "Ensure the latest KMZ is available for public download"
 raw_args = true
-run = 'rclone sync "data/$(date +%Y)/maps/PeriScribe Fires $(date +%Y).kmz" PeriScribe:peri-scribe'
+run = 'rclone sync "data/$(date +%Y)/maps/" PeriScribe:peri-scribe'
 
 [tasks.validate-sources]
 description = "Check that the stored sources cover a complete snapshot of every feed"
