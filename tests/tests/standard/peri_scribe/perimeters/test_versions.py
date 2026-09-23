@@ -173,12 +173,14 @@ def test_collapse_identical_consecutive_perimeters_collapses_runs() -> None:
     older = tests.helpers.factories.peri_scribe.perimeters.versions.observation(
         geometry=geometry,
         observation_time=tests.helpers.factories.time.utc(2026, 8, 16, 0, 10),
+        source_file="older.gpkg",
         attributes={"area_acres": 10},
     )
     newer = tests.helpers.factories.peri_scribe.perimeters.versions.observation(
         geometry=geometry,
         observation_time=tests.helpers.factories.time.utc(2026, 8, 16, 0, 10),
         serial_number=1,
+        source_file="newer.gpkg",
         attributes={"area_acres": 11},
     )
     versions = (
@@ -187,7 +189,9 @@ def test_collapse_identical_consecutive_perimeters_collapses_runs() -> None:
             newer,
         ])
     )
-    assert versions == [newer]
+    assert versions == [
+        dataclasses.replace(newer, superseded_sources=("older.gpkg#1",)),
+    ]
 
 
 def test_collapse_identical_consecutive_perimeters_keeps_distinct_geometries() -> None:
@@ -374,6 +378,31 @@ def test_merge_identical_observations_merges_matching_geometry() -> None:
     )
 
 
+def test_merge_identical_observations_retains_both_source_lineages(
+    revision_observations: list[peri_scribe.perimeters.versions.SourceObservation],
+) -> None:
+    first, second = revision_observations
+    first = dataclasses.replace(first, superseded_sources=("original.gpkg#2",))
+    second = dataclasses.replace(
+        second,
+        geometry=first.geometry,
+        superseded_sources=("other-original.gpkg#3",),
+    )
+
+    merged = peri_scribe.perimeters.versions.merge_identical_observations(
+        [first, second],
+        first.source_kind,
+    )
+
+    assert len(merged) == 1
+    assert merged[0].source_file == first.source_file
+    assert set(merged[0].superseded_sources) == {
+        "original.gpkg#2",
+        "other-original.gpkg#3",
+        "25.gpkg#1",
+    }
+
+
 def test_drop_losing_source_versions_drops_loser_in_window() -> None:
     firis = tests.helpers.factories.peri_scribe.perimeters.versions.observation(
         source_kind=tests.helpers.factories.peri_scribe.perimeters.classification_data.FIRIS_PERIMETER,
@@ -536,6 +565,35 @@ def test_collapse_mapping_revisions_keeps_latest_publication_with_provenance(
     )
     assert [row.serial_number for row in result] == [25]
     assert result[0].superseded_sources == ("24.gpkg#1",)
+
+
+def test_collapse_mapping_revisions_retains_provenance_through_republication(
+    revision_observations: list[peri_scribe.perimeters.versions.SourceObservation],
+) -> None:
+    original, correction = revision_observations
+    duplicate = dataclasses.replace(
+        original,
+        source_file="duplicate.gpkg",
+        serial_number=25,
+        observation_time=(
+            tests.helpers.factories.time.utc(2026, 9, 7, 20, 24)
+            + datetime.timedelta(seconds=30)
+        ),
+    )
+    correction = dataclasses.replace(correction, serial_number=26)
+    observations = (
+        peri_scribe.perimeters.versions.collapse_identical_consecutive_perimeters([
+            original,
+            duplicate,
+            correction,
+        ])
+    )
+
+    result = peri_scribe.perimeters.versions.collapse_mapping_revisions(observations)
+
+    assert len(result) == 1
+    assert result[0].geometry == correction.geometry
+    assert set(result[0].superseded_sources) == {"24.gpkg#1", "duplicate.gpkg#1"}
 
 
 @pytest.mark.parametrize(

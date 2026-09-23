@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import decimal
+import json
 import typing
 
 import peri_scribe.areas
@@ -193,6 +195,62 @@ def fire_qualifies(
     return (NAME_AREA_KEY, entry_name) in qualifying_keys
 
 
+def source_reference(source_file: object, object_id: object) -> str | None:
+    """Keep provenance specific to one row in one retained source snapshot.
+
+    Args:
+        source_file: The snapshot's stored filename.
+        object_id: The row's source object identifier.
+
+    Returns:
+        The source reference, or None when either component is incomplete.
+    """
+    if not isinstance(source_file, str) or not source_file.strip():
+        return None
+    try:
+        number = decimal.Decimal(str(object_id))
+    except decimal.InvalidOperation:
+        return None
+    if not number.is_finite() or number != number.to_integral_value():
+        return None
+    return f"{source_file}#{int(number)}"
+
+
+def perimeter_source_references(
+    source_file: object,
+    object_id: object,
+    superseded_sources: object,
+) -> frozenset[str]:
+    """Preserve source continuity when corrected mapping replaces its original row.
+
+    Args:
+        source_file: The retained perimeter's source snapshot.
+        object_id: The retained perimeter's source object identifier.
+        superseded_sources: JSON references to rows replaced during reconciliation.
+
+    Returns:
+        Complete source references carried by the retained perimeter.
+    """
+    references = set[str]()
+    own_reference = source_reference(source_file, object_id)
+    if own_reference is not None:
+        references.add(own_reference)
+    if not isinstance(superseded_sources, str):
+        return frozenset(references)
+    try:
+        decoded = json.loads(superseded_sources)
+    except json.JSONDecodeError:
+        return frozenset(references)
+    if isinstance(decoded, list):
+        for item in decoded:
+            if isinstance(item, str):
+                filename, _, identifier = item.rpartition("#")
+                reference = source_reference(filename, identifier)
+                if reference is not None:
+                    references.add(reference)
+    return frozenset(references)
+
+
 def perimeter_groups(
     perimeters: geopandas.GeoDataFrame,
 ) -> tuple[
@@ -234,6 +292,9 @@ def perimeter_groups(
         stored_area,
         stored_added,
         sequence,
+        source_file,
+        object_id,
+        superseded_sources,
     ) in zip(
         perimeters["fire_identifier"],
         perimeters["fire_name"],
@@ -242,6 +303,9 @@ def perimeter_groups(
         areas,
         additions,
         sequences,
+        perimeters.get("source_file", [None] * len(perimeters)),
+        perimeters.get("source_objectid", [None] * len(perimeters)),
+        perimeters.get("superseded_sources", [None] * len(perimeters)),
         strict=True,
     ):
         if geometry is None or geometry.is_empty:
@@ -256,6 +320,11 @@ def perimeter_groups(
             area=None if area is None else area * units.Unit("meters ** 2"),
             added_area=None if added is None else added * units.Unit("meters ** 2"),
             sequence_digest=sequence if isinstance(sequence, str) else None,
+            source_references=perimeter_source_references(
+                source_file,
+                object_id,
+                superseded_sources,
+            ),
         )
         if peri_scribe.geo.parsing.is_missing(identifier):
             by_name.setdefault(str(name), []).append(perimeter)

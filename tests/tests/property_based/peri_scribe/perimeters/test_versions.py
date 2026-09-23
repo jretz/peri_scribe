@@ -85,6 +85,10 @@ def test_collapse_identical_consecutive_perimeters_matches_runs_of_shapes(
             dataclasses.replace(
                 observations[indices[-1]],
                 observation_time=observations[indices[0]].observation_time,
+                superseded_sources=tuple(
+                    f"{observations[index].source_file}#{observations[index].object_id}"
+                    for index in indices[:-1]
+                ),
             ),
         )
     reordered = data.draw(hypothesis.strategies.permutations(observations))

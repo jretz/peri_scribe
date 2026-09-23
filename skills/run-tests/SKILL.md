@@ -14,6 +14,7 @@ path (that will get the one in .venv):
 ```bash
 env TEXTUAL_ANIMATIONS=none .venv/bin/pytest;
 .venv/bin/coverage json --quiet --fail-under=100 -o .coverage/coverage.json;
+node_bin="$(mise which node)" ; "$node_bin" tests/helpers/run_viewer_tests.mjs;
 .venv/bin/ruff format --check --config 'lint.ignore = ["COM812"]';
 .venv/bin/ruff check;
 .venv/bin/ty check;

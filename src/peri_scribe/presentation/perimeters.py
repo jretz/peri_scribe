@@ -24,6 +24,7 @@ class Perimeter:
     area: pint.Quantity[float] | None = None
     added_area: pint.Quantity[float] | None = None
     sequence_digest: str | None = None
+    source_references: frozenset[str] = frozenset()
 
     @property
     def measured_area(self) -> pint.Quantity[float]:

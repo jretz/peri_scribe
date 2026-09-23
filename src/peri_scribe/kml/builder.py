@@ -17,6 +17,7 @@ import structlog
 
 import kml_io.geometry
 import kml_io.kmz
+import peri_scribe.fire_updates
 import peri_scribe.fires.derived_layers
 import peri_scribe.fires.index
 import peri_scribe.fires.score_files
@@ -34,6 +35,7 @@ import peri_scribe.presentation.index
 import peri_scribe.presentation.selection
 import peri_scribe.presentation.views
 import peri_scribe.publication
+import peri_scribe.updates
 
 
 logger = structlog.get_logger()
@@ -513,6 +515,11 @@ def create_kmz(
         if publication_inputs is not None
         else None
     )
+    updates = peri_scribe.fire_updates.prepare_updates(
+        year_directory,
+        geometries,
+        scores or peri_scribe.models.FireScores(version="", fires=[]),
+    )
     with peri_scribe.logging.log_phase(
         peri_scribe.phases.Phase.SERIALIZE_AND_WRITE_KMZ,
     ):
@@ -533,4 +540,6 @@ def create_kmz(
             publication_inputs,
             published,
         )
+    peri_scribe.fire_updates.write_updates(year_directory, updates)
+    peri_scribe.updates.write_updates_page(year_directory)
     return output_path

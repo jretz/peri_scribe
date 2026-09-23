@@ -18,6 +18,16 @@ import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.factories.peri_scribe.monitor.status
 
 
+def test_follower_ignores_fire_update_logs_and_archives(tmp_path: pathlib.Path) -> None:
+    (tmp_path / "2026-09-fire-updates.jsonl").write_text('{"name":"Timber"}\n')
+    (tmp_path / "2026-08-fire-updates.jsonl.zst").write_bytes(b"not a diagnostic log")
+    with contextlib.closing(peri_scribe.monitor.storage.Follower(tmp_path)) as follower:
+        batch = follower.poll()
+    assert batch.records == ()
+    assert batch.archives == ()
+    assert batch.errors == ()
+
+
 @pytest.mark.parametrize("minutes", [[], [-2], [0], [1], [-2, -1], [-1, 0, 0, 1]])
 def test_seek_since_keeps_every_record_at_or_after_the_cutoff(
     minutes: list[int],

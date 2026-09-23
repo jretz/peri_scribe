@@ -702,6 +702,12 @@ def test_log_paths_prefers_uncompressed_month_during_rotation(
     assert peri_scribe.monitor.history.log_paths(tmp_path) == (plain,)
 
 
+def test_log_paths_excludes_fire_updates(tmp_path: pathlib.Path) -> None:
+    (tmp_path / "2026-09-fire-updates.jsonl").touch()
+    (tmp_path / "2026-08-fire-updates.jsonl.zst").touch()
+    assert peri_scribe.monitor.history.log_paths(tmp_path) == ()
+
+
 def test_load_run_loads_complete_archived_run_without_other_runs(
     tmp_path: pathlib.Path,
 ) -> None:

@@ -39,6 +39,12 @@ run = [
     "uv run --locked peri_scribe run --only reports",
 ]
 
+[tasks.serve-updates]
+description = "Serve the current year's map outputs locally"
+depends = ["venv"]
+raw_args = true
+run = '.venv/bin/python -m http.server 8765 --bind 127.0.0.1 --directory "data/$(date +%Y)/maps"'
+
 [tasks.run-production]
 description = "Check for new source data and use it to generate new maps and reports"
 depends = ["venv"]
@@ -92,10 +98,15 @@ depends = ["venv"]
 env = { TEXTUAL_ANIMATIONS = "none" }
 run = "uv run --locked --module pytest"
 
+[tasks.test-viewer]
+description = "Test the viewer with 100% line, branch, and function coverage"
+run = "node tests/helpers/run_viewer_tests.mjs"
+
 [tasks.test]
 description = "Run tests, then lint and typecheck"
 run = [
     { task = "pytest" },
+    { task = "test-viewer" },
     { task = "coverage-report" },
     { task = "lint" },
     { task = "typecheck" },
@@ -195,6 +206,7 @@ task.quiet = true
 [tools]
 "cargo:gitnr" = "latest"
 micromamba = "latest"
+node = "latest"
 rclone = "latest"
 rg = "latest"
 rumdl = "latest"

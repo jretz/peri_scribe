@@ -36,6 +36,7 @@ The `run` pipeline writes these outputs:
 - `derived/fire_scores.json` — score and explanation for each qualifying fire.
 - `derived/fire_scores_ccdf.html` — score-distribution chart.
 - `maps/PeriScribe Fires <year>.kmz` — the Google Earth output.
+- `maps/updates.html` and `maps/updates.json` — the fire-update viewer and its data.
 - `reports/PeriScribe Fires <year>.md` — the fire reports.
 
 The KMZ contains active and inactive fire folders, latest perimeters, progression maps,

@@ -190,7 +190,7 @@ def collapse_identical_consecutive_perimeters(
     """Collapse consecutive observations that share a geometry.
 
     A run of observations with equal geometry becomes one version carrying the newest
-    observation's attributes and provenance.
+    observation's attributes and the source lineage linking prior publications.
 
     Args:
         observations: The perimeter observations for one source and fire.
@@ -208,9 +208,8 @@ def collapse_identical_consecutive_perimeters(
         ):
             previous = versions[-1]
             versions[-1] = dataclasses.replace(
-                observation,
+                with_superseded_source(observation, previous),
                 observation_time=effective_time(previous),
-                superseded_sources=previous.superseded_sources,
             )
         else:
             versions.append(observation)
@@ -286,8 +285,8 @@ def merge_observations(
 ) -> SourceObservation:
     """Return one observation merging *winner* over *loser*.
 
-    The winner keeps its provenance and geometry; the attributes are the union of both,
-    with the winner's values taking precedence on conflicts.
+    The winner keeps its geometry and both source lineages; the attributes are the union
+    of both, with the winner's values taking precedence on conflicts.
 
     Args:
         winner: The preferred observation.
@@ -296,14 +295,8 @@ def merge_observations(
     Returns:
         The merged observation.
     """
-    return SourceObservation(
-        source_kind=winner.source_kind,
-        geometry=winner.geometry,
-        observation_time=winner.observation_time,
-        snapshot_time=winner.snapshot_time,
-        serial_number=winner.serial_number,
-        object_id=winner.object_id,
-        source_file=winner.source_file,
+    return dataclasses.replace(
+        with_superseded_source(winner, loser),
         attributes={**loser.attributes, **winner.attributes},
     )
 

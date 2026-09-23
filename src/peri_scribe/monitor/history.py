@@ -345,9 +345,10 @@ def log_paths(
         Monthly logs in chronological filename order without duplicate months.
     """
     paths = {
-        path.name.removesuffix(".zst"): path for path in directory.glob("*.jsonl.zst")
+        path.name.removesuffix(".zst"): path
+        for path in directory.glob("????-??.jsonl.zst")
     }
-    paths.update({path.name: path for path in directory.glob("*.jsonl")})
+    paths.update({path.name: path for path in directory.glob("????-??.jsonl")})
     first_month = since.astimezone().strftime("%Y-%m") if since else ""
     return tuple(paths[name] for name in sorted(paths) if name >= first_month)
 

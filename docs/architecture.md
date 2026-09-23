@@ -114,6 +114,68 @@ Derived data is written below `data/<year>/derived/`:
 The KMZ is written to `data/<year>/maps/PeriScribe Fires <year>.kmz` and the fire
 reports to `data/<year>/reports/PeriScribe Fires <year>.md`.
 
+`fire_updates.py` prepares fire-update records from the same in-memory summaries used
+by the KMZ, reusing report selection and location descriptions. After successful KMZ
+generation it appends to `logs/YYYY-MM-fire-updates.jsonl` and saves
+`derived/fire_updates_state.json`. This baseline includes all eligible fires, including
+those outside the report's interesting sections. Normalized geometry and observation
+time identify new perimeters; pending updates survive unsuccessful KMZ generation.
+Known identifier aliases retain the fire's first checkpoint and log identity, so adding
+a preferred identifier preserves its mapping baseline and acreage history. A first
+identifier joins a name-only history only when shared mapping evidence identifies a
+unique current fire and that history is not already claimed. Name matching uses the
+same normalization as source grouping. Known identifiers keep ownership of their
+histories; unrelated namesakes receive deterministic `local` identities. The checkpoint
+retains historical name associations even when a later fire reuses a name. Each record
+preserves its identity in `log_identity`, independently of its current display name.
+The checkpoint also retains exact source snapshot and object-ID references, including
+superseded rows preserved by reconciliation. These references link corrected perimeters
+to their acknowledged history when the original geometry has been replaced. Missing
+provenance supplies no identity evidence; older checkpoints acquire it during an
+unchanged publication. Provenance-only changes update the checkpoint without logging
+another mapping update.
+Snapshot acreage comparisons and viewer fire counts use this key; records without it
+use their logged identifier or name. A recovery journal at
+`derived/fire_updates_pending.json` retains the completed batch and original timestamp
+until its log and checkpoint are both saved. Each batch has a `batch_id` and is appended
+atomically; retries recognize it in plain or compressed logs before advancing the
+checkpoint. Recovery runs before comparing the next build's inputs.
+The monthly log writer shares locking, timestamps, and Zstandard compression across
+diagnostic and fire-update logs while rotating each series independently. Closed months
+remain uncompressed until seven local calendar days after the next month starts; the
+next write compresses eligible months. The monitor reads the diagnostic series.
+
+`updates.py` reads the fire-update series, validates its records, and compares each
+record with its chronological predecessor before selecting the last 48 hours. It writes
+`maps/updates.json` atomically with explicit previous acreage, including history older
+than the visible window. The KMZ builder invokes it after appending the fire-update log;
+an output failure keeps the pipeline stage pending for retry without repeating already
+acknowledged perimeters. Missing history, including missing months, contributes no
+previous acreage. Invalid logs leave the previous JSON output intact.
+
+The packaged `updates.html` is copied beside the JSON only when its content changes.
+It fetches the JSON immediately and checks for changes with HEAD every 10 seconds.
+The check compares ETag when available, otherwise Last-Modified and Content-Length,
+against the last successfully displayed GET response. Only a matching strong ETag
+allows indefinite reuse. Weak ETags and modification time/size metadata expire after
+five minutes, when the next HEAD check also downloads the JSON to catch collisions.
+Changed or missing metadata, or HEAD responses with status 405 or 501, trigger a GET.
+Failed requests and invalid snapshots preserve the displayed data for later retry.
+
+The viewer retains the name filter and each group's sorting and collapsed state when
+applying a snapshot. Retained row elements support animated additions, sorting, bucket
+changes, and expiry without resetting highlight transitions. A move between an open
+and closed group animates to or from the closed header; moves between two closed groups
+skip animation. The browser clock controls aging and highlighting. Local preview uses
+the same HTTP loading path as production through the `serve-updates` mise task.
+
+New records in initial or refreshed snapshots start a 30-second favicon notification
+when their rows match the current filter, belong to an expanded group, and are less than
+15 minutes old. The green circle fades in and out every five seconds in foreground and
+background tabs. Favicon images are generated in memory and cleared after the final
+pulse; the viewer does not require favicon files. Additional qualifying records restart
+the notification.
+
 ## Data validation and cleansing
 
 Source coordinate reference systems are interpreted from feed metadata, with checks for

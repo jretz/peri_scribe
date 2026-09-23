@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import io
+import json
 import pathlib
 import typing
 import zipfile
@@ -13,6 +14,7 @@ import shapely.geometry
 import time_machine
 
 import kml_io.kmz
+import peri_scribe.fire_updates
 import peri_scribe.fires.files
 import peri_scribe.fires.index
 import peri_scribe.fires.score_files
@@ -710,8 +712,9 @@ def test_fire_kml_shows_derived_point_for_inactive_fire_without_location() -> No
 
 def test_create_kmz_reads_history_and_writes_kmz(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
 ) -> None:
-    year_directory = pathlib.Path("data/2026")
+    year_directory = tmp_path / "2026"
     index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
         tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
             "Bug",
@@ -782,8 +785,9 @@ def test_create_kmz_reads_history_and_writes_kmz(
 
 def test_create_kmz_excludes_fires_without_qualifying_area(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
 ) -> None:
-    year_directory = pathlib.Path("data/2026")
+    year_directory = tmp_path / "2026"
     index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
         tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
             "Bug",
@@ -872,6 +876,19 @@ def test_create_kmz_advances_checkpoint_only_after_file_completion(
     checkpoint = peri_scribe.publication.publication_path(year)
     checkpoint.parent.mkdir()
     checkpoint.write_bytes(b"previous checkpoint")
+    fires, scores = (
+        tests.helpers.factories.peri_scribe.kml.builder.new_folder_scenario()
+    )
+    monkeypatch.setattr(
+        peri_scribe.kml.fire_data,
+        "fire_geometries",
+        lambda *_args, **_kwargs: fires,
+    )
+    monkeypatch.setattr(
+        peri_scribe.fires.score_files,
+        "load_fire_scores",
+        lambda _year: scores,
+    )
     if fail:
         monkeypatch.setattr(
             kml_io.kmz,
@@ -881,6 +898,10 @@ def test_create_kmz_advances_checkpoint_only_after_file_completion(
         with pytest.raises(OSError, match="disk failure"):
             peri_scribe.kml.builder.create_kmz(year, publication_inputs=inputs)
         assert checkpoint.read_bytes() == b"previous checkpoint"
+        assert not peri_scribe.fire_updates.state_path(year).exists()
+        assert not list((year / "logs").glob("*-fire-updates.jsonl"))
+        assert not (year / "maps" / "updates.json").exists()
+        assert not (year / "maps" / "updates.html").exists()
     else:
         output = peri_scribe.kml.builder.create_kmz(year, publication_inputs=inputs)
         published = peri_scribe.publication.read_publication(year, output)
@@ -889,3 +910,9 @@ def test_create_kmz_advances_checkpoint_only_after_file_completion(
         assert published.fires == {}
         with zipfile.ZipFile(output) as archive:
             assert b"PeriScribe Fires 2026" in archive.read("doc.kml")
+        assert peri_scribe.fire_updates.state_path(year).exists()
+        updates = next((year / "logs").glob("*-fire-updates.jsonl"))
+        assert len(updates.read_text().splitlines()) == 1
+        snapshot = json.loads((year / "maps" / "updates.json").read_text())
+        assert snapshot["updates"][0]["name"] == json.loads(updates.read_text())["name"]
+        assert (year / "maps" / "updates.html").exists()

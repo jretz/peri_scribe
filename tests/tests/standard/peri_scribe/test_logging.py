@@ -340,6 +340,7 @@ def test_configure_logging_preserves_exception_details_in_both_destinations(
     ("before", "after"),
     [
         (datetime.datetime(2026, 7, 31, 23, 59, 59), datetime.datetime(2026, 8, 1)),
+        (datetime.datetime(2026, 10, 31, 23, 59, 59), datetime.datetime(2026, 11, 1)),
         (datetime.datetime(2026, 12, 31, 23, 59, 59), datetime.datetime(2027, 1, 1)),
         (datetime.datetime(2028, 2, 29, 23, 59, 59), datetime.datetime(2028, 3, 1)),
     ],
@@ -364,15 +365,27 @@ def test_configure_logging_rotates_at_the_local_month_boundary(
     assert not old_log.with_suffix(".jsonl.zst").exists()
     with time_machine.travel(after.replace(tzinfo=local_zone), tick=False):
         logger.info("After midnight")
-    assert not old_log.exists()
-    with compression.zstd.open(old_log.with_suffix(".jsonl.zst"), "rt") as archive:
-        assert archive.read() == previous
+    assert old_log.read_text() == previous
+    assert not old_log.with_suffix(".jsonl.zst").exists()
     path = tmp_path / "logs" / after.strftime("%Y-%m.jsonl")
     entry = json.loads(path.read_text())
     assert entry["event"] == "After midnight"
     assert entry["timestamp"] == after.replace(tzinfo=local_zone).strftime(
         "%Y-%m-%dT%H:%M:%S%z",
     )
+    compression_time = after.replace(tzinfo=local_zone) + datetime.timedelta(days=7)
+    with time_machine.travel(
+        compression_time - datetime.timedelta(seconds=1),
+        tick=False,
+    ):
+        logger.info("Within the first week")
+    assert old_log.read_text() == previous
+    assert not old_log.with_suffix(".jsonl.zst").exists()
+    with time_machine.travel(compression_time, tick=False):
+        logger.info("After the first week")
+    assert not old_log.exists()
+    with compression.zstd.open(old_log.with_suffix(".jsonl.zst"), "rt") as archive:
+        assert archive.read() == previous
 
 
 def test_configure_logging_rotates_older_months_after_a_restart(
@@ -510,3 +523,144 @@ def test_command_file_logging_leaves_commands_without_a_year_on_stderr() -> None
     with peri_scribe.logging.command_file_logging(context):
         assert structlog.get_config() == configuration
     assert structlog.get_config() == configuration
+
+
+@pytest.mark.parametrize("empty_batch", [False, True])
+def test_append_monthly_records_rotates_only_its_own_series(
+    tmp_path: pathlib.Path,
+    *,
+    empty_batch: bool,
+) -> None:
+    before = datetime.datetime(2026, 12, 31, 23, 59, tzinfo=datetime.UTC)
+    after = datetime.datetime(2027, 1, 8, tzinfo=datetime.UTC)
+    with time_machine.travel(before, tick=False):
+        peri_scribe.logging.append_monthly_records(
+            tmp_path,
+            ({"name": "Timber"}, {"name": "Cedar"}),
+            suffix="-fire-updates",
+        )
+        peri_scribe.logging.append_monthly_log(tmp_path, {"event": "diagnostic"})
+    old_log = tmp_path / "2026-12-fire-updates.jsonl"
+    previous = old_log.read_text()
+    assert [json.loads(line)["name"] for line in previous.splitlines()] == [
+        "Timber",
+        "Cedar",
+    ]
+    with time_machine.travel(after - datetime.timedelta(seconds=1), tick=False):
+        peri_scribe.logging.append_monthly_records(
+            tmp_path,
+            (),
+            suffix="-fire-updates",
+        )
+    assert old_log.read_text() == previous
+    assert not old_log.with_suffix(".jsonl.zst").exists()
+    with time_machine.travel(after, tick=False):
+        peri_scribe.logging.append_monthly_records(
+            tmp_path,
+            () if empty_batch else ({"name": "Timber"},),
+            suffix="-fire-updates",
+        )
+    assert not old_log.exists()
+    with compression.zstd.open(old_log.with_suffix(".jsonl.zst"), "rt") as archive:
+        assert archive.read() == previous
+    assert (tmp_path / "2026-12.jsonl").exists()
+    current = tmp_path / "2027-01-fire-updates.jsonl"
+    assert current.exists() is not empty_batch
+    if not empty_batch:
+        assert json.loads(current.read_text()) == {
+            "name": "Timber",
+            "timestamp": "2027-01-08T00:00:00+0000",
+        }
+
+
+def test_append_monthly_records_publishes_a_complete_batch_once(
+    tmp_path: pathlib.Path,
+) -> None:
+    when = datetime.datetime(2026, 9, 22, tzinfo=datetime.UTC)
+    path = tmp_path / "2026-09-fire-updates.jsonl"
+    path.write_text('{"name":"Previous"}\n\n')
+    records = ({"name": "Timber"}, {"name": "Cedar"})
+    with time_machine.travel(when, tick=False):
+        for _ in range(2):
+            peri_scribe.logging.append_monthly_records(
+                tmp_path,
+                records,
+                suffix="-fire-updates",
+                batch_id="completed-kmz",
+            )
+
+    entries = [json.loads(line) for line in path.read_text().splitlines() if line]
+    assert entries == [
+        {"name": "Previous"},
+        *[
+            {
+                **record,
+                "batch_id": "completed-kmz",
+                "timestamp": "2026-09-22T00:00:00+0000",
+            }
+            for record in records
+        ],
+    ]
+
+
+def test_append_atomic_preserves_existing_records_when_publication_fails(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    path = tmp_path / "2026-09-fire-updates.jsonl"
+    original = '{"name":"Previous"}\n'
+    path.write_text(original)
+    with monkeypatch.context() as interrupted:
+        interrupted.setattr(
+            pathlib.Path,
+            "replace",
+            tests.helpers.doubles.errors.raising_stub(OSError("interrupted append")),
+        )
+        with pytest.raises(OSError, match="interrupted append"):
+            peri_scribe.logging.append_atomic(path, '{"name":"Timber"}\n')
+
+    assert path.read_text() == original
+
+
+def test_contains_batch_does_not_confuse_a_different_archived_batch(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "2026-08-fire-updates.jsonl"
+    with compression.zstd.open(path.with_suffix(".jsonl.zst"), "wt") as stream:
+        stream.write('{"batch_id":"earlier"}\n')
+
+    assert not peri_scribe.logging.contains_batch(path, "later")
+
+
+@pytest.mark.parametrize(
+    ("line", "expected"),
+    [
+        (b'{"batch_id":"completed"}', "completed"),
+        (b'{"batch_id":3}', None),
+        (b'{"event":"ordinary"}', None),
+        (b'"unstructured"', None),
+        (b"legacy text", None),
+    ],
+)
+def test_batch_identifier_recognizes_only_journaled_records(
+    line: bytes,
+    expected: str | None,
+) -> None:
+    assert peri_scribe.logging.batch_identifier(line) == expected
+
+
+def test_compress_log_preserves_new_batches_and_unjournaled_records(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "2026-09-fire-updates.jsonl"
+    original = '{"batch_id":"first","name":"Timber"}\n'
+    ordinary = '{"event":"Repeated diagnostic"}\n'
+    path.write_text(original + ordinary)
+    peri_scribe.logging.compress_log(path)
+    newer = '{"batch_id":"second","name":"Cedar"}\n'
+    path.write_text(original + newer + ordinary)
+
+    peri_scribe.logging.compress_log(path)
+
+    with compression.zstd.open(path.with_suffix(".jsonl.zst"), "rt") as stream:
+        assert stream.read() == original + ordinary + newer + ordinary

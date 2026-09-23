@@ -33,6 +33,27 @@ def test_read_rows_round_trips_complete_output(
     )
 
 
+def test_read_rows_preserves_empty_layers_alongside_populated_history(
+    tmp_path: pathlib.Path,
+    cached_layers: list[spatial_data.layers.LayerData],
+) -> None:
+    path = tmp_path / "history.gpkg"
+    empty_layer = dataclasses.replace(
+        cached_layers[0],
+        name="empty",
+        dataframe=cached_layers[0].dataframe.iloc[:0].drop(columns="derivation_key"),
+    )
+    peri_scribe.fires.reuse.write_layers(path, [empty_layer, *cached_layers])
+
+    cached = peri_scribe.fires.reuse.read_rows(path, ("empty", "perimeters"))
+
+    records = cached_layers[0].dataframe.to_dict("records")
+    assert cached == {
+        "empty": {},
+        "perimeters": {"first": [records[0]], "second": [records[1]]},
+    }
+
+
 @pytest.mark.parametrize(
     "damage",
     ["missing", "signature", "checksum", "schema", "layer", "unconditional"],

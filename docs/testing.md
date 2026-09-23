@@ -44,6 +44,23 @@ Hypothesis has cached the failing examples.
 
 Do not introduce pragmas to ignore test coverage.
 
+## Browser Viewer Tests
+
+Run `mise run test-viewer` for the fire update viewer's JavaScript refresh and rendering
+tests, also included in `mise run test`. They use Node's built-in test runner and execute
+the shipped page script with a fake clock, HTTP responses, and browser elements.
+Rendering tests cover collapsed groups and the animation paths between them. The task
+enforces 100% line, branch, and function coverage of the complete inline viewer script.
+It extracts that script to a temporary file for Node's coverage engine, rejects missing
+or empty coverage, and reports uncovered lines at their locations in `updates.html`.
+Passing runs show one green summary line with the test count, duration, and pass/fail
+counts. Failed counts are red; nonzero cancelled, skipped, and todo counts appear in
+yellow at the end. Failed tests retain their diagnostics, and the coverage table appears
+only when line, branch, or function coverage is below 100%.
+Test helpers and HTML/CSS are outside the JavaScript coverage scope. No browser, network
+access, or npm packages are required. Node is managed by `mise` and is only a
+development tool. Python and JavaScript coverage are enforced separately.
+
 ## What to Test For
 
 Tests should ensure behavior is correct and they should be independent of

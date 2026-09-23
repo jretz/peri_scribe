@@ -373,6 +373,24 @@ def gather_report(year_directory: pathlib.Path) -> FireReport:
         incident_rows=layers.incidents,
         histories=histories,
     )
+    return report_from_fires(fires, fire_scores, year_directory)
+
+
+def report_from_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
+    fires: list[Fire],
+    fire_scores: peri_scribe.models.FireScores,
+    year_directory: pathlib.Path,
+) -> FireReport:
+    """Share report selection and location text with completed KMZ fire updates.
+
+    Args:
+        fires: Prepared fires eligible for presentation.
+        fire_scores: The saved scores selecting the report's ranked sections.
+        year_directory: The year directory containing the major cities layer.
+
+    Returns:
+        The report's sections and their deduplicated fire details.
+    """
     scores_by_identifier, scores_by_name = peri_scribe.presentation.views.score_maps(
         fire_scores,
     )

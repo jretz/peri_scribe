@@ -207,7 +207,7 @@ class Follower:
         errors: list[str] = []
         records: list[dict[str, object]] = []
         caught_up = True
-        for path in sorted(self.directory.glob("*.jsonl")):
+        for path in sorted(self.directory.glob("????-??.jsonl")):
             try:
                 current.add(self.discover(path, since))
             except OSError as error:
@@ -231,7 +231,9 @@ class Follower:
         return Batch(
             records=tuple(records),
             errors=tuple(errors),
-            archives=tuple(sorted(self.directory.glob("*.jsonl.zst"), reverse=True)),
+            archives=tuple(
+                sorted(self.directory.glob("????-??.jsonl.zst"), reverse=True),
+            ),
             caught_up=caught_up,
         )
 

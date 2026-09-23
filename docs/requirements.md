@@ -39,6 +39,58 @@ derived rebuild, unfinished work remains, or `--unconditional` is provided. A si
 stage or a range can be selected with `--only`, `--from`, and `--to`. A failed step
 stops the pipeline and leaves required work pending for a later invocation.
 
+After successful KMZ generation, `logs/YYYY-MM-fire-updates.jsonl` records each
+interesting fire with a new mapped perimeter since the last successful KMZ. Interesting
+fires are the distinct fires in any report section before Fire Details. Each JSON line
+contains the timestamp, identifier, stable log identity, name, the report's location
+text, and measured area in acres as a numeric value with units. Identifier enrichment
+and later name changes preserve a fire's acreage history, including normalized spelling
+changes when the identifier first arrives. Unrelated fires reusing a historical name
+retain separate acreage histories. Mapping corrections linked by retained source
+provenance preserve the previous acreage even when the original perimeter is replaced.
+Fires without mapped perimeters are omitted.
+Changes to incident reports or rankings alone do not produce entries. The first
+generation without a saved baseline logs all interesting mapped fires. All log series
+rotate at the local month boundary. Closed months remain uncompressed for seven days,
+then compress to `.jsonl.zst` on the next write to that series. Fire-update logs also
+compress eligible months after successful generation with no new fire updates.
+
+Immediately after logging, the KMZ stage writes `maps/updates.html` and
+`maps/updates.json`. The HTML is a static viewer shared by all runs. The JSON contains
+the generation time and all nonzero acreage changes from the preceding 48 hours,
+including each update's previous mapped acreage from retained logs and compressed
+archives. Missing logs across month boundaries are treated as absent history. Missing
+previous acreage means an initial change equal to current acreage.
+Repeated updates for the same fire remain separate; decreases are included.
+
+The viewer fetches the neighboring JSON immediately on load over HTTP or HTTPS. Every
+10 seconds, it checks for changes with HEAD and fetches a changed snapshot without
+reloading the page. Only matching strong ETags allow indefinite reuse; weak ETags or
+modification time and size are rechecked by downloading at least every five minutes.
+Failed or invalid refreshes preserve the displayed snapshot for later retry.
+It groups updates into 0–60 minutes, 60 minutes–4 hours, 4–12 hours, 12–24 hours, and
+24–48 hours.
+The browser clock updates first-hour minute labels, moves entries between groups, removes
+expired entries, and controls the fading highlight for updates less than 15 minutes old.
+Group counts show distinct fires, with independently toggled time/name sorting. A
+case-insensitive name filter preserves that sorting. Each entry shows its name, location,
+update time, previous acreage, change, and current acreage. Locations independently
+shorten to state abbreviations and then disappear when space is insufficient. All
+acreage headings and values align right. The page uses neutral colors except for deltas
+and recent-update highlights, and shows only its generation time below the groups.
+Additions, moves, and removals animate while respecting reduced-motion preferences.
+Each time group can be collapsed independently. Moving updates animate to or from the
+closed header when only one of the source and destination groups is collapsed. Moves
+between two collapsed groups skip animation. Refreshes preserve the name filter and
+each group's sorting and collapsed state.
+
+When loading or refreshing a snapshot introduces an update that would be highlighted in
+an expanded group and matches the name filter, a green circle pulses in the favicon for
+30 seconds. Each pulse lasts five seconds and fades out completely; the final pulse
+leaves no favicon. This notification runs in foreground and background tabs. Its images
+are generated in memory without favicon files. Another qualifying update restarts the
+30-second notification. Expanding groups and changing the filter do not start one.
+
 Geography reuses complete results for unchanged fires. Reuse requires matching source
 observations, geometry, attributes, ordering, provenance, fire identity and membership,
 and derivation dependencies. A change rebuilds the affected fire's complete history,

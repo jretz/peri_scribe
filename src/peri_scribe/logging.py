@@ -113,6 +113,22 @@ def serialize_log_values(
     }
 
 
+def batch_identifier(line: bytes) -> str | None:
+    """Identify journaled records while preserving ordinary diagnostic log content.
+
+    Args:
+        line: One retained log line, including any unstructured legacy content.
+
+    Returns:
+        The batch identity, or None for records without a journal identity.
+    """
+    with contextlib.suppress(json.JSONDecodeError):
+        record = json.loads(line)
+        if isinstance(record, dict) and isinstance(record.get("batch_id"), str):
+            return record["batch_id"]
+    return None
+
+
 def compress_log(path: pathlib.Path) -> None:
     """Publish a complete archive before removing its original log.
 
@@ -122,13 +138,25 @@ def compress_log(path: pathlib.Path) -> None:
     archive = path.with_suffix(".jsonl.zst")
     with tempfile.TemporaryDirectory(dir=path.parent) as directory:
         temporary = pathlib.Path(directory) / archive.name
+        archived_batches = set()
         if archive.exists():
             shutil.copyfile(archive, temporary)
+            with compression.zstd.open(archive, "rb") as retained:
+                archived_batches = {
+                    identifier
+                    for line in retained
+                    if (identifier := batch_identifier(line)) is not None
+                }
         with (
             path.open("rb") as source,
             compression.zstd.open(temporary, "ab", level=19) as destination,
         ):
-            shutil.copyfileobj(source, destination)
+            if archived_batches:
+                for line in source:
+                    if batch_identifier(line) not in archived_batches:
+                        destination.write(line)
+            else:
+                shutil.copyfileobj(source, destination)
         temporary.replace(archive)
     path.unlink()
 
@@ -143,24 +171,113 @@ def append_monthly_log(
         directory: The directory holding monthly logs and their archives.
         event_dict: A normalized event with formatted exception details.
     """
+    append_monthly_records(directory, (event_dict,))
+
+
+def compression_month(timestamp: datetime.datetime) -> str:
+    """Keep each closed month readable for seven complete calendar days.
+
+    Args:
+        timestamp: The local time of the rotation check.
+
+    Returns:
+        The earliest month that must remain uncompressed.
+    """
+    return (timestamp.date() - datetime.timedelta(days=7)).strftime("%Y-%m")
+
+
+def contains_batch(path: pathlib.Path, batch_id: str) -> bool:
+    """Recognize an acknowledged append even when its checkpoint was interrupted.
+
+    Args:
+        path: The destination monthly log, possibly already archived.
+        batch_id: The journal's stable identifier for the complete atomic append.
+
+    Returns:
+        Whether either retained representation contains the batch.
+    """
+    for candidate in (path, path.with_suffix(".jsonl.zst")):
+        opener = compression.zstd.open if candidate.suffix == ".zst" else open
+        with (
+            contextlib.suppress(FileNotFoundError),
+            opener(candidate, "rt", encoding="utf-8") as stream,
+        ):
+            if any(
+                json.loads(line).get("batch_id") == batch_id
+                for line in stream
+                if line.strip()
+            ):
+                return True
+    return False
+
+
+def append_atomic(path: pathlib.Path, content: str) -> None:
+    """Publish all records of a recoverable batch together, or leave the log intact.
+
+    Args:
+        path: The monthly log protected by its directory's writer lock.
+        content: Complete serialized lines to append.
+    """
+    with tempfile.TemporaryDirectory(dir=path.parent) as directory:
+        temporary = pathlib.Path(directory) / path.name
+        if path.exists():
+            shutil.copyfile(path, temporary)
+        with temporary.open("a", encoding="utf-8") as stream:
+            stream.write(content)
+        temporary.replace(path)
+
+
+def append_monthly_records(
+    directory: pathlib.Path,
+    records: collections.abc.Iterable[collections.abc.Mapping[str, object]],
+    *,
+    suffix: str = "",
+    timestamp: datetime.datetime | None = None,
+    batch_id: str | None = None,
+) -> None:
+    """Give one batch a shared timestamp and rotate only its monthly log series.
+
+    Args:
+        directory: The directory holding monthly logs and their archives.
+        records: Normalized records to append together, possibly empty.
+        suffix: The filename suffix between the month and ``.jsonl``.
+        timestamp: A journal's original completion time, or the current local time.
+        batch_id: A journal identifier enabling atomic, idempotent batch retries.
+    """
     directory.mkdir(parents=True, exist_ok=True)
     with (directory / ".rotation.lock").open("a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
-        timestamp = datetime.datetime.now().astimezone()
-        filename = timestamp.strftime("%Y-%m.jsonl")
+        now = datetime.datetime.now().astimezone()
+        timestamp = timestamp or now
+        filename = timestamp.strftime("%Y-%m") + suffix + ".jsonl"
         for path in sorted(directory.glob("*.jsonl")):
-            if (
-                re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])\.jsonl", path.name)
-                and path.name < filename
-            ):
+            if re.fullmatch(
+                r"[0-9]{4}-(0[1-9]|1[0-2])" + re.escape(suffix) + r"\.jsonl",
+                path.name,
+            ) and path.name[:7] < compression_month(now):
                 compress_log(path)
-        entry = structlog.processors.JSONRenderer(allow_nan=False)(
-            None,
-            "",
-            {**event_dict, "timestamp": timestamp.strftime("%Y-%m-%dT%H:%M:%S%z")},
+        path = directory / filename
+        if batch_id is not None and contains_batch(path, batch_id):
+            return
+        entries = tuple(
+            structlog.processors.JSONRenderer(allow_nan=False)(
+                None,
+                "",
+                {
+                    **record,
+                    **({"batch_id": batch_id} if batch_id is not None else {}),
+                    "timestamp": timestamp.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                },
+            )
+            for record in records
         )
-        with (directory / filename).open("a", encoding="utf-8") as stream:
-            stream.write(typing.cast("str", entry) + "\n")
+        if entries:
+            content = "".join(typing.cast("str", entry) + "\n" for entry in entries)
+            if batch_id is not None:
+                append_atomic(path, content)
+            else:
+                with path.open("a", encoding="utf-8") as stream:
+                    stream.write(content)
 
 
 def route_log_event(
