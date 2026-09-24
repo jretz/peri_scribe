@@ -158,7 +158,7 @@ acknowledged perimeters. Missing history, including missing months, contributes 
 previous acreage. Invalid logs leave the previous JSON output intact.
 
 The packaged `updates.html` is copied beside the JSON only when its content changes.
-It fetches the JSON immediately and checks for changes with HEAD every 10 seconds.
+It fetches the JSON immediately and checks for changes with HEAD every 30 seconds.
 The check compares ETag when available, otherwise Last-Modified and Content-Length,
 against the last successfully displayed GET response. Only a matching strong ETag
 allows indefinite reuse. Weak ETags and modification time/size metadata expire after

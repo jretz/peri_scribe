@@ -29,7 +29,7 @@ mise run serve-updates -- --directory data/2025/maps
 
 Both local testing and production use HTTP loading because browsers restrict adjacent
 JSON requests from pages opened with `file://`. The viewer checks for a new snapshot
-every 10 seconds with HEAD and fetches changed data automatically. Changes animate
+every 30 seconds with HEAD and fetches changed data automatically. Changes animate
 while preserving the filter, sorting choices, and collapsed groups. Without a strong
 ETag, it also downloads at least every five minutes because HTTP modification times
 and file sizes can collide. Its age labels, groups, and highlights also update locally

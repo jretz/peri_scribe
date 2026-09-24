@@ -64,7 +64,7 @@ previous acreage means an initial change equal to current acreage.
 Repeated updates for the same fire remain separate; decreases are included.
 
 The viewer fetches the neighboring JSON immediately on load over HTTP or HTTPS. Every
-10 seconds, it checks for changes with HEAD and fetches a changed snapshot without
+30 seconds, it checks for changes with HEAD and fetches a changed snapshot without
 reloading the page. Only matching strong ETags allow indefinite reuse; weak ETags or
 modification time and size are rechecked by downloading at least every five minutes.
 Failed or invalid refreshes preserve the displayed snapshot for later retry.
