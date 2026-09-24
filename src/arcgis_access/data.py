@@ -122,7 +122,8 @@ def geo_data_frame_from_feature_set(
     """Return a WGS 84 query result's features as a GeoDataFrame.
 
     A result whose features carry no geometry is returned with null geometry after
-    logging why.
+    logging why. Empty results retain a geometry column and CRS so they can be stored
+    as spatial layers without relying on the client's empty attribute conversion.
 
     Args:
         feature_set: The WGS 84 query result to convert.
@@ -131,6 +132,14 @@ def geo_data_frame_from_feature_set(
     Returns:
         The features as a GeoDataFrame in WGS 84.
     """
+    if not feature_set.features:
+        return geopandas.GeoDataFrame(
+            {geometry_column: []},
+            geometry=geometry_column,
+            crs=spatial_data.reference.spatial_reference_for_id(
+                spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID,
+            ),
+        )
     dataframe, shapely_geometries, geometry_warning = extract_geometries(
         feature_set.sdf,
     )

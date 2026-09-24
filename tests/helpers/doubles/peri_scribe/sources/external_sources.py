@@ -14,6 +14,7 @@ import tests.helpers.doubles.peri_scribe.sources.external_source
 
 
 if typing.TYPE_CHECKING:
+    import arcgis.features
     import geopandas
     import pytest
 
@@ -21,6 +22,29 @@ YEAR_DIRECTORY = pathlib.Path("/data/2026")
 
 
 WEB_MERCATOR_WKID = 3857
+
+
+def install_arcgis_feature_set(
+    monkeypatch: pytest.MonkeyPatch,
+    feature_set: arcgis.features.FeatureSet | types.SimpleNamespace,
+) -> None:
+    """Serve a controlled ArcGIS response without remote access.
+
+    Args:
+        monkeypatch: The monkeypatch fixture.
+        feature_set: The response returned by the query.
+    """
+    monkeypatch.setattr(peri_scribe.sources.external_sources.arcgis.gis, "GIS", object)
+    monkeypatch.setattr(
+        peri_scribe.sources.external_sources.arcgis.features,
+        "FeatureLayer",
+        lambda _url, _gis: object(),
+    )
+    monkeypatch.setattr(
+        peri_scribe.geo.data,
+        "query_with_retry",
+        lambda *_args, **_kwargs: feature_set,
+    )
 
 
 def install_arcgis_query_stubs(
@@ -33,17 +57,9 @@ def install_arcgis_query_stubs(
         monkeypatch: The monkeypatch fixture.
         dataframe: The GeoDataFrame the fake pipeline returns.
     """
-    monkeypatch.setattr(peri_scribe.sources.external_sources.arcgis.gis, "GIS", object)
-    monkeypatch.setattr(
-        peri_scribe.sources.external_sources.arcgis.features,
-        "FeatureLayer",
-        lambda _url, _gis: object(),
-    )
-    feature_set = types.SimpleNamespace(features=[object()], sdf=None)
-    monkeypatch.setattr(
-        peri_scribe.geo.data,
-        "query_with_retry",
-        lambda *_args, **_kwargs: feature_set,
+    install_arcgis_feature_set(
+        monkeypatch,
+        types.SimpleNamespace(features=[object()], sdf=None),
     )
     monkeypatch.setattr(
         arcgis_access.data,

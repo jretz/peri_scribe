@@ -74,6 +74,27 @@ def test_latest_snapshot_layer_names_source_geopackage(
     ) == (path, "evacuations")
 
 
+def test_external_signals_accepts_empty_evacuation_layer(
+    tmp_path: pathlib.Path,
+) -> None:
+    source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
+    output = peri_scribe.sources.external_data.output_path(tmp_path, source)
+    output.parent.mkdir(parents=True)
+    tests.helpers.factories.geography.empty_frame().to_file(
+        output,
+        layer=source.layer_name,
+        driver="GPKG",
+    )
+    geometry = tests.helpers.factories.geometry.square(0.01)
+    signals = peri_scribe.fires.scores.external_signals(
+        tmp_path,
+        1,
+        [geometry],
+        [geometry],
+    )
+    assert signals.evacuation_indices == frozenset()
+
+
 def test_score_fires_writes_current_scores(
     tmp_path: pathlib.Path,
     score_fires_stubs: typing.Callable[

@@ -19,6 +19,8 @@ import peri_scribe.sources.external_sources
 import tests.helpers.doubles.peri_scribe.main_run
 import tests.helpers.doubles.peri_scribe.main_source
 import tests.helpers.doubles.peri_scribe.main_write_reports
+import tests.helpers.doubles.peri_scribe.sources.external_sources
+import tests.helpers.factories.arcgis
 import tests.helpers.factories.peri_scribe.sources.snapshots
 from measurement_units import units
 
@@ -52,6 +54,25 @@ def test_stored_evacuations_digest_uses_evacuations_output(
     result = peri_scribe.pipeline.stored_evacuations_digest(pathlib.Path("/data/2026"))
     assert result == "digest"
     assert digests == [(output, "evacuations")]
+
+
+def test_refresh_external_sources_detects_cleared_evacuations(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
+    monkeypatch.setattr(peri_scribe.sources.catalog, "EXTERNAL_SOURCES", (source,))
+    tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_feature_set(
+        monkeypatch,
+        tests.helpers.factories.arcgis.wgs84_feature_set([(1, "zone", -121.0, 40.0)]),
+    )
+    peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_feature_set(
+        monkeypatch,
+        tests.helpers.factories.arcgis.empty_wgs84_feature_set(),
+    )
+    assert peri_scribe.pipeline.refresh_external_sources(tmp_path)
+    assert not peri_scribe.pipeline.refresh_external_sources(tmp_path)
 
 
 def test_duration_convert_whole_hours_and_days() -> None:

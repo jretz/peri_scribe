@@ -116,9 +116,10 @@ def fetch_arcgis_source(
     The layer is queried in full. When the stored GeoPackage already holds the same
     features, nothing is written and its path is returned. Otherwise the stored
     GeoPackage is replaced with the freshly fetched version, so only the latest version
-    of the layer is kept at the source's fixed output path. When the layer cannot be
-    retrieved and a current version is stored, a warning is logged and the stored
-    version is kept so that the caller can proceed; when no version is stored at all,
+    of the layer is kept at the source's fixed output path. Empty evacuation responses
+    clear the stored features because live zones can all be removed. Other sources
+    require at least one feature. When retrieval fails, a warning is logged and the
+    stored version is kept so that the caller can proceed; when no version is stored,
     the failure is raised.
 
     Args:
@@ -259,7 +260,8 @@ def query_arcgis_source(
         The layer's features in WGS84.
 
     Raises:
-        ExternalDataError: If the layer cannot be fetched or returns no features.
+        ExternalDataError: If the layer cannot be fetched or a non-evacuation source
+            returns no features.
     """
     try:
         gis = arcgis.gis.GIS()
@@ -274,7 +276,10 @@ def query_arcgis_source(
     except Exception as error:
         message = f"Failed to fetch external source {source.name}: {error}"
         raise peri_scribe.exceptions.ExternalDataError(message) from error
-    if not feature_set.features:
+    if (
+        not feature_set.features
+        and source.name != peri_scribe.sources.catalog.EVACUATIONS_SOURCE.name
+    ):
         message = f"External source {source.name} returned no features"
         raise peri_scribe.exceptions.ExternalDataError(message)
     with peri_scribe.logging.log_phase(

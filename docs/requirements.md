@@ -18,7 +18,11 @@ The configured fire feeds are:
 The pipeline also retrieves California evacuation zones and a nationwide building
 centroid database. Fire-feed snapshots are append-only GeoPackages. The evacuation layer
 is kept as its latest GeoPackage, while the buildings source is stored as a compact
-SQLite database at `sources/buildings.sqlite`.
+SQLite database at `sources/buildings.sqlite`. A successful empty evacuation response
+clears the stored zones and counts as a change when zones were previously present.
+Repeated empty responses leave that empty snapshot unchanged. Retrieval failures retain
+the stored version when one exists. Other external ArcGIS sources, including major
+cities, treat empty responses as retrieval failures and warn when retaining cached data.
 
 `run` performs the following operations:
 

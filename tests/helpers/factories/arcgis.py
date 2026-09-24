@@ -7,6 +7,24 @@ import arcgis.features
 import tests.helpers.factories.geography
 
 
+def empty_wgs84_feature_set() -> arcgis.features.FeatureSet:
+    """Return an empty polygon response with ArcGIS field metadata.
+
+    Returns:
+        A successful query response with no matching features.
+    """
+    return arcgis.features.FeatureSet.from_dict({
+        "features": [],
+        "fields": [
+            {"name": "OBJECTID", "type": "esriFieldTypeOID"},
+            {"name": "STATUS", "type": "esriFieldTypeString"},
+            {"name": "EditDate", "type": "esriFieldTypeDate"},
+        ],
+        "geometryType": "esriGeometryPolygon",
+        "spatialReference": {"wkid": tests.helpers.factories.geography.WGS84_WKID},
+    })
+
+
 def wgs84_feature_set(
     points: list[tuple[int | None, str, float, float]],
 ) -> arcgis.features.FeatureSet:

@@ -27,6 +27,7 @@ import spatial_data.reference
 import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.sources.external_source
 import tests.helpers.doubles.peri_scribe.sources.external_sources
+import tests.helpers.factories.arcgis
 import tests.helpers.factories.geography
 import tests.helpers.factories.peri_scribe.sources.external_source
 
@@ -181,29 +182,125 @@ def test_fetch_arcgis_source_passes_where_clause(
     ]
 
 
-def test_fetch_arcgis_source_raises_when_no_features(
+def test_fetch_arcgis_source_persists_empty_response(
+    tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
-    monkeypatch.setattr(peri_scribe.sources.external_sources.arcgis.gis, "GIS", object)
-    monkeypatch.setattr(
-        peri_scribe.sources.external_sources.arcgis.features,
-        "FeatureLayer",
-        lambda _url, _gis: object(),
+    tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_feature_set(
+        monkeypatch,
+        tests.helpers.factories.arcgis.empty_wgs84_feature_set(),
     )
-    monkeypatch.setattr(
-        peri_scribe.geo.data,
-        "query_with_retry",
-        lambda *_args, **_kwargs: types.SimpleNamespace(features=[]),
+    output = peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    stored = geopandas.read_file(output, layer=source.layer_name)
+    assert stored.empty
+    assert stored.crs.to_epsg() == spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID
+
+
+def test_fetch_arcgis_source_clears_current_version_when_response_empty(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
+    output = peri_scribe.sources.external_data.output_path(tmp_path, source)
+    output.parent.mkdir(parents=True)
+    dataframe = (
+        tests.helpers.factories.peri_scribe.sources.external_source
+    ).sample_arcgis_dataframe()
+    dataframe.to_file(output, layer=source.layer_name, driver="GPKG")
+    tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_feature_set(
+        monkeypatch,
+        tests.helpers.factories.arcgis.empty_wgs84_feature_set(),
+    )
+    result = peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    assert result == output
+    assert geopandas.read_file(output, layer=source.layer_name).empty
+
+
+def test_fetch_arcgis_source_skips_repeated_empty_response(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
+    tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_feature_set(
+        monkeypatch,
+        tests.helpers.factories.arcgis.empty_wgs84_feature_set(),
+    )
+    output = peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    content = output.read_bytes()
+    modified = output.stat().st_mtime_ns
+    result = peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    assert result == output
+    assert output.read_bytes() == content
+    assert output.stat().st_mtime_ns == modified
+
+
+def test_fetch_arcgis_source_replaces_empty_version_when_features_return(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
+    tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_feature_set(
+        monkeypatch,
+        tests.helpers.factories.arcgis.empty_wgs84_feature_set(),
+    )
+    output = peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_feature_set(
+        monkeypatch,
+        tests.helpers.factories.arcgis.wgs84_feature_set([(1, "zone", -121.0, 40.0)]),
+    )
+    result = peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    assert result == output
+    stored = geopandas.read_file(output, layer=source.layer_name)
+    assert stored["OBJECTID"].tolist() == [1]
+    assert stored.geometry.tolist() == [shapely.geometry.Point(-121.0, 40.0)]
+
+
+def test_fetch_arcgis_source_keeps_major_cities_when_response_empty(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    log_output: structlog.testing.LogCapture,
+) -> None:
+    source = peri_scribe.sources.catalog.MAJOR_CITIES_SOURCE
+    tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_feature_set(
+        monkeypatch,
+        tests.helpers.factories.arcgis.wgs84_feature_set([(1, "City", -121.0, 40.0)]),
+    )
+    output = peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    content = output.read_bytes()
+    modified = output.stat().st_mtime_ns
+    tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_feature_set(
+        monkeypatch,
+        arcgis.features.FeatureSet([]),
+    )
+    result = peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    assert result == output
+    assert output.read_bytes() == content
+    assert output.stat().st_mtime_ns == modified
+    assert any(
+        entry["log_level"] == "warning"
+        and entry["event"] == "Failed to fetch external source; keeping current data"
+        and entry["source"] == source.name
+        and entry["error"] == "External source major_cities returned no features"
+        for entry in log_output.entries
+    )
+
+
+def test_fetch_arcgis_source_raises_for_empty_major_cities_without_cache(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = peri_scribe.sources.catalog.MAJOR_CITIES_SOURCE
+    tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_feature_set(
+        monkeypatch,
+        arcgis.features.FeatureSet([]),
     )
     with pytest.raises(
         peri_scribe.exceptions.ExternalDataError,
-        match="returned no features",
+        match="External source major_cities returned no features",
     ):
-        peri_scribe.sources.external_sources.fetch_external_source(
-            source,
-            tests.helpers.doubles.peri_scribe.sources.external_sources.YEAR_DIRECTORY,
-        )
+        peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
+    assert not peri_scribe.sources.external_data.output_path(tmp_path, source).exists()
 
 
 def test_fetch_arcgis_source_raises_when_fetch_fails(

@@ -22,6 +22,7 @@ import peri_scribe.models
 import peri_scribe.sources.feed_types
 import tests.helpers.doubles.arcgis
 import tests.helpers.doubles.arcgis_access.data
+import tests.helpers.factories.arcgis
 import tests.helpers.factories.arcgis_access.retry
 import tests.helpers.factories.geography
 import tests.helpers.factories.peri_scribe.sources.feed_types
@@ -82,6 +83,32 @@ def test_geo_data_frame_from_allows_null_geometries() -> None:
         tests.helpers.factories.geography.WGS84_WKID,
     )
     assert list(result.geometry) == [None]
+
+
+@pytest.mark.parametrize("geometry_column", ["geom", "shape"])
+@pytest.mark.parametrize("include_schema", [False, True])
+def test_geo_data_frame_from_feature_set_accepts_empty_response(
+    geometry_column: str,
+    log_output: structlog.testing.LogCapture,
+    *,
+    include_schema: bool,
+) -> None:
+    feature_set = (
+        tests.helpers.factories.arcgis.empty_wgs84_feature_set()
+        if include_schema
+        else arcgis.features.FeatureSet([])
+    )
+    result = arcgis_access.data.geo_data_frame_from_feature_set(
+        feature_set,
+        geometry_column=geometry_column,
+    )
+    assert result.empty
+    assert result.geometry.name == geometry_column
+    assert result.columns.is_unique
+    assert result.crs == pyproj.CRS.from_epsg(
+        tests.helpers.factories.geography.WGS84_WKID,
+    )
+    assert not any(entry["log_level"] == "warning" for entry in log_output.entries)
 
 
 def test_dataframe_for_layer_raises_no_features_error_when_feed_is_empty(
