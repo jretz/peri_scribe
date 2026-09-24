@@ -214,50 +214,54 @@ place estimates at their effective times. Growth and first-mapping signals use g
 independently of the selected current area. Area quantities carry their units; consumers
 convert explicitly rather than assuming acres or square meters.
 
-## History reuse and shared measurements
+## Publication reuse and performance
 
-The geography stage reads and groups all source observations before deciding which fires
-can reuse previous results. Each fire's `derivation_key` covers its complete ordered
-source records, geometry, attributes and provenance, including observations discarded
-during reconciliation. It also covers fire identity and complex membership, package
-source code (including `arcgis_access`, `spatial_data`, and `measurement_units`),
-relevant geospatial library versions, boundary data, and cleaning,
-size-filtering, and classification settings.
+`execution.py` shares source grouping and classification across indexing and geography,
+then shares derived frames, area histories, and summaries across scoring, KMZ, and
+reports. Source objects are released after geography; remaining references are released
+at scope exit, including failures. Standalone stages use the same lifecycle.
 
-Matching fires retain their full point, perimeter, and incident rows and differential
-history. Incident reuse uses the complete source fingerprint, so a report edit
-invalidates it even when the polygon is unchanged. Other fires are classified and
-reconciled in full, and their complete differential sequences are rebuilt. Appended
-observations, shrinking corrections, late observations, metadata edits, removed records,
-and grouping changes can affect earlier output, so reuse is decided for a whole fire
-rather than an appended ring suffix. Source reading and global grouping remain work on
-every geography run.
+`preparation.py` manages disposable products in `derived/prepared-products.sqlite`:
+classifications, histories, descriptions, spatial measurements, buffers, building
+counts, SVGs, and KML boundaries. Keys cover exact relevant inputs, policies, code, and
+runtime dependencies. Invalid or unavailable products fall back to computation.
+Deleting the database only loses acceleration. SQLite's page cache is 8 MiB and the
+KML fragment cache retains at most 16 MiB of accounted values; neither bounds total RAM.
+Old runtime contexts remain on disk.
 
-Full perimeter rows store `geometry_area_square_meters` and `exterior_perimeter_meters`
-for the cleaned shape. Differential rows store ring area and `added_area_square_meters`,
-which measures newly covered ground in the cumulative union of dated, visible rings. A
-`ring_sequence_digest` identifies the exact ordered geometries used for that
-calculation. Downstream scoring, KML, and report consumers share these measurements.
-When a consumer uses a different ring sequence or receives rows without stored
-measurements, it computes the measurements it needs. Scores, rankings, and presentation
-are regenerated to reflect external inputs and current time.
+Complete source generations hash ordered snapshot paths and bytes plus derivation
+dependencies. Parsed source records also validate snapshot content checksums. An
+unchanged, fully classified generation can retain its source index and geography
+without parsing sources or rewriting GeoPackages. Output checksums and complete layer
+signatures authenticate reuse; replacement files are published atomically before their
+`.reuse.json` metadata. `--unconditional` bypasses reuse of prior outputs and refreshes
+the fire index when rebuilding geography.
 
-Within each KMZ or report stage, prepared fire histories hold reconciled incident
-updates, the selected area timeline, and current and historical size. Qualification,
-charts, containment estimates, and descriptions share that evidence so JSON parsing,
-report reconciliation, and footprint comparisons are performed once per fire.
+Changed generations still read and group all sources. Each fire's `derivation_key`
+covers all ordered observations, geometry, attributes, provenance, identity, complex
+membership, and derivation dependencies. Matching fires retain full and differential
+histories; affected fires rebuild their complete histories. Dense reuse reads whole
+GeoPackage layers; sparse reuse can use a lazy row index bound to the published file's
+checksum and exact normalized values. Published GeoPackages remain authoritative.
 
-`fires/reuse.py` validates each prior GeoPackage against its sibling `.reuse.json` file,
-which contains a cache version and the completed file's checksum. Missing, incompatible,
-corrupt, or edited cache data causes a miss. Each replacement GeoPackage is generated in
-a temporary directory beside its destination, then atomically replaces the destination
-before its checksum metadata is published. An interrupted publication cannot validate
-mismatched geometry and metadata. Full and differential files are published separately;
-their per-fire derivation keys determine whether rows are reusable.
+Consumers share stored geometry area, exterior perimeter, and added-area measurements;
+ring measurements require a matching ordered `ring_sequence_digest`. Scores, rankings,
+time-dependent selection, and complete publication assembly still run against current
+inputs.
 
-An unconditional geography rebuild bypasses both prior history files and refreshes the
-fire index from the grouped sources. Existing parsed source-record caches retain their
-own validation rules. Static sources retain their existing download policy.
+Offline Mac benchmarks on 23 September 2026 reduced warm unchanged publication medians
+from 132.31 to 26.84 seconds (4.93×; two trials), with maximum measured peak RAM falling
+from 1.804 to 0.845 GB. One incident-only update improved from 123.72 to 45.67 seconds
+(2.71×).
+Application outputs matched an unconditional build of the original code on this Mac,
+excluding container metadata, batch UUIDs, and internal fingerprints. These measurements
+exclude live collection and predate subsequent correctness fixes. Local evidence is in
+`data/profiling/2026-09-23-implementation`.
+
+Reaching 10× still requires less full-history loading and reconstruction in consumers,
+plus incremental source grouping for changed runs. A 100× target would require broader
+reuse of completed artifacts or precomputed output pieces; neither target is established
+by these measurements.
 
 ## Recovery and scheduling
 

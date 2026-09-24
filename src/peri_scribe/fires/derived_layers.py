@@ -14,10 +14,11 @@ import sqlite3
 
 import geopandas
 
+import peri_scribe.execution
 import peri_scribe.fires.differential
 import peri_scribe.fires.files
+import peri_scribe.fires.reuse
 import peri_scribe.incidents
-import spatial_data.layers
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -47,7 +48,7 @@ def read_layer_if_present(
     """
     if not path.is_file():
         return geopandas.GeoDataFrame()
-    return spatial_data.layers.read_layer(path, layer_name)
+    return peri_scribe.fires.reuse.read_published_layer(path, layer_name)
 
 
 def read_derived_layers(
@@ -70,12 +71,32 @@ def read_derived_layers(
     Returns:
         The full perimeter, point, and incident histories and differential perimeters.
     """
-    read = read_layer_if_present if tolerate_missing else spatial_data.layers.read_layer
     history_path = peri_scribe.fires.files.history_geopackage_path(year_directory)
     differential_path = peri_scribe.fires.differential.differential_geopackage_path(
         year_directory,
     )
-    return DerivedLayers(
+    paths = (history_path, differential_path)
+    key = (
+        tuple(
+            (str(path.resolve()), path.stat().st_size, path.stat().st_mtime_ns)
+            if path.is_file()
+            else (str(path.resolve()), None, None)
+            for path in paths
+        )
+        if peri_scribe.execution.active()
+        else None
+    )
+    cached = peri_scribe.execution.get(peri_scribe.execution.Group.DERIVED, key)
+    if isinstance(cached, DerivedLayers) and (
+        tolerate_missing or all(path.is_file() for path in paths)
+    ):
+        return cached
+    read = (
+        read_layer_if_present
+        if tolerate_missing
+        else peri_scribe.fires.reuse.read_published_layer
+    )
+    layers = DerivedLayers(
         incidents=read_incident_layer(history_path),
         perimeters=read(history_path, peri_scribe.fires.files.PERIMETER_LAYER_NAME),
         points=read(history_path, peri_scribe.fires.files.POINT_LAYER_NAME),
@@ -84,6 +105,8 @@ def read_derived_layers(
             peri_scribe.fires.files.PERIMETER_LAYER_NAME,
         ),
     )
+    peri_scribe.execution.put(peri_scribe.execution.Group.DERIVED, key, layers)
+    return layers
 
 
 def read_incident_layer(path: pathlib.Path) -> geopandas.GeoDataFrame:
@@ -106,4 +129,7 @@ def read_incident_layer(path: pathlib.Path) -> geopandas.GeoDataFrame:
         ).fetchone()
     if present is None:
         return geopandas.GeoDataFrame()
-    return spatial_data.layers.read_layer(path, peri_scribe.incidents.LAYER_NAME)
+    return peri_scribe.fires.reuse.read_published_layer(
+        path,
+        peri_scribe.incidents.LAYER_NAME,
+    )

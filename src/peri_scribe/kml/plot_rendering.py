@@ -8,12 +8,25 @@ under a second.
 from __future__ import annotations
 
 import dataclasses
+import hashlib
+import locale
+import os
 import re
+import time
 import typing
 
+import defusedxml.common
+import defusedxml.ElementTree
+
 import peri_scribe.kml.plot_data
+import spatial_data.cache_values
+import spatial_data.product_cache
 import svg_charts.models
+import svg_charts.svg
 import svg_charts.time_series
+
+
+PLOT_NAMESPACE = "chart-svg-v1"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -48,13 +61,79 @@ def render_plot_request(request: PlotRequest) -> PlotImage:
     Returns:
         The rendered image.
     """
-    return PlotImage(
-        filename=plot_filename(request.filename_prefix, request.filename_suffix),
-        content=svg_charts.time_series.draw_plot(
+    key = plot_key(request) if spatial_data.product_cache.active() else None
+    content = cached_plot_content(key) if key is not None else None
+    if content is None:
+        content = svg_charts.time_series.draw_plot(
             request.series,
             y_axis_label=request.y_axis_label,
-        ),
+        )
+        if key is not None:
+            spatial_data.product_cache.put(PLOT_NAMESPACE, key, content)
+    return PlotImage(
+        filename=plot_filename(request.filename_prefix, request.filename_suffix),
+        content=content,
     )
+
+
+def plot_key(request: PlotRequest) -> str | None:
+    """Fingerprint every drawing input while leaving filenames and bundle order live.
+
+    Args:
+        request: Complete ordered series and axis labels sent to the renderer.
+
+    Returns:
+        The input fingerprint, or None for unsupported uncached drawing inputs.
+    """
+    settings = tuple(
+        (
+            module.__name__,
+            tuple(
+                sorted(
+                    (name, value)
+                    for name, value in vars(module).items()
+                    if name.isupper()
+                ),
+            ),
+        )
+        for module in (svg_charts.time_series, svg_charts.svg)
+    )
+    try:
+        payload = spatial_data.cache_values.dumps((
+            tuple(dataclasses.asdict(series) for series in request.series),
+            request.y_axis_label,
+            settings,
+            locale.setlocale(locale.LC_TIME),
+            (
+                os.environ.get("TZ"),
+                time.tzname,
+                time.timezone,
+                time.altzone,
+                time.daylight,
+            ),
+        ))
+    except ValueError:
+        return None
+    return hashlib.sha256(payload).hexdigest()
+
+
+def cached_plot_content(key: str) -> bytes | None:
+    """Reuse authenticated SVG bytes without interpreting executable cached objects.
+
+    Args:
+        key: The complete renderer input fingerprint.
+
+    Returns:
+        Exact SVG bytes, or None when the product is absent or malformed.
+    """
+    content = spatial_data.product_cache.get(PLOT_NAMESPACE, key)
+    if content is None:
+        return None
+    try:
+        root = defusedxml.ElementTree.fromstring(content)
+    except defusedxml.ElementTree.ParseError, defusedxml.common.DefusedXmlException:
+        return None
+    return content if root.tag == "{http://www.w3.org/2000/svg}svg" else None
 
 
 def plot_requests(

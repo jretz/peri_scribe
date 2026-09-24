@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+import hashlib
 import typing
 
 import peri_scribe.areas
@@ -9,8 +11,11 @@ import peri_scribe.geo.measurements
 import peri_scribe.incidents
 import peri_scribe.models
 import peri_scribe.presentation.descriptions
+import peri_scribe.presentation.prepared_cache
 import peri_scribe.presentation.row_values
 import peri_scribe.presentation.selection
+import spatial_data.frame_fingerprints
+import spatial_data.product_cache
 from measurement_units import units
 
 
@@ -73,6 +78,93 @@ def fire_description(
 
     Returns:
         The fire's latest state.
+    """
+    if not spatial_data.product_cache.active():
+        return build_fire_description(
+            entry,
+            perimeter_rows,
+            point_rows,
+            of_note,
+            incident_rows=incident_rows,
+            history=history,
+        )
+    if history is None:
+        history = peri_scribe.areas.prepare_history(
+            perimeter_rows,
+            point_rows,
+            incident_rows,
+        )
+    try:
+        frames = tuple(
+            spatial_data.frame_fingerprints.frame_rows(frame.iloc[-1:])
+            for frame in (perimeter_rows, point_rows)
+        )
+        key = spatial_data.frame_fingerprints.selected_key(
+            frames,
+            tuple(tuple(range(len(frame.rows))) for frame in frames),
+            (
+                entry.model_dump_json(),
+                hashlib.sha256(
+                    peri_scribe.presentation.prepared_cache.history_bytes(history),
+                ).digest(),
+            ),
+        )
+    except ValueError:
+        return build_fire_description(
+            entry,
+            perimeter_rows,
+            point_rows,
+            of_note,
+            incident_rows=incident_rows,
+            history=history,
+        )
+    payload = spatial_data.product_cache.get("fire_descriptions", key)
+    if payload is not None:
+        try:
+            description = peri_scribe.presentation.prepared_cache.read_description(
+                payload,
+            )
+        except ValueError:
+            pass
+        else:
+            return dataclasses.replace(description, of_note=of_note)
+    description = build_fire_description(
+        entry,
+        perimeter_rows,
+        point_rows,
+        incident_rows=incident_rows,
+        history=history,
+    )
+    try:
+        payload = peri_scribe.presentation.prepared_cache.description_bytes(description)
+    except ValueError:
+        pass
+    else:
+        spatial_data.product_cache.put("fire_descriptions", key, payload)
+    return dataclasses.replace(description, of_note=of_note)
+
+
+def build_fire_description(
+    entry: peri_scribe.models.FireIndexEntry,
+    perimeter_rows: geopandas.GeoDataFrame,
+    point_rows: geopandas.GeoDataFrame,
+    of_note: str | None = None,
+    *,
+    incident_rows: geopandas.GeoDataFrame | None = None,
+    history: peri_scribe.areas.PreparedHistory | None = None,
+) -> peri_scribe.presentation.descriptions.FireDescription:
+    """Derive stable facts from the latest rows and complete reporting evidence.
+
+    Args:
+        entry: Indexed fire identity and metadata.
+        perimeter_rows: Selected perimeter history in chronological order.
+        point_rows: Selected point history in chronological order.
+        of_note: The current score explanation, when supplied.
+        incident_rows: Independent reporting evidence, when available.
+        history: Reconciled evidence and selected acreage, when already prepared.
+
+    Returns:
+        The fire's latest state with its exact original measurement units.
     """
     perimeter_row = perimeter_rows.iloc[-1] if not perimeter_rows.empty else None
     point_row = point_rows.iloc[-1] if not point_rows.empty else None

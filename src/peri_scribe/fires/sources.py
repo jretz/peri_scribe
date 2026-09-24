@@ -10,6 +10,7 @@ import os
 import pathlib
 
 import peri_scribe.exceptions
+import peri_scribe.execution
 import peri_scribe.fires.grouping
 import peri_scribe.geo.package
 import peri_scribe.geo.reading
@@ -38,6 +39,15 @@ class ReadFireSources:
     rows: tuple[peri_scribe.geo.package.FireRowRecord, ...]
     paths: tuple[pathlib.Path, ...]
     memberships: tuple[peri_scribe.models.ComplexMembership, ...]
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class PreparedSources:
+    """Retain source evidence and fire identities consistently throughout one run."""
+
+    read: ReadFireSources
+    groups: FireRecordGroups
+    classifications: dict[int, peri_scribe.models.FireClassification] | None = None
 
 
 def read_fire_geopackage(
@@ -157,6 +167,48 @@ def group_fire_sources(read: ReadFireSources) -> FireRecordGroups:
     )
 
 
+def prepare_fire_sources(directory: pathlib.Path) -> PreparedSources:
+    """Share source interpretation while a pipeline execution owns its inputs.
+
+    Args:
+        directory: The directory tree holding GeoPackage files with fire data.
+
+    Returns:
+        Source evidence and grouped fires, including any classifications already
+        calculated during this execution.
+    """
+    cached = peri_scribe.execution.get(
+        peri_scribe.execution.Group.SOURCES,
+        directory.resolve(),
+    )
+    if isinstance(cached, PreparedSources):
+        return cached
+    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.READ_SOURCES):
+        read = read_fire_sources(directory)
+    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.GROUP_SOURCES):
+        groups = group_fire_sources(read)
+    prepared = PreparedSources(read=read, groups=groups)
+    remember_prepared_sources(directory, prepared)
+    return prepared
+
+
+def remember_prepared_sources(
+    directory: pathlib.Path,
+    prepared: PreparedSources,
+) -> None:
+    """Retain complete preparation only until the pipeline releases its source inputs.
+
+    Args:
+        directory: The source directory represented by the preparation.
+        prepared: Consistent evidence, fire identities, and available classifications.
+    """
+    peri_scribe.execution.put(
+        peri_scribe.execution.Group.SOURCES,
+        directory.resolve(),
+        prepared,
+    )
+
+
 def fire_record_groups(directory: pathlib.Path) -> FireRecordGroups:
     """Read and group the fire records under *directory*.
 
@@ -167,10 +219,7 @@ def fire_record_groups(directory: pathlib.Path) -> FireRecordGroups:
         The records, their source files, the grouped fires, and the identifiers of the
         fires that are complex parents.
     """
-    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.READ_SOURCES):
-        read = read_fire_sources(directory)
-    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.GROUP_SOURCES):
-        return group_fire_sources(read)
+    return prepare_fire_sources(directory).groups
 
 
 def fire_is_complex_parent(

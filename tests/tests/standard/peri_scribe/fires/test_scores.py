@@ -75,6 +75,7 @@ def test_latest_snapshot_layer_names_source_geopackage(
 
 
 def test_score_fires_writes_current_scores(
+    tmp_path: pathlib.Path,
     score_fires_stubs: typing.Callable[
         ...,
         tests.helpers.doubles.peri_scribe.fires.scores.ScoreFiresStubs,
@@ -112,15 +113,15 @@ def test_score_fires_writes_current_scores(
     )
     stubs = score_fires_stubs(perimeters=perimeters, points=points)
 
-    result = peri_scribe.fires.scores.score_fires(pathlib.Path("data/2026"))
+    result = peri_scribe.fires.scores.score_fires(tmp_path)
 
-    assert result == pathlib.Path("data/2026/derived/fire_scores.json")
+    assert result == tmp_path / "derived/fire_scores.json"
     assert len(stubs.writes) == 1
     _path, document = stubs.writes[0]
     assert document.fires[0].name == "Bug"
     assert document.fires[0].score == pytest.approx(168)
     assert stubs.ccdf_writes == [
-        (pathlib.Path("data/2026/derived/fire_scores_ccdf.html"), document),
+        (tmp_path / "derived/fire_scores_ccdf.html", document),
     ]
 
 
@@ -208,6 +209,7 @@ def test_score_fires_streams_external_signals(
 
 
 def test_score_fires_sorts_entries_by_score_descending(
+    tmp_path: pathlib.Path,
     score_fires_stubs: typing.Callable[
         ...,
         tests.helpers.doubles.peri_scribe.fires.scores.ScoreFiresStubs,
@@ -240,12 +242,13 @@ def test_score_fires_sorts_entries_by_score_descending(
     )
     stubs = score_fires_stubs(perimeters=perimeters)
 
-    peri_scribe.fires.scores.score_fires(pathlib.Path("data/2026"))
+    peri_scribe.fires.scores.score_fires(tmp_path)
 
     assert [entry.name for entry in stubs.writes[0][1].fires] == ["Big", "Small"]
 
 
 def test_score_fires_scores_point_only_fire(
+    tmp_path: pathlib.Path,
     score_fires_stubs: typing.Callable[
         ...,
         tests.helpers.doubles.peri_scribe.fires.scores.ScoreFiresStubs,
@@ -263,7 +266,7 @@ def test_score_fires_scores_point_only_fire(
     )
     stubs = score_fires_stubs(points=points)
 
-    peri_scribe.fires.scores.score_fires(pathlib.Path("data/2026"))
+    peri_scribe.fires.scores.score_fires(tmp_path)
 
     assert [entry.name for entry in stubs.writes[0][1].fires] == ["Smoke"]
 

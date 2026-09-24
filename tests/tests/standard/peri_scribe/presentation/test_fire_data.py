@@ -6,12 +6,116 @@ import datetime
 
 import shapely.geometry
 
+import peri_scribe.execution
 import peri_scribe.models
 import peri_scribe.presentation.fire_data
 import spatial_data.measurements
 import tests.helpers.factories.geometry
 import tests.helpers.factories.peri_scribe.kml.parsing
 import tests.helpers.factories.peri_scribe.presentation.fire_data
+
+
+def test_prepare_fire_data_shares_equal_index_and_scores_within_one_run() -> None:
+    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([])
+    empty = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([])
+    scores = peri_scribe.models.FireScores(version="test", fires=[])
+    with peri_scribe.execution.sharing():
+        first = peri_scribe.presentation.fire_data.prepare_fire_data(
+            index,
+            empty,
+            empty,
+            empty,
+            scores,
+        )
+        second = peri_scribe.presentation.fire_data.prepare_fire_data(
+            index.model_copy(deep=True),
+            empty,
+            empty,
+            empty,
+            scores.model_copy(deep=True),
+        )
+    assert first is second
+
+
+def test_prepare_fire_data_rebuilds_between_runs() -> None:
+    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([])
+    empty = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([])
+    with peri_scribe.execution.sharing():
+        first = peri_scribe.presentation.fire_data.prepare_fire_data(
+            index,
+            empty,
+            empty,
+            empty,
+        )
+    with peri_scribe.execution.sharing():
+        second = peri_scribe.presentation.fire_data.prepare_fire_data(
+            index,
+            empty,
+            empty,
+            empty,
+        )
+    assert first is not second
+
+
+def test_prepare_fire_data_rebuilds_for_replaced_sources() -> None:
+    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([])
+    empty = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([])
+    with peri_scribe.execution.sharing():
+        first = peri_scribe.presentation.fire_data.prepare_fire_data(
+            index,
+            empty,
+            empty,
+            empty,
+        )
+        second = peri_scribe.presentation.fire_data.prepare_fire_data(
+            index,
+            empty.copy(),
+            empty,
+            empty,
+        )
+    assert first is not second
+
+
+def test_prepare_fire_data_rebuilds_when_score_explanation_changes() -> None:
+    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
+        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
+            "Bug",
+            "active",
+            identifier="id-bug",
+        ),
+    ])
+    empty = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([])
+    scores = peri_scribe.models.FireScores(
+        version="test",
+        fires=[
+            peri_scribe.models.FireScoreEntry(
+                name="Bug",
+                identifier="id-bug",
+                score=1,
+                explanation="First explanation.",
+            ),
+        ],
+    )
+    with peri_scribe.execution.sharing():
+        (first,) = peri_scribe.presentation.fire_data.prepare_fire_data(
+            index,
+            empty,
+            empty,
+            empty,
+            scores,
+        )
+        scores.fires[0].explanation = "Updated explanation."
+        (second,) = peri_scribe.presentation.fire_data.prepare_fire_data(
+            index,
+            empty,
+            empty,
+            empty,
+            scores,
+        )
+    assert first.summary.description is not None
+    assert second.summary.description is not None
+    assert first.summary.description.of_note == "First explanation."
+    assert second.summary.description.of_note == "Updated explanation."
 
 
 def test_fire_perimeters_matches_identifier() -> None:

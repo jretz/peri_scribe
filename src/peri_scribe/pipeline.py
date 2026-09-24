@@ -15,6 +15,7 @@ import pint
 import structlog
 
 import peri_scribe.cli_options
+import peri_scribe.execution
 import peri_scribe.fires.differential
 import peri_scribe.fires.index
 import peri_scribe.fires.scores
@@ -26,6 +27,7 @@ import peri_scribe.paths
 import peri_scribe.phases
 import peri_scribe.pipeline_stages
 import peri_scribe.pipeline_state
+import peri_scribe.preparation
 import peri_scribe.publication
 import peri_scribe.report.gathering
 import peri_scribe.report.markdown
@@ -541,10 +543,19 @@ def run_geography_stage(
         unconditional: Whether to bypass prior full and differential histories and
             refresh the fire index.
     """
-    peri_scribe.fires.differential.write_history_of_differential_geography(
-        year_directory,
-        unconditional=unconditional,
-    )
+    for group in (
+        peri_scribe.execution.Group.DERIVED,
+        peri_scribe.execution.Group.HISTORIES,
+        peri_scribe.execution.Group.PRESENTATION,
+    ):
+        peri_scribe.execution.clear(group)
+    try:
+        peri_scribe.fires.differential.write_history_of_differential_geography(
+            year_directory,
+            unconditional=unconditional,
+        )
+    finally:
+        peri_scribe.execution.clear(peri_scribe.execution.Group.SOURCES)
 
 
 def run_score_stage(year_directory: pathlib.Path) -> None:
@@ -882,6 +893,7 @@ def run(
         )
 
 
+@peri_scribe.preparation.cached_year
 def run_selected_stages(
     year_directory: pathlib.Path,
     start: int,

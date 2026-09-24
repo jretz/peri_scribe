@@ -13,6 +13,7 @@ import peri_scribe.models
 import peri_scribe.perimeters.progression
 import peri_scribe.presentation.fire_data
 import spatial_data.measurements
+import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.kml.fire_data
 import tests.helpers.factories.geography
 import tests.helpers.factories.geometry
@@ -253,7 +254,9 @@ def test_interior_ring_colors_returns_nothing_without_rings_or_perimeters() -> N
 
 
 @pytest.mark.usefixtures("isolated_added_area_cache")
-def test_precompute_interior_added_areas_warms_drawn_ring_sequences() -> None:
+def test_precompute_interior_added_areas_warms_drawn_ring_sequences(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     first_time = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     second_time = datetime.datetime(2026, 1, 2, tzinfo=datetime.UTC)
     first_ring = tests.helpers.factories.peri_scribe.presentation.fire_data.dated_ring(
@@ -279,20 +282,22 @@ def test_precompute_interior_added_areas_warms_drawn_ring_sequences() -> None:
             progression_rings=(first_ring, second_ring),
         ),
     ]
-    cache = peri_scribe.kml.fire_data.added_areas_for_rings
-    before = cache.cache_info().currsize
     peri_scribe.kml.fire_data.precompute_interior_added_areas(pending)
-    assert cache.cache_info().currsize == before + 1
-    hits_before = cache.cache_info().hits
+    monkeypatch.setattr(
+        peri_scribe.perimeters.progression,
+        "added_areas",
+        tests.helpers.doubles.errors.raising_stub(AssertionError("Repeated union")),
+    )
     added_areas = peri_scribe.kml.fire_data.ring_added_areas((first_ring, second_ring))
-    assert cache.cache_info().hits == hits_before + 1
     magnitudes = [area.m_as("meters ** 2") for area in added_areas]
     first_added, second_added = magnitudes
     assert 0 < first_added < second_added
 
 
 @pytest.mark.usefixtures("isolated_added_area_cache")
-def test_precompute_interior_added_areas_warms_latest_perimeter_fallback() -> None:
+def test_precompute_interior_added_areas_warms_latest_perimeter_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     observation_time = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     entry = tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
         "Bug",
@@ -314,16 +319,25 @@ def test_precompute_interior_added_areas_warms_latest_perimeter_fallback() -> No
             progression_rings=(),
         ),
     ]
-    cache = peri_scribe.kml.fire_data.added_areas_for_rings
-    before = cache.cache_info().currsize
+    monkeypatch.setattr(
+        peri_scribe.perimeters.progression,
+        "added_areas",
+        tests.helpers.doubles.errors.raising_stub(AssertionError("Unneeded union")),
+    )
     peri_scribe.kml.fire_data.precompute_interior_added_areas(pending)
-    assert cache.cache_info().currsize == before + 1
+    ((ring, _color),) = peri_scribe.kml.fire_data.interior_ring_colors(
+        (),
+        pending[0].perimeters,
+    )
+    assert peri_scribe.kml.fire_data.ring_added_areas((ring,)) == (
+        pending[0].perimeters[0].measured_area,
+    )
 
 
 @pytest.mark.usefixtures("isolated_added_area_cache")
-def test_precompute_interior_added_areas_leaves_fire_without_drawn_rings_alone() -> (
-    None
-):
+def test_precompute_interior_added_areas_leaves_fire_without_drawn_rings_alone(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     entry = tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
         "Bug",
         "active",
@@ -339,10 +353,12 @@ def test_precompute_interior_added_areas_leaves_fire_without_drawn_rings_alone()
             progression_rings=(),
         ),
     ]
-    cache = peri_scribe.kml.fire_data.added_areas_for_rings
-    before = cache.cache_info().currsize
+    monkeypatch.setattr(
+        peri_scribe.kml.fire_data,
+        "added_areas_for_rings",
+        tests.helpers.doubles.errors.raising_stub(AssertionError("No drawn rings")),
+    )
     peri_scribe.kml.fire_data.precompute_interior_added_areas(pending)
-    assert cache.cache_info().currsize == before
 
 
 @pytest.mark.usefixtures("isolated_added_area_cache")

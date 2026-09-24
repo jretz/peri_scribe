@@ -2,20 +2,31 @@
 
 from __future__ import annotations
 
+import dataclasses
 import pathlib
 
+import pydantic
+import structlog
+
 import peri_scribe.fires.classification
+import peri_scribe.fires.generation
+import peri_scribe.fires.reuse
 import peri_scribe.fires.sources
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.phases
+import peri_scribe.preparation
 import peri_scribe.sources.snapshots
+import spatial_data.product_cache
 
 
 # The current version of the fire source index format; bump it when the format changes
 # so that consumers can tell which format a file uses.
 FIRE_INDEX_VERSION = "2026-08-18"
+CLASSIFICATION_NAMESPACE = "fire-classification-v1"
+GENERATION_NAMESPACE = "source-index-generation-v1"
+logger = structlog.get_logger()
 
 
 def fire_document(fire: peri_scribe.models.Fire) -> dict[str, object]:
@@ -125,6 +136,85 @@ def fire_index_document(
     })
 
 
+def cached_classification(key: str) -> peri_scribe.models.FireClassification | None:
+    """Treat incomplete or incompatible classification products as cache misses.
+
+    Args:
+        key: The complete fire evidence and derivation dependency fingerprint.
+
+    Returns:
+        The validated classification, or None when it must be calculated.
+    """
+    payload = spatial_data.product_cache.get(CLASSIFICATION_NAMESPACE, key)
+    if payload is None:
+        return None
+    try:
+        return peri_scribe.models.FireClassification.model_validate_json(payload)
+    except pydantic.ValidationError:
+        logger.info("Ignoring invalid classification product", exc_info=True)
+        return None
+
+
+def classifications_for_prepared_sources(
+    year_directory: pathlib.Path,
+    prepared: peri_scribe.fires.sources.PreparedSources,
+) -> dict[int, peri_scribe.models.FireClassification]:
+    """Reclassify only fires whose complete source evidence or dependencies changed.
+
+    Args:
+        year_directory: The year holding the administrative boundary dependency.
+        prepared: Complete source evidence and the grouped fire identities.
+
+    Returns:
+        Available classifications keyed by each grouped fire's in-memory identity.
+    """
+    if not spatial_data.product_cache.active():
+        return peri_scribe.fires.classification.classify_fire_sources(
+            prepared.groups,
+            year_directory,
+        )
+    keys = peri_scribe.fires.reuse.shared_fire_keys(
+        prepared.read,
+        prepared.groups,
+        peri_scribe.sources.snapshots.sources_directory_path(year_directory),
+        peri_scribe.fires.reuse.derivation_context(year_directory),
+    )
+    pairs = peri_scribe.fires.sources.non_complex_fire_sources(prepared.groups)
+    classifications = {
+        id(source.fire): classification
+        for source, _group in pairs
+        if (classification := cached_classification(keys[id(source.fire)])) is not None
+    }
+    missing = [
+        (source.fire, group)
+        for source, group in pairs
+        if id(source.fire) not in classifications
+    ]
+    if missing:
+        calculated = peri_scribe.fires.classification.classify_fire_sources(
+            dataclasses.replace(
+                prepared.groups,
+                fires=tuple(fire for fire, _group in missing),
+                groups=tuple(group for _fire, group in missing),
+            ),
+            year_directory,
+        )
+        for identifier, classification in calculated.items():
+            spatial_data.product_cache.put(
+                CLASSIFICATION_NAMESPACE,
+                keys[identifier],
+                classification.model_dump_json().encode(),
+            )
+        classifications.update(calculated)
+    logger.info(
+        "Classification reuse",
+        reused=len(pairs) - len(missing),
+        recomputed=len(missing),
+    )
+    return classifications
+
+
+@peri_scribe.preparation.cached_year
 def index_fire_sources(year_directory: pathlib.Path) -> None:
     """Build the fire source index for *year_directory*.
 
@@ -137,22 +227,76 @@ def index_fire_sources(year_directory: pathlib.Path) -> None:
         year_directory: The year directory that holds the ``sources`` directory.
     """
     with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.SOURCE_INDEX):
+        generation = peri_scribe.fires.generation.source_key(year_directory)
+        if generation_matches(year_directory, generation):
+            logger.info("Reusing complete source index", generation=generation)
+            return
         sources_directory = peri_scribe.sources.snapshots.sources_directory_path(
             year_directory,
         )
         with peri_scribe.logging.log_phase(
             peri_scribe.phases.Phase.LOAD_AND_GROUP_SOURCES,
         ):
-            record_groups = peri_scribe.fires.sources.fire_record_groups(
+            prepared = peri_scribe.fires.sources.prepare_fire_sources(
                 sources_directory,
             )
+            record_groups = prepared.groups
         with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.CLASSIFY_FIRES):
-            classifications = peri_scribe.fires.classification.classify_fire_sources(
-                record_groups,
-                year_directory,
-            )
+            classifications = prepared.classifications
+            if classifications is None:
+                classifications = classifications_for_prepared_sources(
+                    year_directory,
+                    prepared,
+                )
+                peri_scribe.fires.sources.remember_prepared_sources(
+                    sources_directory,
+                    dataclasses.replace(prepared, classifications=classifications),
+                )
         with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.WRITE_INDEX):
             write_fire_index(year_directory, record_groups, classifications)
+        if peri_scribe.fires.generation.classifications_complete(
+            record_groups,
+            classifications,
+        ):
+            path = peri_scribe.sources.snapshots.fire_index_path(year_directory)
+            spatial_data.product_cache.put(
+                GENERATION_NAMESPACE,
+                "current",
+                generation_signature(path, generation),
+            )
+
+
+def generation_signature(path: pathlib.Path, generation: str) -> bytes:
+    """Bind a complete index's exact bytes to its authoritative source generation.
+
+    Args:
+        path: The successfully published source index.
+        generation: The complete source and derivation fingerprint.
+
+    Returns:
+        The cache validation token.
+    """
+    return f"{generation}:{peri_scribe.fires.reuse.file_digest(path)}".encode()
+
+
+def generation_matches(year_directory: pathlib.Path, generation: str) -> bool:
+    """Avoid parsing unchanged observations only when the output is authenticated.
+
+    Args:
+        year_directory: The year owning the index and its disposable cache.
+        generation: The currently observed complete source generation.
+
+    Returns:
+        Whether the existing index exactly matches a completed source generation.
+    """
+    cached = spatial_data.product_cache.get(GENERATION_NAMESPACE, "current")
+    if cached is None:
+        return False
+    path = peri_scribe.sources.snapshots.fire_index_path(year_directory)
+    try:
+        return cached == generation_signature(path, generation)
+    except OSError:
+        return False
 
 
 def write_fire_index(

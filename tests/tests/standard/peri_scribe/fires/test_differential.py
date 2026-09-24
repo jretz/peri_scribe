@@ -7,10 +7,14 @@ import pandas as pd
 import pytest
 import shapely.geometry
 
+import peri_scribe.fires.classification
 import peri_scribe.fires.differential
 import peri_scribe.fires.files
 import peri_scribe.fires.reuse
+import peri_scribe.fires.sources
+import peri_scribe.preparation
 import spatial_data.layers
+import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.fires.differential
 import tests.helpers.factories.geography
 import tests.helpers.factories.geometry
@@ -21,6 +25,128 @@ def test_differential_geopackage_path_names_output() -> None:
     assert peri_scribe.fires.differential.differential_geopackage_path(
         pathlib.Path("data/2026"),
     ) == pathlib.Path("data/2026/derived/history_of_differential_geography.gpkg")
+
+
+def test_write_history_of_differential_geography_skips_unchanged_layer_reads(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    classified_history_inputs: list[peri_scribe.fires.sources.ReadFireSources],
+) -> None:
+    path = peri_scribe.fires.differential.write_history_of_differential_geography(
+        tmp_path,
+    )
+    original = (path.read_bytes(), path.stat().st_mtime_ns)
+    monkeypatch.setattr(
+        spatial_data.layers,
+        "read_layer",
+        tests.helpers.doubles.errors.raising_stub(
+            AssertionError("Repeated layer read"),
+        ),
+    )
+
+    result = peri_scribe.fires.differential.write_history_of_differential_geography(
+        tmp_path,
+    )
+
+    assert result == path
+    assert (path.read_bytes(), path.stat().st_mtime_ns) == original
+
+
+def test_write_history_of_differential_geography_recovers_classification(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    classified_history_inputs: list[peri_scribe.fires.sources.ReadFireSources],
+) -> None:
+    with monkeypatch.context() as unavailable:
+        unavailable.setattr(
+            peri_scribe.fires.classification,
+            "classify_fire_sources",
+            lambda *_args: {},
+        )
+        path = peri_scribe.fires.differential.write_history_of_differential_geography(
+            tmp_path,
+        )
+    original = spatial_data.layers.read_layer(
+        path,
+        peri_scribe.fires.files.PERIMETER_LAYER_NAME,
+    )
+    assert original.border_classification.isna().all()
+
+    peri_scribe.fires.differential.write_history_of_differential_geography(tmp_path)
+
+    recovered = spatial_data.layers.read_layer(
+        path,
+        peri_scribe.fires.files.PERIMETER_LAYER_NAME,
+    )
+    assert set(recovered.border_classification) == {"inside_california"}
+    peri_scribe.fires.differential.write_history_of_differential_geography(
+        tmp_path,
+        unconditional=True,
+    )
+    complete = spatial_data.layers.read_layer(
+        path,
+        peri_scribe.fires.files.PERIMETER_LAYER_NAME,
+    )
+    assert complete.equals(recovered)
+
+
+@pytest.mark.parametrize("missing", [None, float("nan"), pd.NA, pd.NaT])
+def test_differential_group_rows_normalizes_missing_classification_before_reuse(
+    monkeypatch: pytest.MonkeyPatch,
+    missing: object,
+) -> None:
+    current = [{"derivation_key": "fire", "border_classification": missing}]
+    cached: peri_scribe.fires.reuse.Rows = [
+        {"derivation_key": "fire", "border_classification": None},
+    ]
+    monkeypatch.setattr(
+        peri_scribe.fires.differential,
+        "differential_rows_for_fire",
+        tests.helpers.doubles.errors.raising_stub(AssertionError("Unchanged rings")),
+    )
+
+    assert peri_scribe.fires.differential.differential_group_rows(
+        (current, [None]),
+        reused={"fire": cached},
+    ) == (cached, True)
+
+
+def test_write_history_of_differential_geography_unconditional_bypasses_generation(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    classified_history_inputs: list[peri_scribe.fires.sources.ReadFireSources],
+) -> None:
+    peri_scribe.fires.differential.write_history_of_differential_geography(tmp_path)
+    monkeypatch.setattr(
+        peri_scribe.fires.differential,
+        "differential_perimeter_dataframe",
+        tests.helpers.doubles.errors.raising_stub(AssertionError("Required rebuild")),
+    )
+
+    with pytest.raises(AssertionError, match="Required rebuild"):
+        peri_scribe.fires.differential.write_history_of_differential_geography(
+            tmp_path,
+            unconditional=True,
+        )
+
+
+def test_write_history_of_differential_geography_inherits_forced_rebuild_scope(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    classified_history_inputs: list[peri_scribe.fires.sources.ReadFireSources],
+) -> None:
+    peri_scribe.fires.differential.write_history_of_differential_geography(tmp_path)
+    monkeypatch.setattr(
+        peri_scribe.fires.differential,
+        "differential_perimeter_dataframe",
+        tests.helpers.doubles.errors.raising_stub(AssertionError("Required rebuild")),
+    )
+
+    with (
+        peri_scribe.preparation.scope(tmp_path, unconditional=True),
+        pytest.raises(AssertionError, match="Required rebuild"),
+    ):
+        peri_scribe.fires.differential.write_history_of_differential_geography(tmp_path)
 
 
 def test_polygonal_area_keeps_polygon() -> None:
@@ -456,7 +582,7 @@ def test_write_history_of_differential_geography_writes_two_layers(
     monkeypatch.setattr(
         peri_scribe.fires.reuse,
         "write_layers",
-        lambda path, layers: written.append((path, layers)),
+        lambda path, layers, **_kwargs: written.append((path, layers)),
     )
     result = peri_scribe.fires.differential.write_history_of_differential_geography(
         tmp_path,

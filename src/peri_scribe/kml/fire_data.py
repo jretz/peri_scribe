@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import functools
 import typing
 
+import pint
+
 import peri_scribe.areas
+import peri_scribe.execution
 import peri_scribe.kml.colormap
 import peri_scribe.kml.plot_data
 import peri_scribe.kml.plot_rendering
@@ -18,11 +22,15 @@ import peri_scribe.presentation.fire_data
 import peri_scribe.presentation.history_index
 import peri_scribe.presentation.perimeters
 import peri_scribe.presentation.selection
+import spatial_data.cache_values
+import spatial_data.product_cache
 
 
 if typing.TYPE_CHECKING:
     import geopandas
-    import pint
+
+
+RING_AREA_NAMESPACE = "displayed-ring-areas-v1"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -32,11 +40,10 @@ class FireGeometry(peri_scribe.presentation.fire_data.FireSummary):
     images: tuple[peri_scribe.kml.plot_rendering.PlotImage, ...] = ()
 
 
-@functools.cache
 def added_areas_for_rings(
     rings: tuple[peri_scribe.perimeters.progression.Ring, ...],
 ) -> tuple[pint.Quantity[float], ...]:
-    """Return each ring's added area, cached by the exact ring sequence.
+    """Return each ring's exact added area without retaining geometry cache keys.
 
     The folder views each serialize a fire once, and a fire's drawn ring sequence
     carries the same ring objects into every view, so the cumulative union work is
@@ -48,17 +55,69 @@ def added_areas_for_rings(
     Returns:
         Each ring's added area, in the input order.
     """
-    if rings and all(ring.added_area is not None for ring in rings):
-        digest = peri_scribe.perimeters.progression.sequence_digest(
-            ring.geometry for ring in rings
-        )
-        if all(ring.sequence_digest == digest for ring in rings):
-            return tuple(
-                typing.cast("pint.Quantity[float]", ring.added_area) for ring in rings
-            )
-    return peri_scribe.perimeters.progression.added_areas(
+    digest = peri_scribe.perimeters.progression.sequence_digest(
         ring.geometry for ring in rings
     )
+    if (
+        rings
+        and all(ring.added_area is not None for ring in rings)
+        and all(ring.sequence_digest == digest for ring in rings)
+    ):
+        return tuple(
+            typing.cast("pint.Quantity[float]", ring.added_area) for ring in rings
+        )
+    key = (RING_AREA_NAMESPACE, digest)
+    remembered = peri_scribe.execution.get(
+        peri_scribe.execution.Group.PRESENTATION,
+        key,
+    )
+    if isinstance(remembered, tuple):
+        return typing.cast("tuple[pint.Quantity[float], ...]", remembered)
+    result = cached_ring_areas(digest, len(rings))
+    if result is None:
+        result = peri_scribe.perimeters.progression.added_areas(
+            ring.geometry for ring in rings
+        )
+        with contextlib.suppress(ValueError):
+            spatial_data.product_cache.put(
+                RING_AREA_NAMESPACE,
+                digest,
+                spatial_data.cache_values.dumps(result),
+            )
+    peri_scribe.execution.put(peri_scribe.execution.Group.PRESENTATION, key, result)
+    return result
+
+
+def cached_ring_areas(
+    digest: str,
+    count: int,
+) -> tuple[pint.Quantity[float], ...] | None:
+    """Reject malformed products before reusing exact ordered fallback measurements.
+
+    Args:
+        digest: The exact ordered geometry sequence fingerprint.
+        count: Number of displayed rings requiring an area each.
+
+    Returns:
+        The original quantities, or None when the sequence must be measured.
+    """
+    payload = spatial_data.product_cache.get(RING_AREA_NAMESPACE, digest)
+    if payload is None:
+        return None
+    try:
+        result = spatial_data.cache_values.loads(payload)
+        if (
+            isinstance(result, tuple)
+            and len(result) == count
+            and all(
+                isinstance(area, pint.Quantity) and area.check("[length] ** 2")
+                for area in result
+            )
+        ):
+            return typing.cast("tuple[pint.Quantity[float], ...]", result)
+    except ValueError:
+        pass
+    return None
 
 
 def ring_added_areas(

@@ -4,18 +4,62 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import pathlib
 import typing
 
+import peri_scribe.models
+import peri_scribe.sources.snapshots
 import tests.helpers.factories.geography
+import tests.helpers.factories.geometry
 
 
 if typing.TYPE_CHECKING:
     import geopandas
     import shapely.geometry
 
-
 if typing.TYPE_CHECKING:
     import geopandas
+
+
+def write_fire_index(
+    year_directory: pathlib.Path,
+    index: peri_scribe.models.FireIndex,
+) -> None:
+    """Let scoring consume existing aliases without consulting source feeds.
+
+    Args:
+        year_directory: The isolated test directory containing derived inputs.
+        index: The indexed aliases available to the scoring stage.
+    """
+    path = peri_scribe.sources.snapshots.fire_index_path(year_directory)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(index.model_dump_json())
+
+
+def reported_frame(
+    rows: list[tuple[str | None, str, float]],
+) -> geopandas.GeoDataFrame:
+    """Keep identity and acreage scenarios independent of spatial scoring inputs.
+
+    Args:
+        rows: Identifier, name, and reported acreage in chronological row order.
+
+    Returns:
+        Point observations with distinct times and their reported acreages.
+    """
+    beginning = datetime.datetime(2026, 9, 1, tzinfo=datetime.UTC)
+    return tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": [identifier for identifier, _name, _area in rows],
+            "fire_name": [name for _identifier, name, _area in rows],
+            "incident_size": [area for _identifier, _name, area in rows],
+            "observation_time": [
+                beginning + datetime.timedelta(hours=position)
+                for position in range(len(rows))
+            ],
+        },
+        [tests.helpers.factories.geometry.point(0, 0) for _row in rows],
+    )
 
 
 def perimeter_frame(

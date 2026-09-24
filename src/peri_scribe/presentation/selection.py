@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import decimal
 import json
 import typing
@@ -12,6 +13,9 @@ import peri_scribe.geo.parsing
 import peri_scribe.models
 import peri_scribe.perimeters.progression
 import peri_scribe.presentation.perimeters
+import peri_scribe.presentation.prepared_cache
+import spatial_data.frame_fingerprints
+import spatial_data.product_cache
 from measurement_units import units
 
 
@@ -82,6 +86,24 @@ def area_groups(
     Returns:
         History slices keyed by canonical identity, with unnamed identities separate.
     """
+    return {
+        key: frame.iloc[rows] for key, rows in area_positions(frame, aliases).items()
+    }
+
+
+def area_positions(
+    frame: geopandas.GeoDataFrame,
+    aliases: typing.Mapping[str, str],
+) -> dict[AreaKey, list[int]]:
+    """Allow unchanged fires to reuse prepared evidence without copying their rows.
+
+    Args:
+        frame: A complete history layer in chronological order.
+        aliases: Known identifiers mapped to their canonical identity.
+
+    Returns:
+        Original row positions grouped by the presentation's tagged identity.
+    """
     positions: dict[AreaKey, list[int]] = {}
     if not frame.empty:
         for position, (identifier, name) in enumerate(
@@ -91,7 +113,7 @@ def area_groups(
             if key[0] == IDENTIFIER_AREA_KEY:
                 key = IDENTIFIER_AREA_KEY, aliases.get(key[1], key[1])
             positions.setdefault(key, []).append(position)
-    return {key: frame.iloc[rows] for key, rows in positions.items()}
+    return positions
 
 
 def prepare_histories(
@@ -117,6 +139,15 @@ def prepare_histories(
         points,
         perimeters.iloc[0:0] if incident_rows is None else incident_rows,
     )
+    if spatial_data.product_cache.active():
+        try:
+            fingerprints = tuple(
+                spatial_data.frame_fingerprints.frame_rows(frame) for frame in frames
+            )
+        except ValueError:
+            fingerprints = None
+        if fingerprints is not None:
+            return persistent_histories(frames, fingerprints, aliases or {})
     groups = tuple(area_groups(frame, aliases or {}) for frame in frames)
     return {
         key: peri_scribe.areas.prepare_history(
@@ -127,6 +158,57 @@ def prepare_histories(
         )
         for key in set().union(*groups)
     }
+
+
+def persistent_histories(
+    frames: tuple[geopandas.GeoDataFrame, ...],
+    fingerprints: tuple[spatial_data.frame_fingerprints.FrameRows, ...],
+    aliases: typing.Mapping[str, str],
+) -> dict[AreaKey, peri_scribe.areas.PreparedHistory]:
+    """Reconcile only histories whose complete ordered evidence has changed.
+
+    Args:
+        frames: Full perimeter, point, and incident history layers.
+        fingerprints: Their exact schema and row fingerprints.
+        aliases: Identifier aliases used to select each fire's complete evidence.
+
+    Returns:
+        Prepared histories whose persisted fields retain their original values.
+    """
+    groups = tuple(area_positions(frame, aliases) for frame in frames)
+    histories: dict[AreaKey, peri_scribe.areas.PreparedHistory] = {}
+    for identity in set().union(*groups):
+        positions = tuple(tuple(group.get(identity, ())) for group in groups)
+        key = spatial_data.frame_fingerprints.selected_key(
+            fingerprints,
+            positions,
+            (identity, dataclasses.asdict(peri_scribe.areas.DEFAULT_POLICY)),
+        )
+        payload = spatial_data.product_cache.get("prepared_histories", key)
+        if payload is not None:
+            try:
+                histories[identity] = (
+                    peri_scribe.presentation.prepared_cache.read_history(
+                        payload,
+                    )
+                )
+            except ValueError:
+                pass
+            else:
+                continue
+        history = peri_scribe.areas.prepare_history(
+            *(
+                frame.iloc[list(rows)]
+                for frame, rows in zip(frames, positions, strict=True)
+            ),
+        )
+        histories[identity] = history
+        try:
+            payload = peri_scribe.presentation.prepared_cache.history_bytes(history)
+        except ValueError:
+            continue
+        spatial_data.product_cache.put("prepared_histories", key, payload)
+    return histories
 
 
 def fires_with_qualifying_area(

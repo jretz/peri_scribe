@@ -2,17 +2,23 @@
 
 from __future__ import annotations
 
+import collections.abc
 import dataclasses
 import hashlib
 import importlib.metadata
 import json
 import pathlib
+import platform
+import sys
 import tempfile
+import typing
 
 import pydantic
+import pyproj
 import shapely
 import structlog
 
+import peri_scribe.execution
 import peri_scribe.fires.sources
 import peri_scribe.geo.parsing
 import peri_scribe.perimeters.classification_data
@@ -20,6 +26,11 @@ import peri_scribe.perimeters.cleaning
 import peri_scribe.perimeters.size_filtering
 import peri_scribe.sources.administrative_boundaries
 import spatial_data.layers
+import spatial_data.row_index
+
+
+if typing.TYPE_CHECKING:
+    import geopandas
 
 
 logger = structlog.get_logger()
@@ -34,6 +45,8 @@ class Signature(pydantic.BaseModel):
 
     version: int
     checksum: str
+    generation: str | None = None
+    layers: tuple[str, ...] = ()
 
 
 def file_digest(path: pathlib.Path) -> str:
@@ -90,9 +103,21 @@ def derivation_context(year_directory: pathlib.Path) -> str:
         ],
         "libraries": {
             name: importlib.metadata.version(name)
-            for name in ("shapely", "pyproj", "geopandas", "pyogrio", "pint")
+            for name in (
+                "shapely",
+                "pyproj",
+                "geopandas",
+                "pyogrio",
+                "pint",
+                "pandas",
+                "numpy",
+                "pydantic",
+            )
         },
         "geos": shapely.geos_version_string,
+        "proj": pyproj.proj_version_str,
+        "python": sys.version,
+        "platform": platform.platform(),
         "boundary": file_digest(boundary) if boundary.is_file() else None,
         "cleaning": repr(peri_scribe.perimeters.cleaning.DEFAULT_CLEANING_CONFIG),
         "size_filter": repr(
@@ -102,6 +127,49 @@ def derivation_context(year_directory: pathlib.Path) -> str:
             peri_scribe.perimeters.classification_data.BorderClassificationConfig(),
         ),
     })
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class SharedFireKeys:
+    """Retain exact source identities while index and geography share fingerprints."""
+
+    read: peri_scribe.fires.sources.ReadFireSources
+    groups: peri_scribe.fires.sources.FireRecordGroups
+    keys: dict[int, str]
+
+
+def shared_fire_keys(
+    read: peri_scribe.fires.sources.ReadFireSources,
+    groups: peri_scribe.fires.sources.FireRecordGroups,
+    sources_directory: pathlib.Path,
+    context: str,
+) -> dict[int, str]:
+    """Fingerprint complete source evidence once per execution and derivation context.
+
+    Args:
+        read: Source observations and provenance for this execution.
+        groups: The exact grouped fire identities used by the consuming stages.
+        sources_directory: The source root used to express provenance paths.
+        context: The complete derivation environment and dependency fingerprint.
+
+    Returns:
+        Complete input fingerprints keyed by in-memory fire identity.
+    """
+    key = ("fire_keys", sources_directory.resolve(), context)
+    cached = peri_scribe.execution.get(peri_scribe.execution.Group.SOURCES, key)
+    if (
+        isinstance(cached, SharedFireKeys)
+        and cached.read is read
+        and cached.groups is groups
+    ):
+        return cached.keys
+    keys = fire_keys(read, groups, sources_directory, context)
+    peri_scribe.execution.put(
+        peri_scribe.execution.Group.SOURCES,
+        key,
+        SharedFireKeys(read=read, groups=groups, keys=keys),
+    )
+    return keys
 
 
 def fire_keys(
@@ -187,11 +255,58 @@ def signature_path(path: pathlib.Path) -> pathlib.Path:
     return path.with_suffix(".reuse.json")
 
 
+def validated_signature(
+    path: pathlib.Path,
+    layer_names: tuple[str, ...] = (),
+) -> Signature | None:
+    """Authenticate a complete published layer set before skipping any derivation.
+
+    Args:
+        path: The published GeoPackage whose generation may be reusable.
+        layer_names: The required complete layer set in publication order, or empty
+            when only the published bytes require authentication.
+
+    Returns:
+        The authenticated metadata, or None for unavailable or incompatible output.
+    """
+    try:
+        signature = Signature.model_validate_json(signature_path(path).read_text())
+        if (
+            signature.version == CACHE_VERSION
+            and (not layer_names or signature.layers == layer_names)
+            and signature.checksum == file_digest(path)
+        ):
+            return signature
+    except OSError, ValueError:
+        logger.info("Ignoring output generation", path=str(path), exc_info=True)
+    return None
+
+
+def generation_matches(
+    path: pathlib.Path,
+    generation: str,
+    layer_names: tuple[str, ...],
+) -> bool:
+    """Reuse an unchanged publication only when its complete output is authenticated.
+
+    Args:
+        path: The published GeoPackage that may already represent these inputs.
+        generation: Complete ordered input and derivation dependency identity.
+        layer_names: The complete required layer set in publication order.
+
+    Returns:
+        Whether the existing bytes are a complete output for this exact generation.
+    """
+    signature = validated_signature(path, layer_names)
+    return signature is not None and signature.generation == generation
+
+
 def read_rows(
     path: pathlib.Path,
     layer_names: tuple[str, ...],
     *,
     unconditional: bool = False,
+    keys: collections.abc.Collection[str] | None = None,
 ) -> CachedRows:
     """Treat missing, incompatible, interrupted, or corrupt outputs as cache misses.
 
@@ -199,6 +314,7 @@ def read_rows(
         path: The prior history GeoPackage that may contain reusable results.
         layer_names: The history layers needed by the caller.
         unconditional: Whether to bypass prior results without reading them.
+        keys: The complete derivation keys needed by the caller, or None for all fires.
 
     Returns:
         Validated rows by layer and derivation key, or an empty cache.
@@ -207,7 +323,7 @@ def read_rows(
         logger.info("Bypassing history reuse", path=str(path), reason="unconditional")
         return {}
     try:
-        return validated_rows(path, layer_names)
+        return validated_rows(path, layer_names, keys=keys)
     except (OSError, ValueError, RuntimeError) as error:
         logger.info(
             "Ignoring history cache",
@@ -218,58 +334,92 @@ def read_rows(
         return {}
 
 
-def validated_rows(path: pathlib.Path, layer_names: tuple[str, ...]) -> CachedRows:
+def validated_rows(
+    path: pathlib.Path,
+    layer_names: tuple[str, ...],
+    *,
+    keys: collections.abc.Collection[str] | None = None,
+) -> CachedRows:
     """Read only rows covered by a completed output checksum.
 
     Args:
         path: The history GeoPackage to validate against its checksum metadata.
         layer_names: The history layers whose rows should be grouped for reuse.
+        keys: Requested derivation keys, or None for the complete layer.
 
     Returns:
         Rows grouped by layer and derivation key.
 
-    Raises:
-        ValueError: When a layer lacks derivation keys.
     """
-    signature = Signature.model_validate_json(signature_path(path).read_text())
-    if signature.version != CACHE_VERSION or signature.checksum != file_digest(path):
-        logger.info(
-            "Ignoring history cache",
-            path=str(path),
-            reason="signature mismatch",
-        )
+    signature = validated_signature(path)
+    if signature is None:
         return {}
     result: CachedRows = {}
     for name in layer_names:
-        frame = spatial_data.layers.read_layer(path, name)
-        if frame.empty:
-            result[name] = {}
+        indexed = spatial_data.row_index.read(
+            path,
+            name,
+            signature.checksum,
+            keys,
+            adaptive=True,
+        )
+        if indexed is not None:
+            result[name] = indexed
             continue
-        if KEY_COLUMN not in frame.columns:
-            message = "Missing history derivation keys"
-            raise ValueError(message)
-        result[name] = {
-            str(key): group.to_dict("records")
-            for key, group in frame.groupby(KEY_COLUMN, sort=False)
+        frame = spatial_data.layers.read_layer(path, name)
+        rows = spatial_data.row_index.grouped_rows(frame)
+        selected = {
+            key: group for key, group in rows.items() if keys is None or key in keys
         }
+        if selected and not spatial_data.row_index.prefer_bulk(keys, rows.keys()):
+            spatial_data.row_index.seed(
+                path,
+                name,
+                signature.checksum,
+                frame,
+                rows=rows,
+            )
+        result[name] = selected
     return result
+
+
+def read_published_layer(path: pathlib.Path, layer: str) -> geopandas.GeoDataFrame:
+    """Read authoritative post-GDAL values without materializing unused row indexes.
+
+    Args:
+        path: The published GeoPackage needed by a downstream stage.
+        layer: Its required layer.
+
+    Returns:
+        The normalized layer used by downstream presentation and scoring.
+    """
+    return spatial_data.layers.read_layer(path, layer)
 
 
 def write_layers(
     path: pathlib.Path,
     layers: list[spatial_data.layers.LayerData],
+    *,
+    generation: str | None = None,
 ) -> None:
     """Publish complete geometry files before marking their contents reusable.
 
     Args:
         path: The destination history GeoPackage.
         layers: The complete layers to publish together in that GeoPackage.
+        generation: Complete input identity, or None when unavailable inputs require
+            reconsideration during the next execution.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=path.parent) as directory:
         temporary = pathlib.Path(directory) / path.name
         spatial_data.layers.write_geopackage(temporary, layers)
-        signature = Signature(version=CACHE_VERSION, checksum=file_digest(temporary))
+        signature = Signature(
+            version=CACHE_VERSION,
+            checksum=file_digest(temporary),
+            generation=generation,
+            layers=tuple(layer.name for layer in layers),
+        )
         metadata = signature_path(temporary)
         metadata.write_text(signature.model_dump_json())
         temporary.replace(path)

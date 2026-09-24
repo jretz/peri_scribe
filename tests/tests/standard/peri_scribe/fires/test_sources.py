@@ -10,6 +10,7 @@ import shapely.geometry
 import structlog
 
 import peri_scribe.exceptions
+import peri_scribe.execution
 import peri_scribe.fires.sources
 import peri_scribe.geo.package
 import peri_scribe.models
@@ -41,6 +42,62 @@ def test_read_fire_sources_scopes_geometry_sharing_to_each_read(
     first = peri_scribe.fires.sources.read_fire_sources(repeated_geometry_sources)
     second = peri_scribe.fires.sources.read_fire_sources(repeated_geometry_sources)
     assert first.rows[0].record.geometry is not second.rows[0].record.geometry
+
+
+def test_prepare_fire_sources_shares_evidence_and_fire_identities_within_execution(
+    repeated_geometry_sources: pathlib.Path,
+) -> None:
+    with peri_scribe.execution.sharing():
+        first = peri_scribe.fires.sources.prepare_fire_sources(
+            repeated_geometry_sources,
+        )
+        second = peri_scribe.fires.sources.prepare_fire_sources(
+            repeated_geometry_sources / ".",
+        )
+
+    assert second is first
+
+
+def test_prepare_fire_sources_keeps_distinct_directories_separate(
+    repeated_geometry_sources: pathlib.Path,
+    tmp_path: pathlib.Path,
+) -> None:
+    with peri_scribe.execution.sharing():
+        first = peri_scribe.fires.sources.prepare_fire_sources(
+            repeated_geometry_sources,
+        )
+        second = peri_scribe.fires.sources.prepare_fire_sources(tmp_path / "empty")
+
+    assert first.read.rows
+    assert second.read.rows == ()
+
+
+def test_prepare_fire_sources_reads_changed_evidence_in_each_execution(
+    history_inputs: list[peri_scribe.fires.sources.ReadFireSources],
+    tmp_path: pathlib.Path,
+) -> None:
+    with peri_scribe.execution.sharing():
+        first = peri_scribe.fires.sources.prepare_fire_sources(tmp_path / "sources")
+    history_inputs[0] = peri_scribe.fires.sources.ReadFireSources(
+        rows=(),
+        paths=(),
+        memberships=(),
+    )
+    with peri_scribe.execution.sharing():
+        second = peri_scribe.fires.sources.prepare_fire_sources(tmp_path / "sources")
+
+    assert first.read.rows
+    assert second.read.rows == ()
+
+
+def test_prepare_fire_sources_reconstructs_standalone_inputs(
+    repeated_geometry_sources: pathlib.Path,
+) -> None:
+    first = peri_scribe.fires.sources.prepare_fire_sources(repeated_geometry_sources)
+    second = peri_scribe.fires.sources.prepare_fire_sources(repeated_geometry_sources)
+
+    assert second is not first
+    assert second.read == first.read
 
 
 def test_fire_sources_from_groups_keeps_distant_unnamed_identifiers_separate(

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import dataclasses
 import typing
 
 import peri_scribe.areas
+import peri_scribe.execution
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.phases
@@ -13,6 +15,17 @@ import peri_scribe.presentation.selection
 
 if typing.TYPE_CHECKING:
     import geopandas
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class SharedHistories:
+    """Retain source frames for the lifetime of their prepared histories."""
+
+    sources: tuple[object, ...]
+    histories: dict[
+        peri_scribe.presentation.selection.AreaKey,
+        peri_scribe.areas.PreparedHistory,
+    ]
 
 
 def prepare_histories(
@@ -35,8 +48,20 @@ def prepare_histories(
     Returns:
         Prepared reporting and area decisions keyed by canonical identity.
     """
+    sources = (perimeters, points, incident_rows)
+    key = (
+        ("presentation_histories", index.model_dump_json(), tuple(map(id, sources)))
+        if peri_scribe.execution.active()
+        else None
+    )
+    shared = peri_scribe.execution.get(peri_scribe.execution.Group.HISTORIES, key)
+    if isinstance(shared, SharedHistories) and all(
+        previous is current
+        for previous, current in zip(shared.sources, sources, strict=True)
+    ):
+        return shared.histories
     with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.PREPARE_FIRE_HISTORIES):
-        return peri_scribe.presentation.selection.prepare_histories(
+        histories = peri_scribe.presentation.selection.prepare_histories(
             perimeters,
             points,
             incident_rows,
@@ -46,6 +71,12 @@ def prepare_histories(
                 for identifier in peri_scribe.presentation.selection.identifiers(entry)
             },
         )
+    peri_scribe.execution.put(
+        peri_scribe.execution.Group.HISTORIES,
+        key,
+        SharedHistories(sources=sources, histories=histories),
+    )
+    return histories
 
 
 def area_qualified_index(

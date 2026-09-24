@@ -30,21 +30,28 @@ import pathlib
 import typing
 
 import pandas as pd
+import structlog
 
 import peri_scribe.areas
+import peri_scribe.execution
 import peri_scribe.fires.buffering
 import peri_scribe.fires.derived_layers
 import peri_scribe.fires.identity
 import peri_scribe.fires.score_files
 import peri_scribe.fires.scoring
+import peri_scribe.fires.spatial_products
 import peri_scribe.geo.parsing
 import peri_scribe.logging
+import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.phases
+import peri_scribe.preparation
+import peri_scribe.presentation.index
+import peri_scribe.presentation.selection
 import peri_scribe.sources.catalog
 import peri_scribe.sources.external_data
+import peri_scribe.sources.snapshots
 import spatial_data.overlaps
-import spatial_data.point_store
 from measurement_units import units
 
 
@@ -52,6 +59,9 @@ if typing.TYPE_CHECKING:
     import geopandas
     import pint
     import shapely
+
+
+logger = structlog.get_logger()
 
 
 def latest_snapshot_layer(
@@ -115,7 +125,7 @@ def external_signals(
         peri_scribe.sources.catalog.BUILDINGS_SOURCE,
     )
     if buildings_path.is_file():
-        building_counts = spatial_data.point_store.point_counts_within(
+        building_counts = peri_scribe.fires.spatial_products.building_counts(
             buffered,
             buildings_path,
         )
@@ -275,6 +285,8 @@ def displayed_areas(
     points: geopandas.GeoDataFrame,
     point_keys: pd.Series,
     incident_rows: geopandas.GeoDataFrame | None = None,
+    *,
+    histories: typing.Mapping[str, peri_scribe.areas.PreparedHistory] | None = None,
 ) -> list[pint.Quantity[float] | None]:
     """Keep scoring's current acreage aligned with the area shown in fire descriptions.
 
@@ -287,10 +299,13 @@ def displayed_areas(
         points: Incident location history for fallback report measurements.
         point_keys: Fire identity keys aligned with the point rows.
         incident_rows: The optional independent reporting history.
+        histories: Prepared histories whose ordered evidence exactly matches each key.
 
     Returns:
         One selected area per key, or None for a fire without usable measurements.
     """
+    if histories is not None and all(key in histories for key in keys):
+        return [histories[key].latest_area for key in keys]
 
     def grouped(frame: geopandas.GeoDataFrame) -> dict[str, geopandas.GeoDataFrame]:
         """Align separate history layers through their shared fire identities.
@@ -323,13 +338,113 @@ def displayed_areas(
     )
     incident_groups = {} if incident_rows is None else grouped(incident_rows)
     return [
-        peri_scribe.areas.latest_area(
+        histories[key].latest_area
+        if histories is not None and key in histories
+        else peri_scribe.areas.latest_area(
             perimeter_groups.get(key, full_perimeters.iloc[0:0]),
             point_groups.get(key, points.iloc[0:0]),
             incident_groups.get(key),
         )
         for key in keys
     ]
+
+
+def matching_histories(
+    year_directory: pathlib.Path,
+    perimeters: geopandas.GeoDataFrame,
+    points: geopandas.GeoDataFrame,
+    incidents: geopandas.GeoDataFrame,
+) -> dict[str, peri_scribe.areas.PreparedHistory]:
+    """Share area decisions only when aliases preserve scoring's exact row groups.
+
+    Alias metadata is optional because scoring can derive its areas from the published
+    histories even when the source index is unavailable or invalid.
+
+    Args:
+        year_directory: The year whose index supplies canonical identities.
+        perimeters: Full perimeter evidence in its original order.
+        points: Point evidence in its original order.
+        incidents: Independent reporting evidence in its original order.
+
+    Returns:
+        Prepared histories keyed by matching scoring groups, excluding ambiguous or
+        differently grouped evidence that must retain scoring's own calculation.
+    """
+    index_path = peri_scribe.sources.snapshots.fire_index_path(year_directory)
+    try:
+        index = peri_scribe.output.read_document(
+            index_path,
+            peri_scribe.models.FireIndex,
+        )
+    except OSError, ValueError:
+        logger.debug(
+            "Source index unavailable for score sharing",
+            path=str(index_path),
+            exc_info=True,
+        )
+        index = peri_scribe.models.FireIndex(version="", fires=[])
+    histories = peri_scribe.presentation.index.prepare_histories(
+        index,
+        perimeters,
+        points,
+        incidents,
+    )
+    aliases = {
+        identifier: entry.identifier or identifier
+        for entry in index.fires
+        for identifier in peri_scribe.presentation.selection.identifiers(entry)
+    }
+    positions = [
+        aligned_positions(frame, aliases) for frame in (perimeters, points, incidents)
+    ]
+    canonical = {
+        tuple(tuple(groups[1].get(key, ())) for groups in positions): history
+        for key, history in histories.items()
+    }
+    return {
+        key: canonical[signature]
+        for key in set().union(*(groups[0] for groups in positions))
+        if (signature := tuple(tuple(groups[0].get(key, ())) for groups in positions))
+        in canonical
+    }
+
+
+def aligned_positions(
+    frame: geopandas.GeoDataFrame,
+    aliases: typing.Mapping[str, str],
+) -> tuple[
+    dict[str, list[int]],
+    dict[peri_scribe.presentation.selection.AreaKey, list[int]],
+]:
+    """Keep tagged presentation identities distinct from scoring's string keys.
+
+    Args:
+        frame: One shared layer whose positions identify the same ordered evidence.
+        aliases: Canonical identifiers applied only to the presentation grouping.
+
+    Returns:
+        Scoring and presentation row positions, including any string-key collisions.
+    """
+    scoring: dict[str, list[int]] = {}
+    presentation: dict[peri_scribe.presentation.selection.AreaKey, list[int]] = {}
+    if not frame.empty:
+        for position, (identifier, name, score_key) in enumerate(
+            zip(
+                frame["fire_identifier"],
+                frame["fire_name"],
+                peri_scribe.fires.identity.group_keys(frame),
+                strict=True,
+            ),
+        ):
+            key = peri_scribe.presentation.selection.fire_area_key(
+                identifier,
+                str(name),
+            )
+            if key[0] == peri_scribe.presentation.selection.IDENTIFIER_AREA_KEY:
+                key = key[0], aliases.get(key[1], key[1])
+            scoring.setdefault(str(score_key), []).append(position)
+            presentation.setdefault(key, []).append(position)
+    return scoring, presentation
 
 
 def fire_metrics(
@@ -477,7 +592,28 @@ def scoring_input(year_directory: pathlib.Path) -> ScoringInput:
     keys = sorted(set(perimeter_keys) | set(point_keys))
     metrics, first_mapping = fire_metrics(perimeters, perimeter_keys)
     with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.SELECT_CURRENT_AREAS):
-        areas = displayed_areas(keys, full_perimeters, points, point_keys, incidents)
+        if peri_scribe.execution.active():
+            areas = displayed_areas(
+                keys,
+                full_perimeters,
+                points,
+                point_keys,
+                incidents,
+                histories=matching_histories(
+                    year_directory,
+                    full_perimeters,
+                    points,
+                    incidents,
+                ),
+            )
+        else:
+            areas = displayed_areas(
+                keys,
+                full_perimeters,
+                points,
+                point_keys,
+                incidents,
+            )
     names, identifiers = fire_names_and_identifiers(
         perimeters,
         points,
@@ -491,7 +627,7 @@ def scoring_input(year_directory: pathlib.Path) -> ScoringInput:
             points,
             point_keys,
         )
-        buffered = peri_scribe.fires.buffering.buffered_fire_geometries(geometries)
+        buffered = peri_scribe.fires.spatial_products.buffered_geometries(geometries)
         signals = external_signals(year_directory, len(keys), geometries, buffered)
     return ScoringInput(
         keys=keys,
@@ -513,6 +649,7 @@ def scoring_input(year_directory: pathlib.Path) -> ScoringInput:
     )
 
 
+@peri_scribe.preparation.cached_year
 def score_fires(year_directory: pathlib.Path) -> pathlib.Path:
     """Score every fire and write the results to the derived directory.
 

@@ -167,9 +167,10 @@ def test_report_entry_prefers_unique_fire_identifier(
 
 
 def test_gather_report_assembles_each_fire_list(
+    tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    year_directory = pathlib.Path("data/2026")
+    year_directory = tmp_path
     index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
         tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
             "Bug",
@@ -297,9 +298,10 @@ def test_report_details_identifies_unnamed_fire_by_name() -> None:
 
 
 def test_gather_report_uses_empty_scores_when_missing(
+    tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    year_directory = pathlib.Path("data/2026")
+    year_directory = tmp_path
     index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([])
     monkeypatch.setattr(
         peri_scribe.fires.index,

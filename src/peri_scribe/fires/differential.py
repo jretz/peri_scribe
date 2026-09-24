@@ -25,6 +25,7 @@ import peri_scribe.geo.parsing
 import peri_scribe.logging
 import peri_scribe.perimeters.progression
 import peri_scribe.phases
+import peri_scribe.preparation
 import spatial_data.layers
 import spatial_data.measurements
 
@@ -452,9 +453,31 @@ def differential_group_rows(
     """
     attributes, geometries = group
     key = str(attributes[0].get(peri_scribe.fires.reuse.KEY_COLUMN))
-    if key in reused:
-        return reused[key], True
+    cached = reused.get(key)
+    if cached is not None and row_classifications(attributes) == row_classifications(
+        cached,
+    ):
+        return cached, True
     return differential_rows_for_fire(attributes, geometries), False
+
+
+def row_classifications(rows: peri_scribe.fires.reuse.Rows) -> frozenset[str | None]:
+    """Keep recovery of missing classifications from reusing unclassified ring rows.
+
+    GDAL and pandas use several scalar null representations for the same missing
+    classification; they must not invalidate otherwise identical history.
+
+    Args:
+        rows: Full or differential rows belonging to one fire.
+
+    Returns:
+        The normalized classification values present throughout the history.
+    """
+    return frozenset(
+        None if peri_scribe.geo.parsing.is_missing(value) else str(value)
+        for row in rows
+        for value in (row.get("border_classification"),)
+    )
 
 
 def differential_perimeter_dataframe(
@@ -508,6 +531,32 @@ def differential_perimeter_dataframe(
     )
 
 
+def differential_generation(
+    full_path: pathlib.Path,
+    year_directory: pathlib.Path,
+) -> str | None:
+    """Bind growth rings to complete authenticated full-history output and native code.
+
+    Args:
+        full_path: The full-history GeoPackage providing perimeter and point evidence.
+        year_directory: The year whose derivation settings and dependencies apply.
+
+    Returns:
+        The differential input generation, or None for unauthenticated full history.
+    """
+    signature = peri_scribe.fires.reuse.validated_signature(
+        full_path,
+        peri_scribe.fires.files.FULL_LAYER_NAMES,
+    )
+    if signature is None:
+        return None
+    return peri_scribe.fires.reuse.data_digest({
+        "full_history": signature.checksum,
+        "context": peri_scribe.fires.reuse.derivation_context(year_directory),
+    })
+
+
+@peri_scribe.preparation.cached_year
 def write_history_of_differential_geography(
     year_directory: pathlib.Path,
     *,
@@ -527,25 +576,47 @@ def write_history_of_differential_geography(
     Returns:
         The path of the written differential GeoPackage.
     """
+    unconditional = peri_scribe.preparation.unconditional_rebuild(
+        requested=unconditional,
+    )
     with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.FULL_HISTORY):
         full_path = peri_scribe.fires.files.write_history_of_full_geography(
             year_directory,
             unconditional=unconditional,
         )
     with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.DIFFERENTIAL_HISTORY):
-        full_perimeters = spatial_data.layers.read_layer(
+        output_path = differential_geopackage_path(year_directory)
+        generation = differential_generation(full_path, year_directory)
+        if (
+            not unconditional
+            and generation is not None
+            and peri_scribe.fires.reuse.generation_matches(
+                output_path,
+                generation,
+                (
+                    peri_scribe.fires.files.PERIMETER_LAYER_NAME,
+                    peri_scribe.fires.files.POINT_LAYER_NAME,
+                ),
+            )
+        ):
+            logger.info("Differential geography unchanged", path=str(output_path))
+            return output_path
+        full_perimeters = peri_scribe.fires.reuse.read_published_layer(
             full_path,
             peri_scribe.fires.files.PERIMETER_LAYER_NAME,
         )
-        full_points = spatial_data.layers.read_layer(
+        full_points = peri_scribe.fires.reuse.read_published_layer(
             full_path,
             peri_scribe.fires.files.POINT_LAYER_NAME,
         )
-        output_path = differential_geopackage_path(year_directory)
         cached = peri_scribe.fires.reuse.read_rows(
             output_path,
             (peri_scribe.fires.files.PERIMETER_LAYER_NAME,),
             unconditional=unconditional,
+            keys=frozenset(
+                str(key)
+                for key in full_perimeters.get(peri_scribe.fires.reuse.KEY_COLUMN, ())
+            ),
         )
         peri_scribe.fires.reuse.write_layers(
             output_path,
@@ -565,5 +636,6 @@ def write_history_of_differential_geography(
                     dataframe=full_points,
                 ),
             ],
+            generation=generation,
         )
     return output_path

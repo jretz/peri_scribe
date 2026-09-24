@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import pathlib
 import sqlite3
 import threading
@@ -16,7 +17,7 @@ import peri_scribe.sources.snapshots
 logger = structlog.get_logger()
 
 
-RECORD_CACHE_SCHEMA_VERSION = 2
+RECORD_CACHE_SCHEMA_VERSION = 3
 
 
 RECORD_CACHE_SCHEMA = """
@@ -24,7 +25,8 @@ CREATE TABLE snapshots (
   serial INTEGER PRIMARY KEY,
   last_edit INTEGER NOT NULL,
   size INTEGER NOT NULL,
-  mtime_ns INTEGER NOT NULL
+  mtime_ns INTEGER NOT NULL,
+  checksum TEXT NOT NULL
 );
 CREATE TABLE rows (
   serial INTEGER NOT NULL,
@@ -81,6 +83,8 @@ def write_snapshot(
     size: int,
     mtime_ns: int,
     contents: peri_scribe.geo.package.GeopackageContents,
+    *,
+    checksum: str,
 ) -> None:
     """Store one snapshot's parsed contents in *conn*.
 
@@ -93,10 +97,17 @@ def write_snapshot(
         size: The snapshot file's size in bytes.
         mtime_ns: The snapshot file's modification time in nanoseconds.
         contents: The snapshot's parsed rows and memberships.
+        checksum: The SHA-256 identity of the snapshot bytes that were parsed.
     """
     conn.execute(
-        "INSERT OR REPLACE INTO snapshots VALUES (?, ?, ?, ?)",
-        (source_file.serial_number, source_file.last_edit_timestamp, size, mtime_ns),
+        "INSERT OR REPLACE INTO snapshots VALUES (?, ?, ?, ?, ?)",
+        (
+            source_file.serial_number,
+            source_file.last_edit_timestamp,
+            size,
+            mtime_ns,
+            checksum,
+        ),
     )
     conn.execute("DELETE FROM rows WHERE serial = ?", (source_file.serial_number,))
     conn.execute(
@@ -127,17 +138,17 @@ def write_snapshot(
 def snapshot_directories_signature(
     source_directory: pathlib.Path,
 ) -> tuple[tuple[str, int], ...] | None:
-    """Return a signature that changes whenever a snapshot file changes.
+    """Detect snapshot inventory changes made by the application's atomic writer.
 
     Snapshot files live in bucket subdirectories named for the serial number's
     thousands, and every write goes through ``write_geopackage``, which unlinks and
     recreates the file, so adding, removing, or rewriting a snapshot changes a bucket
     directory's modification time, and adding or removing a bucket changes the set of
-    buckets. The signature is the buckets' names and modification times, so a matching
-    signature means no snapshot file can have changed since the signature was taken. The
-    feed directory's own modification time is deliberately excluded: the feed directory
-    also holds the record cache and current-state files, whose writes should not force
-    the snapshot cache to re-sync.
+    buckets. Directory metadata cannot detect external in-place edits or restored
+    timestamps, so readers also authenticate each cached snapshot against its content
+    checksum. The feed directory's own modification time is excluded because it also
+    holds the record cache and current-state files, whose writes should not force the
+    snapshot cache to re-sync.
 
     Args:
         source_directory: The feed's snapshot directory.
@@ -160,21 +171,34 @@ def snapshot_directories_signature(
     return tuple(sorted(bucket_mtime_ns))
 
 
+def snapshot_checksum(path: pathlib.Path) -> str:
+    """Authenticate snapshot contents independently of mutable filesystem timestamps.
+
+    Args:
+        path: The authoritative snapshot whose parsed records may be cached.
+
+    Returns:
+        The SHA-256 checksum of all snapshot bytes.
+    """
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
 def sync_database(conn: sqlite3.Connection, source_directory: pathlib.Path) -> None:
     """Bring *conn*'s snapshot rows in line with *source_directory*'s files.
 
-    Snapshots that are new or whose file size or modification time changed are read and
-    stored; snapshots whose files have disappeared are dropped. Snapshots are immutable
-    once written, so an unchanged file is not re-read.
+    Source bytes authenticate stored parses even when a replacement preserves the file
+    size and modification time. Missing snapshots are dropped; unchanged contents keep
+    their parsed records.
 
     Args:
         conn: The record cache database connection.
         source_directory: The feed's snapshot directory.
     """
     stored = {
-        serial: (size, mtime_ns)
-        for serial, _last_edit, size, mtime_ns in conn.execute(
-            "SELECT serial, last_edit, size, mtime_ns FROM snapshots",
+        serial: (size, mtime_ns, checksum)
+        for serial, size, mtime_ns, checksum in conn.execute(
+            "SELECT serial, size, mtime_ns, checksum FROM snapshots",
         )
     }
     current: dict[int, tuple[peri_scribe.sources.snapshots.SourceFile, int, int]] = {}
@@ -196,11 +220,12 @@ def sync_database(conn: sqlite3.Connection, source_directory: pathlib.Path) -> N
         conn.execute("DELETE FROM memberships WHERE serial = ?", (serial,))
         conn.execute("DELETE FROM snapshots WHERE serial = ?", (serial,))
     for serial, (source_file, size, mtime_ns) in current.items():
-        if stored.get(serial) == (size, mtime_ns):
-            continue
         path = source_directory / source_file.relative_path
+        checksum = snapshot_checksum(path)
+        if stored.get(serial) == (size, mtime_ns, checksum):
+            continue
         contents = peri_scribe.geo.package.read_geopackage(path)
-        write_snapshot(conn, source_file, size, mtime_ns, contents)
+        write_snapshot(conn, source_file, size, mtime_ns, contents, checksum=checksum)
     conn.commit()
 
 

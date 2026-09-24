@@ -7,8 +7,11 @@ import pathlib
 import pytest
 import shapely
 
+import peri_scribe.fires.classification
 import peri_scribe.fires.sources
 import peri_scribe.geo.package
+import peri_scribe.models
+import tests.helpers.doubles.peri_scribe.fires.index
 import tests.helpers.factories.peri_scribe.models
 import tests.helpers.factories.time
 
@@ -73,3 +76,32 @@ def history_inputs(
         lambda _directory: inputs[0],
     )
     return inputs
+
+
+@pytest.fixture
+def classified_history_inputs(
+    history_inputs: list[peri_scribe.fires.sources.ReadFireSources],
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[peri_scribe.fires.sources.ReadFireSources]:
+    """Supply complete classification so unchanged publications may skip source parsing.
+
+    Args:
+        history_inputs: The isolated mutable source evidence for geography tests.
+        monkeypatch: Restore the controlled classification after this test.
+
+    Returns:
+        The source evidence whose fires all have successful classifications.
+    """
+    recorder = tests.helpers.doubles.peri_scribe.fires.index.ClassificationRecorder(
+        classification=peri_scribe.models.FireClassification(
+            classification=peri_scribe.models.BorderClassification.INSIDE_CALIFORNIA,
+            outside_area_fraction=0.0,
+            inside_area_fraction=1.0,
+        ),
+    )
+    monkeypatch.setattr(
+        peri_scribe.fires.classification,
+        "classify_fire_sources",
+        recorder.classify,
+    )
+    return history_inputs

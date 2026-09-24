@@ -9,16 +9,21 @@ import typing
 import pytest
 import shapely
 
+import peri_scribe.execution
 import peri_scribe.fires.classification
 import peri_scribe.fires.derived_layers
 import peri_scribe.fires.differential
 import peri_scribe.fires.files
+import peri_scribe.fires.generation
 import peri_scribe.fires.history
+import peri_scribe.fires.index
 import peri_scribe.fires.reuse
 import peri_scribe.fires.sources
 import peri_scribe.models
 import peri_scribe.perimeters.versions
+import peri_scribe.preparation
 import tests.helpers.assertions.peri_scribe.fires.files
+import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.fires.files
 import tests.helpers.factories.peri_scribe.models
 import tests.helpers.factories.time
@@ -26,6 +31,52 @@ import tests.helpers.factories.time
 
 if typing.TYPE_CHECKING:
     import spatial_data.layers
+
+
+@pytest.mark.parametrize("unconditional", [False, True])
+def test_write_history_of_full_geography_matches_standalone_with_shared_sources(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    history_inputs: list[peri_scribe.fires.sources.ReadFireSources],
+    *,
+    unconditional: bool,
+) -> None:
+    peri_scribe.fires.differential.write_history_of_differential_geography(
+        tmp_path,
+        unconditional=True,
+    )
+    expected = peri_scribe.fires.derived_layers.read_derived_layers(
+        tmp_path,
+        tolerate_missing=False,
+    )
+
+    with peri_scribe.execution.sharing():
+        peri_scribe.fires.index.index_fire_sources(tmp_path)
+        for module, function in (
+            (peri_scribe.fires.sources, "read_fire_sources"),
+            (peri_scribe.fires.sources, "group_fire_sources"),
+            (peri_scribe.fires.classification, "classify_fire_sources"),
+        ):
+            monkeypatch.setattr(
+                module,
+                function,
+                tests.helpers.doubles.errors.raising_stub(
+                    AssertionError("Repeated source preparation"),
+                ),
+            )
+        peri_scribe.fires.differential.write_history_of_differential_geography(
+            tmp_path,
+            unconditional=unconditional,
+        )
+        actual = peri_scribe.fires.derived_layers.read_derived_layers(
+            tmp_path,
+            tolerate_missing=False,
+        )
+
+    tests.helpers.assertions.peri_scribe.fires.files.assert_histories_equal(
+        actual,
+        expected,
+    )
 
 
 def test_write_history_of_full_geography_reuses_unchanged_fires(
@@ -63,6 +114,123 @@ def test_write_history_of_full_geography_reuses_unchanged_fires(
         first,
         second,
     )
+
+
+def test_write_history_of_full_geography_keeps_unchanged_files_without_reading_sources(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    classified_history_inputs: list[peri_scribe.fires.sources.ReadFireSources],
+) -> None:
+    path = peri_scribe.fires.files.write_history_of_full_geography(tmp_path)
+    signature = peri_scribe.fires.reuse.signature_path(path)
+    original = (path.read_bytes(), signature.read_bytes(), path.stat().st_mtime_ns)
+    monkeypatch.setattr(
+        peri_scribe.fires.sources,
+        "read_fire_sources",
+        tests.helpers.doubles.errors.raising_stub(
+            AssertionError("Repeated source read"),
+        ),
+    )
+
+    result = peri_scribe.fires.files.write_history_of_full_geography(tmp_path)
+
+    assert result == path
+    assert (
+        path.read_bytes(),
+        signature.read_bytes(),
+        path.stat().st_mtime_ns,
+    ) == original
+
+
+def test_write_history_of_full_geography_unconditional_bypasses_generation(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    classified_history_inputs: list[peri_scribe.fires.sources.ReadFireSources],
+) -> None:
+    peri_scribe.fires.files.write_history_of_full_geography(tmp_path)
+    monkeypatch.setattr(
+        peri_scribe.fires.sources,
+        "read_fire_sources",
+        tests.helpers.doubles.errors.raising_stub(
+            AssertionError("Required source read"),
+        ),
+    )
+
+    with pytest.raises(AssertionError, match="Required source read"):
+        peri_scribe.fires.files.write_history_of_full_geography(
+            tmp_path,
+            unconditional=True,
+        )
+
+
+def test_write_history_of_full_geography_rebuilds_a_changed_source_generation(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    classified_history_inputs: list[peri_scribe.fires.sources.ReadFireSources],
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.fires.generation,
+        "source_key",
+        lambda _directory: "initial generation",
+    )
+    peri_scribe.fires.files.write_history_of_full_geography(tmp_path)
+    monkeypatch.setattr(
+        peri_scribe.fires.generation,
+        "source_key",
+        lambda _directory: "changed generation",
+    )
+    monkeypatch.setattr(
+        peri_scribe.fires.sources,
+        "read_fire_sources",
+        tests.helpers.doubles.errors.raising_stub(
+            AssertionError("Required source read"),
+        ),
+    )
+
+    with pytest.raises(AssertionError, match="Required source read"):
+        peri_scribe.fires.files.write_history_of_full_geography(tmp_path)
+
+
+def test_write_history_of_full_geography_inherits_forced_rebuild_scope(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    classified_history_inputs: list[peri_scribe.fires.sources.ReadFireSources],
+) -> None:
+    peri_scribe.fires.files.write_history_of_full_geography(tmp_path)
+    monkeypatch.setattr(
+        peri_scribe.fires.sources,
+        "read_fire_sources",
+        tests.helpers.doubles.errors.raising_stub(
+            AssertionError("Required source read"),
+        ),
+    )
+
+    with (
+        peri_scribe.preparation.scope(tmp_path, unconditional=True),
+        pytest.raises(AssertionError, match="Required source read"),
+    ):
+        peri_scribe.fires.files.write_history_of_full_geography(tmp_path)
+
+
+def test_write_history_of_full_geography_retries_without_complete_classifications(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    history_inputs: list[peri_scribe.fires.sources.ReadFireSources],
+) -> None:
+    path = peri_scribe.fires.files.write_history_of_full_geography(tmp_path)
+    signature = peri_scribe.fires.reuse.validated_signature(path)
+    assert signature is not None
+    assert signature.generation is None
+    monkeypatch.setattr(
+        peri_scribe.fires.sources,
+        "read_fire_sources",
+        tests.helpers.doubles.errors.raising_stub(
+            AssertionError("Required source read"),
+        ),
+    )
+
+    with pytest.raises(AssertionError, match="Required source read"):
+        peri_scribe.fires.files.write_history_of_full_geography(tmp_path)
 
 
 @pytest.mark.parametrize(
@@ -185,7 +353,7 @@ def test_write_history_of_full_geography_writes_geography_and_incidents(
     monkeypatch.setattr(
         peri_scribe.fires.reuse,
         "write_layers",
-        lambda path, layers: written.append((path, layers)),
+        lambda path, layers, **_kwargs: written.append((path, layers)),
     )
     result = peri_scribe.fires.files.write_history_of_full_geography(tmp_path)
     assert result == tmp_path / "derived/history_of_full_geography.gpkg"

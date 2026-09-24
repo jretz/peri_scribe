@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections.abc
 import contextlib
 import dataclasses
 import pathlib
@@ -9,6 +10,7 @@ import pathlib
 import structlog
 
 import peri_scribe.fires.classification
+import peri_scribe.fires.generation
 import peri_scribe.fires.history
 import peri_scribe.fires.incident_history
 import peri_scribe.fires.index
@@ -18,6 +20,7 @@ import peri_scribe.geo.measurements
 import peri_scribe.incidents
 import peri_scribe.logging
 import peri_scribe.phases
+import peri_scribe.preparation
 import peri_scribe.sources.snapshots
 import spatial_data.layers
 
@@ -33,6 +36,11 @@ HISTORY_OUTPUT_FILENAME = "history_of_full_geography.gpkg"
 
 
 DERIVED_DIRECTORY_NAME = "derived"
+FULL_LAYER_NAMES = (
+    PERIMETER_LAYER_NAME,
+    POINT_LAYER_NAME,
+    peri_scribe.incidents.LAYER_NAME,
+)
 
 
 PERIMETER_COLUMNS = [
@@ -107,6 +115,7 @@ def history_geopackage_path(year_directory: pathlib.Path) -> pathlib.Path:
     return year_directory / DERIVED_DIRECTORY_NAME / HISTORY_OUTPUT_FILENAME
 
 
+@peri_scribe.preparation.cached_year
 def write_history_of_full_geography(
     year_directory: pathlib.Path,
     *,
@@ -126,13 +135,59 @@ def write_history_of_full_geography(
     Returns:
         The path of the written GeoPackage.
     """
+    unconditional = peri_scribe.preparation.unconditional_rebuild(
+        requested=unconditional,
+    )
+    output_path = history_geopackage_path(year_directory)
+    generation = peri_scribe.fires.generation.source_key(year_directory)
+    if not unconditional and peri_scribe.fires.reuse.generation_matches(
+        output_path,
+        generation,
+        FULL_LAYER_NAMES,
+    ):
+        logger.info("Full geography unchanged", path=str(output_path))
+        return output_path
+    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.LOAD_AND_GROUP_SOURCES):
+        prepared = peri_scribe.fires.sources.prepare_fire_sources(
+            peri_scribe.sources.snapshots.sources_directory_path(year_directory),
+        )
+    return write_prepared_full_geography(
+        year_directory,
+        prepared,
+        generation=generation,
+        unconditional=unconditional,
+    )
+
+
+def write_prepared_full_geography(
+    year_directory: pathlib.Path,
+    prepared: peri_scribe.fires.sources.PreparedSources,
+    *,
+    generation: str,
+    unconditional: bool = False,
+) -> pathlib.Path:
+    """Reconstruct affected fires while retaining authenticated histories for others.
+
+    Args:
+        year_directory: The year whose full geography should be published.
+        prepared: Complete source evidence and grouped fire identities.
+        generation: Exact source snapshot and dependency identity.
+        unconditional: Whether every fire must be rebuilt regardless of cached rows.
+
+    Returns:
+        The complete published full-history GeoPackage path.
+    """
     sources_directory = peri_scribe.sources.snapshots.sources_directory_path(
         year_directory,
     )
-    with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.LOAD_AND_GROUP_SOURCES):
-        read = peri_scribe.fires.sources.read_fire_sources(sources_directory)
-        record_groups = peri_scribe.fires.sources.group_fire_sources(read)
+    record_groups = prepared.groups
     output_path = history_geopackage_path(year_directory)
+    keys = peri_scribe.fires.reuse.shared_fire_keys(
+        prepared.read,
+        record_groups,
+        sources_directory,
+        peri_scribe.fires.reuse.derivation_context(year_directory),
+    )
     with (
         contextlib.nullcontext()
         if unconditional
@@ -142,15 +197,10 @@ def write_history_of_full_geography(
     ):
         cached = peri_scribe.fires.reuse.read_rows(
             output_path,
-            (PERIMETER_LAYER_NAME, POINT_LAYER_NAME, peri_scribe.incidents.LAYER_NAME),
+            FULL_LAYER_NAMES,
             unconditional=unconditional,
+            keys=frozenset(keys.values()),
         )
-    keys = peri_scribe.fires.reuse.fire_keys(
-        read,
-        record_groups,
-        sources_directory,
-        peri_scribe.fires.reuse.derivation_context(year_directory),
-    )
     cached_perimeters = cached.get(PERIMETER_LAYER_NAME, {})
     cached_points = cached.get(POINT_LAYER_NAME, {})
     reused = {
@@ -158,19 +208,27 @@ def write_history_of_full_geography(
         for identifier, key in keys.items()
         if key in cached_perimeters or key in cached_points
     }
+    previously_classified = classified_reused_fires(output_path, reused.keys())
     missing = [
         (fire, group)
         for fire, group in zip(record_groups.fires, record_groups.groups, strict=True)
-        if id(fire) not in reused
+        if id(fire) not in previously_classified
     ]
-    classifications = peri_scribe.fires.classification.classify_fire_sources(
-        dataclasses.replace(
-            record_groups,
-            fires=tuple(fire for fire, _group in missing),
-            groups=tuple(group for _fire, group in missing),
-        ),
-        year_directory,
-    )
+    classifications = prepared.classifications
+    if classifications is None:
+        classifications = peri_scribe.fires.classification.classify_fire_sources(
+            dataclasses.replace(
+                record_groups,
+                fires=tuple(fire for fire, _group in missing),
+                groups=tuple(group for _fire, group in missing),
+            ),
+            year_directory,
+        )
+    reused = {
+        identifier: rows
+        for identifier, rows in reused.items()
+        if identifier in previously_classified or identifier not in classifications
+    }
     if unconditional:
         peri_scribe.fires.index.write_fire_index(
             year_directory,
@@ -181,37 +239,39 @@ def write_history_of_full_geography(
         perimeter_rows, point_rows = peri_scribe.fires.history.history_layer_rows(
             record_groups,
             classifications,
-            list(read.rows),
-            list(read.paths),
+            list(prepared.read.rows),
+            list(prepared.read.paths),
             sources_directory,
             reused=reused,
             derivation_keys=keys,
         )
-    perimeter_dataframe = peri_scribe.fires.history.build_dataframe(
-        perimeter_rows,
-        PERIMETER_COLUMNS,
+    logger.info(
+        "Full history reuse",
+        reused=len(reused),
+        recomputed=len(keys) - len(reused),
     )
-    point_dataframe = peri_scribe.fires.history.build_dataframe(
-        point_rows,
-        POINT_COLUMNS,
-    )
-    logger.info("Full history reuse", reused=len(reused), recomputed=len(missing))
     peri_scribe.fires.reuse.write_layers(
         output_path,
         [
             spatial_data.layers.LayerData(
                 name=PERIMETER_LAYER_NAME,
-                dataframe=perimeter_dataframe,
+                dataframe=peri_scribe.fires.history.build_dataframe(
+                    perimeter_rows,
+                    PERIMETER_COLUMNS,
+                ),
             ),
             spatial_data.layers.LayerData(
                 name=POINT_LAYER_NAME,
-                dataframe=point_dataframe,
+                dataframe=peri_scribe.fires.history.build_dataframe(
+                    point_rows,
+                    POINT_COLUMNS,
+                ),
             ),
             spatial_data.layers.LayerData(
                 name=peri_scribe.incidents.LAYER_NAME,
                 dataframe=peri_scribe.fires.history.build_dataframe(
                     peri_scribe.fires.incident_history.incident_layer_rows(
-                        read,
+                        prepared.read,
                         record_groups,
                         sources_directory,
                         reused={
@@ -225,5 +285,37 @@ def write_history_of_full_geography(
                 ),
             ),
         ],
+        generation=generation
+        if peri_scribe.fires.generation.classifications_complete(
+            record_groups,
+            previously_classified | classifications.keys(),
+        )
+        else None,
     )
     return output_path
+
+
+def classified_reused_fires(
+    path: pathlib.Path,
+    reused: collections.abc.Collection[int],
+) -> frozenset[int]:
+    """Carry forward classification proof only from authenticated complete histories.
+
+    A complete generation tag proves that all its non-complex fires were classified.
+    Matching per-fire derivation keys keep that proof valid for the reused histories.
+
+    Args:
+        path: The previous full-history output whose rows are being reused.
+        reused: Current fire identities matched to authenticated prior derivation keys.
+
+    Returns:
+        Reused identities known to have completed classification.
+    """
+    if not reused:
+        return frozenset()
+    signature = peri_scribe.fires.reuse.validated_signature(path, FULL_LAYER_NAMES)
+    return (
+        frozenset(reused)
+        if signature is not None and signature.generation is not None
+        else frozenset()
+    )

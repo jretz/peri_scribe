@@ -106,6 +106,7 @@ CHILDREN: collections.abc.Mapping[Identifier, tuple[Identifier, ...]] = (
             Phase.SELECT_CURRENT_AREAS,
             Phase.SPATIAL_SIGNALS,
         ),
+        Phase.SELECT_CURRENT_AREAS: (Phase.PREPARE_FIRE_HISTORIES,),
         peri_scribe.pipeline_stages.Stage.KMZ: (
             Phase.SOURCE_INDEX,
             Phase.PREPARE_FIRE_HISTORIES,

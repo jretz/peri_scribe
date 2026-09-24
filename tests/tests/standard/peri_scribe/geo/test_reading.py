@@ -106,7 +106,7 @@ def test_read_geopackage_cached_rebuilds_corrupt_database(
     assert [row.record.name for row in contents.rows] == ["Park Fire"]
 
 
-@pytest.mark.parametrize("version", [1, 999])
+@pytest.mark.parametrize("version", [1, 2, 999])
 def test_read_geopackage_cached_rebuilds_outdated_schema(
     tmp_path: pathlib.Path,
     configured_feeds: list[peri_scribe.sources.feed_types.Feed],

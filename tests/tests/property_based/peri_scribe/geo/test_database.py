@@ -31,7 +31,7 @@ def test_write_snapshot_matches_last_write_wins_model(
     updates: list[tuple[int, peri_scribe.geo.package.GeopackageContents]],
 ) -> None:
     expected: dict[int, peri_scribe.geo.package.GeopackageContents] = {}
-    metadata: dict[int, tuple[int, int, int, int]] = {}
+    metadata: dict[int, tuple[int, int, int, int, str]] = {}
     with contextlib.closing(sqlite3.connect(":memory:")) as connection:
         connection.row_factory = sqlite3.Row
         peri_scribe.geo.database.reset_database(connection)
@@ -46,10 +46,17 @@ def test_write_snapshot_matches_last_write_wins_model(
                 size=revision + 10,
                 mtime_ns=revision + 1000,
                 contents=contents,
+                checksum=f"snapshot-{serial}-{revision}",
             )
             connection.commit()
             expected[serial] = contents
-            metadata[serial] = (serial, revision, revision + 10, revision + 1000)
+            metadata[serial] = (
+                serial,
+                revision,
+                revision + 10,
+                revision + 1000,
+                f"snapshot-{serial}-{revision}",
+            )
             stored = connection.execute("SELECT * FROM snapshots ORDER BY serial")
             assert [tuple(row) for row in stored] == [
                 metadata[key] for key in sorted(metadata)

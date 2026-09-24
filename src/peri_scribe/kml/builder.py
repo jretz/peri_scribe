@@ -30,6 +30,7 @@ import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.paths
 import peri_scribe.phases
+import peri_scribe.preparation
 import peri_scribe.presentation.fire_data
 import peri_scribe.presentation.index
 import peri_scribe.presentation.selection
@@ -432,6 +433,7 @@ def ring_style_urls_for(
     }
 
 
+@peri_scribe.preparation.cached_year
 def create_kmz(
     year_directory: pathlib.Path,
     *,

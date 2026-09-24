@@ -8,12 +8,37 @@ import pathlib
 import pydantic
 import pytest
 
+import peri_scribe.execution
 import peri_scribe.fires.classification
+import peri_scribe.fires.generation
 import peri_scribe.fires.index
+import peri_scribe.fires.sources
 import peri_scribe.models
 import peri_scribe.output
+import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.fires.sources
 import tests.helpers.factories.peri_scribe.models
+
+
+def test_index_fire_sources_reuses_completed_classification_in_execution(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    history_inputs: list[peri_scribe.fires.sources.ReadFireSources],
+) -> None:
+    with peri_scribe.execution.sharing():
+        peri_scribe.fires.index.index_fire_sources(tmp_path)
+        first = peri_scribe.fires.index.load_fire_index(tmp_path)
+        monkeypatch.setattr(
+            peri_scribe.fires.classification,
+            "classify_fire_sources",
+            tests.helpers.doubles.errors.raising_stub(
+                AssertionError("Repeated classification"),
+            ),
+        )
+        peri_scribe.fires.index.index_fire_sources(tmp_path)
+        second = peri_scribe.fires.index.load_fire_index(tmp_path)
+
+    assert second == first
 
 
 def test_fire_index_entries_sorts_fires_and_paths() -> None:
@@ -82,6 +107,11 @@ def test_index_fire_sources_writes_index_file(
     stub_fire_reader: tests.helpers.doubles.peri_scribe.fires.sources.StubFireReader,
 ) -> None:
     year_directory = pathlib.Path("/index/2026")
+    monkeypatch.setattr(
+        peri_scribe.fires.generation,
+        "source_key",
+        lambda _year: "in-memory sources",
+    )
     stub_fire_reader({
         pathlib.Path("/index/2026/sources/one.gpkg"): [
             tests.helpers.factories.peri_scribe.models.fire_record(

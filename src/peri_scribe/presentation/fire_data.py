@@ -6,6 +6,7 @@ import dataclasses
 import typing
 
 import peri_scribe.areas
+import peri_scribe.execution
 import peri_scribe.fires.scoring
 import peri_scribe.models
 import peri_scribe.perimeters.progression
@@ -286,6 +287,14 @@ class PreparedFire:
     point_positions: tuple[int, ...]
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class SharedFires:
+    """Keep source objects alive while maps and reports share their fire facts."""
+
+    sources: tuple[object, ...]
+    fires: list[PreparedFire]
+
+
 def prepare_fire_data(
     index: peri_scribe.models.FireIndex,
     perimeters: geopandas.GeoDataFrame,
@@ -317,6 +326,23 @@ def prepare_fire_data(
     Returns:
         One prepared summary and its source evidence per indexed fire.
     """
+    sources = (perimeters, points, differential_perimeters, incident_rows, histories)
+    key = (
+        (
+            "prepared_fire_data",
+            index.model_dump_json(),
+            None if scores is None else scores.model_dump_json(),
+            tuple(map(id, sources)),
+        )
+        if peri_scribe.execution.active()
+        else None
+    )
+    shared = peri_scribe.execution.get(peri_scribe.execution.Group.PRESENTATION, key)
+    if isinstance(shared, SharedFires) and all(
+        previous is current
+        for previous, current in zip(shared.sources, sources, strict=True)
+    ):
+        return shared.fires
     notes_by_identifier = (
         {
             entry.identifier: entry.explanation
@@ -406,6 +432,11 @@ def prepare_fire_data(
                 point_positions=prepared.point_positions,
             ),
         )
+    peri_scribe.execution.put(
+        peri_scribe.execution.Group.PRESENTATION,
+        key,
+        SharedFires(sources=sources, fires=fires),
+    )
     return fires
 
 

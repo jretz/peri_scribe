@@ -19,6 +19,7 @@ import peri_scribe.fires.derived_layers
 import peri_scribe.fires.index
 import peri_scribe.fires.score_files
 import peri_scribe.models
+import peri_scribe.preparation
 import peri_scribe.presentation.descriptions
 import peri_scribe.presentation.fire_data
 import peri_scribe.presentation.index
@@ -327,6 +328,7 @@ def report_details(*args: tuple[FireReportEntry, ...]) -> tuple[FireReportEntry,
     )
 
 
+@peri_scribe.preparation.cached_year
 def gather_report(year_directory: pathlib.Path) -> FireReport:
     """Gather the fire report for *year_directory* from its derived outputs.
 

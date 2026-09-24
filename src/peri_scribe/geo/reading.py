@@ -74,6 +74,7 @@ def fetch_snapshot_rows(
     conn: sqlite3.Connection,
     serial: int,
     *,
+    checksum: str,
     geometry_pool: spatial_data.geometry_pool.GeometryPool,
 ) -> peri_scribe.geo.package.GeopackageContents | None:
     """Return the contents stored for snapshot *serial*, or None when absent.
@@ -81,6 +82,7 @@ def fetch_snapshot_rows(
     Args:
         conn: The record cache database connection.
         serial: The snapshot's serial number.
+        checksum: Current authoritative snapshot bytes, required before reusing a parse.
         geometry_pool: The source read's shared snapshot geometries.
 
     Returns:
@@ -89,8 +91,8 @@ def fetch_snapshot_rows(
     """
     conn.row_factory = sqlite3.Row
     present = conn.execute(
-        "SELECT 1 FROM snapshots WHERE serial = ?",
-        (serial,),
+        "SELECT 1 FROM snapshots WHERE serial = ? AND checksum = ?",
+        (serial, checksum),
     ).fetchone()
     if present is None:
         return None
@@ -101,6 +103,7 @@ def read_snapshot_rows(
     db_path: pathlib.Path,
     serial: int,
     *,
+    checksum: str,
     geometry_pool: spatial_data.geometry_pool.GeometryPool,
 ) -> peri_scribe.geo.package.GeopackageContents | None:
     """Return the contents stored for snapshot *serial* at *db_path*.
@@ -108,6 +111,7 @@ def read_snapshot_rows(
     Args:
         db_path: The record cache database path.
         serial: The snapshot's serial number.
+        checksum: Current authoritative snapshot bytes, required before reusing a parse.
         geometry_pool: The source read's shared snapshot geometries.
 
     Returns:
@@ -116,7 +120,12 @@ def read_snapshot_rows(
     """
     conn = sqlite3.connect(db_path)
     try:
-        return fetch_snapshot_rows(conn, serial, geometry_pool=geometry_pool)
+        return fetch_snapshot_rows(
+            conn,
+            serial,
+            checksum=checksum,
+            geometry_pool=geometry_pool,
+        )
     finally:
         conn.close()
 
@@ -130,9 +139,9 @@ def read_cached_snapshot(
 ) -> peri_scribe.geo.package.GeopackageContents:
     """Return the cached contents stored for snapshot *serial*, or read the file.
 
-    A snapshot that the database does not cover (for example one written while the
-    database was being checked) and a database that cannot be read both fall back to
-    reading the GeoPackage directly, so the cache never fails a read.
+    Missing or unauthenticated parsed records and unreadable databases fall back to
+    reading the GeoPackage directly. Each lookup checks the current content checksum
+    even when unchanged directory metadata allowed the feed synchronization to skip.
 
     Args:
         db_path: The record cache database path.
@@ -144,7 +153,12 @@ def read_cached_snapshot(
         The snapshot's fire rows and complex memberships.
     """
     try:
-        contents = read_snapshot_rows(db_path, serial, geometry_pool=geometry_pool)
+        contents = read_snapshot_rows(
+            db_path,
+            serial,
+            checksum=peri_scribe.geo.database.snapshot_checksum(path),
+            geometry_pool=geometry_pool,
+        )
     except OSError, ValueError, sqlite3.Error:
         logger.debug("Failed to read record cache", path=str(path), exc_info=True)
         return peri_scribe.geo.package.read_geopackage(path)
@@ -163,10 +177,11 @@ def read_geopackage_cached(
     Reading and decoding a GeoPackage is far more expensive than loading its parsed
     contents from a database, and snapshots are immutable once written, so each feed's
     parsed contents are cached in one SQLite database stored inside the feed's snapshot
-    directory (``sources/{feed}/record_cache.db``). The database records each snapshot
-    file's size and modification time, so a snapshot that is ever rewritten (or restored
-    from a backup) is read and cached again, and a snapshot whose file disappears is
-    dropped. A missing, stale, corrupt, or unusable database never fails the read: it is
+    directory (``sources/{feed}/record_cache.db``). The database records each snapshot's
+    checksum as well as its size and modification time. Every cached read checks the
+    current bytes, so in-place edits and replacements with preserved timestamps cannot
+    reuse stale records. Missing snapshots are dropped during synchronization.
+    A missing, stale, corrupt, or unusable database never fails the read: it is
     rebuilt from the GeoPackages, and a failed cache update falls back to reading the
     file directly.
 

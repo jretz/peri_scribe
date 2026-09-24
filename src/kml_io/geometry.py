@@ -11,6 +11,10 @@ import html
 import itertools
 import typing
 
+import structlog
+
+import kml_io.fragments
+
 
 if typing.TYPE_CHECKING:
     import shapely
@@ -24,6 +28,7 @@ GX_NAMESPACE = "http://www.google.com/kml/ext/2.2"
 # coordinate text. The altitude component is omitted entirely: KML coordinates default
 # it to zero, and every geometry here draws clampToGround, which ignores it.
 COORDINATE_DECIMALS = 5
+logger = structlog.get_logger()
 
 
 def coordinate_pair(longitude: float, latitude: float) -> str:
@@ -108,7 +113,7 @@ class KmlWriter:
             stream: The text destination, buffered by the caller when appropriate.
         """
         self.stream = stream
-        self.geometry_cache: dict[int, tuple[shapely.Geometry, tuple[str, ...]]] = {}
+        self.geometry_cache = kml_io.fragments.BoundaryCache()
         self.next_folder_id = 0
 
     def write(self, text: str) -> None:
@@ -147,6 +152,18 @@ class KmlWriter:
             yield
         finally:
             self.write("</Document></kml>")
+            logger.info(
+                "KML boundary cache",
+                accounted_retained_fragment_bytes=self.geometry_cache.retained_bytes,
+                accounted_peak_fragment_bytes=self.geometry_cache.peak_bytes,
+                largest_accounted_fragment_bytes=(
+                    self.geometry_cache.largest_fragment_bytes
+                ),
+                fragment_budget_bytes=self.geometry_cache.budget,
+                memory_hits=self.geometry_cache.memory_hits,
+                persistent_hits=self.geometry_cache.persistent_hits,
+                computed=self.geometry_cache.computed,
+            )
 
     @contextlib.contextmanager
     def folder(
@@ -203,18 +220,11 @@ class KmlWriter:
         Returns:
             The geometry element's KML text.
         """
-        entry = self.geometry_cache.get(id(geometry))
-        if entry is None:
-            if geometry.geom_type == "Polygon":
-                polygons = [geometry]
-            else:
-                polygons = list(geometry.geoms)
-            entry = (
-                geometry,
-                tuple(polygon_boundaries(polygon) for polygon in polygons),
-            )
-            self.geometry_cache[id(geometry)] = entry
-        cached = entry[1]
+        cached = self.geometry_cache.boundaries(
+            geometry,
+            COORDINATE_DECIMALS,
+            geometry_boundaries,
+        )
         if geometry.geom_type == "Polygon":
             return (
                 f"<Polygon>{cached[0]}"
@@ -225,6 +235,19 @@ class KmlWriter:
             for ring in cached
         )
         return f"<MultiGeometry>{inner}</MultiGeometry>"
+
+
+def geometry_boundaries(geometry: shapely.Geometry) -> tuple[str, ...]:
+    """Preserve original polygon and interior-ring order in reusable fragments.
+
+    Args:
+        geometry: The polygon or multi-polygon whose boundaries will be displayed.
+
+    Returns:
+        Exactly one boundary fragment for each polygon component.
+    """
+    polygons = [geometry] if geometry.geom_type == "Polygon" else geometry.geoms
+    return tuple(polygon_boundaries(polygon) for polygon in polygons)
 
 
 def polygon_boundaries(polygon: shapely.Polygon) -> str:
