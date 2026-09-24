@@ -33,6 +33,11 @@ There are a number of skills available for use in this project. They help get ar
 limitations of the sandbox and provide a more structured way to perform tasks. Use them
 when appropriate.
 
+- [Regenerate dataflow](skills/regenerate-dataflow/SKILL.md) — Update the pipeline SVG
+  from the current implementation while preserving its layout and readable diffs.
+- [Update glossary](skills/update-glossary/SKILL.md) — Keep project concept definitions
+  aligned with the current implementation and documentation.
+
 ## Geographic Area of Interest
 
 This project is about the entire United States. It might appear to be about California

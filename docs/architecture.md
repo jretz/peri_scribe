@@ -69,17 +69,7 @@ with the application adapters.
 
 The primary workflow is:
 
-```text
-fetch fire feeds, external sources, and administrative boundaries
-    ↓
-derive geography history
-    ↓
-score fires
-    ↓
-create KMZ
-    ↓
-write fire reports
-```
+![PeriScribe pipeline stages and their outputs](pipeline.svg)
 
 `run` organizes these steps into the stages fetch, geography, score, kmz, and reports.
 After fetch, it skips the derived outputs only when no fire or evacuation data changed
@@ -89,6 +79,10 @@ stages to run and bypasses prior history reuse when geography is selected; `--on
 `--from`, and `--to` select one stage or a range of stages, and `--list-stages` prints
 the stage descriptions. `validate-sources` is a separate diagnostic workflow that
 performs a complete fetch and compares it with the incremental snapshots.
+
+## Dataflow
+
+![Pipeline dataflow diagram](dataflow.svg)
 
 ## Data handling
 
@@ -297,3 +291,44 @@ file itself does not indicate that a run is active.
 ArcGIS is used for FeatureServer access; GeoPandas, Shapely, pyproj, and pyogrio support
 geospatial processing and GeoPackages; Pydantic validates serialized documents; Click
 implements the CLI.
+
+## Network resources
+
+### ArcGIS source layers
+
+Each layer supplies metadata through `?f=json` and feature queries through `/query`.
+The SDK may also request metadata from the parent FeatureServer.
+
+The fire feeds support object-ID, changed-feature, missing-ID, status-flip, and
+full-feature queries. Their metadata requests add `_cb={time_ns}` to avoid stale
+responses:
+
+- [CAL FIRE / FIRIS perimeter history][cal-fire-firis]
+- [WFIGS current interagency perimeters][wfigs-perimeters]
+- [WFIGS current incident locations][wfigs-locations]
+
+The reference layers have separate retrieval policies:
+
+- [Cal OES evacuations][cal-oes-evacuations] — query the full layer, compare, and retain
+  the current version.
+- [USA major cities][usa-major-cities] — query the full layer, compare, and retain the
+  current version.
+- [USA generalized state boundaries][usa-state-boundaries] — query California,
+  Arizona, Nevada, and Oregon only when the stored border is missing or unusable.
+
+[cal-fire-firis]: https://services1.arcgis.com/jUJYIo9tSA7EHvfZ/ArcGIS/rest/services/CA_Perimeters_NIFC_FIRIS_public_view/FeatureServer/0
+[wfigs-perimeters]: https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0
+[wfigs-locations]: https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0
+[cal-oes-evacuations]: https://services.arcgis.com/BLN4oKB0N1YSgvY8/arcgis/rest/services/CA_EVACUATIONS_CalOESHosted_view/FeatureServer/0
+[usa-major-cities]: https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Major_Cities_/FeatureServer/0
+[usa-state-boundaries]: https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_States_Generalized_Boundaries/FeatureServer/0
+
+### Building index and state archives
+
+[Microsoft US Building Footprints](https://github.com/microsoft/USBuildingFootprints)
+provides the download index for all 50 states and DC. The pipeline resolves current
+archive links from the index HTML and downloads GeoJSON ZIP files hosted by Microsoft.
+
+<!-- Archive URL family:
+https://minedbuildings.z5.web.core.windows.net/legacy/usbuildings-v2/{StateWithoutSpaces}.geojson.zip
+-->

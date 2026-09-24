@@ -4,6 +4,8 @@ PeriScribe systematically gathers and symbolizes fire geography for fire behavio
 analysis and presentation. It preserves source data, builds cleaned fire histories,
 scores fires using geographic signals, and produces KMZ maps for Google Earth.
 
+See the [glossary](docs/glossary.md) for definitions of project concepts.
+
 ## Current commands
 
 Run `peri_scribe --help` for command help. Pipeline commands that accept an optional
@@ -22,64 +24,46 @@ year-directory argument default to `data/<current year>`.
 - `validate-sources` compares incremental feed snapshots with complete fresh downloads
   and leaves validation data for inspection when problems are found.
 
-## Inputs and outputs
+## Generated KMZ
 
-Three ArcGIS fire feeds are configured in the package: CAL FIRE/NIFC historical
-perimeters, WFIGS current perimeters, and WFIGS current incident locations. Fire-feed
-snapshots are append-only GeoPackages under `data/<year>/sources/`; each snapshot keeps
-source attributes, geometry, and source coordinate reference system information.
+The pipeline writes `data/<year>/maps/PeriScribe Fires <year>.kmz`. Open it in Google
+Earth to explore the year's fires, compare recent perimeters, and replay mapped growth.
 
-The `run` pipeline writes these outputs:
+- **Find fires of interest.** Choose among active and inactive fires, top fires by name
+  or score, new and notable fires, Type 1 incidents, fast-growing fires by acres or
+  percentage, and fires with the most personnel. Views appear when they contain
+  matching fires; “Top Fires by Name” is selected initially when available.
+- **Compare recent mappings.** Expand a fire to see its location, up to three recent
+  perimeter outlines, and an “Interior” folder of growth rings colored by observation
+  day. The rings show how the mapped footprint changed over time.
+- **Replay growth.** Play a fire's “Progression” tour to reveal its mapped growth from
+  oldest to newest. Select an individual ring to see the area it added.
+- **Inspect the details.** Click a fire's placemark or perimeter to see its area and
+  measurement basis, containment, personnel, costs, source, and other reported facts.
+  Where history is available, charts show changes in area, perimeter and containment,
+  costs, and personnel. Area charts distinguish mapped measurements from reported
+  estimates.
 
-- `derived/history_of_full_geography.gpkg` — full perimeter and point histories.
-- `derived/history_of_differential_geography.gpkg` — corrected growth rings.
-- `derived/fire_scores.json` — score and explanation for each qualifying fire.
-- `derived/fire_scores_ccdf.html` — score-distribution chart.
-- `maps/PeriScribe Fires <year>.kmz` — the Google Earth output.
-- `maps/updates.html` and `maps/updates.json` — the fire-update viewer and its data.
-- `reports/PeriScribe Fires <year>.md` — the fire reports.
-
-The KMZ contains active and inactive fire folders, latest perimeters, progression maps,
-fire information, and score-based top-fire views. Styles and placemark behavior are
-currently defined in code.
+Available map features and details depend on the source observations. The KMZ also
+includes data-source links and attribution.
 
 ## Pipeline
 
-The `run` command walks the stages in order:
+A full `run` turns observations from across the United States into fire histories,
+rankings, maps, and reports. The stages run from top to bottom; each stage's main
+outputs are shown alongside it.
 
-```text
-fetch:
-    fire feeds, evacuation layer, buildings, and boundaries
-        │
-        v
-geography:
-    reuse unchanged fires, derive changed histories and shared measurements
-        │
-        v
-score:
-    fire scores and CCDF chart
-        │
-        v
-kmz:
-    symbolized KMZ in maps/
-        │
-        v
-reports:
-    fire reports in reports/
-```
+![PeriScribe pipeline stages and their outputs](docs/pipeline.svg)
 
-Geography reuses complete full and differential histories for fires whose inputs and
-derivation settings match the previous run. A changed fire's entire history is rebuilt,
-including earlier rings that a correction may affect. Area and exterior-length
-measurements are stored with the geometry and shared by scoring, maps, and reports.
-Missing, incompatible, or damaged reuse data causes recomputation automatically.
+The pipeline preserves original observations so it can account for later corrections.
+It reuses unchanged histories, rebuilds affected fires, and shares the resulting facts
+across scores, maps, and reports. The KMZ stage also produces a browser viewer showing
+the last 48 hours of mapping updates.
 
-To recompute all geography from stored inputs, use `peri_scribe run --only geography
---unconditional`. Starting at a later stage uses the existing geography. Neither
-`--unconditional` nor a scheduled full fetch forces static sources such as buildings to
-be downloaded again.
+Routine runs skip derived work when fire and evacuation data are unchanged and no
+rebuild is pending. Failed work is retried on a later run. The optional
+`--publish-threshold` can defer output generation until a mapped-area change or elapsed
+time reaches the configured threshold.
 
-## Status
-
-The ingestion, validation, history derivation, scoring, KMZ, and reporting pipeline is
-built. Notifications remain future work.
+See the [architecture and detailed dataflow](docs/architecture.md) for file classes,
+network sources, reuse, and recovery behavior.

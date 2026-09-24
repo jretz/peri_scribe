@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="840" height="918" viewBox="0 0 840 918"
+     preserveAspectRatio="xMidYMin" role="graphics-document"
+     style="max-width:100%;height:auto"
+     aria-labelledby="pipeline-title pipeline-description">
+  <title id="pipeline-title">PeriScribe pipeline overview</title>
+  <desc id="pipeline-description">Sources across the United States feed five stages: fetch, geography, score, KMZ and updates, and reports. Each stage has its main saved outputs alongside it. Downward dashed arrows show stage order; horizontal arrows show outputs.</desc>
+  <!-- Semantic IDs and fixed coordinates keep diagram updates easy to review. -->
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"/>
+    </marker>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --background: #fbfcfe;
+        --text: #172e40;
+        --muted: #526779;
+        --edge: #526779;
+        --disk-fill: #eaf3fc;
+        --disk-border: #5791bf;
+        --process-fill: #fff7e8;
+        --process-border: #c69a46;
+        --network-fill: #f0edfa;
+        --network-border: #9481c6;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background: #111820;
+          --text: #e4edf5;
+          --muted: #acbdcb;
+          --edge: #9caebe;
+          --disk-fill: #172c3e;
+          --disk-border: #6198c2;
+          --process-fill: #362c1c;
+          --process-border: #c4a45f;
+          --network-fill: #2b253e;
+          --network-border: #a391d0;
+        }
+      }
+      svg { background: var(--background); }
+      text { font-family: system-ui, sans-serif; fill: var(--text); }
+      .heading { font-size: 17.6px; font-weight: 700; }
+      .body { font-size: 16px; }
+      .small { font-size: 13.6px; fill: var(--muted); }
+      .page-background { fill: var(--background); }
+      .disk rect { fill: var(--disk-fill); stroke: var(--disk-border); }
+      .process rect { fill: var(--process-fill); stroke: var(--process-border); }
+      .network rect { fill: var(--network-fill); stroke: var(--network-border); }
+      .node rect { stroke-width: 2; rx: 14; }
+      .edge { fill: none; stroke: var(--edge); stroke-width: 2.5; }
+      .edge { marker-end: url(#arrow); }
+      .stage-order { stroke-dasharray: 8 6; }
+    </style>
+  </defs>
+  <rect class="page-background" width="840" height="918"/>
+  <g id="sources" class="node network" transform="translate(24 24)">
+    <rect width="792" height="86"/>
+    <text class="heading" x="16" y="32">Sources across the United States</text>
+    <text class="body" x="16" y="62">Fire perimeters and incident reports; evacuations, buildings, cities and state boundaries.</text>
+  </g>
+  <path id="sources-to-fetch" class="edge" d="M 256 110 V 160"/>
+  <text class="small" x="24" y="142">Stages · run order</text>
+  <text class="small" x="536" y="142">Saved outputs</text>
+  <g id="fetch" class="node process" transform="translate(24 160)">
+    <rect width="464" height="110"/>
+    <text class="heading" x="16" y="32">1 / Fetch</text>
+    <text class="body" x="16" y="62">Collect new and changed fire observations.</text>
+    <text class="body" x="16" y="86">Keep source records and geographic reference data.</text>
+  </g>
+  <path id="fetch-to-sources" class="edge" d="M 488 215 H 536"/>
+  <g id="source-files" class="node disk" transform="translate(536 160)">
+    <rect width="280" height="110"/>
+    <text class="heading" x="16" y="32">Preserved sources</text>
+    <text class="body" x="16" y="62">Original fire observations</text>
+    <text class="body" x="16" y="86">Geographic reference data</text>
+  </g>
+  <path id="fetch-to-geography" class="edge stage-order" d="M 256 270 V 310"/>
+  <g id="geography" class="node process" transform="translate(24 310)">
+    <rect width="464" height="110"/>
+    <text class="heading" x="16" y="32">2 / Geography</text>
+    <text class="body" x="16" y="62">Match records to fires and reconcile corrections.</text>
+    <text class="body" x="16" y="86">Build fire histories and map their growth over time.</text>
+  </g>
+  <path id="geography-to-histories" class="edge" d="M 488 365 H 536"/>
+  <g id="history-files" class="node disk" transform="translate(536 310)">
+    <rect width="280" height="110"/>
+    <text class="heading" x="16" y="32">Fire histories</text>
+    <text class="body" x="16" y="62">Perimeters, points, incident</text>
+    <text class="body" x="16" y="86">reports, and growth rings</text>
+  </g>
+  <path id="geography-to-score" class="edge stage-order" d="M 256 420 V 460"/>
+  <g id="score" class="node process" transform="translate(24 460)">
+    <rect width="464" height="134"/>
+    <text class="heading" x="16" y="32">3 / Score</text>
+    <text class="body" x="16" y="62">Rank fires by size, growth, first mapping,</text>
+    <text class="body" x="16" y="86">nearby buildings, evacuation overlap,</text>
+    <text class="body" x="16" y="110">and incident complexity.</text>
+  </g>
+  <path id="score-to-scores" class="edge" d="M 488 527 H 536"/>
+  <g id="score-files" class="node disk" transform="translate(536 460)">
+    <rect width="280" height="134"/>
+    <text class="heading" x="16" y="32">Scores + chart</text>
+    <text class="body" x="16" y="62">Scores and explanations</text>
+    <text class="body" x="16" y="86">Score-distribution chart</text>
+  </g>
+  <path id="score-to-kmz" class="edge stage-order" d="M 256 594 V 634"/>
+  <g id="kmz" class="node process" transform="translate(24 634)">
+    <rect width="464" height="110"/>
+    <text class="heading" x="16" y="32">4 / KMZ + updates</text>
+    <text class="body" x="16" y="62">Build maps with fire information and growth.</text>
+    <text class="body" x="16" y="86">Record mapping updates for the browser viewer.</text>
+  </g>
+  <path id="kmz-to-maps" class="edge" d="M 488 689 H 536"/>
+  <g id="map-files" class="node disk" transform="translate(536 634)">
+    <rect width="280" height="110"/>
+    <text class="heading" x="16" y="32">Maps + update viewer</text>
+    <text class="body" x="16" y="62">Google Earth KMZ</text>
+    <text class="body" x="16" y="86">48 hours of mapping updates</text>
+  </g>
+  <path id="kmz-to-reports" class="edge stage-order" d="M 256 744 V 784"/>
+  <g id="reports" class="node process" transform="translate(24 784)">
+    <rect width="464" height="110"/>
+    <text class="heading" x="16" y="32">5 / Reports</text>
+    <text class="body" x="16" y="62">Summarize selected fires with locations,</text>
+    <text class="body" x="16" y="86">current area, and recent growth.</text>
+  </g>
+  <path id="reports-to-markdown" class="edge" d="M 488 839 H 536"/>
+  <g id="report-files" class="node disk" transform="translate(536 784)">
+    <rect width="280" height="110"/>
+    <text class="heading" x="16" y="32">Fire reports</text>
+    <text class="body" x="16" y="62">Readable Markdown summaries</text>
+  </g>
+</svg>

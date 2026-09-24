@@ -1,0 +1,297 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     width="840" height="3092" viewBox="0 0 840 3092" preserveAspectRatio="xMidYMin" role="graphics-document"
+     style="max-width:100%;height:auto"
+     aria-labelledby="diagram-title diagram-description">
+  <title id="diagram-title">PeriScribe — complete 2026 pipeline dataflow</title>
+  <desc id="diagram-description">United States fire pipeline, source inputs, derived memory, recovery, and the classes of files under data/2026. Detailed network resources are documented in architecture.md.</desc>
+  <!-- Fixed page coordinates and semantic IDs keep edits local. Do not optimize or minify. -->
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"/></marker>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --background: #fbfcfe;
+        --text: #172e40;
+        --muted: #526779;
+        --edge: #526779;
+        --disk-fill: #eaf3fc;
+        --disk-border: #5791bf;
+        --memory-fill: #ecf7ee;
+        --memory-border: #639570;
+        --process-fill: #fff7e8;
+        --process-border: #c69a46;
+        --network-fill: #f0edfa;
+        --network-border: #9481c6;
+        --control-fill: #f3f4f5;
+        --control-border: #94a0ab;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --background: #111820;
+          --text: #e4edf5;
+          --muted: #acbdcb;
+          --edge: #9caebe;
+          --disk-fill: #172c3e;
+          --disk-border: #6198c2;
+          --memory-fill: #1b3025;
+          --memory-border: #76a982;
+          --process-fill: #362c1c;
+          --process-border: #c4a45f;
+          --network-fill: #2b253e;
+          --network-border: #a391d0;
+          --control-fill: #252d35;
+          --control-border: #8595a3;
+        }
+      }
+      svg { background: var(--background); }
+      text { font-family: system-ui, sans-serif; fill: var(--text); }
+      .section { font-size: 20.8px; font-weight: 700; }
+      .heading { font-size: 17.6px; font-weight: 700; }
+      .body { font-size: 16px; }
+      .small { font-size: 13.6px; fill: var(--muted); }
+      .page-background { fill: var(--background); }
+      .disk rect { fill: var(--disk-fill); stroke: var(--disk-border); }
+      .memory rect { fill: var(--memory-fill); stroke: var(--memory-border); }
+      .process rect { fill: var(--process-fill); stroke: var(--process-border); }
+      .network rect { fill: var(--network-fill); stroke: var(--network-border); }
+      .control rect { fill: var(--control-fill); stroke: var(--control-border); }
+      .optional rect { stroke-dasharray: 7 5; }
+      .node rect { stroke-width: 2; rx: 14; }
+      .edge { fill: none; stroke: var(--edge); stroke-width: 2.5; marker-end: url(#arrow); }
+      .control-edge { stroke-dasharray: 8 6; }
+      .edge-label { font-size: 12.8px; fill: var(--muted); paint-order: stroke; stroke: var(--background); stroke-width: 7px; stroke-linejoin: round; }
+    </style>
+  </defs>
+  <g id="page-overview" transform="translate(0 -48)">
+    <rect class="page-background" width="840" height="3140"/>
+    <text class="small" x="24" y="76">Purple: network · gold: stage · green: computed memory · blue: files</text>
+    <g id="overview-network" class="node network" transform="translate(24 100)">
+      <rect width="792" height="110"/>
+      <text class="heading" x="16" y="32">External resources</text>
+      <text class="body" x="16" y="62">CAL FIRE/FIRIS + WFIGS perimeter/location feeds; evacuations, cities and state boundaries; ArcGIS</text>
+      <text class="body" x="16" y="86">SDK; Microsoft download index + state/DC archive family.</text>
+    </g>
+    <g id="edge-network-fetch">
+      <path class="edge" d="M 420 210 V 258"/>
+    </g>
+    <g id="overview-fetch" class="node process" transform="translate(24 258)">
+      <rect width="792" height="110"/>
+      <text class="heading" x="16" y="32">1 / Fetch</text>
+      <text class="body" x="16" y="62">Query and compare changed/missing/status-flip IDs; stream building centroid / tile arrays; derive</text>
+      <text class="body" x="16" y="86">borders; save changes and check full-fetch / publication gates.</text>
+    </g>
+    <g id="fetch-memory" class="node memory" transform="translate(24 416)">
+      <rect width="378" height="158"/>
+      <text class="heading" x="16" y="32">Collection working sets</text>
+      <text class="body" x="16" y="62">Changed, missing and status-flip object-ID</text>
+      <text class="body" x="16" y="86">sets</text>
+      <text class="body" x="16" y="110">Building centroid / quantized tile arrays</text>
+      <text class="body" x="16" y="134">Computed shared state-border geometry</text>
+    </g>
+    <g id="overview-sources" class="node disk" transform="translate(438 416)">
+      <rect width="378" height="206"/>
+      <text class="heading" x="16" y="32">sources/ — fire data classes</text>
+      <text class="body" x="16" y="62">{feed}/{bucket}/{serial},lastEdit={ms}.gpkg</text>
+      <text class="body" x="16" y="86">{feed}/state-{serial}.gpkg — current feature</text>
+      <text class="body" x="16" y="110">rows</text>
+      <text class="body" x="16" y="134">{feed}/record_cache.db — parsed</text>
+      <text class="body" x="16" y="158">rows/memberships</text>
+      <text class="body" x="16" y="182">fires.json — canonical fire index</text>
+    </g>
+    <g id="edge-overview-fetch-preparation">
+      <path class="edge" d="M 213 368 V 416"/>
+    </g>
+    <g id="edge-overview-fetch-products">
+      <path class="edge" d="M 402 496 H 438"/>
+    </g>
+    <g id="edge-overview-geography-inputs">
+      <path class="edge" d="M 627 622 V 694"/>
+      <text class="edge-label" x="645" y="672">inputs to the next stage</text>
+    </g>
+    <g id="overview-geography" class="node process" transform="translate(24 694)">
+      <rect width="792" height="110"/>
+      <text class="heading" x="16" y="32">2 / Geography</text>
+      <text class="body" x="16" y="62">Group and classify sources; write fire index; preserve independent incident-report evidence;</text>
+      <text class="body" x="16" y="86">reconcile full perimeters and derive growth rings.</text>
+    </g>
+    <g id="overview-group" class="node memory" transform="translate(24 852)">
+      <rect width="378" height="134"/>
+      <text class="heading" x="16" y="32">Source identity + reconciliation</text>
+      <text class="body" x="16" y="62">FireRecordGroups; complex membership graph</text>
+      <text class="body" x="16" y="86">Border box and source/geometry signals</text>
+      <text class="body" x="16" y="110">Version winners; provenance; generation keys</text>
+    </g>
+    <g id="overview-histories" class="node disk" transform="translate(438 852)">
+      <rect width="378" height="134"/>
+      <text class="heading" x="16" y="32">derived/ histories</text>
+      <text class="body" x="16" y="62">history_of_full_geography.gpkg</text>
+      <text class="body" x="16" y="86">history_of_differential_geography.gpkg</text>
+      <text class="body" x="16" y="110">Each has a matching .reuse.json signature</text>
+    </g>
+    <g id="edge-overview-geography-preparation">
+      <path class="edge" d="M 213 804 V 852"/>
+    </g>
+    <g id="edge-overview-geography-products">
+      <path class="edge" d="M 402 932 H 438"/>
+    </g>
+    <g id="edge-overview-score-inputs">
+      <path class="edge" d="M 627 986 V 1058"/>
+      <text class="edge-label" x="645" y="1036">inputs to the next stage</text>
+    </g>
+    <g id="overview-score" class="node process" transform="translate(24 1058)">
+      <rect width="792" height="110"/>
+      <text class="heading" x="16" y="32">3 / Score</text>
+      <text class="body" x="16" y="62">Use current area, mapped growth, first mapping, nearby buildings, evacuation and complexity; rank</text>
+      <text class="body" x="16" y="86">fires and generate score distribution.</text>
+    </g>
+    <g id="overview-signals" class="node memory" transform="translate(24 1216)">
+      <rect width="378" height="206"/>
+      <text class="heading" x="16" y="32">Area decisions + spatial signals</text>
+      <text class="body" x="16" y="62">PreparedHistory / AreaEstimate /</text>
+      <text class="body" x="16" y="86">IncidentUpdate</text>
+      <text class="body" x="16" y="110">Latest geometry or point union; one-mile</text>
+      <text class="body" x="16" y="134">buffers</text>
+      <text class="body" x="16" y="158">Building counts, evacuation intersections,</text>
+      <text class="body" x="16" y="182">metrics</text>
+    </g>
+    <g id="overview-score-files" class="node disk" transform="translate(438 1216)">
+      <rect width="378" height="134"/>
+      <text class="heading" x="16" y="32">derived/ scores</text>
+      <text class="body" x="16" y="62">fire_scores.json</text>
+      <text class="body" x="16" y="86">fire_scores_ccdf.html</text>
+      <text class="body" x="16" y="110">Self-contained score-distribution page</text>
+    </g>
+    <g id="edge-overview-score-preparation">
+      <path class="edge" d="M 213 1168 V 1216"/>
+    </g>
+    <g id="edge-overview-score-products">
+      <path class="edge" d="M 402 1296 H 438"/>
+    </g>
+    <g id="edge-overview-kmz-inputs">
+      <path class="edge" d="M 627 1350 V 1494"/>
+      <text class="edge-label" x="645" y="1472">inputs to the next stage</text>
+    </g>
+    <g id="overview-kmz" class="node process" transform="translate(24 1494)">
+      <rect width="792" height="110"/>
+      <text class="heading" x="16" y="32">4 / KMZ + update publication</text>
+      <text class="body" x="16" y="62">Assemble maps; commit successful KMZ baseline; append new mapping updates with recovery journal;</text>
+      <text class="body" x="16" y="86">build 48-hour JSON snapshot and copy viewer.</text>
+    </g>
+    <g id="overview-summaries" class="node memory" transform="translate(24 1652)">
+      <rect width="378" height="182"/>
+      <text class="heading" x="16" y="32">Shared facts + map assembly</text>
+      <text class="body" x="16" y="62">HistoryRowIndex; PreparedFire / FireSummary</text>
+      <text class="body" x="16" y="86">Area qualification; descriptions; current</text>
+      <text class="body" x="16" y="110">rankings</text>
+      <text class="body" x="16" y="134">FireGeometry; plot SVGs; KML styles /</text>
+      <text class="body" x="16" y="158">fragments</text>
+    </g>
+    <g id="overview-map-files" class="node disk" transform="translate(438 1652)">
+      <rect width="378" height="134"/>
+      <text class="heading" x="16" y="32">maps/ + publication state</text>
+      <text class="body" x="16" y="62">PeriScribe Fires {year}.kmz</text>
+      <text class="body" x="16" y="86">updates.json; updates.html</text>
+      <text class="body" x="16" y="110">Checkpoints + monthly update logs (below)</text>
+    </g>
+    <g id="edge-overview-kmz-preparation">
+      <path class="edge" d="M 213 1604 V 1652"/>
+    </g>
+    <g id="edge-overview-kmz-products">
+      <path class="edge" d="M 402 1732 H 438"/>
+    </g>
+    <g id="edge-overview-reports-inputs">
+      <path class="edge control-edge" d="M 627 1786 V 1906"/>
+      <text class="edge-label" x="645" y="1884">next selected stage</text>
+    </g>
+    <g id="overview-reports" class="node process" transform="translate(24 1906)">
+      <rect width="792" height="110"/>
+      <text class="heading" x="16" y="32">5 / Reports</text>
+      <text class="body" x="16" y="62">Reuse shared presentation facts where available; render selected fires and details as Markdown; use</text>
+      <text class="body" x="16" y="86">major-city reference data for location text.</text>
+    </g>
+    <g id="overview-report-memory" class="node memory" transform="translate(24 2064)">
+      <rect width="378" height="134"/>
+      <text class="heading" x="16" y="32">Report selection + locations</text>
+      <text class="body" x="16" y="62">Shared summaries, scores, and current time</text>
+      <text class="body" x="16" y="86">New / Type 1 / growth / top-fire views</text>
+      <text class="body" x="16" y="110">Nearest-city phrases; FireReport / entries</text>
+    </g>
+    <g id="overview-report-file" class="node disk" transform="translate(438 2064)">
+      <rect width="378" height="134"/>
+      <text class="heading" x="16" y="32">reports/</text>
+      <text class="body" x="16" y="62">PeriScribe Fires {year}.md</text>
+      <text class="body" x="16" y="86">Readers: Markdown tools / people</text>
+      <text class="body" x="16" y="110">Viewer consumption follows the KMZ branch</text>
+    </g>
+    <g id="edge-overview-reports-preparation">
+      <path class="edge" d="M 213 2016 V 2064"/>
+    </g>
+    <g id="edge-overview-reports-products">
+      <path class="edge" d="M 402 2144 H 438"/>
+    </g>
+    <text class="section" x="24" y="2270">Shared inputs, control and recovery</text>
+    <g id="reference-files" class="node disk" transform="translate(24 2302)">
+      <rect width="378" height="206"/>
+      <text class="heading" x="16" y="32">Reference files / sources/</text>
+      <text class="body" x="16" y="62">buildings.sqlite → nearby-building counts</text>
+      <text class="body" x="16" y="86">evacuations.gpkg → scores + publication gate</text>
+      <text class="body" x="16" y="110">major_cities.gpkg → report / update</text>
+      <text class="body" x="16" y="134">locations</text>
+      <text class="body" x="16" y="158">CA_border_with_AZ_NV_and_OR.gpkg →</text>
+      <text class="body" x="16" y="182">classification</text>
+    </g>
+    <g id="control-files" class="node disk" transform="translate(438 2302)">
+      <rect width="378" height="254"/>
+      <text class="heading" x="16" y="32">Run + publication state</text>
+      <text class="body" x="16" y="62">.run.lock; run_state.json → lock / retry</text>
+      <text class="body" x="16" y="86">scheduler</text>
+      <text class="body" x="16" y="110">sources/fetch_state.json → full-fetch</text>
+      <text class="body" x="16" y="134">cadence</text>
+      <text class="body" x="16" y="158">sources/publication_cache.json → gate</text>
+      <text class="body" x="16" y="182">measurements</text>
+      <text class="body" x="16" y="206">publication_state.json → successful KMZ</text>
+      <text class="body" x="16" y="230">baseline</text>
+    </g>
+    <g id="update-files" class="node disk" transform="translate(24 2592)">
+      <rect width="378" height="230"/>
+      <text class="heading" x="16" y="32">KMZ acknowledgement + recovery</text>
+      <text class="body" x="16" y="62">derived/fire_updates_state.json → next</text>
+      <text class="body" x="16" y="86">comparison</text>
+      <text class="body" x="16" y="110">derived/fire_updates_pending.json → retry</text>
+      <text class="body" x="16" y="134">journal</text>
+      <text class="body" x="16" y="158">logs/{YYYY-MM}-fire-updates.jsonl[.zst]</text>
+      <text class="body" x="16" y="182">Successful KMZ → log/checkpoint →</text>
+      <text class="body" x="16" y="206">updates.json</text>
+    </g>
+    <g id="shared-cache" class="node disk" transform="translate(438 2592)">
+      <rect width="378" height="182"/>
+      <text class="heading" x="16" y="32">Disposable derived products</text>
+      <text class="body" x="16" y="62">derived/prepared-products.sqlite</text>
+      <text class="body" x="16" y="86">Classification, histories, buffers, counts,</text>
+      <text class="body" x="16" y="110">SVG/KML</text>
+      <text class="body" x="16" y="134">Invalid products are recomputed from source</text>
+      <text class="body" x="16" y="158">evidence</text>
+    </g>
+    <g id="monitor-files" class="node disk" transform="translate(24 2858)">
+      <rect width="378" height="206"/>
+      <text class="heading" x="16" y="32">Diagnostic logs + retained backups</text>
+      <text class="body" x="16" y="62">logs/{YYYY-MM}.jsonl[.zst] → terminal</text>
+      <text class="body" x="16" y="86">monitor</text>
+      <text class="body" x="16" y="110">logs/.rotation.lock → both monthly log</text>
+      <text class="body" x="16" y="134">series</text>
+      <text class="body" x="16" y="158">logs/*.bak → retained backups; no normal</text>
+      <text class="body" x="16" y="182">consumer</text>
+    </g>
+    <g id="runtime-memory" class="node memory" transform="translate(438 2858)">
+      <rect width="378" height="182"/>
+      <text class="heading" x="16" y="32">Shared runtime + observer state</text>
+      <text class="body" x="16" y="62">execution.Values; GeometryPool; generation</text>
+      <text class="body" x="16" y="86">keys</text>
+      <text class="body" x="16" y="110">Monitor Run / PhaseTree / status projections</text>
+      <text class="body" x="16" y="134">Browser groups, DOM cache, timers and canvas</text>
+      <text class="body" x="16" y="158">icon</text>
+    </g>
+    <text class="small" x="24" y="3100">Arrows show preparation and product flow within each stage; dashed arrows show stage order.</text>
+  </g>
+</svg>
