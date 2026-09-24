@@ -24,6 +24,10 @@ same distribution, with one dependency set and release cycle:
   caching, generic styles, timed reveal tours, and atomic KMZ publication.
 - `measurement_units` owns the single Pint registry, including the currency unit shared
   by application observations and library calculations.
+- `aircraft_registration` owns offline recognition of trailing civil registrations,
+  using ICAO-notified marks and sourced national overrides. Its dataclass preserves
+  the caller's prefix and the normalized tail number. See the
+  [recognition rules and sources](aircraft_registration.md) for coverage and exceptions.
 
 These libraries do not import `peri_scribe`. `arcgis_access` uses `spatial_data` for
 coordinate systems; geometry measurements and charts use `measurement_units`. Package

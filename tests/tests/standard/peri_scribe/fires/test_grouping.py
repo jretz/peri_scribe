@@ -8,9 +8,69 @@ import shapely.geometry
 import structlog
 
 import peri_scribe.fires.grouping
+import peri_scribe.geo.parsing
 import peri_scribe.models
+import peri_scribe.sources.feeds
+import tests.helpers.factories.peri_scribe.geo.parsing
 import tests.helpers.factories.peri_scribe.models
 import tests.helpers.peri_scribe.fires.grouping
+
+
+def test_group_fire_record_indices_merges_dome_missions_with_nearby_fire() -> None:
+    active = tests.helpers.factories.peri_scribe.models.ACTIVE
+    geometry = shapely.geometry.Point(-119.5, 37.8)
+    records = [
+        tests.helpers.factories.peri_scribe.models.fire_record(
+            "DOME",
+            active,
+            identifiers={"2026-caynp-000100"},
+            geometry=geometry,
+        ),
+    ]
+    for mission in ("CA-YNP-DOME-N5852K", "CA-YNP-DOME-N874EB"):
+        record = peri_scribe.geo.parsing.fire_record_from_row(
+            tests.helpers.factories.peri_scribe.geo.parsing.mission_row(mission),
+            peri_scribe.sources.feeds.CA_PERIMETERS_FEED,
+            geometry,
+        )
+        assert record is not None
+        records.append(record)
+    records.append(
+        tests.helpers.factories.peri_scribe.models.fire_record(
+            "Dome",
+            active,
+            identifiers={"2026-idscf-260166"},
+            geometry=shapely.geometry.Point(-114.5, 45.0),
+        ),
+    )
+    assert peri_scribe.fires.grouping.group_fire_record_indices(records) == [
+        [0, 1, 2],
+        [3],
+    ]
+
+
+def test_group_fire_record_indices_merges_vista_abbreviated_mission() -> None:
+    perimeter = peri_scribe.geo.parsing.fire_record_from_row(
+        tests.helpers.factories.peri_scribe.geo.parsing.mission_row("CA-RRU-VISTA-50X"),
+        peri_scribe.sources.feeds.CA_PERIMETERS_FEED,
+        shapely.geometry.box(-117.3244, 33.7204, -117.3148, 33.7324),
+    )
+    assert perimeter is not None
+    incident = tests.helpers.factories.peri_scribe.models.fire_record(
+        "VISTA",
+        tests.helpers.factories.peri_scribe.models.ACTIVE,
+        identifiers={"2026-carru-062639"},
+        geometry=shapely.geometry.box(-117.3244, 33.7192, -117.3142, 33.7324),
+    )
+    distant_incident = tests.helpers.factories.peri_scribe.models.fire_record(
+        "Vista",
+        tests.helpers.factories.peri_scribe.models.ACTIVE,
+        identifiers={"2026-nmsnf-000515"},
+        geometry=shapely.geometry.Point(-106.5419, 36.3334),
+    )
+    assert peri_scribe.fires.grouping.group_fire_record_indices(
+        [perimeter, incident, distant_incident],
+    ) == [[0, 1], [2]]
 
 
 def test_most_common_fire_prefers_unique_fire_identifier_over_guid() -> None:

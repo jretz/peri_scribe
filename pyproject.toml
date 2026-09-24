@@ -175,6 +175,7 @@ unused-ignore-comment = "error"
 module-name = [
     "peri_scribe",
     "arcgis_access",
+    "aircraft_registration",
     "kml_io",
     "measurement_units",
     "spatial_data",

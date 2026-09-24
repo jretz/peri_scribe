@@ -49,6 +49,7 @@ def test_no_circular_imports() -> None:
     ("package", "forbidden"),
     [
         ("arcgis_access", ("peri_scribe",)),
+        ("aircraft_registration", ("peri_scribe",)),
         ("kml_io", ("peri_scribe",)),
         ("measurement_units", ("peri_scribe",)),
         ("spatial_data", ("peri_scribe", "arcgis_access")),

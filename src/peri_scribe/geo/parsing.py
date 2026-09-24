@@ -11,6 +11,7 @@ import pandas as pd
 import shapely
 import us.states
 
+import aircraft_registration
 import peri_scribe.models
 import peri_scribe.sources.feed_types
 
@@ -191,9 +192,6 @@ def is_complex_child_from(value: object) -> bool:
     return False
 
 
-MISSION_TAIL_PATTERN = re.compile(r"^[a-z]?\d{2}[a-z]$")
-
-
 MINIMUM_UNIT_CODE_LENGTH = 3
 
 
@@ -201,6 +199,11 @@ UNIT_PREFIX_TOKEN_COUNT = 2
 
 
 MISSION_NAME_NOISE_TOKENS = frozenset({"updated", "update", "revised", "final", "copy"})
+
+
+# Retained feed missions use abbreviated aircraft tails when incident names are absent.
+# These suffixes provide fire-name aliases without being complete registrations.
+MISSION_ABBREVIATED_TAIL_PATTERN = re.compile(r"[0-9]{2}[A-Za-z]")
 
 
 def fire_name_from(value: object) -> str | None:
@@ -228,8 +231,9 @@ def mission_name_from(value: object) -> peri_scribe.models.MissionName | None:
     A mission code such as ``CA-LNU-RUMSEY-UPDATED-N40Y`` is parsed into the fire name
     (``rumsey-updated``) and a base name with mapping-revision markers removed
     (``rumsey``), so an updated re-mapping can still be matched to the original fire.
-    The leading state and unit tokens and a trailing aircraft-tail token are dropped
-    when present.
+    The leading state and unit tokens and a trailing aircraft registration are dropped
+    when present. Feed-specific two-digit, one-letter tail abbreviations also supply
+    the fire-name alias needed to join unnamed perimeters to their incident.
 
     Args:
         value: A raw mission code value.
@@ -257,19 +261,19 @@ def mission_name_from(value: object) -> peri_scribe.models.MissionName | None:
         and folded[1].isalnum()
     ):
         start = 2
-    end = len(folded)
-    if end > start and MISSION_TAIL_PATTERN.fullmatch(folded[end - 1]) is not None:
-        end -= 1
-    name_tokens = tokens[start:end]
-    if not name_tokens:
+    name = "-".join(tokens[start:])
+    tail = aircraft_registration.split_tail_number(name)
+    if tail is not None:
+        name = tail.prefix
+    elif MISSION_ABBREVIATED_TAIL_PATTERN.fullmatch(tokens[-1]) is not None:
+        name = "-".join(tokens[start:-1])
+    if not name:
         return None
-    folded_name_tokens = folded[start:end]
-    base_tokens = list(name_tokens)
-    folded_base_tokens = list(folded_name_tokens)
+    base_tokens = name.split("-")
+    folded_base_tokens = [token.casefold() for token in base_tokens]
     while folded_base_tokens and folded_base_tokens[-1] in MISSION_NAME_NOISE_TOKENS:
         folded_base_tokens.pop()
         base_tokens.pop()
-    name = "-".join(name_tokens)
     base_name = "-".join(base_tokens) if base_tokens else name
     return peri_scribe.models.MissionName(name=name, base_name=base_name)
 

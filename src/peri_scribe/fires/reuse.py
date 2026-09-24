@@ -96,6 +96,7 @@ def derivation_context(year_directory: pathlib.Path) -> str:
             for package in (
                 "peri_scribe",
                 "arcgis_access",
+                "aircraft_registration",
                 "measurement_units",
                 "spatial_data",
             )

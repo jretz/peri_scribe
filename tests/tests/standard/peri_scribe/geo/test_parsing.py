@@ -14,6 +14,7 @@ import shapely.geometry
 import peri_scribe.geo.package
 import peri_scribe.geo.parsing
 import peri_scribe.models
+import peri_scribe.sources.feeds
 import tests.helpers.factories.peri_scribe.geo.parsing
 import tests.helpers.factories.peri_scribe.models
 
@@ -179,6 +180,82 @@ def test_mission_name_from_returns_none_for_blank() -> None:
 
 def test_mission_name_from_returns_none_without_a_fire_name() -> None:
     assert peri_scribe.geo.parsing.mission_name_from("CA-LNU-N40Y") is None
+
+
+@pytest.mark.parametrize("tail_number", ["N5852K", "N874EB"])
+def test_mission_name_from_recognizes_dome_aircraft(tail_number: str) -> None:
+    assert peri_scribe.geo.parsing.mission_name_from(
+        f"CA-YNP-DOME-{tail_number}",
+    ) == peri_scribe.models.MissionName(name="DOME", base_name="DOME")
+
+
+@pytest.mark.parametrize(
+    "tail_number",
+    ["C-FABC", "VH-A1B", "VH-50X", "CF-ABC", "VP-CAA"],
+)
+def test_mission_name_from_removes_complete_hyphenated_registration(
+    tail_number: str,
+) -> None:
+    assert peri_scribe.geo.parsing.mission_name_from(
+        f"CA-YNP-DOME-UPDATED-{tail_number}",
+    ) == peri_scribe.models.MissionName(name="DOME-UPDATED", base_name="DOME")
+
+
+@pytest.mark.parametrize("mission", ["N5852K", "CA-YNP-C-FABC", "CA-YNP-VH-A1B"])
+def test_mission_name_from_requires_name_before_registration(mission: str) -> None:
+    assert peri_scribe.geo.parsing.mission_name_from(mission) is None
+
+
+@pytest.mark.parametrize(
+    "name",
+    ["NORTH", "CREEK", "50", "50XX", "50é", "\uff15\uff10X", "N0123", "N5852I"],
+)
+def test_mission_name_from_preserves_unrecognized_tail_text(name: str) -> None:
+    assert peri_scribe.geo.parsing.mission_name_from(f"CA-YNP-DOME-{name}") == (
+        peri_scribe.models.MissionName(name=f"DOME-{name}", base_name=f"DOME-{name}")
+    )
+
+
+@pytest.mark.parametrize(
+    ("mission", "name", "base_name"),
+    [
+        ("CA-RRU-VISTA-50X", "VISTA", "VISTA"),
+        ("CA-RRU-VISTA-50x", "VISTA", "VISTA"),
+        ("CA-RRU-VISTA-UPDATED-50X", "VISTA-UPDATED", "VISTA"),
+        ("CA-LNU-RUMSEY-40Y", "RUMSEY", "RUMSEY"),
+        ("VISTA-50X", "VISTA", "VISTA"),
+    ],
+)
+def test_mission_name_from_recognizes_feed_abbreviated_tails(
+    mission: str,
+    name: str,
+    base_name: str,
+) -> None:
+    assert peri_scribe.geo.parsing.mission_name_from(mission) == (
+        peri_scribe.models.MissionName(name=name, base_name=base_name)
+    )
+
+
+@pytest.mark.parametrize("mission", ["50X", "CA-RRU-50X"])
+def test_mission_name_from_requires_name_before_abbreviated_tail(mission: str) -> None:
+    assert peri_scribe.geo.parsing.mission_name_from(mission) is None
+
+
+def test_fire_record_from_row_retains_recorded_name_and_mission_alias() -> None:
+    row = tests.helpers.factories.peri_scribe.geo.parsing.mission_row(
+        "CA-YNP-DOME-N5852K",
+        incident_name="Agency Name",
+    )
+    record = peri_scribe.geo.parsing.fire_record_from_row(
+        row,
+        peri_scribe.sources.feeds.CA_PERIMETERS_FEED,
+        shapely.geometry.Point(-119.5, 37.8),
+    )
+    assert record is not None
+    assert (record.name, record.names) == (
+        "Agency Name",
+        frozenset({"agency name", "dome"}),
+    )
 
 
 def test_observation_time_from_parses_datetime_and_iso() -> None:

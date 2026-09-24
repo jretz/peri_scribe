@@ -419,7 +419,13 @@ def test_fire_keys_invalidate_changed_dependencies(
 
 @pytest.mark.parametrize(
     "package",
-    ["peri_scribe", "arcgis_access", "measurement_units", "spatial_data"],
+    [
+        "peri_scribe",
+        "arcgis_access",
+        "aircraft_registration",
+        "measurement_units",
+        "spatial_data",
+    ],
 )
 def test_derivation_context_tracks_extracted_package_code(
     tmp_path: pathlib.Path,

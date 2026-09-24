@@ -44,6 +44,7 @@ def runtime_fingerprint() -> str:
     for package in (
         "peri_scribe",
         "arcgis_access",
+        "aircraft_registration",
         "measurement_units",
         "spatial_data",
         "kml_io",
