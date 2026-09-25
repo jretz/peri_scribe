@@ -1,0 +1,12 @@
+[monitor]
+description = "Run the PeriScribe monitoring dashboard"
+depends = ["venv"]
+env = { COLORTERM = "truecolor" }
+raw_args = true
+run = "uv run --locked peri_scribe monitor"
+
+[validate-sources]
+description = "Check that the stored sources cover a complete snapshot of every feed"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked peri_scribe validate-sources"

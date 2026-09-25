@@ -1,0 +1,48 @@
+[coverage-report]
+description = "Generate a coverage report from previously collected data"
+depends = ["venv"]
+run = "uv run coverage json --quiet --fail-under=100 -o .coverage/coverage.json"
+
+[format]
+description = "Format with ruff"
+depends = ["venv"]
+run = "uv run ruff format --quiet"
+
+[format-check]
+description = "Check format with ruff"
+depends = ["venv"]
+run = "uv run ruff format --check --config 'lint.ignore = [\"COM812\"]'"
+
+[lint]
+description = "Check and fix style with ruff"
+depends = ["venv"]
+run = [
+    "rumdl check",
+    "uv run ruff check --fix",
+]
+
+[typecheck]
+description = "Check type hints with ty"
+depends = ["venv"]
+run = "uv run ty check"
+
+[pytest]
+description = "Run tests, then lint and typecheck"
+depends = ["venv"]
+env = { TEXTUAL_ANIMATIONS = "none" }
+run = "uv run --locked --module pytest"
+
+[test-viewer]
+description = "Test the viewer with 100% line, branch, and function coverage"
+run = "node tests/helpers/run_viewer_tests.mjs"
+
+[test]
+description = "Run tests, then lint and typecheck"
+run = [
+    { task = "pytest" },
+    { task = "test-viewer" },
+    { task = "coverage-report" },
+    { task = "lint" },
+    { task = "typecheck" },
+    { task = "format-check" },
+]

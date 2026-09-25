@@ -1,0 +1,69 @@
+[install-tools]
+description = "Install all tools managed by mise"
+run = "mise install"
+
+[upgrade-dependencies]
+description = "Upgrade tools managed by mise and packages managed by uv"
+run = [
+    "mise upgrade --local",
+    { task = "lock" },
+    { task = "geos" },
+    'micromamba run --prefix "$GEOS_PREFIX" env CC=cc uv sync --upgrade',
+    { task = "test" },
+]
+
+[lock]
+description = "Refresh cross-platform tool lockfile metadata"
+run = "mise lock"
+
+[geos]
+# GEOS 3.15.0 fixes the overlay bug that can fill holes in perimeter unions:
+# https://github.com/libgeos/geos/issues/1405
+#
+# As of 2026-09-08, Shapely maintainers plan to bundle GEOS 3.15 in Shapely 2.3;
+# Shapely 2.2 is planned with GEOS 3.14:
+# https://github.com/shapely/shapely/issues/2413#issuecomment-5582882915 Use
+# conda-forge GEOS binaries and build Shapely against them until released
+# Shapely wheels include the fix, then revisit these tasks and pyproject.toml's
+# source build.
+description = "Install GEOS and a C compiler from conda-forge binaries"
+depends = ["install-tools"]
+sources = [".mise/config.toml"]
+outputs = ["{{env.GEOS_PREFIX}}/conda-meta/history"]
+run = 'micromamba create --yes --no-rc --override-channels --channel conda-forge --prefix "$GEOS_PREFIX" "geos=$GEOS_VERSION" c-compiler'
+
+[venv]
+description = "Sync Python packages and build Shapely against the project GEOS"
+depends = ["geos"]
+sources = [".mise/config.toml", "pyproject.toml", "uv.lock"]
+outputs = [".venv/.geos"]
+run = [
+    'micromamba run --prefix "$GEOS_PREFIX" env CC=cc uv sync --locked --reinstall-package shapely',
+    """
+.venv/bin/python - <<'PY'
+import os
+import sys
+
+import shapely
+
+expected = os.environ["GEOS_VERSION"]
+actual = shapely.geos_version_string
+if actual != expected:
+    sys.exit(f"Expected GEOS {expected}, loaded {actual}")
+PY
+""",
+    "touch .venv/.geos",
+]
+
+[gitignore]
+description = "Regenerate .gitignore from gitnr templates"
+run = [
+    "gitnr create tt:Python tt:linux tt:macOS tt:VisualStudioCode > .gitignore",
+    "echo '.codewhale/' >> .gitignore",
+    "echo '.hypothesis/' >> .gitignore",
+    "echo '*.kml' >> .gitignore",
+    "echo '*.kmz' >> .gitignore",
+    "echo 'coverage.json' >> .gitignore",
+    "echo 'data/' >> .gitignore",
+    "echo 'pytest-slow-first.json' >> .gitignore",
+]

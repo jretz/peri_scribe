@@ -1,0 +1,12 @@
+[run-production]
+description = "Check for new source data and use it to generate new maps and reports"
+depends = ["venv"]
+run = [
+    'uv run --locked peri_scribe --stderr-log-level warning --file-log-level info run --full-fetch-interval 6h --publish-threshold "25 acres" 5m',
+    { task = "sync-kmz" },
+]
+
+[sync-kmz]
+description = "Ensure the latest KMZ is available for public download"
+raw_args = true
+run = 'rclone sync "data/$(date +%Y)/maps/" PeriScribe:peri-scribe'

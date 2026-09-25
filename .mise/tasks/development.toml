@@ -1,0 +1,35 @@
+[peri_scribe]
+description = "Run the main module"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked peri_scribe"
+
+[run-offline]
+description = "Run the main module's offline run command steps"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked peri_scribe run --from geography"
+
+[run-online]
+description = "Run the main module's run command steps"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked peri_scribe run"
+
+[kmz]
+description = "Generate KMZ file"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked peri_scribe run --only kmz"
+
+[reports]
+description = "Generate reports"
+depends = ["venv"]
+raw_args = true
+run = "uv run --locked peri_scribe run --only reports"
+
+[serve-updates]
+description = "Serve the current year's map outputs locally"
+depends = ["venv"]
+raw_args = true
+run = '.venv/bin/python -m http.server 8765 --bind 127.0.0.1 --directory "data/$(date +%Y)/maps"'
