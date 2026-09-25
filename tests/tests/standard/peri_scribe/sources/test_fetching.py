@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import operator
 import pathlib
 import time
 import typing
@@ -402,10 +403,11 @@ def test_fetch_all_feeds_complete_writes_each_feed_in_full(
         pathlib.Path("/base/data/2026/validation/Fires0_0.gpkg"),
         pathlib.Path("/base/data/2026/validation/Fires1_0.gpkg"),
     )
-    assert [path for path, _layers in written] == list(paths)
+    writes_by_path = sorted(written, key=operator.itemgetter(0))
+    assert [path for path, _layers in writes_by_path] == list(paths)
     assert [
         (layer_data.name, layer_data.dataframe)
-        for _path, layers in written
+        for _path, layers in writes_by_path
         for layer_data in layers
     ] == list(frames.items())
 
