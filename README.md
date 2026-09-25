@@ -20,6 +20,11 @@ year-directory argument default to `data/<current year>`.
   regardless of changes and bypasses history reuse when geography is selected. `--only
   STAGE`, `--from STAGE`, and `--to STAGE` run one stage or a range, and `--list-stages`
   prints the stages with descriptions.
+- `show-latencies` displays the combined run-time and source-publication latency
+  CDFs inline in compatible image-capable terminals. It defaults to the last week;
+  for example,
+  `peri_scribe show-latencies data/2026 --start=-3d --end=-1h`. See
+  [latency charts](docs/latency_charts.md) for inputs and measurement details.
 - `show-colormap` previews the progression-ring colormap in a compatible terminal.
 - `validate-sources` compares incremental feed snapshots with complete fresh downloads
   and leaves validation data for inspection when problems are found.

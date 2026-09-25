@@ -118,7 +118,7 @@ def read_snapshot_rows(
         The snapshot's fire rows and complex memberships, or None when the database does
         not cover the snapshot.
     """
-    conn = sqlite3.connect(db_path)
+    conn = sqlite3.connect(db_path.resolve().as_uri() + "?mode=ro", uri=True)
     try:
         return fetch_snapshot_rows(
             conn,

@@ -5,6 +5,7 @@ import dataclasses
 import datetime
 import json
 
+import peri_scribe.log_reading
 import peri_scribe.monitor.sharing
 import peri_scribe.phases
 
@@ -47,20 +48,7 @@ def parse_record(line: str) -> dict[str, object]:
     return {"event": line.rstrip(), "level": "warning", "malformed": True}
 
 
-def timestamp(value: object) -> datetime.datetime | None:
-    """Normalize timestamps so mixed timezone records can share a run timeline.
-
-    Args:
-        value: A possibly absent or damaged timestamp field.
-
-    Returns:
-        An aware timestamp, or None when no reliable timestamp is available.
-    """
-    try:
-        parsed = datetime.datetime.fromisoformat(str(value))
-    except ValueError:
-        return None
-    return parsed.replace(tzinfo=datetime.UTC) if parsed.tzinfo is None else parsed
+timestamp = peri_scribe.log_reading.timestamp
 
 
 def event_path(

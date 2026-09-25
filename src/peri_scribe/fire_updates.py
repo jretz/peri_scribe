@@ -13,10 +13,10 @@ import typing
 import uuid
 
 import pydantic
-import shapely
 
 import peri_scribe.logging
 import peri_scribe.models
+import peri_scribe.perimeters.identity
 import peri_scribe.presentation.fire_data
 import peri_scribe.presentation.perimeters
 import peri_scribe.presentation.selection
@@ -76,12 +76,10 @@ def perimeter_signature(
     Returns:
         A stable digest of its normalized geometry and UTC observation time.
     """
-    digest = hashlib.sha256(shapely.normalize(perimeter.geometry).wkb)
-    if perimeter.observation_time is not None:
-        digest.update(
-            perimeter.observation_time.astimezone(datetime.UTC).isoformat().encode(),
-        )
-    return digest.hexdigest()
+    return peri_scribe.perimeters.identity.signature(
+        perimeter.geometry,
+        perimeter.observation_time,
+    )
 
 
 def identity_keys(

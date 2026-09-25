@@ -9,6 +9,7 @@ dependencies = [
     "geopandas",
     "hypothesis",
     "ijson",
+    "pillow",
     "pint",
     "pydantic",
     "pygments",  # For pytest code highlighting
@@ -54,6 +55,8 @@ branch = true
 concurrency = ["multiprocessing"]
 data_file = ".coverage/data"
 relative_files = true
+# Spawned processes read this configuration without pytest's --cov argument.
+source = ["src"]
 
 [tool.pyright]
 typeCheckingMode = "off"

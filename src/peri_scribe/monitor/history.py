@@ -9,6 +9,7 @@ import pathlib
 import threading
 import typing
 
+import peri_scribe.log_reading
 import peri_scribe.monitor.events
 import peri_scribe.monitor.model
 import peri_scribe.monitor.storage
@@ -286,27 +287,11 @@ def records_from(path: pathlib.Path) -> typing.Iterator[dict[str, object]]:
 
     Yields:
         Complete nonempty records, including inspectable malformed lines.
-
-    Raises:
-        FileNotFoundError: Neither the requested log nor its rotated copy is available.
     """
-    opener = compression.zstd.open if path.suffix == ".zst" else pathlib.Path.open
-    try:
-        stream = opener(path, "rt", encoding="utf-8", errors="replace")
-    except FileNotFoundError:
-        if path.suffix == ".zst":
-            raise
-        # Rotation can replace a discovered plain file before the reader opens it.
-        stream = compression.zstd.open(
-            path.with_suffix(path.suffix + ".zst"),
-            "rt",
-            encoding="utf-8",
-            errors="replace",
+    for line in peri_scribe.log_reading.complete_lines(path):
+        yield peri_scribe.monitor.events.parse_record(
+            line.decode("utf-8", errors="replace"),
         )
-    with stream:
-        for line in stream:
-            if line.endswith("\n") and line.strip():
-                yield peri_scribe.monitor.events.parse_record(line)
 
 
 def record_batches(
@@ -330,27 +315,7 @@ def record_batches(
         yield tuple(batch)
 
 
-def log_paths(
-    directory: pathlib.Path,
-    *,
-    since: datetime.datetime | None = None,
-) -> tuple[pathlib.Path, ...]:
-    """Prefer the active copy if compression briefly exposes both copies of a month.
-
-    Args:
-        directory: The watched log directory.
-        since: Exclude months ending before this timestamp in the writer's timezone.
-
-    Returns:
-        Monthly logs in chronological filename order without duplicate months.
-    """
-    paths = {
-        path.name.removesuffix(".zst"): path
-        for path in directory.glob("????-??.jsonl.zst")
-    }
-    paths.update({path.name: path for path in directory.glob("????-??.jsonl")})
-    first_month = since.astimezone().strftime("%Y-%m") if since else ""
-    return tuple(paths[name] for name in sorted(paths) if name >= first_month)
+log_paths = peri_scribe.log_reading.log_paths
 
 
 def recent_records(

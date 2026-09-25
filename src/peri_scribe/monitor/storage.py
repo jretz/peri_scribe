@@ -9,6 +9,7 @@ import os
 import pathlib
 import typing
 
+import peri_scribe.log_reading
 import peri_scribe.monitor.events
 
 
@@ -71,59 +72,7 @@ def read_cursor(
     )
 
 
-def timestamp_after(
-    stream: typing.BinaryIO,
-    offset: int,
-    end: int,
-) -> datetime.datetime | None:
-    """Probe complete records so byte offsets cannot split UTF-8 or JSON values.
-
-    Args:
-        stream: A chronological, uncompressed log.
-        offset: The binary search probe's byte offset.
-        end: The file size observed before searching.
-
-    Returns:
-        The next usable timestamp, leaving the stream just after its record.
-    """
-    stream.seek(max(0, offset - 1))
-    if offset:
-        stream.readline(end - stream.tell())
-    while stream.tell() < end:
-        line = stream.readline(end - stream.tell())
-        if not line.endswith(b"\n"):
-            return None
-        fields = peri_scribe.monitor.events.parse_record(
-            line.decode("utf-8", errors="replace"),
-        )
-        timestamp = peri_scribe.monitor.events.timestamp(fields.get("timestamp"))
-        if timestamp is not None:
-            return timestamp
-    return None
-
-
-def seek_since(stream: typing.BinaryIO, since: datetime.datetime) -> None:
-    """Binary search chronological logs without parsing their entire old prefix.
-
-    Undated records after the last older timestamp remain available for diagnostics,
-    and an unfinished final line remains available when its writer completes it.
-
-    Args:
-        stream: A seekable, uncompressed log with ordered timestamps.
-        since: The inclusive timestamp cutoff.
-    """
-    # The writer timestamps under its lock; backward system-clock moves are an
-    # acceptable ordering risk for this monitor's recent-history search.
-    lower = 0
-    end = upper = stream.seek(0, os.SEEK_END)
-    while lower < upper:
-        middle = (lower + upper) // 2
-        timestamp = timestamp_after(stream, middle, end)
-        if timestamp is not None and timestamp < since:
-            lower = stream.tell()
-        else:
-            upper = middle
-    stream.seek(lower)
+seek_since = peri_scribe.log_reading.seek_since
 
 
 def open_cursor(

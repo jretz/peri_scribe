@@ -4,22 +4,19 @@ from __future__ import annotations
 
 import importlib
 import importlib.metadata
-import pathlib
 import typing
 
 import click
 
-import peri_scribe.cli_options
 import peri_scribe.logging
-import peri_scribe.monitor.app
-import peri_scribe.paths
-import peri_scribe.sources.catalog
 
 
-PIPELINE_COMMANDS = {
-    "run": "run",
-    "show-colormap": "show_colormap",
-    "validate-sources": "validate_sources",
+DEFERRED_COMMANDS = {
+    "run": ("peri_scribe.pipeline", "run"),
+    "show-colormap": ("peri_scribe.pipeline", "show_colormap"),
+    "validate-sources": ("peri_scribe.pipeline", "validate_sources"),
+    "show-latencies": ("peri_scribe.show_latencies.cli", "show_latencies"),
+    "monitor": ("peri_scribe.monitor.cli", "monitor"),
 }
 
 
@@ -36,7 +33,7 @@ class Commands(click.Group):
         Returns:
             Registered and deferred command names in alphabetical order.
         """
-        return sorted({*super().list_commands(ctx), *PIPELINE_COMMANDS})
+        return sorted({*super().list_commands(ctx), *DEFERRED_COMMANDS})
 
     @typing.override
     def get_command(self, ctx: click.Context, cmd_name: str) -> click.Command | None:
@@ -49,11 +46,12 @@ class Commands(click.Group):
         Returns:
             Its command definition, or None for an unknown name.
         """
-        if cmd_name in PIPELINE_COMMANDS:
-            module = importlib.import_module("peri_scribe.pipeline")
+        if cmd_name in DEFERRED_COMMANDS:
+            module_name, function = DEFERRED_COMMANDS[cmd_name]
+            module = importlib.import_module(module_name)
             return typing.cast(
                 "click.Command",
-                getattr(module, PIPELINE_COMMANDS[cmd_name]),
+                getattr(module, function),
             )
         return super().get_command(ctx, cmd_name)
 
@@ -89,29 +87,6 @@ def cli(stderr_log_level: str, file_log_level: str) -> None:
         file_log_level: Minimum severity for persistent command logs.
     """
     peri_scribe.logging.configure_logging(stderr_log_level, file_log_level)
-
-
-@cli.command(
-    help="Observe live logs, pipeline phases, run history, and the current report. "
-    + peri_scribe.cli_options.year_directory_default_help(),
-)
-@click.argument(
-    "year_directory",
-    type=click.Path(path_type=pathlib.Path, file_okay=False),
-    required=False,
-    callback=peri_scribe.cli_options.command_year_directory,
-)
-def monitor(year_directory: pathlib.Path) -> None:
-    """Observe a year directory without writing logs or acquiring the pipeline lock.
-
-    Args:
-        year_directory: The resolved directory whose logs and report should be watched.
-    """
-    peri_scribe.monitor.app.MonitorApp(
-        year_directory,
-        peri_scribe.paths.markdown_report_path(year_directory),
-        peri_scribe.sources.catalog.configured_phase_branches(),
-    ).run()
 
 
 def distribution_version() -> str:

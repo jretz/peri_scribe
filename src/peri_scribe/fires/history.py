@@ -26,8 +26,8 @@ import peri_scribe.geo.package
 import peri_scribe.geo.parsing
 import peri_scribe.models
 import peri_scribe.perimeters.cleaning
+import peri_scribe.perimeters.history
 import peri_scribe.perimeters.history_attributes
-import peri_scribe.perimeters.size_filtering
 import peri_scribe.perimeters.versions
 import spatial_data.measurements
 import spatial_data.reference
@@ -408,36 +408,14 @@ def history_rows_for_fire(
         )
         for index in group
     ]
-    firis_observations = [
-        observation
-        for observation in observations
-        if observation.source_kind is peri_scribe.perimeters.versions.FIRIS_PERIMETER
-    ]
-    wfigs_observations = [
-        observation
-        for observation in observations
-        if observation.source_kind is peri_scribe.perimeters.versions.WFIGS_PERIMETER
-    ]
     point_observations = [
         observation
         for observation in observations
         if observation.source_kind is peri_scribe.perimeters.versions.WFIGS_LOCATION
     ]
-    reconciled_perimeters = (
-        peri_scribe.perimeters.versions.reconcile_perimeter_versions(
-            peri_scribe.perimeters.versions.collapse_identical_consecutive_perimeters(
-                firis_observations,
-            ),
-            peri_scribe.perimeters.versions.collapse_identical_consecutive_perimeters(
-                wfigs_observations,
-            ),
-            classification,
-        )
-    )
-    reconciled_perimeters = (
-        peri_scribe.perimeters.size_filtering.drop_implausibly_small_perimeters(
-            reconciled_perimeters,
-        )
+    reconciled_perimeters = peri_scribe.perimeters.history.reconcile(
+        observations,
+        classification,
     )
     perimeter_rows = [
         perimeter_row(fire, classification, version)
