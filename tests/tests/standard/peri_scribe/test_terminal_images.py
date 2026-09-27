@@ -273,8 +273,15 @@ def test_query_cell_size_preserves_unfinished_canonical_input(
         assert not select.select([slave], [], [], 0)[0]
         assert peri_scribe.terminal_images.query_cell_size(slave) is None
         os.write(master, b"\n")
-        assert select.select([slave], [], [], 1)[0]
-        assert os.read(slave, 128) == b"next command\n"
+        # Restoring canonical mode can split buffered text from its later newline.
+        expected = b"next command\n"
+        received = bytearray()
+        while len(received) < len(expected):
+            assert select.select([slave], [], [], 1)[0]
+            chunk = os.read(slave, 128)
+            assert chunk
+            received.extend(chunk)
+        assert received == expected
         assert termios.tcgetattr(slave) == original
     finally:
         os.close(master)
