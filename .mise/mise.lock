@@ -59,6 +59,7 @@ url = "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar
 url_api = "https://api.github.com/repos/tlaplus/tlaplus/releases/assets/184694200"
 
 [tools."github:tlaplus/tlaplus"."platforms.linux-x64"]
+checksum = "blake3:36e4d95a99aa33dde9ff7b288bf3092f3dfbb26e450fc9758ee765cdb250ce38"
 url = "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
 url_api = "https://api.github.com/repos/tlaplus/tlaplus/releases/assets/184694200"
 
