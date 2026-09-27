@@ -247,6 +247,11 @@ def test_read_geopackage_reads_complex_memberships(
             complex_identifier="b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3",
             complex_name="ROWE CREEK COMPLEX",
         ),
+        peri_scribe.models.ComplexMembership(
+            fire_identifier="b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3",
+            complex_identifier=None,
+            complex_name=None,
+        ),
     )
 
 
@@ -292,7 +297,13 @@ def test_read_geopackage_skips_rows_not_marked_as_complex_children(
         ),
     )
     contents = peri_scribe.geo.package.read_geopackage(pathlib.Path("fires.gpkg"))
-    assert contents.memberships == ()
+    assert contents.memberships == (
+        peri_scribe.models.ComplexMembership(
+            fire_identifier="some-id",
+            complex_identifier=None,
+            complex_name=None,
+        ),
+    )
 
 
 def test_read_geopackage_omits_memberships_with_blank_values(

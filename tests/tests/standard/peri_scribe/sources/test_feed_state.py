@@ -14,6 +14,7 @@ import peri_scribe.sources.feed_state
 import peri_scribe.sources.snapshots
 import spatial_data.layers
 import tests.helpers.doubles.peri_scribe.sources.changes
+import tests.helpers.doubles.peri_scribe.sources.feed_state
 import tests.helpers.factories.peri_scribe.sources.changes
 import tests.helpers.factories.peri_scribe.sources.feed_types
 
@@ -683,3 +684,80 @@ def test_write_current_state_ignores_missing_old_state_file(
     )
     state_files = peri_scribe.sources.snapshots.current_state_file_paths(directory)
     assert [serial for serial, _path in state_files] == [1]
+
+
+@pytest.mark.parametrize("cache_serial", [0, 3])
+def test_write_current_state_replays_snapshots_outside_cached_prefix(
+    tmp_path: pathlib.Path,
+    cache_serial: int,
+) -> None:
+    feed = tests.helpers.factories.peri_scribe.sources.feed_types.change_feed()
+    directory = (
+        tests.helpers.factories.peri_scribe.sources.changes.snapshot_source_directory(
+            tmp_path,
+        )
+    )
+    for serial in range(3):
+        tests.helpers.factories.peri_scribe.sources.changes.write_snapshot(
+            directory,
+            feed,
+            serial,
+            [(serial + 1, str(serial), (float(serial), 0.0))],
+        )
+    state_path = peri_scribe.sources.snapshots.current_state_path(
+        directory,
+        cache_serial,
+    )
+    state_path.parent.mkdir(parents=True, exist_ok=True)
+    spatial_data.layers.write_geopackage(
+        state_path,
+        [
+            spatial_data.layers.LayerData(
+                name=feed.name,
+                dataframe=tests.helpers.factories.peri_scribe.sources.changes.change_dataframe(
+                    [(1, "0", (0.0, 0.0))],
+                ),
+            ),
+        ],
+    )
+    peri_scribe.sources.feed_state.write_current_state(
+        directory,
+        feed,
+        tests.helpers.factories.peri_scribe.sources.changes.change_dataframe(
+            [(3, "2", (2.0, 0.0))],
+        ),
+    )
+    existing = peri_scribe.sources.feed_state.read_current_features(directory, feed)
+    assert existing is not None
+    assert list(existing["OBJECTID"]) == [1, 2, 3]
+
+
+def test_write_current_state_preserves_published_cache_after_interruption(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    feed = tests.helpers.factories.peri_scribe.sources.feed_types.change_feed()
+    directory = (
+        tests.helpers.factories.peri_scribe.sources.changes.snapshot_source_directory(
+            tmp_path,
+        )
+    )
+    rows = [(1, "complete", (0.0, 0.0)), (2, "complete", (1.0, 0.0))]
+    tests.helpers.factories.peri_scribe.sources.changes.write_snapshot(
+        directory,
+        feed,
+        0,
+        rows,
+    )
+    dataframe = tests.helpers.factories.peri_scribe.sources.changes.change_dataframe(
+        rows,
+    )
+    peri_scribe.sources.feed_state.write_current_state(directory, feed, dataframe)
+    state_path = peri_scribe.sources.snapshots.current_state_path(directory, 0)
+    published = state_path.read_bytes()
+    original_files = set(directory.rglob("*"))
+    tests.helpers.doubles.peri_scribe.sources.feed_state.fail_after_write(monkeypatch)
+    with pytest.raises(RuntimeError, match="interrupted cache write"):
+        peri_scribe.sources.feed_state.write_current_state(directory, feed, dataframe)
+    assert state_path.read_bytes() == published
+    assert set(directory.rglob("*")) == original_files

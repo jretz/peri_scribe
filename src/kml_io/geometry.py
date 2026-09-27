@@ -7,12 +7,12 @@ only once. Callers own the destination stream and choose the document's presenta
 from __future__ import annotations
 
 import contextlib
-import html
 import itertools
 import typing
 
 import structlog
 
+import document_text.encoding
 import kml_io.fragments
 
 
@@ -50,10 +50,7 @@ def coordinate_pair(longitude: float, latitude: float) -> str:
 
 
 def escape_text(text: str) -> str:
-    """Return *text* with XML special characters escaped, leaving CDATA intact.
-
-    Descriptions can use CDATA sections so their HTML survives as markup; everything
-    outside a CDATA section is escaped the same way simplekml escapes placemark text.
+    """Preserve literal text independently of any apparent markup it contains.
 
     Args:
         text: The text to escape.
@@ -63,27 +60,28 @@ def escape_text(text: str) -> str:
 
     Examples:
         >>> escape_text("A & B")
-        'A &amp; B'
+        'A &#38; B'
 
         >>> escape_text("<![CDATA[<b>Fire</b>]]>")
-        '<![CDATA[<b>Fire</b>]]>'
+        '&#60;![CDATA[&#60;b&#62;Fire&#60;/b&#62;]]&#62;'
     """
-    result: list[str] = []
-    start = 0
-    while True:
-        cdata_start = text.find("<![CDATA[", start)
-        if cdata_start == -1:
-            break
-        cdata_end = text.find("]]>", cdata_start)
-        if cdata_end == -1:
-            break
-        result.extend([
-            html.escape(text[start:cdata_start]),
-            text[cdata_start : cdata_end + 3],
-        ])
-        start = cdata_end + 3
-    result.append(html.escape(text[start:]))
-    return "".join(result)
+    return document_text.encoding.xml(text)
+
+
+def description_text(text: str | document_text.encoding.CData) -> str:
+    """Permit generated HTML only through its explicit description wrapper.
+
+    Args:
+        text: Literal description text or deliberately generated balloon markup.
+
+    Returns:
+        XML character data, retaining CDATA only for the typed generated fragment.
+    """
+    return (
+        str(text)
+        if isinstance(text, document_text.encoding.CData)
+        else escape_text(text)
+    )
 
 
 def ring_coordinates_text(ring: shapely.LinearRing) -> str:
@@ -130,7 +128,7 @@ class KmlWriter:
         name: str,
         styles: typing.Iterable[str],
         *,
-        description: str | None = None,
+        description: str | document_text.encoding.CData | None = None,
     ) -> typing.Generator[None]:
         """Keep the document envelope and its namespaces consistent for every caller.
 
@@ -148,7 +146,9 @@ class KmlWriter:
                 self.write(style)
             self.write(f"<name>{escape_text(name)}</name>")
             if description is not None:
-                self.write(f"<description>{escape_text(description)}</description>")
+                self.write(
+                    f"<description>{description_text(description)}</description>",
+                )
             yield
         finally:
             self.write("</Document></kml>")
@@ -278,7 +278,7 @@ def open_placemark(
     name: str,
     style_url: str,
     *,
-    description: str | None,
+    description: str | document_text.encoding.CData | None,
     visible: bool,
     placemark_id: str | None,
 ) -> None:
@@ -301,7 +301,7 @@ def open_placemark(
     if not visible:
         writer.write("<visibility>0</visibility>")
     if description is not None:
-        writer.write(f"<description>{escape_text(description)}</description>")
+        writer.write(f"<description>{description_text(description)}</description>")
 
 
 def point_placemark(
@@ -311,7 +311,7 @@ def point_placemark(
     point: shapely.Point,
     draw_order: int,
     *,
-    description: str | None = None,
+    description: str | document_text.encoding.CData | None = None,
     visible: bool = True,
 ) -> None:
     """Append the point placemark for *point* named *name* to *writer*.
@@ -348,7 +348,7 @@ def polygon_geometry(
     polygon: shapely.Polygon,
     draw_order: int,
     *,
-    description: str | None = None,
+    description: str | document_text.encoding.CData | None = None,
     visible: bool = True,
     placemark_id: str | None = None,
 ) -> None:
@@ -383,7 +383,7 @@ def multi_polygon_geometry(
     multi_polygon: shapely.MultiPolygon,
     draw_order: int,
     *,
-    description: str | None = None,
+    description: str | document_text.encoding.CData | None = None,
     visible: bool = True,
     placemark_id: str | None = None,
 ) -> None:
@@ -418,7 +418,7 @@ def perimeter_geometry(
     geometry: shapely.Geometry,
     draw_order: int,
     *,
-    description: str | None = None,
+    description: str | document_text.encoding.CData | None = None,
     visible: bool = True,
     placemark_id: str | None = None,
 ) -> None:
@@ -465,7 +465,7 @@ def perimeter_placemark(
     geometry: shapely.Geometry,
     draw_order: int,
     *,
-    description: str | None = None,
+    description: str | document_text.encoding.CData | None = None,
     visible: bool = True,
     placemark_id: str | None = None,
 ) -> None:

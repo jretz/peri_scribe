@@ -127,6 +127,49 @@ test("startPage counts distinct local namesakes separately across repeated updat
       "2 fires ordered by time");
   });
 
+test("startPage reversibly groups immutable log buckets by current history owner",
+  async () => {
+    const records = [
+      { ...viewer.update("Timber", 30), log_identity: ["local", "first"] },
+      { ...viewer.update("Timber", 20), log_identity: ["local", "second"] },
+      { ...viewer.update("Timber", 10), log_identity: ["local", "first"] }
+    ];
+    const before = structuredClone(records);
+    const page = await viewer.page(records);
+    const groupCount = () => page.group(0).querySelector(".sort-order").textContent;
+    assert.equal(groupCount(), "2 fires ordered by time");
+
+    page.replace(records.map(record => ({ ...record,
+      history_identity: ["id", "current"] })));
+    assert.equal(groupCount(), "1 fire ordered by time");
+    assert.equal(page.group(0).querySelectorAll(".update").length, 3);
+
+    page.replace(records.map(record => ({ ...record,
+      history_identity: record.log_identity })));
+    assert.equal(groupCount(), "2 fires ordered by time");
+    assert.equal(page.group(0).querySelectorAll(".update").length, 3);
+
+    page.replace(records.map(record => ({ ...record, history_identity: null })));
+    assert.equal(groupCount(), "2 fires ordered by time");
+    assert.deepEqual(records, before);
+  });
+
+test("startPage keeps projected cyclic owner swaps as distinct histories",
+  async () => {
+    const records = [
+      { ...viewer.update("Timber", 20), log_identity: ["local", "first"],
+        history_identity: ["local", "second"] },
+      { ...viewer.update("Timber", 10), log_identity: ["local", "second"],
+        history_identity: ["local", "first"] }
+    ];
+
+    const page = await viewer.page(records);
+
+    assert.equal(page.group(0).querySelectorAll(".update").length, 2);
+    assert.equal(page.group(0).querySelector(".sort-order").textContent,
+      "2 fires ordered by time");
+  });
+
 test("startPage fits and restores each location according to its row's space",
   async () => {
     const page = await viewer.page([viewer.update("Timber", 10),

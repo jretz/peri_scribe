@@ -37,11 +37,22 @@ cities, treat empty responses as retrieval failures and warn when retaining cach
 5. Write `maps/PeriScribe Fires <year>.kmz`.
 6. Write `reports/PeriScribe Fires <year>.md`.
 
-These operations form the stages fetch, geography, score, kmz, and reports. After fetch,
-the later stages run when fire data or evacuation data changed, a full fetch requires a
-derived rebuild, unfinished work remains, or `--unconditional` is provided. A single
-stage or a range can be selected with `--only`, `--from`, and `--to`. A failed step
-stops the pipeline and leaves required work pending for a later invocation.
+These operations form the stages fetch, geography, score, kmz, and reports. Without
+publication gating, later stages run after fetch when fire or evacuation data changed,
+a full fetch requires a rebuild, unfinished or deferred work remains, or `--unconditional`
+is provided. Publication gating can defer changed inputs until its policy permits a
+build. A single stage or a range can be selected with `--only`, `--from`, and `--to`.
+A failed step stops the pipeline and leaves required work pending for a later invocation.
+
+Fire index JSON, score JSON, score-distribution HTML, and Markdown reports publish by
+replacing a fully written staged file. An interrupted write preserves the previous
+complete document, or leaves the public path absent when no document existed. This
+guarantee applies separately to each file; it does not make different outputs one atomic
+generation or establish durability across power loss.
+
+Source names and descriptive text must retain their normalized content in reports and
+maps without introducing extra table cells, rows, links, or XML elements. Generated
+formatting remains explicit and separate from source-provided text.
 
 After successful KMZ generation, `logs/YYYY-MM-fire-updates.jsonl` records each
 interesting fire with a new mapped perimeter since the last successful KMZ. Interesting
@@ -52,12 +63,36 @@ and later name changes preserve a fire's acreage history, including normalized s
 changes when the identifier first arrives. Unrelated fires reusing a historical name
 retain separate acreage histories. Mapping corrections linked by retained source
 provenance preserve the previous acreage even when the original perimeter is replaced.
+Distinct grouped fires without external identifiers also retain separate internal
+component identities, even when they have the same name. Their histories, qualification,
+scores, report entries, and logged mapping must stay separate regardless of input order.
+When corrected identifiers join multiple saved histories, the fire inherits all of
+them. Competing current fires claim history by their latest dated mapped observation;
+undated mapping ranks below dated mapping, with canonical report identity breaking
+equal-time ties deterministically. Later corrections can transfer ownership back.
+History records retain their original identities and provenance. Saved alias lineage
+remains available after a transfer; merging histories does not infer a later split of
+their records. The viewer compares records across the current owner's inherited
+histories, without adding their acreage together.
 Fires without mapped perimeters are omitted.
 Changes to incident reports or rankings alone do not produce entries. The first
 generation without a saved baseline logs all interesting mapped fires. All log series
 rotate at the local month boundary. Closed months remain uncompressed for seven days,
-then compress to `.jsonl.zst` on the next write to that series. Fire-update logs also
+then compress to `.jsonl.zst` on the next write to that series. Retrying interrupted
+compression must preserve every diagnostic record exactly once while retaining legitimate
+identical records and later arrivals for an archived month. Fire-update logs also
 compress eligible months after successful generation with no new fire updates.
+Diagnostic readers combine archived records with later plain records for the same month
+and use committed rotation receipts to avoid replaying retired records. Reads share the
+writer lock so rotation cannot change the selected components mid-read. A running
+monitor must catch up when new records are appended and compressed between polls.
+Update snapshots use the same archived-prefix and later-tail ordering, including equal
+timestamps, so rotation cannot change a fire's previous-acreage baseline.
+Timestamp queries must retain every matching dated diagnostic record even when the
+system clock moves backward between writes.
+Overlapping monitor operations must serialize evidence and display updates. Shutdown
+stops new work and publication, waits for admitted readers, and closes their descriptors
+without blocking the event loop; cancelled callers must not abandon active readers.
 
 Immediately after logging, the KMZ stage writes `maps/updates.html` and
 `maps/updates.json`. The HTML is a static viewer shared by all runs. The JSON contains
@@ -66,6 +101,8 @@ including each update's previous mapped acreage from retained logs and compresse
 archives. Missing logs across month boundaries are treated as absent history. Missing
 previous acreage means an initial change equal to current acreage.
 Repeated updates for the same fire remain separate; decreases are included.
+Malformed fire-update checkpoints or pending journals must stop publication before
+mutating durable evidence. Invalid pending intent remains available for repair.
 
 The viewer fetches the neighboring JSON immediately on load over HTTP or HTTPS. Every
 30 seconds, it checks for changes with HEAD and fetches a changed snapshot without
@@ -129,6 +166,14 @@ confirmation; confirmation for a different value cannot be transferred to it. Ch
 legends include only rendered line styles, with stable colors and distinct
 mapped/reported area strokes.
 
+A wildfire has at most one current parent complex. Membership follows dated incident
+declarations, including transfers, explicit releases, and mergers of parent complexes.
+Missing observations do not imply release. Preserve available relationship timestamps
+even when the row cannot produce a complete fire record; use snapshot time only when
+the incident timestamp is absent. Contradictory latest declarations and cycles must not
+assert a parent. Historical aggregate identities remain excluded from ordinary fire
+outputs.
+
 ## Configuration and operation
 
 Run `peri_scribe --help` for the available commands:
@@ -152,10 +197,20 @@ to `data/<current year>`.
   fetch completion in `sources/fetch_state.json`. Successful fetches cannot clear
   unfinished derived work. Partial selections leave outstanding requirements pending,
   and a later stage cannot clear an unfinished prerequisite.
+- Gated collection records possible unpublished inputs in `deferred_inputs` before
+  changing sources. Deferred inputs survive partial runs and policy changes. An ungated
+  fetch or accepted publication transfers them to pending derived stages before
+  removing the marker; a validated checkpoint covering those inputs also permits removal.
 - Replacement history files and their checksum metadata must permit recovery after an
   interrupted write. Invalid recovery state requires a full derived rebuild.
-- Only one `run` invocation may write to a year directory at a time. An overlapping
-  invocation logs a skip and exits successfully; failed processes release their lock.
+- Only one `run` or `validate-sources` invocation may write to a year directory at a
+  time. An overlapping invocation logs a skip and exits successfully; failed processes
+  release their lock. Validation records derived rebuild requirements before modifying
+  live snapshots and retains them after a changed or interrupted collection.
+- Downstream geography reads must authenticate a matching full/differential generation
+  while excluding concurrent writers. An interrupted or incompatible pair requires a
+  geography rebuild. Fresh-year scoring may return empty layers when both files are
+  absent; a partially missing pair is an error.
 
 ## Future work
 

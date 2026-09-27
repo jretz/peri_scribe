@@ -7,6 +7,8 @@ import pathlib
 import re
 import typing
 
+import document_text.encoding
+import peri_scribe.output
 import peri_scribe.paths
 import peri_scribe.presentation.descriptions
 import peri_scribe.presentation.views
@@ -45,8 +47,18 @@ DISCOVERY_LABEL = peri_scribe.presentation.descriptions.DISCOVERY_LABEL
 # the balloon labels above.
 LOCATION_LABEL = "Location"
 
+NEW_NOTABLE_HEADING = "New, Notable Fires"
+TYPE_ONE_HEADING = "Type 1 Fires"
+ACRE_GROWTH_HEADING = "Fastest Growing Fires (acres)"
+PERCENT_GROWTH_HEADING = "Fastest Growing Fires (%)"
+TOP_FIRES_HEADING = "Top Fires"
+DETAILS_HEADING = "Fire Details"
+
 # A callable that returns one fire's text for one table column, or None when the fire
 # lacks that fact.
+type Cell = str | document_text.encoding.Markdown
+
+
 ColumnTextFor = typing.Callable[
     [peri_scribe.report.gathering.FireReportEntry],
     str | None,
@@ -142,7 +154,7 @@ def fire_heading(entry: peri_scribe.report.gathering.FireReportEntry) -> str:
     Returns:
         The heading text, without its Markdown ``###`` prefix.
     """
-    return entry.name
+    return document_text.encoding.markdown(entry.name)
 
 
 def heading_anchor(heading: str) -> str:
@@ -165,9 +177,27 @@ def heading_anchor(heading: str) -> str:
     return slug.strip("-")
 
 
+def detail_anchors(
+    report: peri_scribe.report.gathering.FireReport,
+) -> dict[peri_scribe.report.gathering.FireReportEntry, str]:
+    """Give each detail a unique explicit target outside automatic heading slugs.
+
+    The colon separates this namespace from Markdown-generated heading identifiers.
+
+    Args:
+        report: Distinct fire details in their rendered order.
+
+    Returns:
+        Explicit local anchors keyed by their owning report entries.
+    """
+    return {
+        entry: f"fire-detail:{index}" for index, entry in enumerate(report.fire_details)
+    }
+
+
 def markdown_table_lines(
     column_headings: tuple[str, ...],
-    rows: tuple[tuple[str, ...], ...],
+    rows: tuple[tuple[Cell, ...], ...],
     *,
     right_aligned_columns: tuple[bool, ...] = (),
 ) -> list[str]:
@@ -190,9 +220,21 @@ def markdown_table_lines(
     Returns:
         The table's lines, without a trailing blank line.
     """
+    column_headings = tuple(
+        document_text.encoding.markdown(value) for value in column_headings
+    )
+    plain_rows = tuple(
+        tuple(
+            str(cell)
+            if isinstance(cell, document_text.encoding.Markdown)
+            else document_text.encoding.markdown(cell)
+            for cell in row
+        )
+        for row in rows
+    )
     column_widths = tuple(
         max(len(cell) for cell in column)
-        for column in zip(column_headings, *rows, strict=True)
+        for column in zip(column_headings, *plain_rows, strict=True)
     )
     if not right_aligned_columns:
         right_aligned_columns = (False,) * len(column_headings)
@@ -218,7 +260,7 @@ def markdown_table_lines(
         + " |",
         "| " + " | ".join(dash_cells) + " |",
     ]
-    for row in rows:
+    for row in plain_rows:
         cells = " | ".join(
             cell.rjust(width) if right_aligned else cell.ljust(width)
             for cell, width, right_aligned in zip(
@@ -270,13 +312,15 @@ def fire_table_section(
             column_headings.append(column_heading)
             cell_text_fors.append(cell_text_for)
             right_aligned_columns.append(right_aligned)
-        rows: list[tuple[str, ...]] = []
+        rows: list[tuple[Cell, ...]] = []
         for entry in entries:
-            label = f"**{entry.name}**"
+            label = document_text.encoding.markdown(entry.name)
+            if label:
+                label = f"**{label}**"
             anchor = anchors.get(entry)
             if anchor is not None:
                 label = f"[{label}](#{anchor})"
-            cells = [label]
+            cells: list[Cell] = [document_text.encoding.Markdown(label)]
             for cell_text_for in cell_text_fors:
                 cell_text = cell_text_for(entry)
                 cells.append("" if cell_text is None else cell_text)
@@ -333,7 +377,11 @@ def fire_detail_rows(
     return tuple(rows)
 
 
-def fire_detail_lines(entry: peri_scribe.report.gathering.FireReportEntry) -> list[str]:
+def fire_detail_lines(
+    entry: peri_scribe.report.gathering.FireReportEntry,
+    *,
+    anchor: str | None = None,
+) -> list[str]:
     """Return *entry*'s details mini section, headed by its name.
 
     The section opens with the fire's name as a ``###`` heading and then shows each
@@ -342,11 +390,15 @@ def fire_detail_lines(entry: peri_scribe.report.gathering.FireReportEntry) -> li
 
     Args:
         entry: The fire to describe.
+        anchor: Explicit local link target for this identity, when part of a document.
 
     Returns:
         The mini section's lines, including a blank line after the heading.
     """
-    lines = [f"### {fire_heading(entry)}", ""]
+    lines = ([] if anchor is None else [f'<a id="{anchor}"></a>', ""]) + [
+        f"### {fire_heading(entry)}",
+        "",
+    ]
     rows = fire_detail_rows(entry)
     if rows:
         lines.extend(markdown_table_lines(("Fact", "Value"), rows))
@@ -355,6 +407,9 @@ def fire_detail_lines(entry: peri_scribe.report.gathering.FireReportEntry) -> li
 
 def fire_details_section(
     entries: tuple[peri_scribe.report.gathering.FireReportEntry, ...],
+    *,
+    anchors: typing.Mapping[peri_scribe.report.gathering.FireReportEntry, str]
+    | None = None,
 ) -> list[str]:
     """Return the closing fire-details section's Markdown lines.
 
@@ -363,16 +418,22 @@ def fire_details_section(
 
     Args:
         entries: The report's detail entries, one per distinct fire, ordered by name.
+        anchors: Explicit targets for summary links, when the section is in a document.
 
     Returns:
         The section's lines, including the heading and a trailing blank line.
     """
-    lines = ["## Fire Details", ""]
+    lines = [f"## {DETAILS_HEADING}", ""]
     if not entries:
         lines.append("_No fires._")
     else:
         for entry in entries:
-            lines.extend(fire_detail_lines(entry))
+            lines.extend(
+                fire_detail_lines(
+                    entry,
+                    anchor=None if anchors is None else anchors[entry],
+                ),
+            )
             lines.append("")
     lines.append("")
     return lines
@@ -388,13 +449,12 @@ def markdown_text(report: peri_scribe.report.gathering.FireReport, year: int) ->
     Returns:
         The Markdown document text.
     """
-    anchors = {
-        entry: heading_anchor(fire_heading(entry)) for entry in report.fire_details
-    }
-    lines = [f"# PeriScribe Fires {year}", ""]
+    title = f"PeriScribe Fires {year}"
+    anchors = detail_anchors(report)
+    lines = [f"# {title}", ""]
     lines.extend(
         fire_table_section(
-            "New, Notable Fires",
+            NEW_NOTABLE_HEADING,
             report.new_notable_fires,
             columns=(
                 (LOCATION_LABEL, location_cell, False),
@@ -406,7 +466,7 @@ def markdown_text(report: peri_scribe.report.gathering.FireReport, year: int) ->
     )
     lines.extend(
         fire_table_section(
-            "Type 1 Fires",
+            TYPE_ONE_HEADING,
             report.type_one_fires,
             columns=(
                 (LOCATION_LABEL, location_cell, False),
@@ -417,7 +477,7 @@ def markdown_text(report: peri_scribe.report.gathering.FireReport, year: int) ->
     )
     lines.extend(
         fire_table_section(
-            "Fastest Growing Fires (acres)",
+            ACRE_GROWTH_HEADING,
             report.fastest_growing_by_acres,
             columns=(
                 (LOCATION_LABEL, location_cell, False),
@@ -429,7 +489,7 @@ def markdown_text(report: peri_scribe.report.gathering.FireReport, year: int) ->
     )
     lines.extend(
         fire_table_section(
-            "Fastest Growing Fires (%)",
+            PERCENT_GROWTH_HEADING,
             report.fastest_growing_by_percent,
             columns=(
                 (LOCATION_LABEL, location_cell, False),
@@ -441,7 +501,7 @@ def markdown_text(report: peri_scribe.report.gathering.FireReport, year: int) ->
     )
     lines.extend(
         fire_table_section(
-            "Top Fires",
+            TOP_FIRES_HEADING,
             report.top_fires,
             columns=(
                 (LOCATION_LABEL, location_cell, False),
@@ -450,7 +510,7 @@ def markdown_text(report: peri_scribe.report.gathering.FireReport, year: int) ->
             anchors=anchors,
         ),
     )
-    lines.extend(fire_details_section(report.fire_details))
+    lines.extend(fire_details_section(report.fire_details, anchors=anchors))
     return "\n".join(lines).rstrip() + "\n"
 
 
@@ -472,11 +532,11 @@ def render_markdown_report(
     """
     path = peri_scribe.paths.markdown_report_path(year_directory)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    peri_scribe.output.write_text(
+        path,
         markdown_text(
             report,
             peri_scribe.paths.year_for_year_directory(year_directory),
         ),
-        encoding="utf-8",
     )
     return path

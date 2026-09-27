@@ -100,7 +100,7 @@ def test_aligned_positions_keeps_identifier_and_name_collisions_distinct() -> No
 
     scoring, presentation = peri_scribe.fires.scores.aligned_positions(frame, {})
 
-    assert scoring == {"name:Smoke": [0, 1]}
+    assert scoring == {"id:name:Smoke": [0], "name:Smoke": [1]}
     assert presentation == {("id", "name:Smoke"): [0], ("name", "Smoke"): [1]}
 
 
@@ -186,7 +186,7 @@ def test_matching_histories_rejects_aliases_split_across_history_layers(
     assert histories == {}
 
 
-def test_matching_histories_rejects_identifier_and_name_collisions(
+def test_matching_histories_keeps_identifier_and_name_namespaces_distinct(
     tmp_path: pathlib.Path,
 ) -> None:
     empty = tests.helpers.factories.geography.empty_frame()
@@ -203,8 +203,11 @@ def test_matching_histories_rejects_identifier_and_name_collisions(
         empty,
     )
 
-    assert set(histories) == {"other"}
-    assert histories["other"].latest_area == 300 * units.acres
+    assert {key: history.latest_area for key, history in histories.items()} == {
+        "id:name:Smoke": 100 * units.acres,
+        "name:Smoke": 200 * units.acres,
+        "other": 300 * units.acres,
+    }
 
 
 def test_matching_histories_rebuilds_in_a_fresh_execution(

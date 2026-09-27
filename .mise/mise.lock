@@ -4,6 +4,116 @@
 version = "0.3.1"
 backend = "cargo:gitnr"
 
+[[tools."github:leanprover/lean4"]]
+version = "4.34.0"
+backend = "github:leanprover/lean4"
+
+[tools."github:leanprover/lean4"."platforms.linux-arm64"]
+checksum = "sha256:40b04fdb7fb849d3c80e10c3bbeebc7b7354b6d3f07450b9168c2149b40d2a82"
+url = "https://github.com/leanprover/lean4/releases/download/v4.34.0/lean-4.34.0-linux_aarch64.tar.zst"
+url_api = "https://api.github.com/repos/leanprover/lean4/releases/assets/563514498"
+
+[tools."github:leanprover/lean4"."platforms.linux-arm64-musl"]
+checksum = "sha256:40b04fdb7fb849d3c80e10c3bbeebc7b7354b6d3f07450b9168c2149b40d2a82"
+url = "https://github.com/leanprover/lean4/releases/download/v4.34.0/lean-4.34.0-linux_aarch64.tar.zst"
+url_api = "https://api.github.com/repos/leanprover/lean4/releases/assets/563514498"
+
+[tools."github:leanprover/lean4"."platforms.linux-x64"]
+checksum = "sha256:caaa98356098c85dc0fcbbd28e1ec66f39eb6551829972b752ff20e1286b646b"
+url = "https://github.com/leanprover/lean4/releases/download/v4.34.0/lean-4.34.0-linux.tar.zst"
+url_api = "https://api.github.com/repos/leanprover/lean4/releases/assets/563514501"
+
+[tools."github:leanprover/lean4"."platforms.linux-x64-musl"]
+checksum = "sha256:caaa98356098c85dc0fcbbd28e1ec66f39eb6551829972b752ff20e1286b646b"
+url = "https://github.com/leanprover/lean4/releases/download/v4.34.0/lean-4.34.0-linux.tar.zst"
+url_api = "https://api.github.com/repos/leanprover/lean4/releases/assets/563514501"
+
+[tools."github:leanprover/lean4"."platforms.macos-arm64"]
+checksum = "sha256:69f263fa6e21bbc2466bbfb1affcd92479ee2714c883a07de548e099a5922932"
+url = "https://github.com/leanprover/lean4/releases/download/v4.34.0/lean-4.34.0-darwin_aarch64.tar.zst"
+url_api = "https://api.github.com/repos/leanprover/lean4/releases/assets/563514500"
+
+[tools."github:leanprover/lean4"."platforms.macos-x64"]
+checksum = "sha256:e90afe84c0a2aa3583f3ecd08e51fb7eeebb84d36f99b7cac5d3c067fa8640b0"
+url = "https://github.com/leanprover/lean4/releases/download/v4.34.0/lean-4.34.0-darwin.tar.zst"
+url_api = "https://api.github.com/repos/leanprover/lean4/releases/assets/563514502"
+
+[tools."github:leanprover/lean4"."platforms.windows-x64"]
+checksum = "sha256:d382797e1abb1becd1b22593c059c223bf0698f6593bb9cdeddbf7fe23f54ca0"
+url = "https://github.com/leanprover/lean4/releases/download/v4.34.0/lean-4.34.0-windows.zip"
+url_api = "https://api.github.com/repos/leanprover/lean4/releases/assets/563514503"
+
+[[tools."github:tlaplus/tlaplus"]]
+version = "1.7.4"
+backend = "github:tlaplus/tlaplus"
+
+[tools."github:tlaplus/tlaplus".options]
+asset_pattern = "tla2tools.jar"
+
+[tools."github:tlaplus/tlaplus"."platforms.linux-arm64"]
+url = "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+url_api = "https://api.github.com/repos/tlaplus/tlaplus/releases/assets/184694200"
+
+[tools."github:tlaplus/tlaplus"."platforms.linux-arm64-musl"]
+url = "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+url_api = "https://api.github.com/repos/tlaplus/tlaplus/releases/assets/184694200"
+
+[tools."github:tlaplus/tlaplus"."platforms.linux-x64"]
+url = "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+url_api = "https://api.github.com/repos/tlaplus/tlaplus/releases/assets/184694200"
+
+[tools."github:tlaplus/tlaplus"."platforms.linux-x64-musl"]
+url = "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+url_api = "https://api.github.com/repos/tlaplus/tlaplus/releases/assets/184694200"
+
+[tools."github:tlaplus/tlaplus"."platforms.macos-arm64"]
+checksum = "blake3:36e4d95a99aa33dde9ff7b288bf3092f3dfbb26e450fc9758ee765cdb250ce38"
+url = "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+url_api = "https://api.github.com/repos/tlaplus/tlaplus/releases/assets/184694200"
+
+[tools."github:tlaplus/tlaplus"."platforms.macos-x64"]
+url = "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+url_api = "https://api.github.com/repos/tlaplus/tlaplus/releases/assets/184694200"
+
+[tools."github:tlaplus/tlaplus"."platforms.windows-x64"]
+url = "https://github.com/tlaplus/tlaplus/releases/download/v1.7.4/tla2tools.jar"
+url_api = "https://api.github.com/repos/tlaplus/tlaplus/releases/assets/184694200"
+
+[[tools.java]]
+version = "21.0.12+8.0.LTS"
+backend = "core:java"
+
+[tools.java.options]
+shorthand_vendor = "temurin"
+
+[tools.java."platforms.linux-arm64"]
+checksum = "sha256:eba38e871b02d407897bfe017ea35352dfc1420ef6d2112425b0c67325ca509d"
+url = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12%2B8/OpenJDK21U-jdk_aarch64_linux_hotspot_21.0.12_8.tar.gz"
+
+[tools.java."platforms.linux-arm64-musl"]
+checksum = "sha256:a32f7655011640ed8fb4347fffa2588cb7538de2f2e82027845816740560e2b1"
+url = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12%2B8/OpenJDK21U-jdk_aarch64_alpine-linux_hotspot_21.0.12_8.tar.gz"
+
+[tools.java."platforms.linux-x64"]
+checksum = "sha256:e4446ff06a276155697597cc0f1b15da004ff083f4964a35271ecee567177370"
+url = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12%2B8/OpenJDK21U-jdk_x64_linux_hotspot_21.0.12_8.tar.gz"
+
+[tools.java."platforms.linux-x64-musl"]
+checksum = "sha256:073a48cb87f788a0cb283d81cc6d96cbc9d671d6a60a3ba6de62e66f0ea9dd47"
+url = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12%2B8/OpenJDK21U-jdk_x64_alpine-linux_hotspot_21.0.12_8.tar.gz"
+
+[tools.java."platforms.macos-arm64"]
+checksum = "sha256:021d629349ebc12a409faa517b837ec80ceee8f58a5ac85c788ecad07ca6881c"
+url = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12%2B8/OpenJDK21U-jdk_aarch64_mac_hotspot_21.0.12_8.tar.gz"
+
+[tools.java."platforms.macos-x64"]
+checksum = "sha256:6b85c260eea574a995eacd0b3ee23c8042aa93b23a08e6478edafca0a0333d7f"
+url = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12%2B8/OpenJDK21U-jdk_x64_mac_hotspot_21.0.12_8.tar.gz"
+
+[tools.java."platforms.windows-x64"]
+checksum = "sha256:9ba963ee2371874a74185d18bc7bb2ab9407df7683300855ed7606e0662321d0"
+url = "https://github.com/adoptium/temurin21-binaries/releases/download/jdk-21.0.12%2B8/OpenJDK21U-jdk_x64_windows_hotspot_21.0.12_8.zip"
+
 [[tools.micromamba]]
 version = "2.9.0-0"
 backend = "github:mamba-org/micromamba-releases"

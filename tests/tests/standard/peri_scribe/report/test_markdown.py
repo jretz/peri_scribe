@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import pathlib
 
+import document_text.encoding
 import peri_scribe.models
 import peri_scribe.presentation.descriptions
 import peri_scribe.report.gathering
@@ -132,7 +133,7 @@ def test_heading_anchor_matches_github_style() -> None:
 def test_markdown_table_lines_renders_headings_and_rows() -> None:
     lines = peri_scribe.report.markdown.markdown_table_lines(
         ("Fire", "Area"),
-        (("**Bug**", "100 acres"),),
+        ((document_text.encoding.Markdown("**Bug**"), "100 acres"),),
     )
 
     assert lines == [
@@ -145,7 +146,10 @@ def test_markdown_table_lines_renders_headings_and_rows() -> None:
 def test_markdown_table_lines_aligns_bars() -> None:
     lines = peri_scribe.report.markdown.markdown_table_lines(
         ("Fire", "Area"),
-        (("**Bug**", "100 acres"), ("Fire", "50 acres")),
+        (
+            (document_text.encoding.Markdown("**Bug**"), "100 acres"),
+            ("Fire", "50 acres"),
+        ),
     )
     pipe_positions = [
         tuple(index for index, character in enumerate(line) if character == "|")
@@ -158,7 +162,10 @@ def test_markdown_table_lines_aligns_bars() -> None:
 def test_markdown_table_lines_right_aligns_marked_columns() -> None:
     lines = peri_scribe.report.markdown.markdown_table_lines(
         ("Fire", "Area"),
-        (("**Bug**", "100 acres"), ("Fire", "50 acres")),
+        (
+            (document_text.encoding.Markdown("**Bug**"), "100 acres"),
+            ("Fire", "50 acres"),
+        ),
         right_aligned_columns=(False, True),
     )
 
@@ -445,10 +452,10 @@ def test_markdown_text_renders_title_sections_and_details() -> None:
     assert any(
         line.startswith("| Fire") and "Discovery" in line for line in summary_lines
     )
-    assert "[**Bug**](#bug)" in text
-    assert "[**Fire**](#fire)" in text
-    assert "[**Percent**](#percent)" in text
-    assert "[**Big**](#big)" in text
+    assert "[**Bug**](#fire-detail:1)" in text
+    assert "[**Fire**](#fire-detail:2)" in text
+    assert "[**Percent**](#fire-detail:3)" in text
+    assert "[**Big**](#fire-detail:0)" in text
     assert "### Big" in text
     assert "| Identifier" in text
     assert "id-big" in text
@@ -503,7 +510,9 @@ def test_markdown_text_renders_type_one_section_between_new_and_fastest() -> Non
         line.startswith("| Fire") and "Location" in line
         for line in summary_lines[type_one_heading:]
     )
-    assert any("[**Bug**](#bug)" in line for line in summary_lines[type_one_heading:])
+    assert any(
+        "[**Bug**](#fire-detail:0)" in line for line in summary_lines[type_one_heading:]
+    )
     assert any(
         "15 mi ESE of Portland, OR" in line for line in summary_lines[type_one_heading:]
     )

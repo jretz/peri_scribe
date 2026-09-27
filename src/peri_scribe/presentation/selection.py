@@ -39,6 +39,9 @@ IDENTIFIER_AREA_KEY = "id"
 NAME_AREA_KEY = "name"
 
 
+COMPONENT_AREA_KEY = "component"
+
+
 AreaKey = tuple[str, str]
 
 
@@ -55,20 +58,27 @@ def identifiers(entry: peri_scribe.models.FireIndexEntry) -> frozenset[str]:
     return frozenset(identifier for identifier in candidates if identifier is not None)
 
 
-def fire_area_key(identifier: object, name: str) -> AreaKey:
+def fire_area_key(
+    identifier: object,
+    name: str,
+    component_id: object = None,
+) -> AreaKey:
     """Return the key that identifies one history row's fire for area qualification.
 
-    A row with an identifier keys by it; a row without one keys by its name. The two
-    kinds of keys are tagged so an identifier and a name that look alike stay apart.
+    External identifiers take priority, followed by internal source components and
+    legacy name fallback. Tags keep each namespace distinct even when text matches.
 
     Args:
         identifier: The row's fire identifier, or a missing value.
         name: The row's fire name.
+        component_id: An internal source-component key, when available.
 
     Returns:
         The row's tagged identity key.
     """
     if peri_scribe.geo.parsing.is_missing(identifier):
+        if not peri_scribe.geo.parsing.is_missing(component_id):
+            return COMPONENT_AREA_KEY, str(component_id)
         return NAME_AREA_KEY, str(name)
     return IDENTIFIER_AREA_KEY, str(identifier)
 
@@ -106,10 +116,15 @@ def area_positions(
     """
     positions: dict[AreaKey, list[int]] = {}
     if not frame.empty:
-        for position, (identifier, name) in enumerate(
-            zip(frame["fire_identifier"], frame["fire_name"], strict=True),
+        for position, (identifier, name, component_id) in enumerate(
+            zip(
+                frame["fire_identifier"],
+                frame["fire_name"],
+                frame.get("fire_component_id", [None] * len(frame)),
+                strict=True,
+            ),
         ):
-            key = fire_area_key(identifier, name)
+            key = fire_area_key(identifier, name, component_id)
             if key[0] == IDENTIFIER_AREA_KEY:
                 key = IDENTIFIER_AREA_KEY, aliases.get(key[1], key[1])
             positions.setdefault(key, []).append(position)
@@ -255,16 +270,18 @@ def fire_qualifies(
     fire_identifiers: frozenset[str],
     entry_name: str,
     qualifying_keys: frozenset[AreaKey],
+    component_id: str | None = None,
 ) -> bool:
     """Return whether a fire with *fire_identifiers* and *entry_name* qualifies.
 
-    A fire qualifies when any of its identifiers, or its name when it has no
-    identifiers, appears among the qualifying keys.
+    A fire qualifies through an external identifier, its anonymous component, or a
+    legacy name key when neither identity is available.
 
     Args:
         fire_identifiers: The fire's identifiers.
         entry_name: The fire's name.
         qualifying_keys: The keys of the qualifying fires.
+        component_id: An internal source-component key, when available.
 
     Returns:
         True when the fire has a qualifying area indication.
@@ -274,7 +291,7 @@ def fire_qualifies(
             (IDENTIFIER_AREA_KEY, identifier) in qualifying_keys
             for identifier in fire_identifiers
         )
-    return (NAME_AREA_KEY, entry_name) in qualifying_keys
+    return fire_area_key(None, entry_name, component_id) in qualifying_keys
 
 
 def source_reference(source_file: object, object_id: object) -> str | None:

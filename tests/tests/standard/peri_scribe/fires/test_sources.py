@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import dataclasses
+import itertools
 import pathlib
 import re
 
@@ -16,6 +18,7 @@ import peri_scribe.geo.package
 import peri_scribe.models
 import peri_scribe.sources.snapshots
 import tests.helpers.doubles.peri_scribe.fires.sources
+import tests.helpers.factories.peri_scribe.component_identity
 import tests.helpers.factories.peri_scribe.fires.sources
 import tests.helpers.factories.peri_scribe.models
 
@@ -242,7 +245,10 @@ def test_fire_sources_from_groups_prefers_most_common_mixed_case_spelling(
         ],
     })
     fires = tests.helpers.factories.peri_scribe.fires.sources.listed_fires()
-    assert fires == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_identity(fire)
+        for fire in fires
+    ] == [
         peri_scribe.models.Fire(
             name="Park Fire",
             status=tests.helpers.factories.peri_scribe.models.ACTIVE,
@@ -274,7 +280,10 @@ def test_fire_sources_from_groups_uses_most_common_spelling_when_none_is_mixed_c
         ],
     })
     fires = tests.helpers.factories.peri_scribe.fires.sources.listed_fires()
-    assert fires == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_identity(fire)
+        for fire in fires
+    ] == [
         peri_scribe.models.Fire(
             name="park fire",
             status=tests.helpers.factories.peri_scribe.models.INACTIVE,
@@ -301,7 +310,10 @@ def test_fire_sources_from_groups_breaks_mixed_case_ties_by_first_spelling(
         ],
     })
     fires = tests.helpers.factories.peri_scribe.fires.sources.listed_fires()
-    assert fires == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_identity(fire)
+        for fire in fires
+    ] == [
         peri_scribe.models.Fire(
             name="Park Fire",
             status=tests.helpers.factories.peri_scribe.models.ACTIVE,
@@ -328,7 +340,10 @@ def test_fire_sources_from_groups_marks_fire_active_when_any_record_is_active(
         ],
     })
     fires = tests.helpers.factories.peri_scribe.fires.sources.listed_fires()
-    assert fires == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_identity(fire)
+        for fire in fires
+    ] == [
         peri_scribe.models.Fire(
             name="Alta",
             status=tests.helpers.factories.peri_scribe.models.ACTIVE,
@@ -367,7 +382,10 @@ def test_fire_sources_from_groups_merges_names_across_files(
         ],
     })
     fires = tests.helpers.factories.peri_scribe.fires.sources.listed_fires()
-    assert fires == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_identity(fire)
+        for fire in fires
+    ] == [
         peri_scribe.models.Fire(
             name="Park Fire",
             status=tests.helpers.factories.peri_scribe.models.ACTIVE,
@@ -405,7 +423,10 @@ def test_fire_sources_from_groups_merges_identifier_aliases(
         ],
     })
     fires = tests.helpers.factories.peri_scribe.fires.sources.listed_fires()
-    assert fires == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_identity(fire)
+        for fire in fires
+    ] == [
         peri_scribe.models.Fire(
             name="Crosswhite",
             status=tests.helpers.factories.peri_scribe.models.ACTIVE,
@@ -439,7 +460,10 @@ def test_fire_sources_from_groups_keeps_distinct_identifiers_separate(
         ],
     })
     fires = tests.helpers.factories.peri_scribe.fires.sources.listed_fires()
-    assert fires == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_identity(fire)
+        for fire in fires
+    ] == [
         peri_scribe.models.Fire(
             name="CANYON",
             status=tests.helpers.factories.peri_scribe.models.INACTIVE,
@@ -484,7 +508,10 @@ def test_fire_sources_from_groups_merges_ufi_and_guid_through_a_shared_record(
         ],
     })
     fires = tests.helpers.factories.peri_scribe.fires.sources.listed_fires()
-    assert fires == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_identity(fire)
+        for fire in fires
+    ] == [
         peri_scribe.models.Fire(
             name="Bug",
             status=tests.helpers.factories.peri_scribe.models.ACTIVE,
@@ -515,7 +542,10 @@ def test_fire_sources_from_groups_merges_unidentified_name_matches(
         ],
     })
     fires = tests.helpers.factories.peri_scribe.fires.sources.listed_fires()
-    assert fires == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_identity(fire)
+        for fire in fires
+    ] == [
         peri_scribe.models.Fire(
             name="Bug",
             status=tests.helpers.factories.peri_scribe.models.ACTIVE,
@@ -550,7 +580,10 @@ def test_fire_sources_from_groups_merges_same_named_fires_at_the_same_location(
         ],
     })
     fires = tests.helpers.factories.peri_scribe.fires.sources.listed_fires()
-    assert fires == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_identity(fire)
+        for fire in fires
+    ] == [
         peri_scribe.models.Fire(
             name="SANDY",
             status=tests.helpers.factories.peri_scribe.models.ACTIVE,
@@ -583,7 +616,10 @@ def test_fire_sources_from_groups_merges_mission_name_variants(
         ],
     })
     fires = tests.helpers.factories.peri_scribe.fires.sources.listed_fires()
-    assert fires == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_identity(fire)
+        for fire in fires
+    ] == [
         peri_scribe.models.Fire(
             name="RUMSEY",
             status=tests.helpers.factories.peri_scribe.models.ACTIVE,
@@ -601,7 +637,10 @@ def test_fire_sources_from_groups_excludes_complex_parents(
     ).complex_parent_and_child_fires(
         stub_fire_reader,
     )
-    assert fires == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_identity(fire)
+        for fire in fires
+    ] == [
         peri_scribe.models.Fire(
             name="0445 CROSSWHITE",
             status=tests.helpers.factories.peri_scribe.models.ACTIVE,
@@ -650,7 +689,10 @@ def test_fire_sources_from_groups_combines_complex_memberships(
         },
     )
     fires = tests.helpers.factories.peri_scribe.fires.sources.listed_fires()
-    assert fires == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_identity(fire)
+        for fire in fires
+    ] == [
         peri_scribe.models.Fire(
             name="Crosswhite",
             status=tests.helpers.factories.peri_scribe.models.ACTIVE,
@@ -709,7 +751,10 @@ def test_fire_sources_from_groups_excludes_parent_group_with_multiple_identifier
         },
     )
     fires = tests.helpers.factories.peri_scribe.fires.sources.listed_fires()
-    assert fires == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_identity(fire)
+        for fire in fires
+    ] == [
         peri_scribe.models.Fire(
             name="5-3",
             status=tests.helpers.factories.peri_scribe.models.ACTIVE,
@@ -760,7 +805,10 @@ def test_fire_sources_from_groups_skips_membership_for_unidentified_fire(
     captured = [entry for entry in captured if entry["log_level"] == "warning"]
     assert captured[0]["event"] == "Complex membership references an unidentified fire"
     assert captured[0]["fire_identifier"] == "unknown-fire"
-    assert fires == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_identity(fire)
+        for fire in fires
+    ] == [
         peri_scribe.models.Fire(
             name="Crosswhite",
             status=tests.helpers.factories.peri_scribe.models.ACTIVE,
@@ -800,7 +848,10 @@ def test_fire_sources_from_groups_collects_paths_for_each_fire(
         pathlib.Path("sources"),
     )
     sources = peri_scribe.fires.sources.fire_sources_from_groups(record_groups)
-    assert sources == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_source(source)
+        for source in sources
+    ] == [
         peri_scribe.models.FireSources(
             fire=peri_scribe.models.Fire(
                 name="Park Fire",
@@ -834,7 +885,10 @@ def test_fire_sources_from_groups_deduplicates_paths_for_a_fire(
         pathlib.Path("sources"),
     )
     sources = peri_scribe.fires.sources.fire_sources_from_groups(record_groups)
-    assert sources == [
+    assert [
+        tests.helpers.factories.peri_scribe.fires.sources.descriptive_source(source)
+        for source in sources
+    ] == [
         peri_scribe.models.FireSources(
             fire=peri_scribe.models.Fire(
                 name="Park Fire",
@@ -843,3 +897,44 @@ def test_fire_sources_from_groups_deduplicates_paths_for_a_fire(
             paths=(path,),
         ),
     ]
+
+
+def test_group_fire_sources_keeps_component_keys_independent_of_row_order(
+    tmp_path: pathlib.Path,
+) -> None:
+    read = tests.helpers.factories.peri_scribe.component_identity.sources(tmp_path)
+    observed = []
+    for order in itertools.permutations(range(len(read.rows))):
+        groups = peri_scribe.fires.sources.group_fire_sources(
+            dataclasses.replace(
+                read,
+                rows=tuple(read.rows[index] for index in order),
+                paths=tuple(read.paths[index] for index in order),
+            ),
+        )
+        observed.append({
+            fire.component_id: fire.component_aliases for fire in groups.fires
+        })
+    assert observed[0] == observed[1]
+    assert len(observed[0]) == len(read.rows)
+
+
+def test_group_fire_sources_distinguishes_geometryless_rows_without_object_ids(
+    tmp_path: pathlib.Path,
+) -> None:
+    expected_count = 2
+    read = tests.helpers.factories.peri_scribe.component_identity.sources(tmp_path)
+    row = dataclasses.replace(
+        read.rows[0],
+        object_id=None,
+        record=dataclasses.replace(
+            read.rows[0].record,
+            geometry=None,
+            observed_at=None,
+        ),
+    )
+    groups = peri_scribe.fires.sources.group_fire_sources(
+        dataclasses.replace(read, rows=(row, row)),
+    )
+    assert len({fire.component_id for fire in groups.fires}) == expected_count
+    assert all(not fire.aliases for fire in groups.fires)

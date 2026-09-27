@@ -13,6 +13,7 @@ import peri_scribe.perimeters.progression
 import peri_scribe.presentation.descriptions
 import peri_scribe.presentation.history_index
 import peri_scribe.presentation.perimeters
+import peri_scribe.presentation.score_association
 import peri_scribe.presentation.selection
 import peri_scribe.presentation.text
 
@@ -27,7 +28,8 @@ class FireSummary:
     """One fire's identity, latest facts, location, and perimeter history.
 
     These values give reports and maps the same basis for ranking and descriptions.
-    ``type_one`` reflects the latest point-history designation used by scoring.
+    ``type_one`` reflects the latest point-history designation used by scoring. Internal
+    component keys preserve source ownership without becoming external identifiers.
     """
 
     name: str
@@ -37,6 +39,8 @@ class FireSummary:
     progression_rings: tuple[peri_scribe.perimeters.progression.Ring, ...] = ()
     description: peri_scribe.presentation.descriptions.FireDescription | None = None
     identifiers: frozenset[str] = frozenset()
+    component_id: str | None = None
+    component_aliases: frozenset[str] = frozenset()
     type_one: bool = False
 
 
@@ -138,7 +142,48 @@ def fire_perimeters(
         perimeters.extend(perimeter_by_identifier.get(identifier, []))
     if not fire_identifiers:
         perimeters.extend(perimeter_by_name.get(entry_name, []))
-    return tuple(perimeters)
+    return tuple(
+        sorted(
+            perimeters,
+            key=lambda perimeter: (
+                perimeter.observation_time is not None,
+                perimeter.observation_time,
+            ),
+        ),
+    )
+
+
+def component_perimeters(
+    frame: geopandas.GeoDataFrame,
+) -> dict[str, tuple[peri_scribe.presentation.perimeters.Perimeter, ...]]:
+    """Preserve exact source ownership independently of external alias enrichment.
+
+    Args:
+        frame: Complete full or differential history with stored component identities.
+
+    Returns:
+        Chronological drawable observations for every recorded source component.
+    """
+    index = peri_scribe.presentation.history_index.HistoryRowIndex.from_frame(frame)
+    result: dict[str, tuple[peri_scribe.presentation.perimeters.Perimeter, ...]] = {}
+    for component, positions in index.positions_by_component.items():
+        by_identifier, by_name = peri_scribe.presentation.selection.perimeter_groups(
+            peri_scribe.presentation.history_index.select_rows(frame, positions),
+        )
+        result[str(component)] = tuple(
+            sorted(
+                (
+                    perimeter
+                    for group in (*by_identifier.values(), *by_name.values())
+                    for perimeter in group
+                ),
+                key=lambda perimeter: (
+                    perimeter.observation_time is not None,
+                    perimeter.observation_time,
+                ),
+            ),
+        )
+    return result
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -176,6 +221,16 @@ def prepare_fires(
     perimeter_by_name: dict[str, list[peri_scribe.presentation.perimeters.Perimeter]],
     ring_by_identifier: dict[str, list[peri_scribe.presentation.perimeters.Perimeter]],
     ring_by_name: dict[str, list[peri_scribe.presentation.perimeters.Perimeter]],
+    perimeter_by_component: typing.Mapping[
+        str,
+        tuple[peri_scribe.presentation.perimeters.Perimeter, ...],
+    ]
+    | None = None,
+    ring_by_component: typing.Mapping[
+        str,
+        tuple[peri_scribe.presentation.perimeters.Perimeter, ...],
+    ]
+    | None = None,
     incident_rows: geopandas.GeoDataFrame | None = None,
     histories: typing.Mapping[
         peri_scribe.presentation.selection.AreaKey,
@@ -196,6 +251,8 @@ def prepare_fires(
         perimeter_by_name: Perimeters keyed by name.
         ring_by_identifier: Differential perimeters keyed by identifier.
         ring_by_name: Differential perimeters keyed by name.
+        perimeter_by_component: Exact source-component mapping observations.
+        ring_by_component: Exact source-component differential observations.
         incident_rows: The optional independent reporting history.
         histories: Already prepared histories keyed by canonical fire identity.
 
@@ -218,21 +275,33 @@ def prepare_fires(
             perimeter_by_identifier,
             perimeter_by_name,
         )
+        ring_observations = fire_perimeters(
+            fire_identifiers,
+            entry.name,
+            ring_by_identifier,
+            ring_by_name,
+        )
+        if entry.component_id is not None:
+            perimeter_observations = (perimeter_by_component or {}).get(
+                entry.component_id,
+                (),
+            )
+            ring_observations = (ring_by_component or {}).get(entry.component_id, ())
         progression_rings = tuple(
             ring
-            for observation in fire_perimeters(
-                fire_identifiers,
-                entry.name,
-                ring_by_identifier,
-                ring_by_name,
-            )
+            for observation in ring_observations
             if (ring := progression_ring(observation)) is not None
         )
         perimeter_positions = perimeter_index.positions_for(
             fire_identifiers,
             entry.name,
+            entry.component_id,
         )
-        point_positions = point_index.positions_for(fire_identifiers, entry.name)
+        point_positions = point_index.positions_for(
+            fire_identifiers,
+            entry.name,
+            entry.component_id,
+        )
         perimeter_rows = peri_scribe.presentation.history_index.select_rows(
             perimeters,
             perimeter_positions,
@@ -248,6 +317,7 @@ def prepare_fires(
                 peri_scribe.presentation.selection.fire_area_key(
                     entry.identifier,
                     entry.name,
+                    entry.component_id,
                 ),
             )
         )
@@ -260,6 +330,7 @@ def prepare_fires(
                     incident_index,
                     fire_identifiers,
                     entry.name,
+                    entry.component_id,
                 ),
             )
         pending.append(
@@ -343,24 +414,6 @@ def prepare_fire_data(
         for previous, current in zip(shared.sources, sources, strict=True)
     ):
         return shared.fires
-    notes_by_identifier = (
-        {
-            entry.identifier: entry.explanation
-            for entry in scores.fires
-            if entry.identifier is not None
-        }
-        if scores is not None
-        else {}
-    )
-    notes_by_name = (
-        {
-            entry.name: entry.explanation
-            for entry in scores.fires
-            if entry.identifier is None
-        }
-        if scores is not None
-        else {}
-    )
     perimeter_by_identifier, perimeter_by_name = (
         peri_scribe.presentation.selection.perimeter_groups(perimeters)
     )
@@ -382,11 +435,22 @@ def prepare_fire_data(
         perimeter_by_name=perimeter_by_name,
         ring_by_identifier=ring_by_identifier,
         ring_by_name=ring_by_name,
+        perimeter_by_component=component_perimeters(perimeters),
+        ring_by_component=component_perimeters(differential_perimeters),
         incident_rows=incident_rows,
         histories=histories,
     )
+    associated = (
+        peri_scribe.presentation.score_association.associated_scores(
+            tuple((fire.entry.name, fire.identifiers) for fire in pending),
+            scores,
+            component_ids=tuple(fire.entry.component_id for fire in pending),
+        )
+        if scores is not None
+        else {}
+    )
     fires: list[PreparedFire] = []
-    for prepared in pending:
+    for position, prepared in enumerate(pending):
         perimeter_rows = peri_scribe.presentation.history_index.select_rows(
             perimeters,
             prepared.perimeter_positions,
@@ -394,6 +458,11 @@ def prepare_fire_data(
         point_rows = peri_scribe.presentation.history_index.select_rows(
             points,
             prepared.point_positions,
+        )
+        local_points = (
+            peri_scribe.presentation.selection.point_locations(point_rows)
+            if prepared.entry.component_id is not None
+            else (point_by_identifier, point_by_name)
         )
         fires.append(
             PreparedFire(
@@ -403,23 +472,23 @@ def prepare_fire_data(
                     point=peri_scribe.presentation.selection.fire_point_location(
                         prepared.identifiers,
                         prepared.entry.name,
-                        point_by_identifier,
-                        point_by_name,
+                        *local_points,
                         prepared.perimeters,
                     ),
                     perimeters=prepared.perimeters,
                     progression_rings=prepared.progression_rings,
                     identifiers=prepared.identifiers,
+                    component_id=prepared.entry.component_id,
+                    component_aliases=frozenset(prepared.entry.component_aliases),
                     description=peri_scribe.presentation.text.fire_description(
                         prepared.entry,
                         perimeter_rows,
                         point_rows,
                         history=prepared.history,
-                        of_note=peri_scribe.presentation.text.score_explanation_for(
-                            notes_by_identifier,
-                            notes_by_name,
-                            prepared.identifiers,
-                            prepared.entry.name,
+                        of_note=(
+                            associated[position].explanation
+                            if position in associated
+                            else None
                         ),
                     ),
                     type_one=peri_scribe.fires.scoring.fire_is_type_one_incident(
@@ -463,6 +532,7 @@ def selected_incidents(
     index: peri_scribe.presentation.history_index.HistoryRowIndex | None,
     identifiers: frozenset[str],
     name: str,
+    component_id: str | None = None,
 ) -> geopandas.GeoDataFrame | None:
     """Select a fire's reports using the identity rules shared with its geography.
 
@@ -471,6 +541,7 @@ def selected_incidents(
         index: The row index for that layer, if it is available.
         identifiers: Identifiers and aliases associated with this fire.
         name: The fire name used when identifiers do not resolve its history.
+        component_id: The exact source component, when recorded in derived history.
 
     Returns:
         The matching report rows, possibly empty, or None without an indexed layer.
@@ -479,7 +550,7 @@ def selected_incidents(
         return None
     return peri_scribe.presentation.history_index.select_rows(
         frame,
-        index.positions_for(identifiers, name),
+        index.positions_for(identifiers, name, component_id),
     )
 
 

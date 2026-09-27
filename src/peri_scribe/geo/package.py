@@ -194,10 +194,10 @@ def read_geopackage(path: pathlib.Path) -> GeopackageContents:
                     ),
                 )
             if membership_columns is not None:
-                membership = peri_scribe.geo.parsing.complex_membership_from_row(
-                    row,
-                    membership_columns,
+                memberships.extend(
+                    peri_scribe.geo.parsing.complex_memberships_from_row(
+                        row,
+                        membership_columns,
+                    ),
                 )
-                if membership is not None:
-                    memberships.append(membership)
     return GeopackageContents(rows=tuple(rows), memberships=tuple(memberships))

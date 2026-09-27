@@ -17,7 +17,8 @@ import peri_scribe.sources.snapshots
 logger = structlog.get_logger()
 
 
-RECORD_CACHE_SCHEMA_VERSION = 5
+# Cache compatibility includes preservation of all supported relationship identifiers.
+RECORD_CACHE_SCHEMA_VERSION = 7
 
 
 RECORD_CACHE_SCHEMA = """
@@ -47,8 +48,9 @@ CREATE INDEX rows_serial ON rows(serial);
 CREATE TABLE memberships (
   serial INTEGER NOT NULL,
   fire_identifier TEXT NOT NULL,
-  complex_identifier TEXT NOT NULL,
-  complex_name TEXT NOT NULL
+  complex_identifier TEXT,
+  complex_name TEXT,
+  observation_time TEXT
 );
 """
 
@@ -122,13 +124,16 @@ def write_snapshot(
         [row.to_row(source_file.serial_number) for row in contents.rows],
     )
     conn.executemany(
-        "INSERT INTO memberships VALUES (?, ?, ?, ?)",
+        "INSERT INTO memberships VALUES (?, ?, ?, ?, ?)",
         [
             (
                 source_file.serial_number,
                 membership.fire_identifier,
                 membership.complex_identifier,
                 membership.complex_name,
+                membership.observation_time.isoformat()
+                if membership.observation_time is not None
+                else None,
             )
             for membership in contents.memberships
         ],
@@ -141,14 +146,13 @@ def snapshot_directories_signature(
     """Detect snapshot inventory changes made by the application's atomic writer.
 
     Snapshot files live in bucket subdirectories named for the serial number's
-    thousands, and every write goes through ``write_geopackage``, which unlinks and
-    recreates the file, so adding, removing, or rewriting a snapshot changes a bucket
-    directory's modification time, and adding or removing a bucket changes the set of
-    buckets. Directory metadata cannot detect external in-place edits or restored
-    timestamps, so readers also authenticate each cached snapshot against its content
-    checksum. The feed directory's own modification time is excluded because it also
-    holds the record cache and current-state files, whose writes should not force the
-    snapshot cache to re-sync.
+    thousands. Publication creates or atomically replaces a snapshot file, so adding,
+    removing, or rewriting a snapshot changes a bucket directory's modification time,
+    and adding or removing a bucket changes the set of buckets. Directory metadata
+    cannot detect external in-place edits or restored timestamps, so readers also
+    authenticate each cached snapshot against its content checksum. The feed directory's
+    own modification time is excluded because it also holds the record cache and
+    current-state files, whose writes should not force the snapshot cache to re-sync.
 
     Args:
         source_directory: The feed's snapshot directory.

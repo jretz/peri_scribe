@@ -97,6 +97,7 @@ def derivation_context(year_directory: pathlib.Path) -> str:
                 "peri_scribe",
                 "arcgis_access",
                 "aircraft_registration",
+                "document_text",
                 "measurement_units",
                 "spatial_data",
             )
@@ -226,6 +227,8 @@ def fire_keys(
             "context": context,
             "name": fire.name,
             "identifier": fire.identifier,
+            "component_id": fire.component_id,
+            "component_aliases": sorted(fire.component_aliases),
             "aliases": sorted(fire.aliases),
             "status": fire.status.value,
             "complex": None

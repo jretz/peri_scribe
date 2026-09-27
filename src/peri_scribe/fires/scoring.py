@@ -443,6 +443,7 @@ def score_explanation(fire_score: FireScore) -> str:
 def score_entry(
     fire_score: FireScore,
     *,
+    component_id: str | None = None,
     area: pint.Quantity[float] | None = None,
     building_count: int | None = None,
     evacuation_overlap: bool | None = None,
@@ -455,6 +456,7 @@ def score_entry(
 
     Args:
         fire_score: The fire's current score.
+        component_id: The source component of a fire without an external identifier.
         area: The fire's presented area, or None when unknown.
         building_count: The buildings within a mile, or None when unknown.
         evacuation_overlap: Whether the fire overlaps an evacuation zone.
@@ -464,6 +466,7 @@ def score_entry(
     """
     return peri_scribe.models.FireScoreEntry(
         name=fire_score.name,
+        component_id=component_id,
         identifier=fire_score.identifier,
         score=fire_score.total,
         explanation=score_explanation(fire_score),

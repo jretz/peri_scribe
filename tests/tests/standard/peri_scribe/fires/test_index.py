@@ -134,6 +134,8 @@ def test_index_fire_sources_writes_index_file(
     monkeypatch.setattr(pathlib.Path, "mkdir", lambda *_args, **_kwargs: None)
     peri_scribe.fires.index.index_fire_sources(year_directory)
     assert writes[0][0] == pathlib.Path("/index/2026/sources/fires.json")
+    component = writes[0][1].fires[0].component_id
+    assert component is not None
     assert writes[0][1].model_dump() == {
         "version": peri_scribe.fires.index.FIRE_INDEX_VERSION,
         "fires": [
@@ -141,6 +143,8 @@ def test_index_fire_sources_writes_index_file(
                 "name": "Park Fire",
                 "status": "active",
                 "identifier": None,
+                "component_id": component,
+                "component_aliases": [component],
                 "aliases": [],
                 "complex": None,
                 "classification": None,
@@ -156,6 +160,8 @@ def test_fire_index_document_wraps_entries_with_version_and_fires_last() -> None
             "name": "Park Fire",
             "status": "active",
             "identifier": None,
+            "component_id": None,
+            "component_aliases": [],
             "aliases": [],
             "complex": None,
             "classification": None,
@@ -204,7 +210,21 @@ def test_load_fire_index_reads_existing_index(monkeypatch: pytest.MonkeyPatch) -
         lambda _self, *_args, **_kwargs: json.dumps(document),
     )
     index = peri_scribe.fires.index.load_fire_index(year_directory)
-    assert index.model_dump() == document
+    assert index.fires[0].component_id is None
+    assert index.fires[0].component_aliases == []
+    assert (
+        index.model_dump(
+            exclude={
+                "fires": {
+                    "__all__": {
+                        "component_id",
+                        "component_aliases",
+                    },
+                },
+            },
+        )
+        == document
+    )
 
 
 def test_load_fire_index_builds_index_when_missing(

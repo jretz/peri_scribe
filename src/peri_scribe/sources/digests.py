@@ -85,14 +85,40 @@ def stored_geopackage_digest(path: pathlib.Path, layer_name: str) -> str | None:
     return dataframe_digest(stored)
 
 
+def framed_value(value: bytes) -> bytes:
+    """Keep embedded source bytes from masquerading as attribute boundaries.
+
+    Args:
+        value: One normalized attribute, schema field, or geometry payload.
+
+    Returns:
+        A terminated field with every literal zero escaped.
+    """
+    return value.replace(b"\x00", b"\x00\x01") + b"\x00\x00"
+
+
+def digest_fields(values: collections.abc.Iterable[bytes]) -> bytes:
+    """Preserve field positions and boundaries within a structured content identity.
+
+    Args:
+        values: The ordered, normalized fields being fingerprinted.
+
+    Returns:
+        Their SHA-256 content digest.
+    """
+    hasher = hashlib.sha256()
+    for value in values:
+        hasher.update(framed_value(value))
+    return hasher.digest()
+
+
 def dataframe_digest(dataframe: geopandas.GeoDataFrame) -> str:
     """Return an order-independent content digest for *dataframe*.
 
-    Every row contributes a digest of its attributes and geometry, and the row digests
-    are hashed in sorted order, so two dataframes holding the same features in a
-    different row order digest alike. Missing values of any kind (None, pandas NA or
-    NaT, NaN) digest alike, so a value that a GeoPackage round-trip stores as NaN rather
-    than None does not count as a change.
+    Schema identity retains attribute names and coordinate reference meaning, including
+    for empty frames. Row order and column order do not matter; repeated rows retain
+    their multiplicity. Missing values (None, pandas NA or NaT, NaN) digest alike so
+    storage normalization does not count as a source change.
 
     Args:
         dataframe: The GeoDataFrame to digest.
@@ -104,19 +130,25 @@ def dataframe_digest(dataframe: geopandas.GeoDataFrame) -> str:
     attribute_columns = sorted(
         column for column in dataframe.columns if column != geometry_column
     )
-    row_digests: list[str] = []
+    reference = (
+        b"m"
+        if dataframe.crs is None
+        else b"c" + str(dataframe.crs.to_authority() or dataframe.crs.to_wkt()).encode()
+    )
+    schema = digest_fields([
+        reference,
+        *(digest_value(column) for column in attribute_columns),
+    ])
+    row_digests: list[bytes] = []
     for _index, row in dataframe.iterrows():
-        hasher = hashlib.sha256()
-        for column in attribute_columns:
-            hasher.update(digest_value(row[column]))
-        geometry = row[geometry_column]
-        hasher.update(geometry.wkb if geometry is not None else b"m")
-        row_digests.append(hasher.hexdigest())
+        row_digests.append(
+            digest_fields(
+                digest_value(row[column])
+                for column in [*attribute_columns, geometry_column]
+            ),
+        )
     row_digests.sort()
-    final_hasher = hashlib.sha256()
-    for digest in row_digests:
-        final_hasher.update(digest.encode("ascii"))
-    return final_hasher.hexdigest()
+    return digest_fields([schema, *row_digests]).hex()
 
 
 def digest_value(value: object) -> bytes:

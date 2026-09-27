@@ -67,6 +67,7 @@ addopts = [
     "--code-highlight=yes",
     "--doctest-modules",
     "--failed-first",
+    "--ignore=tests/formal",
     "--quiet",
     "--showlocals",
 
@@ -179,6 +180,7 @@ module-name = [
     "peri_scribe",
     "arcgis_access",
     "aircraft_registration",
+    "document_text",
     "kml_io",
     "measurement_units",
     "spatial_data",

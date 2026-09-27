@@ -22,6 +22,8 @@ same distribution, with one dependency set and release cycle:
   annotations; fire measurement and provenance decisions stay in the application.
 - `kml_io` owns streaming KML document and folder envelopes, geometry serialization and
   caching, generic styles, timed reveal tours, and atomic KMZ publication.
+- `document_text` owns portable source-text normalization, Markdown/XML character
+  encoding, and explicit wrappers for generated Markdown and CDATA descriptions.
 - `measurement_units` owns the single Pint registry, including the currency unit shared
   by application observations and library calculations.
 - `aircraft_registration` owns offline recognition of trailing civil registrations,
@@ -61,11 +63,28 @@ ranking, row selection, and descriptive text shared by reports and maps. Its
 `FireSummary` contains facts without rendered images. Both output paths use this layer;
 reports do not import KML modules or chart rendering through it.
 
+Saved scores resolve against the complete showable fire collection. Identifier matches
+take priority over name fallback, and each identity retains its highest-ranked score
+row. Top views, report scores, and description explanations use this same association;
+duplicate aliases cannot consume additional places in a ranked view.
+
 `peri_scribe/kml/` supplies map folders, balloon HTML, colors, progression timing, and
 fire-specific chart preparation. It adds images to shared summaries and passes neutral
 geometry, styles, and playback durations to `kml_io`. `peri_scribe/report/` supplies
 Markdown layout and report-specific location descriptions. Pipeline phase logging stays
 with the application adapters.
+
+Source names and descriptive fields enter Markdown and KML as literal text. Renderers
+encode structural delimiters before adding generated links, table cells, or balloon HTML.
+Only explicitly wrapped generated markup can carry document syntax. Portable line endings
+and unsupported XML characters follow the shared normalization policy; supported Unicode
+content and boundary whitespace remain present in the parsed output.
+
+Index and score JSON, score-distribution HTML, and Markdown reports share staged
+document publication. Their writers close a complete temporary file beside the
+destination before replacing the public name. An interrupted write preserves the prior
+complete document; this is a per-file process-interruption guarantee, not a transaction
+across outputs or a power-loss durability guarantee.
 
 The primary workflow is:
 
@@ -78,7 +97,18 @@ rebuild, even when it writes no new snapshot. `--unconditional` forces the selec
 stages to run and bypasses prior history reuse when geography is selected; `--only`,
 `--from`, and `--to` select one stage or a range of stages, and `--list-stages` prints
 the stage descriptions. `validate-sources` is a separate diagnostic workflow that
-performs a complete fetch and compares it with the incremental snapshots.
+performs a complete fetch and compares it with the incremental snapshots. It acquires
+the same year lock as `run` and records derived rebuild requirements before updating
+live incremental sources. Only a successful unchanged collection restores prior work.
+
+Ungated runs save derived rebuild requirements in `run_state.json` before fetching fire
+feeds or refreshing external inputs. An interrupted fetch leaves those requirements for
+the next run, even if its input writes completed and a retry finds nothing new. A
+successful unchanged incremental fetch without deferred inputs restores the previous
+pending work exactly; scheduled full fetches retain their unconditional rebuild
+requirement. Recovery after an interruption can therefore rebuild unchanged inputs
+conservatively. These guarantees assume atomic file replacement and cooperating writers;
+they do not establish power-loss durability.
 
 ## Dataflow
 
@@ -92,6 +122,19 @@ GeoPackages. Snapshots are stored under:
 
 `data/<year>/sources/<feed>/<serial-bucket>/<serial>,lastEdit=<timestamp>.gpkg`
 
+Each snapshot is written under an undiscoverable staging name and atomically replaced
+into its final path only after the GeoPackage writer succeeds. Interrupted staging files
+cannot authorize timestamp-based reuse. Metadata, ID, and feature requests do not share
+a source transaction; scheduled full fetches recover missed observations once the
+provider settles and a complete collection succeeds.
+
+Typed history attributes select the first usable value in configured field order.
+Blank, malformed, nonfinite, or overflowing values do not hide a later valid field;
+numeric zero remains present. Observation and edit times normalize to UTC, with naive
+datetimes interpreted as UTC and invalid or out-of-range instants treated as missing.
+ArcGIS edit times also accept epoch milliseconds. A usable row edit time precedes
+snapshot time when determining a perimeter's effective time.
+
 The fire index is stored at `sources/fires.json`. External datasets are stored beside
 the fire snapshots: the latest evacuation layer is `sources/evacuations.gpkg`, and
 building locations are in `sources/buildings.sqlite`. The buildings converter streams
@@ -100,6 +143,11 @@ not retain the downloaded archives. The administrative-boundary GeoPackage at
 `sources/CA_border_with_AZ_NV_and_OR.gpkg` holds the California border with Arizona,
 Nevada, and Oregon; the fetch stage ensures it exists, downloading and computing it only
 when it is missing or unusable.
+
+Live external-source comparison fingerprints normalized attributes, geometry, attribute
+names, and coordinate reference meaning. Field framing distinguishes embedded bytes
+from field boundaries. Row and column order do not affect comparison; repeated rows
+retain their multiplicity, and missing-value representations normalize together.
 
 Derived data is written below `data/<year>/derived/`:
 
@@ -118,12 +166,12 @@ generation it appends to `logs/YYYY-MM-fire-updates.jsonl` and saves
 `derived/fire_updates_state.json`. This baseline includes all eligible fires, including
 those outside the report's interesting sections. Normalized geometry and observation
 time identify new perimeters; pending updates survive unsuccessful KMZ generation.
-Known identifier aliases retain the fire's first checkpoint and log identity, so adding
-a preferred identifier preserves its mapping baseline and acreage history. A first
+Known identifier aliases retain links to their saved history buckets, so adding
+a preferred identifier preserves the mapping baseline and acreage history. A first
 identifier joins a name-only history only when shared mapping evidence identifies a
 unique current fire and that history is not already claimed. Name matching uses the
-same normalization as source grouping. Known identifiers keep ownership of their
-histories; unrelated namesakes receive deterministic `local` identities. The checkpoint
+same normalization as source grouping. Unrelated namesakes receive deterministic
+`local` identities. The checkpoint
 retains historical name associations even when a later fire reuses a name. Each record
 preserves its identity in `log_identity`, independently of its current display name.
 The checkpoint also retains exact source snapshot and object-ID references, including
@@ -132,16 +180,65 @@ to their acknowledged history when the original geometry has been replaced. Miss
 provenance supplies no identity evidence; older checkpoints acquire it during an
 unchanged publication. Provenance-only changes update the checkpoint without logging
 another mapping update.
-Snapshot acreage comparisons and viewer fire counts use this key; records without it
-use their logged identifier or name. A recovery journal at
+Grouped fires also carry internal component identities anchored to immutable source-row
+occurrences. These identities travel through the fire index, derived histories, shared
+presentation, scores, and reports. Identifierless namesakes consequently keep separate
+evidence and output entries. Component aliases retain earlier anchors through merges
+and identifier enrichment, allowing publication to claim their saved history buckets
+under the same correction policy as external aliases. Legacy rows without component
+identity retain their name fallback.
+The checkpoint separates durable alias `lineage` from current history `owners`.
+Identifier corrections claim every bucket reached through their aliases. The latest
+mapped observation wins competing claims, with missing dates first and canonical
+report identity breaking equal-time ties. A winning fire uses its preferred history
+key when available, otherwise another won key; a fire without a won history receives
+an unused key. Old evidence stays in its original buckets, and novelty is measured
+against the union of the fire's inherited histories. Alias lineage accumulates even
+when a claimant loses, allowing a later correction to reclaim history. Jointly inherited
+histories remain claimable together; the system does not reconstruct earlier partitions.
+
+Snapshot acreage comparisons and viewer fire counts use the current owner's key,
+published separately as `history_identity`, while retaining the original `log_identity`.
+Ownership is a direct bucket-to-group assignment, not a chain of redirects. Records
+without an ownership assignment use their stable logged key, or their logged identifier
+or name when that key is absent. A recovery journal at
 `derived/fire_updates_pending.json` retains the completed batch and original timestamp
 until its log and checkpoint are both saved. Each batch has a `batch_id` and is appended
 atomically; retries recognize it in plain or compressed logs before advancing the
 checkpoint. Recovery runs before comparing the next build's inputs.
+Recovery distinguishes absent files from invalid durable state. Every identity and
+record in a pending batch is validated before any append, checkpoint replacement, or
+journal retirement. Invalid authoritative checkpoints and journals stop publication
+without being overwritten; disposable publication caches retain their separate rebuild
+policy.
 The monthly log writer shares locking, timestamps, and Zstandard compression across
 diagnostic and fire-update logs while rotating each series independently. Closed months
 remain uncompressed until seven local calendar days after the next month starts; the
-next write compresses eligible months. The monitor reads the diagnostic series.
+next write compresses eligible months. A per-month `.jsonl.rotation.json` receipt
+authenticates the source, prior archive, and intended archive before replacement.
+Recovery completes source retirement without appending it again. Writers recover pending
+rotations before new appends, including late arrivals for an archived month; legitimate
+identical diagnostic records remain distinct. Diagnostic readers share the writer lock
+while streaming a month. They join an archived prefix with a distinct plain tail, or
+select the archive alone when its authenticated receipt already includes that source.
+The update viewer holds the same shared lock across discovery and reading. Its input
+preserves the archived prefix before a later plain tail, including equal timestamps and
+legitimate repeated rows. Stable chronological sorting consequently preserves the correct
+acreage predecessor when histories are projected into their current owners.
+Reading does not recover or modify the log files. The monitor reads the diagnostic series.
+Timestamp bounds apply to each dated record independently, so backward wall-clock
+changes cannot hide later matching records. Plain-log startup scans the prefix through
+the first eligible timestamp; retained monitor readers continue incrementally from
+their saved byte offset. Upper bounds filter records through the rest of the stream.
+It tracks archive generations and replays bounded recent history with run-context
+restoration when an already consumed month changes. This catches records appended and
+compressed between polls without retaining duplicate visible events.
+One asynchronous task owner serializes monitor refresh, archive selection, history aging,
+and report publication. An admitted operation retains ownership through worker completion
+even if its caller is cancelled. Unmount stops admission and display updates, signals
+readers to stop, and asynchronously waits for admitted work before closing descriptors.
+A read already waiting for the cooperating writer lock finishes after that writer
+releases it; the event loop remains available while shutdown waits.
 
 `updates.py` reads the fire-update series, validates its records, and compares each
 record with its chronological predecessor before selecting the last 48 hours. It writes
@@ -186,6 +283,12 @@ The original source snapshots are not modified by these cleansing steps. The out
 excludes fires without a qualifying area indication and includes latest-perimeter and
 progression-map views.
 
+Complete-source validation requires unique object IDs in both frames, the same known
+coordinate reference system, and inclusion of the complete snapshot's attribute schema.
+Every complete feature must match the stored row's normalized attributes and topological
+geometry. Extra stored features and columns are permitted. Duplicate IDs and unknown or
+different coordinate references are reported explicitly and prevent validation success.
+
 ## Incident evidence and area selection
 
 `fires/incident_history.py` derives reporting history from original observations before
@@ -228,12 +331,22 @@ KML fragment cache retains at most 16 MiB of accounted values; neither bounds to
 Old runtime contexts remain on disk.
 
 Complete source generations hash ordered snapshot paths and bytes plus derivation
-dependencies. Parsed source records also validate snapshot content checksums. An
+dependencies. Parsed source records in `record_cache.db` also validate snapshot content
+checksums. Each reader authenticates the checksum and reads records and complex
+memberships in one SQLite transaction, so a concurrent cache rewrite cannot mix
+generations. Cache synchronization commits receipts and their contents together. An
 unchanged, fully classified generation can retain its source index and geography
 without parsing sources or rewriting GeoPackages. Output checksums and complete layer
 signatures authenticate reuse; replacement files are published atomically before their
 `.reuse.json` metadata. `--unconditional` bypasses reuse of prior outputs and refreshes
 the fire index when rebuilding geography.
+
+Downstream readers hold the year lock across authentication and all layer reads. They
+accept full and differential histories only when both signatures authenticate and the
+differential generation identifies the current full-history checksum and derivation
+context. A partially published pair requires geography rebuilding. Fresh-year scoring
+may use empty layers only when both files are absent. A live owning writer may read its
+own completed pair without reacquiring the lock.
 
 Changed generations still read and group all sources. Each fire's `derivation_key`
 covers all ordered observations, geometry, attributes, provenance, identity, complex
@@ -275,16 +388,30 @@ changes also leave downstream work pending. Completing the fetch updates its tim
 without clearing pending derived work, so a later incremental fetch with no changes
 still allows a failed rebuild to be retried.
 
+Gated collection records possible unpublished inputs in `data/<year>/deferred_inputs`
+before writing sources. The marker persists when publication is below its threshold,
+including across partial runs that replace the KMZ or invalidate its checkpoint. A later
+ungated fetch transfers that intent to all pending derived stages before clearing the
+marker, so an unchanged fetch still builds inputs deferred by an earlier policy. Gated
+acceptance uses the same ordering; a validated checkpoint covering the saved inventory
+also permits clearing the marker. Recovery can conservatively repeat work after an
+interruption during this transfer.
+
+The marker tracks collection performed under this protocol. Source changes deferred
+before the marker was introduced need a post-upgrade gated invocation to record intent,
+or an unconditional full pipeline run to bring outputs current. An absent marker alone
+cannot identify previously deferred inputs.
+
 Successful stages clear pending work in prerequisite order; running a later stage alone
 cannot clear an unfinished prerequisite. Partial stage selections leave un-run
 requirements pending. Stage selection is respected even with `--unconditional`, so a run
 starting at KMZ consumes the existing geography. Recovery state is replaced atomically,
 and invalid state requires a full derived rebuild.
 
-The `run` command holds an operating-system lock on `data/<year>/.run.lock` for its
-selected stages. A competing invocation logs a skip and exits successfully. The lock is
-released when the owning process exits, including after failure; the persistent lock
-file itself does not indicate that a run is active.
+The `run` and `validate-sources` commands hold an operating-system lock on
+`data/<year>/.run.lock` for the invocation. A competing writer logs a skip and exits
+successfully. The lock is released when the owning process exits, including after
+failure; the persistent lock file itself does not indicate that a run is active.
 
 ## Libraries
 

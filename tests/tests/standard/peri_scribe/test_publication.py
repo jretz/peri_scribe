@@ -21,6 +21,7 @@ import peri_scribe.sources.feeds
 import spatial_data.measurements
 import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.publication
+import tests.helpers.factories.peri_scribe.component_identity
 import tests.helpers.factories.peri_scribe.publication
 from measurement_units import units
 
@@ -876,3 +877,34 @@ def test_published_baseline_uses_raw_source_for_latest_displayed_history() -> No
             rows,
             index,
         )
+
+
+def test_published_fires_keeps_excluded_anonymous_namesakes_separate(
+    tmp_path: pathlib.Path,
+) -> None:
+    factory = tests.helpers.factories.peri_scribe.component_identity
+    read = factory.sources(tmp_path)
+    index, full, _empty = factory.histories(read, tmp_path)
+    time = datetime.datetime(2026, 9, 25, tzinfo=datetime.UTC)
+    collection = peri_scribe.publication.Collection(
+        mappings={
+            str(read.paths[0].relative_to(tmp_path)): tuple(
+                peri_scribe.publication.Mapping(
+                    source_file=str(path.relative_to(tmp_path)),
+                    object_id=row.object_id,
+                    identifiers=(),
+                    name=row.record.name,
+                    observed_at=time,
+                    captured_at=time,
+                    serial=0,
+                    shape=str(row.object_id),
+                    area_square_meters=row.object_id,
+                )
+                for row, path in zip(read.rows, read.paths, strict=True)
+            ),
+        },
+    )
+    included = index.model_copy(update={"fires": index.fires[:1]})
+    baselines = peri_scribe.publication.published_fires(collection, full, included)
+    assert len(baselines) == len(index.fires)
+    assert sum(fire.mapping is not None for fire in baselines.values()) == 1

@@ -15,6 +15,7 @@ import typing
 
 import structlog
 
+import document_text.encoding
 import kml_io.geometry
 import kml_io.kmz
 import peri_scribe.fire_updates
@@ -69,7 +70,7 @@ STATE_BOUNDARIES_SOURCE_URL = (
 BUILDINGS_SOURCE_URL = "https://github.com/microsoft/USBuildingFootprints"
 ODBL_URL = "https://opendatacommons.org/licenses/odbl/"
 
-ROOT_DOCUMENT_ATTRIBUTION = f"""<![CDATA[
+ROOT_DOCUMENT_ATTRIBUTION = document_text.encoding.CData(f"""
     <h3>Data Sources</h3>
     <ul>
         <li>
@@ -123,7 +124,7 @@ ROOT_DOCUMENT_ATTRIBUTION = f"""<![CDATA[
         only and not for operational use. Consult the original sources for authoritative
         information.
     </p>
-]]>"""
+""")
 
 
 def fire_view_folders(

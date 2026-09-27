@@ -10,6 +10,7 @@ import structlog
 
 import peri_scribe.geo.database
 import peri_scribe.geo.package
+import peri_scribe.geo.parsing
 import peri_scribe.models
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.snapshots
@@ -47,7 +48,7 @@ def read_snapshot_contents(
         (serial,),
     ).fetchall()
     memberships = conn.execute(
-        "SELECT fire_identifier, complex_identifier, complex_name "
+        "SELECT fire_identifier, complex_identifier, complex_name, observation_time "
         "FROM memberships WHERE serial = ?",
         (serial,),
     ).fetchall()
@@ -64,6 +65,9 @@ def read_snapshot_contents(
                 fire_identifier=row["fire_identifier"],
                 complex_identifier=row["complex_identifier"],
                 complex_name=row["complex_name"],
+                observation_time=peri_scribe.geo.parsing.observation_time_from(
+                    row["observation_time"],
+                ),
             )
             for row in memberships
         ),
@@ -77,7 +81,11 @@ def fetch_snapshot_rows(
     checksum: str,
     geometry_pool: spatial_data.geometry_pool.GeometryPool,
 ) -> peri_scribe.geo.package.GeopackageContents | None:
-    """Return the contents stored for snapshot *serial*, or None when absent.
+    """Return one authenticated transaction's contents, or None when absent.
+
+    The checksum receipt, rows, and memberships share a read transaction so concurrent
+    cache replacements cannot change the contents after their identity was checked.
+    A savepoint preserves an existing caller transaction when one is already open.
 
     Args:
         conn: The record cache database connection.
@@ -90,13 +98,17 @@ def fetch_snapshot_rows(
         not cover the snapshot.
     """
     conn.row_factory = sqlite3.Row
-    present = conn.execute(
-        "SELECT 1 FROM snapshots WHERE serial = ? AND checksum = ?",
-        (serial, checksum),
-    ).fetchone()
-    if present is None:
-        return None
-    return read_snapshot_contents(conn, serial, geometry_pool=geometry_pool)
+    conn.execute("SAVEPOINT snapshot_read")
+    try:
+        present = conn.execute(
+            "SELECT 1 FROM snapshots WHERE serial = ? AND checksum = ?",
+            (serial, checksum),
+        ).fetchone()
+        if present is None:
+            return None
+        return read_snapshot_contents(conn, serial, geometry_pool=geometry_pool)
+    finally:
+        conn.execute("RELEASE snapshot_read")
 
 
 def read_snapshot_rows(

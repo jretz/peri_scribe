@@ -1,0 +1,46 @@
+[formal]
+description = "Check formal models, proofs, implementation agreement, and known limits"
+run = [
+    { task = "formal-tla" },
+    { task = "formal-lean" },
+    { task = "formal-conformance" },
+    { task = "formal-counterexamples" },
+]
+
+[formal-tla]
+description = "Model-check system safety and conditional liveness with TLC"
+depends = ["venv"]
+run = '''
+PERI_SCRIBE_TLA_JAR="$(mise where github:tlaplus/tlaplus)/tla2tools.jar" \
+    .venv/bin/python -m tests.formal.check tla
+'''
+
+[formal-lean]
+description = "Build and check Lean proofs and the executable policy oracle"
+dir = "tests/formal/lean"
+run = "lake build"
+
+[formal-conformance]
+description = "Compare Python and JavaScript with TLC states and proved Lean policies"
+depends = ["venv", "formal-lean"]
+run = '''
+PERI_SCRIBE_TLA_JAR="$(mise where github:tlaplus/tlaplus)/tla2tools.jar" \
+    .venv/bin/python -m pytest -c tests/formal/pytest.ini tests/formal/conformance
+'''
+
+[formal-counterexamples]
+description = "Confirm documented counterexamples to unsupported crash guarantees"
+depends = ["venv"]
+run = '''
+PERI_SCRIBE_TLA_JAR="$(mise where github:tlaplus/tlaplus)/tla2tools.jar" \
+    .venv/bin/python -m tests.formal.check counterexamples
+'''
+
+[formal-defects]
+description = "Require existing conformance checks to catch deliberate source defects"
+depends = ["venv", "formal-lean"]
+run = '''
+PERI_SCRIBE_TLA_JAR="$(mise where github:tlaplus/tlaplus)/tla2tools.jar" \
+    .venv/bin/python -m pytest -c tests/formal/pytest.ini \
+    tests/formal/conformance/test_defect_checks.py
+'''

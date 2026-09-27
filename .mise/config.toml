@@ -14,12 +14,20 @@ UV_CACHE_DIR = "{{config_root}}/.cache/uv/geos-{{env.GEOS_VERSION}}"
 lockfile = true
 minimum_release_age = "3d"
 quiet = true
+java.shorthand_vendor = "temurin"
 
 [tools]
 "cargo:gitnr" = "latest"
+java = "latest"
+"github:tlaplus/tlaplus" = { version = "latest", asset_pattern = "tla2tools.jar" }
 micromamba = "latest"
 node = "latest"
 rclone = "latest"
 rg = "latest"
 rumdl = "latest"
 uv = "latest"
+
+[tools."github:leanprover/lean4"]
+version = "latest"
+strip_components = 1
+bin_path = "bin"

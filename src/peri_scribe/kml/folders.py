@@ -21,6 +21,8 @@ import peri_scribe.presentation.descriptions
 if typing.TYPE_CHECKING:
     import pint
 
+    import document_text.encoding
+
 
 ACTIVE_FIRES_FOLDER_NAME = "Active Fires"
 INACTIVE_FIRES_FOLDER_NAME = "Inactive Fires"
@@ -44,7 +46,7 @@ INTERIOR_FOLDER_NAME = "Interior"
 def fire_balloon(
     fire: peri_scribe.kml.fire_data.FireGeometry,
     added_area: pint.Quantity[float] | None = None,
-) -> str | None:
+) -> document_text.encoding.CData | None:
     """Return the KML balloon text for *fire*'s placemarks.
 
     Every placemark showing the fire as a whole carries the same balloon describing the
@@ -89,7 +91,7 @@ def outline_placemarks(
     ring_count: int,
     *,
     visible: bool,
-    description: str | None,
+    description: str | document_text.encoding.CData | None,
 ) -> None:
     """Append *fire*'s outline perimeters, newest first, to *writer*.
 

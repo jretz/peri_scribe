@@ -57,12 +57,10 @@ def geometry_signal(
             inside=False,
         )
     box, border = boundaries.box, boundaries.border
-    # A one-sided fire arrives as the unmerged collection of its parts. Every part lies
-    # entirely on one side of the California box, so the signal values are exact without
-    # merging: the area fractions are 0 or 1 (overlapping parts would only be merged for
-    # the fractions, and one-sided parts leave them at the extremes), the border
-    # distance is the minimum over the parts, and a fire entirely outside the box cannot
-    # cross it because crossing requires some part inside.
+    # A one-sided collection has exact extreme fractions and a border distance equal
+    # to the minimum over its parts. No box intersection is needed, and crossing is
+    # impossible because it requires area on both sides. The absolute outside area
+    # still requires a union so overlapping parts contribute only once.
     if isinstance(union, shapely.GeometryCollection) and (
         all(box.contains(part) for part in union.geoms)
         or all(not box.intersects(part) for part in union.geoms)
@@ -83,7 +81,7 @@ def geometry_signal(
         else:
             inside_area_fraction = 0.0
             outside_area_fraction = 1.0 if has_area else 0.0
-            outside_area = union.area * units.Unit("meters ** 2")
+            outside_area = shapely.union_all(parts).area * units.Unit("meters ** 2")
         crosses = False
         near = distance_to_boundary <= config.near_border_buffer
         inside = inside_area_fraction >= config.inside_area_fraction_threshold

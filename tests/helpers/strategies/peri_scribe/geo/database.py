@@ -70,8 +70,16 @@ def snapshot_contents() -> hypothesis.strategies.SearchStrategy[
     membership = hypothesis.strategies.builds(
         peri_scribe.models.ComplexMembership,
         fire_identifier=text,
-        complex_identifier=text,
-        complex_name=text,
+        complex_identifier=optional_text,
+        complex_name=optional_text,
+        observation_time=hypothesis.strategies.one_of(
+            hypothesis.strategies.none(),
+            hypothesis.strategies.datetimes(
+                min_value=datetime.datetime(2000, 1, 1),
+                max_value=datetime.datetime(2100, 1, 1),
+                timezones=hypothesis.strategies.just(datetime.UTC),
+            ),
+        ),
     )
     return hypothesis.strategies.builds(
         peri_scribe.geo.package.GeopackageContents,

@@ -559,3 +559,19 @@ def test_geometry_signal_zero_area_union_has_no_fractions(
     assert result.inside_area_fraction == pytest.approx(0.0)
     assert result.outside_area_fraction == pytest.approx(0.0)
     assert result.outside_area.m_as("meters ** 2") == pytest.approx(0.0)
+
+
+def test_geometry_signal_overlapping_outside_parts_preserve_union_area(
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
+) -> None:
+    parts = [
+        shapely.geometry.box(120.0, 0.0, 140.0, 20.0),
+        shapely.geometry.box(130.0, 0.0, 150.0, 20.0),
+    ]
+    config = tests.helpers.factories.peri_scribe.perimeters.signals.PLANAR_CONFIG
+    result = peri_scribe.perimeters.signals.geometry_signal(
+        shapely.geometry.GeometryCollection(parts),
+        boundaries,
+        config,
+    )
+    assert result.outside_area.m_as("meters ** 2") == pytest.approx(600.0)

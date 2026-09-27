@@ -14,17 +14,27 @@ manages the virtual environment for the project. `uv` itself is made available b
 tests, lint, typecheck, create builds, or do deployments. All tools for development and
 deployment activities are managed by `mise` and tools it makes available.
 
+## Formal verification
+
+Run `mise formal` for the TLA+ model checks, Lean proofs, and implementation conformance
+tests. Mise manages Java, TLA+, and Lean with `latest` selectors and records known
+versions in `.mise/mise.lock`. Python dependencies are recorded in `uv.lock`.
+
+The formal suite is separate from `mise test`. See [Formal
+Verification](formal_verification.md) for individual commands, model inventories,
+assumptions, and guidance for maintaining correspondence with the implementation.
+
 ## Fire update viewer
 
-Run `mise run serve-updates` to serve the current year's `data/<year>/maps` directory
-using Python's built-in HTTP server. Open
-<http://127.0.0.1:8765/updates.html> after generating the KMZ outputs. The task binds to
-the loopback interface and needs no additional server dependency. Stop it with Ctrl-C.
+Run `mise serve-updates` to serve the current year's `data/<year>/maps` directory using
+Python's built-in HTTP server. Open <http://127.0.0.1:8765/updates.html> after
+generating the KMZ outputs. The task binds to the loopback interface and needs no
+additional server dependency. Stop it with Ctrl-C.
 
 To serve a different year's outputs, pass the directory explicitly:
 
 ```sh
-mise run serve-updates -- --directory data/2025/maps
+mise serve-updates -- --directory data/2025/maps
 ```
 
 Both local testing and production use HTTP loading because browsers restrict adjacent
@@ -35,9 +45,9 @@ ETag, it also downloads at least every five minutes because HTTP modification ti
 and file sizes can collide. Its age labels, groups, and highlights also update locally
 while open.
 
-Run `mise run test-viewer` to test the viewer without a browser or network access. The
-task requires 100% JavaScript line, branch, and function coverage and runs as part of
-`mise run test`. Coverage reports refer to the inline script's lines in `updates.html`.
+Run `mise test-viewer` to test the viewer without a browser or network access. The task
+requires 100% JavaScript line, branch, and function coverage and runs as part of `mise
+run test`. Coverage reports refer to the inline script's lines in `updates.html`.
 
 ## Backfill fire update history
 

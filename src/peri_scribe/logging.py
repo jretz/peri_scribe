@@ -9,6 +9,7 @@ import datetime
 import enum
 import fcntl
 import functools
+import hashlib
 import json
 import logging
 import os
@@ -23,6 +24,7 @@ import uuid
 
 import click
 import pint
+import pydantic
 import pyproj
 import structlog
 
@@ -129,13 +131,115 @@ def batch_identifier(line: bytes) -> str | None:
     return None
 
 
+class RotationReceipt(pydantic.BaseModel):
+    """Authenticate source retirement while preserving diagnostic occurrences."""
+
+    model_config = pydantic.ConfigDict(frozen=True, extra="forbid")
+
+    version: typing.Literal[1] = 1
+    source_checksum: str
+    archive_checksum: str | None
+    target_checksum: str
+
+
+def rotation_receipt_path(path: pathlib.Path) -> pathlib.Path:
+    """Keep rotation intent discoverable after its source name has been removed.
+
+    Args:
+        path: The plain monthly log.
+
+    Returns:
+        Its persistent rotation receipt path.
+    """
+    return path.with_name(path.name + ".rotation.json")
+
+
+def file_checksum(path: pathlib.Path) -> str | None:
+    """Authenticate exact stored bytes without loading a complete log into memory.
+
+    Args:
+        path: A plain log or compressed archive.
+
+    Returns:
+        Its SHA-256 checksum, or None when absent.
+    """
+    try:
+        return required_file_checksum(path)
+    except FileNotFoundError:
+        return None
+
+
+def required_file_checksum(path: pathlib.Path) -> str:
+    """Keep a missing required input distinct from an intentionally absent archive.
+
+    Args:
+        path: A file required by the current publication step.
+
+    Returns:
+        Its SHA-256 checksum.
+    """
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def rotation_committed(path: pathlib.Path) -> bool:
+    """Authenticate the retained representation without changing persistent state.
+
+    Args:
+        path: The monthly source protected by the directory's shared or writer lock.
+
+    Returns:
+        Whether the published archive already contains the receipted source.
+
+    Raises:
+        ValueError: A malformed receipt or changed file prevents safe recovery.
+    """
+    receipt_path = rotation_receipt_path(path)
+    if not receipt_path.exists():
+        return False
+    receipt = RotationReceipt.model_validate_json(receipt_path.read_bytes())
+    archive_checksum = file_checksum(path.with_suffix(".jsonl.zst"))
+    source_checksum = file_checksum(path)
+    if archive_checksum == receipt.target_checksum:
+        if source_checksum is not None and source_checksum != receipt.source_checksum:
+            message = f"Rotation source changed before retirement: {path}"
+            raise ValueError(message)
+        return True
+    if (
+        archive_checksum != receipt.archive_checksum
+        or source_checksum != receipt.source_checksum
+    ):
+        message = f"Rotation receipt does not authenticate retained files: {path}"
+        raise ValueError(message)
+    return False
+
+
+def recover_rotation(path: pathlib.Path) -> bool:
+    """Retire a source only when the committed archive authenticates its receipt.
+
+    Args:
+        path: The monthly source protected by the directory's writer lock.
+
+    Returns:
+        Whether a previously published archive completed source retirement.
+    """
+    if not rotation_committed(path):
+        return False
+    path.unlink(missing_ok=True)
+    rotation_receipt_path(path).unlink()
+    return True
+
+
 def compress_log(path: pathlib.Path) -> None:
     """Publish a complete archive before removing its original log.
 
     Args:
         path: The closed monthly log, protected by the log directory's writer lock.
     """
+    if recover_rotation(path):
+        return
     archive = path.with_suffix(".jsonl.zst")
+    source_checksum = required_file_checksum(path)
     with tempfile.TemporaryDirectory(dir=path.parent) as directory:
         temporary = pathlib.Path(directory) / archive.name
         archived_batches = set()
@@ -157,8 +261,48 @@ def compress_log(path: pathlib.Path) -> None:
                         destination.write(line)
             else:
                 shutil.copyfileobj(source, destination)
+        target_checksum = required_file_checksum(temporary)
+        receipt = RotationReceipt(
+            source_checksum=source_checksum,
+            archive_checksum=file_checksum(archive),
+            target_checksum=target_checksum,
+        )
+        temporary_receipt = pathlib.Path(directory) / "rotation.json"
+        temporary_receipt.write_text(receipt.model_dump_json(), encoding="utf-8")
+        temporary_receipt.replace(rotation_receipt_path(path))
         temporary.replace(archive)
     path.unlink()
+    rotation_receipt_path(path).unlink()
+
+
+def rotation_paths(
+    directory: pathlib.Path,
+    suffix: str,
+    timestamp: datetime.datetime,
+) -> tuple[pathlib.Path, ...]:
+    """Recover pending work before a writer can append to a recreated monthly source.
+
+    Args:
+        directory: The log directory protected by its writer lock.
+        suffix: The series whose rotation and receipts this writer owns.
+        timestamp: The current local time selecting closed months.
+
+    Returns:
+        Every pending source and every source old enough to compress, in name order.
+    """
+    pattern = r"[0-9]{4}-(0[1-9]|1[0-2])" + re.escape(suffix) + r"\.jsonl"
+    pending = {
+        path.with_name(path.name.removesuffix(".rotation.json"))
+        for path in directory.glob("*.jsonl.rotation.json")
+        if re.fullmatch(pattern, path.name.removesuffix(".rotation.json"))
+    }
+    eligible = {
+        path
+        for path in directory.glob("*.jsonl")
+        if re.fullmatch(pattern, path.name)
+        and path.name[:7] < compression_month(timestamp)
+    }
+    return tuple(sorted(pending | eligible))
 
 
 def append_monthly_log(
@@ -250,12 +394,8 @@ def append_monthly_records(
         now = datetime.datetime.now().astimezone()
         timestamp = timestamp or now
         filename = timestamp.strftime("%Y-%m") + suffix + ".jsonl"
-        for path in sorted(directory.glob("*.jsonl")):
-            if re.fullmatch(
-                r"[0-9]{4}-(0[1-9]|1[0-2])" + re.escape(suffix) + r"\.jsonl",
-                path.name,
-            ) and path.name[:7] < compression_month(now):
-                compress_log(path)
+        for path in rotation_paths(directory, suffix, now):
+            compress_log(path)
         path = directory / filename
         if batch_id is not None and contains_batch(path, batch_id):
             return

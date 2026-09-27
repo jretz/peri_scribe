@@ -6,6 +6,7 @@ import defusedxml.ElementTree as DefusedElementTree
 import pytest
 import shapely.geometry
 
+import document_text.encoding
 import kml_io.geometry
 import tests.helpers.assertions.kml_io.geometry
 import tests.helpers.factories.geometry
@@ -21,7 +22,15 @@ def test_kml_writer_geometry_xml_keeps_distinct_temporary_polygons() -> None:
     ])
 
 
-@pytest.mark.parametrize("description", [None, "A & B", "<![CDATA[<b>Map</b>]]>"])
+@pytest.mark.parametrize(
+    "description",
+    [
+        None,
+        "A & B",
+        "<![CDATA[<b>Map</b>]]>",
+        document_text.encoding.CData("<b>Map</b>"),
+    ],
+)
 def test_kml_writer_document_preserves_names_styles_and_description(
     description: str | None,
 ) -> None:
@@ -38,7 +47,7 @@ def test_kml_writer_document_preserves_names_styles_and_description(
     assert [style.get("id") for style in document.findall(tag("Style"))] == ["water"]
     expected_description = (
         "<b>Map</b>"
-        if description and description.startswith("<![CDATA[")
+        if isinstance(description, document_text.encoding.CData)
         else description
     )
     assert document.findtext(tag("description")) == expected_description

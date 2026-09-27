@@ -5,6 +5,7 @@ from __future__ import annotations
 import functools
 import html
 
+import document_text.encoding
 import peri_scribe.presentation.descriptions
 from measurement_units import units
 
@@ -23,7 +24,7 @@ def escape_html_text(value: str) -> str:
     Returns:
         The text with HTML-significant characters escaped.
     """
-    return html.escape(value, quote=False)
+    return html.escape(document_text.encoding.normalized(value), quote=False)
 
 
 @functools.cache
@@ -31,7 +32,7 @@ def description_html(
     description: peri_scribe.presentation.descriptions.FireDescription,
     image_filenames: tuple[str, ...] = (),
     leading_rows: tuple[tuple[str, str | None], ...] = (),
-) -> str:
+) -> document_text.encoding.CData:
     """Return *description* as the HTML KML balloon text.
 
     The text is wrapped in a CDATA section so the HTML tags it contains survive as
@@ -75,7 +76,8 @@ def description_html(
         )
     parts.append("</table>")
     parts.extend(
-        f'<br/><img src="{html.escape(filename, quote=True)}" />'
+        f'<br/><img src="{escaped}" />'
         for filename in image_filenames
+        for escaped in [html.escape(document_text.encoding.normalized(filename))]
     )
-    return "<![CDATA[" + "".join(parts) + "]]>"
+    return document_text.encoding.CData("".join(parts))

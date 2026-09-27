@@ -63,24 +63,17 @@ def modified_datetime_from(value: object) -> datetime.datetime | None:
     if peri_scribe.geo.parsing.is_missing(value):
         return None
 
-    parsed: datetime.datetime | None
-    if isinstance(value, datetime.datetime):
-        parsed = value
-    elif isinstance(value, str):
-        parsed = parse_iso_datetime(value)
-    elif isinstance(value, (int, float)) and not isinstance(value, bool):
-        parsed = datetime.datetime.fromtimestamp(
-            (value * units.milliseconds).m_as("seconds"),
-            tz=datetime.UTC,
-        )
-    else:
-        parsed = None
-
-    if parsed is None:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=datetime.UTC)
-    return parsed.astimezone(datetime.UTC)
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        try:
+            return datetime.datetime.fromtimestamp(
+                (value * units.milliseconds).m_as("seconds"),
+                tz=datetime.UTC,
+            )
+        except OverflowError, ValueError, OSError:
+            return None
+    if isinstance(value, str):
+        value = parse_iso_datetime(value)
+    return peri_scribe.geo.parsing.observation_time_from(value)
 
 
 def latest_modified_datetime(

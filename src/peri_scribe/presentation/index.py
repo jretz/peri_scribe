@@ -124,6 +124,7 @@ def area_qualified_index(
                 peri_scribe.presentation.selection.identifiers(entry),
                 entry.name,
                 qualifying_keys,
+                entry.component_id,
             )
         ],
     )

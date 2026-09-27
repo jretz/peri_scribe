@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import pathlib
+
 import peri_scribe.execution
 import peri_scribe.presentation.index
 import tests.helpers.factories.geography
+import tests.helpers.factories.peri_scribe.component_identity
 import tests.helpers.factories.peri_scribe.kml.parsing
 import tests.helpers.factories.time
 
@@ -108,3 +111,18 @@ def test_area_qualified_index_includes_independent_incident_history() -> None:
         )
         == index
     )
+
+
+def test_prepare_histories_keeps_distinct_anonymous_components_separate(
+    tmp_path: pathlib.Path,
+) -> None:
+    expected_count = 2
+    factory = tests.helpers.factories.peri_scribe.component_identity
+    index, perimeters, points = factory.histories(factory.sources(tmp_path), tmp_path)
+    assert len(index.fires) == expected_count
+    histories = peri_scribe.presentation.index.prepare_histories(
+        index,
+        perimeters,
+        points,
+    )
+    assert len(histories) == expected_count

@@ -389,3 +389,18 @@ def test_group_fire_record_indices_unions_distinct_geometry_classes() -> None:
     ]
     groups = peri_scribe.fires.grouping.group_fire_record_indices(records)
     assert groups == [[0, 1, 2]]
+
+
+def test_fire_complexes_preserves_undated_membership_calls() -> None:
+    fire = peri_scribe.models.Fire(
+        name="Child",
+        status=peri_scribe.models.FireStatus.ACTIVE,
+    )
+    membership = peri_scribe.models.ComplexMembership(
+        fire_identifier="child",
+        complex_identifier="external",
+        complex_name="Parent",
+    )
+    complexes = peri_scribe.fires.grouping.fire_complexes([membership], {"child": fire})
+    assert fire.complex is complexes[0]
+    assert complexes[0].fires == frozenset({fire})

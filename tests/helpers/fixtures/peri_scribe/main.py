@@ -16,12 +16,12 @@ import peri_scribe.kml.builder
 import peri_scribe.logging
 import peri_scribe.output
 import peri_scribe.pipeline
-import peri_scribe.pipeline_state
 import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.fetching
 import peri_scribe.sources.full_fetch_state
 import peri_scribe.sources.validation
 import tests.helpers.doubles.peri_scribe.main
+import tests.helpers.doubles.peri_scribe.pipeline_state
 import tests.helpers.factories.peri_scribe.sources.snapshots
 
 
@@ -115,15 +115,9 @@ def run_stubs(
         Returns:
             The configured fetch outcome and captured pipeline calls.
         """
-        monkeypatch.setattr(
-            peri_scribe.pipeline_state,
-            "state_path",
-            lambda _year: tmp_path / "run_state.json",
-        )
-        monkeypatch.setattr(
-            peri_scribe.pipeline_state,
-            "lock_path",
-            lambda _year: tmp_path / ".run.lock",
+        tests.helpers.doubles.peri_scribe.pipeline_state.isolate_files(
+            monkeypatch,
+            tmp_path,
         )
         stubs = tests.helpers.doubles.peri_scribe.main.RunStubs(
             fetch_result=peri_scribe.sources.fetching.FetchResult(
@@ -273,6 +267,7 @@ def run_stubs(
 @pytest.fixture
 def validate_sources_stubs(
     monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
 ) -> typing.Callable[
     [tuple[peri_scribe.sources.validation.FeedValidationResult, ...]],
     tests.helpers.doubles.peri_scribe.main.ValidateSourcesStubs,
@@ -281,6 +276,7 @@ def validate_sources_stubs(
 
     Args:
         monkeypatch: Replace dependencies and restore them after the test.
+        tmp_path: Isolated location for real lock and recovery state files.
 
     Returns:
         A callable taking the validation results to serve and returning the recorded
@@ -298,6 +294,10 @@ def validate_sources_stubs(
         Returns:
             The captured complete fetch, incremental fetch, and validation calls.
         """
+        tests.helpers.doubles.peri_scribe.pipeline_state.isolate_files(
+            monkeypatch,
+            tmp_path,
+        )
         stubs = tests.helpers.doubles.peri_scribe.main.ValidateSourcesStubs(
             fetch_complete_calls=[],
             fetch_incremental_calls=[],

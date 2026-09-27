@@ -349,6 +349,10 @@ def run_fetch_stage(
 ) -> bool:
     """Run required output work when the publication policy permits it.
 
+    Ungated collection records recovery requirements before input mutation. Only a
+    successful unchanged incremental fetch without deferred inputs can restore the prior
+    requirements.
+
     Args:
         year_directory: The directory holding the year's sources and outputs.
         full_fetch_interval: How often to force full collection, or None.
@@ -357,9 +361,6 @@ def run_fetch_stage(
 
     Returns:
         Whether the selected downstream stages should run.
-
-    Raises:
-        SystemExit: If fetching fails; the required rebuild remains pending.
     """
     if publish_threshold is not None:
         return run_gated_fetch_stage(
@@ -368,28 +369,20 @@ def run_fetch_stage(
             unconditional=unconditional,
             threshold=publish_threshold,
         )
-    result, _full = fetch_fire_sources(
+    previous = peri_scribe.pipeline_state.read_state(year_directory)
+    deferred = peri_scribe.pipeline_state.deferred_inputs_path(year_directory).exists()
+    peri_scribe.pipeline_state.require_stages(
+        year_directory,
+        peri_scribe.pipeline_state.DERIVED_STAGES,
+    )
+    peri_scribe.pipeline_state.clear_deferred_inputs(year_directory)
+    result, full = fetch_fire_sources(
         year_directory,
         full_fetch_interval=full_fetch_interval,
     )
-    if result.changed:
-        peri_scribe.pipeline_state.require_stages(
-            year_directory,
-            peri_scribe.pipeline_state.DERIVED_STAGES,
-        )
-    try:
-        evacuations_changed = refresh_external_sources(year_directory)
-    except Exception, SystemExit:
-        peri_scribe.pipeline_state.require_stages(
-            year_directory,
-            peri_scribe.pipeline_state.DERIVED_STAGES,
-        )
-        raise
-    if evacuations_changed:
-        peri_scribe.pipeline_state.require_stages(
-            year_directory,
-            peri_scribe.pipeline_state.DERIVED_STAGES,
-        )
+    evacuations_changed = refresh_external_sources(year_directory)
+    if not (result.changed or evacuations_changed or full or deferred):
+        peri_scribe.pipeline_state.write_state(year_directory, previous)
     return (
         result.changed
         or evacuations_changed
@@ -419,6 +412,7 @@ def run_gated_fetch_stage(
     Raises:
         SystemExit: If fetching or evaluating saved inputs fails.
     """
+    peri_scribe.pipeline_state.defer_inputs(year_directory)
     _result, full = fetch_fire_sources(
         year_directory,
         full_fetch_interval=full_fetch_interval,
@@ -450,6 +444,8 @@ def run_gated_fetch_stage(
         threshold=threshold.area.to("acres"),
     )
     if not proceed:
+        if decision.reason == peri_scribe.publication.Reason.NO_CHANGES:
+            peri_scribe.pipeline_state.clear_deferred_inputs(year_directory)
         peri_scribe.logging.skip_phases(
             (peri_scribe.phases.Phase.DEFERRED_FETCH,),
             decision.reason,
@@ -459,6 +455,7 @@ def run_gated_fetch_stage(
         year_directory,
         peri_scribe.pipeline_state.DERIVED_STAGES,
     )
+    peri_scribe.pipeline_state.clear_deferred_inputs(year_directory)
     with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.DEFERRED_FETCH):
         prepare_administrative_boundaries(year_directory)
         peri_scribe.fires.index.index_fire_sources(year_directory)
@@ -988,6 +985,22 @@ def validate_sources(year_directory: pathlib.Path) -> None:
         year_directory: Directory containing the year's source snapshots and derived
             outputs.
     """
+    with peri_scribe.pipeline_state.run_lock(year_directory) as acquired:
+        if not acquired:
+            logger.info(
+                "Another writer owns this year; skipping validation",
+                year=str(year_directory),
+            )
+            return
+        validate_locked_sources(year_directory)
+
+
+def validate_locked_sources(year_directory: pathlib.Path) -> None:
+    """Retain rebuild intent when validation's incremental fetch changes source data.
+
+    Args:
+        year_directory: The year whose exclusive writer lock is held by the caller.
+    """
     base_directory = peri_scribe.sources.snapshots.base_directory_for_year_directory(
         year_directory,
     )
@@ -997,7 +1010,14 @@ def validate_sources(year_directory: pathlib.Path) -> None:
     )
     peri_scribe.output.remove_directory_tree(complete_directory)
     peri_scribe.sources.fetching.fetch_all_feeds_complete(base_directory, year=year)
-    peri_scribe.sources.fetching.fetch_all_feeds(base_directory, year=year)
+    previous = peri_scribe.pipeline_state.read_state(year_directory)
+    peri_scribe.pipeline_state.require_stages(
+        year_directory,
+        peri_scribe.pipeline_state.DERIVED_STAGES,
+    )
+    collected = peri_scribe.sources.fetching.fetch_all_feeds(base_directory, year=year)
+    if not collected.changed:
+        peri_scribe.pipeline_state.write_state(year_directory, previous)
     results = peri_scribe.sources.validation.validate_complete_sources(
         year_directory,
         peri_scribe.sources.feeds.FEEDS,
@@ -1015,6 +1035,9 @@ def validate_sources(year_directory: pathlib.Path) -> None:
             missing_features=len(result.missing_object_ids),
             mismatched_features=len(result.mismatched_object_ids),
             columns_missing_from_stored=sorted(result.columns_missing_from_stored),
+            duplicate_complete_object_ids=sorted(result.duplicate_complete_object_ids),
+            duplicate_stored_object_ids=sorted(result.duplicate_stored_object_ids),
+            coordinate_reference_mismatch=result.coordinate_reference_mismatch,
         )
     logger.error(
         "Validation found problems in %d of %d feeds",

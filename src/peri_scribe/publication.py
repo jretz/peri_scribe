@@ -15,6 +15,7 @@ import pydantic
 import shapely
 import structlog
 
+import peri_scribe.fires.identity
 import peri_scribe.geo.package
 import peri_scribe.geo.parsing
 import peri_scribe.models
@@ -646,14 +647,28 @@ def published_fires(
         for identifier in [entry.identifier, *entry.aliases]
         if identifier is not None
     }
-    included_names = {entry.name for entry in index.fires if entry.identifier is None}
+    included_names = {
+        entry.name
+        for entry in index.fires
+        if entry.identifier is None and entry.component_id is None
+    }
+    included_components = {
+        entry.component_id for entry in index.fires if entry.component_id is not None
+    }
     fires: dict[str, PublishedFire] = {}
     for _, row in perimeters.iterrows():
         identifier = peri_scribe.geo.parsing.normalize_identifier(
             row["fire_identifier"],
         )
         name = str(row["fire_name"])
-        key = "id:" + identifier if identifier is not None else "name:" + name
+        component_id = peri_scribe.fires.identity.normalized_identifier(
+            row.get("fire_component_id"),
+        )
+        key = (
+            "id:" + identifier
+            if identifier is not None
+            else peri_scribe.fires.identity.identity_key(name, None, component_id)
+        )
         aliases_value = row["fire_aliases"]
         aliases = {
             alias
@@ -681,7 +696,12 @@ def published_fires(
         if key in fires:
             aliases.update(fires[key].identifiers)
         included = bool(aliases & included_identifiers) or (
-            identifier is None and name in included_names
+            identifier is None
+            and (
+                component_id in included_components
+                if component_id is not None
+                else name in included_names
+            )
         )
         fires[key] = PublishedFire(
             identifiers=tuple(sorted(aliases)),

@@ -14,6 +14,7 @@ import peri_scribe.logging
 
 
 pytest_plugins = [
+    "tests.formal.helpers.fixtures.plugin",
     "tests.helpers.fixtures.arcgis",
     "tests.helpers.fixtures.peri_scribe.fires.history",
     "tests.helpers.fixtures.peri_scribe.fires.incident_history",

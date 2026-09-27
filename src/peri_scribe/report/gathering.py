@@ -47,6 +47,7 @@ class FireReportEntry:
 
     name: str
     identifier: str | None = None
+    component_id: str | None = None
     status: peri_scribe.models.FireStatus
     description: peri_scribe.presentation.descriptions.FireDescription | None = None
     growth: pint.Quantity[float] | None = None
@@ -77,9 +78,9 @@ def fire_identity(
 ) -> peri_scribe.presentation.selection.AreaKey:
     """Return the tagged report identity of *fire*.
 
-    The identity is the one the report uses to tell fires apart, so two fires that share
-    a name but not an identifier stay distinct, and a fire without identifiers is
-    identified by its name. Tags distinguish a name from an identical identifier.
+    External identifiers take priority; anonymous source components remain distinct
+    even when their display names match. Legacy summaries without either identity keep
+    their tagged name fallback.
 
     Args:
         fire: The fire to identify.
@@ -88,7 +89,11 @@ def fire_identity(
         The fire's report identity.
     """
     identifier = peri_scribe.models.canonical_fire_identifier(fire.identifiers)
-    return peri_scribe.presentation.selection.fire_area_key(identifier, fire.name)
+    return peri_scribe.presentation.selection.fire_area_key(
+        identifier,
+        fire.name,
+        fire.component_id,
+    )
 
 
 def read_cities_layer(year_directory: pathlib.Path) -> geopandas.GeoDataFrame:
@@ -172,7 +177,10 @@ def fire_locations(
 def report_entry(
     fire: peri_scribe.presentation.fire_data.FireSummary,
     scores_by_identifier: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
-    scores_by_name: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
+    scores_by_name: typing.Mapping[
+        str | tuple[str, str],
+        peri_scribe.models.FireScoreEntry,
+    ],
     reference_time: datetime.datetime,
     *,
     location: str | None = None,
@@ -201,6 +209,7 @@ def report_entry(
     return FireReportEntry(
         name=fire.name,
         identifier=peri_scribe.models.canonical_fire_identifier(fire.identifiers),
+        component_id=fire.component_id,
         status=fire.status,
         description=fire.description,
         growth=growth,
@@ -217,7 +226,10 @@ def report_entry(
 def report_entries(
     fires: typing.Iterable[peri_scribe.presentation.fire_data.FireSummary],
     scores_by_identifier: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
-    scores_by_name: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
+    scores_by_name: typing.Mapping[
+        str | tuple[str, str],
+        peri_scribe.models.FireScoreEntry,
+    ],
     reference_time: datetime.datetime,
     *,
     locations_by_identity: typing.Mapping[
@@ -262,7 +274,10 @@ def report_entries(
 def located_entries(
     fires: typing.Iterable[peri_scribe.presentation.fire_data.FireSummary],
     scores_by_identifier: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
-    scores_by_name: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
+    scores_by_name: typing.Mapping[
+        str | tuple[str, str],
+        peri_scribe.models.FireScoreEntry,
+    ],
     reference_time: datetime.datetime,
     year_directory: pathlib.Path,
 ) -> tuple[FireReportEntry, ...]:
@@ -295,9 +310,8 @@ def located_entries(
 def report_details(*args: tuple[FireReportEntry, ...]) -> tuple[FireReportEntry, ...]:
     """Return one entry per distinct fire across *args*, sorted by name.
 
-    A fire is identified by its canonical identifier when it has one, and by its name
-    otherwise, mirroring how the KMZ matches a fire to its saved score, so a fire
-    mentioned in several sections appears once in the returned details.
+    Tagged external, component, and legacy name identities retain distinct namesakes.
+    A fire mentioned in several sections appears once in the returned details.
 
     Args:
         args: The report's fire lists.
@@ -314,6 +328,7 @@ def report_details(*args: tuple[FireReportEntry, ...]) -> tuple[FireReportEntry,
             identity = peri_scribe.presentation.selection.fire_area_key(
                 entry.identifier,
                 entry.name,
+                entry.component_id,
             )
             entries_by_identity.setdefault(identity, entry)
     return tuple(
@@ -323,6 +338,7 @@ def report_details(*args: tuple[FireReportEntry, ...]) -> tuple[FireReportEntry,
                 entry.name.casefold(),
                 entry.name,
                 entry.identifier or "",
+                entry.component_id or "",
             ),
         ),
     )
@@ -378,6 +394,49 @@ def gather_report(year_directory: pathlib.Path) -> FireReport:
     return report_from_fires(fires, fire_scores, year_directory)
 
 
+def associated_report_entries(
+    fires: typing.Sequence[peri_scribe.presentation.fire_data.FireSummary],
+    scores: peri_scribe.models.FireScores,
+    reference_time: datetime.datetime,
+    year_directory: pathlib.Path,
+    *,
+    selected_fires: typing.Sequence[peri_scribe.presentation.fire_data.FireSummary],
+) -> dict[int, FireReportEntry]:
+    """Keep each report's displayed score paired with its full-collection owner.
+
+    Args:
+        fires: The complete showable collection used for score resolution.
+        scores: Saved score evidence.
+        reference_time: The report's shared growth measurement instant.
+        year_directory: Location of the optional cities dataset.
+        selected_fires: The distinct fires included in at least one report section.
+
+    Returns:
+        Selected report entries keyed by their source fire objects.
+    """
+    associated = {
+        id(fire): entry
+        for fire, entry in peri_scribe.presentation.views.matched_fire_scores(
+            fires,
+            scores,
+        )
+    }
+    locations = fire_locations(selected_fires, read_cities_layer(year_directory))
+    return {
+        id(fire): dataclasses.replace(
+            report_entry(
+                fire,
+                {},
+                {},
+                reference_time,
+                location=locations.get(fire_identity(fire)),
+            ),
+            score=associated[id(fire)].score if id(fire) in associated else None,
+        )
+        for fire in selected_fires
+    }
+
+
 def report_from_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
     fires: list[Fire],
     fire_scores: peri_scribe.models.FireScores,
@@ -393,55 +452,40 @@ def report_from_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
     Returns:
         The report's sections and their deduplicated fire details.
     """
-    scores_by_identifier, scores_by_name = peri_scribe.presentation.views.score_maps(
-        fire_scores,
-    )
     reference_time = datetime.datetime.now(datetime.UTC)
-    new_notable_entries = located_entries(
+    sections = (
         peri_scribe.presentation.views.new_notable_fires(
             fires,
             fire_scores,
             reference_time,
         ),
-        scores_by_identifier,
-        scores_by_name,
-        reference_time,
-        year_directory,
-    )
-    type_one_entries = located_entries(
         peri_scribe.presentation.views.type_one_fires(fires),
-        scores_by_identifier,
-        scores_by_name,
-        reference_time,
-        year_directory,
-    )
-    fast_growing_by_acres_entries = located_entries(
         peri_scribe.presentation.views.fast_growing_fires_by_acres(
             fires,
             reference_time,
         ),
-        scores_by_identifier,
-        scores_by_name,
-        reference_time,
-        year_directory,
-    )
-    fast_growing_by_percent_entries = located_entries(
         peri_scribe.presentation.views.fast_growing_fires_by_percent(
             fires,
             reference_time,
         ),
-        scores_by_identifier,
-        scores_by_name,
-        reference_time,
-        year_directory,
-    )
-    top_fire_entries = located_entries(
         peri_scribe.presentation.views.top_fires(fires, fire_scores),
-        scores_by_identifier,
-        scores_by_name,
+    )
+    selected_ids = {id(fire) for section in sections for fire in section}
+    selected_fires = {id(fire): fire for fire in fires if id(fire) in selected_ids}
+    entries = associated_report_entries(
+        fires,
+        fire_scores,
         reference_time,
         year_directory,
+        selected_fires=tuple(selected_fires.values()),
     )
+    (
+        new_notable_entries,
+        type_one_entries,
+        fast_growing_by_acres_entries,
+        fast_growing_by_percent_entries,
+        top_fire_entries,
+    ) = (tuple(entries[id(fire)] for fire in section) for section in sections)
     return FireReport(
         new_notable_fires=new_notable_entries,
         type_one_fires=type_one_entries,

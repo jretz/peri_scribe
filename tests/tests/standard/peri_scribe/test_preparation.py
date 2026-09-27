@@ -36,20 +36,29 @@ def test_unconditional_rebuild_inherits_owning_publication(
             ) is (requested or owner)
 
 
-@pytest.mark.parametrize("package", ["peri_scribe", "aircraft_registration"])
+@pytest.mark.parametrize(
+    "package",
+    ["peri_scribe", "aircraft_registration", "document_text"],
+)
 def test_runtime_fingerprint_changes_for_source_bytes_even_at_same_file_size(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
     package: str,
 ) -> None:
-    source_root = tmp_path / "src"
-    path = source_root / package / "preparation.py"
-    path.parent.mkdir(parents=True)
+    source_root = pathlib.Path(peri_scribe.preparation.__file__).parents[1]
+    dependency = source_root / package / "__init__.py"
+    path = tmp_path / "dependency.py"
     path.write_text("# first\n")
+    open_path = pathlib.Path.open
+    # Substitute only the dependency bytes, keeping coverage's source identity intact.
     monkeypatch.setattr(
-        peri_scribe.preparation,
-        "__file__",
-        str(source_root / "peri_scribe" / "preparation.py"),
+        pathlib.Path,
+        "open",
+        lambda requested, *args, **kwargs: open_path(
+            path if requested == dependency else requested,
+            *args,
+            **kwargs,
+        ),
     )
     before = peri_scribe.preparation.runtime_fingerprint()
     path.write_text("# other\n")

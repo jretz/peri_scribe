@@ -131,3 +131,41 @@ def test_write_state_retains_previous_marker_when_publish_fails(
             peri_scribe.pipeline_state.PendingRun(),
         )
     assert peri_scribe.pipeline_state.read_state(tmp_path) == original
+
+
+def test_read_lock_excludes_writers_and_allows_other_readers(
+    tmp_path: pathlib.Path,
+) -> None:
+    with peri_scribe.pipeline_state.read_lock(tmp_path) as first:
+        assert first
+        with peri_scribe.pipeline_state.run_lock(tmp_path) as writer:
+            assert not writer
+        with peri_scribe.pipeline_state.read_lock(tmp_path) as second:
+            assert second
+    with peri_scribe.pipeline_state.run_lock(tmp_path) as writer:
+        assert writer
+
+
+def test_read_lock_allows_live_writer_and_other_year(tmp_path: pathlib.Path) -> None:
+    with peri_scribe.pipeline_state.run_lock(tmp_path) as writer:
+        assert writer
+        with peri_scribe.pipeline_state.read_lock(tmp_path) as reader:
+            assert reader
+        with peri_scribe.pipeline_state.read_lock(tmp_path / "other") as other:
+            assert other
+
+
+def test_read_lock_rejects_inherited_ownership_from_another_process(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with peri_scribe.pipeline_state.run_lock(tmp_path) as writer:
+        assert writer
+        process = peri_scribe.pipeline_state.os.getpid()
+        monkeypatch.setattr(
+            peri_scribe.pipeline_state.os,
+            "getpid",
+            lambda: process + 1,
+        )
+        with peri_scribe.pipeline_state.read_lock(tmp_path) as reader:
+            assert not reader

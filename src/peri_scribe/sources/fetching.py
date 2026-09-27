@@ -7,6 +7,7 @@ import dataclasses
 import datetime
 import functools
 import pathlib
+import tempfile
 import typing
 
 import arcgis.features
@@ -389,15 +390,20 @@ def fetch_feed_snapshot(
             ),
         )
         output_path.parent.mkdir(parents=True, exist_ok=True)
-        with peri_scribe.logging.log_phase(
-            peri_scribe.phases.Phase.WRITE_SNAPSHOT,
-            feed=feed.name,
-            path=output_path,
-            rows=len(geodataframe),
-            crs=geodataframe.crs,
+        with (
+            peri_scribe.logging.log_phase(
+                peri_scribe.phases.Phase.WRITE_SNAPSHOT,
+                feed=feed.name,
+                path=output_path,
+                rows=len(geodataframe),
+                crs=geodataframe.crs,
+            ),
+            tempfile.TemporaryDirectory(dir=output_path.parent) as directory,
         ):
+            # Recursive discovery must reject names in abandoned staging directories.
+            temporary = pathlib.Path(directory) / "snapshot.gpkg"
             spatial_data.layers.write_geopackage(
-                output_path,
+                temporary,
                 [
                     spatial_data.layers.LayerData(
                         name=feed.name,
@@ -405,6 +411,7 @@ def fetch_feed_snapshot(
                     ),
                 ],
             )
+            temporary.replace(output_path)
         try:
             with peri_scribe.logging.log_phase(
                 peri_scribe.phases.Phase.UPDATE_CURRENT_STATE,

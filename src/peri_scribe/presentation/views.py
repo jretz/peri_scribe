@@ -10,6 +10,7 @@ import typing
 import peri_scribe.models
 import peri_scribe.presentation.fire_data
 import peri_scribe.presentation.perimeters
+import peri_scribe.presentation.score_association
 import peri_scribe.presentation.selection
 from measurement_units import units
 
@@ -39,30 +40,25 @@ MOST_PERSONNEL_UPDATE_LOOKBACK = datetime.timedelta(days=7)
 NOTABLE_SCORE_FRACTION = 0.20
 
 
-def score_fire[Fire: peri_scribe.presentation.fire_data.FireSummary](
-    entry: peri_scribe.models.FireScoreEntry,
-    fires_by_identifier: typing.Mapping[str, Fire],
-    fires_by_name: typing.Mapping[str, Fire],
-) -> Fire | None:
-    """Return the geometry matching *entry*, by identifier first and then name.
+def matched_fire_scores[Fire: peri_scribe.presentation.fire_data.FireSummary](
+    fires: typing.Sequence[Fire],
+    scores: peri_scribe.models.FireScores,
+) -> list[tuple[Fire, peri_scribe.models.FireScoreEntry]]:
+    """Preserve the winning source score through ranked selection and displayed facts.
 
     Args:
-        entry: One saved score.
-        fires_by_identifier: The showable fires keyed by each identifier.
-        fires_by_name: The showable fires keyed by name.
+        fires: Every showable fire, including same-name identities.
+        scores: Saved score rows before identity matching.
 
     Returns:
-        The entry's geometry, or None when neither its identifier nor its name matches a
-        showable fire.
+        Distinct resolved fires with their winning rows in score order.
     """
-    fire = (
-        fires_by_identifier.get(entry.identifier)
-        if entry.identifier is not None
-        else None
+    associated = peri_scribe.presentation.score_association.associated_scores(
+        tuple((fire.name, fire.identifiers) for fire in fires),
+        scores,
+        component_ids=tuple(fire.component_id for fire in fires),
     )
-    if fire is None:
-        fire = fires_by_name.get(entry.name)
-    return fire
+    return [(fires[index], entry) for index, entry in associated.items()]
 
 
 def top_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
@@ -83,28 +79,16 @@ def top_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
     Returns:
         The top fires in descending score order.
     """
-    fires_by_identifier = {
-        identifier: fire for fire in fires for identifier in fire.identifiers
-    }
-    fires_by_name = {fire.name: fire for fire in fires}
-    matched = [
-        score_fire(entry, fires_by_identifier, fires_by_name)
-        for entry in sorted(
-            scores.fires,
-            key=lambda entry: (
-                -entry.score,
-                peri_scribe.presentation.fire_data.fire_name_key(entry),
-            ),
-        )
+    return [fire for fire, _entry in matched_fire_scores(fires, scores)][
+        :TOP_FIRE_COUNT
     ]
-    return [fire for fire in matched if fire is not None][:TOP_FIRE_COUNT]
 
 
 def score_maps(
     scores: peri_scribe.models.FireScores,
 ) -> tuple[
     dict[str, peri_scribe.models.FireScoreEntry],
-    dict[str, peri_scribe.models.FireScoreEntry],
+    dict[str | tuple[str, str], peri_scribe.models.FireScoreEntry],
 ]:
     """Return the score entries keyed by identifier and by name.
 
@@ -119,20 +103,36 @@ def score_maps(
         The entries keyed by identifier and by name.
     """
     scores_by_identifier: dict[str, peri_scribe.models.FireScoreEntry] = {}
-    scores_by_name: dict[str, peri_scribe.models.FireScoreEntry] = {}
+    scores_by_name: dict[str | tuple[str, str], peri_scribe.models.FireScoreEntry] = {}
     for entry in scores.fires:
         identifier = entry.identifier
         if identifier is not None:
             scores_by_identifier[identifier] = entry
         else:
-            scores_by_name[entry.name] = entry
+            scores_by_name[score_name_key(entry.name, entry.component_id)] = entry
     return scores_by_identifier, scores_by_name
+
+
+def score_name_key(name: str, component_id: str | None) -> str | tuple[str, str]:
+    """Keep legacy name keys separate from exact source-component score identities.
+
+    Args:
+        name: The fire's display name for legacy score files.
+        component_id: The anonymous component known to both score and output.
+
+    Returns:
+        A tagged component key or the legacy name key.
+    """
+    return name if component_id is None else ("component", component_id)
 
 
 def score_entry_for_fire(
     fire: peri_scribe.presentation.fire_data.FireSummary,
     scores_by_identifier: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
-    scores_by_name: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
+    scores_by_name: typing.Mapping[
+        str | tuple[str, str],
+        peri_scribe.models.FireScoreEntry,
+    ],
 ) -> peri_scribe.models.FireScoreEntry | None:
     """Return *fire*'s score entry, or None when no entry matches it.
 
@@ -153,14 +153,17 @@ def score_entry_for_fire(
         scores_by_identifier,
     )
     if entry is None:
-        entry = scores_by_name.get(fire.name)
+        entry = scores_by_name.get(score_name_key(fire.name, fire.component_id))
     return entry
 
 
 def score_value_for_fire(
     fire: peri_scribe.presentation.fire_data.FireSummary,
     scores_by_identifier: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
-    scores_by_name: typing.Mapping[str, peri_scribe.models.FireScoreEntry],
+    scores_by_name: typing.Mapping[
+        str | tuple[str, str],
+        peri_scribe.models.FireScoreEntry,
+    ],
 ) -> int | None:
     """Return *fire*'s score, or None when no entry matches it.
 
@@ -193,14 +196,11 @@ def notable_score_threshold(
     Returns:
         The cutoff score, or None when no active fire has a score.
     """
-    scores_by_identifier, scores_by_name = score_maps(scores)
-    active_scores: list[int] = []
-    for fire in fires:
-        if fire.status is not peri_scribe.models.FireStatus.ACTIVE:
-            continue
-        score = score_value_for_fire(fire, scores_by_identifier, scores_by_name)
-        if score is not None:
-            active_scores.append(score)
+    active_scores = [
+        entry.score
+        for fire, entry in matched_fire_scores(fires, scores)
+        if fire.status is peri_scribe.models.FireStatus.ACTIVE
+    ]
     if not active_scores:
         return None
     active_scores.sort(reverse=True)
@@ -262,19 +262,15 @@ def new_notable_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
     threshold = notable_score_threshold(fires, scores)
     if threshold is None:
         return []
-    scores_by_identifier, scores_by_name = score_maps(scores)
     cutoff = reference_time - NEW_NOTABLE_DISCOVERY_LOOKBACK
     scored: list[tuple[Fire, int]] = []
-    for fire in fires:
+    for fire, entry in matched_fire_scores(fires, scores):
         discovery_time = (
             fire.description.discovery_time if fire.description is not None else None
         )
         if discovery_time is None:
             continue
         if discovery_time < cutoff or discovery_time > reference_time:
-            continue
-        entry = score_entry_for_fire(fire, scores_by_identifier, scores_by_name)
-        if entry is None:
             continue
         if entry.score >= threshold or new_notable_signals_qualify(entry):
             scored.append((fire, entry.score))

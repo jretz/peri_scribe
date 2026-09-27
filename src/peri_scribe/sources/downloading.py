@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import contextlib
 import pathlib
 import tempfile
+import typing
 import urllib.parse
 
 import structlog
@@ -107,11 +109,11 @@ def stream_combined_source(
 
     Each state's archive is downloaded and converted as one stream: the archive is
     decompressed as its bytes arrive and each footprint is reduced to its centroid
-    point, appended directly into the source's single GeoPackage. Nothing is written to
-    disk except the combined GeoPackage, so the archive, its GeoJSON, and the per-state
-    files never exist. When the combined GeoPackage already exists, the download is
-    skipped entirely, since the archives are large and rarely change, and the page of
-    per-state links is not read.
+    point, appended into a temporary GeoPackage and published after every state
+    finishes. Only the combined GeoPackage is written to disk, so the archive, its
+    GeoJSON, and the per-state files never exist. When the combined GeoPackage already
+    exists, the download is skipped entirely, since the archives are large and rarely
+    change, and the page of per-state links is not read.
 
     Args:
         source: The combined streaming download-backed external source.
@@ -139,11 +141,17 @@ def stream_combined_source(
     layer_name = source.layer_name or source.name
     feature_count = 0
     wrote_any = False
-    for state in source.states:
-        url = state_download_url(source, state, state_urls)
-        count = stream_download_and_convert(url, output, layer_name, append=wrote_any)
-        wrote_any = wrote_any or count > 0
-        feature_count += count
+    with completed_download(output) as temporary:
+        for state in source.states:
+            url = state_download_url(source, state, state_urls)
+            count = stream_download_and_convert(
+                url,
+                temporary,
+                layer_name,
+                append=wrote_any,
+            )
+            wrote_any = wrote_any or count > 0
+            feature_count += count
     logger.debug("Combined external source", path=output, features=feature_count)
     return output
 
@@ -219,8 +227,9 @@ def combine_downloaded_source(
     wrote_any = False
     feature_count = 0
     output.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=output.parent) as temporary_directory:
-        temporary_path = pathlib.Path(temporary_directory)
+    with completed_download(output) as temporary:
+        temporary_path = temporary.parent / "states"
+        temporary_path.mkdir()
         for state in source.states:
             state_output = temporary_path / f"{state}.gpkg"
             url = state_download_url(source, state, state_urls)
@@ -234,7 +243,7 @@ def combine_downloaded_source(
                     spatial_data.reference.WGS84_SPATIAL_REFERENCE,
                 )
                 spatial_data.layers.append_geopackage_chunk(
-                    output,
+                    temporary,
                     layer_name,
                     dataframe,
                     replace=not wrote_any,
@@ -275,13 +284,36 @@ def download_and_convert(
                 extraction_path,
                 source.geodata_suffix,
             )
-            peri_scribe.sources.conversion.convert_to_geopackage(
-                geodata_path,
-                output,
-                source.layer_name or source.name,
-                centroids=source.centroids,
-                keep_attributes=source.keep_attributes,
-            )
+            with completed_download(output) as temporary:
+                peri_scribe.sources.conversion.convert_to_geopackage(
+                    geodata_path,
+                    temporary,
+                    source.layer_name or source.name,
+                    centroids=source.centroids,
+                    keep_attributes=source.keep_attributes,
+                )
     finally:
         archive_path.unlink(missing_ok=True)
     return output
+
+
+@contextlib.contextmanager
+def completed_download(output: pathlib.Path) -> typing.Iterator[pathlib.Path]:
+    """Keep interrupted conversions from becoming reusable source files.
+
+    Args:
+        output: Published source path on the same filesystem as its staging directory.
+
+    Yields:
+        A private destination whose completed contents will replace the published file.
+    """
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=output.parent) as directory:
+        temporary = pathlib.Path(directory) / output.name
+        try:
+            yield temporary
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise
+        else:
+            temporary.replace(output)

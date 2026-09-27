@@ -433,3 +433,81 @@ def test_record_cache_row_values_are_json_safe() -> None:
     assert attributes["when"] == "2026-08-29T00:00:00+00:00"
     assert attributes["count"] == json_safe_count
     assert isinstance(attributes["odd"], str)
+
+
+@pytest.mark.parametrize("flag", [None, "", " ", float("nan")])
+def test_complex_memberships_from_row_ignores_unknown_relationship_flags(
+    flag: object,
+) -> None:
+    row = pd.Series({"IrwinID": "child", "IsCpxChild": flag})
+    assert (
+        peri_scribe.geo.parsing.complex_memberships_from_row(
+            row,
+            (("IrwinID",), "CpxID", "CpxName", "IsCpxChild"),
+        )
+        == ()
+    )
+
+
+def test_complex_memberships_from_row_preserves_parent_without_label() -> None:
+    time = datetime.datetime(2026, 7, 1, tzinfo=datetime.UTC)
+    row = pd.Series({
+        "IrwinID": "child",
+        "IsCpxChild": True,
+        "CpxID": "parent",
+        "CpxName": None,
+        "ModifiedOnDateTime_dt": time.isoformat(),
+    })
+    assert peri_scribe.geo.parsing.complex_memberships_from_row(
+        row,
+        (("IrwinID",), "CpxID", "CpxName", "IsCpxChild"),
+    ) == (
+        peri_scribe.models.ComplexMembership(
+            fire_identifier="child",
+            complex_identifier="parent",
+            complex_name="parent",
+            observation_time=time,
+        ),
+    )
+
+
+@pytest.mark.parametrize("assigned", [False, True], ids=["release", "assignment"])
+@pytest.mark.parametrize(
+    ("primary", "secondary", "identifiers"),
+    [
+        (None, " {Secondary} ", ("secondary",)),
+        ("unknown", "Secondary", ("unknown", "secondary")),
+        (" {CHILD}", "child", ("child",)),
+        ("primary", None, ("primary",)),
+        (None, " ", ()),
+    ],
+    ids=["missing-primary", "both-aliases", "duplicate-alias", "primary-only", "no-id"],
+)
+def test_complex_memberships_from_row_preserves_each_distinct_child_identifier(
+    primary: str | None,
+    secondary: str | None,
+    identifiers: tuple[str, ...],
+    *,
+    assigned: bool,
+) -> None:
+    time = datetime.datetime(2026, 7, 1, tzinfo=datetime.UTC)
+    row = pd.Series({
+        "IrwinID": primary,
+        "UniqueFireIdentifier": secondary,
+        "IsCpxChild": assigned,
+        "CpxID": " {Parent}",
+        "CpxName": "Parent",
+        "ModifiedOnDateTime_dt": time.isoformat(),
+    })
+    assert peri_scribe.geo.parsing.complex_memberships_from_row(
+        row,
+        (("IrwinID", "UniqueFireIdentifier"), "CpxID", "CpxName", "IsCpxChild"),
+    ) == tuple(
+        peri_scribe.models.ComplexMembership(
+            fire_identifier=identifier,
+            complex_identifier="parent" if assigned else None,
+            complex_name="Parent" if assigned else None,
+            observation_time=time,
+        )
+        for identifier in identifiers
+    )

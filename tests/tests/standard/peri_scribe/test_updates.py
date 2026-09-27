@@ -275,6 +275,7 @@ def test_write_updates_page_uses_available_history_across_month_boundaries(
                 "previous_mapped_area": (
                     None if missing_history else {"value": 100, "units": "acre"}
                 ),
+                "history_identity": None,
             },
         ],
     }

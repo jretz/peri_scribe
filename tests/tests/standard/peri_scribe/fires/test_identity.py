@@ -33,3 +33,17 @@ def test_group_keys_aligns_with_rows() -> None:
         "2026-a",
         "name:Other",
     ]
+
+
+def test_identity_key_separates_component_namespace_from_external_identifiers() -> None:
+    component = peri_scribe.fires.identity.identity_key("Canyon", None, "a")
+    external = peri_scribe.fires.identity.identity_key("Canyon", "component:a")
+    assert component != external
+
+
+def test_identity_key_separates_legacy_name_namespace_from_external_identifiers() -> (
+    None
+):
+    named = peri_scribe.fires.identity.identity_key("Canyon", None)
+    external = peri_scribe.fires.identity.identity_key("Canyon", "name:Canyon")
+    assert named != external

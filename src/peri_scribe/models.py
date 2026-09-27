@@ -234,11 +234,15 @@ class Fire:
     (``YYYY-UNIT-######``) when one is known, else a GUID. ``aliases`` holds every
     normalized identifier the fire is known by, including the canonical one. When the
     fire is part of a complex, ``complex`` points at the FireComplex that owns it.
+    ``component_id`` and ``component_aliases`` retain internal source-row anchors; they
+    distinguish anonymous namesakes and never become external identifier aliases.
     """
 
     name: str
     status: FireStatus
     identifier: str | None = None
+    component_id: str | None = None
+    component_aliases: frozenset[str] = dataclasses.field(default_factory=frozenset)
     aliases: frozenset[str] = dataclasses.field(default_factory=frozenset)
     complex: FireComplex | None = dataclasses.field(
         default=None,
@@ -268,11 +272,12 @@ class FireComplex:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class ComplexMembership:
-    """A fire's membership in a complex, as observed in a GeoPackage layer."""
+    """A dated assignment or explicit release preserved independently of a fire row."""
 
     fire_identifier: str
-    complex_identifier: str
-    complex_name: str
+    complex_identifier: str | None
+    complex_name: str | None
+    observation_time: datetime.datetime | None = None
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -310,6 +315,8 @@ class FireIndexEntry(pydantic.BaseModel):
     name: str
     status: typing.Literal["active", "inactive"]
     identifier: str | None = None
+    component_id: str | None = None
+    component_aliases: list[str] = pydantic.Field(default_factory=list)
     aliases: list[str] = pydantic.Field(default_factory=list)
     complex: FireIndexComplex | None = None
     classification: FireClassification | None = None
@@ -328,6 +335,7 @@ class FireScoreEntry(pydantic.BaseModel):
 
     name: str
     identifier: str | None = None
+    component_id: str | None = None
     score: int
     explanation: str
     area: float | None = None

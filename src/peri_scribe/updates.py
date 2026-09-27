@@ -11,48 +11,25 @@ import typing
 
 import pydantic
 
+import peri_scribe.fire_update_records
+import peri_scribe.fire_updates
+import peri_scribe.log_reading
 import peri_scribe.paths
 import peri_scribe.presentation.selection
 import peri_scribe.publication
 from measurement_units import units
 
 
-if typing.TYPE_CHECKING:
-    import pint
-
-
 WINDOW = datetime.timedelta(hours=48)
+type HistoryIdentity = peri_scribe.fire_update_records.HistoryIdentity
+Acreage = peri_scribe.fire_update_records.Acreage
 
 
-class Acreage(pydantic.BaseModel):
-    """Validate the log's quantity representation at the serialization boundary."""
-
-    model_config = pydantic.ConfigDict(frozen=True, extra="forbid")
-
-    value: float = pydantic.Field(ge=0, allow_inf_nan=False)
-    units: typing.Literal["acre"] = "acre"
-
-    def quantity(self) -> pint.Quantity:
-        """Return a unit-aware value for comparisons with earlier mapping.
-
-        Returns:
-            The measured acreage as a quantity.
-        """
-        return self.value * units.acres
-
-
-class LogEntry(pydantic.BaseModel):
+class LogEntry(peri_scribe.fire_update_records.Record):
     """Only complete, dated log records can contribute to the published snapshot."""
 
-    model_config = pydantic.ConfigDict(frozen=True, extra="forbid")
-
     timestamp: pydantic.AwareDatetime
-    identifier: str | None
-    name: str
-    location: str | None
-    mapped_area: Acreage
     batch_id: str | None = None
-    log_identity: tuple[typing.Literal["id", "name", "local"], str] | None = None
 
     def identity(self) -> peri_scribe.presentation.selection.AreaKey:
         """Retain a fire's acreage history when its current display name changes.
@@ -70,6 +47,7 @@ class Update(LogEntry):
     """Carry previous acreage independently of the visible time window."""
 
     previous_mapped_area: Acreage | None
+    history_identity: HistoryIdentity | None = None
 
 
 class Snapshot(pydantic.BaseModel):
@@ -89,47 +67,62 @@ def read_entries(year_directory: pathlib.Path) -> tuple[LogEntry, ...]:
         year_directory: The year directory holding the fire-update logs.
 
     Returns:
-        Validated records in file order, ready for chronological selection.
+        Validated records in logical occurrence order, ready for stable chronological
+        selection. Archived prefixes precede later plain tails even at equal timestamps.
     """
     directory = year_directory / "logs"
-    paths = sorted([
-        *directory.glob("????-??-fire-updates.jsonl"),
-        *directory.glob("????-??-fire-updates.jsonl.zst"),
-    ])
     records = []
-    for path in paths:
-        opener = compression.zstd.open if path.suffix == ".zst" else open
-        with (
-            contextlib.suppress(FileNotFoundError),
-            opener(path, "rt", encoding="utf-8") as stream,
-        ):
-            records.extend(
-                LogEntry.model_validate_json(line) for line in stream if line.strip()
-            )
+    with peri_scribe.log_reading.read_lock(directory):
+        paths = set(directory.glob("????-??-fire-updates.jsonl"))
+        paths.update(
+            path.with_suffix("")
+            for path in directory.glob("????-??-fire-updates.jsonl.zst")
+        )
+        for path in sorted(paths):
+            with contextlib.suppress(FileNotFoundError):
+                for component in peri_scribe.log_reading.log_components(path):
+                    opener = (
+                        compression.zstd.open if component.suffix == ".zst" else open
+                    )
+                    with opener(component, "rt", encoding="utf-8") as stream:
+                        records.extend(
+                            LogEntry.model_validate_json(line)
+                            for line in stream
+                            if line.strip()
+                        )
     return tuple(records)
 
 
 def snapshot_from_entries(
     entries: collections.abc.Iterable[LogEntry],
     generated_at: datetime.datetime,
+    *,
+    owners: collections.abc.Mapping[str, str] | None = None,
 ) -> Snapshot:
-    """Compare each update to its own preceding log entry before applying the window.
+    """Compare updates within their current history group before applying the window.
 
     Args:
         entries: The complete retained log history, possibly out of time order.
         generated_at: The aware generation time defining the initial 48-hour window.
+        owners: Current owners of immutable log buckets, encoded as JSON identity pairs.
 
     Returns:
         Every nonzero change in the window, including downward corrections.
     """
     now = generated_at.astimezone(datetime.UTC)
+    identity_parser = pydantic.TypeAdapter(HistoryIdentity)
+    projected: dict[tuple[str, str], HistoryIdentity] = {
+        identity_parser.validate_json(bucket): identity_parser.validate_json(owner)
+        for bucket, owner in (owners or {}).items()
+    }
     previous_by_fire: dict[tuple[str, str], LogEntry] = {}
     updates = []
     for entry in sorted(entries, key=lambda record: record.timestamp):
         timestamp = entry.timestamp.astimezone(datetime.UTC)
         if timestamp > now:
             continue
-        identity = entry.identity()
+        history_identity = projected.get(entry.identity())
+        identity = history_identity or entry.identity()
         previous = previous_by_fire.get(identity)
         previous_by_fire[identity] = entry
         previous_area = (
@@ -142,6 +135,7 @@ def snapshot_from_entries(
                     previous_mapped_area=(
                         previous.mapped_area if previous is not None else None
                     ),
+                    history_identity=history_identity,
                 ),
             )
     return Snapshot(generated_at=now, updates=tuple(updates))
@@ -171,9 +165,14 @@ def write_updates_page(year_directory: pathlib.Path) -> None:
     Args:
         year_directory: The year directory holding the completed KMZ and logs.
     """
+    state = peri_scribe.fire_updates.read_authoritative(
+        peri_scribe.fire_updates.state_path(year_directory),
+        peri_scribe.fire_updates.State,
+    )
     snapshot = snapshot_from_entries(
         read_entries(year_directory),
         datetime.datetime.now(datetime.UTC),
+        owners=state.owners if state is not None else None,
     )
     directory = year_directory / peri_scribe.paths.MAPS_DIRECTORY_NAME
     write_html(directory / "updates.html")

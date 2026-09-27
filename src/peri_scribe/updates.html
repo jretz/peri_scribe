@@ -510,8 +510,8 @@
 
       /** Preserve identity across display-name changes and distinct same-named fires. */
       function fireIdentity(record) {
-        return JSON.stringify(record.log_identity ?? (record.identifier ?
-          ["id", record.identifier] : ["name", record.name]));
+        return JSON.stringify(record.history_identity ?? record.log_identity ??
+          (record.identifier ? ["id", record.identifier] : ["name", record.name]));
       }
 
       /**
@@ -945,7 +945,7 @@
       const isTimestamp = value => typeof value === "string" &&
         Number.isFinite(Date.parse(value));
       const isIdentity = value => value == null || (Array.isArray(value) &&
-        value.length === 2 && ["id", "name", "local"].includes(value[0]) &&
+        value.length === 2 && ["id", "name", "local", "component"].includes(value[0]) &&
         typeof value[1] === "string");
       if (!data || data.version !== 1 || !isTimestamp(data.generated_at) ||
         !Array.isArray(data.updates)) {
@@ -955,6 +955,7 @@
         if (!record || typeof record.name !== "string" ||
           !(record.identifier === null || typeof record.identifier === "string") ||
           !isIdentity(record.log_identity) ||
+          !isIdentity(record.history_identity) ||
           !(record.location === null || typeof record.location === "string") ||
           !isTimestamp(record.timestamp) || !isAcreage(record.mapped_area) ||
           !(record.previous_mapped_area === null ||

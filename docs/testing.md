@@ -44,10 +44,19 @@ Hypothesis has cached the failing examples.
 
 Do not introduce pragmas to ignore test coverage.
 
+## Formal Checks
+
+TLA+ models, Lean proofs, and their implementation-conformance tests live in
+`tests/formal/`. They have a separate pytest configuration and are excluded from default
+pytest collection and `mise test`. Run them with `mise formal`. Follow [Formal
+Verification](formal_verification.md) before implementing new system behavior, when
+changing covered behavior, or when adding formal checks. Ordinary regression tests for
+discovered implementation bugs remain in the standard test tree.
+
 ## Browser Viewer Tests
 
-Run `mise run test-viewer` for the fire update viewer's JavaScript refresh and rendering
-tests, also included in `mise run test`. They use Node's built-in test runner and execute
+Run `mise test-viewer` for the fire update viewer's JavaScript refresh and rendering
+tests, also included in `mise test`. They use Node's built-in test runner and execute
 the shipped page script with a fake clock, HTTP responses, and browser elements.
 Rendering tests cover collapsed groups and the animation paths between them. The task
 enforces 100% line, branch, and function coverage of the complete inline viewer script.
@@ -56,10 +65,10 @@ or empty coverage, and reports uncovered lines at their locations in `updates.ht
 Passing runs show one green summary line with the test count, duration, and pass/fail
 counts. Failed counts are red; nonzero cancelled, skipped, and todo counts appear in
 yellow at the end. Failed tests retain their diagnostics, and the coverage table appears
-only when line, branch, or function coverage is below 100%.
-Test helpers and HTML/CSS are outside the JavaScript coverage scope. No browser, network
-access, or npm packages are required. Node is managed by `mise` and is only a
-development tool. Python and JavaScript coverage are enforced separately.
+only when line, branch, or function coverage is below 100%. Test helpers and HTML/CSS
+are outside the JavaScript coverage scope. No browser, network access, or npm packages
+are required. Node is managed by `mise` and is only a development tool. Python and
+JavaScript coverage are enforced separately.
 
 ## What to Test For
 

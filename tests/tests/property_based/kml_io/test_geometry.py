@@ -8,6 +8,7 @@ import hypothesis.strategies
 import numpy as np
 import shapely.geometry
 
+import document_text.encoding
 import kml_io.geometry
 import tests.helpers.assertions.kml_io.geometry
 import tests.helpers.factories.kml_io.geometry
@@ -78,16 +79,31 @@ def test_kml_writer_geometry_xml_matches_fresh_serialization_for_temporary_geome
     content=tests.helpers.strategies.kml_io.geometry.xml_text(),
     after=tests.helpers.strategies.kml_io.geometry.xml_text(),
 )
-def test_escape_text_round_trips_plain_text_and_cdata(
+def test_escape_text_preserves_literal_cdata_markers(
     before: str,
     content: str,
     after: str,
 ) -> None:
-    escaped = kml_io.geometry.escape_text(
-        f"{before}<![CDATA[{content}]]>{after}",
-    )
+    text = f"{before}<![CDATA[{content}]]>{after}"
+    escaped = kml_io.geometry.escape_text(text)
     element = DefusedElementTree.fromstring(f"<text>{escaped}</text>")
-    assert (element.text or "") == before + content + after
+    assert element.text == text
+    assert not list(element)
+
+
+@hypothesis.given(
+    before=tests.helpers.strategies.kml_io.geometry.xml_text(),
+    after=tests.helpers.strategies.kml_io.geometry.xml_text(),
+)
+def test_description_text_preserves_generated_content_across_cdata_restarts(
+    before: str,
+    after: str,
+) -> None:
+    content = f"{before}]]>{after}"
+    encoded = kml_io.geometry.description_text(document_text.encoding.CData(content))
+    element = DefusedElementTree.fromstring(f"<text>{encoded}</text>")
+    assert element.text == content
+    assert not list(element)
 
 
 @hypothesis.given(

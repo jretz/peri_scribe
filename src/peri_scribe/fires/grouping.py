@@ -9,6 +9,7 @@ import typing
 import shapely
 import structlog
 
+import peri_scribe.fires.complexes
 import peri_scribe.models
 from measurement_units import units
 
@@ -315,45 +316,38 @@ def merge_records_by_name(
 def fire_complexes(
     memberships: list[peri_scribe.models.ComplexMembership],
     fires_by_identifier: dict[str, peri_scribe.models.Fire],
+    *,
+    observations: list[peri_scribe.fires.complexes.MembershipObservation] | None = None,
 ) -> list[peri_scribe.models.FireComplex]:
     """Build the complexes named by *memberships*, linking their member fires.
 
-    Each complex is linked to every fire it contains, and each linked fire points back
-    at the complex. Memberships that reference an unidentified fire are skipped with a
-    warning.
+    Each component follows its latest declaration through subsequent parent mergers.
+    Reciprocal links name one current owner; contradictory exact ties and cycles leave
+    ownership unassigned. Unknown component references are skipped with a warning.
 
     Args:
         memberships: The observed complex memberships.
         fires_by_identifier: The identified fires, keyed by every identifier each fire
             is known by.
+        observations: Incident-timed assignments and explicit releases when available.
 
     Returns:
-        The complexes, in the order first encountered.
+        The declared complexes with their current members, in first-encounter order.
     """
-    fires_by_complex: dict[str, set[peri_scribe.models.Fire]] = {}
-    names_by_complex: dict[str, str] = {}
-    for membership in memberships:
-        fire = fires_by_identifier.get(membership.fire_identifier)
-        if fire is None:
-            logger.warning(
-                "Complex membership references an unidentified fire",
+    declarations = (
+        observations
+        if observations is not None
+        else [
+            peri_scribe.fires.complexes.MembershipObservation(
                 fire_identifier=membership.fire_identifier,
                 complex_identifier=membership.complex_identifier,
+                complex_name=membership.complex_name,
+                observation_time=membership.observation_time,
             )
-            continue
-        fires_by_complex.setdefault(membership.complex_identifier, set()).add(fire)
-        names_by_complex.setdefault(
-            membership.complex_identifier,
-            membership.complex_name,
-        )
-    return [
-        peri_scribe.models.FireComplex(
-            name=names_by_complex[complex_identifier],
-            identifier=complex_identifier,
-            fires=frozenset(fires_by_complex[complex_identifier]),
-        )
-        for complex_identifier in fires_by_complex
-    ]
+            for membership in memberships
+        ]
+    )
+    return peri_scribe.fires.complexes.resolve(declarations, fires_by_identifier)
 
 
 def is_mixed_case(name: str) -> bool:

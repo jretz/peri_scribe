@@ -428,10 +428,11 @@ def aligned_positions(
     scoring: dict[str, list[int]] = {}
     presentation: dict[peri_scribe.presentation.selection.AreaKey, list[int]] = {}
     if not frame.empty:
-        for position, (identifier, name, score_key) in enumerate(
+        for position, (identifier, name, component, score_key) in enumerate(
             zip(
                 frame["fire_identifier"],
                 frame["fire_name"],
+                frame.get("fire_component_id", [None] * len(frame)),
                 peri_scribe.fires.identity.group_keys(frame),
                 strict=True,
             ),
@@ -439,6 +440,7 @@ def aligned_positions(
             key = peri_scribe.presentation.selection.fire_area_key(
                 identifier,
                 str(name),
+                component,
             )
             if key[0] == peri_scribe.presentation.selection.IDENTIFIER_AREA_KEY:
                 key = key[0], aliases.get(key[1], key[1])
@@ -685,6 +687,12 @@ def score_fires(year_directory: pathlib.Path) -> pathlib.Path:
                 scoring.metrics[index],
                 building_count=scoring.signals.building_counts[index],
                 evacuation_overlap=index in scoring.signals.evacuation_indices,
+            ),
+            component_id=(
+                scoring.keys[index].removeprefix("component:")
+                if scoring.identifiers[index] is None
+                and scoring.keys[index].startswith("component:")
+                else None
             ),
             area=scoring.metrics[index].area,
             building_count=scoring.signals.building_counts[index],

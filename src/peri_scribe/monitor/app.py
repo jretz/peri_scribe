@@ -27,6 +27,7 @@ import peri_scribe.monitor.status
 import peri_scribe.monitor.status_widgets
 import peri_scribe.monitor.storage
 import peri_scribe.monitor.striping
+import peri_scribe.monitor.tasks
 import peri_scribe.monitor.theme
 import peri_scribe.monitor.widgets
 import peri_scribe.paths
@@ -113,7 +114,7 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
         self.following = True
         self.report = peri_scribe.monitor.storage.Report()
         self.rendered_report = self.report
-        self.report_rendering = asyncio.Lock()
+        self.operations = peri_scribe.monitor.tasks.Owner()
         self.archives: tuple[pathlib.Path, ...] = ()
         self.loaded_archives: set[pathlib.Path] = set()
         self.rows: dict[int, peri_scribe.monitor.events.Event] = {}
@@ -198,53 +199,15 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
             functools.partial(self.call_later, refresh_clock, self),
         )
 
-    def on_unmount(self) -> None:
+    async def on_unmount(self) -> None:
         """Close retained log handles after the presentation exits."""
         self.watching_stopped.set()
-        self.follower.close()
-        self.history_reader.close()
+        self.history_reader.stopped.set()
+        await self.operations.close(functools.partial(close_readers, self))
 
     async def refresh_files(self) -> None:
         """Keep health live while reserving report work for its visible tab."""
-        batch = await asyncio.to_thread(self.follower.poll)
-        if batch.records:
-            self.state = await asyncio.to_thread(
-                peri_scribe.monitor.model.append_records,
-                self.state,
-                batch.records,
-            )
-        now = datetime.datetime.now(datetime.UTC)
-        history = await asyncio.to_thread(self.history_reader.catch_up, now)
-        files = await asyncio.to_thread(
-            peri_scribe.monitor.status.read_files,
-            self.year_directory,
-            self.kmz_path,
-            self.report_path,
-        )
-        if not self.is_running or not self.query("#views"):
-            return
-        self.archives = batch.archives
-        self.query_one("#older", textual.widgets.Button).disabled = not any(
-            path not in self.loaded_archives for path in self.archives
-        )
-        if batch.records:
-            if self.following:
-                self.visible_state = self.state
-                self.selected_run = self.state.runs[-1].identifier
-            self.render_state()
-        elif not self.state.runs:
-            self.render_state()
-        peri_scribe.monitor.widgets.update_content(
-            self.query_one("#file-status", textual.widgets.Static),
-            "\n".join(batch.errors)
-            or ("Waiting for logs" if not self.state.runs else ""),
-        )
-        show_status(self, history, files, now)
-        self.files_changed |= not batch.caught_up
-        self.reconcile_at = (
-            time.monotonic()
-            + peri_scribe.monitor.changes.RECONCILE_INTERVAL.m_as("seconds")
-        )
+        await self.operations.run(functools.partial(refresh_owned, self))
         await render_report(self)
 
     def current_run(self) -> peri_scribe.monitor.model.Run:
@@ -358,55 +321,9 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
             message: The live observation selected in Status.
         """
         message.stop()
-        target = message.target
-        try:
-            run = await asyncio.to_thread(
-                peri_scribe.monitor.history.load_run,
-                self.year_directory / "logs",
-                target.run,
-            )
-        except (OSError, EOFError, compression.zstd.ZstdError) as error:
-            self.notify(f"Unable to load run: {error}", severity="error")
-            return
-        if not run.events:
-            self.notify(
-                "The selected run's logs are no longer available",
-                severity="warning",
-            )
-            return
-        self.following = False
-        self.selected_run = run.identifier
-        self.visible_state = dataclasses.replace(
-            self.state,
-            runs=(
-                *tuple(
-                    item
-                    for item in self.state.runs
-                    if item.identifier != run.identifier
-                ),
-                run,
-            ),
+        await self.operations.run(
+            functools.partial(open_evidence_owned, self, message.target),
         )
-        selected = next(
-            (
-                event
-                for event in reversed(run.events)
-                if event.fields == target.event.fields
-            ),
-            run.events[-1],
-        )
-        self.selected_phase = selected.path
-        stream = self.query_one("#pipeline-stream", peri_scribe.monitor.widgets.Stream)
-        stream.query_one(textual.widgets.Input).value = ""
-        stream.query_one(textual.widgets.Select).value = "debug"
-        self.action_view("pipeline")
-        self.render_state()
-        self.query_one("#details", textual.widgets.Static).update(
-            rich.json.JSON(peri_scribe.monitor.presentation.details(selected)),
-        )
-        table = stream.query_one(peri_scribe.monitor.widgets.EventTable)
-        table.move_cursor(row=table.get_row_index(str(selected.sequence)))
-        table.focus()
 
     @textual.on(textual.widgets.Tree.NodeSelected, "#phase-tree")
     def select_phase(self, event: textual.widgets.Tree.NodeSelected) -> None:
@@ -478,33 +395,7 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
     @textual.on(textual.widgets.Button.Pressed, "#older")
     async def load_older(self) -> None:
         """Load archived history independently of current log collection."""
-        path = next(
-            (path for path in self.archives if path not in self.loaded_archives),
-            None,
-        )
-        if path is None:
-            return
-        batch = await asyncio.to_thread(peri_scribe.monitor.storage.read_archive, path)
-        self.loaded_archives.add(path)
-        current = sorted(
-            (
-                event
-                for run in self.state.runs
-                for event in peri_scribe.monitor.model.evidence(run)
-            ),
-            key=lambda event: event.sequence,
-        )
-        self.state = await asyncio.to_thread(
-            peri_scribe.monitor.model.append_records,
-            peri_scribe.monitor.model.State(),
-            (*batch.records, *(dict(event.fields) for event in current)),
-        )
-        self.visible_state = self.state
-        peri_scribe.monitor.widgets.update_content(
-            self.query_one("#file-status", textual.widgets.Static),
-            "\n".join(batch.errors),
-        )
-        self.render_state()
+        await self.operations.run(functools.partial(load_older_owned, self))
 
     def action_view(self, name: str) -> None:
         """Expose direct keyboard navigation without coupling tab names to domain data.
@@ -544,6 +435,163 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
         self.render_state()
 
 
+async def open_evidence_owned(
+    app: MonitorApp,
+    target: peri_scribe.monitor.status.Target,
+) -> None:
+    """Publish selected evidence only while the operation's presentation is mounted.
+
+    Args:
+        app: The observer holding exclusive evidence ownership.
+        target: The health observation whose original run should be inspected.
+    """
+    try:
+        run = await asyncio.to_thread(
+            peri_scribe.monitor.history.load_run,
+            app.year_directory / "logs",
+            target.run,
+        )
+    except (OSError, EOFError, compression.zstd.ZstdError) as error:
+        if presentation_available(app):
+            app.notify(f"Unable to load run: {error}", severity="error")
+        return
+    if not presentation_available(app):
+        return
+    if not run.events:
+        app.notify(
+            "The selected run's logs are no longer available",
+            severity="warning",
+        )
+        return
+    app.following = False
+    app.selected_run = run.identifier
+    app.visible_state = dataclasses.replace(
+        app.state,
+        runs=(
+            *tuple(
+                item for item in app.state.runs if item.identifier != run.identifier
+            ),
+            run,
+        ),
+    )
+    selected = next(
+        (
+            event
+            for event in reversed(run.events)
+            if event.fields == target.event.fields
+        ),
+        run.events[-1],
+    )
+    app.selected_phase = selected.path
+    stream = app.query_one("#pipeline-stream", peri_scribe.monitor.widgets.Stream)
+    stream.query_one(textual.widgets.Input).value = ""
+    stream.query_one(textual.widgets.Select).value = "debug"
+    app.action_view("pipeline")
+    app.render_state()
+    app.query_one("#details", textual.widgets.Static).update(
+        rich.json.JSON(peri_scribe.monitor.presentation.details(selected)),
+    )
+    table = stream.query_one(peri_scribe.monitor.widgets.EventTable)
+    table.move_cursor(row=table.get_row_index(str(selected.sequence)))
+    table.focus()
+
+
+def close_readers(app: MonitorApp) -> None:
+    """Retire both retained cursors only after their owning operations finish.
+
+    Args:
+        app: The terminal observer whose operation owns the evidence state.
+    """
+    app.follower.close()
+    app.history_reader.close()
+
+
+async def refresh_owned(app: MonitorApp) -> None:
+    """Publish a complete evidence snapshot while excluding overlapping readers.
+
+    Args:
+        app: The terminal observer whose operation owns the evidence state.
+    """
+    batch = await asyncio.to_thread(app.follower.poll)
+    state = app.state
+    if batch.records:
+        state = await asyncio.to_thread(
+            peri_scribe.monitor.model.append_records,
+            app.state,
+            batch.records,
+        )
+    now = datetime.datetime.now(datetime.UTC)
+    history = await asyncio.to_thread(app.history_reader.catch_up, now)
+    files = await asyncio.to_thread(
+        peri_scribe.monitor.status.read_files,
+        app.year_directory,
+        app.kmz_path,
+        app.report_path,
+    )
+    if not presentation_available(app):
+        return
+    app.state = state
+    app.archives = batch.archives
+    app.query_one("#older", textual.widgets.Button).disabled = not any(
+        path not in app.loaded_archives for path in app.archives
+    )
+    if batch.records:
+        if app.following:
+            app.visible_state = app.state
+            app.selected_run = app.state.runs[-1].identifier
+        app.render_state()
+    elif not app.state.runs:
+        app.render_state()
+    peri_scribe.monitor.widgets.update_content(
+        app.query_one("#file-status", textual.widgets.Static),
+        "\n".join(batch.errors) or ("Waiting for logs" if not app.state.runs else ""),
+    )
+    show_status(app, history, files, now)
+    app.files_changed |= not batch.caught_up
+    app.reconcile_at = (
+        time.monotonic()
+        + peri_scribe.monitor.changes.RECONCILE_INTERVAL.m_as("seconds")
+    )
+
+
+async def load_older_owned(app: MonitorApp) -> None:
+    """Merge archives with the latest evidence under the same publication owner.
+
+    Args:
+        app: The terminal observer whose operation owns the evidence state.
+    """
+    path = next(
+        (path for path in app.archives if path not in app.loaded_archives),
+        None,
+    )
+    if path is None:
+        return
+    batch = await asyncio.to_thread(peri_scribe.monitor.storage.read_archive, path)
+    current = sorted(
+        (
+            event
+            for run in app.state.runs
+            for event in peri_scribe.monitor.model.evidence(run)
+        ),
+        key=lambda event: event.sequence,
+    )
+    state = await asyncio.to_thread(
+        peri_scribe.monitor.model.append_records,
+        peri_scribe.monitor.model.State(),
+        (*batch.records, *(dict(event.fields) for event in current)),
+    )
+    if not presentation_available(app):
+        return
+    app.loaded_archives.add(path)
+    app.state = state
+    app.visible_state = app.state
+    peri_scribe.monitor.widgets.update_content(
+        app.query_one("#file-status", textual.widgets.Static),
+        "\n".join(batch.errors),
+    )
+    app.render_state()
+
+
 async def watch_files(app: MonitorApp) -> None:
     """Coalesce notifications while the UI keeps ownership of file reads.
 
@@ -563,12 +611,27 @@ async def refresh_clock(app: MonitorApp) -> None:
     Args:
         app: The observer whose display and inputs may need refreshing.
     """
+    refreshed = await app.operations.run(functools.partial(refresh_clock_owned, app))
+    if refreshed:
+        await render_report(app)
+
+
+async def refresh_clock_owned(app: MonitorApp) -> bool:
+    """Keep expiration folds from overwriting an in-flight evidence reader.
+
+    Args:
+        app: The observer holding exclusive ownership of its evidence state.
+
+    Returns:
+        Whether a file refresh also requires a visible report refresh.
+    """
     if not app.is_running or not app.query("#views"):
-        return
+        return False
     if app.files_changed or time.monotonic() >= app.reconcile_at:
         app.files_changed = False
-        await app.refresh_files()
-    elif app.status_snapshot is not None:
+        await refresh_owned(app)
+        return True
+    if app.status_snapshot is not None:
         now = datetime.datetime.now(datetime.UTC)
         history = peri_scribe.monitor.history.append(
             app.history_reader.history,
@@ -577,6 +640,7 @@ async def refresh_clock(app: MonitorApp) -> None:
         )
         app.history_reader.history = history
         show_status(app, history, app.status_snapshot.files, now)
+    return False
 
 
 def show_status(
@@ -618,6 +682,20 @@ def show_status(
     )
 
 
+def presentation_available(app: MonitorApp) -> bool:
+    """Make shutdown's publication barrier independent of framework callback ordering.
+
+    Args:
+        app: The terminal observer whose state may be presented.
+
+    Returns:
+        Whether new publication is permitted on the mounted presentation.
+    """
+    return bool(
+        not app.operations.stopped.is_set() and app.is_running and app.query("#views"),
+    )
+
+
 def report_visible(app: MonitorApp) -> bool:
     """Limit report work to a selected tab that remains mounted during file reads.
 
@@ -628,8 +706,7 @@ def report_visible(app: MonitorApp) -> bool:
         Whether its report tab is currently available and selected.
     """
     return bool(
-        app.is_running
-        and app.query("#views")
+        presentation_available(app)
         and app.query_one("#views", textual.widgets.TabbedContent).active == "report",
     )
 
@@ -640,25 +717,34 @@ async def render_report(app: MonitorApp) -> None:
     Args:
         app: The terminal observer whose report is being read.
     """
-    async with app.report_rendering:
-        if not report_visible(app):
-            return
-        report = await asyncio.to_thread(
-            peri_scribe.monitor.storage.read_report,
-            app.report_path,
-            app.report,
-        )
-        if not report_visible(app):
-            return
-        app.report = report
-        if report == app.rendered_report:
-            return
-        app.query_one("#report-time", textual.widgets.Static).update(
-            f"{app.report_path.name}\n{peri_scribe.monitor.presentation.report_heading(report)}",
-        )
-        viewer = app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
-        position = viewer.scroll_offset
-        await viewer.document.update(report.content)
+    await app.operations.run(functools.partial(render_report_owned, app))
+
+
+async def render_report_owned(app: MonitorApp) -> None:
+    """Keep report publication inside the same lifetime as its file and UI work.
+
+    Args:
+        app: The terminal observer holding exclusive evidence ownership.
+    """
+    if not report_visible(app):
+        return
+    report = await asyncio.to_thread(
+        peri_scribe.monitor.storage.read_report,
+        app.report_path,
+        app.report,
+    )
+    if not report_visible(app):
+        return
+    app.report = report
+    if report == app.rendered_report:
+        return
+    app.query_one("#report-time", textual.widgets.Static).update(
+        f"{app.report_path.name}\n{peri_scribe.monitor.presentation.report_heading(report)}",
+    )
+    viewer = app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
+    position = viewer.scroll_offset
+    await viewer.document.update(report.content)
+    if not app.operations.stopped.is_set():
         app.rendered_report = report
         if viewer.is_attached:
             viewer.scroll_to(position.x, position.y, animate=False)

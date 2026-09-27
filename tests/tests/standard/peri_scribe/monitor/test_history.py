@@ -11,6 +11,8 @@ import unittest.mock
 
 import pytest
 
+import peri_scribe.log_reading
+import peri_scribe.logging
 import peri_scribe.monitor.history
 import peri_scribe.monitor.model
 import peri_scribe.monitor.status
@@ -383,6 +385,38 @@ def test_reader_skips_old_records_before_processing_the_recent_window(
     assert history.caught_up
     assert [run.identifier for run in history.state.runs] == ["recent"]
     assert history.state.sequence == 1
+
+
+@pytest.mark.parametrize("compressed", [False, True])
+def test_reader_preserves_recent_evidence_before_clock_rollback(
+    tmp_path: pathlib.Path,
+    *,
+    compressed: bool,
+) -> None:
+    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
+    records = tuple(
+        tests.helpers.factories.peri_scribe.monitor.status.record(
+            "Progress",
+            run_id=str(index),
+            when=now - datetime.timedelta(hours=age),
+        )
+        for index, age in enumerate((49, 1, 50))
+    )
+    path = tests.helpers.factories.peri_scribe.monitor.events.write_log(
+        tmp_path,
+        *records,
+    )
+    if compressed:
+        path.with_suffix(".jsonl.zst").write_bytes(
+            compression.zstd.compress(path.read_bytes()),
+        )
+        path.unlink()
+    with contextlib.closing(peri_scribe.monitor.history.Reader(path.parent)) as reader:
+        history = reader.catch_up(now)
+        assert reader.catch_up(now) == history
+    assert [run.identifier for run in history.state.runs] == ["1"]
+    expected_time = now - datetime.timedelta(hours=1)
+    assert history.state.runs[0].events[0].timestamp == expected_time
 
 
 @pytest.mark.parametrize("compressed", [False, True])
@@ -799,3 +833,74 @@ def test_append_rechecks_retention_when_clock_moves_backward() -> None:
     updated = peri_scribe.monitor.history.append(history, (), earlier)
     assert updated.state is history.state
     assert updated.retained_at == earlier
+
+
+def test_reader_poll_includes_archive_before_late_plain_tail(
+    tmp_path: pathlib.Path,
+) -> None:
+    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
+    path = tests.helpers.factories.peri_scribe.monitor.events.write_log(
+        tmp_path,
+        *tests.helpers.factories.peri_scribe.monitor.status.failed_run(
+            run_id="archive",
+        ),
+    )
+    archive = path.with_suffix(".jsonl.zst")
+    archive.write_bytes(compression.zstd.compress(path.read_bytes()))
+    path.write_text(
+        "".join(
+            json.dumps(record) + "\n"
+            for record in tests.helpers.factories.peri_scribe.monitor.status.failed_run(
+                run_id="late",
+            )
+        ),
+    )
+    with contextlib.closing(peri_scribe.monitor.history.Reader(path.parent)) as reader:
+        history = reader.poll(now)
+        assert {run.identifier for run in history.state.runs} == {"archive", "late"}
+        assert reader.poll(now).state == history.state
+
+
+def test_reader_poll_reports_unreadable_rotation_lock(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.log_reading,
+        "read_lock",
+        tests.helpers.doubles.errors.raising_stub(PermissionError("lock unavailable")),
+    )
+    with contextlib.closing(peri_scribe.monitor.history.Reader(tmp_path)) as reader:
+        history = reader.poll(tests.helpers.factories.peri_scribe.monitor.status.NOW)
+        assert history.errors == ("lock unavailable",)
+        assert not history.caught_up
+
+
+def test_reader_poll_recovers_late_tail_rotated_between_polls(
+    tmp_path: pathlib.Path,
+) -> None:
+    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
+    path = tests.helpers.factories.peri_scribe.monitor.events.write_log(
+        tmp_path,
+        *tests.helpers.factories.peri_scribe.monitor.status.failed_run(
+            run_id="initial",
+        ),
+    )
+    peri_scribe.logging.compress_log(path)
+    with contextlib.closing(peri_scribe.monitor.history.Reader(path.parent)) as reader:
+        first = reader.poll(now)
+        assert [run.identifier for run in first.state.runs] == ["initial"]
+        path.write_text(
+            "".join(
+                json.dumps(record) + "\n"
+                for record in (
+                    tests.helpers.factories.peri_scribe.monitor.status.failed_run(
+                        run_id="late",
+                    )
+                )
+            ),
+        )
+        peri_scribe.logging.compress_log(path)
+        history = reader.poll(now)
+        assert {run.identifier for run in history.state.runs} == {"initial", "late"}
+        assert reader.poll(now).state == history.state

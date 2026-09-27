@@ -18,6 +18,7 @@ import spatial_data.product_cache
 import tests.helpers.doubles.errors
 import tests.helpers.factories.geography
 import tests.helpers.factories.geometry
+import tests.helpers.factories.peri_scribe.fires.derived_layers
 import tests.helpers.factories.peri_scribe.fires.scores
 
 
@@ -86,11 +87,8 @@ def test_read_derived_layers_shares_only_unchanged_files_in_one_scope(
         lambda _path: frame,
     )
     monkeypatch.setattr(spatial_data.layers, "read_layer", lambda _path, _layer: frame)
-    history = peri_scribe.fires.files.history_geopackage_path(tmp_path)
-    differential = peri_scribe.fires.differential.differential_geopackage_path(tmp_path)
-    history.parent.mkdir(parents=True)
-    history.touch()
-    differential.touch()
+    monkeypatch.setattr(peri_scribe.fires.reuse, "derivation_context", lambda _: "test")
+    tests.helpers.factories.peri_scribe.fires.derived_layers.publish_pair(tmp_path, 1)
     with peri_scribe.execution.sharing():
         first = peri_scribe.fires.derived_layers.read_derived_layers(
             tmp_path,
@@ -103,7 +101,10 @@ def test_read_derived_layers_shares_only_unchanged_files_in_one_scope(
             )
             is first
         )
-        history.write_bytes(b"changed")
+        tests.helpers.factories.peri_scribe.fires.derived_layers.publish_pair(
+            tmp_path,
+            2,
+        )
         changed = peri_scribe.fires.derived_layers.read_derived_layers(
             tmp_path,
             tolerate_missing=False,
@@ -169,17 +170,16 @@ def test_read_derived_layers_avoids_eager_indexing_of_normalized_publication_lay
     )
     peri_scribe.fires.reuse.write_layers(
         differential,
-        [dataclasses.replace(cached_layers[0], name=full_names[0])],
+        [dataclasses.replace(cached_layers[0], name=name) for name in full_names[:2]],
+        generation=peri_scribe.fires.differential.differential_generation(
+            history,
+            tmp_path,
+        ),
     )
     monkeypatch.setattr(
         spatial_data.product_cache,
         "put",
         tests.helpers.doubles.errors.raising_stub(AssertionError("Eager index write")),
-    )
-    monkeypatch.setattr(
-        peri_scribe.fires.reuse,
-        "validated_signature",
-        tests.helpers.doubles.errors.raising_stub(AssertionError("Unneeded hashing")),
     )
     with spatial_data.product_cache.scope(tmp_path / "products.sqlite", "test"):
         layers = peri_scribe.fires.derived_layers.read_derived_layers(

@@ -23,7 +23,7 @@ import spatial_data.product_cache
 
 # The current version of the fire source index format; bump it when the format changes
 # so that consumers can tell which format a file uses.
-FIRE_INDEX_VERSION = "2026-08-18"
+FIRE_INDEX_VERSION = "2026-09-26"
 CLASSIFICATION_NAMESPACE = "fire-classification-v1"
 GENERATION_NAMESPACE = "source-index-generation-v1"
 logger = structlog.get_logger()
@@ -51,6 +51,14 @@ def fire_document(fire: peri_scribe.models.Fire) -> dict[str, object]:
             "identifier": fire.complex.identifier,
         }
     return {
+        **(
+            {
+                "component_id": fire.component_id,
+                "component_aliases": sorted(fire.component_aliases),
+            }
+            if fire.component_id is not None
+            else {}
+        ),
         "name": fire.name,
         "status": fire.status.value,
         "identifier": fire.identifier,
@@ -115,7 +123,10 @@ def fire_index_entries(
             sources_directory,
             classifications.get(id(source.fire)),
         )
-        for source in sorted(sources, key=lambda source: source.fire.name)
+        for source in sorted(
+            sources,
+            key=lambda source: (source.fire.name, source.fire.component_id or ""),
+        )
     ]
 
 

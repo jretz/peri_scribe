@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import datetime
 import pathlib
+import tempfile
 import typing
 
 import pandas as pd
@@ -181,7 +182,10 @@ def write_current_state(
     of the snapshot just written. The state file is named for the newest snapshot's
     serial number, and any older state files for the feed are removed. The snapshots
     remain the source of truth: the state file is only a derived cache, rebuilt from the
-    snapshots whenever it is missing, stale, or unreadable.
+    snapshots whenever it is missing, stale, or unreadable. A cached prefix is usable
+    only if it covers the newest or immediately preceding snapshot, so adding the newest
+    rows cannot skip a previously missed cache update. Completed cache files replace the
+    published path atomically so an interrupted write cannot appear current.
 
     Args:
         directory: The directory holding the source's GeoPackage files.
@@ -189,8 +193,10 @@ def write_current_state(
         new_features: The rows of the snapshot that was just written.
     """
     state_files = peri_scribe.sources.snapshots.current_state_file_paths(directory)
+    source_files = peri_scribe.sources.snapshots.existing_source_files(directory)
+    reusable_serials = {source.serial_number for source in source_files[-2:]}
     base: geopandas.GeoDataFrame | None = None
-    if state_files:
+    if state_files and state_files[-1][0] in reusable_serials:
         _state_serial_number, state_path = state_files[-1]
         try:
             base = peri_scribe.geo.reading.read_layer_dataframe(state_path, feed)
@@ -214,10 +220,13 @@ def write_current_state(
         newest_serial_number,
     )
     state_path.parent.mkdir(parents=True, exist_ok=True)
-    spatial_data.layers.write_geopackage(
-        state_path,
-        [spatial_data.layers.LayerData(name=feed.name, dataframe=merged)],
-    )
+    with tempfile.TemporaryDirectory(dir=state_path.parent) as temporary_directory:
+        temporary = pathlib.Path(temporary_directory) / state_path.name
+        spatial_data.layers.write_geopackage(
+            temporary,
+            [spatial_data.layers.LayerData(name=feed.name, dataframe=merged)],
+        )
+        temporary.replace(state_path)
     for _old_serial_number, old_path in state_files:
         if old_path != state_path:
             with contextlib.suppress(FileNotFoundError):

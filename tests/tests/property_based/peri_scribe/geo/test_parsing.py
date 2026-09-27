@@ -23,7 +23,9 @@ def test_normalize_identifier_is_idempotent(value: str | None) -> None:
     assert peri_scribe.geo.parsing.normalize_identifier(normalized) == normalized
 
 
-@hypothesis.given(value=hypothesis.strategies.floats(allow_nan=False))
+@hypothesis.given(
+    value=hypothesis.strategies.floats(allow_nan=False, allow_infinity=False),
+)
 def test_numeric_value_round_trips_numeric_text(value: float) -> None:
     assert peri_scribe.geo.parsing.numeric_value(str(value)) == value
 

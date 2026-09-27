@@ -16,11 +16,17 @@ specific to California. Paths below are relative to a year directory such as
   precedence over other identifiers. A fire may have no identifier yet.
 - **Alias** — Any normalized identifier associated with a fire, including its canonical
   identifier. Aliases keep observations connected when feeds use different identifiers.
+- **Component identity** — An internal key anchored to an immutable source-row
+  occurrence in a grouped fire. It keeps anonymous namesakes separate through histories,
+  qualification, reports, and updates. Component aliases retain source anchors through
+  grouping changes; they are separate from externally supplied fire identifiers.
 - **Normalized name** — A name prepared for comparison by ignoring case, collapsing
   whitespace, and treating hyphens, underscores, and slashes as spaces. Name-based
   grouping also considers geometry and time so unrelated namesakes remain separate.
-- **Fire complex** — A source-identified group of related fires. Member fires retain
-  their individual identities and a link to the complex.
+- **Fire complex** — A source-identified group of related fires. A member retains its
+  individual identity and at most one current parent. Dated declarations can transfer
+  membership; a complex merger carries its children to the resulting parent. Explicit
+  releases remove membership, while absent source rows do not imply release.
 - **Active / inactive** — The status assembled from source records. A grouped fire is
   active when any of its records is active. This status is separate from its score and
   whether it qualifies for presentation.
@@ -31,6 +37,8 @@ specific to California. Paths below are relative to a year directory such as
 See [identity models](../src/peri_scribe/models.py),
 [source grouping](../src/peri_scribe/fires/grouping.py), and
 [data validation and cleansing](architecture.md#data-validation-and-cleansing).
+See [current complex ownership](../src/peri_scribe/fires/complexes.py) for declaration
+precedence and handling of ambiguous or cyclic relationships.
 
 ## Sources and observations
 
@@ -52,6 +60,9 @@ See [identity models](../src/peri_scribe/models.py),
 - **Observation time** — When a source says a perimeter or incident observation applies.
   It is distinct from the time PeriScribe downloads the record. Source timestamps are
   normalized to UTC.
+- **Typed fallback** — Selection of the first usable field for a requested numeric,
+  text, or datetime value. Blank or invalid fields permit later fallback; numeric zero
+  remains usable and nonfinite numbers do not.
 - **Provenance** — Evidence connecting a derived value or geometry to its source,
   including snapshot paths, source object identifiers, and observation times. Retained
   provenance also links corrected mapping to its previous update history.
@@ -60,11 +71,20 @@ See [identity models](../src/peri_scribe/models.py),
   GeoPackages.
 - **External source** — A supporting dataset, such as evacuation zones, building
   locations, or major cities, used alongside the fire feeds.
+- **Source content fingerprint** — A comparison identity for an external dataset's
+  attribute names, normalized values, coordinate reference, and geometry. Field
+  boundaries remain unambiguous; row order is ignored while duplicate rows are retained.
+- **Source coverage validation** — A check that every complete-snapshot feature has a
+  matching stored feature and that the stored schema includes every required attribute.
+  Both snapshots must have unique object IDs and the same known coordinate reference
+  system. Additional stored features and columns remain allowed.
 - **Building centroid** — A representative center point computed from a building
-  footprint. Nationwide building locations are stored in `sources/buildings.sqlite` as
+  footprint using projected area weighting, subtracting holes and combining polygon
+  parts. Nationwide building locations are stored in `sources/buildings.sqlite` as
   compact, quantized point tiles for spatial counting.
 
-See [configured feeds](../src/peri_scribe/sources/feeds.py) and
+See [configured feeds](../src/peri_scribe/sources/feeds.py),
+[source comparison](../src/peri_scribe/sources/digests.py), and
 [data handling](architecture.md#data-handling).
 
 ## Geography and histories
@@ -136,6 +156,9 @@ See [differential history](../src/peri_scribe/fires/differential.py),
 - **Fire score** — A weighted sum of signals used to rank fires: current size, largest
   single growth step, first-mapping size, nearby buildings, evacuation-zone overlap, and
   incident complexity. The saved score includes an explanation of its contributions.
+- **Score association** — Matching saved score rows to showable fires by identifier,
+  with name fallback when an identifier has no match. Each fire retains its highest
+  ranked matching row, so list position, displayed score, and explanation agree.
 - **First mapping** — The first retained growth step used for the first-mapping size
   signal. It describes mapped size when first observed, rather than the fire's ignition
   size or discovery time.
@@ -163,6 +186,9 @@ See [area selection](architecture.md#incident-evidence-and-area-selection),
 - **History reuse** — Retaining validated full and differential histories for unchanged
   fires. A changed fire rebuilds its complete history because a correction can affect
   earlier rings. Missing or invalid reuse evidence causes recomputation.
+- **Authenticated geography pair** — Full and differential history files whose
+  signatures authenticate their bytes and whose generation relationship matches.
+  Downstream readers hold the year lock across all layers and refuse a mismatched pair.
 - **Ring sequence digest** — A fingerprint identifying the exact ordered ring geometries
   used to calculate displayed added areas. Stored measurements can be reused only when
   the consumer's sequence matches.
@@ -176,11 +202,23 @@ See [area selection](architecture.md#incident-evidence-and-area-selection),
 - **Pending work** — Unfinished derived stages saved in `run_state.json`. A successful
   fetch does not clear this work, allowing later runs to recover from failed or partial
   builds.
+- **Deferred inputs** — Saved source changes whose build may wait for the publication
+  policy. The `deferred_inputs` marker preserves this intent across partial runs and
+  policy changes. Accepting the build transfers it to pending work before clearing the
+  marker; a validated publication already covering the inputs also permits clearing it.
 - **Atomic publication** — Replacing a completed file as a unit so consumers do not see
-  a partially written replacement. Related metadata and recovery records let subsequent
-  runs validate or recover interrupted publication.
+  a partially written replacement. Index, score, and report writers stage complete
+  documents before replacement. Related metadata and recovery records let subsequent
+  runs validate or recover interrupted publication; separate files are not one atomic
+  transaction.
+- **Log rotation receipt** — A saved record authenticating a monthly log and its prior
+  and intended compressed archives. Recovery uses it to finish an interrupted rotation
+  without appending the same source again; new log writes recover pending rotation first.
+  Readers use the same receipt to distinguish an archived source copy from a new plain
+  tail, preserving all occurrences while sharing the writer's lock.
 
 See [pipeline usage](../README.md#pipeline),
+[log rotation](../src/peri_scribe/logging.py),
 [publication reuse](architecture.md#publication-reuse-and-performance), and
 [recovery and scheduling](architecture.md#recovery-and-scheduling).
 
@@ -191,6 +229,9 @@ See [pipeline usage](../README.md#pipeline),
   yearly KMZ for Google Earth with latest perimeters and progression maps.
 - **Placemark / balloon** — A selectable KML feature and its associated information
   display. Fire balloons contain descriptions, measurements, and charts.
+- **Literal source text** — A name or descriptive field encoded as document content.
+  Delimiters in that text cannot create Markdown table cells, links, or XML elements;
+  generated formatting uses a separate explicit markup representation.
 - **Fire summary** — Shared prepared facts used by maps and reports, including selected
   area, histories, and descriptive information. Output-specific rendering builds on
   these common facts.
@@ -200,16 +241,26 @@ See [pipeline usage](../README.md#pipeline),
 - **Fire update** — A newly mapped perimeter recorded after successful KMZ generation.
   Report edits or ranking changes alone do not generate one. Monthly records live in
   `logs/YYYY-MM-fire-updates.jsonl`, with older months eventually compressed.
-- **Log identity** — A stable key linking a fire's update records across name changes,
-  identifier enrichment, and mapping corrections. It preserves acreage history while
-  keeping unrelated fires with reused names separate.
+- **Log identity** — An immutable key identifying the saved history bucket of an update
+  record. Corrections can change its current owner without rewriting the record.
+- **History ownership** — The current fire inheriting a saved history bucket. A fire
+  inherits all histories reached through its identifier and component aliases;
+  competing claims use the latest mapped observation. The viewer compares their records
+  as one chronology.
+- **Alias lineage** — Retained links from identifier and component aliases to every
+  history they have claimed or inherited. Losing a claim does not erase these links,
+  allowing later corrections to transfer ownership back. Unrelated namesakes require
+  continuity evidence before sharing history.
 - **Checkpoint / baseline** — Saved acknowledgement of mapped perimeters in
   `derived/fire_updates_state.json`. The next publication uses it to identify new
   updates; a pending recovery journal coordinates log and checkpoint writes.
+  Invalid authoritative state stops publication and remains available for repair.
 - **Update viewer** — The `maps/updates.html` page and adjacent `updates.json` showing
   nonzero mapped-acreage changes from the preceding 48 hours. Each change compares a
-  record with its previous logged acreage and can be positive or negative.
+  record with its previous logged acreage and can be positive or negative. Equal-time
+  records retain append order across an archived prefix and its later plain tail.
 
 See [shared fire presentation](architecture.md#shared-fire-presentation),
+[literal source text encoding](../src/document_text/encoding.py),
 [update behavior](requirements.md#implemented-behavior), and
 [viewer setup](development_tools.md#fire-update-viewer).

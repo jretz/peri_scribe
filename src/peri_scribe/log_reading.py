@@ -1,11 +1,15 @@
-"""Shared, bounded readers for chronological plain and Zstandard diagnostic logs."""
+"""Shared, bounded readers preserve diagnostic occurrences through clock changes."""
 
 import compression.zstd
+import contextlib
 import datetime
+import fcntl
 import os
 import pathlib
 import re
 import typing
+
+import peri_scribe.logging
 
 
 JSON_TOKENS = re.compile(rb'"(?:[^"\\]|\\.)*"|[{}\[\]]')
@@ -61,7 +65,7 @@ def timestamp_after(
     """Probe complete records so byte offsets cannot split UTF-8 or JSON values.
 
     Args:
-        stream: A chronological, uncompressed log.
+        stream: An uncompressed log whose records retain their original timestamps.
         offset: The binary search probe's byte offset.
         end: The file size observed before searching.
 
@@ -82,26 +86,22 @@ def timestamp_after(
 
 
 def seek_since(stream: typing.BinaryIO, since: datetime.datetime) -> None:
-    """Binary search chronological logs without parsing their entire old prefix.
+    """Retire only an older prefix, preserving later records through clock rollback.
 
-    Undated records after the last older timestamp remain available for diagnostics,
-    and an unfinished final line remains available when its writer completes it.
+    Undated records after the prefix's last older timestamp remain available for
+    diagnostics. An unfinished final line remains available for its writer to finish.
 
     Args:
-        stream: A seekable, uncompressed log with ordered timestamps.
+        stream: A seekable, uncompressed log with arbitrary timestamp order.
         since: The inclusive timestamp cutoff.
     """
-    # The writer timestamps under its lock; backward system-clock moves are an
-    # acceptable ordering risk for this monitor's recent-history search.
     lower = 0
-    end = upper = stream.seek(0, os.SEEK_END)
-    while lower < upper:
-        middle = (lower + upper) // 2
-        timestamp = timestamp_after(stream, middle, end)
-        if timestamp is not None and timestamp < since:
-            lower = stream.tell()
-        else:
-            upper = middle
+    end = stream.seek(0, os.SEEK_END)
+    stream.seek(0)
+    while (time := timestamp_after(stream, stream.tell(), end)) is not None:
+        if time >= since:
+            break
+        lower = stream.tell()
     stream.seek(lower)
 
 
@@ -110,7 +110,7 @@ def log_paths(
     *,
     since: datetime.datetime | None = None,
 ) -> tuple[pathlib.Path, ...]:
-    """Prefer the active copy if compression briefly exposes both copies of a month.
+    """Choose one representative for each month, including its retained archive.
 
     Args:
         directory: The watched log directory.
@@ -128,6 +128,55 @@ def log_paths(
     return tuple(paths[name] for name in sorted(paths) if name >= first_month)
 
 
+@contextlib.contextmanager
+def read_lock(directory: pathlib.Path) -> typing.Iterator[None]:
+    """Share the writer's lock without creating files in a watched directory.
+
+    Args:
+        directory: A log directory with a stable writer lock, or an inactive copy.
+
+    Yields:
+        A read interval excluding cooperating appenders and rotators.
+    """
+    with contextlib.ExitStack() as stack:
+        try:
+            lock = stack.enter_context((directory / ".rotation.lock").open("rb"))
+        except FileNotFoundError:
+            pass
+        else:
+            fcntl.flock(lock, fcntl.LOCK_SH)
+        yield
+
+
+def log_components(path: pathlib.Path) -> tuple[pathlib.Path, ...]:
+    """Select the complete monthly history while its shared lock is held.
+
+    A committed receipt identifies physical source copies already present in the
+    archive. Without that receipt, plain records are distinct later occurrences.
+
+    Args:
+        path: Either representation of one monthly log.
+
+    Returns:
+        Ordered, nonoverlapping representations of the month's retained records.
+
+    Raises:
+        OSError: A receipt does not authenticate the retained files.
+        FileNotFoundError: Neither representation of the month exists.
+    """
+    plain = path.with_suffix("") if path.suffix == ".zst" else path
+    archive = plain.with_suffix(plain.suffix + ".zst")
+    try:
+        committed = peri_scribe.logging.rotation_committed(plain)
+    except ValueError as error:
+        raise OSError(str(error)) from error
+    candidates = (archive,) if committed else (archive, plain)
+    retained = tuple(candidate for candidate in candidates if candidate.exists())
+    if not retained:
+        raise FileNotFoundError(path)
+    return retained
+
+
 def complete_lines(
     path: pathlib.Path,
     *,
@@ -135,33 +184,50 @@ def complete_lines(
     until: datetime.datetime | None = None,
     include: typing.Callable[[bytes], bool] | None = None,
 ) -> typing.Generator[bytes]:
-    """Seek plain files and skim decompressed lines before decoding eligible JSON.
+    """Read one coherent month across archived records and later plain appends.
 
-    Archives are read incrementally, including concatenated Zstandard frames. An
-    active file's incomplete last record is left for its writer to finish.
+    The shared lock spans iteration so publication cannot move occurrences between
+    the two representations during a read. Close abandoned iterators promptly.
 
     Args:
-        path: A plain or compressed monthly log.
+        path: A representative plain or compressed monthly log.
         since: Inclusive lower bound; undated lines remain available to diagnostics.
-        until: Inclusive upper bound in a chronologically ordered file.
-        include: Optional inexpensive filter before timestamp extraction. Reading
-            stops at the first included, dated record beyond the upper bound.
+        until: Inclusive upper bound applied independently to each dated occurrence.
+        include: Optional inexpensive filter before timestamp extraction.
 
     Yields:
         Complete, nonempty lines inside the requested bounds and undated lines.
+    """
+    with read_lock(path.parent):
+        for component in log_components(path):
+            yield from component_lines(
+                component,
+                since=since,
+                until=until,
+                include=include,
+            )
 
-    Raises:
-        FileNotFoundError: Neither the requested log nor its rotated copy exists.
+
+def component_lines(
+    path: pathlib.Path,
+    *,
+    since: datetime.datetime | None = None,
+    until: datetime.datetime | None = None,
+    include: typing.Callable[[bytes], bool] | None = None,
+) -> typing.Generator[bytes]:
+    """Stream one selected representation without materializing its complete archive.
+
+    Args:
+        path: A component selected while the log directory's shared lock is held.
+        since: Inclusive lower bound; undated lines remain available to diagnostics.
+        until: Inclusive upper bound applied independently to each dated occurrence.
+        include: Optional inexpensive filter before timestamp extraction.
+
+    Yields:
+        Complete, nonempty lines inside the requested bounds and undated lines.
     """
     compressed = path.suffix == ".zst"
-    try:
-        stream = compression.zstd.open(path, "rb") if compressed else path.open("rb")
-    except FileNotFoundError:
-        if compressed:
-            raise
-        stream = compression.zstd.open(path.with_suffix(path.suffix + ".zst"), "rb")
-        compressed = True
-    with stream:
+    with compression.zstd.open(path, "rb") if compressed else path.open("rb") as stream:
         if since is not None and not compressed:
             seek_since(typing.cast("typing.BinaryIO", stream), since)
         for line in stream:
@@ -174,7 +240,7 @@ def complete_lines(
             )
             if time is not None:
                 if until is not None and time > until:
-                    break
+                    continue
                 if since is not None and time < since:
                     continue
             yield line

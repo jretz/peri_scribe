@@ -26,4 +26,4 @@ def balloon_text(
         image_filenames,
         leading_rows=leading_rows,
     )
-    return html[len("<![CDATA[") : -len("]]>")]
+    return str(html)[len("<![CDATA[") : -len("]]>")]

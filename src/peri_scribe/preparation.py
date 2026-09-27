@@ -45,6 +45,7 @@ def runtime_fingerprint() -> str:
         "peri_scribe",
         "arcgis_access",
         "aircraft_registration",
+        "document_text",
         "measurement_units",
         "spatial_data",
         "kml_io",

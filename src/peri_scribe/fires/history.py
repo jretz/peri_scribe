@@ -36,6 +36,7 @@ import spatial_data.reference
 IDENTITY_COLUMNS = [
     "fire_name",
     "fire_identifier",
+    "fire_component_id",
     "fire_aliases",
     "complex_name",
     "complex_identifier",
@@ -104,6 +105,7 @@ def identity_fields(
     return {
         "fire_name": fire.name,
         "fire_identifier": fire.identifier,
+        "fire_component_id": fire.component_id,
         "fire_aliases": ", ".join(sorted(fire.aliases)),
         "complex_name": complex_.name if complex_ is not None else None,
         "complex_identifier": complex_.identifier if complex_ is not None else None,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import pathlib
 
 import peri_scribe.fires.sources
@@ -72,3 +73,29 @@ def complex_parent_and_child_fires(
         },
     )
     return listed_fires()
+
+
+def descriptive_identity(fire: peri_scribe.models.Fire) -> peri_scribe.models.Fire:
+    """Compare descriptive grouping independently of source-occurrence metadata.
+
+    Args:
+        fire: A grouped source fire with an internal component identity.
+
+    Returns:
+        Its descriptive and external identity fields, retaining complex membership.
+    """
+    return dataclasses.replace(fire, component_id=None, component_aliases=frozenset())
+
+
+def descriptive_source(
+    source: peri_scribe.models.FireSources,
+) -> peri_scribe.models.FireSources:
+    """Compare source path aggregation independently of internal component metadata.
+
+    Args:
+        source: A grouped source identity and its retained snapshot paths.
+
+    Returns:
+        Its descriptive identity and unchanged source paths.
+    """
+    return dataclasses.replace(source, fire=descriptive_identity(source.fire))

@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import datetime
+import pathlib
 
+import shapely
 import shapely.geometry
 
 import peri_scribe.execution
@@ -11,6 +13,7 @@ import peri_scribe.models
 import peri_scribe.presentation.fire_data
 import spatial_data.measurements
 import tests.helpers.factories.geometry
+import tests.helpers.factories.peri_scribe.component_identity
 import tests.helpers.factories.peri_scribe.kml.parsing
 import tests.helpers.factories.peri_scribe.presentation.fire_data
 
@@ -506,3 +509,35 @@ def test_fire_summaries_drops_tiny_rings() -> None:
     assert [ring.geometry for ring in fire.progression_rings] == [
         tests.helpers.factories.geometry.square(1.0),
     ]
+
+
+def test_fire_summaries_keeps_anonymous_component_geography_separate(
+    tmp_path: pathlib.Path,
+) -> None:
+    expected_count = 2
+    factory = tests.helpers.factories.peri_scribe.component_identity
+    summaries = factory.summaries(factory.sources(tmp_path), tmp_path)
+    assert len(summaries) == expected_count
+    assert [len(fire.perimeters) for fire in summaries] == [1, 1]
+
+
+def test_prepare_fire_data_selects_component_points_and_incident_reports(
+    tmp_path: pathlib.Path,
+) -> None:
+    factory = tests.helpers.factories.peri_scribe.component_identity
+    index, full, _empty = factory.histories(factory.sources(tmp_path), tmp_path)
+    points = full.copy()
+    points.geometry = [shapely.Point(-121, 36), shapely.Point(-149, 64)]
+    prepared = peri_scribe.presentation.fire_data.prepare_fire_data(
+        index,
+        full,
+        points,
+        full.iloc[0:0],
+        incident_rows=full,
+    )
+    for fire in prepared:
+        matching = points[points["fire_component_id"] == fire.summary.component_id]
+        assert fire.summary.point is not None
+        assert fire.summary.point.equals(matching.geometry.iloc[-1])
+        assert len(fire.point_positions) == 1
+        assert fire.history is not None

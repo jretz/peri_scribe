@@ -152,13 +152,29 @@ class Follower:
         Returns:
             Complete records, readable diagnostics, and available archived months.
         """
+        try:
+            with peri_scribe.log_reading.read_lock(self.directory):
+                return self.poll_locked(since=since)
+        except OSError as error:
+            return Batch(errors=(str(error),), caught_up=False)
+
+    def poll_locked(self, *, since: datetime.datetime | None = None) -> Batch:
+        """Keep discovered sources distinct from receipted copies in an archive.
+
+        Args:
+            since: The earliest timestamp to seek when opening a new log.
+
+        Returns:
+            A batch observed while appenders and rotators hold no writer lock.
+        """
         current: set[tuple[int, int]] = set()
         errors: list[str] = []
         records: list[dict[str, object]] = []
         caught_up = True
         for path in sorted(self.directory.glob("????-??.jsonl")):
             try:
-                current.add(self.discover(path, since))
+                if path in peri_scribe.log_reading.log_components(path):
+                    current.add(self.discover(path, since))
             except OSError as error:
                 errors.append(f"{path.name}: {error}")
         for identity, cursor in tuple(self.cursors.items()):

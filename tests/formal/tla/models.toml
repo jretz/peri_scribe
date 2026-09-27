@@ -1,0 +1,274 @@
+[[models]]
+name = "run-state"
+module = "RunState"
+config = "RunState"
+
+[[models]]
+name = "run-scheduler"
+module = "RunScheduler"
+config = "RunScheduler"
+
+[[models]]
+name = "run-scheduler-liveness"
+module = "RunScheduler"
+config = "RunSchedulerLiveness"
+
+[[models]]
+name = "pipeline-composition"
+module = "PipelineComposition"
+config = "PipelineComposition"
+
+[[models]]
+name = "pipeline-composition-liveness"
+module = "PipelineComposition"
+config = "PipelineCompositionLiveness"
+
+[[models]]
+name = "publication-gate"
+module = "PublicationGate"
+config = "PublicationGate"
+
+[[models]]
+name = "update-journal"
+module = "UpdateJournal"
+config = "UpdateJournal"
+
+[[models]]
+name = "update-journal-liveness"
+module = "UpdateJournal"
+config = "UpdateJournalLiveness"
+
+[[models]]
+name = "journal-replay"
+module = "JournalReplay"
+config = "JournalReplay"
+
+[[models]]
+name = "geography-publication"
+module = "GeographyPublication"
+config = "GeographyPublication"
+
+[[models]]
+name = "geography-publication-liveness"
+module = "GeographyPublication"
+config = "GeographyPublicationLiveness"
+
+[[models]]
+name = "external-refresh"
+module = "ExternalRefresh"
+config = "ExternalRefresh"
+
+[[models]]
+name = "fetch-crash"
+module = "FetchCrash"
+config = "FetchCrash"
+
+[[models]]
+name = "fetch-crash-liveness"
+module = "FetchCrash"
+config = "FetchCrashLiveness"
+
+[[models]]
+name = "geography-pair-is-not-atomic"
+module = "GeographyPublication"
+config = "GeographyPairExpected"
+expected_invariant = "PairAlwaysMatches"
+
+[[models]]
+name = "feed-cache"
+module = "FeedCache"
+config = "FeedCache"
+
+[[models]]
+name = "feed-cache-liveness"
+module = "FeedCache"
+config = "FeedCacheLiveness"
+
+[[models]]
+name = "static-download"
+module = "StaticDownload"
+config = "StaticDownload"
+
+[[models]]
+name = "static-download-liveness"
+module = "StaticDownload"
+config = "StaticDownloadLiveness"
+
+[[models]]
+name = "worker-lifetime"
+module = "WorkerLifetime"
+config = "WorkerLifetime"
+
+[[models]]
+name = "worker-lifetime-liveness"
+module = "WorkerLifetime"
+config = "WorkerLifetimeLiveness"
+
+[[models]]
+name = "buildings-construction"
+module = "BuildingsConstruction"
+config = "BuildingsConstruction"
+
+[[models]]
+name = "buildings-construction-liveness"
+module = "BuildingsConstruction"
+config = "BuildingsConstructionLiveness"
+
+[[models]]
+name = "cache-read"
+module = "CacheRead"
+config = "CacheRead"
+
+[[models]]
+name = "product-cache"
+module = "ProductCache"
+config = "ProductCache"
+
+[[models]]
+name = "browser-refresh"
+module = "BrowserRefresh"
+config = "BrowserRefresh"
+
+[[models]]
+name = "browser-refresh-liveness"
+module = "BrowserRefresh"
+config = "BrowserRefreshLiveness"
+
+[[models]]
+name = "monitor-reader"
+module = "MonitorReader"
+config = "MonitorReader"
+
+[[models]]
+name = "monitor-projection"
+module = "MonitorProjection"
+config = "MonitorProjection"
+
+[[models]]
+name = "monitor-context"
+module = "MonitorContext"
+config = "MonitorContext"
+
+[[models]]
+name = "monitor-context-liveness"
+module = "MonitorContext"
+config = "MonitorContextLiveness"
+
+[[models]]
+name = "snapshot-publication"
+module = "SnapshotPublication"
+config = "SnapshotPublication"
+
+[[models]]
+name = "snapshot-publication-liveness"
+module = "SnapshotPublication"
+config = "SnapshotPublicationLiveness"
+
+[[models]]
+name = "snapshot-collection"
+module = "SnapshotCollection"
+config = "SnapshotCollection"
+
+[[models]]
+name = "snapshot-collection-liveness"
+module = "SnapshotCollection"
+config = "SnapshotCollectionLiveness"
+
+[[models]]
+name = "parsed-cache"
+module = "ParsedCache"
+config = "ParsedCache"
+
+[[models]]
+name = "parsed-cache-read"
+module = "ParsedCacheRead"
+config = "ParsedCacheRead"
+
+[[models]]
+name = "parsed-cache-rebuild"
+module = "ParsedCacheRebuild"
+config = "ParsedCacheRebuild"
+
+[[models]]
+name = "source-writers"
+module = "SourceWriters"
+config = "SourceWriters"
+
+[[models]]
+name = "geography-readers"
+module = "GeographyReaders"
+config = "GeographyReaders"
+[[models]]
+name = "document-publication"
+module = "DocumentPublication"
+config = "DocumentPublication"
+
+[[models]]
+name = "feed-coordinator"
+module = "FeedCoordinator"
+config = "FeedCoordinator"
+
+[[models]]
+name = "feed-coordinator-liveness"
+module = "FeedCoordinator"
+config = "FeedCoordinatorLiveness"
+
+[[models]]
+name = "document-publication-liveness"
+module = "DocumentPublication"
+config = "DocumentPublicationLiveness"
+
+[[models]]
+name = "log-rotation"
+module = "LogRotation"
+config = "LogRotation"
+
+[[models]]
+name = "log-rotation-liveness"
+module = "LogRotation"
+config = "LogRotationLiveness"
+
+[[models]]
+name = "log-readers"
+module = "LogReaders"
+config = "LogReaders"
+
+[[models]]
+name = "log-readers-liveness"
+module = "LogReaders"
+config = "LogReadersLiveness"
+
+[[models]]
+name = "monitor-tasks"
+module = "MonitorTasks"
+config = "MonitorTasks"
+
+[[models]]
+name = "monitor-tasks-liveness"
+module = "MonitorTasks"
+config = "MonitorTasksLiveness"
+
+[[models]]
+name = "identity-recomputation"
+module = "IdentityRecomputation"
+config = "IdentityRecomputation"
+
+[[models]]
+name = "identity-recomputation-bridge"
+module = "IdentityRecomputation"
+config = "IdentityRecomputationBridge"
+
+[[models]]
+name = "identity-recomputation-three-fires"
+module = "IdentityRecomputation"
+config = "IdentityRecomputationThree"
+
+[[models]]
+name = "durable-update-validation"
+module = "DurableUpdateValidation"
+config = "DurableUpdateValidation"
+
+[[models]]
+name = "durable-update-validation-liveness"
+module = "DurableUpdateValidation"
+config = "DurableUpdateValidationLiveness"

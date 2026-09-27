@@ -1,9 +1,34 @@
 """Replace pipeline state dependencies with controlled test doubles."""
 
+from __future__ import annotations
+
 import pathlib
 import typing
 
 import peri_scribe.pipeline_state
+
+
+if typing.TYPE_CHECKING:
+    import pytest
+
+
+def isolate_files(monkeypatch: pytest.MonkeyPatch, directory: pathlib.Path) -> None:
+    """Keep synthetic CLI year paths from writing recovery files outside a test.
+
+    Args:
+        monkeypatch: Restore path substitutions after the test.
+        directory: Real isolated directory for lock and state files.
+    """
+    monkeypatch.setattr(
+        peri_scribe.pipeline_state,
+        "state_path",
+        lambda _year: directory / "run_state.json",
+    )
+    monkeypatch.setattr(
+        peri_scribe.pipeline_state,
+        "lock_path",
+        lambda _year: directory / ".run.lock",
+    )
 
 
 def make_interrupted_locked_run(

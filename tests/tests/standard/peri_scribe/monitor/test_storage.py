@@ -11,9 +11,12 @@ import unittest.mock
 
 import pytest
 
+import peri_scribe.log_reading
+import peri_scribe.logging
 import peri_scribe.monitor.events
 import peri_scribe.monitor.storage
 import tests.helpers.doubles.errors
+import tests.helpers.doubles.peri_scribe.log_rotation
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.factories.peri_scribe.monitor.status
 
@@ -349,3 +352,39 @@ def test_read_report_reports_invalid_encoding(tmp_path: pathlib.Path) -> None:
         path,
         peri_scribe.monitor.storage.Report(),
     ).error
+
+
+def test_follower_poll_reports_unreadable_rotation_lock(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.log_reading,
+        "read_lock",
+        tests.helpers.doubles.errors.raising_stub(PermissionError("lock unavailable")),
+    )
+    with contextlib.closing(peri_scribe.monitor.storage.Follower(tmp_path)) as follower:
+        batch = follower.poll()
+        assert batch.errors == ("lock unavailable",)
+        assert not batch.caught_up
+
+
+def test_follower_poll_excludes_committed_rotation_source(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "2026-01.jsonl"
+    path.write_bytes(b'{"event":"already archived"}\n')
+    archive = path.with_suffix(".jsonl.zst")
+    interruption = tests.helpers.doubles.peri_scribe.log_rotation.Interruption(
+        target=archive,
+        deletion=False,
+        after=True,
+    )
+    with pytest.MonkeyPatch.context() as patch:
+        interruption.install(patch)
+        with pytest.raises(tests.helpers.doubles.peri_scribe.log_rotation.ProcessLoss):
+            peri_scribe.logging.compress_log(path)
+    with contextlib.closing(peri_scribe.monitor.storage.Follower(tmp_path)) as follower:
+        batch = follower.poll()
+        assert batch.records == ()
+        assert batch.archives == (archive,)

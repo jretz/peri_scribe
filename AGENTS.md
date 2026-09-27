@@ -11,9 +11,25 @@
   project. These must be read and adhered to when writing code.
 - [Testing](docs/testing.md) — Testing guidelines and instructions for the
   project. These must be read and adhered to when writing code.
+- [Formal Verification](docs/formal_verification.md) — Model, proof, and conformance
+  guidelines. Read before designing or implementing new system behavior, and when
+  changing formally covered behavior or formal checks. Verify applicable designs before
+  writing implementation code.
 - [Architecture](docs/architecture.md) — Architecture and design of the project.
 
 ## Environment and Tooling
+
+### Tool Versions
+
+Use `latest` version selectors for development tools managed by `mise`. Commit the
+resolved versions and checksums in `.mise/mise.lock` to preserve known toolchains.
+Upgrade through mise and review the lockfile changes. Do not duplicate those version
+pins in task commands or secondary toolchain files.
+
+For Python dependencies managed by `uv`, keep version declarations open unless a
+documented compatibility requirement needs a constraint. Commit resolved dependency
+versions in `uv.lock`. Use `uv lock --upgrade` to refresh them and `uv sync --locked` to
+reproduce the recorded environment. Do not copy lockfile versions into `pyproject.toml`.
 
 ### Shell
 

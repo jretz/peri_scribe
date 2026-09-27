@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import collections
 import dataclasses
 import pathlib
 import typing
@@ -28,7 +29,8 @@ class FeedValidationResult:
     the complete snapshot should be present in the stored snapshots with matching
     attributes and geometry, and the stored snapshots should carry every attribute
     column the complete snapshot carries. Stored snapshots may hold additional features
-    and columns without being flagged.
+    and columns without being flagged. Both snapshots need unique OBJECTIDs and the
+    same known coordinate reference system before they can establish coverage.
     """
 
     feed_name: str
@@ -36,6 +38,9 @@ class FeedValidationResult:
     missing_object_ids: frozenset[int]
     mismatched_object_ids: frozenset[int]
     columns_missing_from_stored: frozenset[str]
+    duplicate_complete_object_ids: frozenset[int] = frozenset()
+    duplicate_stored_object_ids: frozenset[int] = frozenset()
+    coordinate_reference_mismatch: bool = False
 
     @property
     def has_problems(self) -> bool:
@@ -47,8 +52,26 @@ class FeedValidationResult:
         return bool(
             self.missing_object_ids
             or self.mismatched_object_ids
-            or self.columns_missing_from_stored,
+            or self.columns_missing_from_stored
+            or self.duplicate_complete_object_ids
+            or self.duplicate_stored_object_ids
+            or self.coordinate_reference_mismatch,
         )
+
+
+def duplicate_object_ids(dataframe: geopandas.GeoDataFrame) -> frozenset[int]:
+    """Ambiguous IDs cannot establish coverage even when their final rows match.
+
+    Args:
+        dataframe: A snapshot carrying normalized integer OBJECTIDs.
+
+    Returns:
+        IDs with multiple source rows, regardless of whether their content agrees.
+    """
+    counts = collections.Counter(
+        int(value) for value in dataframe[peri_scribe.models.OBJECT_ID_COLUMN_NAME]
+    )
+    return frozenset(object_id for object_id, count in counts.items() if count > 1)
 
 
 def feature_contents(
@@ -120,7 +143,8 @@ def validate_feed(
     the stored snapshots, and mismatched when its stored attributes or geometry differ
     from the complete snapshot's. Attribute columns that the complete snapshot carries
     but the stored snapshots lack are reported separately, since a value comparison
-    cannot cover them.
+    cannot cover them. Duplicated IDs and unknown or different coordinate reference
+    systems prevent a successful comparison, including for empty snapshots.
 
     Args:
         feed: The feed both snapshots came from.
@@ -138,6 +162,7 @@ def validate_feed(
     complete_columns = peri_scribe.sources.changes.attribute_columns_of(
         complete_dataframe,
     )
+    duplicate_complete_object_ids = duplicate_object_ids(complete_dataframe)
     if (
         stored_dataframe is None
         or peri_scribe.models.OBJECT_ID_COLUMN_NAME not in stored_dataframe
@@ -148,6 +173,8 @@ def validate_feed(
             missing_object_ids=complete_object_ids,
             mismatched_object_ids=frozenset(),
             columns_missing_from_stored=complete_columns,
+            duplicate_complete_object_ids=duplicate_complete_object_ids,
+            coordinate_reference_mismatch=True,
         )
     columns_missing_from_stored = (
         complete_columns
@@ -160,10 +187,13 @@ def validate_feed(
     complete_contents = feature_contents(complete_dataframe, columns)
     stored_contents = feature_contents(stored_dataframe, columns)
     stored_object_ids = frozenset(stored_contents)
+    duplicate_stored_object_ids = duplicate_object_ids(stored_dataframe)
     mismatched_object_ids = frozenset(
         object_id
         for object_id in complete_object_ids & stored_object_ids
-        if not feature_contents_equal(
+        if object_id in duplicate_complete_object_ids
+        or object_id in duplicate_stored_object_ids
+        or not feature_contents_equal(
             complete_contents[object_id],
             stored_contents[object_id],
         )
@@ -174,6 +204,12 @@ def validate_feed(
         missing_object_ids=complete_object_ids - stored_object_ids,
         mismatched_object_ids=mismatched_object_ids,
         columns_missing_from_stored=frozenset(columns_missing_from_stored),
+        duplicate_complete_object_ids=duplicate_complete_object_ids,
+        duplicate_stored_object_ids=duplicate_stored_object_ids,
+        coordinate_reference_mismatch=(
+            complete_dataframe.crs is None
+            or complete_dataframe.crs != stored_dataframe.crs
+        ),
     )
 
 

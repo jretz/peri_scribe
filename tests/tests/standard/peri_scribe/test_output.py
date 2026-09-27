@@ -14,7 +14,6 @@ import peri_scribe.models
 import peri_scribe.output
 import svg_charts.distribution
 import tests.helpers.doubles.errors
-import tests.helpers.doubles.peri_scribe.output
 import tests.helpers.factories.peri_scribe.output
 
 
@@ -45,23 +44,16 @@ def test_remove_directory_tree_leaves_missing_path_alone(
 
 
 def test_write_document_writes_pretty_printed_json(
-    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: pathlib.Path,
 ) -> None:
-    path = pathlib.Path("/fires.json")
+    path = tmp_path / "fires.json"
     document = peri_scribe.models.FireIndex.model_validate({
         "version": "2026-08-17",
         "fires": [{"name": "Park Fire", "status": "active", "paths": ["one.gpkg"]}],
     })
-    files: list[tests.helpers.doubles.peri_scribe.output.RecordingFile] = []
-
-    fake_open = tests.helpers.doubles.peri_scribe.output.make_recording_file_opener(
-        files=files,
-    )
-
-    monkeypatch.setattr(pathlib.Path, "open", fake_open)
     with structlog.testing.capture_logs() as captured:
         peri_scribe.output.write_document(path, document)
-    written = files[0].getvalue()
+    written = path.read_text()
     assert json.loads(written) == document.model_dump()
     assert list(json.loads(written)) == ["version", "fires"]
     assert "\n    " in written

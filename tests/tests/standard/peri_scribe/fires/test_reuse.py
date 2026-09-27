@@ -423,6 +423,7 @@ def test_fire_keys_invalidate_changed_dependencies(
         "peri_scribe",
         "arcgis_access",
         "aircraft_registration",
+        "document_text",
         "measurement_units",
         "spatial_data",
     ],
@@ -432,12 +433,14 @@ def test_derivation_context_tracks_extracted_package_code(
     monkeypatch: pytest.MonkeyPatch,
     package: str,
 ) -> None:
-    source_root = tmp_path / "src"
-    module_path = source_root / "peri_scribe" / "fires" / "reuse.py"
-    monkeypatch.setattr(peri_scribe.fires.reuse, "__file__", str(module_path))
-    dependency = source_root / package / "geometry.py"
-    dependency.parent.mkdir(parents=True)
-    dependency.write_text("algorithm = 1\n")
+    source_root = pathlib.Path(peri_scribe.fires.reuse.__file__).parents[2]
+    dependency = source_root / package / "__init__.py"
     first = peri_scribe.fires.reuse.derivation_context(tmp_path)
-    dependency.write_text("algorithm = 2\n")
+    file_digest = peri_scribe.fires.reuse.file_digest
+    # Preserve the module's source location so coverage can attribute later calls.
+    monkeypatch.setattr(
+        peri_scribe.fires.reuse,
+        "file_digest",
+        lambda path: "changed" if path == dependency else file_digest(path),
+    )
     assert peri_scribe.fires.reuse.derivation_context(tmp_path) != first

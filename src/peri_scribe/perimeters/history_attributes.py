@@ -1,16 +1,20 @@
 """Reading typed values from a fire row's attribute dictionary.
 
-These helpers read the first present value among a list of candidate column names and
-convert it to the requested type. They are shared by version reconciliation and row
-construction, which both interpret the attributes a source row carries.
+Typed helpers use the first usable value in column priority order. They are shared by
+version reconciliation and row construction, which both interpret source attributes.
 """
 
 from __future__ import annotations
 
 import datetime
+import typing
 
 import peri_scribe.geo.parsing
 import peri_scribe.sources.changes
+
+
+if typing.TYPE_CHECKING:
+    import collections.abc
 
 
 def attribute_value(attributes: dict[str, object], *args: str) -> object | None:
@@ -36,7 +40,7 @@ def attribute_value(attributes: dict[str, object], *args: str) -> object | None:
 
 
 def text_attribute(attributes: dict[str, object], *args: str) -> str | None:
-    """Return the first present text value among *args*, or None.
+    """Return the first nonblank text value among *args*, or None.
 
     Args:
         attributes: The row's attributes.
@@ -49,15 +53,33 @@ def text_attribute(attributes: dict[str, object], *args: str) -> str | None:
         >>> text_attribute({"name": "  Rumsey Fire  "}, "name")
         'Rumsey Fire'
     """
-    value = attribute_value(attributes, *args)
-    if value is None:
-        return None
-    text = str(value).strip()
-    return text or None
+    return typed_attribute(attributes, args, peri_scribe.geo.parsing.fire_name_from)
+
+
+def typed_attribute[T](
+    attributes: dict[str, object],
+    columns: tuple[str, ...],
+    parse: collections.abc.Callable[[object], T | None],
+) -> T | None:
+    """Keep unusable higher-priority fields from hiding valid fallback values.
+
+    Args:
+        attributes: The row's attributes.
+        columns: The column names to look up, in priority order.
+        parse: The requested type's parser, returning None for unusable values.
+
+    Returns:
+        The first successfully parsed value, or None.
+    """
+    for column in columns:
+        parsed = parse(attributes.get(column))
+        if parsed is not None:
+            return parsed
+    return None
 
 
 def float_attribute(attributes: dict[str, object], *args: str) -> float | None:
-    """Return the first present numeric value among *args*, or None.
+    """Return the first finite numeric value among *args*, or None.
 
     Args:
         attributes: The row's attributes.
@@ -70,16 +92,14 @@ def float_attribute(attributes: dict[str, object], *args: str) -> float | None:
         >>> float_attribute({"acres": "12.5"}, "acres")
         12.5
     """
-    return peri_scribe.geo.parsing.numeric_value(
-        attribute_value(attributes, *args),
-    )
+    return typed_attribute(attributes, args, peri_scribe.geo.parsing.numeric_value)
 
 
 def datetime_attribute(
     attributes: dict[str, object],
     *args: str,
 ) -> datetime.datetime | None:
-    """Return the first present datetime value among *args*, or None.
+    """Return the first usable datetime value among *args*, or None.
 
     Args:
         attributes: The row's attributes.
@@ -92,6 +112,8 @@ def datetime_attribute(
         >>> datetime_attribute({"edited": 0}, "edited").isoformat()
         '1970-01-01T00:00:00+00:00'
     """
-    return peri_scribe.sources.changes.modified_datetime_from(
-        attribute_value(attributes, *args),
+    return typed_attribute(
+        attributes,
+        args,
+        peri_scribe.sources.changes.modified_datetime_from,
     )

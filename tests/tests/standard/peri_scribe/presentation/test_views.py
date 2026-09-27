@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import pathlib
 
 import pytest
 import shapely.geometry
@@ -14,6 +15,7 @@ import peri_scribe.presentation.perimeters
 import peri_scribe.presentation.views
 import spatial_data.measurements
 import tests.helpers.factories.geometry
+import tests.helpers.factories.peri_scribe.component_identity
 import tests.helpers.factories.peri_scribe.presentation.views
 from measurement_units import units
 
@@ -1384,4 +1386,34 @@ def test_most_personnel_fires_limits_to_top_count() -> None:
             ),
         )
         == peri_scribe.presentation.views.TOP_FIRE_COUNT
+    )
+
+
+def test_matched_fire_scores_preserves_components_and_excludes_absent_owners(
+    tmp_path: pathlib.Path,
+) -> None:
+    factory = tests.helpers.factories.peri_scribe.component_identity
+    fires = factory.summaries(factory.sources(tmp_path), tmp_path)
+    entries = [
+        peri_scribe.models.FireScoreEntry(
+            name=fire.name,
+            component_id=fire.component_id,
+            score=index,
+            explanation="its own score",
+        )
+        for index, fire in enumerate(fires, start=1)
+    ]
+    scores = peri_scribe.models.FireScores(version="test", fires=entries)
+    matched = peri_scribe.presentation.views.matched_fire_scores(fires, scores)
+    assert {fire.component_id for fire, _ in matched} == {
+        entry.component_id for entry in entries
+    }
+    assert all(fire.component_id == entry.component_id for fire, entry in matched)
+    maps = peri_scribe.presentation.views.score_maps(scores)
+    assert [
+        peri_scribe.presentation.views.score_entry_for_fire(fire, *maps)
+        for fire in fires
+    ] == entries
+    assert (
+        len(peri_scribe.presentation.views.matched_fire_scores(fires[:1], scores)) == 1
     )

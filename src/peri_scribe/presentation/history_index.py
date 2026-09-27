@@ -23,11 +23,9 @@ if typing.TYPE_CHECKING:
 class HistoryRowIndex:
     """Row positions of one history layer, keyed by fire identifier and by name.
 
-    A row with a present identifier is indexed under both its identifier and its name; a
-    row without one is indexed under its name only. The dual membership reproduces the
-    history layers' original matching rules exactly: a fire with identifiers is matched
-    by those identifiers alone, while a fire without identifiers is matched by every row
-    sharing its name, including rows that carry an identifier.
+    Stored component identity takes priority and selects exactly one source group.
+    Legacy histories retain identifier and name lookup: identified fires match their
+    aliases, while anonymous entries match every row sharing their name.
 
     Keys are the raw column values, never string-coerced, so a lookup behaves the same
     as the original ``isin`` and equality filters (a non-string identifier never matches
@@ -36,10 +34,14 @@ class HistoryRowIndex:
     Attributes:
         positions_by_identifier: Row positions keyed by their identifier value.
         positions_by_name: Row positions keyed by their name value.
+        positions_by_component: Exact source-component positions when recorded.
     """
 
     positions_by_identifier: typing.Mapping[object, tuple[int, ...]]
     positions_by_name: typing.Mapping[object, tuple[int, ...]]
+    positions_by_component: typing.Mapping[object, tuple[int, ...]] = dataclasses.field(
+        default_factory=dict,
+    )
 
     @classmethod
     def from_frame(cls, frame: geopandas.GeoDataFrame) -> HistoryRowIndex:
@@ -56,9 +58,17 @@ class HistoryRowIndex:
         """
         by_identifier: dict[object, list[int]] = {}
         by_name: dict[object, list[int]] = {}
-        for position, (identifier, name) in enumerate(
-            zip(frame["fire_identifier"], frame["fire_name"], strict=True),
+        by_component: dict[object, list[int]] = {}
+        for position, (identifier, name, component) in enumerate(
+            zip(
+                frame["fire_identifier"],
+                frame["fire_name"],
+                frame.get("fire_component_id", [None] * len(frame)),
+                strict=True,
+            ),
         ):
+            if not peri_scribe.geo.parsing.is_missing(component):
+                by_component.setdefault(component, []).append(position)
             if not peri_scribe.geo.parsing.is_missing(identifier):
                 by_identifier.setdefault(identifier, []).append(position)
             if not peri_scribe.geo.parsing.is_missing(name):
@@ -66,6 +76,9 @@ class HistoryRowIndex:
         return cls(
             positions_by_identifier={
                 key: tuple(positions) for key, positions in by_identifier.items()
+            },
+            positions_by_component={
+                key: tuple(positions) for key, positions in by_component.items()
             },
             positions_by_name={
                 key: tuple(positions) for key, positions in by_name.items()
@@ -76,21 +89,24 @@ class HistoryRowIndex:
         self,
         fire_identifiers: frozenset[str],
         entry_name: str,
+        component_id: str | None = None,
     ) -> tuple[int, ...]:
         """Return the row positions belonging to one fire, in original order.
 
-        A fire with identifiers is matched by those identifiers alone and never falls
-        back to its name; a fire without identifiers is matched by its name. Each row
-        carries at most one identifier, so merging identifier buckets cannot produce a
-        duplicate position.
+        A stored component selects its exact rows. Entries without a component retain
+        identifier-only selection when identified and the legacy name fallback when
+        anonymous. Merging identifier buckets cannot duplicate a row position.
 
         Args:
             fire_identifiers: The fire's canonical identifier and aliases.
             entry_name: The fire's name, used only when it has no identifiers.
+            component_id: Its exact source group, when recorded in derived history.
 
         Returns:
             The fire's row positions, ascending (chronological order).
         """
+        if component_id is not None:
+            return self.positions_by_component.get(component_id, ())
         if fire_identifiers:
             positions = itertools.chain.from_iterable(
                 self.positions_by_identifier[identifier]

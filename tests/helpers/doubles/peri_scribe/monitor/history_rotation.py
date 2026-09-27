@@ -17,17 +17,18 @@ def rotate_before_read(
     """Publish an archive while the reader still holds the discovered plain path.
 
     Args:
-        path: The plain monthly log selected for context recovery.
+        path: The plain or compressed monthly log selected for context recovery.
         read_records: The production reader that will observe the completed rotation.
 
     Returns:
         The recovered records from the path's compressed replacement.
     """
-    with compression.zstd.open(
-        path.with_suffix(".jsonl.zst"),
-        "wt",
-        encoding="utf-8",
-    ) as stream:
-        stream.write(path.read_text(encoding="utf-8"))
-    path.unlink()
+    if path.suffix == ".jsonl" and path.exists():
+        with compression.zstd.open(
+            path.with_suffix(".jsonl.zst"),
+            "wt",
+            encoding="utf-8",
+        ) as stream:
+            stream.write(path.read_text(encoding="utf-8"))
+        path.unlink()
     return read_records(path)

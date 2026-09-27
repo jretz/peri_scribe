@@ -27,9 +27,9 @@ import peri_scribe.models
 import peri_scribe.paths
 import peri_scribe.phases
 import peri_scribe.publication
-import spatial_data.layers
 import tests.helpers.assertions.peri_scribe.kml.parsing
 import tests.helpers.doubles.errors
+import tests.helpers.doubles.peri_scribe.fires.derived_layers
 import tests.helpers.doubles.peri_scribe.kml.builder
 import tests.helpers.factories.geography
 import tests.helpers.factories.geometry
@@ -752,7 +752,10 @@ def test_create_kmz_reads_history_and_writes_kmz(
         )
     )
 
-    monkeypatch.setattr(spatial_data.layers, "read_layer", read_layer)
+    tests.helpers.doubles.peri_scribe.fires.derived_layers.stub_reader(
+        monkeypatch,
+        read_layer,
+    )
     writes: list[tuple[pathlib.Path, str, dict[str, bytes]]] = []
     monkeypatch.setattr(
         kml_io.kmz,
@@ -831,7 +834,10 @@ def test_create_kmz_excludes_fires_without_qualifying_area(
         )
     )
 
-    monkeypatch.setattr(spatial_data.layers, "read_layer", read_layer)
+    tests.helpers.doubles.peri_scribe.fires.derived_layers.stub_reader(
+        monkeypatch,
+        read_layer,
+    )
     writes: list[tuple[pathlib.Path, str, dict[str, bytes]]] = []
     monkeypatch.setattr(
         kml_io.kmz,
@@ -868,9 +874,8 @@ def test_create_kmz_advances_checkpoint_only_after_file_completion(
         "load_fire_scores",
         lambda _year: None,
     )
-    monkeypatch.setattr(
-        spatial_data.layers,
-        "read_layer",
+    tests.helpers.doubles.peri_scribe.fires.derived_layers.stub_reader(
+        monkeypatch,
         lambda *_args: empty,
     )
     checkpoint = peri_scribe.publication.publication_path(year)

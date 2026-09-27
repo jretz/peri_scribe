@@ -105,3 +105,27 @@ class GeoPackageStore:
             True when a layer has been stored at *path*.
         """
         return any(stored_path == path for stored_path, _layer_name in self.layers)
+
+    def replace(self, source: pathlib.Path, target: pathlib.Path) -> pathlib.Path:
+        """Publish every staged layer together under its final path.
+
+        Args:
+            source: Staging path supplied to the intercepted atomic rename.
+            target: Destination supplied to the intercepted atomic rename.
+
+        Returns:
+            The published destination, matching Path.replace.
+        """
+        moved = {
+            (target, name): dataframe
+            for (path, name), dataframe in self.layers.items()
+            if path == source
+        }
+        assert moved, source
+        self.layers = {
+            key: dataframe
+            for key, dataframe in self.layers.items()
+            if key[0] not in {source, target}
+        }
+        self.layers.update(moved)
+        return target

@@ -306,7 +306,7 @@ def row_identity(row: pd.Series, identity_columns: list[str]) -> tuple[object, .
         The identity values, with missing values replaced by None so rows compare.
     """
     return tuple(
-        None if peri_scribe.geo.parsing.is_missing(row[column]) else row[column]
+        None if peri_scribe.geo.parsing.is_missing(row.get(column)) else row[column]
         for column in identity_columns
     )
 

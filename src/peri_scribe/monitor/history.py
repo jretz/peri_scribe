@@ -288,7 +288,21 @@ def records_from(path: pathlib.Path) -> typing.Iterator[dict[str, object]]:
     Yields:
         Complete nonempty records, including inspectable malformed lines.
     """
-    for line in peri_scribe.log_reading.complete_lines(path):
+    yield from decoded_records(peri_scribe.log_reading.complete_lines(path))
+
+
+def decoded_records(
+    lines: collections.abc.Iterable[bytes],
+) -> typing.Iterator[dict[str, object]]:
+    """Preserve malformed diagnostics from complete selected log lines.
+
+    Args:
+        lines: Complete records from a coherent monthly read or selected component.
+
+    Yields:
+        Structured records with replacement characters for damaged UTF-8.
+    """
+    for line in lines:
         yield peri_scribe.monitor.events.parse_record(
             line.decode("utf-8", errors="replace"),
         )
@@ -374,6 +388,7 @@ class Reader:
         self.directory = directory
         self.follower = peri_scribe.monitor.storage.Follower(directory, tail=False)
         self.months: set[str] = set()
+        self.archive_signatures: dict[pathlib.Path, tuple[int, int, int, int]] = {}
         self.history = History()
         self.archive_errors: tuple[str, ...] = ()
         self.context_checked: set[str] = set()
@@ -405,16 +420,76 @@ class Reader:
         Returns:
             Current evidence and any limitations on its coverage.
         """
+        try:
+            with peri_scribe.log_reading.read_lock(self.directory):
+                return self.poll_locked(now)
+        except OSError as error:
+            self.history = dataclasses.replace(
+                self.history,
+                errors=(*self.archive_errors, str(error)),
+                caught_up=False,
+            )
+            return self.history
+
+    def poll_locked(self, now: datetime.datetime) -> History:
+        """Hand archived prefixes to the follower within one coherent read interval.
+
+        Args:
+            now: The observation time for the rolling window.
+
+        Returns:
+            Current evidence after archive selection and plain cursor discovery.
+        """
+        archives = {
+            path: (
+                metadata.st_dev,
+                metadata.st_ino,
+                metadata.st_size,
+                metadata.st_mtime_ns,
+            )
+            for path in self.directory.glob("????-??.jsonl.zst")
+            for metadata in (path.stat(),)
+        }
+        if any(
+            path.name.removesuffix(".zst") in self.months
+            and self.archive_signatures.get(path) != signature
+            for path, signature in archives.items()
+        ):
+            self.follower.close()
+            self.follower = peri_scribe.monitor.storage.Follower(
+                self.directory,
+                tail=False,
+            )
+            self.months.clear()
+            self.history = History()
+            self.archive_errors = ()
+            self.context_checked.clear()
+        self.archive_signatures = archives
         self.context_checked.intersection_update(
             run.identifier for run in self.history.state.runs
         )
         since = now - WINDOW
         for path in log_paths(self.directory, since=since):
             month = path.name.removesuffix(".zst")
-            if month not in self.months and path.suffix == ".zst":
+            if month not in self.months:
                 try:
+                    archive = next(
+                        (
+                            component
+                            for component in peri_scribe.log_reading.log_components(
+                                path,
+                            )
+                            if component.suffix == ".zst"
+                        ),
+                        None,
+                    )
+                    lines = (
+                        peri_scribe.log_reading.component_lines(archive)
+                        if archive is not None
+                        else ()
+                    )
                     for batch in record_batches(
-                        recent_records(records_from(path), since),
+                        recent_records(decoded_records(lines), since),
                     ):
                         if self.stopped.is_set():
                             return self.history

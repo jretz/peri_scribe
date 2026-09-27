@@ -5,8 +5,10 @@ from __future__ import annotations
 import dataclasses
 import io
 import pathlib
+import typing
 import zipfile
 
+import geopandas
 import pytest
 import requests
 
@@ -264,3 +266,101 @@ def test_stream_download_and_convert_preserves_application_error_contract(
             "points",
             append=False,
         )
+
+
+@pytest.mark.parametrize("mode", ["single", "combined", "stream"])
+def test_download_source_retries_after_partial_conversion(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    mode: str,
+) -> None:
+    source = dataclasses.replace(
+        tests.helpers.factories.peri_scribe.sources.external_source.per_state_template_source(),
+        combine=mode != "single",
+        stream=mode == "stream",
+        centroids=True,
+        keep_attributes=False,
+    )
+    archive = (
+        tests.helpers.factories.peri_scribe.sources.external_source
+    ).archive_zip_bytes(
+        filename="California.geojson",
+        dataframe=(
+            tests.helpers.factories.peri_scribe.sources.external_source.building_dataframe()
+        ),
+        driver="GeoJSON",
+    )
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda _url, **_kwargs: (
+            tests.helpers.doubles.peri_scribe.sources.external_source.FakeResponse(
+                archive,
+            )
+        ),
+    )
+    with monkeypatch.context() as failure:
+        if mode == "stream":
+            tests.helpers.doubles.peri_scribe.sources.downloading.fail_after_stream(
+                failure,
+            )
+        else:
+            tests.helpers.doubles.peri_scribe.sources.downloading.fail_after_append(
+                failure,
+                write_number=2 if mode == "combined" else 1,
+            )
+        with pytest.raises(
+            (RuntimeError, peri_scribe.exceptions.ExternalDataError),
+            match="interrupted after chunk write",
+        ):
+            peri_scribe.sources.downloading.download_source(source, tmp_path)
+    outputs = list(tmp_path.rglob("*.gpkg"))
+    assert outputs == []
+    assert all(
+        path.is_file()
+        for path in peri_scribe.sources.downloading.download_source(source, tmp_path)
+    )
+
+
+def test_combine_downloaded_source_preserves_states_matching_source_name(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source = dataclasses.replace(
+        tests.helpers.factories.peri_scribe.sources.external_source.per_state_template_source(),
+        name="Texas",
+        states=("California", "Texas"),
+        combine=True,
+        keep_attributes=True,
+    )
+    archives = {
+        source.url.format(state=state): (
+            tests.helpers.factories.peri_scribe.sources.external_source
+        ).archive_zip_bytes(
+            filename=f"{state}.geojson",
+            dataframe=typing.cast(
+                "geopandas.GeoDataFrame",
+                tests.helpers.factories.peri_scribe.sources.external_source.building_dataframe().assign(
+                    state=state,
+                ),
+            ),
+            driver="GeoJSON",
+        )
+        for state in source.states
+    }
+    monkeypatch.setattr(
+        requests,
+        "get",
+        lambda url, **_kwargs: (
+            tests.helpers.doubles.peri_scribe.sources.external_source.FakeResponse(
+                archives[url],
+            )
+        ),
+    )
+    tests.helpers.doubles.peri_scribe.sources.downloading.guard_immutable_chunk_reads(
+        monkeypatch,
+    )
+    output = peri_scribe.sources.downloading.combine_downloaded_source(source, tmp_path)
+    stored = geopandas.read_file(output, layer=source.layer_name or source.name)
+    assert list(stored["state"]) == ["California", "California", "Texas", "Texas"]
+    assert list(tmp_path.rglob("*.gpkg")) == [output]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import datetime
+import math
 import numbers
 import re
 import typing
@@ -76,13 +77,13 @@ def is_missing(value: object) -> bool:
 
 
 def numeric_value(value: object) -> float | None:
-    """Return *value* as a float, or None when it is missing or not numeric.
+    """Return a finite float, or None for missing, Boolean, or unusable values.
 
     Args:
         value: Any attribute value.
 
     Returns:
-        The numeric value, or None when it cannot be interpreted as a number.
+        The finite numeric value, or None when it cannot be represented as one.
 
     Examples:
         >>> numeric_value("12.5")
@@ -97,9 +98,10 @@ def numeric_value(value: object) -> float | None:
         return None
     if isinstance(value, (numbers.Real, str)):
         try:
-            return float(value)
-        except TypeError, ValueError:
+            parsed = float(value)
+        except TypeError, ValueError, OverflowError:
             return None
+        return parsed if math.isfinite(parsed) else None
     return None
 
 
@@ -305,7 +307,10 @@ def observation_time_from(value: object) -> datetime.datetime | None:
         return None
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=datetime.UTC)
-    return parsed.astimezone(datetime.UTC)
+    try:
+        return parsed.astimezone(datetime.UTC)
+    except OverflowError, ValueError:
+        return None
 
 
 def fire_record_from_row(
@@ -386,7 +391,7 @@ def fire_record_from_row(
 
 def complex_membership_columns(
     feed: peri_scribe.sources.feed_types.Feed,
-) -> tuple[str, str, str, str] | None:
+) -> tuple[tuple[str, ...], str, str, str] | None:
     """Return the columns used to read a complex membership, or None.
 
     A feed that does not declare identifier and complex columns records no memberships.
@@ -395,7 +400,7 @@ def complex_membership_columns(
         feed: The feed whose layer is being read.
 
     Returns:
-        The fire identifier, complex identifier, complex name, and complex child
+        All fire identifiers, complex identifier, complex name, and complex child
         columns, or None when the feed records no memberships.
     """
     if (
@@ -406,52 +411,64 @@ def complex_membership_columns(
     ):
         return None
     return (
-        feed.fire_identifier_columns[0],
+        feed.fire_identifier_columns,
         feed.complex_identifier_column,
         feed.complex_name_column,
         feed.is_complex_child_column,
     )
 
 
-def complex_membership_from_row(
+def complex_memberships_from_row(
     row: pd.Series,
-    columns: tuple[str, str, str, str],
-) -> peri_scribe.models.ComplexMembership | None:
-    """Return the complex membership *row* records, or None.
+    columns: tuple[tuple[str, ...], str, str, str],
+) -> tuple[peri_scribe.models.ComplexMembership, ...]:
+    """Return the relationship *row* records for every distinct child identifier.
 
     Args:
         row: One feature row.
-        columns: The fire identifier, complex identifier, complex name, and complex
+        columns: All fire identifiers, complex identifier, complex name, and complex
             child columns.
 
     Returns:
-        The membership, or None when the row is not a complex child with a complete
-        identifier pair and name.
+        A dated assignment or explicit release for each normalized child identifier,
+        or an empty tuple when the child identifiers, explicit flag, or a required
+        parent identifier are unavailable. Every alias can resolve an existing fire
+        even when this row cannot produce a named fire record.
     """
-    fire_identifier_column, complex_identifier_column, complex_name_column, child = (
+    fire_identifier_columns, complex_identifier_column, complex_name_column, child = (
         columns
     )
-    if any(
-        is_missing(row[column])
-        for column in (
-            fire_identifier_column,
-            complex_identifier_column,
-            complex_name_column,
-            child,
+    flag = row[child]
+    if is_missing(flag) or (isinstance(flag, str) and not flag.strip()):
+        return ()
+    fire_identifiers = dict.fromkeys(
+        identifier
+        for column in fire_identifier_columns
+        if (identifier := normalize_identifier(row[column])) is not None
+    )
+    if not fire_identifiers:
+        return ()
+    assigned = is_complex_child_from(flag)
+    complex_identifier = (
+        normalize_identifier(row[complex_identifier_column]) if assigned else None
+    )
+    if assigned and complex_identifier is None:
+        return ()
+    complex_name = (
+        fire_name_from(row[complex_name_column]) or complex_identifier
+        if assigned
+        else None
+    )
+    prefix = "attr_" if child.startswith("attr_") else ""
+    observation_time = observation_time_from(row.get(prefix + "ModifiedOnDateTime_dt"))
+    return tuple(
+        peri_scribe.models.ComplexMembership(
+            fire_identifier=fire_identifier,
+            complex_identifier=complex_identifier,
+            complex_name=complex_name,
+            observation_time=observation_time,
         )
-    ):
-        return None
-    if not is_complex_child_from(row[child]):
-        return None
-    fire_identifier = normalize_identifier(row[fire_identifier_column])
-    complex_identifier = normalize_identifier(row[complex_identifier_column])
-    complex_name = fire_name_from(row[complex_name_column])
-    if fire_identifier is None or complex_identifier is None or complex_name is None:
-        return None
-    return peri_scribe.models.ComplexMembership(
-        fire_identifier=fire_identifier,
-        complex_identifier=complex_identifier,
-        complex_name=complex_name,
+        for fire_identifier in fire_identifiers
     )
 
 

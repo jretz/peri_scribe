@@ -1,0 +1,124 @@
+name = "peri_scribe_formal"
+version = "0.1.0"
+defaultTargets = ["PeriScribe", "oracle", "oracleDomain", "oracleIngestion", "oracleEvidence",
+  "oraclePresentation", "oracleIncident", "oracleCache", "oracleComplex", "oracleOutputs",
+  "oracleCodec", "oracleObservers", "oraclePerimeters", "oracleSourceDigest",
+  "oracleSpatial", "oracleLogSeeking", "oraclePresentationFlow", "oraclePolicyDetails",
+  "oracleOwnership", "oracleCoordinateReference", "oracleRawDecoding",
+  "oraclePublicationBaseline", "oracleIdentityTransfer", "oracleSourceValidation",
+  "oracleComponentIdentity", "oracleNumericalPolicy", "oracleOutputText",
+  "oracleIdentityRecomputation"]
+
+[leanOptions]
+warningAsError = true
+
+[[lean_lib]]
+name = "PeriScribe"
+
+[[lean_exe]]
+name = "oracleNumericalPolicy"
+root = "OracleNumericalPolicy"
+
+[[lean_exe]]
+name = "oracleOutputText"
+root = "OracleOutputText"
+
+[[lean_exe]]
+name = "oracleIdentityRecomputation"
+root = "OracleIdentityRecomputation"
+
+[[lean_exe]]
+name = "oracleComponentIdentity"
+root = "OracleComponentIdentity"
+
+[[lean_exe]]
+name = "oracleSourceValidation"
+root = "OracleSourceValidation"
+
+[[lean_exe]]
+name = "oracleIdentityTransfer"
+root = "OracleIdentityTransfer"
+
+[[lean_exe]]
+name = "oracleRawDecoding"
+root = "OracleRawDecoding"
+
+[[lean_exe]]
+name = "oraclePublicationBaseline"
+root = "OraclePublicationBaseline"
+
+[[lean_exe]]
+name = "oraclePolicyDetails"
+root = "OraclePolicyDetails"
+
+[[lean_exe]]
+name = "oracleOwnership"
+root = "OracleOwnership"
+
+[[lean_exe]]
+name = "oracleCoordinateReference"
+root = "OracleCoordinateReference"
+
+[[lean_exe]]
+name = "oracleSourceDigest"
+root = "OracleSourceDigest"
+
+[[lean_exe]]
+name = "oracleSpatial"
+root = "OracleSpatial"
+
+[[lean_exe]]
+name = "oracleLogSeeking"
+root = "OracleLogSeeking"
+
+[[lean_exe]]
+name = "oraclePresentationFlow"
+root = "OraclePresentationFlow"
+
+[[lean_exe]]
+name = "oracle"
+root = "Main"
+
+[[lean_exe]]
+name = "oracleDomain"
+root = "OracleDomain"
+
+[[lean_exe]]
+name = "oracleIngestion"
+root = "OracleIngestion"
+
+[[lean_exe]]
+name = "oracleEvidence"
+root = "OracleEvidence"
+
+[[lean_exe]]
+name = "oraclePresentation"
+root = "OraclePresentation"
+
+[[lean_exe]]
+name = "oracleIncident"
+root = "OracleIncident"
+
+[[lean_exe]]
+name = "oracleCache"
+root = "OracleCache"
+
+[[lean_exe]]
+name = "oracleComplex"
+root = "OracleComplex"
+
+[[lean_exe]]
+name = "oracleOutputs"
+root = "OracleOutputs"
+
+[[lean_exe]]
+name = "oracleCodec"
+root = "OracleCodec"
+
+[[lean_exe]]
+name = "oracleObservers"
+root = "OracleObservers"
+
+[[lean_exe]]
+name = "oraclePerimeters"
+root = "OraclePerimeters"

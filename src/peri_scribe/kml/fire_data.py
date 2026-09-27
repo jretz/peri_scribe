@@ -320,6 +320,8 @@ def fire_geometries(
                 progression_rings=fire.summary.progression_rings,
                 description=fire.summary.description,
                 identifiers=fire.summary.identifiers,
+                component_id=fire.summary.component_id,
+                component_aliases=fire.summary.component_aliases,
                 type_one=fire.summary.type_one,
                 images=fire_images,
             )

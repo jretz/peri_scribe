@@ -16,6 +16,7 @@ import peri_scribe.models
 import peri_scribe.report.gathering
 import peri_scribe.updates
 import tests.helpers.doubles.errors
+import tests.helpers.factories.peri_scribe.component_identity
 import tests.helpers.factories.peri_scribe.fire_updates
 import tests.helpers.factories.peri_scribe.report.locations
 from measurement_units import units
@@ -351,3 +352,41 @@ def test_perimeter_signature_supports_undated_mapping() -> None:
     assert peri_scribe.fire_updates.perimeter_signature(original) != (
         peri_scribe.fire_updates.perimeter_signature(undated)
     )
+
+
+def test_prepare_updates_preserves_namesake_components_through_commit_and_retry(
+    tmp_path: pathlib.Path,
+) -> None:
+    factory = tests.helpers.factories.peri_scribe.component_identity
+    fires = [
+        dataclasses.replace(fire, type_one=True)
+        for fire in factory.summaries(factory.sources(tmp_path), tmp_path)
+    ]
+    scores = peri_scribe.models.FireScores(version="test", fires=[])
+    now = datetime.datetime(2026, 9, 26, tzinfo=datetime.UTC)
+    prepared = peri_scribe.fire_updates.prepare_updates(tmp_path, fires, scores)
+    assert len(prepared.records) == len(fires)
+    assert len(prepared.state.perimeters) == len(fires)
+    for record in prepared.records:
+        identity = record["log_identity"]
+        assert isinstance(identity, list)
+        assert identity[0] == "component"
+    with time_machine.travel(now, tick=False):
+        peri_scribe.fire_updates.write_updates(tmp_path, prepared)
+    repeated = peri_scribe.fire_updates.prepare_updates(
+        tmp_path,
+        list(reversed(fires)),
+        scores,
+    )
+    assert not repeated.records
+    assert repeated.state == prepared.state
+    entries = peri_scribe.updates.read_entries(tmp_path)
+    snapshot = peri_scribe.updates.snapshot_from_entries(
+        entries,
+        now,
+        owners=prepared.state.owners,
+    )
+    assert len(snapshot.updates) == len(fires)
+    assert {update.history_identity for update in snapshot.updates} == {
+        tuple(json.loads(key)) for key in prepared.state.perimeters
+    }

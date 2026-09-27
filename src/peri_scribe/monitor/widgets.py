@@ -1,6 +1,7 @@
 """Terminal widgets translate user gestures into monitor actions."""
 
 import enum
+import re
 import typing
 
 import textual.app
@@ -11,6 +12,7 @@ import textual.reactive
 import textual.strip
 import textual.widget
 import textual.widgets
+import textual.widgets.markdown
 
 
 if typing.TYPE_CHECKING:
@@ -247,8 +249,52 @@ class Stream(textual.containers.Vertical):
         yield EventTable(cursor_type="row", classes="events")
 
 
+class ReportDocument(textual.widgets.Markdown):
+    """Resolve report identity links alongside ordinary Markdown heading links."""
+
+    @typing.override
+    def goto_anchor(self, anchor: str) -> bool:
+        """Navigate by report identity even when multiple headings have the same name.
+
+        Args:
+            anchor: The selected link's fragment without its leading hash.
+
+        Returns:
+            Whether an explicit report target or ordinary heading was found.
+        """
+        blocks = iter(self.query(textual.widgets.markdown.MarkdownBlock))
+        for block in blocks:
+            if block.name != "paragraph_open":
+                continue
+            match = re.fullmatch(
+                r'<a id="(fire-detail:[0-9]+)"></a>\s*',
+                block.source or "",
+            )
+            if match is not None and match[1] == anchor:
+                target = next(blocks, None)
+                if target is not None:
+                    target.scroll_visible(top=True)
+                    return True
+        return super().goto_anchor(anchor)
+
+
 class ReportViewer(textual.widgets.MarkdownViewer):
     """Keep report anchors local while external links open in the browser."""
+
+    @typing.override
+    def compose(self) -> textual.app.ComposeResult:
+        """Share identity-aware navigation between summary links and the contents view.
+
+        Yields:
+            The report document and its heading-based table of contents.
+        """
+        document = ReportDocument(
+            parser_factory=self._parser_factory,
+            open_links=self._open_links,
+        )
+        document.can_focus = True
+        yield document
+        yield textual.widgets.markdown.MarkdownTableOfContents(document)
 
     def on_markdown_link_clicked(
         self,

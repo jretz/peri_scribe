@@ -21,6 +21,7 @@ def entry(
     identifier: str | None = "2026-calpf-002271",
     name: str = "Timber",
     location: str | None = "21 mi SW of Soledad, CA",
+    log_identity: peri_scribe.updates.HistoryIdentity | None = None,
 ) -> peri_scribe.updates.LogEntry:
     """Provide log records without running geography or KMZ generation.
 
@@ -30,6 +31,7 @@ def entry(
         identifier: The identity joining a fire's successive updates.
         name: The displayed fire name.
         location: The location text shared with the report.
+        log_identity: The immutable history bucket recorded at publication.
 
     Returns:
         A validated record in the fire-update log format.
@@ -40,6 +42,7 @@ def entry(
         name=name,
         location=location,
         mapped_area=peri_scribe.updates.Acreage(value=area.m_as(units.acres)),
+        log_identity=log_identity,
     )
 
 

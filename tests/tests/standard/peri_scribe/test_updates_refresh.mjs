@@ -325,6 +325,19 @@ for (const [description, change] of [
         "non-string log identity",
         (record) => ({ ...record, log_identity: ["name", 123] }),
     ],
+    ["non-array history identity", (record) => ({ ...record, history_identity: {} })],
+    [
+        "incomplete history identity",
+        (record) => ({ ...record, history_identity: ["local"] }),
+    ],
+    [
+        "invalid history identity kind",
+        (record) => ({ ...record, history_identity: ["location", "Timber"] }),
+    ],
+    [
+        "non-string history identity",
+        (record) => ({ ...record, history_identity: ["local", 123] }),
+    ],
     ["invalid location", (record) => ({ ...record, location: 123 })],
     ["non-string timestamp", (record) => ({ ...record, timestamp: 123 })],
     ["invalid timestamp", (record) => ({ ...record, timestamp: "not a date" })],
@@ -397,15 +410,17 @@ for (const identity of [
     ["name", "Timber"],
     ["local", "new-timber"],
 ]) {
-    test(`validateSnapshot accepts log identity ${JSON.stringify(identity)}`, async () => {
-        const data = viewer.snapshot();
-        data.updates[0].log_identity = identity;
+    for (const field of ["log_identity", "history_identity"]) {
+        test(`validateSnapshot accepts ${field} ${JSON.stringify(identity)}`, async () => {
+            const data = viewer.snapshot();
+            data.updates[0][field] = identity;
 
-        const page = await viewer.page(data);
+            const page = await viewer.page(data);
 
-        assert.deepEqual(page.rendered, [data]);
-        assert.equal(page.errors.length, 0);
-    });
+            assert.deepEqual(page.rendered, [data]);
+            assert.equal(page.errors.length, 0);
+        });
+    }
 }
 
 test("validateSnapshot accepts an empty update history", async () => {

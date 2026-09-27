@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import errno
 import pathlib
 import sqlite3
 
@@ -19,6 +20,7 @@ import peri_scribe.fires.differential
 import peri_scribe.fires.files
 import peri_scribe.fires.reuse
 import peri_scribe.incidents
+import peri_scribe.pipeline_state
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -59,37 +61,111 @@ def read_derived_layers(
     """Return the derived history layers for *year_directory*.
 
     The KMZ and report stages run only after geography and scoring, so for them a
-    missing derived file is an error worth failing on. The score stage also runs against
-    a year that has never been derived, so it reads tolerantly and receives an empty
-    frame for each absent file.
+    missing derived file is an error worth failing on. Tolerant scoring accepts an
+    entirely absent pair for a fresh year. Existing files must authenticate as one
+    generation, including when an earlier geography writer was interrupted.
 
     Args:
         year_directory: The year directory that holds the ``derived`` directory.
-        tolerate_missing: Whether an absent derived file yields an empty frame instead
-            of a read failure.
+        tolerate_missing: Whether an entirely absent pair yields empty frames.
 
     Returns:
         The full perimeter, point, and incident histories and differential perimeters.
+
+    Raises:
+        RuntimeError: A writer owns the year or the published generations do not match.
+    """
+    with peri_scribe.pipeline_state.read_lock(year_directory) as acquired:
+        if not acquired:
+            message = "A writer owns this year's geography; retry the read later"
+            raise RuntimeError(message)
+        return read_locked_derived_layers(
+            year_directory,
+            tolerate_missing=tolerate_missing,
+        )
+
+
+def authenticated_pair(
+    year_directory: pathlib.Path,
+    history_path: pathlib.Path,
+    differential_path: pathlib.Path,
+    *,
+    tolerate_missing: bool,
+) -> tuple[str, str] | None:
+    """Reject interrupted, unrelated, and unauthenticated geography generations.
+
+    Args:
+        year_directory: The year whose shared or exclusive lock the caller holds.
+        history_path: Published full-history GeoPackage.
+        differential_path: Published growth-history GeoPackage.
+        tolerate_missing: Permit an entirely absent pair for fresh-year scoring.
+
+    Returns:
+        Authenticated content identities, or None for an absent tolerant pair.
+
+    Raises:
+        FileNotFoundError: A required geography file is absent.
+        RuntimeError: Published bytes or their generation relationship are invalid.
+    """
+    present = (history_path.is_file(), differential_path.is_file())
+    if tolerate_missing and not any(present):
+        return None
+    for path, exists in zip((history_path, differential_path), present, strict=True):
+        if not exists:
+            raise FileNotFoundError(errno.ENOENT, "No such file", str(path))
+    full = peri_scribe.fires.reuse.validated_signature(
+        history_path,
+        peri_scribe.fires.files.FULL_LAYER_NAMES,
+    )
+    differential = peri_scribe.fires.reuse.validated_signature(
+        differential_path,
+        (
+            peri_scribe.fires.files.PERIMETER_LAYER_NAME,
+            peri_scribe.fires.files.POINT_LAYER_NAME,
+        ),
+    )
+    if (
+        full is None
+        or differential is None
+        or differential.generation is None
+        or differential.generation
+        != peri_scribe.fires.differential.differential_generation(
+            history_path,
+            year_directory,
+        )
+    ):
+        message = "Unmatched geography generations; run the geography stage to rebuild"
+        raise RuntimeError(message)
+    return full.checksum, differential.checksum
+
+
+def read_locked_derived_layers(
+    year_directory: pathlib.Path,
+    *,
+    tolerate_missing: bool,
+) -> DerivedLayers:
+    """Cache only a complete authenticated generation while the year stays locked.
+
+    Args:
+        year_directory: The year whose shared or exclusive lock the caller holds.
+        tolerate_missing: Permit an entirely absent pair for fresh-year scoring.
+
+    Returns:
+        Consistent full and differential rows, or empty fresh-year layers.
     """
     history_path = peri_scribe.fires.files.history_geopackage_path(year_directory)
     differential_path = peri_scribe.fires.differential.differential_geopackage_path(
         year_directory,
     )
-    paths = (history_path, differential_path)
-    key = (
-        tuple(
-            (str(path.resolve()), path.stat().st_size, path.stat().st_mtime_ns)
-            if path.is_file()
-            else (str(path.resolve()), None, None)
-            for path in paths
-        )
-        if peri_scribe.execution.active()
-        else None
+    identity = authenticated_pair(
+        year_directory,
+        history_path,
+        differential_path,
+        tolerate_missing=tolerate_missing,
     )
+    key = (year_directory.resolve(), identity)
     cached = peri_scribe.execution.get(peri_scribe.execution.Group.DERIVED, key)
-    if isinstance(cached, DerivedLayers) and (
-        tolerate_missing or all(path.is_file() for path in paths)
-    ):
+    if isinstance(cached, DerivedLayers):
         return cached
     read = (
         read_layer_if_present

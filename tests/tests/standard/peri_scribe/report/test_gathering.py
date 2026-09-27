@@ -22,6 +22,7 @@ import peri_scribe.report.locations
 import peri_scribe.sources.catalog
 import peri_scribe.sources.external_data
 import spatial_data.layers
+import tests.helpers.doubles.peri_scribe.fires.derived_layers
 import tests.helpers.doubles.peri_scribe.report.gathering
 import tests.helpers.factories.peri_scribe.kml.parsing
 import tests.helpers.factories.peri_scribe.report.gathering
@@ -198,9 +199,8 @@ def test_gather_report_assembles_each_fire_list(
         "differential_geopackage_path",
         lambda _directory: pathlib.Path("/derived/differential.gpkg"),
     )
-    monkeypatch.setattr(
-        spatial_data.layers,
-        "read_layer",
+    tests.helpers.doubles.peri_scribe.fires.derived_layers.stub_reader(
+        monkeypatch,
         lambda _path, _layer_name: (
             tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([])
         ),
@@ -323,9 +323,8 @@ def test_gather_report_uses_empty_scores_when_missing(
         "differential_geopackage_path",
         lambda _directory: pathlib.Path("/derived/differential.gpkg"),
     )
-    monkeypatch.setattr(
-        spatial_data.layers,
-        "read_layer",
+    tests.helpers.doubles.peri_scribe.fires.derived_layers.stub_reader(
+        monkeypatch,
         lambda _path, _layer_name: (
             tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([])
         ),

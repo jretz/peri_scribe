@@ -313,7 +313,7 @@ async def test_refresh_clock_updates_freshness_without_reading_files(
     )
     await session.app.refresh_files()
     read = unittest.mock.AsyncMock()
-    monkeypatch.setattr(session.app, "refresh_files", read)
+    monkeypatch.setattr(peri_scribe.monitor.app, "refresh_owned", read)
     session.app.files_changed = False
     session.app.reconcile_at = float("inf")
     with time_machine.travel(now + datetime.timedelta(hours=7), tick=False):
@@ -334,7 +334,7 @@ async def test_refresh_clock_reads_on_notification_or_reconciliation_deadline(
 ) -> None:
     session = monitor_session
     read = unittest.mock.AsyncMock()
-    monkeypatch.setattr(session.app, "refresh_files", read)
+    monkeypatch.setattr(peri_scribe.monitor.app, "refresh_owned", read)
     session.app.files_changed = notification
     session.app.reconcile_at = float("inf") if notification else 0
     await peri_scribe.monitor.app.refresh_clock(session.app)
@@ -352,7 +352,7 @@ async def test_refresh_clock_ignores_unmounted_views(
         session.app,
     )
     read = unittest.mock.AsyncMock()
-    monkeypatch.setattr(session.app, "refresh_files", read)
+    monkeypatch.setattr(peri_scribe.monitor.app, "refresh_owned", read)
     await peri_scribe.monitor.app.refresh_clock(session.app)
     read.assert_not_awaited()
 
@@ -367,7 +367,7 @@ async def test_refresh_clock_waits_for_initial_status(
     session.app.files_changed = False
     session.app.reconcile_at = float("inf")
     read = unittest.mock.AsyncMock()
-    monkeypatch.setattr(session.app, "refresh_files", read)
+    monkeypatch.setattr(peri_scribe.monitor.app, "refresh_owned", read)
     await peri_scribe.monitor.app.refresh_clock(session.app)
     read.assert_not_awaited()
 
@@ -394,7 +394,7 @@ async def test_watch_files_coalesces_notifications_without_reading_from_the_work
     )
     session.app.files_changed = False
     read = unittest.mock.AsyncMock()
-    monkeypatch.setattr(session.app, "refresh_files", read)
+    monkeypatch.setattr(peri_scribe.monitor.app, "refresh_owned", read)
     await watcher(session.app)
     assert session.app.files_changed
     read.assert_not_awaited()

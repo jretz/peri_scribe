@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import contextlib
+import contextvars
+import dataclasses
 import fcntl
+import os
 import pathlib
 import tempfile
+import threading
 import typing
 
 import pydantic
@@ -55,6 +59,38 @@ def lock_path(year_directory: pathlib.Path) -> pathlib.Path:
         The writer lock path.
     """
     return year_directory / ".run.lock"
+
+
+def deferred_inputs_path(year_directory: pathlib.Path) -> pathlib.Path:
+    """Keep saved unpublished inputs visible across pipeline policy changes.
+
+    Args:
+        year_directory: The year whose collected inputs may still need derivation.
+
+    Returns:
+        The durable deferred-input marker path.
+    """
+    return year_directory / "deferred_inputs"
+
+
+def defer_inputs(year_directory: pathlib.Path) -> None:
+    """Protect collection before the publication gate can postpone its outputs.
+
+    Args:
+        year_directory: The year whose collection may introduce unpublished inputs.
+    """
+    path = deferred_inputs_path(year_directory)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.touch()
+
+
+def clear_deferred_inputs(year_directory: pathlib.Path) -> None:
+    """Retire intent only after a checkpoint or pending stages protect the inputs.
+
+    Args:
+        year_directory: The year whose deferred inputs have durable coverage.
+    """
+    deferred_inputs_path(year_directory).unlink(missing_ok=True)
 
 
 def read_state(year_directory: pathlib.Path) -> PendingRun:
@@ -151,21 +187,89 @@ def complete_stage(
         logger.info("Required rebuild completed", unconditional=state.unconditional)
 
 
+@dataclasses.dataclass(kw_only=True)
+class WriterOwnership:
+    """Permit nested reads only while this process's writer lock remains live."""
+
+    directory: pathlib.Path
+    process: int
+    thread: int
+    active: bool = True
+
+
+WRITERS: contextvars.ContextVar[tuple[WriterOwnership, ...]] = contextvars.ContextVar(
+    "year_writers",
+    default=(),
+)
+
+
 @contextlib.contextmanager
 def run_lock(year_directory: pathlib.Path) -> typing.Generator[bool]:
-    """Avoid concurrent scheduled writers; the next invocation can retry skipped work.
+    """Avoid competing writers while allowing the owner to read its published files.
 
     Args:
-        year_directory: The year directory to protect from concurrent runs.
+        year_directory: The year directory to protect from concurrent writers.
 
     Yields:
         Whether this invocation owns the year's writer lock.
+    """
+    with file_lock(year_directory, shared=False) as acquired:
+        if not acquired:
+            yield False
+            return
+        ownership = WriterOwnership(
+            directory=year_directory.resolve(),
+            process=os.getpid(),
+            thread=threading.get_ident(),
+        )
+        token = WRITERS.set((*WRITERS.get(), ownership))
+        try:
+            yield True
+        finally:
+            ownership.active = False
+            WRITERS.reset(token)
+
+
+@contextlib.contextmanager
+def read_lock(year_directory: pathlib.Path) -> typing.Generator[bool]:
+    """Keep related geography files unchanged for an entire multi-layer read.
+
+    Args:
+        year_directory: The year whose published files will be read together.
+
+    Yields:
+        Whether reading is protected by a shared lock or this context's live writer.
+    """
+    if any(
+        owner.active
+        and owner.process == os.getpid()
+        and owner.thread == threading.get_ident()
+        and owner.directory == year_directory.resolve()
+        for owner in WRITERS.get()
+    ):
+        yield True
+        return
+    with file_lock(year_directory, shared=True) as acquired:
+        yield acquired
+
+
+@contextlib.contextmanager
+def file_lock(year_directory: pathlib.Path, *, shared: bool) -> typing.Generator[bool]:
+    """Use the same filesystem lock for readers and every authoritative CLI writer.
+
+    Args:
+        year_directory: The directory defining the shared lock location.
+        shared: Whether other readers may hold the lock concurrently.
+
+    Yields:
+        Whether a nonblocking lock attempt succeeded.
     """
     path = lock_path(year_directory)
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("a") as stream:
         try:
-            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            mode = fcntl.LOCK_SH if shared else fcntl.LOCK_EX
+            fcntl.flock(stream, mode | fcntl.LOCK_NB)
         except BlockingIOError:
             yield False
             return

@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import pathlib
 import shutil
+import tempfile
 import typing
 
 import pydantic
@@ -105,7 +107,10 @@ def write_document(
         path: The JSON file to write.
         document: The validated document to serialize.
     """
-    with path.open("w", encoding="utf-8") as file:
+    with (
+        publication_path(path) as temporary,
+        temporary.open("w", encoding="utf-8") as file,
+    ):
         json.dump(document.model_dump(mode="json"), file, indent=4)
     logger.debug("Wrote document", path=path.name, fires=len(document.fires))
 
@@ -136,5 +141,40 @@ def write_fire_scores_ccdf(
         path: The HTML file to write.
         document: The validated fire scores to plot.
     """
-    path.write_text(ccdf_html(document), encoding="utf-8")
+    write_text(path, ccdf_html(document))
     logger.debug("Wrote fire scores ccdf", path=path.name)
+
+
+@contextlib.contextmanager
+def publication_path(path: pathlib.Path) -> typing.Iterator[pathlib.Path]:
+    """Keep the public name on a complete file throughout serialization.
+
+    Staging beside the destination keeps replacement on one filesystem. Readers opening
+    the canonical name see its previous complete contents until replacement succeeds.
+
+    Args:
+        path: The published destination whose parent already exists.
+
+    Yields:
+        A private path that must contain the complete output before the context exits.
+    """
+    with tempfile.TemporaryDirectory(dir=path.parent) as directory:
+        temporary = pathlib.Path(directory) / path.name
+        try:
+            yield temporary
+        except BaseException:
+            temporary.unlink(missing_ok=True)
+            raise
+        else:
+            temporary.replace(path)
+
+
+def write_text(path: pathlib.Path, text: str) -> None:
+    """Publish complete UTF-8 text without exposing interrupted writes.
+
+    Args:
+        path: The published destination whose parent already exists.
+        text: The complete rendered output.
+    """
+    with publication_path(path) as temporary:
+        temporary.write_text(text, encoding="utf-8")

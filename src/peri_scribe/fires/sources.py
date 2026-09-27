@@ -11,6 +11,8 @@ import pathlib
 
 import peri_scribe.exceptions
 import peri_scribe.execution
+import peri_scribe.fires.complexes
+import peri_scribe.fires.components
 import peri_scribe.fires.grouping
 import peri_scribe.geo.package
 import peri_scribe.geo.reading
@@ -39,6 +41,7 @@ class ReadFireSources:
     rows: tuple[peri_scribe.geo.package.FireRowRecord, ...]
     paths: tuple[pathlib.Path, ...]
     memberships: tuple[peri_scribe.models.ComplexMembership, ...]
+    membership_paths: tuple[pathlib.Path, ...] = ()
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -109,6 +112,7 @@ def read_fire_sources(directory: pathlib.Path) -> ReadFireSources:
     rows: list[peri_scribe.geo.package.FireRowRecord] = []
     paths: list[pathlib.Path] = []
     memberships: list[peri_scribe.models.ComplexMembership] = []
+    membership_paths: list[pathlib.Path] = []
     worker_count = os.cpu_count() or 1
     with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
         contents_by_file = executor.map(read, files, buffersize=2 * worker_count)
@@ -116,10 +120,12 @@ def read_fire_sources(directory: pathlib.Path) -> ReadFireSources:
             rows.extend(contents.rows)
             paths.extend(itertools.repeat(path, len(contents.rows)))
             memberships.extend(contents.memberships)
+            membership_paths.extend(itertools.repeat(path, len(contents.memberships)))
     return ReadFireSources(
         rows=tuple(rows),
         paths=tuple(paths),
         memberships=tuple(memberships),
+        membership_paths=tuple(membership_paths),
     )
 
 
@@ -143,8 +149,20 @@ def group_fire_sources(read: ReadFireSources) -> FireRecordGroups:
     """
     records = [row.record for row in read.rows]
     groups = peri_scribe.fires.grouping.group_fire_record_indices(records)
+    anchors = peri_scribe.fires.components.anchors(read.rows, read.paths)
     fires = [
-        peri_scribe.fires.grouping.most_common_fire([records[index] for index in group])
+        dataclasses.replace(
+            peri_scribe.fires.grouping.most_common_fire(
+                [records[index] for index in group],
+            ),
+            component_id=peri_scribe.fires.components.component_id(
+                anchors[index] for index in group
+            ),
+            component_aliases=frozenset(
+                peri_scribe.fires.components.component_id([anchors[index]])
+                for index in group
+            ),
+        )
         for group in groups
     ]
     peri_scribe.fires.grouping.warn_for_inconsistent_fires(records, groups, fires)
@@ -156,6 +174,12 @@ def group_fire_sources(read: ReadFireSources) -> FireRecordGroups:
     complexes = peri_scribe.fires.grouping.fire_complexes(
         list(read.memberships),
         fires_by_identifier,
+        observations=peri_scribe.fires.complexes.observations(
+            read.rows,
+            read.paths,
+            read.memberships,
+            read.membership_paths,
+        ),
     )
     complex_identifiers = {complex_.identifier for complex_ in complexes}
     return FireRecordGroups(

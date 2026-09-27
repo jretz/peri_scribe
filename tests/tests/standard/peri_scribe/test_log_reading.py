@@ -1,4 +1,4 @@
-"""Chronological search handles escaping and archives before JSON deserialization."""
+"""Timestamp queries preserve occurrences through escaping, archives, and rollback."""
 
 import compression.zstd
 import io
@@ -62,8 +62,40 @@ def test_seek_since_never_deserializes_probes(monkeypatch: pytest.MonkeyPatch) -
     parser.assert_not_called()
 
 
+def test_seek_since_preserves_recent_occurrences_before_a_clock_rollback() -> None:
+    old = b'{"timestamp":"2026-09-01T10:00:00+00:00"}\n'
+    recent = b'{"timestamp":"2026-09-01T12:00:00+00:00"}\n'
+    rollback = b'{"timestamp":"2026-09-01T11:00:00+00:00"}\n'
+    with io.BytesIO(old + recent + rollback) as stream:
+        peri_scribe.log_reading.seek_since(
+            stream,
+            tests.helpers.factories.peri_scribe.show_latencies.evidence.NOW,
+        )
+        assert stream.read() == recent + rollback
+
+
 @pytest.mark.parametrize("compressed", [True, False])
-def test_complete_lines_skips_old_json_and_stops_at_upper_bound(
+def test_complete_lines_preserves_every_matching_occurrence_after_clock_rollback(
+    tmp_path: pathlib.Path,
+    *,
+    compressed: bool,
+) -> None:
+    path = tmp_path / ("2026-09.jsonl.zst" if compressed else "2026-09.jsonl")
+    old = b'{"timestamp":"2026-09-01T10:00:00+00:00"}\n'
+    recent = b'{"timestamp":"2026-09-01T12:00:00+00:00"}\n'
+    rollback = b'{"timestamp":"2026-09-01T11:00:00+00:00"}\n'
+    future = b'{"timestamp":"2026-09-02T12:00:00+00:00"}\n'
+    contents = old + recent + rollback + future + recent
+    path.write_bytes(compression.zstd.compress(contents) if compressed else contents)
+    now = tests.helpers.factories.peri_scribe.show_latencies.evidence.NOW
+
+    assert tuple(
+        peri_scribe.log_reading.complete_lines(path, since=now, until=now),
+    ) == (recent, recent)
+
+
+@pytest.mark.parametrize("compressed", [True, False])
+def test_complete_lines_skips_old_json_and_filters_every_upper_bound_violation(
     tmp_path: pathlib.Path,
     *,
     compressed: bool,
@@ -77,7 +109,7 @@ def test_complete_lines_skips_old_json_and_stops_at_upper_bound(
     now = tests.helpers.factories.peri_scribe.show_latencies.evidence.NOW
     assert tuple(
         peri_scribe.log_reading.complete_lines(path, since=now, until=now),
-    ) == (recent,)
+    ) == (recent, recent)
     assert list(tmp_path.iterdir()) == [path]
 
 
@@ -126,10 +158,11 @@ def test_complete_lines_filters_before_timestamp_extraction(
             until=tests.helpers.factories.peri_scribe.show_latencies.evidence.NOW,
             include=lambda line: b'"event":"keep"' in line,
         ),
-    ) == (included,)
+    ) == (included, included)
     assert timestamp.call_args_list == [
         unittest.mock.call(included),
         unittest.mock.call(later),
+        unittest.mock.call(included),
     ]
 
 
