@@ -270,26 +270,56 @@ test("startPage reorders repeated fire names chronologically in either ordering"
     assert.equal(sort.textContent, "2 fires ordered by time");
   });
 
-test("startPage filters case insensitively and recovers from no matching names",
+test("startPage filters case insensitively", async () => {
+  const page = await viewer.page([viewer.update("Timber", 10),
+    viewer.update("Austin", 100)]);
+  page.filter("IM");
+
+  assert.deepEqual(page.document.querySelectorAll(".fire-name").map(
+    node => node.textContent), ["Timber"]);
+  assert.equal(page.document.getElementById("sort-status").textContent,
+    "1 updates shown.");
+});
+
+for (const query of ["IM", "missing"]) {
+  test(`startPage keeps every time window visible when filtering by ${query}`,
+    async () => {
+      const page = await viewer.page([viewer.update("Timber", 10),
+        viewer.update("Austin", 100)]);
+      page.filter(query);
+
+      const groups = page.document.querySelectorAll(".section");
+      assert.equal(groups.length, 5);
+      for (const [index, group] of groups.entries()) {
+        assert.ok(group.getClientRects().length > 0);
+        const empty = group.querySelector(".empty");
+        if (query === "IM" && index === 0) {
+          assert.equal(empty, null);
+        } else {
+          assert.equal(empty.textContent, "No matching updates in this time range.");
+          assert.ok(empty.getClientRects().length > 0);
+          assert.equal(group.querySelector(".sort-order").textContent,
+            "0 fires ordered by time");
+        }
+      }
+    });
+}
+
+test("startPage restores updates and unfiltered empty messages when clearing a filter",
   async () => {
     const page = await viewer.page([viewer.update("Timber", 10),
       viewer.update("Austin", 100)]);
-    page.filter("IM");
-
-    assert.equal(page.group(0).hidden, false);
-    assert.equal(page.group(1).hidden, true);
-    assert.equal(page.document.getElementById("sort-status").textContent,
-      "1 updates shown.");
     page.filter("missing");
-
-    const empty = page.document.querySelectorAll(".empty").find(
-      node => node.textContent === "No matching fires.");
-    assert.equal(empty.hidden, false);
     page.filter("");
 
-    assert.equal(empty.hidden, true);
-    assert.equal(page.group(0).hidden, false);
-    assert.equal(page.group(1).hidden, false);
+    assert.deepEqual(page.document.querySelectorAll(".fire-name").map(
+      node => node.textContent), ["Timber", "Austin"]);
+    const empty = page.document.querySelectorAll(".section .empty");
+    assert.equal(empty.length, 3);
+    for (const message of empty) {
+      assert.equal(message.textContent, "No updates in this time range.");
+      assert.ok(message.getClientRects().length > 0);
+    }
   });
 
 test("startPage cancels active movement and departure ghosts on motion changes",

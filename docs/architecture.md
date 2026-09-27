@@ -257,6 +257,13 @@ five minutes, when the next HEAD check also downloads the JSON to catch collisio
 Changed or missing metadata, or HEAD responses with status 405 or 501, trigger a GET.
 Failed requests and invalid snapshots preserve the displayed data for later retry.
 
+The viewer monitors server responsiveness independently of snapshot validation. Each HTTP
+response, including unchanged HEAD and unsuccessful HTTP statuses, resets a 60-second
+watchdog and hides the sticky connection notice. Network rejections and request timeouts
+do not reset it. Expiry displays the latest response's Pacific timestamp, or the page-open
+timestamp when no response has arrived. The browser may delay timer callbacks; the notice
+does not change the displayed snapshot or the refresh protocol.
+
 The viewer retains the name filter and each group's sorting and collapsed state when
 applying a snapshot. Retained row elements support animated additions, sorting, bucket
 changes, and expiry without resetting highlight transitions. A move between an open

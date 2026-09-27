@@ -29,6 +29,31 @@ not renew the cached age. The healthy retry must display the server generation. 
 rendering, browser implementation of request timeouts, concurrent changes during one HTTP
 response, and server correctness are outside this model.
 
+`tla/BrowserResponsiveness.tla` separately covers `createResponseMonitor` and the
+response notification in `requestSnapshot`. Its 3,906 states enumerate all histories of
+up to five response, rejection, elapsed-interval, delayed-interval, and timer-dispatch
+events. One time unit means the viewer's 30-second polling interval; the watchdog becomes
+due after two units without a response. Both HEAD and GET replies count as responses,
+including error statuses. Snapshot validity remains the separate refresh contract.
+Response instants in this model lie on that interval grid; ordinary timer tests cover
+millisecond boundaries.
+
+Properties require that only received responses renew the recorded time and deadline,
+that the warning never appears early, that the latest response immediately clears it,
+and that dispatched timers expose overdue silence. A warning remains until another
+response arrives. Before the first response, the initial deadline uses page-open time
+and the warning explicitly identifies that time. Delayed callbacks represent suspended
+tabs: silence is shown when the browser next dispatches the due callback, without an
+exact wall-clock scheduling guarantee. Monotonic timer progress is an environmental
+assumption; date formatting and wall-clock adjustments do not determine the deadline.
+
+Conformance replays every bounded history against the shipped watchdog and request
+wrapper, once with successful GET replies and once with HEAD HTTP 503 replies. It checks
+the displayed warning and last-response timestamp, including initial silence, rejection,
+recovery, and delayed dispatch. The model also covers an indefinitely pending request
+through time-only transitions. Native browser timeout implementation, unbounded
+histories, and the visual prominence of the warning are outside this finite guarantee.
+
 ## Log cursors and context
 
 `tla/MonitorReader.tla` covers `storage.Follower.poll` and `storage.read_cursor`. Its 4,299

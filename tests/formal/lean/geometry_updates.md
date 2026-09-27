@@ -98,10 +98,10 @@ renamed identities, distinct same-named fires, all 32 per-group sort patterns an
 complementary collapse patterns under four filters, and replacement of displayed
 acreage/location. It checks actual DOM node identity, complete row fields and
 quantities, change direction, row order and multiplicity, group identity counts,
-collapse accessibility state, hidden empty groups and detachment of unused nodes. A
-separate trace reads actual plain and compressed retained logs, creates and serializes
-the production snapshot, then renders its rows and repeated replacements through the
-same bridge.
+collapse accessibility state, visible empty groups with filter-aware messages, and
+detachment of unused nodes. A separate trace reads actual plain and compressed retained
+logs, creates and serializes the production snapshot, then renders its rows and repeated
+replacements through the same bridge.
 
 Boundary fixtures cover one millisecond before, exactly at, and one millisecond after
 zero and every bucket boundary. Explicit rendering checks the exact boundary policy.

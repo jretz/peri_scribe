@@ -109,16 +109,26 @@ The viewer fetches the neighboring JSON immediately on load over HTTP or HTTPS. 
 reloading the page. Only matching strong ETags allow indefinite reuse; weak ETags or
 modification time and size are rechecked by downloading at least every five minutes.
 Failed or invalid refreshes preserve the displayed snapshot for later retry.
+After two polling intervals (60 seconds) without any HTTP response, a sticky amber notice
+shows when the server last responded, in Pacific time. A response of any HTTP status
+clears the notice and restarts that deadline, independently of snapshot validation.
+Rejected or timed-out requests do not restart it. Before the first response, the notice
+identifies the page-opening time instead. Delayed browser timers may delay the notice.
 It groups updates into 0–60 minutes, 60 minutes–4 hours, 4–12 hours, 12–24 hours, and
 24–48 hours.
 The browser clock updates first-hour minute labels, moves entries between groups, removes
 expired entries, and controls the fading highlight for updates less than 15 minutes old.
-Group counts show distinct fires, with independently toggled time/name sorting. A
-case-insensitive name filter preserves that sorting. Each entry shows its name, location,
-update time, previous acreage, change, and current acreage. Locations independently
-shorten to state abbreviations and then disappear when space is insufficient. All
-acreage headings and values align right. The page uses neutral colors except for deltas
-and recent-update highlights, and shows only its generation time below the groups.
+Group counts show distinct fires, with independently toggled time/name sorting. The
+count/sort control omits "ordered " only when that keeps it beside the time heading;
+otherwise it uses the full label, aligned left when it wraps onto the next line. The
+fire count remains in every label. A case-insensitive name filter preserves that
+sorting. Every time group remains visible when filtering; empty groups show "No matching
+updates in this time range." Without a filter, empty groups show "No updates in this
+time range." Each entry shows its name, location, update time, previous acreage, change,
+and current acreage. Locations independently shorten to state abbreviations and then
+disappear when space is insufficient. All acreage headings and values align right. The
+page uses neutral colors except for deltas, recent-update highlights, and the connection
+notice, and shows only its generation time below the groups.
 Additions, moves, and removals animate while respecting reduced-motion preferences.
 Each time group can be collapsed independently. Moving updates animate to or from the
 closed header when only one of the source and destination groups is collapsed. Moves

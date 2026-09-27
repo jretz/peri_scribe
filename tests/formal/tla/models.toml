@@ -135,6 +135,11 @@ module = "BrowserRefresh"
 config = "BrowserRefreshLiveness"
 
 [[models]]
+name = "browser-responsiveness"
+module = "BrowserResponsiveness"
+config = "BrowserResponsiveness"
+
+[[models]]
 name = "monitor-reader"
 module = "MonitorReader"
 config = "MonitorReader"

@@ -237,8 +237,9 @@ test("loadUpdates asks the browser to bypass its cache and bound request waits",
         assert.equal(call.url, "./updates.json");
         assert.equal(call.cache, "no-store");
         assert.ok(call.signal instanceof AbortSignal);
-        assert.equal(call.signal.aborted, false);
     }
+    assert.equal(page.calls.at(-1).signal.aborted, false);
+    assert.ok(page.requestTimeouts.every((milliseconds) => milliseconds === 15000));
 });
 
 const metadata = {

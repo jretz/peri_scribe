@@ -63,7 +63,13 @@ async function replay(steps) {
       assert.equal(group.querySelector(".group-body").hidden, step.collapsed[index]);
       assert.equal(group.querySelector(".group-toggle").getAttribute("aria-expanded"),
         String(!step.collapsed[index]));
-      assert.equal(group.hidden, Boolean(step.query) && length === 0);
+      assert.equal(group.hidden, false);
+      const empty = group.querySelectorAll(".empty");
+      assert.equal(empty.length, length === 0 ? 1 : 0);
+      if (empty.length) {
+        assert.equal(empty[0].textContent, step.query ?
+          "No matching updates in this time range." : "No updates in this time range.");
+      }
       assert.equal(group.querySelector(".sort-order").textContent,
         `${count} ${count === 1 ? "fire" : "fires"} ordered by ` +
           (step.nameOrder[index] ? "name" : "time"),

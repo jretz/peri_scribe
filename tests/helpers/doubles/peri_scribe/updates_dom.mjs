@@ -242,6 +242,8 @@ class Document {
     this.hidden = false;
     this.listeners = new Map();
     this.identityWidths = new Map();
+    this.headingWidths = new Map();
+    this.anchoredGroup = null;
     this.fonts = { ready: Promise.resolve() };
     this.head = this.createElement("head");
     this.body = this.createElement("body");
@@ -250,6 +252,7 @@ class Document {
     for (const [tag, identifier, className] of [
       ["input", "name-filter", "name-filter"],
       ["p", "load-status", "empty"],
+      ["aside", "response-status", "response-status"],
       ["div", "update-groups", ""],
       ["p", "sort-status", "screen-reader"],
       ["footer", "", "snapshot"]
@@ -257,6 +260,7 @@ class Document {
       const node = this.createElement(tag);
       node.id = identifier;
       node.className = className;
+      if (identifier === "response-status") node.hidden = true;
       main.append(node);
       if (tag === "footer") node.append(this.createElement("time"));
     }
@@ -306,27 +310,47 @@ class Document {
     }
     const positions = new Map();
     let top = 100;
-    for (const section of this.querySelectorAll(".section")) {
+    for (const [index, section] of this.querySelectorAll(".section").entries()) {
       const heading = section.querySelector(".section-heading");
+      const toggle = section.querySelector(".group-toggle");
+      const sort = section.querySelector(".sort-order");
       const body = section.querySelector(".group-body");
       const list = section.querySelector(".updates");
+      const width = this.headingWidths.get(String(index)) ?? 800;
+      const toggleWidth = toggle.scrollWidth + 22;
+      const sortWidth = sort.scrollWidth;
+      const wrapped = toggleWidth + 16 + sortWidth > width;
+      const headingHeight = wrapped ? 56 : 28;
+      const bodyTop = top + headingHeight + 10;
       const height = body.hidden ? 0 : list.children.reduce((sum, child) =>
         sum + (child.classList.contains("update") ? 96 : 52), 2);
-      positions.set(section, rectangle(36, top, 800, 38 + height));
-      positions.set(heading, rectangle(36, top, 800, 28));
-      positions.set(body, rectangle(36, top + 38, 800, height));
-      positions.set(list, rectangle(36, top + 38, 800, height));
+      positions.set(section, rectangle(36, top, width, headingHeight + 10 + height));
+      positions.set(heading, rectangle(36, top, width, headingHeight));
+      positions.set(toggle, rectangle(36, top, toggleWidth, 28));
+      positions.set(sort, rectangle(wrapped ? 36 : 36 + width - sortWidth,
+        top + (wrapped ? 34 : 4), sortWidth, 22));
+      positions.set(body, rectangle(36, bodyTop, width, height));
+      positions.set(list, rectangle(36, bodyTop, width, height));
       positions.set(section.querySelector(".group-surface"),
-        rectangle(36, top + 38, 800, height));
-      let rowTop = top + 39;
+        rectangle(36, bodyTop, width, height));
+      let rowTop = bodyTop + 1;
       for (const row of list.children) {
         const rowHeight = row.classList.contains("update") ? 96 : 52;
-        positions.set(row, rectangle(37, rowTop, 798, rowHeight));
+        positions.set(row, rectangle(37, rowTop, width - 2, rowHeight));
         rowTop += rowHeight;
       }
-      if (!section.hidden) top += 62 + height;
+      if (!section.hidden) top += headingHeight + 34 + height;
     }
     positions.set(this.querySelector(".snapshot"), rectangle(36, top, 800, 24));
+    const anchor = this.querySelectorAll(".section")[this.anchoredGroup];
+    if (anchor) {
+      const offset = positions.get(anchor).top;
+      for (const bounds of positions.values()) {
+        bounds.top -= offset;
+        bounds.bottom -= offset;
+        bounds.y -= offset;
+      }
+    }
     if (positions.has(node)) return positions.get(node);
     const row = node.closest(".update");
     if (row && row !== node) {
@@ -348,6 +372,8 @@ class Document {
 export async function page(records, options = {}) {
   const document = new Document();
   document.hidden = options.hidden ?? false;
+  document.headingWidths = new Map(Object.entries(options.headingWidths ?? {}));
+  if (options.fontsReady) document.fonts.ready = options.fontsReady;
   let now = Date.parse("2026-09-23T12:00:00Z");
   let timerIdentifier = 0;
   const timers = new Map();
@@ -409,6 +435,15 @@ export async function page(records, options = {}) {
     resize(widths) {
       document.identityWidths = new Map(Object.entries(widths));
       resizeCallbacks.forEach(callback => callback());
+    },
+    /** Let each time window wrap according to its own heading and control labels. */
+    resizeHeadings(widths) {
+      document.headingWidths = new Map(Object.entries(widths));
+      resizeCallbacks.forEach(callback => callback());
+    },
+    /** Preserve a scrolled-to window's viewport position as earlier headings reflow. */
+    anchorGroup(index) {
+      document.anchoredGroup = index;
     },
     /** Resume the same document after time passes while its tab is hidden. */
     visibility(hidden) {

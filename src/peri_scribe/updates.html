@@ -55,6 +55,22 @@
       opacity: 1;
     }
 
+    .response-status {
+      position: sticky;
+      top: 12px;
+      z-index: 20;
+      margin: 12px 0 0;
+      padding: 10px 12px;
+      border: 1px solid light-dark(#ddc99e, #74613e);
+      border-left: 3px solid currentColor;
+      border-radius: 6px;
+      background: light-dark(#fff7e6, #332b1f);
+      color: light-dark(#775419, #edc47c);
+      box-shadow: 0 2px 6px rgb(0 0 0 / 8%);
+      font-size: 13px;
+      font-weight: 500;
+    }
+
     .snapshot {
       margin: 24px 0 0;
       color: var(--secondary);
@@ -73,6 +89,7 @@
     .section-heading {
       display: flex;
       align-items: baseline;
+      justify-content: space-between;
       flex-wrap: wrap;
       gap: 6px 16px;
       margin-bottom: 10px;
@@ -120,13 +137,13 @@
     }
 
     .sort-order {
-      margin-left: auto;
       padding: 4px 0;
       border: 0;
       background: transparent;
       color: var(--secondary);
       font: inherit;
       font-size: 12px;
+      text-align: left;
       text-decoration: underline;
       text-decoration-style: dotted;
       text-underline-offset: 4px;
@@ -370,6 +387,8 @@
   <main aria-label="Fire updates">
     <input id="name-filter" class="name-filter" type="search" aria-label="Filter fires by name"
       placeholder="Filter fires by name" autocomplete="off" disabled>
+    <aside id="response-status" class="response-status" role="status"
+      aria-live="polite" aria-atomic="true" hidden></aside>
     <p id="load-status" class="empty" role="status">Loading updates…</p>
     <div id="update-groups"></div>
     <p id="sort-status" class="screen-reader" role="status"></p>
@@ -622,11 +641,34 @@
 
       const nameFilter = document.getElementById("name-filter");
       const groups = ranges.map(createGroup);
-      const noMatches = element("p", "empty", "No matching fires.");
-      noMatches.hidden = true;
       document.getElementById("update-groups").append(
-        ...groups.map(group => group.section), noMatches
+        ...groups.map(group => group.section)
       );
+
+      /** Compare one layout state because scroll anchoring can move both controls. */
+      function sortFitsBesideTitle(group) {
+        return group.sortButton.getBoundingClientRect().top <
+          group.toggle.getBoundingClientRect().bottom;
+      }
+
+      /** Omit optional wording only when it keeps the sort control beside its title. */
+      function fitGroupHeadings() {
+        for (const group of groups) {
+          const button = group.sortButton;
+          button.textContent = button.dataset.full;
+          if (sortFitsBesideTitle(group)) continue;
+          button.textContent = button.dataset.full.replace(" ordered ", " ");
+          if (!sortFitsBesideTitle(group)) {
+            button.textContent = button.dataset.full;
+          }
+        }
+      }
+
+      /** Recheck space-dependent labels after content, font, or viewport changes. */
+      function fitLayout() {
+        fitGroupHeadings();
+        fitLocations();
+      }
 
       /**
        * Keep existing rows and controls so live aging preserves focus and color fades.
@@ -853,17 +895,17 @@
             return (orderings[index] === "name" ? names : 0) || first.age - second.age;
           });
           const count = new Set(sorted.map(update => fireIdentity(update.record))).size;
-          group.section.hidden = Boolean(query) && !sorted.length;
           const entries = sorted.map(fireEntry);
           if (!entries.length) {
-            entries.push(element("li", "empty", "No updates in this time range."));
+            entries.push(element("li", "empty", query ?
+              "No matching updates in this time range." :
+              "No updates in this time range."));
           }
           reconcileEntries(group.list, entries);
-          group.sortButton.textContent =
+          group.sortButton.dataset.full =
             `${count} ${count === 1 ? "fire" : "fires"} ordered by ${orderings[index]}`;
         }
-        noMatches.hidden = !query || matching.length > 0;
-        fitLocations();
+        fitLayout();
         if (highlightsReady) refreshRecentHighlights();
         if (previousLayout) animateLayout(previousLayout);
         document.getElementById("sort-status").textContent =
@@ -872,9 +914,9 @@
       }
 
       nameFilter.addEventListener("input", () => renderUpdates());
-      const locationObserver = new ResizeObserver(fitLocations);
-      locationObserver.observe(document.querySelector("main"));
-      document.fonts.ready.then(fitLocations);
+      const layoutObserver = new ResizeObserver(fitLayout);
+      layoutObserver.observe(document.querySelector("main"));
+      document.fonts.ready.then(fitLayout);
       document.querySelector(".snapshot").hidden = false;
       nameFilter.disabled = false;
       replaceSnapshot(data, false);
@@ -987,11 +1029,46 @@
         previous.modified === current.modified && previous.length === current.length);
     }
 
+    const refreshIntervalMilliseconds = 30000;
+
+    /** Keep a silent server noticeable without discarding the displayed updates. */
+    function createResponseMonitor() {
+      const status = document.getElementById("response-status");
+      const responseFormat = new Intl.DateTimeFormat("en-US", {
+        timeZone: "America/Los_Angeles", month: "short", day: "numeric",
+        hour: "numeric", minute: "2-digit", second: "2-digit", timeZoneName: "short"
+      });
+      const openedAt = Date.now();
+      let lastResponseAt;
+
+      /** A page without a first response must not imply a successful earlier check. */
+      function showNoResponse() {
+        const since = responseFormat.format(lastResponseAt ?? openedAt);
+        status.textContent = lastResponseAt === undefined ?
+          `No response from updates server since this page opened at ${since}.` :
+          `No response from updates server since ${since}.`;
+        status.hidden = false;
+      }
+
+      let timer = setTimeout(showNoResponse, 2 * refreshIntervalMilliseconds);
+      /** Any HTTP response establishes connectivity, independent of snapshot validity. */
+      return function receivedResponse() {
+        lastResponseAt = Date.now();
+        clearTimeout(timer);
+        status.hidden = true;
+        timer = setTimeout(showNoResponse, 2 * refreshIntervalMilliseconds);
+      };
+    }
+
+    const receivedResponse = createResponseMonitor();
+
     /** Bound network waits so a stalled request cannot block later refreshes. */
-    function requestSnapshot(method) {
-      return fetch("./updates.json", {
+    async function requestSnapshot(method) {
+      const response = await fetch("./updates.json", {
         method, cache: "no-store", signal: AbortSignal.timeout(15000)
       });
+      receivedResponse();
+      return response;
     }
 
     let replaceSnapshot;
@@ -1041,7 +1118,7 @@
     }
 
     loadUpdates(false);
-    setInterval(loadUpdates, 30000);
+    setInterval(loadUpdates, refreshIntervalMilliseconds);
   </script>
 </body>
 
