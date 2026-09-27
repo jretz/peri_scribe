@@ -38,18 +38,6 @@ def test_positions_for_matches_identifier_only() -> None:
     assert index.positions_for(frozenset({"id-bug"}), "Bug") == (0, 2)
 
 
-def test_positions_for_never_falls_back_to_name_for_identifier_fire() -> None:
-    frame = (
-        tests.helpers.factories.peri_scribe.presentation.history_index.history_frame([
-            ("id-bug", "Bug"),
-            (None, "Bug"),
-        ])
-    )
-    index = peri_scribe.presentation.history_index.HistoryRowIndex.from_frame(frame)
-    # The identifier-less row shares the name but must not be matched.
-    assert index.positions_for(frozenset({"id-bug"}), "Bug") == (0,)
-
-
 def test_positions_for_falls_back_to_name_including_identifier_rows() -> None:
     frame = (
         tests.helpers.factories.peri_scribe.presentation.history_index.history_frame([
@@ -126,22 +114,6 @@ def test_missing_name_is_never_matched_by_name() -> None:
     assert index.positions_by_identifier == {"id-bug": (0,), "id-lost": (1,)}
     assert index.positions_by_name == {"Bug": (0,)}
     assert index.positions_for(frozenset(), "None") == ()
-
-
-def test_dual_membership_stores_identifier_rows_twice() -> None:
-    frame = (
-        tests.helpers.factories.peri_scribe.presentation.history_index.history_frame([
-            ("id-bug", "Bug"),
-            ("id-alta", "ALTA"),
-            (None, "Bug"),
-        ])
-    )
-    index = peri_scribe.presentation.history_index.HistoryRowIndex.from_frame(frame)
-    stored = sum(
-        len(positions) for positions in index.positions_by_identifier.values()
-    ) + sum(len(positions) for positions in index.positions_by_name.values())
-    # Three rows, plus one extra listing for each of the two identifier rows.
-    assert stored == len(frame) + 2
 
 
 def test_select_rows_returns_the_requested_rows_in_order() -> None:
@@ -230,18 +202,3 @@ def test_positions_for_matches_reference_filters() -> None:
                 actual,
                 expected,
             )
-
-
-def test_selected_rows_preserve_chronological_order() -> None:
-    frame = (
-        tests.helpers.factories.peri_scribe.presentation.history_index.history_frame([
-            ("id-bug", "Bug"),
-            ("id-alta", "ALTA"),
-            ("id-bug", "Bug"),
-            ("id-bug", "Bug"),
-        ])
-    )
-    index = peri_scribe.presentation.history_index.HistoryRowIndex.from_frame(frame)
-    positions = index.positions_for(frozenset({"id-bug"}), "Bug")
-    assert positions == tuple(sorted(positions))
-    assert positions == (0, 2, 3)

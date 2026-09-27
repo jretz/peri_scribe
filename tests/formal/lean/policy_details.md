@@ -92,13 +92,13 @@ its edges have its style. The legend contains exactly the styles represented by 
 edges and equivalently exactly the rendered segment styles. An isolated observation
 has neither a segment nor a legend entry.
 
-The bridge covers all 1,022 histories of zero through eight solid/dashed observations,
-once with distinct times and once with paired equal times. Actual `AreaEstimate`
-objects use separately retained observation and effective times, source files, and
-area-unit conversion. The real `fire_plots` builder must use the effective times and
-mapped/reported styles. Actual segment identities and legend entries are compared
-with oracle output. For the 1,020 nonempty histories, the bridge renders and parses
-actual SVG bytes, checking every path's point sequence and style and every legend
+The bridge covers all 1,019 unique histories of zero through eight solid/dashed
+observations, using distinct times and paired equal times wherever they produce different
+histories. Actual `AreaEstimate` objects use separately retained observation and effective
+times, source files, and area-unit conversion. The real `fire_plots` builder must use the
+effective times and mapped/reported styles. Actual segment identities and legend entries
+are compared with oracle output. For the 1,018 nonempty histories, the bridge renders and
+parses actual SVG bytes, checking every path's point sequence and style and every legend
 swatch and label against the same reference.
 
 SVG coordinate placement is checked at the production layout boundary; this model

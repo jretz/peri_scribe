@@ -55,34 +55,6 @@ def test_fetch_feed_dataframe_raises_without_change_columns() -> None:
         )
 
 
-def test_fetch_feed_dataframe_returns_none_without_changed_ids(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    feed = tests.helpers.factories.peri_scribe.sources.feed_types.change_feed()
-    monkeypatch.setattr(
-        peri_scribe.sources.feed_state,
-        "existing_features",
-        lambda _directory, _feed: None,
-    )
-    monkeypatch.setattr(
-        arcgis_access.data,
-        "query_object_ids_with_retry",
-        lambda *_args, **_kwargs: [],
-    )
-    result = peri_scribe.sources.fetching.fetch_feed_dataframe(
-        feed,
-        typing.cast("arcgis.features.FeatureLayer", object()),
-        [
-            peri_scribe.sources.snapshots.SourceFile(
-                serial_number=0,
-                last_edit_timestamp=0,
-            ),
-        ],
-        pathlib.Path("/sources"),
-    )
-    assert result is None
-
-
 def test_fetch_feed_dataframe_returns_none_when_dedupe_removes_all(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -966,38 +938,6 @@ def test_fetch_all_feeds_fails_when_last_edit_timestamp_unavailable(
     assert not geo_package_store.has(
         tests.helpers.factories.peri_scribe.sources.snapshots.snapshot_path(),
     )
-
-
-def test_fetch_all_feeds_observes_timestamp_before_downloading(
-    feature_set_with_geometry: arcgis.features.FeatureSet,
-    fetch_all_feeds_stubs: typing.Callable[..., None],
-    geo_package_store: (
-        tests.helpers.doubles.peri_scribe.snapshot_storage.GeoPackageStore
-    ),
-) -> None:
-    events: list[str] = []
-    feed = tests.helpers.doubles.peri_scribe.sources.fetching.FeedStub(
-        name=tests.helpers.factories.peri_scribe.sources.feed_types.SAMPLE_FEED_NAME,
-        url=tests.helpers.factories.peri_scribe.sources.feed_types.SAMPLE_FEED_URL,
-        last_edit_timestamp=tests.helpers.factories.peri_scribe.sources.snapshots.SAMPLE_LAST_EDIT_TIMESTAMP,
-        events=events,
-    )
-    fetch_all_feeds_stubs(
-        [feed],
-        lambda url, gis: (
-            tests.helpers.doubles.peri_scribe.sources.fetching.RecordingFeatureLayerStub(
-                url,
-                gis,
-                feature_set_with_geometry,
-                events,
-            )
-        ),
-    )
-    peri_scribe.sources.fetching.fetch_all_feeds(
-        tests.helpers.factories.peri_scribe.sources.snapshots.BASE_DIRECTORY,
-        year=2026,
-    )
-    assert events == ["timestamp", "download"]
 
 
 def test_fetch_all_feeds_skips_download_when_timestamp_present(

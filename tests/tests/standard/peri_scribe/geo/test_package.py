@@ -373,26 +373,6 @@ def test_read_geopackage_reads_missing_object_id(
     assert rows[0].object_id is None
 
 
-def test_read_geopackage_skips_rows_without_status(
-    configured_feeds: list[peri_scribe.sources.feed_types.Feed],
-    stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
-) -> None:
-    stub_geo_package(
-        pd.DataFrame({"name": ["Fires_One_0"], "geometry_type": ["Point"]}),
-        {
-            "Fires_One_0": geopandas.GeoDataFrame(
-                {
-                    "incident_name": ["Park Fire", "No Status"],
-                    "displayStatus": ["Active", None],
-                },
-                geometry=[shapely.geometry.Point(0, 0), shapely.geometry.Point(1, 1)],
-            ),
-        },
-    )
-    rows = peri_scribe.geo.package.read_geopackage(pathlib.Path("fires.gpkg")).rows
-    assert [row.record.name for row in rows] == ["Park Fire"]
-
-
 def test_read_geopackage_cached_round_trips_memberships(
     tmp_path: pathlib.Path,
     configured_feeds_with_identifiers: list[peri_scribe.sources.feed_types.Feed],

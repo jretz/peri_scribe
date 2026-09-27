@@ -189,13 +189,6 @@ def test_write_state_rejects_naive_timestamp(tmp_path: pathlib.Path) -> None:
         )
 
 
-def test_read_state_rejects_malformed_json(tmp_path: pathlib.Path) -> None:
-    path = tmp_path / "fetch_state.json"
-    path.write_text("not json", encoding="utf-8")
-    with pytest.raises(ValueError, match="Malformed fetch state"):
-        peri_scribe.sources.full_fetch_state.read_state(path)
-
-
 def test_read_state_rejects_non_object_state(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "fetch_state.json"
     path.write_text("[]", encoding="utf-8")

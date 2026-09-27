@@ -500,7 +500,10 @@ def expected_planned_tree(
 
 def replay_planned_trees() -> None:
     """Require the complete real phase tree to preserve explicit skip provenance."""
-    for completed, failed, skipped in itertools.product((False, True), repeat=3):
+    for (completed, failed), skipped in itertools.product(
+        ((False, False), (True, False), (True, True)),
+        (False, True),
+    ):
         run = peri_scribe.monitor.model.append_records(
             peri_scribe.monitor.model.State(),
             planned_records(completed=completed, failed=failed, explicit_skip=skipped),

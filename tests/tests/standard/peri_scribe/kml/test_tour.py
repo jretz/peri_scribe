@@ -75,14 +75,6 @@ def test_tour_wait_with_missing_observation_time() -> None:
     ).m_as("seconds") == pytest.approx(0.0)
 
 
-def test_tour_playback_rate_for_short_fire() -> None:
-    first = datetime.datetime(2026, 8, 1, 0, 0, tzinfo=datetime.UTC)
-    second = datetime.datetime(2026, 8, 6, 0, 0, tzinfo=datetime.UTC)
-    assert peri_scribe.kml.tour.tour_playback_rate([first, second]) == pytest.approx(
-        peri_scribe.kml.tour.TOUR_PLAYBACK_RATE,
-    )
-
-
 def test_tour_playback_rate_for_five_day_fire() -> None:
     first = datetime.datetime(2026, 8, 1, 0, 0, tzinfo=datetime.UTC)
     second = datetime.datetime(2026, 8, 6, 0, 0, tzinfo=datetime.UTC)

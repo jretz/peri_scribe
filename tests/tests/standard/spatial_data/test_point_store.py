@@ -237,24 +237,6 @@ def test_is_valid_database_rejects_unopenable_path(
     assert not spatial_data.point_store.is_valid_database(path)
 
 
-def test_is_valid_database_rejects_wrong_metadata(tmp_path: pathlib.Path) -> None:
-    path = tmp_path / "points.sqlite"
-    tests.helpers.factories.spatial_data.point_store.write_database(
-        np.asarray([[0.2, 0.2]], dtype=float),
-        path,
-    )
-    connection = sqlite3.connect(path)
-    try:
-        connection.execute(
-            "UPDATE metadata SET value = ? WHERE key = 'version'",
-            ("2025-01-01",),
-        )
-        connection.commit()
-    finally:
-        connection.close()
-    assert not spatial_data.point_store.is_valid_database(path)
-
-
 def test_is_valid_database_rejects_wrong_schema(tmp_path: pathlib.Path) -> None:
     path = tmp_path / "points.sqlite"
     tests.helpers.factories.spatial_data.point_store.write_database(

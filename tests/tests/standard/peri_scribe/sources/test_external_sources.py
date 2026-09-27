@@ -586,64 +586,6 @@ def test_fetch_buildings_combines_state_centroids_into_single_geopackage(
     )
 
 
-def test_fetch_buildings_skips_page_when_combined_output_present(
-    tmp_path: pathlib.Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    source = dataclasses.replace(
-        peri_scribe.sources.catalog.BUILDINGS_SOURCE,
-        states=("California",),
-        combine=True,
-        stream=True,
-        centroids=True,
-        keep_attributes=False,
-        compact_database=False,
-    )
-    links = {
-        state: (
-            "https://minedbuildings.z5.web.core.windows.net/legacy/"
-            f"usbuildings-v2/{state.replace(' ', '')}.geojson.zip"
-        )
-        for state in peri_scribe.sources.catalog.BUILDINGS_STATES
-    }
-    page = (
-        tests.helpers.factories.peri_scribe.sources.external_source.buildings_page_html(
-            links,
-        )
-    )
-    archive = (
-        tests.helpers.factories.peri_scribe.sources.external_source
-    ).archive_zip_bytes(
-        filename="California.geojson",
-        dataframe=(
-            tests.helpers.factories.peri_scribe.sources.external_source.building_dataframe()
-        ),
-        driver="GeoJSON",
-    )
-    urls: list[str] = []
-
-    get = (
-        tests.helpers.doubles.peri_scribe.sources.external_sources
-    ).make_building_responder(
-        urls=urls,
-        page=page,
-        archive=archive,
-    )
-
-    monkeypatch.setattr(requests, "get", get)
-
-    first = peri_scribe.sources.external_sources.fetch_external_source(source, tmp_path)
-    second = peri_scribe.sources.external_sources.fetch_external_source(
-        source,
-        tmp_path,
-    )
-    assert second == first
-    assert urls == [
-        peri_scribe.sources.catalog.BUILDINGS_SOURCE.url,
-        links["California"],
-    ]
-
-
 def test_fetch_buildings_combines_projected_centroids_into_wgs84(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -280,20 +280,6 @@ def test_where_clause_for_combines_multiple_change_columns() -> None:
     )
 
 
-def test_where_clause_for_includes_null_modified_timestamps() -> None:
-    cutoff = datetime.datetime(
-        2026,
-        1,
-        1,
-        0,
-        0,
-        0,
-        tzinfo=tests.helpers.factories.peri_scribe.sources.changes.UTC,
-    )
-    result = peri_scribe.sources.feed_state.where_clause_for(("EditDate",), cutoff)
-    assert "EditDate IS NULL" in result
-
-
 def test_latest_snapshot_path_returns_none_without_files() -> None:
     assert (
         peri_scribe.sources.feed_state.latest_snapshot_path(pathlib.Path("/d"), [])

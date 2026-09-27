@@ -23,7 +23,7 @@ from measurement_units import units
 EPOCH = datetime.datetime(2026, 8, 20, tzinfo=datetime.UTC)
 SVG_NAMESPACE = "{http://www.w3.org/2000/svg}"
 HISTORY_CASE_COUNT = 1849
-SEGMENT_CASE_COUNT = 1022
+SEGMENT_CASE_COUNT = 1019
 
 
 def moment(time: int) -> datetime.datetime:
@@ -243,7 +243,7 @@ def point_histories() -> tuple[tuple[Point, ...], ...]:
         )
         for count in range(9)
         for styles in itertools.product((False, True), repeat=count)
-        for simultaneous in (False, True)
+        for simultaneous in ((False, True) if count > 1 else (False,))
     )
 
 

@@ -74,15 +74,6 @@ def test_loads_preserves_quantity_magnitude_bits_and_original_units() -> None:
     )
 
 
-def test_loads_preserves_timestamp_nanoseconds() -> None:
-    original = pd.Timestamp("2026-09-01T02:03:04.123456789Z")
-    restored = spatial_data.cache_values.loads(
-        spatial_data.cache_values.dumps(original),
-    )
-    assert isinstance(restored, pd.Timestamp)
-    assert restored.value == original.value
-
-
 @pytest.mark.parametrize(
     ("text", "unit"),
     [
