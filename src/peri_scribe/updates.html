@@ -283,6 +283,26 @@
       font-variant-numeric: tabular-nums;
     }
 
+    .fire-heading.stacked-heading {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 3px;
+    }
+
+    .stacked-heading .fire-name {
+      white-space: normal;
+      overflow: visible;
+      overflow-wrap: anywhere;
+      text-overflow: clip;
+    }
+
+    .stacked-heading .updated {
+      margin-left: 0;
+      text-align: left;
+      white-space: normal;
+      overflow-wrap: anywhere;
+    }
+
     .acreages {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -561,21 +581,37 @@
         }
       }
 
-      /** Fit each location to the space left by its own fire name and timestamp. */
-      function fitLocations() {
-        for (const identity of document.querySelectorAll(".identity")) {
+      /** Use fractional layout widths that exclude transient animation scaling. */
+      function layoutWidth(node) {
+        return parseFloat(getComputedStyle(node).width);
+      }
+
+      /** Keep complete names visible beside previews at every available width. */
+      function fitFireHeadings() {
+        for (const identity of document.querySelectorAll(".update .identity")) {
           if (!identity.getClientRects().length) continue;
           const location = identity.querySelector(".location");
           const name = identity.querySelector(".fire-name");
+          const heading = identity.parentElement;
+          heading.classList.remove("stacked-heading");
+          location.hidden = true;
+          const flexShrink = name.style.flexShrink;
+          name.style.flexShrink = "0";
+          const nameWidth = layoutWidth(name);
+          name.style.flexShrink = flexShrink;
+          const headingGap = parseFloat(getComputedStyle(heading).columnGap);
+          const timeWidth = layoutWidth(heading.querySelector(".updated"));
+          heading.classList.toggle("stacked-heading",
+            nameWidth + headingGap + timeWidth > layoutWidth(heading));
           location.hidden = false;
           location.textContent = location.dataset.full;
           const gap = parseFloat(getComputedStyle(identity).columnGap);
           const available =
-            identity.getBoundingClientRect().width - name.scrollWidth - gap;
-          if (location.getBoundingClientRect().width <= available) continue;
+            layoutWidth(identity) - nameWidth - gap;
+          if (layoutWidth(location) <= available) continue;
           location.textContent = location.dataset.state;
           location.hidden = !location.textContent ||
-            location.getBoundingClientRect().width > available;
+            layoutWidth(location) > available;
         }
       }
 
@@ -743,7 +779,7 @@
       /** Recheck space-dependent labels after content, font, or viewport changes. */
       function fitLayout() {
         fitGroupHeadings();
-        fitLocations();
+        fitFireHeadings();
       }
 
       /**

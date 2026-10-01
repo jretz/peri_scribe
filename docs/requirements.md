@@ -141,10 +141,12 @@ fire count remains in every label. A case-insensitive name filter preserves that
 sorting. Every time group remains visible when filtering; empty groups show "No matching
 updates in this time range." Without a filter, empty groups show "No updates in this
 time range." Each entry shows its name, location, update time, previous acreage, change,
-and current acreage. Locations independently shorten to state abbreviations and then
-disappear when space is insufficient. All acreage headings and values align right. The
-page uses neutral colors except for deltas, recent-update highlights, and the connection
-notice, and shows only its generation time below the groups.
+and current acreage. When the complete fire name and update time do not fit on one
+line, the time moves beneath the name, with both beside the preview. Names that exceed
+that column's width wrap in full. Locations independently shorten to state abbreviations
+and then disappear when space is insufficient. All acreage headings and values align
+right. The page uses neutral colors except for deltas, recent-update highlights, and
+the connection notice, and shows only its generation time below the groups.
 Additions, moves, and removals animate while respecting reduced-motion preferences.
 Each time group can be collapsed independently. Moving updates animate to or from the
 closed header when only one of the source and destination groups is collapsed. Moves

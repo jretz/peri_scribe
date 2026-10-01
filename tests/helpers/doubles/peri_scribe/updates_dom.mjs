@@ -64,7 +64,7 @@ class Element {
 
   /** Supply predictable text measurements for the responsive location logic. */
   get scrollWidth() {
-    return this.textContent.length * 7;
+    return Math.round(this.ownerDocument.textWidth(this));
   }
 
   /** Preserve browser reparenting semantics when assembling viewer sections. */
@@ -168,7 +168,13 @@ class Element {
 
   /** Let every measurement reflect the latest collapse and row arrangement. */
   getBoundingClientRect() {
-    return this.ownerDocument.bounds(this);
+    const bounds = this.ownerDocument.bounds(this);
+    const row = this.closest(".update");
+    const scale = this.ownerDocument.rowScales.get(
+      row?.querySelector(".fire-name").textContent) ?? 1;
+    return { ...bounds, width: bounds.width * scale, height: bounds.height * scale,
+      right: bounds.left + bounds.width * scale,
+      bottom: bounds.top + bounds.height * scale };
   }
 
   /** Let departing ghosts retain their labels without sharing live child nodes. */
@@ -242,6 +248,9 @@ class Document {
     this.hidden = false;
     this.listeners = new Map();
     this.identityWidths = new Map();
+    this.fireHeadingWidths = new Map();
+    this.textWidths = new Map();
+    this.rowScales = new Map();
     this.headingWidths = new Map();
     this.anchoredGroup = null;
     this.fonts = { ready: Promise.resolve() };
@@ -296,6 +305,11 @@ class Document {
   /** Exercise registered lifecycle handlers without reaching into the renderer. */
   dispatch(name) {
     for (const callback of this.listeners.get(name) ?? []) callback();
+  }
+
+  /** Retain fractional glyph advances separately from integer DOM scroll dimensions. */
+  textWidth(node) {
+    return this.textWidths.get(node.textContent) ?? node.textContent.length * 7;
   }
 
   /** Reflow following windows so endpoint checks catch misplaced parent offsets. */
@@ -355,12 +369,23 @@ class Document {
     const row = node.closest(".update");
     if (row && row !== node) {
       const bounds = positions.get(row);
+      const name = row.querySelector(".fire-name").textContent;
+      const headingWidth = this.fireHeadingWidths.get(name);
+      if (node.classList.contains("fire-heading")) {
+        return rectangle(bounds.left + 16, bounds.top + 14,
+          headingWidth ?? bounds.width - 32, 24);
+      }
       if (node.classList.contains("identity")) {
-        const name = row.querySelector(".fire-name").textContent;
-        const width = this.identityWidths.get(name) ?? 630;
+        const besideTime = row.querySelector(".fire-heading")
+          .classList.contains("stacked-heading") ? 0 :
+          row.querySelector(".updated").scrollWidth + 16;
+        const width = this.identityWidths.get(name) ??
+          (headingWidth === undefined ? 630 : Math.max(0, headingWidth - besideTime));
         return rectangle(bounds.left + 16, bounds.top + 14, width, 24);
       }
-      return rectangle(bounds.left + 16, bounds.top + 14, node.scrollWidth, 24);
+      const width = node.style.flexShrink === "0" ? this.textWidth(node) :
+        node.scrollWidth;
+      return rectangle(bounds.left + 16, bounds.top + 14, width, 24);
     }
     const heading = node.closest(".section-heading");
     if (heading) return positions.get(heading);
@@ -373,6 +398,8 @@ export async function page(records, options = {}) {
   const document = new Document();
   document.hidden = options.hidden ?? false;
   document.headingWidths = new Map(Object.entries(options.headingWidths ?? {}));
+  document.fireHeadingWidths = new Map(Object.entries(options.fireHeadingWidths ?? {}));
+  document.textWidths = new Map(Object.entries(options.textWidths ?? {}));
   if (options.fontsReady) document.fonts.ready = options.fontsReady;
   let now = Date.parse("2026-09-23T12:00:00Z");
   let timerIdentifier = 0;
@@ -400,9 +427,9 @@ export async function page(records, options = {}) {
       /** Observation is recorded by the constructor's callback for manual resize. */
       observe() {}
     },
-    getComputedStyle: () => ({
+    getComputedStyle: node => ({
       columnGap: "16px", backgroundColor: "white", padding: "13px 16px",
-      borderTop: "1px solid gray"
+      borderTop: "1px solid gray", width: `${document.bounds(node).width}px`
     }),
     requestAnimationFrame: callback => options.deferFrames ?
       frames.push(callback) : callback(),
@@ -439,6 +466,16 @@ export async function page(records, options = {}) {
     /** Let each time window wrap according to its own heading and control labels. */
     resizeHeadings(widths) {
       document.headingWidths = new Map(Object.entries(widths));
+      resizeCallbacks.forEach(callback => callback());
+    },
+    /** Let each fire's name and timestamp compete for its own available row width. */
+    resizeFireHeadings(widths) {
+      document.fireHeadingWidths = new Map(Object.entries(widths));
+      resizeCallbacks.forEach(callback => callback());
+    },
+    /** Deliver a resize callback while animations scale painted rectangles. */
+    scaleRows(scales) {
+      document.rowScales = new Map(Object.entries(scales));
       resizeCallbacks.forEach(callback => callback());
     },
     /** Preserve a scrolled-to window's viewport position as earlier headings reflow. */
@@ -485,6 +522,7 @@ export async function page(records, options = {}) {
     /** Isolate the next transition after cleanup from prior interactions settles. */
     async finishAnimations() {
       document.animations.forEach(animation => animation.finish());
+      document.rowScales.clear();
       await Promise.resolve();
       document.animations.length = 0;
     }

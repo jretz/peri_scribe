@@ -273,6 +273,12 @@ on desktop and 72×56 boxes on phones with `object-fit: contain`; image-only ref
 update retained rows without restarting highlight transitions or favicon notifications.
 At widths up to 480 pixels, acreage spans both grid columns beneath the preview and
 heading. Departing copies share the grid and responsive rules, including text-only rows.
+Each row measures its complete fire name and current time label before fitting its
+optional location. Used CSS widths retain fractional pixels and exclude animation
+transforms; the name is measured without flex shrinking. If the name and time cannot
+share a line, the heading stacks the time beneath the name within the column beside
+the preview; long names wrap. Content, font loading, and viewport changes recheck the
+available space.
 
 This rendering is presentation-only: it changes no domain policy, update selection,
 ownership, or persistence transitions. Ordinary geometry, pixel, serialization, cache,
