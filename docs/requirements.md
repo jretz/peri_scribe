@@ -104,6 +104,22 @@ Repeated updates for the same fire remain separate; decreases are included.
 Malformed fire-update checkpoints or pending journals must stop publication before
 mutating durable evidence. Invalid pending intent remains available for repair.
 
+Each update leads with its fire's latest available perimeter preview. A 128×72 image
+uses one geographic scale for both axes and a rotation chosen separately for each fire
+within ±90° of north up to maximize its fit. All growth rings use their opaque KMZ fill
+colors beneath the latest three complete perimeter outlines: white, yellow, and red
+from oldest to newest.
+With fewer observations, the newest outline is red and the preceding one is yellow.
+The background and polygon holes are transparent; all drawing is antialiased. An
+18-pixel black/white navigation dart points north, has a hairline contrasting outline,
+and places its complete rotated bounding box against the top and right image edges.
+The image uses at most 256 dynamically chosen RGBA colors, with transparent, red,
+yellow, white, and black reserved. Lossless WebP uses maximum compression effort and
+is embedded as a base64 data URL in the JSON. Transport compression is the server's
+responsibility. On phones, the same image fits a 72×56 box without changing proportions.
+On narrow phones, acreage spans the row beneath the preview and heading.
+Updates without available geometry retain their text layout.
+
 The viewer fetches the neighboring JSON immediately on load over HTTP or HTTPS. Every
 30 seconds, it checks for changes with HEAD and fetches a changed snapshot without
 reloading the page. Only matching strong ETags allow indefinite reuse; weak ETags or

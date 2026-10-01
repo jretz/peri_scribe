@@ -248,6 +248,38 @@ an output failure keeps the pipeline stage pending for retry without repeating a
 acknowledged perimeters. Missing history, including missing months, contributes no
 previous acreage. Invalid logs leave the previous JSON output intact.
 
+The KMZ builder passes its prepared fire summaries to `updates.py`. Current history
+ownership and saved identifier/component aliases associate visible rows with these
+summaries. Aliases resolve current fires to durable log buckets, then ownership maps
+buckets to their current owner. A bucket's identifier can differ from its owner's
+report identity. Each fire is rendered once per snapshot and shares its latest preview
+across repeated updates. Optional `preview` fields contain WebP data URLs and add no
+fields to durable logs or checkpoints. The presentation preview modules draw all
+KMZ-colored growth rings and the latest three complete outlines using a local azimuthal
+equidistant projection.
+A quarter-degree search over the half-turn, followed by local refinement, maximizes
+uniform scale within a two-pixel drawing margin. Equivalent rotations are constrained
+to ±90° from north up. A spherical longitude center supports fires crossing the
+antimeridian. An independently antialiased 18-pixel north dart is cropped to its alpha
+bounds and composited flush to the top and right edges.
+
+Alpha-aware weighted clustering allocates up to 251 dynamic RGBA colors in addition to
+five reserved colors. Separate opaque and partial-alpha clusters preserve solid fills
+and antialiased transparency. Pillow encodes exact quantized pixels with lossless WebP,
+quality 100 and method 6, without metadata or transport compression. The existing
+disposable product store reuses previews by ordered geometry/color fingerprints and
+the application/runtime context, including Pillow. The viewer uses native 128×72 boxes
+on desktop and 72×56 boxes on phones with `object-fit: contain`; image-only refreshes
+update retained rows without restarting highlight transitions or favicon notifications.
+At widths up to 480 pixels, acreage spans both grid columns beneath the preview and
+heading. Departing copies share the grid and responsive rules, including text-only rows.
+
+This rendering is presentation-only: it changes no domain policy, update selection,
+ownership, or persistence transitions. Ordinary geometry, pixel, serialization, cache,
+and viewer tests provide useful checks; an additional formal model would not establish
+the correctness of projections, antialiasing, or third-party image codecs. Existing
+snapshot and row-retention formal contracts remain applicable.
+
 The packaged `updates.html` is copied beside the JSON only when its content changes.
 It fetches the JSON immediately and checks for changes with HEAD every 30 seconds.
 The check compares ETag when available, otherwise Last-Modified and Content-Length,

@@ -272,7 +272,11 @@ class Scenario:
         )
         displayed = self.viewer_times[viewer.generated_at] if viewer is not None else 0
         if viewer is not None:
-            assert viewer.updates == self.viewer_records(displayed, viewer.generated_at)
+            # Imagery is outside the persistence model; every logged field stays exact.
+            occurrences = tuple(
+                record.model_copy(update={"preview": None}) for record in viewer.updates
+            )
+            assert occurrences == self.viewer_records(displayed, viewer.generated_at)
         return (
             kmz,
             published,

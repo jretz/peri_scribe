@@ -120,5 +120,12 @@ submillisecond timestamp rounding, visual layout, animations or browser
 interoperability. Equal timestamps retain input order in the modeled stable sort and
 checked implementation; no permutation invariance is claimed for differently ordered
 simultaneous changes. Record signatures include every displayed data field and stable
-identity; unrendered batch IDs are omitted. Existing `BrowserRefresh.tla` covers the
+identity; unrendered batch IDs are omitted. Optional perimeter-preview imagery is
+updated in place on retained rows and is outside the modeled text/identity signature.
+Projection, rasterization, palette selection, image encoding, and image layout are
+checked by ordinary tests. Existing `BrowserRefresh.tla` covers the
 separate HTTP refresh protocol.
+
+The builder crash adapter excludes the optional preview when comparing the complete
+logged occurrences against its persistence oracle. All identity, acreage, timestamp,
+ownership, multiplicity, and publication-boundary checks remain exact.

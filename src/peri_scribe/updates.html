@@ -177,11 +177,47 @@
       border-radius: 6px;
     }
 
-    .update {
+    .update,
+    .departing-update {
       position: relative;
+      display: grid;
+      grid-template-columns: 128px minmax(0, 1fr);
+      column-gap: 16px;
+      align-items: center;
       padding: 13px 16px 14px;
       background-color: var(--surface);
       transition: background-color 2s ease-in-out;
+    }
+
+    .perimeter-preview {
+      grid-column: 1;
+      grid-row: 1 / 3;
+      width: 128px;
+      height: 72px;
+      object-fit: contain;
+    }
+
+    .update.without-preview,
+    .departing-update.without-preview {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .without-preview .fire-heading,
+    .without-preview .acreages {
+      grid-column: 1;
+    }
+
+    .fire-heading,
+    .acreages {
+      grid-column: 2;
+    }
+
+    .fire-heading {
+      grid-row: 1;
+    }
+
+    .acreages {
+      grid-row: 2;
     }
 
     .update.recent {
@@ -324,8 +360,16 @@
         font-size: 15px;
       }
 
-      .update {
+      .update,
+      .departing-update {
+        grid-template-columns: 72px minmax(0, 1fr);
+        column-gap: 12px;
         padding: 12px;
+      }
+
+      .perimeter-preview {
+        width: 72px;
+        height: 56px;
       }
 
       .fire-heading {
@@ -342,6 +386,16 @@
 
       .acreages {
         gap: 8px;
+      }
+    }
+
+    @media (max-width: 480px) {
+      .perimeter-preview {
+        grid-row: 1;
+      }
+
+      .acreages {
+        grid-column: 1 / -1;
       }
     }
 
@@ -455,7 +509,13 @@
         const additions = [];
         updates = data.updates.map(record => {
           const retained = previous.get(recordSignature(record))?.shift();
-          if (retained) return retained;
+          if (retained) {
+            const entry = entryCache.get(retained.record);
+            entryCache.delete(retained.record);
+            retained.record = record;
+            if (entry) entryCache.set(record, entry);
+            return retained;
+          }
           additions.push(record);
           return { record };
         });
@@ -547,11 +607,17 @@
       function fireEntry(update) {
         const cached = entryCache.get(update.record);
         if (cached) {
+          updatePreview(cached, update.record);
           updateTime(cached, update);
           return cached;
         }
         const entry = element("li", "update");
         const record = update.record;
+        const preview = element("img", "perimeter-preview");
+        preview.width = 128;
+        preview.height = 72;
+        entry.append(preview);
+        updatePreview(entry, record);
         entry.dataset.timestamp = record.timestamp;
         const current = record.mapped_area.value;
         const previous = record.previous_mapped_area?.value;
@@ -592,6 +658,16 @@
         updateTime(entry, update);
         entryCache.set(record, entry);
         return entry;
+      }
+
+      /** Update imagery in place so a new preview preserves the row and its highlight. */
+      function updatePreview(entry, record) {
+        const preview = entry.querySelector(".perimeter-preview");
+        preview.hidden = !record.preview;
+        entry.classList.toggle("without-preview", !record.preview);
+        preview.alt = `${record.name} perimeter preview. ` +
+          "Latest outlines: white, yellow, then red. The dart points north.";
+        if (record.preview && preview.src !== record.preview) preview.src = record.preview;
       }
 
       /**
@@ -745,6 +821,7 @@
       function departingRow(node, state) {
         const ghost = node.cloneNode(true);
         ghost.className = "departing-update";
+        ghost.classList.toggle("without-preview", node.classList.contains("without-preview"));
         ghost.setAttribute("aria-hidden", "true");
         ghost.inert = true;
         Object.assign(ghost.style, {
@@ -998,6 +1075,8 @@
           !(record.identifier === null || typeof record.identifier === "string") ||
           !isIdentity(record.log_identity) ||
           !isIdentity(record.history_identity) ||
+          !(record.preview == null || (typeof record.preview === "string" &&
+            /^data:image\/webp;base64,[A-Za-z0-9+/]+={0,2}$/.test(record.preview))) ||
           !(record.location === null || typeof record.location === "string") ||
           !isTimestamp(record.timestamp) || !isAcreage(record.mapped_area) ||
           !(record.previous_mapped_area === null ||

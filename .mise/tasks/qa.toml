@@ -46,3 +46,10 @@ run = [
     { task = "typecheck" },
     { task = "format-check" },
 ]
+
+[test-all]
+description = "Run all tests"
+run = [
+    { task = "test" },
+    { task = "formal" },
+]

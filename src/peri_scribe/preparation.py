@@ -13,6 +13,7 @@ import platform
 import sys
 import typing
 
+import PIL.features
 import pyproj
 import shapely
 
@@ -64,6 +65,7 @@ def runtime_fingerprint() -> str:
         "platform": platform.platform(),
         "geos": shapely.geos_version_string,
         "proj": pyproj.proj_version_str,
+        "webp": PIL.features.version_module("webp"),
         "libraries": {
             name: importlib.metadata.version(name)
             for name in (
@@ -75,6 +77,7 @@ def runtime_fingerprint() -> str:
                 "pandas",
                 "numpy",
                 "pydantic",
+                "pillow",
             )
         },
     }

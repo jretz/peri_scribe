@@ -15,8 +15,11 @@ import peri_scribe.fire_update_records
 import peri_scribe.fire_updates
 import peri_scribe.log_reading
 import peri_scribe.paths
+import peri_scribe.presentation.fire_data
 import peri_scribe.presentation.selection
+import peri_scribe.previews
 import peri_scribe.publication
+import peri_scribe.report.gathering
 from measurement_units import units
 
 
@@ -48,6 +51,11 @@ class Update(LogEntry):
 
     previous_mapped_area: Acreage | None
     history_identity: HistoryIdentity | None = None
+    preview: str | None = pydantic.Field(
+        default=None,
+        pattern=r"^data:image/webp;base64,[A-Za-z0-9+/]+={0,2}$",
+        exclude_if=lambda value: value is None,
+    )
 
 
 class Snapshot(pydantic.BaseModel):
@@ -159,11 +167,59 @@ def write_html(path: pathlib.Path) -> None:
         temporary.replace(path)
 
 
-def write_updates_page(year_directory: pathlib.Path) -> None:
+def with_previews(
+    snapshot: Snapshot,
+    fires: collections.abc.Sequence[peri_scribe.presentation.fire_data.FireSummary],
+    *,
+    state: peri_scribe.fire_updates.State | None = None,
+) -> Snapshot:
+    """Reuse each current fire's preview across its visible log occurrences.
+
+    Args:
+        snapshot: Chronological updates with current history ownership already applied.
+        fires: The same prepared fires used to produce the completed KMZ.
+        state: Saved alias-to-bucket assignments and current history owners.
+
+    Returns:
+        The snapshot with available previews, preserving all logged fields and order.
+    """
+    aliases = state.aliases if state is not None else {}
+    owners = state.owners if state is not None else {}
+    by_identity = {}
+    for fire in sorted(fires, key=peri_scribe.fire_updates.mapping_priority):
+        for encoded in peri_scribe.fire_updates.identity_keys(fire):
+            bucket = aliases.get(encoded, encoded)
+            owner = owners.get(bucket, bucket)
+            by_identity[
+                peri_scribe.fire_update_records.IDENTITY.validate_json(owner)
+            ] = fire
+    previews: dict[peri_scribe.presentation.selection.AreaKey, str | None] = {}
+    updates = []
+    for update in snapshot.updates:
+        identity = update.history_identity or update.identity()
+        fire = by_identity.get(identity)
+        if fire is None:
+            updates.append(update)
+            continue
+        key = peri_scribe.report.gathering.fire_identity(fire)
+        if key not in previews:
+            previews[key] = peri_scribe.previews.fire_preview(fire)
+        updates.append(update.model_copy(update={"preview": previews[key]}))
+    return snapshot.model_copy(update={"updates": tuple(updates)})
+
+
+def write_updates_page(
+    year_directory: pathlib.Path,
+    *,
+    fires: collections.abc.Sequence[
+        peri_scribe.presentation.fire_data.FireSummary
+    ] = (),
+) -> None:
     """Refresh both outputs after a completed KMZ run has appended its log entries.
 
     Args:
         year_directory: The year directory holding the completed KMZ and logs.
+        fires: Prepared KMZ fires supplying the latest preview for each visible fire.
     """
     state = peri_scribe.fire_updates.read_authoritative(
         peri_scribe.fire_updates.state_path(year_directory),
@@ -174,6 +230,7 @@ def write_updates_page(year_directory: pathlib.Path) -> None:
         datetime.datetime.now(datetime.UTC),
         owners=state.owners if state is not None else None,
     )
+    snapshot = with_previews(snapshot, fires, state=state)
     directory = year_directory / peri_scribe.paths.MAPS_DIRECTORY_NAME
     write_html(directory / "updates.html")
     peri_scribe.publication.write_state(directory / "updates.json", snapshot)

@@ -544,5 +544,5 @@ def create_kmz(
             published,
         )
     peri_scribe.fire_updates.write_updates(year_directory, updates)
-    peri_scribe.updates.write_updates_page(year_directory)
+    peri_scribe.updates.write_updates_page(year_directory, fires=geometries)
     return output_path
