@@ -161,8 +161,10 @@ class Element {
 
   /** Make hidden ancestors suppress their descendants' visible geometry. */
   getClientRects() {
-    if (!this.isConnected || this.hidden ||
-        this.parentElement && !this.parentElement.getClientRects().length) return [];
+    if (!this.isConnected) return [];
+    for (let node = this; node; node = node.parentElement) {
+      if (node.hidden) return [];
+    }
     return [this.getBoundingClientRect()];
   }
 
@@ -312,6 +314,17 @@ class Document {
     return this.textWidths.get(node.textContent) ?? node.textContent.length * 7;
   }
 
+  /** Keep computed widths live without laying out the document for other properties. */
+  computedStyle(node) {
+    const document = this;
+    return {
+      columnGap: "16px", backgroundColor: "white", padding: "13px 16px",
+      borderTop: "1px solid gray",
+      /** Reflect changes to layout and text since the style object was requested. */
+      get width() { return `${document.bounds(node).width}px`; }
+    };
+  }
+
   /** Reflow following windows so endpoint checks catch misplaced parent offsets. */
   bounds(node) {
     const rectangle = (left, top, width, height) => ({
@@ -427,10 +440,7 @@ export async function page(records, options = {}) {
       /** Observation is recorded by the constructor's callback for manual resize. */
       observe() {}
     },
-    getComputedStyle: node => ({
-      columnGap: "16px", backgroundColor: "white", padding: "13px 16px",
-      borderTop: "1px solid gray", width: `${document.bounds(node).width}px`
-    }),
+    getComputedStyle: node => document.computedStyle(node),
     requestAnimationFrame: callback => options.deferFrames ?
       frames.push(callback) : callback(),
     /** Schedule aging and highlight work without waiting for wall-clock time. */
