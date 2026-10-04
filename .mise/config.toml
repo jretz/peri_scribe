@@ -7,10 +7,10 @@ GEOS_INCLUDE_PATH = "{{env.GEOS_PREFIX}}/include"
 GEOS_LIBRARY_PATH = "{{env.GEOS_PREFIX}}/lib"
 LDFLAGS = '{{env.LDFLAGS | default(value="")}} -Wl,-rpath,"{{env.GEOS_LIBRARY_PATH}}"'
 MAMBA_ROOT_PREFIX = "{{config_root}}/.cache/micromamba"
-# Shapely's cached builds must use this checkout's GEOS library and version.
+# Shapely builds embed the GEOS library path, so caches must distinguish checkouts.
 UV_CACHE_DIR = """
 {{env.PERI_SCRIBE_UV_CACHE_ROOT | default(value=config_root ~ '/.cache/uv')}}\
-/geos-{{env.GEOS_VERSION}}"""
+/geos-{{env.GEOS_VERSION}}/{{env.GEOS_LIBRARY_PATH | hash}}"""
 
 [settings]
 lockfile = true

@@ -38,14 +38,24 @@ mailer, and an enabled email notification preference for that user. The runner v
 does not identify the Forgejo server version.
 
 CI sets `PERI_SCRIBE_UV_CACHE_ROOT` to `/tool-cache/uv/peri-scribe`. The mise
-configuration appends the GEOS version so Shapely builds for different GEOS libraries
-use separate uv caches. Local runs default to `.cache/uv` in the checkout. The GEOS
-environment and micromamba root remain checkout-local and are prepared by the existing
-setup tasks.
+configuration appends the GEOS version and a hash of its absolute library path. Shapely
+builds embed that path, so checkouts in different directories need separate caches even
+when they use the same GEOS version. Repeated runs in the same checkout reuse their
+cache. Local runs use `.cache/uv` as the cache root. The GEOS environment and micromamba
+root remain checkout-local and are prepared by the existing setup tasks.
+
+uv can reuse a cached source build even with `--reinstall-package shapely`; reinstalling
+does not guarantee a rebuild. The path-specific cache ensures Shapely is built against
+the current checkout's GEOS library. See [uv's cache
+documentation](https://docs.astral.sh/uv/concepts/cache/).
 
 These changes configure existing tool, notification, and Git adapters. The tag update
 uses Forgejo's success and event conditions and Git's atomic reference update; there is
 no application policy or persistence protocol for an additional formal model to verify.
+
+[mise-lock]: https://mise.jdx.dev/dev-tools/mise-lock.html
+[workflow-token]: https://forgejo.org/docs/latest/user/actions/basic-concepts/#automatic-token
+[forgejo-v12]: https://forgejo.org/2025-07-release-v12-0/
 
 ## Formal verification
 
