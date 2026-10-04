@@ -14,6 +14,39 @@ manages the virtual environment for the project. `uv` itself is made available b
 tests, lint, typecheck, create builds, or do deployments. All tools for development and
 deployment activities are managed by `mise` and tools it makes available.
 
+## Forgejo CI
+
+The workflow in `.forgejo/workflows/test.yml` runs on pushes and pull requests using
+the `ci-base` runner label. It runs `mise test-all`, which runs the standard Python and
+viewer tests, coverage checks, linting, type checking, formatting checks, and the formal
+suite. The existing setup dependencies install tools with `mise install`, prepare
+GEOS, and sync Python dependencies with `uv sync --locked`. Mise uses recorded tool
+versions from `.mise/mise.lock`; [strict installation][mise-lock] with
+`mise install --locked` additionally rejects missing lock entries and is used when
+smoke-testing the runner image.
+
+After all preceding steps succeed on a push to the repository's default branch, the
+final step creates or moves the remote `deploy` tag to the commit SHA tested by that
+workflow run. It uses the [automatic workflow token][workflow-token] persisted by
+checkout; pushes made with that token do not trigger another workflow. Pull requests
+and tag pushes do not move `deploy`. Forgejo must allow the workflow token to update
+the tag.
+
+The workflow enables Forgejo's failure emails to the user who triggered the run.
+Delivery requires [Forgejo server version 12][forgejo-v12] or newer, a configured
+mailer, and an enabled email notification preference for that user. The runner version
+does not identify the Forgejo server version.
+
+CI sets `PERI_SCRIBE_UV_CACHE_ROOT` to `/tool-cache/uv/peri-scribe`. The mise
+configuration appends the GEOS version so Shapely builds for different GEOS libraries
+use separate uv caches. Local runs default to `.cache/uv` in the checkout. The GEOS
+environment and micromamba root remain checkout-local and are prepared by the existing
+setup tasks.
+
+These changes configure existing tool, notification, and Git adapters. The tag update
+uses Forgejo's success and event conditions and Git's atomic reference update; there is
+no application policy or persistence protocol for an additional formal model to verify.
+
 ## Formal verification
 
 Run `mise formal` for the TLA+ model checks, Lean proofs, and implementation conformance

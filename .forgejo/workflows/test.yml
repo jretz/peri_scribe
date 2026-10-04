@@ -1,0 +1,22 @@
+name: test
+on: [push, pull_request]
+enable-email-notifications: true
+
+jobs:
+  test:
+    runs-on: ci-base
+    env:
+      MISE_TRUSTED_CONFIG_PATHS: ${{ forgejo.workspace }}
+      PERI_SCRIBE_UV_CACHE_ROOT: /tool-cache/uv/peri-scribe
+    steps:
+      - uses: https://data.forgejo.org/actions/checkout@v6
+      - name: Run all tests
+        run: mise test-all
+      - name: Update deploy tag
+        if: >-
+          ${{ success() && forgejo.event_name == 'push' &&
+          forgejo.ref_type == 'branch' &&
+          forgejo.ref_name == forgejo.event.repository.default_branch }}
+        env:
+          TESTED_SHA: ${{ forgejo.sha }}
+        run: git push --force origin "${TESTED_SHA}:refs/tags/deploy"
