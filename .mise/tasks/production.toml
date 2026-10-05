@@ -1,3 +1,10 @@
+[deploy]
+description = "Fetch and check out the deployment tag"
+run = [
+    "git fetch origin +refs/tags/deploy:refs/tags/deploy",
+    "git checkout refs/tags/deploy",
+]
+
 [run-production]
 description = "Check for new source data and use it to generate new maps and reports"
 depends = ["venv"]

@@ -32,6 +32,11 @@ checkout; pushes made with that token do not trigger another workflow. Pull requ
 and tag pushes do not move `deploy`. Forgejo must allow the workflow token to update
 the tag.
 
+Run `mise deploy` to fetch the current `deploy` tag from `origin` and check out its
+commit with a detached HEAD. The fetch replaces the local deployment tag when CI has
+moved it. Checkout runs only after a successful fetch and uses Git's normal protection
+against overwriting uncommitted changes.
+
 The workflow enables Forgejo's failure emails to the user who triggered the run.
 Delivery requires [Forgejo server version 12][forgejo-v12] or newer, a configured
 mailer, and an enabled email notification preference for that user. The runner version
@@ -56,6 +61,53 @@ no application policy or persistence protocol for an additional formal model to 
 [mise-lock]: https://mise.jdx.dev/dev-tools/mise-lock.html
 [workflow-token]: https://forgejo.org/docs/latest/user/actions/basic-concepts/#automatic-token
 [forgejo-v12]: https://forgejo.org/2025-07-release-v12-0/
+
+## Production systemd unit
+
+[`systemd/peri-scribe.service`](../systemd/peri-scribe.service) is a user service that
+runs `mise deploy` before each separate invocation of `mise run-production`. The `-`
+prefix on `ExecStartPre` allows production to proceed after deployment succeeds or
+fails, using whichever commit remains checked out. After production exits, successfully
+or otherwise, systemd waits 50 seconds before starting the next cycle with deployment.
+Stopping the service explicitly stops repetition.
+
+The unit uses the `/home/jimmy/peri_scribe` checkout and `/usr/local/bin/mise` executable.
+It runs as the owner of the user service manager, with no `User` override. The account
+needs access to the checkout, Git remote, mise configuration, and the `PeriScribe` rclone
+remote used by `run-production`.
+
+`TimeoutStartSec=infinity` disables the startup timeout, so deployment can take as long
+as needed. If deployment hangs, production and the next cycle must wait for it to exit.
+Sequencing, retries, and the delay use [systemd's service lifecycle][systemd-service].
+This configuration adds no application protocol for an additional formal model to verify.
+
+On the production host, validate the unit from the checkout as `jimmy` without starting
+it:
+
+```sh
+systemd-analyze --user verify systemd/peri-scribe.service
+```
+
+Place the file or a symlink to it at
+`/home/jimmy/.config/systemd/user/peri-scribe.service`. Then, as `jimmy`, enable and start
+it:
+
+```sh
+systemctl --user enable --now peri-scribe.service
+```
+
+`WantedBy=default.target` starts the enabled service with the user service manager. To
+start that manager at boot and keep it running after logout, enable lingering once:
+
+```sh
+sudo loginctl enable-linger jimmy
+```
+
+After editing the installed unit, run `systemctl --user daemon-reload` and
+`systemctl --user restart peri-scribe.service` to apply the changes. The unit is supplied
+as a file; it is not installed or enabled by any project task.
+
+[systemd-service]: https://github.com/systemd/systemd/blob/main/man/systemd.service.xml
 
 ## Formal verification
 

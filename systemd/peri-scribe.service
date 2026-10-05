@@ -1,0 +1,16 @@
+[Unit]
+Description=PeriScribe Production Pipeline
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+WorkingDirectory=/home/jimmy/peri_scribe
+ExecStartPre=-/usr/local/bin/mise deploy
+ExecStart=/usr/local/bin/mise run-production
+Restart=always
+RestartSec=50s
+TimeoutStartSec=infinity
+
+[Install]
+WantedBy=default.target
