@@ -38,4 +38,4 @@ def test_create_response_monitor_refines_tlc_histories(tmp_path: pathlib.Path) -
         standard_input=json.dumps(cases),
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert json.loads(result.stdout) == {"checked": len(cases) * 2}
+    assert json.loads(result.stdout) == {"checked": len(cases) * 3}

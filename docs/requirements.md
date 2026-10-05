@@ -121,9 +121,10 @@ On narrow phones, acreage spans the row beneath the preview and heading.
 Updates without available geometry retain their text layout.
 
 The viewer fetches the neighboring JSON immediately on load over HTTP or HTTPS. Every
-30 seconds, it checks for changes with HEAD and fetches a changed snapshot without
-reloading the page. Only matching strong ETags allow indefinite reuse; weak ETags or
-modification time and size are rechecked by downloading at least every five minutes.
+30 seconds, it sends a GET with `If-None-Match` using the last displayed snapshot's ETag
+and keeps that snapshot on a 304 response. Changed snapshots load without reloading the
+page. Weak ETags are omitted at least every five minutes to force a full download;
+without an ETag, each poll downloads the JSON.
 Failed or invalid refreshes preserve the displayed snapshot for later retry.
 After two polling intervals (60 seconds) without any HTTP response, a sticky amber notice
 shows when the server last responded, in Pacific time. A response of any HTTP status

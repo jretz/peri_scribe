@@ -1123,27 +1123,6 @@
       return data;
     }
 
-    /** Compare server validators from the last successfully displayed download. */
-    function responseVersion(response) {
-      return {
-        etag: response.headers.get("ETag"),
-        modified: response.headers.get("Last-Modified"),
-        length: response.headers.get("Content-Length")
-      };
-    }
-
-    /** Metadata can collide, so only a strong ETag permits indefinite reuse. */
-    function sameVersion(previous, current, allowWeak) {
-      if (!previous) return false;
-      if (previous.etag || current.etag) {
-        return Boolean(previous.etag && previous.etag === current.etag &&
-          (!current.etag.startsWith("W/") || allowWeak));
-      }
-      return Boolean(allowWeak && previous.modified && current.modified &&
-        previous.length && current.length &&
-        previous.modified === current.modified && previous.length === current.length);
-    }
-
     const refreshIntervalMilliseconds = 30000;
 
     /** Keep a silent server noticeable without discarding the displayed updates. */
@@ -1178,39 +1157,32 @@
     const receivedResponse = createResponseMonitor();
 
     /** Bound network waits so a stalled request cannot block later refreshes. */
-    async function requestSnapshot(method) {
+    async function requestSnapshot(headers) {
       const response = await fetch("./updates.json", {
-        method, cache: "no-store", signal: AbortSignal.timeout(15000)
+        method: "GET", headers, cache: "no-store", signal: AbortSignal.timeout(15000)
       });
       receivedResponse();
       return response;
     }
 
     let replaceSnapshot;
-    let downloadedVersion;
+    let downloadedEtag;
     let downloadedAt = -Infinity;
     let loading = false;
-    const metadataRecheckMilliseconds = 5 * 60000;
+    const weakValidatorRecheckMilliseconds = 5 * 60000;
 
-    /** Check metadata before downloading and animate only validated replacements. */
-    async function loadUpdates(checkFirst = true) {
+    /** Revalidate displayed data and animate only validated replacements. */
+    async function loadUpdates() {
       if (loading) return;
       loading = true;
       const status = document.getElementById("load-status");
       try {
-        if (checkFirst) {
-          const head = await requestSnapshot("HEAD");
-          if (head.ok || head.status === 304) {
-            const allowWeak =
-              performance.now() - downloadedAt < metadataRecheckMilliseconds;
-            if (sameVersion(downloadedVersion, responseVersion(head), allowWeak)) {
-              return;
-            }
-          } else if (head.status !== 405 && head.status !== 501) {
-            throw new Error(`HEAD HTTP ${head.status}`);
-          }
-        }
-        const response = await requestSnapshot("GET");
+        // Weak validators can describe colliding metadata, so periodically bypass them.
+        const useValidator = downloadedEtag && (!downloadedEtag.startsWith("W/") ||
+          performance.now() - downloadedAt < weakValidatorRecheckMilliseconds);
+        const headers = useValidator ? { "If-None-Match": downloadedEtag } : {};
+        const response = await requestSnapshot(headers);
+        if (response.status === 304 && useValidator) return;
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = validateSnapshot(await response.json());
         if (replaceSnapshot) {
@@ -1218,7 +1190,7 @@
         } else {
           replaceSnapshot = startPage(data);
         }
-        downloadedVersion = responseVersion(response);
+        downloadedEtag = response.headers.get("ETag");
         downloadedAt = performance.now();
         status.hidden = true;
       } catch (error) {
@@ -1232,7 +1204,7 @@
       }
     }
 
-    loadUpdates(false);
+    loadUpdates();
     setInterval(loadUpdates, refreshIntervalMilliseconds);
   </script>
 </body>

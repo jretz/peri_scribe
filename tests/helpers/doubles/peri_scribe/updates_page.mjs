@@ -6,6 +6,7 @@ import { runScript } from "../../peri_scribe/updates_script.mjs";
 /** Exercise the shipped refresh script without a browser or network access. */
 export async function page(snapshot, headers = {}, response = {}) {
   const calls = [];
+  const jsonCalls = [];
   const rendered = [];
   const errors = [];
   const intervals = [];
@@ -14,7 +15,7 @@ export async function page(snapshot, headers = {}, response = {}) {
   const openedAt = Date.parse("2026-09-23T12:00:00Z");
   let timeoutIdentifier = 0;
   let elapsed = 0;
-  let server = { snapshot, headers, status: 200, headStatus: 200, ...response };
+  let server = { snapshot, headers, status: 200, ...response };
   let pendingRequest;
   const attributes = new Map();
   const status = {
@@ -57,7 +58,8 @@ export async function page(snapshot, headers = {}, response = {}) {
     clearTimeout: identifier => timeouts.delete(identifier),
     setInterval: (callback, delay) => intervals.push({ callback, delay }),
     fetch: async (url, options) => {
-      calls.push({ url, ...options });
+      const call = { url, ...options };
+      calls.push(call);
       const current = server;
       if (pendingRequest) {
         const pending = pendingRequest;
@@ -73,11 +75,20 @@ export async function page(snapshot, headers = {}, response = {}) {
         }
       }
       if (current.requestError) throw current.requestError;
+      const responseHeaders = new Headers(current.headers);
+      const validator = new Headers(options.headers).get("If-None-Match");
+      const entityTag = responseHeaders.get("ETag");
+      const notModified = current.status === 200 && !current.ignoreConditional &&
+        validator && entityTag &&
+        validator.replace(/^W\//, "") === entityTag.replace(/^W\//, "");
+      const responseStatus = notModified ? 304 : current.status;
       return {
-        status: options.method === "HEAD" ? current.headStatus : current.status,
-        ok: (options.method === "HEAD" ? current.headStatus : current.status) === 200,
-        headers: new Headers(current.headers),
+        status: responseStatus,
+        ok: responseStatus >= 200 && responseStatus < 300,
+        headers: responseHeaders,
         json: async () => {
+          jsonCalls.push(call);
+          if (responseStatus === 304) throw new SyntaxError("No response body.");
           if (current.jsonError) throw current.jsonError;
           return current.snapshot;
         }
@@ -118,7 +129,7 @@ export async function page(snapshot, headers = {}, response = {}) {
     elapsed = Math.max(elapsed, end);
   }
   return {
-    calls, rendered, errors, status, responseStatus, requestTimeouts,
+    calls, jsonCalls, rendered, errors, status, responseStatus, requestTimeouts,
     interval: intervals[0].delay,
     advance,
     /** Model a published replacement independently of the last displayed snapshot. */
@@ -127,9 +138,9 @@ export async function page(snapshot, headers = {}, response = {}) {
         ...server, snapshot: data, headers: responseHeaders, status: responseStatus
       };
     },
-    /** Model unsupported or unsuccessful metadata requests separately from downloads. */
-    setHeadStatus(value) {
-      server = { ...server, headStatus: value };
+    /** Exercise servers that send complete bodies despite conditional headers. */
+    setIgnoreConditional(value) {
+      server = { ...server, ignoreConditional: value };
     },
     /** Model network failures and recovery without opening a connection. */
     setRequestError(value) {

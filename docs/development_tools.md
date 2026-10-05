@@ -134,11 +134,12 @@ mise serve-updates -- --directory data/2025/maps
 
 Both local testing and production use HTTP loading because browsers restrict adjacent
 JSON requests from pages opened with `file://`. The viewer checks for a new snapshot
-every 30 seconds with HEAD and fetches changed data automatically. Changes animate
-while preserving the filter, sorting choices, and collapsed groups. Without a strong
-ETag, it also downloads at least every five minutes because HTTP modification times
-and file sizes can collide. Its age labels, groups, and highlights also update locally
-while open.
+every 30 seconds with an `If-None-Match` GET using the last displayed snapshot's ETag.
+A 304 keeps the current data; a full response updates it automatically. Changes animate
+while preserving the filter, sorting choices, and collapsed groups. Weak ETags force an
+unconditional download at least every five minutes because metadata can collide.
+Without an ETag, every poll downloads the JSON. Its age labels, groups, and highlights
+also update locally while open.
 
 Run `mise test-viewer` to test the viewer without a browser or network access. The task
 requires 100% JavaScript line, branch, and function coverage and runs as part of `mise

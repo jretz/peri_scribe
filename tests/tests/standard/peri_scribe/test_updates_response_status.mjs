@@ -51,19 +51,20 @@ test("createResponseMonitor uses opening time before the first response", async 
     assert.equal(page.status.textContent, "Unable to load updates.json.");
 });
 
-for (const headStatus of [200, 304]) {
-    test(`createResponseMonitor recovers on unchanged HEAD ${headStatus}`, async () => {
+for (const responseStatus of [200, 304]) {
+    test(`createResponseMonitor recovers on GET ${responseStatus}`, async () => {
         const page = await viewer.page(viewer.snapshot(), { ETag: '"unchanged"' });
         page.setRequestError(new TypeError("Connection unavailable"));
         await page.advance(2 * page.interval);
         assert.equal(page.responseStatus.hidden, false);
         page.setRequestError(undefined);
-        page.setHeadStatus(headStatus);
+        page.setIgnoreConditional(responseStatus === 200);
 
         await page.tick();
 
         assert.equal(page.responseStatus.hidden, true);
-        assert.equal(page.calls.filter((call) => call.method === "GET").length, 1);
+        assert.equal(page.calls.length, 4);
+        assert.ok(page.calls.every((call) => call.method === "GET"));
         page.setRequestError(new TypeError("Connection unavailable"));
         await page.advance(2 * page.interval - 1);
         assert.equal(page.responseStatus.hidden, true);
@@ -76,18 +77,18 @@ for (const headStatus of [200, 304]) {
     });
 }
 
-test("createResponseMonitor clears a warning on HTTP HEAD errors", async () => {
+test("createResponseMonitor clears a warning on HTTP GET errors", async () => {
     const page = await viewer.page(viewer.snapshot());
     page.setRequestError(new TypeError("Connection unavailable"));
     await page.advance(2 * page.interval);
     assert.equal(page.responseStatus.hidden, false);
     page.setRequestError(undefined);
-    page.setHeadStatus(503);
+    page.setSnapshot(viewer.snapshot(), {}, 503);
 
     await page.tick();
 
     assert.equal(page.responseStatus.hidden, true);
-    assert.equal(page.errors.at(-1).message, "HEAD HTTP 503");
+    assert.equal(page.errors.at(-1).message, "HTTP 503");
     assert.equal(page.rendered.length, 1);
 });
 

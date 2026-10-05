@@ -14,7 +14,7 @@ import peri_scribe.monitor.storage
 import tests.helpers.factories.peri_scribe.monitor.status
 
 
-BROWSER_CASE_COUNT = 4 * 2 * 5 * 2
+BROWSER_CASE_COUNT = 4 * 2 * 6 * 2
 BROWSER_RESPONSE_STATE_COUNT = 3906
 CURSOR_STATE_COUNT = 4299
 PROJECTION_HISTORY_COUNT = 1 + 8 + 8**2
@@ -56,8 +56,12 @@ def browser_cases(states: list[dict[str, str]]) -> list[dict[str, object]]:
                 "requests",
                 "skipped",
                 "age",
+                "validator",
+                "bodyReads",
+                "failures",
             )
         }
+        | {"conditional": state["conditional"] == "TRUE"}
         for state in states
         if state["phase"] == '"done"' and state["round"] == "1"
     ]

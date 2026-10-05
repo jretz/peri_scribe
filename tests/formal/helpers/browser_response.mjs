@@ -13,7 +13,7 @@ const format = new Intl.DateTimeFormat("en-US", {
 });
 
 /** Replay independent response and timer events without a real browser scheduler. */
-async function replay(state, method, status) {
+async function replay(state, status) {
   let elapsed = 0;
   let identifier = 0;
   const timers = new Map();
@@ -50,11 +50,11 @@ async function replay(state, method, status) {
     switch (event) {
       case "response":
         context.fetch = async () => ({ status, ok: status === 200 });
-        await context.requestSnapshot(method);
+        await context.requestSnapshot({});
         break;
       case "reject":
         context.fetch = async () => { throw new TypeError("offline"); };
-        await assert.rejects(context.requestSnapshot(method), /offline/);
+        await assert.rejects(context.requestSnapshot({}), /offline/);
         break;
       case "advance":
         elapsed += interval;
@@ -83,7 +83,8 @@ async function replay(state, method, status) {
 
 const states = JSON.parse(fs.readFileSync(0, "utf8"));
 for (const state of states) {
-  await replay(state, "GET", 200);
-  await replay(state, "HEAD", 503);
+  await replay(state, 200);
+  await replay(state, 304);
+  await replay(state, 503);
 }
-process.stdout.write(JSON.stringify({ checked: states.length * 2 }) + "\n");
+process.stdout.write(JSON.stringify({ checked: states.length * 3 }) + "\n");

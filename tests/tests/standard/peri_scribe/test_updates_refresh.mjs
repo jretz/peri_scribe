@@ -3,65 +3,57 @@ import test from "node:test";
 
 import * as viewer from "../../../helpers/doubles/peri_scribe/updates_page.mjs";
 
-test("loadUpdates checks HEAD every thirty seconds", async () => {
-    const page = await viewer.page(viewer.snapshot(), {
-        ETag: '"content-hash"',
-    });
+test("loadUpdates sends one conditional GET every thirty seconds", async () => {
+    const page = await viewer.page(viewer.snapshot(), { ETag: '"content-hash"' });
 
     assert.equal(page.interval, 30000);
+    assert.equal(new Headers(page.calls[0].headers).get("If-None-Match"), null);
     await page.advance(29999);
-    assert.deepEqual(
-        page.calls.map((call) => call.method),
-        ["GET"],
-    );
+    assert.equal(page.calls.length, 1);
     await page.advance(1);
-    assert.deepEqual(
-        page.calls.map((call) => call.method),
-        ["GET", "HEAD"],
-    );
+    assert.equal(page.calls.length, 2);
     await page.advance(30000);
-    assert.deepEqual(
-        page.calls.map((call) => call.method),
-        ["GET", "HEAD", "HEAD"],
-    );
+
+    assert.deepEqual(page.calls.map((call) => call.method), ["GET", "GET", "GET"]);
+    for (const call of page.calls.slice(1)) {
+        assert.equal(new Headers(call.headers).get("If-None-Match"), '"content-hash"');
+    }
 });
 
-test("loadUpdates recovers a same-second equal-length metadata collision", async () => {
+test("loadUpdates retains displayed data without reading a 304 body", async () => {
     const original = viewer.snapshot();
-    const replacement = viewer.snapshot(2000, 900);
-    assert.equal(
-        JSON.stringify(original).length,
-        JSON.stringify(replacement).length,
-    );
-    const headers = {
-        "Last-Modified": "Wed, 23 Sep 2026 00:00:00 GMT",
-        "Content-Length": String(JSON.stringify(original).length),
-    };
-    const page = await viewer.page(original, headers);
-    page.setSnapshot(replacement);
+    const page = await viewer.page(original, { ETag: '"unchanged"' });
+    page.setSnapshot(viewer.snapshot(2000));
 
     await page.tick();
-    assert.deepEqual(
-        page.calls.map((call) => call.method),
-        ["GET", "HEAD"],
-    );
-    await page.advance(5 * 60000 - page.interval - 1);
-    assert.equal(page.calls.filter((call) => call.method === "GET").length, 1);
-    await page.advance(1);
 
-    assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
-    assert.equal(page.calls.at(-1).method, "GET");
+    assert.deepEqual(page.rendered, [original]);
+    assert.equal(page.jsonCalls.length, 1);
     assert.equal(page.errors.length, 0);
 });
 
-test("loadUpdates keeps strong ETags beyond metadata rechecks", async () => {
-    const page = await viewer.page(viewer.snapshot(), {
-        ETag: '"content-hash"',
-    });
+test("loadUpdates keeps its validator when a 304 supplies another ETag", async () => {
+    const page = await viewer.page(viewer.snapshot(), { ETag: '"first"' });
+    page.setSnapshot(viewer.snapshot(2000), { ETag: '"unexpected"' }, 304);
+    await page.tick();
+
+    await page.tick();
+
+    assert.equal(
+        new Headers(page.calls.at(-1).headers).get("If-None-Match"), '"first"');
+    assert.equal(page.rendered.length, 1);
+    assert.equal(page.jsonCalls.length, 1);
+});
+
+test("loadUpdates keeps strong ETags beyond weak validator rechecks", async () => {
+    const page = await viewer.page(viewer.snapshot(), { ETag: '"content-hash"' });
 
     await page.advance(30 * 60000);
 
-    assert.equal(page.calls.filter((call) => call.method === "GET").length, 1);
+    assert.equal(page.calls.length, 61);
+    assert.ok(page.calls.slice(1).every((call) =>
+        new Headers(call.headers).get("If-None-Match") === '"content-hash"'));
+    assert.equal(page.jsonCalls.length, 1);
     assert.equal(page.rendered.length, 1);
 });
 
@@ -69,30 +61,19 @@ test("loadUpdates bounds the lifetime of an unchanged weak ETag", async () => {
     const page = await viewer.page(viewer.snapshot(), { ETag: 'W/"metadata"' });
     page.setSnapshot(viewer.snapshot(2000));
 
-    await page.advance(5 * 60000);
+    await page.advance(5 * 60000 - 1);
+    assert.equal(page.rendered.length, 1);
+    assert.ok(page.calls.slice(1).every((call) =>
+        new Headers(call.headers).get("If-None-Match") === 'W/"metadata"'));
+    await page.advance(1);
 
     assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
-});
-
-test("loadUpdates rechecks weak validators even with a 304 HEAD", async () => {
-    const page = await viewer.page(viewer.snapshot(), { ETag: 'W/"metadata"' });
-    page.setSnapshot(viewer.snapshot(2000));
-    page.setHeadStatus(304);
-
-    await page.advance(5 * 60000);
-
-    assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
-});
-
-test("loadUpdates retains a strong validator with a 304 HEAD", async () => {
-    const page = await viewer.page(viewer.snapshot(), {
-        ETag: '"content-hash"',
-    });
-    page.setHeadStatus(304);
-
-    await page.advance(5 * 60000);
-
-    assert.equal(page.calls.filter((call) => call.method === "GET").length, 1);
+    assert.equal(page.calls.length, 11);
+    assert.equal(new Headers(page.calls.at(-1).headers).get("If-None-Match"), null);
+    assert.equal(page.jsonCalls.length, 2);
+    await page.tick();
+    assert.equal(
+        new Headers(page.calls.at(-1).headers).get("If-None-Match"), 'W/"metadata"');
 });
 
 test("loadUpdates fetches a changed validator on the next check", async () => {
@@ -101,61 +82,133 @@ test("loadUpdates fetches a changed validator on the next check", async () => {
 
     await page.tick();
 
-    assert.deepEqual(
-        page.calls.map((call) => call.method),
-        ["GET", "HEAD", "GET"],
-    );
+    assert.deepEqual(page.calls.map((call) => call.method), ["GET", "GET"]);
+    assert.equal(
+        new Headers(page.calls.at(-1).headers).get("If-None-Match"), '"first"');
     assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
+    await page.tick();
+    assert.equal(
+        new Headers(page.calls.at(-1).headers).get("If-None-Match"), '"second"');
+    assert.equal(page.rendered.length, 2);
 });
 
-test("loadUpdates retries failed downloads after weak metadata expires", async () => {
-    const headers = { "Last-Modified": "same second", "Content-Length": "400" };
+test("loadUpdates consumes a 200 body even when its ETag is unchanged", async () => {
+    const page = await viewer.page(viewer.snapshot(), { ETag: '"unchanged"' });
+    page.setIgnoreConditional(true);
+    page.setSnapshot(viewer.snapshot(2000));
+
+    await page.tick();
+
+    assert.equal(
+        new Headers(page.calls.at(-1).headers).get("If-None-Match"), '"unchanged"');
+    assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
+    assert.equal(page.jsonCalls.length, 2);
+});
+
+test("loadUpdates clears its validator when a download omits ETag", async () => {
+    const page = await viewer.page(viewer.snapshot(), { ETag: '"first"' });
+    page.setSnapshot(viewer.snapshot(2000), {});
+    await page.tick();
+    page.setSnapshot(viewer.snapshot(3000), {});
+
+    await page.tick();
+
+    assert.equal(new Headers(page.calls.at(-1).headers).get("If-None-Match"), null);
+    assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 3000);
+});
+
+for (const headers of [{}, {
+    "Last-Modified": "Wed, 23 Sep 2026 00:00:00 GMT",
+    "Content-Length": "400",
+}]) {
+    test(`loadUpdates downloads each interval without ETag: ${JSON.stringify(headers)}`,
+        async () => {
+            const page = await viewer.page(viewer.snapshot(), headers);
+            page.setSnapshot(viewer.snapshot(2000));
+
+            await page.tick();
+            await page.tick();
+
+            assert.deepEqual(
+                page.calls.map((call) => call.method), ["GET", "GET", "GET"]);
+            assert.ok(page.calls.every((call) =>
+                new Headers(call.headers).get("If-None-Match") === null));
+            assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
+            assert.equal(page.jsonCalls.length, 3);
+        });
+}
+
+test("loadUpdates adopts a validator when a download gains ETag", async () => {
+    const page = await viewer.page(viewer.snapshot());
+    page.setSnapshot(viewer.snapshot(2000), { ETag: '"new"' });
+    await page.tick();
+
+    await page.tick();
+
+    assert.equal(new Headers(page.calls.at(-1).headers).get("If-None-Match"), '"new"');
+    assert.equal(page.rendered.length, 2);
+});
+
+test("loadUpdates retries failures after a weak validator expires", async () => {
+    const headers = { ETag: 'W/"metadata"' };
     const page = await viewer.page(viewer.snapshot(), headers);
+    await page.advance(5 * 60000 - page.interval);
     page.setSnapshot(viewer.snapshot(2000), headers, 503);
 
-    await page.advance(5 * 60000);
+    await page.tick();
     assert.equal(page.errors.length, 1);
     assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 1000);
     page.setSnapshot(viewer.snapshot(2000));
     await page.tick();
 
+    assert.equal(new Headers(page.calls.at(-1).headers).get("If-None-Match"), null);
     assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
 });
 
-for (const status of [405, 501]) {
-    test(`loadUpdates downloads when HEAD is unsupported with ${status}`, async () => {
-        const page = await viewer.page(viewer.snapshot(), { ETag: '"first"' });
-        page.setHeadStatus(status);
-        page.setSnapshot(viewer.snapshot(2000));
+test("loadUpdates rejects an unsolicited 304 before the first download", async () => {
+    const page = await viewer.page(
+        viewer.snapshot(), { ETag: '"first"' }, { status: 304 });
 
-        await page.tick();
+    assert.equal(page.rendered.length, 0);
+    assert.equal(page.jsonCalls.length, 0);
+    assert.equal(page.errors[0].message, "HTTP 304");
+    assert.equal(page.status.getAttribute("role"), "alert");
+    page.setSnapshot(viewer.snapshot(2000), { ETag: '"second"' });
+    await page.tick();
+    assert.equal(new Headers(page.calls.at(-1).headers).get("If-None-Match"), null);
+    assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
+});
 
-        assert.deepEqual(
-            page.calls.map((call) => call.method),
-            ["GET", "HEAD", "GET"],
-        );
-        assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
-        assert.equal(page.errors.length, 0);
-    });
-}
+test("loadUpdates rejects unsolicited 304 after a weak validator expires", async () => {
+    const headers = { ETag: 'W/"metadata"' };
+    const page = await viewer.page(viewer.snapshot(), headers);
+    page.setSnapshot(viewer.snapshot(2000), headers, 304);
 
-test("loadUpdates preserves displayed data after an unsuccessful HEAD", async () => {
-    const page = await viewer.page(viewer.snapshot());
-    page.setHeadStatus(503);
+    await page.advance(5 * 60000);
+
+    assert.equal(page.rendered.length, 1);
+    assert.equal(page.errors[0].message, "HTTP 304");
+    assert.equal(new Headers(page.calls.at(-1).headers).get("If-None-Match"), null);
     page.setSnapshot(viewer.snapshot(2000));
+    await page.tick();
+    assert.equal(new Headers(page.calls.at(-1).headers).get("If-None-Match"), null);
+    assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
+});
+
+test("loadUpdates preserves displayed data and ETag after an HTTP error", async () => {
+    const page = await viewer.page(viewer.snapshot(), { ETag: '"first"' });
+    page.setSnapshot(viewer.snapshot(2000), { ETag: '"failed"' }, 503);
 
     await page.tick();
 
     assert.equal(page.rendered.length, 1);
-    assert.deepEqual(
-        page.calls.map((call) => call.method),
-        ["GET", "HEAD"],
-    );
-    assert.equal(page.errors[0].message, "HEAD HTTP 503");
+    assert.equal(page.errors[0].message, "HTTP 503");
     assert.equal(page.status.hidden, true);
     assert.equal(page.status.getAttribute("role"), undefined);
-    page.setHeadStatus(200);
+    page.setSnapshot(viewer.snapshot(2000), { ETag: '"second"' });
     await page.tick();
+    assert.equal(
+        new Headers(page.calls.at(-1).headers).get("If-None-Match"), '"first"');
     assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
 });
 
@@ -175,11 +228,7 @@ test("loadUpdates retries after an initial download fails", async () => {
 
 test("loadUpdates recovers from a network exception", async () => {
     const failure = new TypeError("Connection unavailable");
-    const page = await viewer.page(
-        viewer.snapshot(),
-        {},
-        { requestError: failure },
-    );
+    const page = await viewer.page(viewer.snapshot(), {}, { requestError: failure });
 
     assert.equal(page.errors[0], failure);
     assert.equal(page.rendered.length, 0);
@@ -189,9 +238,10 @@ test("loadUpdates recovers from a network exception", async () => {
     assert.equal(page.status.hidden, true);
 });
 
-test("loadUpdates preserves displayed data when response JSON is invalid", async () => {
-    const page = await viewer.page(viewer.snapshot());
+test("loadUpdates preserves displayed data and ETag when JSON is invalid", async () => {
+    const page = await viewer.page(viewer.snapshot(), { ETag: '"first"' });
     const failure = new SyntaxError("Incomplete JSON");
+    page.setSnapshot(viewer.snapshot(2000), { ETag: '"second"' });
     page.setJsonError(failure);
 
     await page.tick();
@@ -200,8 +250,22 @@ test("loadUpdates preserves displayed data when response JSON is invalid", async
     assert.equal(page.rendered.length, 1);
     assert.equal(page.status.hidden, true);
     page.setJsonError(undefined);
-    page.setSnapshot(viewer.snapshot(2000));
     await page.tick();
+    assert.equal(
+        new Headers(page.calls.at(-1).headers).get("If-None-Match"), '"first"');
+    assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
+});
+
+test("loadUpdates preserves its validator when snapshot validation fails", async () => {
+    const page = await viewer.page(viewer.snapshot(), { ETag: '"first"' });
+    page.setSnapshot(null, { ETag: '"second"' });
+    await page.tick();
+    page.setSnapshot(viewer.snapshot(2000), { ETag: '"second"' });
+
+    await page.tick();
+
+    assert.equal(
+        new Headers(page.calls.at(-1).headers).get("If-None-Match"), '"first"');
     assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
 });
 
@@ -214,22 +278,16 @@ test("loadUpdates does not overlap requests during a slow response", async () =>
 
     await page.tick();
 
-    assert.deepEqual(
-        page.calls.map((call) => call.method),
-        ["GET", "HEAD"],
-    );
+    assert.deepEqual(page.calls.map((call) => call.method), ["GET", "GET"]);
     assert.equal(page.rendered.length, 1);
     held.release();
     await pendingTick;
-    assert.deepEqual(
-        page.calls.map((call) => call.method),
-        ["GET", "HEAD", "GET"],
-    );
+    assert.equal(page.calls.length, 2);
     assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
 });
 
-test("loadUpdates asks the browser to bypass its cache and bound request waits", async () => {
-    const page = await viewer.page(viewer.snapshot());
+test("loadUpdates bypasses the browser cache and bounds request waits", async () => {
+    const page = await viewer.page(viewer.snapshot(), { ETag: '"first"' });
 
     await page.tick();
 
@@ -241,51 +299,6 @@ test("loadUpdates asks the browser to bypass its cache and bound request waits",
     assert.equal(page.calls.at(-1).signal.aborted, false);
     assert.ok(page.requestTimeouts.every((milliseconds) => milliseconds === 15000));
 });
-
-const metadata = {
-    "Last-Modified": "Wed, 23 Sep 2026 00:00:00 GMT",
-    "Content-Length": "400",
-};
-for (const [description, before, after] of [
-    ["no validators are provided", {}, {}],
-    ["a strong ETag appears", {}, { ETag: '"new"' }],
-    ["a strong ETag disappears", { ETag: '"old"' }, {}],
-    ["last-modified was absent", { "Content-Length": "400" }, metadata],
-    ["last-modified disappears", metadata, { "Content-Length": "400" }],
-    [
-        "content-length was absent",
-        { "Last-Modified": metadata["Last-Modified"] },
-        metadata,
-    ],
-    [
-        "content-length disappears",
-        metadata,
-        { "Last-Modified": metadata["Last-Modified"] },
-    ],
-    [
-        "last-modified changes",
-        metadata,
-        { ...metadata, "Last-Modified": "Wed, 23 Sep 2026 00:00:01 GMT" },
-    ],
-    [
-        "content-length changes",
-        metadata,
-        { ...metadata, "Content-Length": "401" },
-    ],
-]) {
-    test(`loadUpdates downloads when ${description}`, async () => {
-        const page = await viewer.page(viewer.snapshot(), before);
-        page.setSnapshot(viewer.snapshot(2000), after);
-
-        await page.tick();
-
-        assert.deepEqual(
-            page.calls.map((call) => call.method),
-            ["GET", "HEAD", "GET"],
-        );
-        assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
-    });
-}
 
 for (const [description, change] of [
     ["null snapshot", () => null],

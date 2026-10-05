@@ -287,20 +287,21 @@ the correctness of projections, antialiasing, or third-party image codecs. Exist
 snapshot and row-retention formal contracts remain applicable.
 
 The packaged `updates.html` is copied beside the JSON only when its content changes.
-It fetches the JSON immediately and checks for changes with HEAD every 30 seconds.
-The check compares ETag when available, otherwise Last-Modified and Content-Length,
-against the last successfully displayed GET response. Only a matching strong ETag
-allows indefinite reuse. Weak ETags and modification time/size metadata expire after
-five minutes, when the next HEAD check also downloads the JSON to catch collisions.
-Changed or missing metadata, or HEAD responses with status 405 or 501, trigger a GET.
-Failed requests and invalid snapshots preserve the displayed data for later retry.
+It fetches the JSON immediately and sends one GET every 30 seconds. Each poll includes
+`If-None-Match` with the ETag from the last successfully displayed response. A 304 keeps
+the displayed snapshot and its validator without renewing the last download time. Weak
+ETags expire after five minutes, when the next GET omits the condition to catch metadata
+collisions. Without an ETag, each poll downloads the JSON. Successful full responses are
+validated and displayed before their ETag and download time are saved. Failed requests,
+invalid snapshots, and unexpected 304 responses to unconditional requests preserve the
+displayed data for later retry.
 
 The viewer monitors server responsiveness independently of snapshot validation. Each HTTP
-response, including unchanged HEAD and unsuccessful HTTP statuses, resets a 60-second
-watchdog and hides the sticky connection notice. Network rejections and request timeouts
-do not reset it. Expiry displays the latest response's Pacific timestamp, or the page-open
-timestamp when no response has arrived. The browser may delay timer callbacks; the notice
-does not change the displayed snapshot or the refresh protocol.
+response, including 304 and unsuccessful HTTP statuses, resets a 60-second watchdog and
+hides the sticky connection notice. Network rejections and request timeouts do not reset
+it. Expiry displays the latest response's Pacific timestamp, or the page-open timestamp
+when no response has arrived. The browser may delay timer callbacks; the notice does not
+change the displayed snapshot or the refresh protocol.
 
 The viewer retains the name filter and each group's sorting and collapsed state when
 applying a snapshot. Retained row elements support animated additions, sorting, bucket

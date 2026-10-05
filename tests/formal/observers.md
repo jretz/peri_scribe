@@ -6,35 +6,40 @@ handwritten expected-state fixtures stand in for the specifications.
 
 ## Browser refresh
 
-`tla/BrowserRefresh.tla` covers `loadUpdates` and `sameVersion` in
-`src/peri_scribe/updates.html`. Four metadata classes distinguish absent validators,
-colliding weak validators, changed strong validators, and an unchanged strong validator.
-The finite model explores fresh and expired metadata, successful responses, unsupported
-HEAD, failed HEAD, failed GET, invalid content, and overlapping polling attempts.
+`tla/BrowserRefresh.tla` covers `loadUpdates` in `src/peri_scribe/updates.html`. Four ETag
+classes distinguish absent validators, colliding weak validators, changed strong
+validators, and an unchanged strong validator. The finite model explores fresh and expired
+validators, successful conditional GETs, ignored conditions returning HTTP 200, network
+failures, HTTP errors, invalid content, explicit HTTP 304 replies, and overlapping polling
+attempts.
 
-The invariants establish at most one refresh, agreement between committed validators and
-displayed data, preservation of the snapshot and download age after failure, and a forced
-download after weak metadata expires. The liveness configuration checks a healthy retry
-eventually displays the stable server generation, assuming requests and polling progress
-and the weak-metadata deadline has elapsed. The first round may fail; the second round is
-healthy. This is a bounded recovery claim, not a guarantee against an indefinitely failing
-server. Strong validators are assumed to identify content correctly.
+The invariants establish at most one refresh and one GET per refresh, agreement between
+committed validators and displayed data, preservation of the snapshot and download age
+after failure or HTTP 304, and a forced download after weak ETags expire. HTTP 304 replies
+never read a body and are errors when the request did not send a validator. Missing ETags
+and expired weak ETags require unconditional GETs. The liveness configuration checks that
+a healthy retry eventually displays the stable server generation, assuming requests and
+polling progress and the weak-validator deadline has elapsed. The first round may fail;
+the second round is healthy. This is a bounded recovery claim, not a guarantee against an
+indefinitely failing server. Strong validators are assumed to identify content correctly.
 
-Both configurations explore 451 states from 40 initial combinations. Conformance replays
-all 80 completed first-round outcomes, with and without overlapping polling, against the
-shipped inline JavaScript through the existing browser double. Every weak case runs with
-both weak ETag and Last-Modified/Content-Length metadata. An immediate healthy poll after
-an expired weak-metadata failure must download again, checking that failed downloads did
-not renew the cached age. The healthy retry must display the server generation. Real DOM
-rendering, browser implementation of request timeouts, concurrent changes during one HTTP
-response, and server correctness are outside this model.
+Both configurations explore 441 states from 48 initial combinations. Conformance replays
+all 96 completed first-round outcomes, with and without overlapping polling, against the
+shipped inline JavaScript through the existing browser double. It checks the request
+method and validator, body-read and failure counts, and displayed snapshot. The next
+healthy poll must send the retained validator or omit an expired weak validator, checking
+that failed downloads and HTTP 304 replies did not renew the cached age. A healthy retry
+after expiry must display the server generation. Real DOM rendering, browser caching,
+native request timeouts, concurrent changes during one HTTP response, and server
+correctness are outside this model. Initial loading and transitions between ETag classes
+remain covered by ordinary browser tests.
 
 `tla/BrowserResponsiveness.tla` separately covers `createResponseMonitor` and the
 response notification in `requestSnapshot`. Its 3,906 states enumerate all histories of
 up to five response, rejection, elapsed-interval, delayed-interval, and timer-dispatch
 events. One time unit means the viewer's 30-second polling interval; the watchdog becomes
-due after two units without a response. Both HEAD and GET replies count as responses,
-including error statuses. Snapshot validity remains the separate refresh contract.
+due after two units without a response. Every GET reply counts as a response, including
+HTTP 304 and error statuses. Snapshot validity remains the separate refresh contract.
 Response instants in this model lie on that interval grid; ordinary timer tests cover
 millisecond boundaries.
 
@@ -48,11 +53,11 @@ exact wall-clock scheduling guarantee. Monotonic timer progress is an environmen
 assumption; date formatting and wall-clock adjustments do not determine the deadline.
 
 Conformance replays every bounded history against the shipped watchdog and request
-wrapper, once with successful GET replies and once with HEAD HTTP 503 replies. It checks
-the displayed warning and last-response timestamp, including initial silence, rejection,
-recovery, and delayed dispatch. The model also covers an indefinitely pending request
-through time-only transitions. Native browser timeout implementation, unbounded
-histories, and the visual prominence of the warning are outside this finite guarantee.
+wrapper with HTTP 200, HTTP 304, and HTTP 503 replies. It checks the displayed warning and
+last-response timestamp, including initial silence, rejection, recovery, and delayed
+dispatch. The model also covers an indefinitely pending request through time-only
+transitions. Native browser timeout implementation, unbounded histories, and the visual
+prominence of the warning are outside this finite guarantee.
 
 ## Log cursors and context
 
