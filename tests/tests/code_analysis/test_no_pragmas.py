@@ -1,9 +1,21 @@
 """Verify every tool-disabling comment matches an approved exception."""
 
+import pathlib
+
+import pytest
+
 import tests.helpers.code_analysis.pragmas
 
 
-def test_no_pragma_comments() -> None:
+@pytest.mark.parametrize("configuration", ["", "--column\n"], ids=["empty", "columns"])
+def test_no_pragma_comments(
+    configuration: str,
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    configuration_path = tmp_path / "ripgreprc"
+    configuration_path.write_text(configuration)
+    monkeypatch.setenv("RIPGREP_CONFIG_PATH", str(configuration_path))
     match_lines = tests.helpers.code_analysis.pragmas.pragma_matches().splitlines()
 
     remaining_exceptions = list(

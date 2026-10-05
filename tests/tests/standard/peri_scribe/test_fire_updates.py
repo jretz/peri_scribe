@@ -206,6 +206,8 @@ def test_prepare_updates_retains_changes_until_successful_completion(
     ).records
 
 
+# The first perimeter must be outside the 48-hour fast-growth window.
+@time_machine.travel(datetime.datetime(2026, 1, 4, tzinfo=datetime.UTC), tick=False)
 def test_prepare_updates_tracks_uninteresting_fires_without_logging_them(
     tmp_path: pathlib.Path,
 ) -> None:

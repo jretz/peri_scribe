@@ -11,7 +11,6 @@ import peri_scribe.kml.icons
 import tests.helpers.strategies.peri_scribe.kml.icons
 
 
-@hypothesis.settings(deadline=None)
 @hypothesis.given(image=tests.helpers.strategies.peri_scribe.kml.icons.rgba_images())
 def test_png_from_rows_round_trips_through_an_independent_decoder(
     image: tuple[int, bytes],

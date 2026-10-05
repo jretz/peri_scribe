@@ -85,6 +85,7 @@ def pragma_matches() -> str:
     result = subprocess.run(
         [
             rg_path,
+            "--no-config",
             "--line-number",
             "--no-heading",
             "--color",

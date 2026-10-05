@@ -95,6 +95,7 @@ def replay_read(state: dict[str, str], path: pathlib.Path) -> None:
             int(state["before"]),
         )
         writer.commit()
+        reader.execute("PRAGMA reverse_unordered_selects = ON")
         commit = tests.helpers.doubles.peri_scribe.geo.reading.ConcurrentCommit(
             writer=writer,
             revision=int(state["after"]),

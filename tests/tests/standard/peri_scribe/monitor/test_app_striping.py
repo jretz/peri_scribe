@@ -3,7 +3,6 @@
 import functools
 
 import pytest
-import textual.command
 import textual.widgets
 
 import tests.helpers.assertions.peri_scribe.monitor.striping
@@ -76,7 +75,7 @@ async def test_monitor_app_stripes_options_without_overwriting_selection(
     if palette:
         await session.pilot.resize_terminal(60, 42)
         await session.pilot.press("ctrl+p")
-        widget = session.app.screen.query_one(textual.command.CommandList)
+        widget = await session.command_results()
     else:
         select = session.app.query_one(
             "#pipeline-stream .severity",

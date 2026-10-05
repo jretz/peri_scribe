@@ -15,6 +15,7 @@ import pyproj
 import pytest
 import shapely.geometry
 import structlog
+import time_machine
 
 import arcgis_access.data
 import arcgis_access.retry
@@ -416,6 +417,10 @@ def test_fetch_all_feeds_complete_reports_failures_and_continues(
     assert written == [pathlib.Path("/base/data/2026/validation/Fires1_0.gpkg")]
 
 
+@time_machine.travel(
+    datetime.datetime(2040, 7, 1, tzinfo=datetime.UTC),
+    tick=False,
+)
 def test_fetch_all_feeds_complete_defaults_to_working_directory_and_year(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -435,9 +440,8 @@ def test_fetch_all_feeds_complete_defaults_to_working_directory_and_year(
         "fetch_feed",
         lambda *_args, **_kwargs: object(),
     )
-    year = datetime.date.today().year
     paths = peri_scribe.sources.fetching.fetch_all_feeds_complete()
-    assert paths == (pathlib.Path(f"/fetch/data/{year}/validation/Fires0_0.gpkg"),)
+    assert paths == (pathlib.Path("/fetch/data/2040/validation/Fires0_0.gpkg"),)
 
 
 def test_fetch_all_feeds_writes_geo_package(
@@ -1307,6 +1311,10 @@ def test_fetch_all_feeds_does_not_reindex_when_no_feed_succeeds(
     assert indexed == []
 
 
+@time_machine.travel(
+    datetime.datetime(2040, 7, 1, tzinfo=datetime.UTC),
+    tick=False,
+)
 def test_fetch_all_feeds_defaults_to_working_directory_and_year(
     monkeypatch: pytest.MonkeyPatch,
     feature_set_with_geometry: arcgis.features.FeatureSet,
@@ -1334,10 +1342,9 @@ def test_fetch_all_feeds_defaults_to_working_directory_and_year(
     )
     result = peri_scribe.sources.fetching.fetch_all_feeds()
     assert result.changed is True
-    year = datetime.date.today().year
     output_path = peri_scribe.sources.snapshots.source_geopackage_path(
         tests.helpers.factories.peri_scribe.sources.snapshots.BASE_DIRECTORY,
-        year,
+        2040,
         tests.helpers.factories.peri_scribe.sources.feed_types.SAMPLE_FEED_NAME,
         peri_scribe.sources.snapshots.SourceFile(
             serial_number=0,

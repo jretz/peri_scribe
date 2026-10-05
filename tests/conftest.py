@@ -7,10 +7,16 @@ import pathlib
 import typing
 import warnings
 
+import hypothesis
 import pytest
 import structlog
 
 import peri_scribe.logging
+
+
+# Correctness must not depend on CPU contention or filesystem latency.
+hypothesis.settings.register_profile("correctness", deadline=None)
+hypothesis.settings.load_profile("correctness")
 
 
 pytest_plugins = [

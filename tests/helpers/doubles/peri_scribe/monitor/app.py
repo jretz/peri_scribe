@@ -11,6 +11,7 @@ import typing
 
 import peri_scribe.monitor.app
 import peri_scribe.monitor.model
+import peri_scribe.monitor.status
 import peri_scribe.monitor.storage
 
 
@@ -50,6 +51,27 @@ async def remove_viewer_during_update(
         content: The pending report text whose rendering is interrupted.
     """
     await viewer.remove()
+
+
+async def open_evidence_with_completion(
+    completed: asyncio.Event,
+    operation: collections.abc.Callable[
+        [peri_scribe.monitor.app.MonitorApp, peri_scribe.monitor.status.Target],
+        collections.abc.Awaitable[None],
+    ],
+    app: peri_scribe.monitor.app.MonitorApp,
+    target: peri_scribe.monitor.status.Target,
+) -> None:
+    """Expose completion of real evidence navigation after its clicked message arrives.
+
+    Args:
+        completed: Signal that loading and publication have both finished.
+        operation: The unmodified evidence-navigation operation.
+        app: The observer receiving the clicked evidence.
+        target: The evidence selected through the actual status control.
+    """
+    await operation(app, target)
+    completed.set()
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)

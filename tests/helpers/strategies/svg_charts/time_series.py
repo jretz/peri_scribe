@@ -10,6 +10,10 @@ import svg_charts.models
 import tests.helpers.strategies.svg_charts.models
 
 
+# Timezone catalog discovery should not repeat filesystem work for every example.
+TIMEZONES = hypothesis.strategies.timezones()
+
+
 @hypothesis.strategies.composite
 def plot_series(
     draw: hypothesis.strategies.DrawFn,
@@ -40,7 +44,7 @@ def plot_series(
             max_size=3,
         ),
     )
-    zone = draw(hypothesis.strategies.timezones())
+    zone = draw(TIMEZONES)
     base = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
     return tuple(
         svg_charts.models.PlotSeries(

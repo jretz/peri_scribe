@@ -230,6 +230,10 @@ def test_distribution_version_raises_without_a_package_name(
 
 @pytest.mark.parametrize("command", ["run", "validate-sources"])
 @pytest.mark.parametrize("explicit_directory", [False, True])
+@time_machine.travel(
+    datetime.datetime(2026, 9, 15, 12, tzinfo=datetime.UTC),
+    tick=False,
+)
 def test_cli_logs_year_commands_to_their_resolved_directory(
     runner: click.testing.CliRunner,
     tmp_path: pathlib.Path,
@@ -256,9 +260,7 @@ def test_cli_logs_year_commands_to_their_resolved_directory(
     result = runner.invoke(peri_scribe.main.cli, arguments)
     assert result.exit_code == 0, result.exception
     paths = list((year_directory / "logs").glob("*.jsonl"))
-    assert [path.name for path in paths] == [
-        datetime.datetime.now().strftime("%Y-%m.jsonl"),
-    ]
+    assert [path.name for path in paths] == ["2026-09.jsonl"]
     entries = [json.loads(line) for line in paths[0].read_text().splitlines()]
     assert entries[0]["event"] == "Starting command"
     assert entries[-1]["event"] == "Finished command"
@@ -279,6 +281,7 @@ def test_cli_display_commands_do_not_create_log_files(
     assert list(tmp_path.iterdir()) == []
 
 
+@pytest.mark.usefixtures("fixed_log_month")
 def test_cli_defaults_both_log_destinations_to_debug(
     runner: click.testing.CliRunner,
     tmp_path: pathlib.Path,
@@ -325,6 +328,7 @@ def test_cli_uses_independent_log_level_options(
     assert bool(list((tmp_path / "logs").glob("*.jsonl"))) is file_logged
 
 
+@pytest.mark.usefixtures("fixed_log_month")
 def test_cli_closes_failed_command_logging_before_the_next_invocation(
     runner: click.testing.CliRunner,
     tmp_path: pathlib.Path,
@@ -344,6 +348,7 @@ def test_cli_closes_failed_command_logging_before_the_next_invocation(
     assert path.read_text() == contents
 
 
+@pytest.mark.usefixtures("fixed_log_month")
 def test_run_logs_failure_tracebacks_to_the_year_directory(
     runner: click.testing.CliRunner,
     tmp_path: pathlib.Path,
@@ -1618,13 +1623,13 @@ def test_run_list_stages_prints_descriptions_without_running(
         assert stage.description in result.output
 
 
-def test_run_help_names_current_year_default(runner: click.testing.CliRunner) -> None:
-    result = runner.invoke(peri_scribe.main.cli, ["run", "--help"])
-    assert result.exit_code == 0
-    assert (
-        f"{peri_scribe.paths.DATA_DIRECTORY}/{datetime.date.today().year}"
-    ) in result.output
-    assert "data/<current year>" not in result.output
+@pytest.mark.parametrize("command", ["run", "validate-sources"])
+@pytest.mark.parametrize("year", [2026, 2040])
+@pytest.mark.asyncio
+async def test_cli_help_names_current_year_default(command: str, year: int) -> None:
+    output = await tests.helpers.peri_scribe.main.year_command_help(command, year)
+    assert f"{peri_scribe.paths.DATA_DIRECTORY}/{year}" in output
+    assert "data/<current year>" not in output
 
 
 def test_run_rejects_missing_directory(runner: click.testing.CliRunner) -> None:
@@ -1827,17 +1832,6 @@ def test_validate_sources_stops_when_incremental_fetch_fails(
     ]
     assert stubs.validate_calls == []
     assert stubs.removal_calls == [complete_directory]
-
-
-def test_validate_sources_help_names_current_year_default(
-    runner: click.testing.CliRunner,
-) -> None:
-    result = runner.invoke(peri_scribe.main.cli, ["validate-sources", "--help"])
-    assert result.exit_code == 0
-    assert (
-        f"{peri_scribe.paths.DATA_DIRECTORY}/{datetime.date.today().year}"
-    ) in result.output
-    assert "data/<current year>" not in result.output
 
 
 def test_validate_sources_rejects_missing_directory(

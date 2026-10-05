@@ -117,6 +117,7 @@ def test_plot_key_includes_all_runtime_renderer_settings(
     monkeypatch: pytest.MonkeyPatch,
     setting: str,
 ) -> None:
+    monkeypatch.setenv("TZ", "America/Los_Angeles")
     request = tests.helpers.factories.peri_scribe.kml.plot_rendering.plot_request()
     before = peri_scribe.kml.plot_rendering.plot_key(request)
     if setting == "layout":

@@ -12,12 +12,12 @@ import peri_scribe.fires.reuse
 import tests.helpers.strategies.peri_scribe.fires.reuse
 
 
-# File I/O has host-dependent latency; bound examples rather than elapsed time.
 if typing.TYPE_CHECKING:
     import spatial_data.layers
 
 
-@hypothesis.settings(max_examples=25, deadline=None)
+# Filesystem examples are expensive, so keep the generated sample count bounded.
+@hypothesis.settings(max_examples=25)
 @hypothesis.given(
     layers=tests.helpers.strategies.peri_scribe.fires.reuse.history_layers(),
 )

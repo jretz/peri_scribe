@@ -41,15 +41,17 @@ def read_snapshot_contents(
     Returns:
         The snapshot's fire rows and complex memberships.
     """
+    # write_snapshot inserts each tuple in order, so rowid retains source ordering.
     rows = conn.execute(
         "SELECT serial, object_id, source_name, name, status, identifiers, "
         "names, geometry_wkb, observed_at, mission, point_of_origin_state, "
-        "point_of_origin_fips, attributes_json FROM rows WHERE serial = ?",
+        "point_of_origin_fips, attributes_json FROM rows WHERE serial = ? "
+        "ORDER BY rowid",
         (serial,),
     ).fetchall()
     memberships = conn.execute(
         "SELECT fire_identifier, complex_identifier, complex_name, observation_time "
-        "FROM memberships WHERE serial = ?",
+        "FROM memberships WHERE serial = ? ORDER BY rowid",
         (serial,),
     ).fetchall()
     return peri_scribe.geo.package.GeopackageContents(

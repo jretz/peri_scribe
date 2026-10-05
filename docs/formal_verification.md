@@ -67,6 +67,15 @@ for serial execution, or use another positive count. The underlying runner also 
 `--jobs`, which takes precedence over that environment variable. Top-level formal phases
 run sequentially.
 
+Each outer proof job owns a private POSIX process group, including tools started by
+nested pytest runs. Cancellation and timeouts terminate that entire group and drain its
+output before the outer caller returns its original exception. A nested tool timeout or
+cancellation aborts the enclosing job rather than allowing that nested pytest to recover.
+Tools and their descendants must retain the inherited process group; deliberately
+detached processes are outside this adapter's contract. Real-process regressions cover
+these operating-system boundaries; this thin test adapter changes no modeled pipeline
+protocol.
+
 The conformance and deliberate-defect tasks use six pytest-xdist workers with work
 stealing. Each concrete execution retains its own temporary storage, and Lean executables
 are built before workers start. Nested baseline/mutant pytest runs remain serial so they

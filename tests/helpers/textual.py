@@ -7,6 +7,7 @@ import dataclasses
 import typing
 
 import textual.app
+import textual.command
 import textual.pilot
 import textual.widget
 
@@ -22,6 +23,25 @@ class Session[Application: textual.app.App[None]]:
         """Wait for queued widget changes to reach the composed screen."""
         await self.pilot.pause(0)
         await self.app.wait_for_refresh()
+
+    async def command_results(self) -> textual.command.CommandList:
+        """Wait for command discovery or search before interacting with its results.
+
+        Returns:
+            The command list after its active providers finish and results render.
+        """
+        await self.refresh()
+        palette = self.app.screen
+        assert isinstance(palette, textual.command.CommandPalette)
+        await asyncio.gather(
+            *(
+                worker.wait()
+                for worker in self.app.workers
+                if worker.node is palette and not worker.is_cancelled
+            ),
+        )
+        await self.refresh()
+        return palette.query_one(textual.command.CommandList)
 
     async def drag(
         self,

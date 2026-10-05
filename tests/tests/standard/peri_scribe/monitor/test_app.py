@@ -690,6 +690,7 @@ async def test_monitor_app_preserves_resized_panes_after_refresh_and_tab_changes
     sizes = (tree.size, inspection.size)
     await session.app.refresh_files()
     await session.pilot.press("4", "5", "3", "2")
+    await session.refresh()
     assert (tree.size, inspection.size) == sizes
 
 

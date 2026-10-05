@@ -205,11 +205,12 @@ def test_write_html_leaves_an_identical_viewer_untouched(
 ) -> None:
     path = tmp_path / "maps" / "updates.html"
     peri_scribe.updates.write_html(path)
-    os.utime(path, ns=(1, 1))
+    os.utime(path, (1_700_000_000, 1_700_000_000))
+    modified = path.stat().st_mtime_ns
 
     peri_scribe.updates.write_html(path)
 
-    assert path.stat().st_mtime_ns == 1
+    assert path.stat().st_mtime_ns == modified
 
 
 def test_write_html_replaces_an_outdated_viewer(tmp_path: pathlib.Path) -> None:

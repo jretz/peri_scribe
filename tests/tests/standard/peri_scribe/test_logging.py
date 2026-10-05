@@ -165,6 +165,7 @@ def test_log_execution_preserves_chained_exceptions_in_file_logs(
     assert "RuntimeError: KMZ failed" in entry["exception"]
 
 
+@pytest.mark.usefixtures("fixed_log_month")
 def test_log_execution_omits_handled_exceptions_from_successful_events(
     tmp_path: pathlib.Path,
 ) -> None:
@@ -278,6 +279,7 @@ def test_configure_logging_normalizes_values_for_each_renderer(
         assert "duration_units" not in entry
 
 
+@pytest.mark.usefixtures("fixed_log_month")
 @pytest.mark.parametrize(
     ("stderr_level", "file_level", "stderr_events", "file_events"),
     [
@@ -498,7 +500,11 @@ def test_append_monthly_log_serializes_overlapping_writes_and_rotation(
     entries = [
         {"event": f"Writer {index}", "details": "🔥\n" * 5000} for index in range(12)
     ]
-    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+    when = datetime.datetime(2026, 9, 18, 12, tzinfo=datetime.UTC)
+    with (
+        time_machine.travel(when, tick=False),
+        concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor,
+    ):
         list(
             executor.map(
                 functools.partial(peri_scribe.logging.append_monthly_log, tmp_path),

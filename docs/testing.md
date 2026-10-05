@@ -102,6 +102,12 @@ without identifying the value of doing so.
 Properties should express behavioral guarantees independently of the implementation,
 with appropriate numerical tolerances where needed.
 
+The shared `correctness` Hypothesis profile in `tests/conftest.py` disables per-example
+deadlines so CPU contention and filesystem latency do not fail correctness checks. Keep
+example counts bounded where generation or execution is expensive. Generation health
+checks remain enabled; reuse expensive strategies across examples without narrowing
+their input domains.
+
 Prefer strategies inferred from type annotations when they describe the intended input
 domain adequately. Use constrained or custom strategies to express domain restrictions
 and relationships between inputs.

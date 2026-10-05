@@ -15,8 +15,8 @@ import spatial_data.layers
 import tests.helpers.factories.spatial_data.layers
 
 
-# This test is slow, so limit examples to keep routine test runs fast.
-@hypothesis.settings(max_examples=25, deadline=400)
+# Filesystem examples are expensive, so keep the generated sample count bounded.
+@hypothesis.settings(max_examples=25)
 @hypothesis.given(
     identifiers=hypothesis.strategies.lists(
         hypothesis.strategies.integers(1, 1000),

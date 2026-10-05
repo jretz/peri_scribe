@@ -1,12 +1,13 @@
 """The monitoring CLI resolves standard locations without becoming a data writer."""
 
+import datetime
 import pathlib
 import typing
 import unittest.mock
 
 import pytest
+import time_machine
 
-import peri_scribe.cli_options
 import peri_scribe.main
 import peri_scribe.monitor.app
 import peri_scribe.paths
@@ -35,6 +36,10 @@ async def test_monitor_starts_without_pipeline_dependencies(
 
 
 @pytest.mark.parametrize("explicit", [True, False])
+@time_machine.travel(
+    datetime.datetime(2040, 7, 1, tzinfo=datetime.UTC),
+    tick=False,
+)
 def test_monitor_launches_read_only_observer_with_resolved_paths(
     runner: click.testing.CliRunner,
     monkeypatch: pytest.MonkeyPatch,
@@ -48,7 +53,7 @@ def test_monitor_launches_read_only_observer_with_resolved_paths(
     directory = (
         tmp_path / "2040"
         if explicit
-        else peri_scribe.cli_options.default_year_directory()
+        else tmp_path / peri_scribe.paths.DATA_DIRECTORY / "2040"
     )
     result = runner.invoke(
         peri_scribe.main.cli,

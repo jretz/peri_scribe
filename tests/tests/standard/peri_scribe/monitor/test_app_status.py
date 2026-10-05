@@ -1,7 +1,9 @@
 """Status remains live and its evidence links open exact historical Pipeline records."""
 
+import asyncio
 import collections.abc
 import datetime
+import functools
 import typing
 import unittest.mock
 
@@ -18,6 +20,7 @@ import peri_scribe.monitor.status
 import peri_scribe.monitor.status_widgets
 import peri_scribe.monitor.storage
 import tests.helpers.doubles.errors
+import tests.helpers.doubles.peri_scribe.monitor.app
 import tests.helpers.doubles.peri_scribe.monitor.changes
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.factories.peri_scribe.monitor.status
@@ -159,6 +162,7 @@ async def test_monitor_app_status_uses_live_phase_while_pipeline_is_paused(
 @pytest.mark.asyncio
 async def test_monitor_app_status_links_load_run_beyond_interactive_history(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = monitor_session
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
@@ -175,13 +179,24 @@ async def test_monitor_app_status_links_load_run_beyond_interactive_history(
     )
     await session.app.refresh_files()
     assert all(run.identifier != "failed" for run in session.app.state.runs)
+    completed = asyncio.Event()
+    monkeypatch.setattr(
+        peri_scribe.monitor.app,
+        "open_evidence_owned",
+        functools.partial(
+            tests.helpers.doubles.peri_scribe.monitor.app.open_evidence_with_completion,
+            completed,
+            peri_scribe.monitor.app.open_evidence_owned,
+        ),
+    )
     await tests.helpers.textual.invoke(
         session.app.query_one(
             "#status-failure",
             peri_scribe.monitor.status_widgets.StatusLink,
         ).on_click,
     )
-    await session.pilot.pause()
+    await asyncio.wait_for(completed.wait(), timeout=5)
+    await session.refresh()
     assert session.app.current_run().identifier == "failed"
     assert not session.app.following
     assert (

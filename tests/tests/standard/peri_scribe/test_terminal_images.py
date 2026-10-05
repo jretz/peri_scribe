@@ -179,6 +179,8 @@ def test_reported_cell_size_tolerates_unavailable_terminal(
 def test_display_dimensions_queries_terminal_and_restores_input_settings(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Allow the emulator thread to be scheduled while checking real terminal I/O.
+    monkeypatch.setattr(peri_scribe.terminal_images, "QUERY_TIMEOUT", 5 * units.seconds)
     monkeypatch.setattr(os, "tcgetpgrp", unittest.mock.Mock(return_value=os.getpgrp()))
     master, slave = pty.openpty()
     try:

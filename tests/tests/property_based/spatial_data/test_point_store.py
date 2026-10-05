@@ -61,7 +61,7 @@ def test_tile_ids_for_box_finds_every_encodable_point(
     assert spatial_data.point_store.tile_id(longitude, latitude) in tiles
 
 
-# This test is slow, so limit examples to keep routine test runs fast.
+# Filesystem examples are expensive, so keep the generated sample count bounded.
 @hypothesis.settings(max_examples=25)
 @hypothesis.given(
     scenario=tests.helpers.strategies.spatial_data.point_store.point_queries(),
