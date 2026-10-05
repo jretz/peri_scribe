@@ -515,7 +515,8 @@ async def test_monitor_app_scrollbars_keep_terminal_edge_neutral(
 ) -> None:
     session = scrolling_session
     await tests.helpers.textual.invoke(session.app.action_view, tab)
-    await session.pilot.pause()
+    await peri_scribe.monitor.app.render_report(session.app)
+    await session.refresh()
     pane = session.app.query_one(selector)
     assert pane.show_vertical_scrollbar
     backgrounds = set()
