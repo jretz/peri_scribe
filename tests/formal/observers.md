@@ -6,31 +6,33 @@ handwritten expected-state fixtures stand in for the specifications.
 
 ## Browser refresh
 
-`tla/BrowserRefresh.tla` covers `loadUpdates` in `src/peri_scribe/updates.html`. Four ETag
-classes distinguish absent validators, colliding weak validators, changed strong
-validators, and an unchanged strong validator. The finite model explores fresh and expired
-validators, successful conditional GETs, ignored conditions returning HTTP 200, network
+`tla/BrowserRefresh.tla` covers `loadUpdates` in `src/peri_scribe/updates.html`. Three
+ETag classes distinguish absent, changed, and unchanged validators. The finite model
+explores successful conditional GETs, ignored conditions returning HTTP 200, network
 failures, HTTP errors, invalid content, explicit HTTP 304 replies, and overlapping polling
-attempts.
+attempts. ETags are opaque validators whose eligibility does not depend on elapsed time
+or a `W/` prefix.
 
 The invariants establish at most one refresh and one GET per refresh, agreement between
-committed validators and displayed data, preservation of the snapshot and download age
-after failure or HTTP 304, and a forced download after weak ETags expire. HTTP 304 replies
-never read a body and are errors when the request did not send a validator. Missing ETags
-and expired weak ETags require unconditional GETs. The liveness configuration checks that
-a healthy retry eventually displays the stable server generation, assuming requests and
-polling progress and the weak-validator deadline has elapsed. The first round may fail;
-the second round is healthy. This is a bounded recovery claim, not a guarantee against an
-indefinitely failing server. Strong validators are assumed to identify content correctly.
+committed validators and displayed data, and preservation of the snapshot and validator
+after failure or HTTP 304. HTTP 304 replies never read a body and are errors when the
+request did not send a validator. Missing ETags require unconditional GETs. The liveness
+configuration checks that a healthy retry eventually displays the stable server
+generation, assuming requests and polling progress. The first round may fail; the second
+round is healthy. This is a bounded recovery claim, not a guarantee against an indefinitely
+failing server. Healthy responses must change the validator when the cached content is no
+longer semantically equivalent. A server that reuses an ETag for substantive changes and
+keeps returning HTTP 304 is outside the recovery guarantee; the viewer cannot detect that
+server error through conditional GETs alone.
 
-Both configurations explore 441 states from 48 initial combinations. Conformance replays
-all 96 completed first-round outcomes, with and without overlapping polling, against the
-shipped inline JavaScript through the existing browser double. It checks the request
+Both configurations explore 161 states from 18 initial combinations. Conformance replays
+all 36 completed first-round outcomes, with and without overlapping polling, against the
+shipped inline JavaScript through the existing browser double. Each outcome runs with
+quoted and `W/`-prefixed ETag fixtures, for 72 concrete executions. It checks the request
 method and validator, body-read and failure counts, and displayed snapshot. The next
-healthy poll must send the retained validator or omit an expired weak validator, checking
-that failed downloads and HTTP 304 replies did not renew the cached age. A healthy retry
-after expiry must display the server generation. Real DOM rendering, browser caching,
-native request timeouts, concurrent changes during one HTTP response, and server
+healthy poll must send the retained validator and display the server generation. Further
+polling must continue to send that generation's validator. Real DOM rendering, browser
+caching, native request timeouts, concurrent changes during one HTTP response, and server
 correctness are outside this model. Initial loading and transitions between ETag classes
 remain covered by ordinary browser tests.
 

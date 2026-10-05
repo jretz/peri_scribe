@@ -24,4 +24,4 @@ def test_load_updates_refines_tlc_refresh_transactions(tmp_path: pathlib.Path) -
         standard_input=json.dumps(cases),
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert json.loads(result.stdout) == {"checked": len(cases)}
+    assert json.loads(result.stdout) == {"checked": len(cases) * 2}

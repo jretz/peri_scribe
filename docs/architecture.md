@@ -288,13 +288,12 @@ snapshot and row-retention formal contracts remain applicable.
 
 The packaged `updates.html` is copied beside the JSON only when its content changes.
 It fetches the JSON immediately and sends one GET every 30 seconds. Each poll includes
-`If-None-Match` with the ETag from the last successfully displayed response. A 304 keeps
-the displayed snapshot and its validator without renewing the last download time. Weak
-ETags expire after five minutes, when the next GET omits the condition to catch metadata
-collisions. Without an ETag, each poll downloads the JSON. Successful full responses are
-validated and displayed before their ETag and download time are saved. Failed requests,
-invalid snapshots, and unexpected 304 responses to unconditional requests preserve the
-displayed data for later retry.
+`If-None-Match` with the unchanged ETag from the last successfully displayed response.
+ETags do not expire locally. A 304 keeps the displayed snapshot and its validator.
+Without an ETag, each poll downloads the JSON. Successful full responses are validated
+and displayed before their ETag is saved. Failed requests, invalid snapshots, and
+unexpected 304 responses to unconditional requests preserve the displayed data for later
+retry.
 
 The viewer monitors server responsiveness independently of snapshot validation. Each HTTP
 response, including 304 and unsuccessful HTTP statuses, resets a 60-second watchdog and

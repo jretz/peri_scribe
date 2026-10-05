@@ -136,10 +136,9 @@ Both local testing and production use HTTP loading because browsers restrict adj
 JSON requests from pages opened with `file://`. The viewer checks for a new snapshot
 every 30 seconds with an `If-None-Match` GET using the last displayed snapshot's ETag.
 A 304 keeps the current data; a full response updates it automatically. Changes animate
-while preserving the filter, sorting choices, and collapsed groups. Weak ETags force an
-unconditional download at least every five minutes because metadata can collide.
-Without an ETag, every poll downloads the JSON. Its age labels, groups, and highlights
-also update locally while open.
+while preserving the filter, sorting choices, and collapsed groups. ETags are sent
+unchanged and do not expire locally. Without an ETag, every poll downloads the JSON. Its
+age labels, groups, and highlights also update locally while open.
 
 Run `mise test-viewer` to test the viewer without a browser or network access. The task
 requires 100% JavaScript line, branch, and function coverage and runs as part of `mise

@@ -1167,9 +1167,7 @@
 
     let replaceSnapshot;
     let downloadedEtag;
-    let downloadedAt = -Infinity;
     let loading = false;
-    const weakValidatorRecheckMilliseconds = 5 * 60000;
 
     /** Revalidate displayed data and animate only validated replacements. */
     async function loadUpdates() {
@@ -1177,12 +1175,9 @@
       loading = true;
       const status = document.getElementById("load-status");
       try {
-        // Weak validators can describe colliding metadata, so periodically bypass them.
-        const useValidator = downloadedEtag && (!downloadedEtag.startsWith("W/") ||
-          performance.now() - downloadedAt < weakValidatorRecheckMilliseconds);
-        const headers = useValidator ? { "If-None-Match": downloadedEtag } : {};
+        const headers = downloadedEtag ? { "If-None-Match": downloadedEtag } : {};
         const response = await requestSnapshot(headers);
-        if (response.status === 304 && useValidator) return;
+        if (response.status === 304 && downloadedEtag) return;
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
         const data = validateSnapshot(await response.json());
         if (replaceSnapshot) {
@@ -1191,7 +1186,6 @@
           replaceSnapshot = startPage(data);
         }
         downloadedEtag = response.headers.get("ETag");
-        downloadedAt = performance.now();
         status.hidden = true;
       } catch (error) {
         if (!replaceSnapshot) {

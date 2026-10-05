@@ -3,119 +3,136 @@ import test from "node:test";
 
 import * as viewer from "../../../helpers/doubles/peri_scribe/updates_page.mjs";
 
-test("loadUpdates sends one conditional GET every thirty seconds", async () => {
-    const page = await viewer.page(viewer.snapshot(), { ETag: '"content-hash"' });
+for (const entityTagPrefix of ["", "W/"]) {
+    const entityTag = `${entityTagPrefix}"first"`;
+    const replacementTag = `${entityTagPrefix}"second"`;
+    test(`loadUpdates sends ${entityTag} in one GET every thirty seconds`, async () => {
+        const page = await viewer.page(viewer.snapshot(), { ETag: entityTag });
 
-    assert.equal(page.interval, 30000);
-    assert.equal(new Headers(page.calls[0].headers).get("If-None-Match"), null);
-    await page.advance(29999);
-    assert.equal(page.calls.length, 1);
-    await page.advance(1);
-    assert.equal(page.calls.length, 2);
-    await page.advance(30000);
+        assert.equal(page.interval, 30000);
+        assert.equal(new Headers(page.calls[0].headers).get("If-None-Match"), null);
+        await page.advance(29999);
+        assert.equal(page.calls.length, 1);
+        await page.advance(1);
+        assert.equal(page.calls.length, 2);
+        await page.advance(30000);
 
-    assert.deepEqual(page.calls.map((call) => call.method), ["GET", "GET", "GET"]);
-    for (const call of page.calls.slice(1)) {
-        assert.equal(new Headers(call.headers).get("If-None-Match"), '"content-hash"');
-    }
-});
+        assert.deepEqual(page.calls.map((call) => call.method), ["GET", "GET", "GET"]);
+        for (const call of page.calls.slice(1)) {
+            assert.equal(new Headers(call.headers).get("If-None-Match"), entityTag);
+        }
+    });
 
-test("loadUpdates retains displayed data without reading a 304 body", async () => {
-    const original = viewer.snapshot();
-    const page = await viewer.page(original, { ETag: '"unchanged"' });
-    page.setSnapshot(viewer.snapshot(2000));
+    test(`loadUpdates skips the 304 body for ${entityTag}`, async () => {
+        const original = viewer.snapshot();
+        const page = await viewer.page(original, { ETag: entityTag });
+        page.setSnapshot(viewer.snapshot(2000));
 
-    await page.tick();
+        await page.tick();
 
-    assert.deepEqual(page.rendered, [original]);
-    assert.equal(page.jsonCalls.length, 1);
-    assert.equal(page.errors.length, 0);
-});
+        assert.deepEqual(page.rendered, [original]);
+        assert.equal(page.jsonCalls.length, 1);
+        assert.equal(page.errors.length, 0);
+    });
 
-test("loadUpdates keeps its validator when a 304 supplies another ETag", async () => {
-    const page = await viewer.page(viewer.snapshot(), { ETag: '"first"' });
-    page.setSnapshot(viewer.snapshot(2000), { ETag: '"unexpected"' }, 304);
-    await page.tick();
+    test(`loadUpdates retains ${entityTag} despite another ETag on 304`, async () => {
+        const page = await viewer.page(viewer.snapshot(), { ETag: entityTag });
+        page.setSnapshot(viewer.snapshot(2000), { ETag: '"unexpected"' }, 304);
+        await page.tick();
 
-    await page.tick();
+        await page.tick();
 
-    assert.equal(
-        new Headers(page.calls.at(-1).headers).get("If-None-Match"), '"first"');
-    assert.equal(page.rendered.length, 1);
-    assert.equal(page.jsonCalls.length, 1);
-});
+        assert.equal(
+            new Headers(page.calls.at(-1).headers).get("If-None-Match"), entityTag);
+        assert.equal(page.rendered.length, 1);
+        assert.equal(page.jsonCalls.length, 1);
+    });
 
-test("loadUpdates keeps strong ETags beyond weak validator rechecks", async () => {
-    const page = await viewer.page(viewer.snapshot(), { ETag: '"content-hash"' });
+    test(`loadUpdates reuses ${entityTag} for thirty minutes of polling`, async () => {
+        const page = await viewer.page(viewer.snapshot(), { ETag: entityTag });
 
-    await page.advance(30 * 60000);
+        await page.advance(30 * 60000);
 
-    assert.equal(page.calls.length, 61);
-    assert.ok(page.calls.slice(1).every((call) =>
-        new Headers(call.headers).get("If-None-Match") === '"content-hash"'));
-    assert.equal(page.jsonCalls.length, 1);
-    assert.equal(page.rendered.length, 1);
-});
+        assert.equal(page.calls.length, 61);
+        assert.ok(page.calls.slice(1).every((call) =>
+            new Headers(call.headers).get("If-None-Match") === entityTag));
+        assert.equal(page.jsonCalls.length, 1);
+        assert.equal(page.rendered.length, 1);
+    });
 
-test("loadUpdates bounds the lifetime of an unchanged weak ETag", async () => {
-    const page = await viewer.page(viewer.snapshot(), { ETag: 'W/"metadata"' });
-    page.setSnapshot(viewer.snapshot(2000));
+    test(`loadUpdates refreshes changed ${entityTag} on the next check`, async () => {
+        const page = await viewer.page(viewer.snapshot(), { ETag: entityTag });
+        page.setSnapshot(viewer.snapshot(2000), { ETag: replacementTag });
 
-    await page.advance(5 * 60000 - 1);
-    assert.equal(page.rendered.length, 1);
-    assert.ok(page.calls.slice(1).every((call) =>
-        new Headers(call.headers).get("If-None-Match") === 'W/"metadata"'));
-    await page.advance(1);
+        await page.tick();
 
-    assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
-    assert.equal(page.calls.length, 11);
-    assert.equal(new Headers(page.calls.at(-1).headers).get("If-None-Match"), null);
-    assert.equal(page.jsonCalls.length, 2);
-    await page.tick();
-    assert.equal(
-        new Headers(page.calls.at(-1).headers).get("If-None-Match"), 'W/"metadata"');
-});
+        assert.deepEqual(page.calls.map((call) => call.method), ["GET", "GET"]);
+        assert.equal(
+            new Headers(page.calls.at(-1).headers).get("If-None-Match"), entityTag);
+        assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
+        await page.tick();
+        assert.equal(
+            new Headers(page.calls.at(-1).headers).get("If-None-Match"),
+            replacementTag);
+        assert.equal(page.rendered.length, 2);
+    });
 
-test("loadUpdates fetches a changed validator on the next check", async () => {
-    const page = await viewer.page(viewer.snapshot(), { ETag: '"first"' });
-    page.setSnapshot(viewer.snapshot(2000), { ETag: '"second"' });
+    test(`loadUpdates consumes a 200 body with unchanged ${entityTag}`, async () => {
+        const page = await viewer.page(viewer.snapshot(), { ETag: entityTag });
+        page.setIgnoreConditional(true);
+        page.setSnapshot(viewer.snapshot(2000));
 
-    await page.tick();
+        await page.tick();
 
-    assert.deepEqual(page.calls.map((call) => call.method), ["GET", "GET"]);
-    assert.equal(
-        new Headers(page.calls.at(-1).headers).get("If-None-Match"), '"first"');
-    assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
-    await page.tick();
-    assert.equal(
-        new Headers(page.calls.at(-1).headers).get("If-None-Match"), '"second"');
-    assert.equal(page.rendered.length, 2);
-});
+        assert.equal(
+            new Headers(page.calls.at(-1).headers).get("If-None-Match"), entityTag);
+        assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
+        assert.equal(page.jsonCalls.length, 2);
+    });
 
-test("loadUpdates consumes a 200 body even when its ETag is unchanged", async () => {
-    const page = await viewer.page(viewer.snapshot(), { ETag: '"unchanged"' });
-    page.setIgnoreConditional(true);
-    page.setSnapshot(viewer.snapshot(2000));
+    test(`loadUpdates clears ${entityTag} when a download omits ETag`, async () => {
+        const page = await viewer.page(viewer.snapshot(), { ETag: entityTag });
+        page.setSnapshot(viewer.snapshot(2000), {});
+        await page.tick();
+        page.setSnapshot(viewer.snapshot(3000), {});
 
-    await page.tick();
+        await page.tick();
 
-    assert.equal(
-        new Headers(page.calls.at(-1).headers).get("If-None-Match"), '"unchanged"');
-    assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
-    assert.equal(page.jsonCalls.length, 2);
-});
+        assert.equal(new Headers(page.calls.at(-1).headers).get("If-None-Match"), null);
+        assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 3000);
+    });
 
-test("loadUpdates clears its validator when a download omits ETag", async () => {
-    const page = await viewer.page(viewer.snapshot(), { ETag: '"first"' });
-    page.setSnapshot(viewer.snapshot(2000), {});
-    await page.tick();
-    page.setSnapshot(viewer.snapshot(3000), {});
+    test(`loadUpdates preserves ${entityTag} when JSON is invalid`, async () => {
+        const page = await viewer.page(viewer.snapshot(), { ETag: entityTag });
+        const failure = new SyntaxError("Incomplete JSON");
+        page.setSnapshot(viewer.snapshot(2000), { ETag: replacementTag });
+        page.setJsonError(failure);
 
-    await page.tick();
+        await page.tick();
 
-    assert.equal(new Headers(page.calls.at(-1).headers).get("If-None-Match"), null);
-    assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 3000);
-});
+        assert.equal(page.errors[0], failure);
+        assert.equal(page.rendered.length, 1);
+        assert.equal(page.status.hidden, true);
+        page.setJsonError(undefined);
+        await page.tick();
+        assert.equal(
+            new Headers(page.calls.at(-1).headers).get("If-None-Match"), entityTag);
+        assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
+    });
+
+    test(`loadUpdates preserves ${entityTag} when validation fails`, async () => {
+        const page = await viewer.page(viewer.snapshot(), { ETag: entityTag });
+        page.setSnapshot(null, { ETag: replacementTag });
+        await page.tick();
+        page.setSnapshot(viewer.snapshot(2000), { ETag: replacementTag });
+
+        await page.tick();
+
+        assert.equal(
+            new Headers(page.calls.at(-1).headers).get("If-None-Match"), entityTag);
+        assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
+    });
+}
 
 for (const headers of [{}, {
     "Last-Modified": "Wed, 23 Sep 2026 00:00:00 GMT",
@@ -149,22 +166,6 @@ test("loadUpdates adopts a validator when a download gains ETag", async () => {
     assert.equal(page.rendered.length, 2);
 });
 
-test("loadUpdates retries failures after a weak validator expires", async () => {
-    const headers = { ETag: 'W/"metadata"' };
-    const page = await viewer.page(viewer.snapshot(), headers);
-    await page.advance(5 * 60000 - page.interval);
-    page.setSnapshot(viewer.snapshot(2000), headers, 503);
-
-    await page.tick();
-    assert.equal(page.errors.length, 1);
-    assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 1000);
-    page.setSnapshot(viewer.snapshot(2000));
-    await page.tick();
-
-    assert.equal(new Headers(page.calls.at(-1).headers).get("If-None-Match"), null);
-    assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
-});
-
 test("loadUpdates rejects an unsolicited 304 before the first download", async () => {
     const page = await viewer.page(
         viewer.snapshot(), { ETag: '"first"' }, { status: 304 });
@@ -179,12 +180,11 @@ test("loadUpdates rejects an unsolicited 304 before the first download", async (
     assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
 });
 
-test("loadUpdates rejects unsolicited 304 after a weak validator expires", async () => {
-    const headers = { ETag: 'W/"metadata"' };
-    const page = await viewer.page(viewer.snapshot(), headers);
-    page.setSnapshot(viewer.snapshot(2000), headers, 304);
+test("loadUpdates rejects unsolicited 304 after an untagged download", async () => {
+    const page = await viewer.page(viewer.snapshot());
+    page.setSnapshot(viewer.snapshot(2000), {}, 304);
 
-    await page.advance(5 * 60000);
+    await page.tick();
 
     assert.equal(page.rendered.length, 1);
     assert.equal(page.errors[0].message, "HTTP 304");
@@ -236,37 +236,6 @@ test("loadUpdates recovers from a network exception", async () => {
     await page.tick();
     assert.equal(page.rendered.length, 1);
     assert.equal(page.status.hidden, true);
-});
-
-test("loadUpdates preserves displayed data and ETag when JSON is invalid", async () => {
-    const page = await viewer.page(viewer.snapshot(), { ETag: '"first"' });
-    const failure = new SyntaxError("Incomplete JSON");
-    page.setSnapshot(viewer.snapshot(2000), { ETag: '"second"' });
-    page.setJsonError(failure);
-
-    await page.tick();
-
-    assert.equal(page.errors[0], failure);
-    assert.equal(page.rendered.length, 1);
-    assert.equal(page.status.hidden, true);
-    page.setJsonError(undefined);
-    await page.tick();
-    assert.equal(
-        new Headers(page.calls.at(-1).headers).get("If-None-Match"), '"first"');
-    assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
-});
-
-test("loadUpdates preserves its validator when snapshot validation fails", async () => {
-    const page = await viewer.page(viewer.snapshot(), { ETag: '"first"' });
-    page.setSnapshot(null, { ETag: '"second"' });
-    await page.tick();
-    page.setSnapshot(viewer.snapshot(2000), { ETag: '"second"' });
-
-    await page.tick();
-
-    assert.equal(
-        new Headers(page.calls.at(-1).headers).get("If-None-Match"), '"first"');
-    assert.equal(page.rendered.at(-1).updates[0].mapped_area.value, 2000);
 });
 
 test("loadUpdates does not overlap requests during a slow response", async () => {
