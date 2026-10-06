@@ -278,3 +278,4 @@ Temporary Items
 coverage.json
 data/
 pytest-slow-first.json
+node_modules/

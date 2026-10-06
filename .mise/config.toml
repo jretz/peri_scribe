@@ -11,6 +11,7 @@ MAMBA_ROOT_PREFIX = "{{config_root}}/.cache/micromamba"
 UV_CACHE_DIR = """
 {{env.PERI_SCRIBE_UV_CACHE_ROOT | default(value=config_root ~ '/.cache/uv')}}\
 /geos-{{env.GEOS_VERSION}}/{{env.GEOS_LIBRARY_PATH | hash}}"""
+npm_config_cache = '{{env.npm_config_cache | default(value=config_root ~ "/.cache/npm")}}'
 
 [settings]
 lockfile = true

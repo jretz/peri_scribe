@@ -1,0 +1,13 @@
+{
+  "name": "peri-scribe-tests",
+  "private": true,
+  "description": "Browser testing and shared JavaScript coverage for PeriScribe",
+  "devDependencies": {
+    "@bcoe/v8-coverage": "latest",
+    "@playwright/test": "latest",
+    "istanbul-lib-coverage": "latest",
+    "istanbul-lib-report": "latest",
+    "istanbul-reports": "latest",
+    "v8-to-istanbul": "latest"
+  }
+}

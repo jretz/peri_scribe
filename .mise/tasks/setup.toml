@@ -3,14 +3,28 @@ description = "Install all tools managed by mise"
 run = "mise install"
 
 [upgrade-dependencies]
-description = "Upgrade tools managed by mise and packages managed by uv"
+description = "Upgrade tools managed by mise and packages managed by uv and npm"
 run = [
     "mise upgrade --local",
     { task = "lock" },
     { task = "geos" },
     'micromamba run --prefix "$GEOS_PREFIX" env CC=cc uv sync --upgrade',
+    "npm update --ignore-scripts --no-audit --no-fund",
+    { task = "browser-install" },
     { task = "test" },
 ]
+
+[node-dependencies]
+description = "Install locked JavaScript test dependencies"
+depends = ["install-tools"]
+sources = ["package.json", "package-lock.json"]
+outputs = ["node_modules/.package-lock.json"]
+run = "npm ci --ignore-scripts --no-audit --no-fund"
+
+[browser-install]
+description = "Ensure the locked Playwright Chromium is cached"
+depends = ["node-dependencies"]
+run = "node tests/helpers/install_browser.mjs"
 
 [lock]
 description = "Refresh cross-platform tool lockfile metadata"
@@ -66,4 +80,5 @@ run = [
     "echo 'coverage.json' >> .gitignore",
     "echo 'data/' >> .gitignore",
     "echo 'pytest-slow-first.json' >> .gitignore",
+    "echo 'node_modules/' >> .gitignore",
 ]

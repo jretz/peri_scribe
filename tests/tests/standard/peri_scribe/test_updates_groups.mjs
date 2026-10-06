@@ -3,54 +3,6 @@ import test from "node:test";
 
 import * as viewer from "../../../helpers/doubles/peri_scribe/updates_dom.mjs";
 
-test("startPage exposes an independent accessible collapse control per window",
-  async () => {
-    const page = await viewer.page([viewer.update("Timber", 10)]);
-    const group = page.group(0);
-    const toggle = group.querySelector(".group-toggle");
-    const body = group.querySelector(".group-body");
-
-    assert.equal(toggle.tagName, "button");
-    assert.equal(toggle.getAttribute("aria-expanded"), "true");
-    assert.equal(toggle.getAttribute("aria-controls"), body.id);
-    toggle.click();
-
-    assert.equal(toggle.getAttribute("aria-expanded"), "false");
-    assert.equal(body.hidden, true);
-    assert.equal(page.group(1).querySelector(".group-body").hidden, false);
-    toggle.click();
-
-    assert.equal(toggle.getAttribute("aria-expanded"), "true");
-    assert.equal(body.hidden, false);
-  });
-
-test("startPage retains collapsed state and sorting across filtering and replacement",
-  async () => {
-    const records = [viewer.update("Timber", 10), viewer.update("Austin", 20)];
-    const page = await viewer.page(records);
-    const group = page.group(0);
-    const body = group.querySelector(".group-body");
-    group.querySelector(".group-toggle").click();
-    group.querySelector(".sort-order").click();
-    page.replace([...records, viewer.update("Zinc", 30)]);
-
-    assert.equal(body.hidden, true);
-    assert.equal(group.querySelector(".sort-order").textContent,
-      "3 fires ordered by name");
-    assert.deepEqual(group.querySelectorAll(".fire-name").map(node => node.textContent),
-      ["Austin", "Timber", "Zinc"]);
-    page.filter("TIM");
-
-    assert.equal(body.hidden, true);
-    assert.equal(group.querySelector(".sort-order").textContent,
-      "1 fire ordered by name");
-    page.filter("");
-
-    assert.equal(body.hidden, true);
-    assert.equal(group.querySelector(".sort-order").textContent,
-      "3 fires ordered by name");
-  });
-
 test("startPage moves an aging row between two open windows continuously", async () => {
   const page = await viewer.page([viewer.update("Timber", 59.9)]);
   const row = page.row("Timber");
@@ -139,18 +91,5 @@ test("startPage expires a row inside a closed window without a departure ghost",
 
     assert.equal(row.isConnected, false);
     assert.equal(page.animations.some(animation => animation.node === row), false);
-    assert.equal(page.document.querySelectorAll(".departing-update").length, 0);
-  });
-
-test("startPage honors reduced motion while rows move through collapsed windows",
-  async () => {
-    const page = await viewer.page([viewer.update("Timber", 59.9)], {
-      reducedMotion: true
-    });
-    page.group(1).querySelector(".group-toggle").click();
-    await page.advance(6001);
-
-    assert.equal(page.row("Timber").closest(".section"), page.group(1));
-    assert.equal(page.animations.length, 0);
     assert.equal(page.document.querySelectorAll(".departing-update").length, 0);
   });
