@@ -257,20 +257,32 @@ across repeated updates. Optional `preview` fields contain WebP data URLs and ad
 fields to durable logs or checkpoints. The presentation preview modules draw all
 KMZ-colored growth rings and the latest three complete outlines using a local azimuthal
 equidistant projection.
-A quarter-degree search over the half-turn, followed by local refinement, maximizes
-uniform scale within a two-pixel drawing margin. Equivalent rotations are constrained
-to ±90° from north up. A spherical longitude center supports fires crossing the
-antimeridian. An independently antialiased 18-pixel north dart is cropped to its alpha
-bounds and composited flush to the top and right edges.
+Each candidate rotation uniformly fits and centers the map's convex hull within a
+two-pixel drawing margin. Its score is fitted scale divided by maximum fitted scale,
+minus 0.75 times the hull overlap fraction. The dart hull includes the full pixel squares
+of every nontransparent pixel, including its antialiased outline, at its rendered
+position, buffered outward by two pixels. The fraction divides its intersection with
+the fitted map hull by the entire buffered dart hull's area. The penalty is linear in
+overlap and rewards breathing room while allowing a modest reduction in linear size.
+A 0.025-degree search covers -90° inclusive to +90° exclusive, followed by four local
+refinements around six separated leading candidates and the maximum-fit orientation,
+down to 0.0000025 degrees. Refinement explores weights 0, 0.5, 0.75, and 1 to expose
+narrow optima where the dart's rendered pixel support changes; final selection always
+uses 0.75. Equal scores prefer the maximum-fit orientation, then the closest rotation
+to it. A spherical longitude center supports fires crossing the antimeridian. An
+independently antialiased 18-pixel north dart is cropped to its alpha bounds and
+composited flush to the top and right edges.
 
 Alpha-aware weighted clustering allocates up to 251 dynamic RGBA colors in addition to
 five reserved colors. Separate opaque and partial-alpha clusters preserve solid fills
 and antialiased transparency. Pillow encodes exact quantized pixels with lossless WebP,
 quality 100 and method 6, without metadata or transport compression. The existing
 disposable product store reuses previews by ordered geometry/color fingerprints and
-the application/runtime context, including Pillow. The viewer uses native 128×72 boxes
-on desktop and 72×56 boxes on phones with `object-fit: contain`; image-only refreshes
-update retained rows without restarting highlight transitions or favicon notifications.
+the application/runtime context, including Pillow and the renderer's source bytes.
+Renderer changes invalidate reused images on the next completed KMZ build, which
+regenerates the viewer snapshot. The viewer uses native 128×72 boxes on desktop and
+72×56 boxes on phones with `object-fit: contain`; image-only refreshes update retained
+rows without restarting highlight transitions or favicon notifications.
 At widths up to 480 pixels, acreage spans both grid columns beneath the preview and
 heading. Departing copies share the grid and responsive rules, including text-only rows.
 Each row measures its complete fire name and current time label before fitting its
@@ -280,11 +292,12 @@ share a line, the heading stacks the time beneath the name within the column bes
 the preview; long names wrap. Content, font loading, and viewport changes recheck the
 available space.
 
-This rendering is presentation-only: it changes no domain policy, update selection,
-ownership, or persistence transitions. Ordinary geometry, pixel, serialization, cache,
-and viewer tests provide useful checks; an additional formal model would not establish
-the correctness of projections, antialiasing, or third-party image codecs. Existing
-snapshot and row-retention formal contracts remain applicable.
+This rendering and its orientation score are presentation-only: they change no domain
+policy, update selection, ownership, or persistence transitions. Ordinary geometry,
+pixel, serialization, cache, and viewer tests provide useful checks; an additional
+formal model would not establish the correctness of projections, antialiasing, or
+third-party image codecs. Existing snapshot and row-retention formal contracts remain
+applicable.
 
 The packaged `updates.html` is copied beside the JSON only when its content changes.
 It fetches the JSON immediately and sends one GET every 30 seconds. Each poll includes

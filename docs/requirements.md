@@ -106,9 +106,13 @@ mutating durable evidence. Invalid pending intent remains available for repair.
 
 Each update leads with its fire's latest available perimeter preview. A 128×72 image
 uses one geographic scale for both axes and a rotation chosen separately for each fire
-within ±90° of north up to maximize its fit. All growth rings use their opaque KMZ fill
-colors beneath the latest three complete perimeter outlines: white, yellow, and red
-from oldest to newest.
+from -90° inclusive to +90° exclusive of north up. The score balances the fire's linear
+size against overlap with the north dart: fitted scale divided by the maximum fitted
+scale, minus 0.75 times the overlap fraction. The overlap fraction is the area shared by
+the map's convex hull and the dart's convex hull with two pixels of breathing room,
+divided by the entire buffered dart hull's area. All growth rings use their opaque KMZ
+fill colors beneath the latest three complete perimeter outlines: white, yellow, and
+red from oldest to newest.
 With fewer observations, the newest outline is red and the preceding one is yellow.
 The background and polygon holes are transparent; all drawing is antialiased. An
 18-pixel black/white navigation dart points north, has a hairline contrasting outline,
