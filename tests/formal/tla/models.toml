@@ -2,6 +2,7 @@
 name = "run-state"
 module = "RunState"
 config = "RunState"
+conformance = true
 
 [[models]]
 name = "run-scheduler"
@@ -17,6 +18,7 @@ config = "RunSchedulerLiveness"
 name = "pipeline-composition"
 module = "PipelineComposition"
 config = "PipelineComposition"
+conformance = true
 
 [[models]]
 name = "pipeline-composition-liveness"
@@ -32,6 +34,7 @@ config = "PublicationGate"
 name = "update-journal"
 module = "UpdateJournal"
 config = "UpdateJournal"
+conformance = true
 
 [[models]]
 name = "update-journal-liveness"
@@ -42,11 +45,13 @@ config = "UpdateJournalLiveness"
 name = "journal-replay"
 module = "JournalReplay"
 config = "JournalReplay"
+conformance = true
 
 [[models]]
 name = "geography-publication"
 module = "GeographyPublication"
 config = "GeographyPublication"
+conformance = true
 
 [[models]]
 name = "geography-publication-liveness"
@@ -62,6 +67,7 @@ config = "ExternalRefresh"
 name = "fetch-crash"
 module = "FetchCrash"
 config = "FetchCrash"
+conformance = true
 
 [[models]]
 name = "fetch-crash-liveness"
@@ -78,6 +84,7 @@ expected_invariant = "PairAlwaysMatches"
 name = "feed-cache"
 module = "FeedCache"
 config = "FeedCache"
+conformance = true
 
 [[models]]
 name = "feed-cache-liveness"
@@ -88,6 +95,7 @@ config = "FeedCacheLiveness"
 name = "static-download"
 module = "StaticDownload"
 config = "StaticDownload"
+conformance = true
 
 [[models]]
 name = "static-download-liveness"
@@ -98,6 +106,7 @@ config = "StaticDownloadLiveness"
 name = "worker-lifetime"
 module = "WorkerLifetime"
 config = "WorkerLifetime"
+conformance = true
 
 [[models]]
 name = "worker-lifetime-liveness"
@@ -108,6 +117,7 @@ config = "WorkerLifetimeLiveness"
 name = "buildings-construction"
 module = "BuildingsConstruction"
 config = "BuildingsConstruction"
+conformance = true
 
 [[models]]
 name = "buildings-construction-liveness"
@@ -118,16 +128,19 @@ config = "BuildingsConstructionLiveness"
 name = "cache-read"
 module = "CacheRead"
 config = "CacheRead"
+conformance = true
 
 [[models]]
 name = "product-cache"
 module = "ProductCache"
 config = "ProductCache"
+conformance = true
 
 [[models]]
 name = "browser-refresh"
 module = "BrowserRefresh"
 config = "BrowserRefresh"
+conformance = true
 
 [[models]]
 name = "browser-refresh-liveness"
@@ -138,21 +151,25 @@ config = "BrowserRefreshLiveness"
 name = "browser-responsiveness"
 module = "BrowserResponsiveness"
 config = "BrowserResponsiveness"
+conformance = true
 
 [[models]]
 name = "monitor-reader"
 module = "MonitorReader"
 config = "MonitorReader"
+conformance = true
 
 [[models]]
 name = "monitor-projection"
 module = "MonitorProjection"
 config = "MonitorProjection"
+conformance = true
 
 [[models]]
 name = "monitor-context"
 module = "MonitorContext"
 config = "MonitorContext"
+conformance = true
 
 [[models]]
 name = "monitor-context-liveness"
@@ -163,6 +180,7 @@ config = "MonitorContextLiveness"
 name = "snapshot-publication"
 module = "SnapshotPublication"
 config = "SnapshotPublication"
+conformance = true
 
 [[models]]
 name = "snapshot-publication-liveness"
@@ -173,6 +191,7 @@ config = "SnapshotPublicationLiveness"
 name = "snapshot-collection"
 module = "SnapshotCollection"
 config = "SnapshotCollection"
+conformance = true
 
 [[models]]
 name = "snapshot-collection-liveness"
@@ -183,35 +202,42 @@ config = "SnapshotCollectionLiveness"
 name = "parsed-cache"
 module = "ParsedCache"
 config = "ParsedCache"
+conformance = true
 
 [[models]]
 name = "parsed-cache-read"
 module = "ParsedCacheRead"
 config = "ParsedCacheRead"
+conformance = true
 
 [[models]]
 name = "parsed-cache-rebuild"
 module = "ParsedCacheRebuild"
 config = "ParsedCacheRebuild"
+conformance = true
 
 [[models]]
 name = "source-writers"
 module = "SourceWriters"
 config = "SourceWriters"
+conformance = true
 
 [[models]]
 name = "geography-readers"
 module = "GeographyReaders"
 config = "GeographyReaders"
+conformance = true
 [[models]]
 name = "document-publication"
 module = "DocumentPublication"
 config = "DocumentPublication"
+conformance = true
 
 [[models]]
 name = "feed-coordinator"
 module = "FeedCoordinator"
 config = "FeedCoordinator"
+conformance = true
 
 [[models]]
 name = "feed-coordinator-liveness"
@@ -227,6 +253,7 @@ config = "DocumentPublicationLiveness"
 name = "log-rotation"
 module = "LogRotation"
 config = "LogRotation"
+conformance = true
 
 [[models]]
 name = "log-rotation-liveness"
@@ -237,6 +264,7 @@ config = "LogRotationLiveness"
 name = "log-readers"
 module = "LogReaders"
 config = "LogReaders"
+conformance = true
 
 [[models]]
 name = "log-readers-liveness"
@@ -247,6 +275,7 @@ config = "LogReadersLiveness"
 name = "monitor-tasks"
 module = "MonitorTasks"
 config = "MonitorTasks"
+conformance = true
 
 [[models]]
 name = "monitor-tasks-liveness"
@@ -262,6 +291,7 @@ config = "IdentityRecomputation"
 name = "identity-recomputation-bridge"
 module = "IdentityRecomputation"
 config = "IdentityRecomputationBridge"
+conformance = true
 
 [[models]]
 name = "identity-recomputation-three-fires"
@@ -272,6 +302,7 @@ config = "IdentityRecomputationThree"
 name = "durable-update-validation"
 module = "DurableUpdateValidation"
 config = "DurableUpdateValidation"
+conformance = true
 
 [[models]]
 name = "durable-update-validation-liveness"

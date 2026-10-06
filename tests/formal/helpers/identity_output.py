@@ -182,17 +182,36 @@ def frame(case: Case) -> geopandas.GeoDataFrame:
     )
 
 
-def check(case: Case) -> None:
+def check_cases() -> None:
+    """Batch grouping queries while keeping each presentation scenario independent."""
+    scenarios = cases()
+    grouped = [
+        peri_scribe.fires.grouping.group_fire_record_indices(list(case.records))
+        for case in scenarios
+    ]
+    expected = tests.formal.helpers.oracle.evaluate_batches(
+        [
+            [case.command(min(group)) for group in groups]
+            for case, groups in zip(scenarios, grouped, strict=True)
+        ],
+        executable="oraclePresentation",
+    )
+    for case, groups, outcomes in zip(scenarios, grouped, expected, strict=True):
+        check(case, groups, outcomes)
+
+
+def check(
+    case: Case,
+    groups: list[list[int]],
+    expected: list[tuple[int, ...]],
+) -> None:
     """Connect component proofs to actual aliases, frames, histories, and both outputs.
 
     Args:
         case: One complete grouping-to-presentation input scenario.
+        groups: Actual source grouping for this case.
+        expected: Checked membership and output decisions for every group.
     """
-    groups = peri_scribe.fires.grouping.group_fire_record_indices(list(case.records))
-    expected = tests.formal.helpers.oracle.evaluate(
-        [case.command(min(group)) for group in groups],
-        executable="oraclePresentation",
-    )
     fires = [
         peri_scribe.fires.grouping.most_common_fire([
             case.records[index] for index in group
@@ -352,33 +371,41 @@ def check_keyed_selection() -> None:
         f"{'n' if identifier is None else identifier},{name},{serial}"
         for serial, (identifier, name) in enumerate(rows)
     )
-    for aliases in itertools.product(range(3), repeat=3):
+    assignments = tuple(itertools.product(range(3), repeat=3))
+    outcomes = tests.formal.helpers.oracle.evaluate_batches(
+        [
+            [
+                f"keyed {kind} {owner} | {' '.join(map(str, aliases))} | {vectors}"
+                for kind, owner in itertools.product(("id", "name"), range(3))
+            ]
+            for aliases in assignments
+        ],
+        executable="oraclePresentation",
+    )
+    for aliases, answers in zip(assignments, outcomes, strict=True):
         grouped = peri_scribe.presentation.selection.area_positions(
             frame,
             {str(index): str(owner) for index, owner in enumerate(aliases)},
         )
-        requests = [
-            f"keyed {kind} {owner} | {' '.join(map(str, aliases))} | {vectors}"
-            for kind, owner in itertools.product(("id", "name"), range(3))
-        ]
-        outcomes = tests.formal.helpers.oracle.evaluate(
-            requests,
-            executable="oraclePresentation",
-        )
         for (kind, owner), outcome in zip(
             itertools.product(("id", "name"), range(3)),
-            outcomes,
+            answers,
             strict=True,
         ):
             assert tuple(grouped.get((kind, str(owner)), ())) == outcome
     indexed = peri_scribe.presentation.history_index.HistoryRowIndex.from_frame(frame)
-    for mask, name in itertools.product(range(8), range(3)):
-        identifiers = tuple(index for index in range(3) if mask & (1 << index))
-        expected = tests.formal.helpers.oracle.evaluate(
-            [f"matched {name} | {' '.join(map(str, identifiers))} | {vectors}"],
-            executable="oraclePresentation",
-        )[0]
+    selections = tuple(
+        (tuple(index for index in range(3) if mask & (1 << index)), name)
+        for mask, name in itertools.product(range(8), range(3))
+    )
+    expected = tests.formal.helpers.oracle.evaluate(
+        [
+            f"matched {name} | {' '.join(map(str, identifiers))} | {vectors}"
+            for identifiers, name in selections
+        ],
+        executable="oraclePresentation",
+    )
+    for (identifiers, name), answer in zip(selections, expected, strict=True):
         assert (
-            indexed.positions_for(frozenset(map(str, identifiers)), str(name))
-            == expected
+            indexed.positions_for(frozenset(map(str, identifiers)), str(name)) == answer
         )

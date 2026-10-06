@@ -8,7 +8,7 @@ import threading
 import pytest
 
 import peri_scribe.concurrency
-import tests.formal.helpers.tlc
+import tests.formal.helpers.corpus
 import tests.formal.helpers.worker_lifetime
 
 
@@ -17,7 +17,7 @@ async def test_run_blocking_matches_checked_cancel_and_failure_outcomes(
     tmp_path: pathlib.Path,
 ) -> None:
     states = await asyncio.to_thread(
-        tests.formal.helpers.tlc.states,
+        tests.formal.helpers.corpus.states,
         "WorkerLifetime",
         "WorkerLifetime",
         tmp_path,
@@ -50,7 +50,7 @@ async def test_run_blocking_matches_checked_cancel_and_failure_outcomes(
 def test_cancellable_matches_checked_late_read_suppression(
     tmp_path: pathlib.Path,
 ) -> None:
-    states = tests.formal.helpers.tlc.states(
+    states = tests.formal.helpers.corpus.states(
         "WorkerLifetime",
         "WorkerLifetime",
         tmp_path,

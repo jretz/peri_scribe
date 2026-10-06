@@ -166,10 +166,22 @@ def check_grouping() -> int:
         ],
         executable="oracleDomain",
     )
-    for read, expected in zip(catalogues, labels, strict=True):
+    grouped = tuple(map(peri_scribe.fires.sources.group_fire_sources, catalogues))
+    commands = []
+    for read, groups in zip(catalogues, grouped, strict=True):
         anchors = raw_anchors(read)
         ordered = sorted(anchors)
-        groups = peri_scribe.fires.sources.group_fire_sources(read)
+        for group in groups.groups:
+            ranks = " ".join(str(ordered.index(anchors[index])) for index in group)
+            commands.extend((f"anchor|{ranks}", f"components|{ranks}"))
+    answers = iter(
+        tests.formal.helpers.oracle.evaluate(
+            commands,
+            executable="oracleComponentIdentity",
+        ),
+    )
+    for read, expected, groups in zip(catalogues, labels, grouped, strict=True):
+        ordered = sorted(raw_anchors(read))
         members = [
             tuple(index for index, owner in enumerate(expected) if owner == value)
             for value in sorted(set(expected))
@@ -177,29 +189,15 @@ def check_grouping() -> int:
         assert {frozenset(group) for group in groups.groups} == {
             frozenset(group) for group in members
         }
-        selected = tests.formal.helpers.oracle.evaluate(
-            [
-                "anchor|"
-                + " ".join(str(ordered.index(anchors[index])) for index in group)
-                for group in groups.groups
-            ],
-            executable="oracleComponentIdentity",
-        )
         assert len({fire.component_id for fire in groups.fires}) == len(groups.fires)
-        for fire, group, (minimum,) in zip(
+        for fire, group in zip(
             groups.fires,
             groups.groups,
-            selected,
             strict=True,
         ):
+            (minimum,) = next(answers)
             assert fire.component_id == digest(ordered[minimum])
-            ranks = [ordered.index(anchors[index]) for index in group]
-            alias_pairs = tests.formal.helpers.oracle.evaluate(
-                [
-                    "components|" + " ".join(map(str, ranks)),
-                ],
-                executable="oracleComponentIdentity",
-            )[0]
+            alias_pairs = next(answers)
             assert set(alias_pairs[::2]) == {1}
             assert fire.component_aliases == frozenset(
                 digest(ordered[rank]) for rank in alias_pairs[1::2]

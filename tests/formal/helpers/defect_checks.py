@@ -3,9 +3,8 @@
 import ast
 import dataclasses
 import pathlib
-import shutil
-import sys
 
+import tests.formal.helpers.defect_baselines
 import tests.formal.helpers.oracle
 import tests.formal.helpers.process
 
@@ -290,20 +289,6 @@ DEFECTS = (
 )
 
 
-BOOTSTRAP = """
-import importlib
-import pathlib
-import sys
-import pytest
-
-source = pathlib.Path(sys.argv[1]).resolve()
-sys.path.insert(0, str(source))
-module = importlib.import_module(sys.argv[2])
-assert pathlib.Path(module.__file__).resolve().is_relative_to(source)
-raise SystemExit(pytest.main(sys.argv[3:]))
-"""
-
-
 def mutate(source: str, defect: Defect) -> str:
     """Fail on source drift instead of silently testing a missing or misplaced defect.
 
@@ -335,43 +320,37 @@ def mutate(source: str, defect: Defect) -> str:
     return result
 
 
-def check(defect: Defect, directory: pathlib.Path) -> None:
-    """A passing pristine check and a semantic mutant failure are both required.
+def check(
+    defect: Defect,
+    directory: pathlib.Path,
+    baseline: tests.formal.helpers.defect_baselines.Baseline,
+) -> None:
+    """A matching pristine success and a semantic mutant failure are both required.
 
     Args:
         defect: The production behavior to deliberately break.
         directory: A per-test private tree; repository files are never modified.
+        baseline: Complete passing evidence for the identical unmodified source tree.
     """
-    root = tests.formal.helpers.oracle.DIRECTORY.parents[1]
-    source = directory / "src"
-    shutil.copytree(root / "src", source, ignore=shutil.ignore_patterns("__pycache__"))
+    assert defect.test in baseline.tests
+    source = tests.formal.helpers.defect_baselines.source_copy(directory)
+    assert tests.formal.helpers.defect_baselines.fingerprints(source) == baseline.files
     module = source.joinpath(*defect.module.split(".")).with_suffix(".py")
-    original = module.read_text()
-    command = [
-        sys.executable,
-        "-B",
-        "-c",
-        BOOTSTRAP,
-        str(source),
-        defect.module,
-        "-c",
-        str(tests.formal.helpers.oracle.DIRECTORY / "pytest.ini"),
-        # Preserve the bootstrap's isolated imports without another worker pool.
-        "--numprocesses=0",
-        "-o",
-        f"pythonpath={source} {root}",
-        "-p",
-        "no:cacheprovider",
-        "--basetemp",
-        str(directory / "pytest"),
-        "--tb=short",
-        str(tests.formal.helpers.oracle.DIRECTORY / "conformance" / defect.test),
-    ]
-    baseline = tests.formal.helpers.process.run(command, cwd=root, timeout=180)
-    assert baseline.returncode == 0, baseline.stdout + baseline.stderr
-    assert "1 passed" in baseline.stdout, baseline.stdout
-    module.write_text(mutate(original, defect))
-    rejected = tests.formal.helpers.process.run(command, cwd=root, timeout=180)
+    module.write_text(mutate(module.read_text(), defect))
+    rejected = tests.formal.helpers.process.run(
+        tests.formal.helpers.defect_baselines.command(
+            source,
+            directory,
+            (
+                tests.formal.helpers.defect_baselines.Target(
+                    module=defect.module,
+                    test=defect.test,
+                ),
+            ),
+        ),
+        cwd=tests.formal.helpers.oracle.DIRECTORY.parents[1],
+        timeout=180,
+    )
     diagnostics = rejected.stdout + rejected.stderr
     assert rejected.returncode == 1, diagnostics
     assert "1 failed" in rejected.stdout, diagnostics

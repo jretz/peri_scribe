@@ -1,10 +1,13 @@
 # Deliberate defect checks
 
 `conformance/test_defect_checks.py` checks that established conformance tests detect
-twenty specific production defects. Each case copies the current source packages into
-a private temporary directory, verifies that the relevant unchanged check passes, changes
-one expression inside one named production function, and reruns that same check in a
-fresh interpreter. Repository source files and Lean/TLA+ specifications are not changed.
+twenty specific production defects. One pristine interpreter executes every unique
+selected target against private copied source packages. Workers share the complete
+successful baseline through the current run's atomic corpus. Each case copies the
+source packages into its own temporary directory, requires every source and resource
+digest to match that baseline, changes one expression inside one named production
+function, and reruns its established check in a fresh interpreter. Repository source
+files and Lean/TLA+ specifications are not changed.
 
 | Deliberate defect | Existing check required to fail |
 | --- | --- |
@@ -36,9 +39,13 @@ timeout, or tool failure cannot stand in for successful defect detection. The mu
 must fail the named test with its expected semantic assertion or missing-exception
 diagnostic. Fixtures and conformance assertions are unchanged in both executions.
 
-Independent defect cases use the formal suite's parallel workers. Each case runs its
-nested baseline and mutant serially in fresh interpreters, preserving the isolated
-source import and avoiding nested worker pools.
+Independent defect cases use the formal suite's parallel workers. Twenty mutations
+have nineteen unique target checks, so a complete run uses one pristine baseline
+interpreter and twenty isolated mutant interpreters. Each nested pytest session stays
+serial, preserving isolated source imports and avoiding nested worker pools. The baseline
+report must contain exactly the selected target identities with no skipped, failed, or
+error outcomes. Checked TLC graphs remain shared within the outer formal invocation;
+production executions and mutated source trees remain independent.
 
 These checks run inside `mise formal-conformance` and the full `mise formal`. Run only
 these checks with `mise formal-defects`. They demonstrate sensitivity to these twenty

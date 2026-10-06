@@ -4,13 +4,13 @@ import json
 import pathlib
 import shutil
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.observers
 import tests.formal.helpers.process
-import tests.formal.helpers.tlc
 
 
 def test_load_updates_refines_tlc_refresh_transactions(tmp_path: pathlib.Path) -> None:
-    states = tests.formal.helpers.tlc.states(
+    states = tests.formal.helpers.corpus.states(
         "BrowserRefresh",
         "BrowserRefresh",
         tmp_path,

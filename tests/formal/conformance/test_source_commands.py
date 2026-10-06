@@ -5,14 +5,18 @@ import pathlib
 import click
 
 import peri_scribe.main
+import tests.formal.helpers.corpus
 import tests.formal.helpers.source_commands
-import tests.formal.helpers.tlc
 
 
 def test_validate_sources_matches_checked_writer_recovery(
     tmp_path: pathlib.Path,
 ) -> None:
-    states = tests.formal.helpers.tlc.states("SourceWriters", "SourceWriters", tmp_path)
+    states = tests.formal.helpers.corpus.states(
+        "SourceWriters",
+        "SourceWriters",
+        tmp_path,
+    )
     tests.formal.helpers.source_commands.replay(states, tmp_path / "commands")
 
 

@@ -14,7 +14,7 @@ import peri_scribe.fire_updates
 import peri_scribe.logging
 import peri_scribe.publication
 import peri_scribe.updates
-import tests.formal.helpers.tlc
+import tests.formal.helpers.corpus
 import tests.helpers.factories.peri_scribe.durable_updates
 
 
@@ -40,7 +40,7 @@ def cases(directory: pathlib.Path) -> tuple[Case, ...]:
     Returns:
         One complete execution per distinct initial input combination.
     """
-    graph = tests.formal.helpers.tlc.graph(
+    graph = tests.formal.helpers.corpus.graph(
         "DurableUpdateValidation",
         "DurableUpdateValidation",
         directory,

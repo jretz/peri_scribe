@@ -6,14 +6,14 @@ import typing
 if typing.TYPE_CHECKING:
     import pytest
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.parsed_cache
-import tests.formal.helpers.tlc
 
 
 def test_fetch_snapshot_rows_matches_checked_transaction_schedules(
     tmp_path: pathlib.Path,
 ) -> None:
-    states = tests.formal.helpers.tlc.states(
+    states = tests.formal.helpers.corpus.states(
         "ParsedCacheRead",
         "ParsedCacheRead",
         tmp_path / "tlc",
@@ -31,7 +31,7 @@ def test_sync_database_matches_checked_commits_and_interruptions(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    graph = tests.formal.helpers.tlc.graph(
+    graph = tests.formal.helpers.corpus.graph(
         "ParsedCache",
         "ParsedCache",
         tmp_path / "tlc",
@@ -63,7 +63,7 @@ def test_reset_database_matches_checked_schema_interruptions(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    graph = tests.formal.helpers.tlc.graph(
+    graph = tests.formal.helpers.corpus.graph(
         "ParsedCacheRebuild",
         "ParsedCacheRebuild",
         tmp_path / "tlc",

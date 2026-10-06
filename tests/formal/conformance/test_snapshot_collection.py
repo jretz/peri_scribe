@@ -2,14 +2,14 @@
 
 import pathlib
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.snapshot_collection
-import tests.formal.helpers.tlc
 
 
 def test_fetch_feed_snapshot_matches_checked_query_interleavings(
     tmp_path: pathlib.Path,
 ) -> None:
-    states = tests.formal.helpers.tlc.states(
+    states = tests.formal.helpers.corpus.states(
         "SnapshotCollection",
         "SnapshotCollection",
         tmp_path / "model",

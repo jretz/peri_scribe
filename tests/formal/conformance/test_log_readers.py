@@ -2,14 +2,14 @@
 
 import pathlib
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.log_readers
-import tests.formal.helpers.tlc
 
 
 def test_complete_lines_matches_checked_reader_observations(
     tmp_path: pathlib.Path,
 ) -> None:
-    graph = tests.formal.helpers.tlc.graph(
+    graph = tests.formal.helpers.corpus.graph(
         "LogReaders",
         "LogReaders",
         tmp_path / "model",

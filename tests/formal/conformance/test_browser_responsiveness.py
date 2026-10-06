@@ -4,13 +4,13 @@ import json
 import pathlib
 import shutil
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.observers
 import tests.formal.helpers.process
-import tests.formal.helpers.tlc
 
 
 def test_create_response_monitor_refines_tlc_histories(tmp_path: pathlib.Path) -> None:
-    states = tests.formal.helpers.tlc.states(
+    states = tests.formal.helpers.corpus.states(
         "BrowserResponsiveness",
         "BrowserResponsiveness",
         tmp_path,

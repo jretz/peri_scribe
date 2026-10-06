@@ -13,7 +13,7 @@ import time_machine
 import peri_scribe.fire_updates
 import peri_scribe.publication
 import peri_scribe.updates
-import tests.formal.helpers.tlc
+import tests.formal.helpers.corpus
 
 
 EPOCH = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
@@ -76,7 +76,7 @@ def recoveries(directory: pathlib.Path) -> tuple[Recovery, ...]:
         Every distinct observable recovery relation, including empty batches.
     """
     records = {}
-    for fields in tests.formal.helpers.tlc.states(
+    for fields in tests.formal.helpers.corpus.states(
         "JournalReplay",
         "JournalReplay",
         directory,

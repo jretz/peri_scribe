@@ -71,13 +71,15 @@ def test_browser_preserves_duplicate_occurrences_and_signature_reuse() -> None:
         for length in range(3)
         for sequence in itertools.product(updates, repeat=length)
     ]
-    cases = [
-        tests.formal.helpers.update_viewer.browser_case((
-            tests.formal.helpers.update_viewer.Step(records=old),
-            tests.formal.helpers.update_viewer.Step(records=new),
-        ))
-        for old, new in itertools.product(sequences, repeat=2)
-    ]
+    cases = tests.formal.helpers.update_viewer.browser_cases(
+        tuple(
+            (
+                tests.formal.helpers.update_viewer.Step(records=old),
+                tests.formal.helpers.update_viewer.Step(records=new),
+            )
+            for old, new in itertools.product(sequences, repeat=2)
+        ),
+    )
     assert tests.formal.helpers.update_viewer.run_browser(cases) == sum(map(len, cases))
 
 
@@ -167,11 +169,11 @@ def test_browser_timer_crosses_exact_millisecond_bucket_edges() -> None:
     )
     initial = tests.formal.helpers.update_viewer.Step(records=records)
     steps = (initial, dataclasses.replace(initial, elapsed=2, timer=True))
-    cases = [
-        tests.formal.helpers.update_viewer.browser_case(steps),
-        tests.formal.helpers.update_viewer.browser_case((
+    cases = tests.formal.helpers.update_viewer.browser_cases((
+        steps,
+        (
             initial,
             dataclasses.replace(initial, elapsed=1),
-        )),
-    ]
+        ),
+    ))
     assert tests.formal.helpers.update_viewer.run_browser(cases) == sum(map(len, cases))

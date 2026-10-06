@@ -7,6 +7,7 @@ import pytest
 import tests.formal.helpers.corpus
 import tests.formal.helpers.corpus_checks
 import tests.formal.helpers.process
+import tests.formal.helpers.session
 import tests.formal.helpers.tlc
 
 
@@ -119,6 +120,7 @@ def test_graph_reuse_preserves_exact_nodes_fields_and_successor_iteration_order(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.delenv(tests.formal.helpers.session.VARIABLE, raising=False)
     first = (1 << 63) - 5
     second = -(1 << 63) + 7
     third = 17
@@ -162,10 +164,13 @@ def test_graph_reuse_preserves_exact_nodes_fields_and_successor_iteration_order(
         },
     )
     producer = unittest.mock.create_autospec(
-        tests.formal.helpers.tlc.graph,
-        return_value=expected,
+        tests.formal.helpers.tlc.checked_graph,
+        return_value=tests.formal.helpers.tlc.CheckedGraph(
+            graph=expected,
+            output="checked",
+        ),
     )
-    monkeypatch.setattr(tests.formal.helpers.tlc, "graph", producer)
+    monkeypatch.setattr(tests.formal.helpers.tlc, "checked_graph", producer)
     cold = tests.formal.helpers.corpus.graph("Example", "Bounded", tmp_path)
     reused = tests.formal.helpers.corpus.graph("Example", "Bounded", tmp_path)
     producer.assert_called_once()
@@ -177,3 +182,41 @@ def test_graph_reuse_preserves_exact_nodes_fields_and_successor_iteration_order(
         (node, tuple(fields.items())) for node, fields in expected.states.items()
     )
     assert tuple(reused.outgoing.items()) == tuple(expected.outgoing.items())
+
+
+@pytest.mark.asyncio
+async def test_checked_graph_releases_cancelled_producer_without_publishing(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    expected = tests.formal.helpers.tlc.CheckedGraph(
+        graph=tests.formal.helpers.tlc.Graph(
+            states={1: {"phase": '"done"'}},
+            initial=frozenset({1}),
+            outgoing={},
+        ),
+        output="checked",
+    )
+    producer = unittest.mock.AsyncMock(side_effect=[asyncio.CancelledError, expected])
+    monkeypatch.setattr(tests.formal.helpers.tlc, "checked_graph_async", producer)
+    with pytest.raises(asyncio.CancelledError):
+        await tests.formal.helpers.corpus.checked_graph("Example", "Bounded", tmp_path)
+    assert not (tmp_path / "graph-Example-Bounded.json").exists()
+    assert (
+        await tests.formal.helpers.corpus.checked_graph(
+            "Example",
+            "Bounded",
+            tmp_path,
+        )
+        == expected
+    )
+    assert (
+        await tests.formal.helpers.corpus.checked_graph(
+            "Example",
+            "Bounded",
+            tmp_path,
+        )
+        == expected
+    )
+    attempts = 2
+    assert producer.await_count == attempts

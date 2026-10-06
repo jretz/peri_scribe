@@ -65,7 +65,10 @@ other selected configurations finish; interrupting the runner cancels active pro
 and removes their temporary storage. Set `env PERI_SCRIBE_TLC_JOBS=1 mise formal-tla`
 for serial execution, or use another positive count. The underlying runner also accepts
 `--jobs`, which takes precedence over that environment variable. Top-level formal phases
-run sequentially.
+run sequentially inside one temporary evidence session. The model-checking phase
+publishes complete graphs for configurations used by conformance, and the later pytest
+phase consumes that same checked evidence. Standalone commands create their own fresh
+session when needed.
 
 Each outer proof job owns a private POSIX process group, including tools started by
 nested pytest runs. Cancellation and timeouts terminate that entire group and drain its
@@ -77,33 +80,57 @@ these operating-system boundaries; this thin test adapter changes no modeled pip
 protocol.
 
 The conformance and deliberate-defect tasks use six pytest-xdist workers with work
-stealing. Each concrete execution retains its own temporary storage, and Lean executables
-are built before workers start. Nested baseline/mutant pytest runs remain serial so they
-use the isolated source tree without starting another worker pool. Individual TLC
-subprocesses use one model-checking worker and a maximum 1 GiB heap; account for this and
-the Python processes when increasing pytest concurrency.
+stealing. Each concrete execution retains its own temporary storage, and Lean
+executables are built before workers start. The selected mutation checks share one
+serial pristine pytest session, containing every unique target. Each mutant runs in its
+own serial interpreter and private source tree. Source and resource digests must match
+the passing baseline before mutation. Exact JUnit target identities and successful
+outcomes reject missing, skipped, or substituted baseline checks. These nested runs do
+not start another worker pool. Individual TLC subprocesses use one model-checking worker
+and a maximum 1 GiB heap; account for this and the Python processes when increasing
+pytest concurrency.
 
 The pipeline composition check distributes all 19,240 complete histories, containing
 38,143 logical invocations, across 48 pytest items. Identical complete prefixes execute
-once; each continuation receives an independent copy of the actual durable files and
-the full surviving TLC path. Timestamp-preserving copies retain publication identities.
-This requires 19,240 concrete invocations while preserving every complete history and
-mutation-boundary observation. Regressions compare shared prefixes with fresh complete
-replays and check copy isolation. `ReplayPrefixes.lean` proves composition under explicit
-determinism and exact-copy assumptions; Python tests check those adapter obligations.
+once; each continuation receives an independent copy of the actual durable files and the
+full surviving TLC path. Timestamp-preserving copies retain publication identities. This
+requires 19,240 concrete invocations while preserving every complete history and
+mutation-boundary observation. The complete raw graph, typed projections, action
+mappings, history catalogue, and balanced prefix batches are prepared once per evidence
+session. Typed indexed tables retain exact node identities and successor order while
+avoiding repeated projection parsing and history reconstruction in workers. Regressions
+compare serialized contracts with their original complete graphs, require independent
+decoded containers, compare shared prefixes with fresh complete replays, and check copy
+isolation. `ReplayPrefixes.lean` proves composition under explicit determinism and
+exact-copy assumptions; Python tests check those adapter obligations.
 
 Identity feedback and coordinate-reference checks use 12 batches each, and all 36
 hard-process crash scenarios are independent items. Batching preserves model bounds,
 assertions, failure injection, and the checked input inventory.
 
-Session fixtures share complete checked graphs and states through typed JSON in the
-current pytest run's temporary directory. A stable operating-system lock admits one
-producer; publication uses a private staging directory and atomic replacement only after
-successful checking and serialization. This reuses the completed-staging contract in
-`StaticDownload.tla`; process-concurrency regressions check the lock adapter's exclusion
-and failure recovery. Each worker retains its own decoded read-only contract. Failed
-producers cannot publish partial results, and a new pytest run always regenerates its
-evidence. No checked corpus is reused across runs.
+All conformance consumers share complete checked graphs through typed JSON in the
+current formal invocation's temporary directory. State-only consumers use those same
+complete graphs. A stable operating-system lock admits one producer; publication uses a
+private staging directory and atomic replacement only after successful checking and
+serialization. This reuses the completed-staging contract in `StaticDownload.tla`;
+process-concurrency regressions check the lock adapter's exclusion and failure recovery.
+An owner lease and the specification, configuration, adapter, and TLC content identity
+reject expired or incompatible inherited storage. Each worker retains its own decoded
+read-only contract. Failed producers cannot publish partial results, and a new top-level
+run always regenerates its evidence. No checked corpus is reused across runs.
+
+Pure Lean oracle requests are batched across independent cases, preserving their original
+order and exact response counts. Case-local identity and signature tables remain private.
+Requests that depend on preceding oracle responses remain sequential. This changes only
+the transport of requests to the same compiled definitions.
+
+Journal persistence fixtures supply fixed valid preview and icon images and a stable
+fixture-only runtime fingerprint. Real preview selection, KMZ and snapshot
+serialization, file replacement, observation, process termination, and recovery remain
+active. Image rendering and environment invalidation retain their own tests; these are
+outside the journal's persistence contract. Adapter regressions decode the actual
+published image payloads. The fixture and transport changes introduce no new application
+policy or persistence protocol requiring another formal model.
 
 Formal fixtures live in `tests/formal/helpers/fixtures/`. Their aggregate `plugin.py` is
 registered in `tests/conftest.py` and explicitly loaded by the standalone formal pytest

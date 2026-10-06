@@ -9,8 +9,8 @@ import pytest
 
 import peri_scribe.pipeline
 import peri_scribe.pipeline_state
+import tests.formal.helpers.corpus
 import tests.formal.helpers.pipeline_state
-import tests.formal.helpers.tlc
 import tests.helpers.doubles.peri_scribe.pipeline_fetch_recovery
 
 
@@ -47,7 +47,7 @@ def outcomes(directory: pathlib.Path) -> tuple[Outcome, ...]:
         Every distinct successful fetch input/output relation found by TLC.
     """
     records = {}
-    for fields in tests.formal.helpers.tlc.states(
+    for fields in tests.formal.helpers.corpus.states(
         "FetchCrash",
         "FetchCrash",
         directory,
@@ -81,7 +81,7 @@ def interruptions(directory: pathlib.Path) -> tuple[Interrupted, ...]:
     """
     mutation_type = tests.helpers.doubles.peri_scribe.pipeline_fetch_recovery.Mutation
     records = {}
-    for fields in tests.formal.helpers.tlc.states(
+    for fields in tests.formal.helpers.corpus.states(
         "FetchCrash",
         "FetchCrash",
         directory,

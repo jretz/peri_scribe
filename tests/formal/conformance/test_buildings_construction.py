@@ -3,13 +3,13 @@ import pathlib
 import structlog.testing
 
 import tests.formal.helpers.buildings_construction
-import tests.formal.helpers.tlc
+import tests.formal.helpers.corpus
 
 
 def test_fetch_buildings_database_matches_checked_lifecycle(
     tmp_path: pathlib.Path,
 ) -> None:
-    states = tests.formal.helpers.tlc.states(
+    states = tests.formal.helpers.corpus.states(
         "BuildingsConstruction",
         "BuildingsConstruction",
         tmp_path / "tlc",

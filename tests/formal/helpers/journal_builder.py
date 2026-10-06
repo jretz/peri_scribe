@@ -1,5 +1,6 @@
 """Exercise builder crash boundaries while retaining the real persistence stack."""
 
+import base64
 import collections
 import compression.zstd
 import dataclasses
@@ -19,11 +20,15 @@ import peri_scribe.fires.index
 import peri_scribe.fires.score_files
 import peri_scribe.kml.builder
 import peri_scribe.kml.fire_data
+import peri_scribe.kml.icons
 import peri_scribe.models
 import peri_scribe.paths
+import peri_scribe.preparation
+import peri_scribe.previews
 import peri_scribe.publication
 import peri_scribe.report.gathering
 import peri_scribe.updates
+import tests.formal.helpers.corpus
 import tests.formal.helpers.journal
 import tests.formal.helpers.paths
 import tests.formal.helpers.tlc
@@ -35,6 +40,11 @@ type Projection = tuple[int, int, int, int, int, tuple[int, ...], tuple[int, ...
 GENERATION_COUNT = 2
 RECORDS_PER_GENERATION = 2
 MINIMUM_OBSERVATIONS = 20
+ICON_CONTENT = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQAB"
+    "pfZFQAAAAABJRU5ErkJggg==",
+)
+PREVIEW = "data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA=="
 
 
 class ProcessLoss(BaseException):
@@ -52,7 +62,7 @@ def projections(
     Returns:
         Directed execution contracts, separated by exact publication modes.
     """
-    graph = tests.formal.helpers.tlc.graph(
+    graph = tests.formal.helpers.corpus.graph(
         "UpdateJournal",
         "UpdateJournal",
         directory,
@@ -419,6 +429,29 @@ def install(monkeypatch: pytest.MonkeyPatch, scenario: Scenario) -> None:
         lambda *_args, **_kwargs: {},
     )
     monkeypatch.setattr(peri_scribe.report.gathering, "report_from_fires", report)
+    monkeypatch.setattr(peri_scribe.previews, "fire_preview", lambda _fire: PREVIEW)
+    monkeypatch.setattr(
+        peri_scribe.kml.icons,
+        "interior_progression_icon",
+        lambda: ICON_CONTENT,
+    )
+    monkeypatch.setattr(
+        peri_scribe.kml.icons,
+        "perimeters_icon",
+        lambda: ICON_CONTENT,
+    )
+    monkeypatch.setattr(
+        peri_scribe.kml.icons,
+        "outlined_perimeter_icon",
+        lambda _color: ICON_CONTENT,
+    )
+    # Each scenario owns isolated products in an immutable runtime. Source/runtime
+    # invalidation belongs to the preparation checks, not this persistence protocol.
+    monkeypatch.setattr(
+        peri_scribe.preparation,
+        "runtime_fingerprint",
+        lambda: "formal-journal-persistence",
+    )
     monkeypatch.setattr(
         peri_scribe.kml.builder,
         "write_kmz_document",

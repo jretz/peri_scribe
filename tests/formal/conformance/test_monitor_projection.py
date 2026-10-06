@@ -2,12 +2,12 @@
 
 import pathlib
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.observers
-import tests.formal.helpers.tlc
 
 
 def test_refresh_refines_tlc_compaction_and_projection(tmp_path: pathlib.Path) -> None:
-    states = tests.formal.helpers.tlc.states(
+    states = tests.formal.helpers.corpus.states(
         "MonitorProjection",
         "MonitorProjection",
         tmp_path,

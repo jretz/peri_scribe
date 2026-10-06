@@ -7,8 +7,8 @@ import typing
 
 import structlog.testing
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.feed_cache
-import tests.formal.helpers.tlc
 
 
 if typing.TYPE_CHECKING:
@@ -19,7 +19,7 @@ def test_write_current_state_matches_every_checked_cache_candidate(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    states = tests.formal.helpers.tlc.states(
+    states = tests.formal.helpers.corpus.states(
         "FeedCache",
         "FeedCache",
         tmp_path / "model",

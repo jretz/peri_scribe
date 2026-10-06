@@ -17,11 +17,11 @@ import peri_scribe.fire_updates
 import peri_scribe.logging
 import peri_scribe.publication
 import peri_scribe.updates
+import tests.formal.helpers.corpus
 import tests.formal.helpers.log_readers
 import tests.formal.helpers.log_rotation
 import tests.formal.helpers.oracle
 import tests.formal.helpers.projected_snapshots
-import tests.formal.helpers.tlc
 import tests.formal.helpers.update_viewer
 import tests.helpers.factories.peri_scribe.updates
 
@@ -56,7 +56,7 @@ def cases(directory: pathlib.Path) -> tuple[Case, ...]:
     fields = (*tests.formal.helpers.log_readers.FIELDS, "receipt")
     states = {
         tuple(state[field] for field in fields): state
-        for state in tests.formal.helpers.tlc.states(
+        for state in tests.formal.helpers.corpus.states(
             "LogReaders",
             "LogReaders",
             directory,

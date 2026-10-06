@@ -4,14 +4,14 @@ import pathlib
 
 import pytest
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.identity_recomputation
-import tests.formal.helpers.tlc
 
 
 def test_resolved_ownership_recomputation_matches_checked_feedback_paths(
     tmp_path: pathlib.Path,
 ) -> None:
-    graph = tests.formal.helpers.tlc.graph(
+    graph = tests.formal.helpers.corpus.graph(
         "IdentityRecomputation",
         "IdentityRecomputationBridge",
         tmp_path / "model",
@@ -29,7 +29,7 @@ def test_resolved_ownership_recomputation_matches_checked_feedback_paths(
 def test_successor_rejects_reachable_acknowledgement_before_alias_learning(
     tmp_path: pathlib.Path,
 ) -> None:
-    graph = tests.formal.helpers.tlc.graph(
+    graph = tests.formal.helpers.corpus.graph(
         "IdentityRecomputation",
         "IdentityRecomputationBridge",
         tmp_path,

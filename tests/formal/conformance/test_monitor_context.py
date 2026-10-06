@@ -3,12 +3,12 @@
 import pathlib
 import tempfile
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.monitor_context
-import tests.formal.helpers.tlc
 
 
 def test_context_records_refines_tlc_partitions(tmp_path: pathlib.Path) -> None:
-    states = tests.formal.helpers.tlc.states(
+    states = tests.formal.helpers.corpus.states(
         "MonitorContext",
         "MonitorContext",
         tmp_path,

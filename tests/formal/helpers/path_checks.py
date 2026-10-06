@@ -2,9 +2,9 @@
 
 import pathlib
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.log_rotation
 import tests.formal.helpers.paths
-import tests.formal.helpers.tlc
 
 
 def rotation(
@@ -21,7 +21,7 @@ def rotation(
     Returns:
         Its execution contract and one successful two-epoch observable path.
     """
-    graph = tests.formal.helpers.tlc.graph("LogRotation", "LogRotation", directory)
+    graph = tests.formal.helpers.corpus.graph("LogRotation", "LogRotation", directory)
     contract = tests.formal.helpers.log_rotation.contract(graph)
     initial = next(
         node for node in graph.initial if graph.states[node]["archive"] == "<<>>"

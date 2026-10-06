@@ -1,11 +1,10 @@
 [formal]
 description = "Check formal models, proofs, implementation agreement, and known limits"
-run = [
-    { task = "formal-tla" },
-    { task = "formal-lean" },
-    { task = "formal-conformance" },
-    { task = "formal-counterexamples" },
-]
+depends = ["venv"]
+run = '''
+PERI_SCRIBE_TLA_JAR="$(mise where github:tlaplus/tlaplus)/tla2tools.jar" \
+    .venv/bin/python -m tests.formal.run
+'''
 
 [formal-tla]
 description = "Model-check system safety and conditional liveness with TLC"

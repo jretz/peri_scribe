@@ -4,13 +4,13 @@ import pathlib
 
 import pytest
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.geography_publication
 import tests.formal.helpers.publication_paths
-import tests.formal.helpers.tlc
 
 
 def test_geography_publication_continuous_recovery(tmp_path: pathlib.Path) -> None:
-    graph = tests.formal.helpers.tlc.graph(
+    graph = tests.formal.helpers.corpus.graph(
         "GeographyPublication",
         "GeographyPublication",
         tmp_path / "model",
@@ -28,7 +28,7 @@ def test_geography_publication_continuous_recovery(tmp_path: pathlib.Path) -> No
 def test_publication_rejects_reachable_signature_before_bytes(
     tmp_path: pathlib.Path,
 ) -> None:
-    graph = tests.formal.helpers.tlc.graph(
+    graph = tests.formal.helpers.corpus.graph(
         "GeographyPublication",
         "GeographyPublication",
         tmp_path / "model",

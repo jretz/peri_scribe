@@ -8,8 +8,8 @@ import re
 
 import peri_scribe.pipeline_stages
 import peri_scribe.pipeline_state
+import tests.formal.helpers.corpus
 import tests.formal.helpers.oracle
-import tests.formal.helpers.tlc
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -76,7 +76,7 @@ def transitions(directory: pathlib.Path) -> list[Transition]:
         Every event in the model's complete finite state graph.
     """
     records = []
-    for fields in tests.formal.helpers.tlc.states("RunState", "RunState", directory):
+    for fields in tests.formal.helpers.corpus.states("RunState", "RunState", directory):
         assert set(fields) == {
             "before",
             "after",

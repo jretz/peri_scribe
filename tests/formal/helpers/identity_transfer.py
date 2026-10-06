@@ -332,12 +332,14 @@ def choose_commands(
 def ownership(
     reference: Reference,
     expected: tuple[dict[AreaKey, frozenset[str]], dict[AreaKey, frozenset[str]]],
+    choices: list[tuple[int, ...]],
 ) -> peri_scribe.fire_updates.Ownership:
     """Actual writer keys must satisfy checked selection and independent freshness.
 
     Args:
         reference: The complete unresolved input.
         expected: Oracle-derived original claims and winning history sets.
+        choices: Oracle-derived writer selections in current identity order.
 
     Returns:
         Production ownership after every raw claim and writer decision is checked.
@@ -358,14 +360,6 @@ def ownership(
     assert actual == reversed_result
     assert actual.claims == expected[0]
     assert len(set(actual.keys.values())) == len(case.fires)
-    choices = (
-        tests.formal.helpers.oracle.evaluate(
-            choose_commands(reference, expected[1]),
-            executable="oracleIdentityTransfer",
-        )
-        if case.fires
-        else []
-    )
     reserved = history_keys(case.previous)
     for identity, (selected,) in zip(reference.identities, choices, strict=True):
         writer = actual.keys[identity]
@@ -384,6 +378,28 @@ def ownership(
                 assert json.loads(writer)[0] == "local"
         reserved.add(writer)
     return actual
+
+
+def ownership_batches(
+    references: tuple[Reference, ...],
+) -> tuple[peri_scribe.fire_updates.Ownership, ...]:
+    """Batch independent writer queries after the checked raw claims are available.
+
+    Args:
+        references: Unresolved cases, each retaining its own identity symbol table.
+
+    Returns:
+        Production ownership checked against complete claims and writer decisions.
+    """
+    expected = claims(references)
+    choices = tests.formal.helpers.oracle.evaluate_batches(
+        [
+            choose_commands(reference, claimed[1])
+            for reference, claimed in zip(references, expected, strict=True)
+        ],
+        executable="oracleIdentityTransfer",
+    )
+    return tuple(map(ownership, references, expected, choices, strict=True))
 
 
 def transfer_command(
@@ -576,10 +592,7 @@ def check_batches() -> int:
     references = tuple(
         Reference(case=case) for case in (*batch_cases(), *boundary_cases())
     )
-    expected = claims(references)
-    actual = tuple(
-        map(ownership, references, expected, strict=True),
-    )
+    actual = ownership_batches(references)
     outcomes = tests.formal.helpers.oracle.evaluate(
         list(map(transfer_command, references, actual, strict=True)),
         executable="oracleIdentityTransfer",
@@ -628,7 +641,7 @@ def check_evidence(
         identity: frozenset({peri_scribe.models.normalize_fire_name(fire.name)})
         for identity, fire in case.fires.items()
     }
-    for kind, previous, current, observed in (
+    evidence = (
         (
             "perimeter",
             case.previous.perimeters,
@@ -642,18 +655,42 @@ def check_evidence(
             names,
             prepared.state.names,
         ),
+    )
+    commands = [
+        "|".join((
+            "ack",
+            record_text(reference, kind, previous),
+            record_text(
+                reference,
+                kind,
+                {actual.keys[identity]: data for identity, data in current.items()},
+            ),
+        ))
+        for kind, previous, current, _ in evidence
+    ]
+    commands.extend(
+        "|".join((
+            "novel",
+            str(reference.token(actual.keys[identity])),
+            reference.owner_text(actual.owners),
+            record_text(reference, "perimeter", case.previous.perimeters),
+            " ".join(
+                str(reference.token(f"perimeter:{datum}"))
+                for datum in sorted(case.signatures[identity])
+            ),
+        ))
+        for identity in reference.identities
+    )
+    answers = tests.formal.helpers.oracle.evaluate(
+        commands,
+        executable="oracleIdentityTransfer",
+    )
+    for (kind, previous, current, observed), expected in zip(
+        evidence,
+        answers[: len(evidence)],
+        strict=True,
     ):
         additions = {actual.keys[identity]: data for identity, data in current.items()}
-        expected = tests.formal.helpers.oracle.evaluate(
-            [
-                "|".join((
-                    "ack",
-                    record_text(reference, kind, previous),
-                    record_text(reference, kind, additions),
-                )),
-            ],
-            executable="oracleIdentityTransfer",
-        )[0]
         pairs = set(zip(expected[::2], expected[1::2], strict=True))
         assert set(observed) == set(previous) | set(additions)
         assert {
@@ -661,26 +698,7 @@ def check_evidence(
             for history, data in observed.items()
             for datum in data
         } == pairs
-    novel = (
-        tests.formal.helpers.oracle.evaluate(
-            [
-                "|".join((
-                    "novel",
-                    str(reference.token(actual.keys[identity])),
-                    reference.owner_text(actual.owners),
-                    record_text(reference, "perimeter", case.previous.perimeters),
-                    " ".join(
-                        str(reference.token(f"perimeter:{datum}"))
-                        for datum in sorted(case.signatures[identity])
-                    ),
-                ))
-                for identity in reference.identities
-            ],
-            executable="oracleIdentityTransfer",
-        )
-        if case.fires
-        else []
-    )
+    novel = answers[len(evidence) :]
     expected_records = {
         actual.keys[identity]
         for identity, (changed,) in zip(reference.identities, novel, strict=True)
@@ -916,7 +934,7 @@ def publish_round(
     )
     case = tests.formal.helpers.identity_lifecycle.publication_input(fires, previous)
     reference = Reference(case=case)
-    actual = ownership(reference, claims((reference,))[0])
+    actual = ownership_batches((reference,))[0]
     projected = tests.formal.helpers.oracle.evaluate(
         [
             transfer_command(reference, actual),

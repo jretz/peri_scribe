@@ -31,3 +31,22 @@ def evaluate(
     responses = [tuple(map(int, line.split())) for line in result.stdout.splitlines()]
     assert len(responses) == len(commands), result.stderr
     return responses
+
+
+def evaluate_batches(
+    batches: list[list[str]],
+    *,
+    executable: str = "oracle",
+) -> list[list[tuple[int, ...]]]:
+    """Share one executable process while retaining each independent case's responses.
+
+    Args:
+        batches: Ordered request groups with independently assigned input tokens.
+        executable: The Lake executable owning those checked definitions.
+
+    Returns:
+        One response group per case, preserving empty groups and request order.
+    """
+    commands = [command for batch in batches for command in batch]
+    responses = iter(evaluate(commands, executable=executable) if commands else [])
+    return [[next(responses) for _ in batch] for batch in batches]

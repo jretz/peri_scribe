@@ -217,6 +217,75 @@ def contract() -> Contract:
     )
 
 
+def corpus_executions() -> tests.formal.helpers.pipeline_composition.Executions:
+    """Equal projections and parallel edges must retain their distinct full states.
+
+    Returns:
+        A complete synthetic contract with ordered histories and terminal prefixes.
+    """
+    first, second, third, fourth, fifth = invocations()
+    start = (1 << 63) - 5
+    other = -(1 << 63) + 7
+    final = 17
+    graph = tests.formal.helpers.tlc.Graph(
+        states={
+            start: {"phase": '"ready"', "unprojected": "<<1, 2>>"},
+            final: {"phase": '"done"', "unprojected": "[a |-> TRUE]"},
+            other: {"phase": '"ready"', "unprojected": "<<2, 1>>"},
+        },
+        initial=frozenset({start, other}),
+        outgoing={
+            final: (),
+            start: (
+                tests.formal.helpers.tlc.Edge(
+                    source=start,
+                    target=final,
+                    action="Execute",
+                ),
+                tests.formal.helpers.tlc.Edge(
+                    source=start,
+                    target=other,
+                    action="Crash",
+                ),
+                tests.formal.helpers.tlc.Edge(
+                    source=start,
+                    target=final,
+                    action="Acknowledge",
+                ),
+            ),
+            other: (
+                tests.formal.helpers.tlc.Edge(
+                    source=other,
+                    target=final,
+                    action="Execute",
+                ),
+            ),
+        },
+    )
+    checked = tests.formal.helpers.paths.Contract(
+        graph=graph,
+        values=dict.fromkeys(graph.states, first.before),
+        actions={
+            edge: "begin:0:4:False:False:False:False"
+            if edge.action == "Execute"
+            else edge.action.lower()
+            for edges in graph.outgoing.values()
+            for edge in edges
+        },
+        internal=frozenset({"acknowledge"}),
+    )
+    return tests.formal.helpers.pipeline_composition.Executions(
+        checked=checked,
+        histories={
+            second: (first, second),
+            fourth: (fourth,),
+            first: (first,),
+            third: (first, third),
+            fifth: (fourth, fifth),
+        },
+    )
+
+
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class ObservedReplay:
     """Record real coordinator effects before the caller removes its private files."""

@@ -4,7 +4,9 @@ import unittest.mock
 import pytest
 
 import tests.formal.check
+import tests.formal.helpers.corpus
 import tests.formal.helpers.process
+import tests.formal.helpers.session
 import tests.formal.helpers.tlc
 
 
@@ -39,8 +41,8 @@ def test_states_uses_final_count_after_intermediate_progress(
     monkeypatch.setenv("PERI_SCRIBE_TLA_JAR", "tools.jar")
     monkeypatch.setattr(
         tests.formal.helpers.process,
-        "run",
-        unittest.mock.Mock(
+        "execute",
+        unittest.mock.AsyncMock(
             return_value=tests.formal.helpers.process.Result(
                 returncode=0,
                 stdout="Progress: 1 distinct states found\n"
@@ -54,6 +56,52 @@ def test_states_uses_final_count_after_intermediate_progress(
         {"x": "0"},
         {"x": "1"},
     ]
+
+
+@pytest.mark.asyncio
+async def test_run_model_exports_once_for_graph_and_state_consumers(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(tests.formal.helpers.session.VARIABLE, raising=False)
+    output = (
+        "Finished computing initial states: 1 distinct state generated\n"
+        "Model checking completed. No error has been found.\n"
+        "2 distinct states found\n"
+    )
+    explore = unittest.mock.AsyncMock(
+        return_value=(
+            (
+                'digraph {\n1 [label="/\\\\ x = 0",style = filled];\n'
+                '2 [label="/\\\\ x = 1"];\n'
+                '1 -> 2 [label="Next",color="black"];\n}\n'
+            ),
+            output,
+        ),
+    )
+    monkeypatch.setattr(tests.formal.helpers.tlc, "explore_async", explore)
+    model = tests.formal.check.Model(
+        name="example",
+        module="Example",
+        config="Bounded",
+        conformance=True,
+    )
+    assert await tests.formal.check.run_model(
+        model,
+        "java",
+        pathlib.Path("tools.jar"),
+        tmp_path,
+    )
+    graph = tests.formal.helpers.corpus.graph("Example", "Bounded", tmp_path)
+    assert graph.initial == frozenset({1})
+    assert graph.outgoing[1] == (
+        tests.formal.helpers.tlc.Edge(source=1, target=2, action="Next"),
+    )
+    assert tests.formal.helpers.corpus.states("Example", "Bounded", tmp_path) == [
+        {"x": "0"},
+        {"x": "1"},
+    ]
+    explore.assert_awaited_once()
 
 
 @pytest.mark.parametrize(

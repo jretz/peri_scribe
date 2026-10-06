@@ -238,14 +238,14 @@ class Step:
     timer: bool = False
 
 
-def browser_case(steps: tuple[Step, ...]) -> list[dict[str, object]]:
-    """Ask Lean for occurrence matching and each displayed bucket's complete sequence.
+def browser_commands(steps: tuple[Step, ...]) -> list[str]:
+    """Keep signature and identity tokens local to one independent browser document.
 
     Args:
         steps: Consecutive full snapshots and control states to replay in one document.
 
     Returns:
-        Transport with expected reuse indices, exact row order, and identity counts.
+        Occurrence matching and complete bucket requests for every document state.
     """
     keys: dict[tuple[str, str], int] = {}
     signatures: dict[str, int] = {}
@@ -274,12 +274,51 @@ def browser_case(steps: tuple[Step, ...]) -> list[dict[str, object]]:
             for index in range(5)
         )
         previous = step.records
-    answers = iter(
-        tests.formal.helpers.oracle.evaluate(
-            commands,
-            executable="oraclePresentationFlow",
-        ),
+    return commands
+
+
+def browser_cases(cases: tuple[tuple[Step, ...], ...]) -> list[list[dict[str, object]]]:
+    """Batch checked browser decisions while retaining independent document histories.
+
+    Args:
+        cases: Complete consecutive snapshots and control states for each document.
+
+    Returns:
+        Transports with expected reuse indices, exact row order, and identity counts.
+    """
+    expected = tests.formal.helpers.oracle.evaluate_batches(
+        [browser_commands(steps) for steps in cases],
+        executable="oraclePresentationFlow",
     )
+    return list(map(browser_transport, cases, expected, strict=True))
+
+
+def browser_case(steps: tuple[Step, ...]) -> list[dict[str, object]]:
+    """Retain the same checked transport for scenarios with one browser document.
+
+    Args:
+        steps: Consecutive full snapshots and control states to replay in one document.
+
+    Returns:
+        Transport with expected reuse indices, exact row order, and identity counts.
+    """
+    return browser_cases((steps,))[0]
+
+
+def browser_transport(
+    steps: tuple[Step, ...],
+    expected: list[tuple[int, ...]],
+) -> list[dict[str, object]]:
+    """Attach actual compiled decisions to the full unmodified browser input records.
+
+    Args:
+        steps: The document's consecutive snapshots and control states.
+        expected: Complete ordered reuse and grouping answers for those states.
+
+    Returns:
+        One browser replay state for each checked input step.
+    """
+    answers = iter(expected)
     result: list[dict[str, object]] = []
     for step in steps:
         reuse = next(answers)
@@ -382,11 +421,13 @@ def ownership_cases() -> list[list[dict[str, object]]]:
         ],
         executable="oracleIdentityTransfer",
     )
-    return [
-        browser_case(projection_steps(identities, owners, expected))
-        for identities in layouts
-        for owners, expected in zip(assignments, projected, strict=True)
-    ]
+    return browser_cases(
+        tuple(
+            projection_steps(identities, owners, expected)
+            for identities in layouts
+            for owners, expected in zip(assignments, projected, strict=True)
+        ),
+    )
 
 
 def run_browser(cases: list[list[dict[str, object]]]) -> int:

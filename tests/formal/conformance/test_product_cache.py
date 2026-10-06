@@ -3,12 +3,16 @@ import pathlib
 import structlog.testing
 
 import spatial_data.product_cache
+import tests.formal.helpers.corpus
 import tests.formal.helpers.product_cache
-import tests.formal.helpers.tlc
 
 
 def test_read_matches_all_checked_cache_selections(tmp_path: pathlib.Path) -> None:
-    states = tests.formal.helpers.tlc.states("CacheRead", "CacheRead", tmp_path / "tlc")
+    states = tests.formal.helpers.corpus.states(
+        "CacheRead",
+        "CacheRead",
+        tmp_path / "tlc",
+    )
     assert len(states) == tests.formal.helpers.product_cache.READ_CASE_COUNT
     path = tmp_path / "products.sqlite"
     with (
@@ -28,7 +32,7 @@ def test_read_matches_all_checked_cache_selections(tmp_path: pathlib.Path) -> No
 
 
 def test_scope_matches_every_checked_transaction_prefix(tmp_path: pathlib.Path) -> None:
-    states = tests.formal.helpers.tlc.states(
+    states = tests.formal.helpers.corpus.states(
         "ProductCache",
         "ProductCache",
         tmp_path / "tlc",

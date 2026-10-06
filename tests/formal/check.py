@@ -11,7 +11,9 @@ import shutil
 import tempfile
 import tomllib
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.process
+import tests.formal.helpers.session
 
 
 DIRECTORY = pathlib.Path(__file__).resolve().parent / "tla"
@@ -26,6 +28,7 @@ class Model:
     module: str
     config: str
     expected_invariant: str | None = None
+    conformance: bool = False
 
 
 def models() -> tuple[Model, ...]:
@@ -58,43 +61,65 @@ def models() -> tuple[Model, ...]:
     return registered
 
 
-async def run_model(model: Model, java: str, jar: pathlib.Path) -> bool:
+async def run_model(
+    model: Model,
+    java: str,
+    jar: pathlib.Path,
+    corpus_directory: pathlib.Path | None = None,
+) -> bool:
     """Preserve counterexample diagnostics while rejecting unrelated tool failures.
 
     Args:
         model: The finite model and its expected verification outcome.
         java: The executable installed by mise.
         jar: The pinned TLA+ tools archive installed by mise.
+        corpus_directory: Optional storage shared with later conformance checks.
 
     Returns:
         Whether TLC produced the exact registered outcome.
     """
-    with tempfile.TemporaryDirectory(prefix="peri-scribe-tlc-") as directory:
-        java_directory = pathlib.Path(directory) / "java"
-        java_directory.mkdir()
-        result = await tests.formal.helpers.process.execute(
-            [
-                java,
-                "-XX:+UseParallelGC",
-                "-Xmx1g",
-                f"-Djava.io.tmpdir={java_directory}",
-                "-cp",
-                str(jar),
-                "tlc2.TLC",
-                "-workers",
-                "1",
-                "-seed",
-                "1",
-                "-metadir",
-                directory,
-                "-config",
-                f"{model.config}.cfg",
-                f"{model.module}.tla",
-            ],
-            standard_input="",
-            cwd=DIRECTORY,
-            maximum_seconds=180,
+    if corpus_directory is not None and model.conformance:
+        try:
+            checked = await tests.formal.helpers.corpus.checked_graph(
+                model.module,
+                model.config,
+                corpus_directory,
+            )
+        except AssertionError as error:
+            print(f"FAILED: {model.name}: {error}", flush=True)
+            return False
+        result = tests.formal.helpers.process.Result(
+            returncode=0,
+            stdout=checked.output,
+            stderr="",
         )
+    else:
+        with tempfile.TemporaryDirectory(prefix="peri-scribe-tlc-") as directory:
+            java_directory = pathlib.Path(directory) / "java"
+            java_directory.mkdir()
+            result = await tests.formal.helpers.process.execute(
+                [
+                    java,
+                    "-XX:+UseParallelGC",
+                    "-Xmx1g",
+                    f"-Djava.io.tmpdir={java_directory}",
+                    "-cp",
+                    str(jar),
+                    "tlc2.TLC",
+                    "-workers",
+                    "1",
+                    "-seed",
+                    "1",
+                    "-metadir",
+                    directory,
+                    "-config",
+                    f"{model.config}.cfg",
+                    f"{model.module}.tla",
+                ],
+                standard_input="",
+                cwd=DIRECTORY,
+                maximum_seconds=180,
+            )
     output = result.stdout + result.stderr
     if model.expected_invariant is not None:
         expected = f"Invariant {model.expected_invariant} is violated."
@@ -121,6 +146,7 @@ async def run_limited_model(
     java: str,
     jar: pathlib.Path,
     semaphore: asyncio.Semaphore,
+    corpus_directory: pathlib.Path | None = None,
 ) -> bool:
     """Apply the process limit without letting a failed model skip later checks.
 
@@ -128,6 +154,7 @@ async def run_limited_model(
         model: One selected configuration and its exact expected outcome.
         java: The executable installed by mise.
         jar: The pinned TLA+ tools archive installed by mise.
+        corpus_directory: Optional storage shared with later conformance checks.
         semaphore: Shared admission limit for active TLC processes.
 
     Returns:
@@ -135,7 +162,7 @@ async def run_limited_model(
     """
     async with semaphore:
         try:
-            return await run_model(model, java, jar)
+            return await run_model(model, java, jar, corpus_directory)
         except TimeoutError:
             print(f"FAILED: {model.name} exceeded 180 seconds", flush=True)
         except OSError as error:
@@ -149,6 +176,7 @@ async def run_models(
     jar: pathlib.Path,
     *,
     parallelism: int,
+    corpus_directory: pathlib.Path | None = None,
 ) -> bool:
     """Keep every outcome and cancel active processes if the runner is interrupted.
 
@@ -156,6 +184,7 @@ async def run_models(
         selected: Every configuration that must complete for this suite.
         java: The executable installed by mise.
         jar: The pinned TLA+ tools archive installed by mise.
+        corpus_directory: Optional storage shared with later conformance checks.
         parallelism: Positive maximum number of simultaneous TLC processes.
 
     Returns:
@@ -164,14 +193,19 @@ async def run_models(
     semaphore = asyncio.Semaphore(parallelism)
     async with asyncio.TaskGroup() as group:
         tasks = [
-            group.create_task(run_limited_model(model, java, jar, semaphore))
+            group.create_task(
+                run_limited_model(model, java, jar, semaphore, corpus_directory),
+            )
             for model in selected
         ]
     return all(task.result() for task in tasks)
 
 
-def main() -> int:
+def main(arguments: list[str] | None = None) -> int:
     """Keep proof checks and documented failures separately runnable.
+
+    Args:
+        arguments: Explicit phase arguments, or the command line for standalone runs.
 
     Returns:
         A nonzero status if any selected model or tool fails.
@@ -187,8 +221,8 @@ def main() -> int:
         default=os.environ.get("PERI_SCRIBE_TLC_JOBS", "4"),
         help="maximum simultaneous TLC processes (default: %(default)s)",
     )
-    arguments = parser.parse_args()
-    if arguments.jobs < 1:
+    options = parser.parse_args(arguments)
+    if options.jobs < 1:
         parser.error("--jobs must be at least 1")
     java = shutil.which("java")
     jar = pathlib.Path(os.environ.get("PERI_SCRIBE_TLA_JAR", ""))
@@ -199,12 +233,18 @@ def main() -> int:
         model
         for model in models()
         if (model.expected_invariant is not None)
-        == (arguments.suite == "counterexamples")
+        == (options.suite == "counterexamples")
     )
     if not selected:
         parser.error("The requested suite contains no registered models")
     passed = asyncio.run(
-        run_models(selected, java, jar, parallelism=arguments.jobs),
+        run_models(
+            selected,
+            java,
+            jar,
+            parallelism=options.jobs,
+            corpus_directory=tests.formal.helpers.session.directory(),
+        ),
     )
     return 0 if passed else 1
 

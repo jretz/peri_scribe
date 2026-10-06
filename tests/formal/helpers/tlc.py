@@ -1,5 +1,6 @@
 """Export checked TLC states so conformance exercises the actual specifications."""
 
+import asyncio
 import dataclasses
 import json
 import os
@@ -30,7 +31,15 @@ class Graph:
     outgoing: dict[int, tuple[Edge, ...]]
 
 
-def explore(
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class CheckedGraph:
+    """Retain successful checker diagnostics with the complete exported graph."""
+
+    graph: Graph
+    output: str
+
+
+async def explore_async(
     module: str,
     config: str,
     directory: pathlib.Path,
@@ -50,13 +59,13 @@ def explore(
     """
     java = shutil.which("java")
     assert java is not None, "Run mise formal-conformance to provide Java"
-    directory.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(directory.mkdir, parents=True, exist_ok=True)
     dump = directory / ("graph.dot" if graph else "states.dump")
     with tempfile.TemporaryDirectory(
         prefix="java-",
-        dir=directory.resolve(),
+        dir=await asyncio.to_thread(directory.resolve),
     ) as java_directory:
-        result = tests.formal.helpers.process.run(
+        result = await tests.formal.helpers.process.execute(
             [
                 java,
                 "-XX:+UseParallelGC",
@@ -78,12 +87,34 @@ def explore(
                 f"{config}.cfg",
                 f"{module}.tla",
             ],
+            standard_input="",
             cwd=tests.formal.helpers.oracle.DIRECTORY / "tla",
-            timeout=180,
+            maximum_seconds=180,
         )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Model checking completed. No error has been found." in result.stdout
     return dump.read_text(), result.stdout
+
+
+def explore(
+    module: str,
+    config: str,
+    directory: pathlib.Path,
+    *,
+    graph: bool = False,
+) -> tuple[str, str]:
+    """Keep synchronous consumers subject to the cancellable checker adapter.
+
+    Args:
+        module: The model's module name.
+        config: The registered finite configuration.
+        directory: Private checker storage.
+        graph: Whether actual edges and initial marks are required.
+
+    Returns:
+        The complete dump and successful checker diagnostics.
+    """
+    return asyncio.run(explore_async(module, config, directory, graph=graph))
 
 
 def fields(block: str) -> dict[str, str]:
@@ -128,6 +159,19 @@ def graph(module: str, config: str, directory: pathlib.Path) -> Graph:
         The complete transition graph; no successors are inferred from projections.
     """
     dump, output = explore(module, config, directory, graph=True)
+    return decode_graph(dump, output)
+
+
+def decode_graph(dump: str, output: str) -> Graph:
+    """Reject missing states or edges before a graph becomes reusable evidence.
+
+    Args:
+        dump: Complete TLC graph export.
+        output: Diagnostics confirming the successful exploration and state counts.
+
+    Returns:
+        Every initial state, raw field, and actual successor edge.
+    """
     quoted = r'"(?:\\.|[^"\\])*"'
     nodes: dict[int, dict[str, str]] = {}
     initial: set[int] = set()
@@ -182,6 +226,39 @@ def graph(module: str, config: str, directory: pathlib.Path) -> Graph:
         initial=frozenset(initial),
         outgoing={key: tuple(value) for key, value in outgoing.items()},
     )
+
+
+async def checked_graph_async(
+    module: str,
+    config: str,
+    directory: pathlib.Path,
+) -> CheckedGraph:
+    """The model runner and conformance consumers use the same checked evidence.
+
+    Args:
+        module: The TLA+ module name.
+        config: The exact finite configuration.
+        directory: Private checker storage.
+
+    Returns:
+        The complete graph and the successful exploration diagnostics.
+    """
+    dump, output = await explore_async(module, config, directory, graph=True)
+    return CheckedGraph(graph=decode_graph(dump, output), output=output)
+
+
+def checked_graph(module: str, config: str, directory: pathlib.Path) -> CheckedGraph:
+    """Synchronous fixtures publish the same artifact as the asynchronous runner.
+
+    Args:
+        module: The TLA+ module name.
+        config: The exact finite configuration.
+        directory: Private checker storage.
+
+    Returns:
+        The complete graph and the successful exploration diagnostics.
+    """
+    return asyncio.run(checked_graph_async(module, config, directory))
 
 
 def states(

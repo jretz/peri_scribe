@@ -2,14 +2,14 @@
 
 import pathlib
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.document_publication
-import tests.formal.helpers.tlc
 
 
 def test_document_writers_match_checked_publication_boundaries(
     tmp_path: pathlib.Path,
 ) -> None:
-    states = tests.formal.helpers.tlc.states(
+    states = tests.formal.helpers.corpus.states(
         "DocumentPublication",
         "DocumentPublication",
         tmp_path / "model",

@@ -2,14 +2,14 @@
 
 import pathlib
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.feed_coordinator
-import tests.formal.helpers.tlc
 
 
 def test_run_fetch_stage_matches_checked_collection_outcomes(
     tmp_path: pathlib.Path,
 ) -> None:
-    states = tests.formal.helpers.tlc.states(
+    states = tests.formal.helpers.corpus.states(
         "FeedCoordinator",
         "FeedCoordinator",
         tmp_path / "model",

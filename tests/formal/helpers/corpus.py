@@ -1,5 +1,6 @@
-"""Share only complete checked model data within one isolated pytest run."""
+"""Share only complete checked model data within one formal invocation."""
 
+import asyncio
 import collections.abc
 import fcntl
 import functools
@@ -8,6 +9,7 @@ import tempfile
 
 import pydantic
 
+import tests.formal.helpers.session
 import tests.formal.helpers.tlc
 
 
@@ -60,11 +62,11 @@ def graph(
         Every checked state, initial mark, and actual successor edge.
     """
     return load(
-        directory,
+        tests.formal.helpers.session.directory() or directory,
         f"graph-{module}-{config}",
-        pydantic.TypeAdapter(tests.formal.helpers.tlc.Graph),
-        functools.partial(tests.formal.helpers.tlc.graph, module, config),
-    )
+        pydantic.TypeAdapter(tests.formal.helpers.tlc.CheckedGraph),
+        functools.partial(tests.formal.helpers.tlc.checked_graph, module, config),
+    ).graph
 
 
 def states(module: str, config: str, directory: pathlib.Path) -> list[dict[str, str]]:
@@ -78,9 +80,45 @@ def states(module: str, config: str, directory: pathlib.Path) -> list[dict[str, 
     Returns:
         Every checked state with its raw TLC field values.
     """
-    return load(
-        directory,
-        f"states-{module}-{config}",
-        pydantic.TypeAdapter(list[dict[str, str]]),
-        functools.partial(tests.formal.helpers.tlc.states, module, config),
-    )
+    return list(graph(module, config, directory).states.values())
+
+
+async def checked_graph(
+    module: str,
+    config: str,
+    directory: pathlib.Path,
+) -> tests.formal.helpers.tlc.CheckedGraph:
+    """Waiting for another producer must remain cancellable.
+
+    Args:
+        module: The TLA+ module name.
+        config: The exact finite configuration.
+        directory: The outer formal invocation's temporary storage.
+
+    Returns:
+        The full checked graph and its original checker diagnostics.
+    """
+    await asyncio.to_thread(directory.mkdir, parents=True, exist_ok=True)
+    name = f"graph-{module}-{config}"
+    adapter = pydantic.TypeAdapter(tests.formal.helpers.tlc.CheckedGraph)
+    destination = directory / f"{name}.json"
+    with (directory / f"{name}.lock").open("a+b") as lock:
+        while True:
+            try:
+                fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                await asyncio.sleep(0.02)
+        if destination.exists():
+            return adapter.validate_json(destination.read_bytes())
+        with tempfile.TemporaryDirectory(dir=directory) as temporary:
+            staging = pathlib.Path(temporary)
+            value = await tests.formal.helpers.tlc.checked_graph_async(
+                module,
+                config,
+                staging,
+            )
+            published = staging / "complete.json"
+            published.write_bytes(adapter.dump_json(value))
+            published.replace(destination)
+            return value

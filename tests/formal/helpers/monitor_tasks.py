@@ -10,8 +10,8 @@ import typing
 import unittest.mock
 
 import peri_scribe.monitor.app
+import tests.formal.helpers.corpus
 import tests.formal.helpers.paths
-import tests.formal.helpers.tlc
 import tests.helpers.doubles.peri_scribe.monitor.tasks
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.textual
@@ -34,7 +34,7 @@ def contract(
     Returns:
         The directed-path oracle projected onto concrete observable effects.
     """
-    graph = tests.formal.helpers.tlc.graph("MonitorTasks", "MonitorTasks", directory)
+    graph = tests.formal.helpers.corpus.graph("MonitorTasks", "MonitorTasks", directory)
     actions = {edge: edge.action for edges in graph.outgoing.values() for edge in edges}
     return tests.formal.helpers.paths.Contract(
         graph=graph,

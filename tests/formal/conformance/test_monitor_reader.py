@@ -3,12 +3,16 @@
 import pathlib
 import tempfile
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.observers
-import tests.formal.helpers.tlc
 
 
 def test_follower_poll_refines_tlc_cursor_traces(tmp_path: pathlib.Path) -> None:
-    states = tests.formal.helpers.tlc.states("MonitorReader", "MonitorReader", tmp_path)
+    states = tests.formal.helpers.corpus.states(
+        "MonitorReader",
+        "MonitorReader",
+        tmp_path,
+    )
     assert len(states) == tests.formal.helpers.observers.CURSOR_STATE_COUNT
     traces = {
         tuple(tests.formal.helpers.observers.sequence(state["trace"]))

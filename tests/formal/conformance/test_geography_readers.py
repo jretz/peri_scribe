@@ -2,14 +2,14 @@
 
 import pathlib
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.geography_readers
-import tests.formal.helpers.tlc
 
 
 def test_read_derived_layers_matches_checked_generation_decisions(
     tmp_path: pathlib.Path,
 ) -> None:
-    graph = tests.formal.helpers.tlc.graph(
+    graph = tests.formal.helpers.corpus.graph(
         "GeographyReaders",
         "GeographyReaders",
         tmp_path / "model",

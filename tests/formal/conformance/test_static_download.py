@@ -2,14 +2,14 @@
 
 import pathlib
 
+import tests.formal.helpers.corpus
 import tests.formal.helpers.static_download
-import tests.formal.helpers.tlc
 
 
 def test_completed_download_matches_checked_visibility_and_retry(
     tmp_path: pathlib.Path,
 ) -> None:
-    states = tests.formal.helpers.tlc.states(
+    states = tests.formal.helpers.corpus.states(
         "StaticDownload",
         "StaticDownload",
         tmp_path / "model",
