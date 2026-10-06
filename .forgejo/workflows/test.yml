@@ -8,6 +8,8 @@ jobs:
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ forgejo.workspace }}
       PERI_SCRIBE_UV_CACHE_ROOT: /tool-cache/uv/peri-scribe
+      PERI_SCRIBE_PLAYWRIGHT_CACHE_ROOT: /tool-cache/playwright/peri-scribe
+      npm_config_cache: /tool-cache/npm/peri-scribe
     steps:
       - uses: https://data.forgejo.org/actions/checkout@v6
       - name: Run all tests

@@ -2,25 +2,28 @@
 
 ## System Requirements
 
-The only tool required on a development system is a recent version of
-[`mise-en-place`](https://mise.jdx.dev/installing-mise.html). `mise` is used to manage
-isolated, project specific versions of all other tools used for development and testing.
+Install a recent version of
+[`mise-en-place`](https://mise.jdx.dev/installing-mise.html). `mise` manages isolated,
+project specific versions of the development tools. On Linux, real-browser tests also
+require Chromium
+[system dependencies](https://playwright.dev/docs/browsers#install-system-dependencies).
+Provision those libraries when preparing the development machine or runner image.
 
 ## Python
 
 The project uses Python as provided by [`uv`](https://docs.astral.sh/uv/). `uv` also
 manages the virtual environment for the project. `uv` itself is made available by
-`mise`. Nothing beyond `mise` needs to be installed on the development system to run
-tests, lint, typecheck, create builds, or do deployments. All tools for development and
-deployment activities are managed by `mise` and tools it makes available.
+`mise`. Python development and deployment tools are provided through this environment.
+Resolved Python dependencies are recorded in `uv.lock`.
 
 ## Forgejo CI
 
 The workflow in `.forgejo/workflows/test.yml` runs on pushes and pull requests using
 the `ci-base` runner label. It runs `mise test-all`, which runs the standard Python and
 viewer tests, coverage checks, linting, type checking, formatting checks, and the formal
-suite. The existing setup dependencies install tools with `mise install`, prepare
-GEOS, and sync Python dependencies with `uv sync --locked`. Mise uses recorded tool
+suite. Setup dependencies install tools with `mise install`, prepare GEOS, sync Python
+dependencies with `uv sync --locked`, install JavaScript dependencies with `npm ci`, and
+install the Chromium revision required by Playwright. Mise uses recorded tool
 versions from `.mise/mise.lock`; [strict installation][mise-lock] with
 `mise install --locked` additionally rejects missing lock entries and is used when
 smoke-testing the runner image.
@@ -53,6 +56,42 @@ uv can reuse a cached source build even with `--reinstall-package shapely`; rein
 does not guarantee a rebuild. The path-specific cache ensures Shapely is built against
 the current checkout's GEOS library. See [uv's cache
 documentation](https://docs.astral.sh/uv/concepts/cache/).
+
+The runner's existing bind mount is
+`--volume /home/jimmy/forgejo/ci-tool-cache:/tool-cache`. JavaScript setup uses
+`npm_config_cache=/tool-cache/npm/peri-scribe` for package downloads and
+`PERI_SCRIBE_PLAYWRIGHT_CACHE_ROOT=/tool-cache/playwright/peri-scribe` for browser
+binaries. Browser directories include the platform, architecture, and resolved
+Playwright version. These are subdirectories of the existing mount; no additional
+mounts are required. Browser profiles and test artifacts are private to each test run.
+
+The browser cache stores executable files, not cookies, local storage, or application
+responses. It therefore saves repeated downloads without reusing browser session state.
+Automatic browser garbage collection is disabled so one job cannot remove another
+job's browser revision. Keep manual cache cleanup outside active jobs. Playwright's
+usual warning about the cost of [restoring a browser cache][playwright-cache] concerns
+copied cache archives; this runner reuses an already-mounted directory.
+
+### Preparing ci-base for browser tests
+
+The runner image is administered separately from this repository. On a Linux release
+supported by Playwright, install Chromium's system libraries and fonts while building
+`ci-base`. After installing this project's locked JavaScript dependencies, use its
+Playwright executable so the dependency list matches the version being tested:
+
+```sh
+mise node-dependencies
+mise exec -- ./node_modules/.bin/playwright install-deps chromium
+```
+
+The second command needs permission to install operating-system packages. Recheck those
+requirements when upgrading Playwright. No test task installs system packages.
+Headless Chromium needs neither a desktop session nor Xvfb. Keep `/tool-cache` writable
+by the runner account, and smoke-test `mise browser-install` followed by `mise
+test-browser` from a checkout inside the prepared image. Browser binaries themselves
+are supplied through the persistent cache rather than baked into the image.
+
+[playwright-cache]: https://playwright.dev/docs/ci#caching-browsers
 
 These changes configure existing tool, notification, and Git adapters. The tag update
 uses Forgejo's success and event conditions and Git's atomic reference update; there is
@@ -140,9 +179,23 @@ while preserving the filter, sorting choices, and collapsed groups. ETags are se
 unchanged and do not expire locally. Without an ETag, every poll downloads the JSON. Its
 age labels, groups, and highlights also update locally while open.
 
-Run `mise test-viewer` to test the viewer without a browser or network access. The task
-requires 100% JavaScript line, branch, and function coverage and runs as part of `mise
-run test`. Coverage reports refer to the inline script's lines in `updates.html`.
+Viewer tests use mise-managed Node and project-local JavaScript packages. Keep package
+versions in `package-lock.json` and reproduce them with `mise node-dependencies`, which
+runs `npm ci`. Run `mise browser-install` to install the matching Chromium build. The
+local browser cache root is `.cache/playwright`; set
+`PERI_SCRIBE_PLAYWRIGHT_CACHE_ROOT` to relocate it. Installation and execution resolve
+the same platform, architecture, and Playwright-version directory. Repeated test runs
+reuse the installed browser files. `mise upgrade-dependencies` refreshes npm packages
+alongside mise tools and Python dependencies, installs the matching browser, and runs
+the regular tests. Review the resulting lockfile changes.
+
+Run `mise test-viewer` for simulated tests and `mise test-browser` for real headless
+Chromium tests. Both collect JavaScript coverage without enforcing an individual suite's
+percentage. `mise test` includes both suites and finishes with `mise coverage-report`,
+which requires 100% combined JavaScript line, branch, and function coverage, alongside
+the separate Python coverage requirement. Reports map the script to `updates.html`.
+See [Testing](testing.md#browser-viewer-tests) for test ownership, isolated runs, and
+browser debugging.
 
 ## Backfill fire update history
 

@@ -1,7 +1,7 @@
 [coverage-report]
-description = "Generate a coverage report from previously collected data"
-depends = ["venv"]
-run = "uv run coverage json --quiet --fail-under=100 -o .coverage/coverage.json"
+description = "Report and gate Python and combined JavaScript coverage"
+depends = ["venv", "node-dependencies"]
+run = "node tests/helpers/report_coverage.mjs"
 
 [format]
 description = "Format with ruff"
@@ -27,24 +27,38 @@ depends = ["venv"]
 run = "uv run ty check"
 
 [pytest]
-description = "Run tests, then lint and typecheck"
+description = "Run Python tests and collect coverage"
 depends = ["venv"]
 env = { TEXTUAL_ANIMATIONS = "none" }
 run = "uv run --locked --module pytest"
 
 [test-viewer]
-description = "Test the viewer with 100% line, branch, and function coverage"
+description = "Run simulated viewer tests and collect JavaScript coverage"
+depends = ["node-dependencies"]
 run = "node tests/helpers/run_viewer_tests.mjs"
 
+[test-browser]
+description = "Run offline Chromium tests and collect JavaScript coverage"
+depends = ["browser-install"]
+run = "node tests/helpers/run_browser_tests.mjs"
+
 [test]
-description = "Run tests, then lint and typecheck"
+description = "Run regular checks in a fresh coverage session"
+depends = ["node-dependencies"]
+run = "node tests/helpers/run_test_suite.mjs"
+
+[test-checks]
+description = "Ordered checks within the coverage session created by test"
+hide = true
 run = [
+    "node tests/helpers/check_coverage_session.mjs",
     { task = "pytest" },
     { task = "test-viewer" },
-    { task = "coverage-report" },
     { task = "lint" },
     { task = "typecheck" },
     { task = "format-check" },
+    { task = "test-browser" },
+    { task = "coverage-report" },
 ]
 
 [test-all]

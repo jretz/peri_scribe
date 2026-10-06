@@ -55,20 +55,84 @@ discovered implementation bugs remain in the standard test tree.
 
 ## Browser Viewer Tests
 
-Run `mise test-viewer` for the fire update viewer's JavaScript refresh and rendering
-tests, also included in `mise test`. They use Node's built-in test runner and execute
-the shipped page script with a fake clock, HTTP responses, and browser elements.
-Rendering tests cover collapsed groups and the animation paths between them. The task
-enforces 100% line, branch, and function coverage of the complete inline viewer script.
-It extracts that script to a temporary file for Node's coverage engine, rejects missing
-or empty coverage, and reports uncovered lines at their locations in `updates.html`.
-Passing runs show one green summary line with the test count, duration, and pass/fail
-counts. Failed counts are red; nonzero cancelled, skipped, and todo counts appear in
-yellow at the end. Failed tests retain their diagnostics, and the coverage table appears
-only when line, branch, or function coverage is below 100%. Test helpers and HTML/CSS
-are outside the JavaScript coverage scope. No browser, network access, or npm packages
-are required. Node is managed by `mise` and is only a development tool. Python and
-JavaScript coverage are enforced separately.
+The fire update viewer has two complementary JavaScript suites:
+
+- `mise test-viewer` uses Node's built-in test runner with simulated clocks, HTTP
+  responses, and browser elements. Keep pure logic, validation, error combinations, and
+  precise timing boundaries here when a browser adds no useful fidelity.
+- `mise test-browser` uses Playwright Test with actual headless Chromium. Keep checks of
+  DOM behavior, text fitting, CSS layout, font loading, resizing, keyboard interaction,
+  focus, collapsed groups, and animations here. Tests exercise the shipped HTML and
+  inline JavaScript together.
+
+Both tasks are part of `mise test` and can also run independently. Browser tests use one
+worker and reuse its browser process, with a fresh isolated browser context for every
+test. Test requests are fulfilled from fixtures through interception, including the
+page itself; unexpected requests fail the test. No server or external network access
+is needed. Use controlled clocks for polling and elapsed-time behavior instead of real
+waits. Application state remains private to each test.
+
+Install the locked JavaScript dependencies with `mise node-dependencies`, then install
+the matching Chromium build with `mise browser-install`. These setup steps may download
+packages or browsers; executing tests is offline. The browser cache contains binaries
+only. Do not store test profiles, application data, or reports there. Linux hosts also
+need browser system libraries; see [Development Tools](development_tools.md).
+
+### Combined coverage
+
+The test tasks collect native V8 coverage without requiring each suite to cover the
+entire script. The final `mise coverage-report` task merges both JavaScript suites and
+requires 100% line, branch, and function coverage. Python retains its separate 100%
+coverage requirement. `mise test` runs Python tests, simulated viewer tests, linting,
+type checking, formatting checks, browser tests, and finally the coverage report.
+`mise test-all` runs this sequence and then the formal suite.
+
+Coverage identifies the same production script in Node and Chromium, verifies its
+source text, and maps reported gaps to the inline script's lines in `updates.html`.
+The complete script is in scope, including code that neither suite executes. Test
+helpers and HTML/CSS are outside the JavaScript coverage denominator. Browser layout
+and interaction assertions provide assurance that a percentage cannot express.
+
+Each complete test invocation owns fresh coverage output. The combined gate requires
+successful contributions from both suites in that invocation and rejects missing,
+empty, stale, or source-mismatched results. Standalone test runs collect their own
+results and do not satisfy a different run's coverage requirements. This lets focused
+browser work proceed without unrelated tests or an incomplete-coverage failure.
+
+Full runs store results in a new `.coverage/javascript/run-<identifier>` directory;
+`.coverage/latest-run.json` identifies the latest full run for `mise coverage-report`.
+That command reports an existing run; it does not collect missing contributions.
+JavaScript reports live under the session's `report/` directory, with HTML, JSON, and
+LCOV formats. Python stores `python-data` and `python-coverage.json` in the same session.
+Preserve the session directory when investigating a failure. These generated files are
+ignored by Git.
+
+### Focused browser work and debugging
+
+Playwright arguments can be passed through the browser task:
+
+```sh
+mise test-browser -- --grep 'heading'
+mise test-browser -- --headed
+mise test-browser -- --trace on
+```
+
+Headed mode needs a graphical desktop, or Xvfb on Linux; regular headless runs do not.
+Set `DEBUG=pw:browser` when investigating browser launch failures. Screenshots for
+failed tests and requested traces are written under the invocation's `browser-results/`
+directory. Inspect a trace with the project-local tool:
+
+```sh
+mise exec -- ./node_modules/.bin/playwright show-trace /path/to/trace.zip
+```
+
+Standalone browser runs use their own session directory and do not replace the latest
+full-run pointer. Use `mise test` for the complete combined gate after focused work.
+
+The existing formal viewer checks remain separate and retain the helpers they need.
+Adding a browser runner and coverage adapters does not change application policies or
+modeled refresh behavior. Run `mise formal` when changing shared helpers to verify the
+existing implementation connections.
 
 ## What to Test For
 
@@ -116,25 +180,30 @@ and relationships between inputs.
 
 Organize tests and their supporting code as follows:
 
-    tests/
-      __init__.py
-      conftest.py
-      helpers/
-        fixtures/
-        factories/
-        strategies/
-        doubles/
-        assertions/
-        reference/
-      tests/
-        code_analysis/
-        standard/
-          peri_scribe/
-        property_based/
-          peri_scribe/
+```text
+tests/
+  __init__.py
+  conftest.py
+  helpers/
+    fixtures/
+    factories/
+    strategies/
+    doubles/
+    assertions/
+    reference/
+  tests/
+    code_analysis/
+    standard/
+      peri_scribe/
+    property_based/
+      peri_scribe/
+    browser/
+      peri_scribe/
+```
 
-Keep directories importable with `__init__.py` files. Create directories only when
-needed.
+Keep Python directories importable with `__init__.py` files. Create directories only
+when needed. JavaScript browser tests live in `tests/tests/browser/` with reusable
+Playwright fixtures under `tests/helpers/browser/`.
 
 ### Test Placement
 
@@ -143,13 +212,14 @@ needed.
 - `standard/` contains tests using explicit examples, including parametrized tests and
   regression cases originally discovered by Hypothesis.
 - `property_based/` contains tests that use Hypothesis to generate examples.
+- `browser/` contains Playwright tests against the shipped viewer in Chromium.
 
 Within `standard/` and `property_based/`, mirror the package directories under `src/`,
 including `peri_scribe/`. Split modules containing both standard and property-based tests
 between these trees. Supporting code shared by either tree belongs in `helpers/`.
 
-Files named `test_*.py` contain actual tests. Place fixtures, helper functions, supporting
-classes, and shared test data in `helpers/`.
+Files named `test_*.py` or `test_*.mjs` contain actual tests. Place fixtures, helper
+functions, supporting classes, and shared test data in `helpers/`.
 
 ### Helper Categories
 
