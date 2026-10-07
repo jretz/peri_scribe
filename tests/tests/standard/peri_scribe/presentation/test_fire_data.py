@@ -5,17 +5,126 @@ from __future__ import annotations
 import datetime
 import pathlib
 
+import pytest
 import shapely
 import shapely.geometry
 
+import peri_scribe.areas
 import peri_scribe.execution
 import peri_scribe.models
 import peri_scribe.presentation.fire_data
+import peri_scribe.presentation.selection
 import spatial_data.measurements
+import tests.helpers.doubles.peri_scribe.presentation.fire_data
 import tests.helpers.factories.geometry
 import tests.helpers.factories.peri_scribe.component_identity
 import tests.helpers.factories.peri_scribe.kml.parsing
 import tests.helpers.factories.peri_scribe.presentation.fire_data
+
+
+@pytest.mark.parametrize("cached_count", [None, 0, 1, 2])
+def test_prepare_fires_selects_only_histories_missing_from_prepared_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+    cached_count: int | None,
+) -> None:
+    rows: list[tuple[str | None, str]] = [("id-bug", "Bug"), ("id-oak", "Oak")]
+    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
+        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
+            name,
+            "active",
+            identifier=identifier,
+        )
+        for identifier, name in rows
+    ])
+    points = tests.helpers.factories.peri_scribe.presentation.fire_data.area_frame(
+        "incident_size",
+        rows,
+        [100.0, 200.0],
+    )
+    perimeters = points.iloc[0:0]
+    incidents = points.copy()
+    expected = peri_scribe.presentation.fire_data.prepare_fires(
+        index=index,
+        perimeters=perimeters,
+        points=points,
+        perimeter_by_identifier={},
+        perimeter_by_name={},
+        ring_by_identifier={},
+        ring_by_name={},
+        incident_rows=incidents,
+    )
+    histories = (
+        None
+        if cached_count is None
+        else {
+            peri_scribe.presentation.selection.fire_area_key(
+                fire.entry.identifier,
+                fire.entry.name,
+            ): fire.history
+            for fire in expected[:cached_count]
+            if fire.history is not None
+        }
+    )
+    calls = tests.helpers.doubles.peri_scribe.presentation.fire_data.record_selections(
+        monkeypatch,
+    )
+    actual = peri_scribe.presentation.fire_data.prepare_fires(
+        index=index,
+        perimeters=perimeters,
+        points=points,
+        perimeter_by_identifier={},
+        perimeter_by_name={},
+        ring_by_identifier={},
+        ring_by_name={},
+        incident_rows=incidents,
+        histories=histories,
+    )
+    assert actual == expected
+    assert calls == [
+        selection
+        for position in range(cached_count or 0, len(rows))
+        for selection in (
+            (id(perimeters), ()),
+            (id(points), (position,)),
+            (id(incidents), (position,)),
+        )
+    ]
+
+
+def test_prepare_fires_retains_empty_prepared_history(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
+        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
+            "Bug",
+            "active",
+            identifier="id-bug",
+        ),
+    ])
+    points = tests.helpers.factories.peri_scribe.presentation.fire_data.area_frame(
+        "incident_size",
+        [("id-bug", "Bug")],
+        [100.0],
+    )
+    empty = points.iloc[0:0]
+    history = peri_scribe.areas.prepare_history(empty, empty)
+    calls = tests.helpers.doubles.peri_scribe.presentation.fire_data.record_selections(
+        monkeypatch,
+    )
+    (fire,) = peri_scribe.presentation.fire_data.prepare_fires(
+        index=index,
+        perimeters=empty,
+        points=points,
+        perimeter_by_identifier={},
+        perimeter_by_name={},
+        ring_by_identifier={},
+        ring_by_name={},
+        histories={
+            peri_scribe.presentation.selection.fire_area_key("id-bug", "Bug"): history,
+        },
+    )
+    assert fire.history is history
+    assert not calls
 
 
 def test_prepare_fire_data_shares_equal_index_and_scores_within_one_run() -> None:

@@ -395,11 +395,12 @@ def check_map_output(
         Real map geometry objects; plot-image generation alone is replaced.
     """
     with pytest.MonkeyPatch.context() as monkeypatch:
-        monkeypatch.setattr(
-            peri_scribe.kml.plot_data,
-            "fire_plots",
-            lambda *_args, **_kwargs: (),
-        )
+        for name in ("fire_plots", "fire_plots_from_history"):
+            monkeypatch.setattr(
+                peri_scribe.kml.plot_data,
+                name,
+                lambda *_args, **_kwargs: (),
+            )
         monkeypatch.setattr(
             peri_scribe.kml.plot_rendering,
             "plot_image_bundles",

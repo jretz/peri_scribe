@@ -9,19 +9,77 @@ import typing
 
 import pytest
 
+import peri_scribe.areas
 import peri_scribe.kml.plot_data
 import spatial_data.measurements
 import svg_charts.models
+import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.kml.plot_data
 import tests.helpers.factories.geography
 import tests.helpers.factories.geometry
 import tests.helpers.factories.peri_scribe.kml.plot_histories
+import tests.helpers.factories.peri_scribe.presentation.fire_data
 import tests.helpers.factories.svg_charts.models
 import tests.helpers.peri_scribe.kml.plot_histories
 
 
 if typing.TYPE_CHECKING:
     import shapely
+
+
+def test_fire_plots_from_history_preserves_all_series() -> None:
+    perimeters = (
+        tests.helpers.factories.peri_scribe.presentation.fire_data
+    ).description_perimeter_frame()
+    points = (
+        tests.helpers.factories.peri_scribe.presentation.fire_data
+    ).description_point_frame()
+    history = peri_scribe.areas.prepare_history(perimeters, points)
+    assert peri_scribe.kml.plot_data.fire_plots_from_history(perimeters, history) == (
+        peri_scribe.kml.plot_data.fire_plots(perimeters, points)
+    )
+
+
+def test_fire_plots_from_history_keeps_empty_prepared_evidence() -> None:
+    perimeters = (
+        tests.helpers.factories.peri_scribe.presentation.fire_data
+    ).description_perimeter_frame()
+    empty = perimeters.iloc[0:0]
+    history = peri_scribe.areas.prepare_history(empty, empty)
+    plots = peri_scribe.kml.plot_data.fire_plots_from_history(perimeters, history)
+    assert [
+        series.label for plot in plots for series in plot.series if series.points
+    ] == [
+        peri_scribe.kml.plot_data.EXTERIOR_PERIMETER_SERIES_LABEL,
+    ]
+
+
+def test_fire_plots_reuses_supplied_history_without_reconciliation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    perimeters = (
+        tests.helpers.factories.peri_scribe.presentation.fire_data
+    ).description_perimeter_frame()
+    points = (
+        tests.helpers.factories.peri_scribe.presentation.fire_data
+    ).description_point_frame()
+    history = peri_scribe.areas.prepare_history(perimeters, points)
+    expected = peri_scribe.kml.plot_data.fire_plots_from_history(perimeters, history)
+    monkeypatch.setattr(
+        peri_scribe.areas,
+        "prepare_history",
+        tests.helpers.doubles.errors.raising_stub(
+            AssertionError("Prepared evidence must not be reconciled again"),
+        ),
+    )
+    assert (
+        peri_scribe.kml.plot_data.fire_plots(
+            perimeters,
+            points,
+            history=history,
+        )
+        == expected
+    )
 
 
 def test_scaled_points_preserves_reported_measurement_provenance() -> None:

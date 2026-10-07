@@ -42,12 +42,18 @@ def frame_rows(frame: geopandas.GeoDataFrame) -> FrameRows:
         geometry_name,
         None if geometry_name is None or frame.crs is None else frame.crs.to_wkt(),
     ))
+    # Series iteration preserves scalar types and repeated column labels.
+    rows = (
+        ()
+        if frame.empty
+        else tuple(
+            hashlib.sha256(spatial_data.cache_values.dumps(row)).digest()
+            for row in zip(*(column[1] for column in frame.items()), strict=True)
+        )
+    )
     return FrameRows(
         schema=hashlib.sha256(schema).digest(),
-        rows=tuple(
-            hashlib.sha256(spatial_data.cache_values.dumps(row)).digest()
-            for row in frame.itertuples(index=False, name=None)
-        ),
+        rows=rows,
     )
 
 

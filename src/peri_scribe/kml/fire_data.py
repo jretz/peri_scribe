@@ -288,18 +288,25 @@ def fire_geometries(
             frozenset(used_prefixes),
         )
         used_prefixes.add(prefix)
+        perimeter_rows = peri_scribe.presentation.history_index.select_rows(
+            perimeters,
+            fire.perimeter_positions,
+        )
         bundles.append((
             prefix,
-            peri_scribe.kml.plot_data.fire_plots(
-                peri_scribe.presentation.history_index.select_rows(
-                    perimeters,
-                    fire.perimeter_positions,
-                ),
-                peri_scribe.presentation.history_index.select_rows(
-                    points,
-                    fire.point_positions,
-                ),
-                history=fire.history,
+            (
+                peri_scribe.kml.plot_data.fire_plots(
+                    perimeter_rows,
+                    peri_scribe.presentation.history_index.select_rows(
+                        points,
+                        fire.point_positions,
+                    ),
+                )
+                if fire.history is None
+                else peri_scribe.kml.plot_data.fire_plots_from_history(
+                    perimeter_rows,
+                    fire.history,
+                )
             ),
         ))
     with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.PREPARE_PLOT_IMAGES):

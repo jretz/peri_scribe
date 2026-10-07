@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import functools
 
 import pint
 import pydantic
@@ -30,6 +31,51 @@ HistoryDocument.model_rebuild(_types_namespace={"pint": pint})
 DescriptionDocument.model_rebuild(_types_namespace={"pint": pint})
 
 
+@functools.cache
+def record_field_names(record_type: type) -> tuple[str, ...]:
+    """Keep every declared field, including fields inherited or added by subclasses.
+
+    Args:
+        record_type: A dataclass type used in completed fire evidence.
+
+    Returns:
+        Its fields in declaration order.
+
+    Raises:
+        TypeError: When the type does not declare dataclass fields.
+    """
+    if not dataclasses.is_dataclass(record_type):
+        message = "Completed fire evidence requires dataclass fields"
+        raise TypeError(message)
+    return tuple(field.name for field in dataclasses.fields(record_type))
+
+
+def record_values(value: object) -> object:
+    """Borrow scalar leaves while synchronous encoding reads caller-owned evidence.
+
+    The codec consumes this temporary tree without retaining or mutating its leaves.
+    Callers must keep the completed evidence unchanged until encoding finishes.
+
+    Args:
+        value: A dataclass, supported container, or scalar in completed fire evidence.
+
+    Returns:
+        Ordered dictionaries for records, independent containers, and borrowed scalars.
+    """
+    if dataclasses.is_dataclass(value) and not isinstance(value, type):
+        return {
+            name: record_values(getattr(value, name))
+            for name in record_field_names(type(value))
+        }
+    if isinstance(value, tuple):
+        return tuple(record_values(item) for item in value)
+    if isinstance(value, list):
+        return [record_values(item) for item in value]
+    if isinstance(value, dict):
+        return {record_values(key): record_values(item) for key, item in value.items()}
+    return value
+
+
 def history_bytes(history: peri_scribe.areas.PreparedHistory) -> bytes:
     """Preserve source units, reconciled updates, and exact area-selection times.
 
@@ -39,7 +85,7 @@ def history_bytes(history: peri_scribe.areas.PreparedHistory) -> bytes:
     Returns:
         A typed cache payload.
     """
-    return spatial_data.cache_values.dumps(dataclasses.asdict(history))
+    return spatial_data.cache_values.dumps(record_values(history))
 
 
 def read_history(payload: bytes) -> peri_scribe.areas.PreparedHistory:
@@ -76,7 +122,7 @@ def description_bytes(
     Returns:
         A typed cache payload.
     """
-    return spatial_data.cache_values.dumps(dataclasses.asdict(description))
+    return spatial_data.cache_values.dumps(record_values(description))
 
 
 def read_description(

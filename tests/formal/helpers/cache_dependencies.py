@@ -90,7 +90,15 @@ HISTORY = Contract(
 )
 DESCRIPTION = Contract(
     namespace="fire_descriptions",
-    consumed=("metadata", "perimeter", "point", "history", "geometry"),
+    consumed=(
+        "metadata",
+        "perimeter",
+        "point",
+        "history",
+        "empty_history",
+        "history_units",
+        "geometry",
+    ),
     wrappers=("note",),
 )
 BUFFER = Contract(
@@ -382,6 +390,19 @@ def description(change: str) -> bytes:
                 )
                 for update in prepared.updates
             ),
+        )
+    elif change == "empty_history":
+        prepared = peri_scribe.areas.PreparedHistory(
+            updates=(),
+            estimates=(),
+            latest_area=None,
+            historical_area=None,
+        )
+    elif change == "history_units":
+        assert prepared.latest_area is not None
+        prepared = dataclasses.replace(
+            prepared,
+            latest_area=prepared.latest_area.to("hectares"),
         )
     result = peri_scribe.presentation.text.fire_description(
         entry,

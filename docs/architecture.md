@@ -388,6 +388,14 @@ Deleting the database only loses acceleration. SQLite's page cache is 8 MiB and 
 KML fragment cache retains at most 16 MiB of accounted values; neither bounds total RAM.
 Old runtime contexts remain on disk.
 
+Prepared histories let presentation and chart consumers skip raw row selections whose
+only purpose is reconstructing that history. Fingerprints iterate ordered column values
+while retaining every scalar type, schema field, coordinate reference, and geometry.
+Prepared-fact serialization rebuilds dataclass containers and borrows scalar values for
+synchronous encoding; callers own those inputs and must not mutate them during encoding.
+Canonical decoding, domain validation, and exact reserialization checks remain part of
+every prepared-fact cache read.
+
 Complete source generations hash ordered snapshot paths and bytes plus derivation
 dependencies. Parsed source records in `record_cache.db` also validate snapshot content
 checksums. Each reader authenticates the checksum and reads records and complex

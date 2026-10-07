@@ -36,10 +36,14 @@ outside the owned-input contract.
 | `kml.fire_data.added_areas_for_rings` | Exact ordered ring geometries | Observation time labels do not affect area |
 
 The bridge preserves all serialized history and description fields, exact SVG and KML
-fragment bytes, exact WKB, integer counts, and unrounded area quantities. Dependencies
-may conservatively invalidate even when one particular mutation leaves the rendered
-result unchanged; sound keys need not be minimal keys. A wrapper-only mutation must
-reuse content while producing the current wrapper in the complete result.
+fragment bytes, exact WKB, integer counts, and unrounded area quantities. Cases include
+an explicitly supplied empty prepared history and a change of original area units within
+that history. Both invalidate descriptions while preserving exact fresh results through
+canonical decoding and domain validation. These cases retain the existing dependency
+contract and introduce no new cache protocol or domain policy.
+Dependencies may conservatively invalidate even when one particular mutation leaves the
+rendered result unchanged; sound keys need not be minimal keys. A wrapper-only mutation
+must reuse content while producing the current wrapper in the complete result.
 
 `helpers/cache_chart_bundles.py` checks all six permutations of three fires with zero,
 one, and two distinct charts. It requires persistent hits with stable per-owner keys,

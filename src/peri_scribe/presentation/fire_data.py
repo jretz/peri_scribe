@@ -302,14 +302,6 @@ def prepare_fires(
             entry.name,
             entry.component_id,
         )
-        perimeter_rows = peri_scribe.presentation.history_index.select_rows(
-            perimeters,
-            perimeter_positions,
-        )
-        point_rows = peri_scribe.presentation.history_index.select_rows(
-            points,
-            point_positions,
-        )
         history = (
             None
             if histories is None
@@ -322,6 +314,14 @@ def prepare_fires(
             )
         )
         if history is None:
+            perimeter_rows = peri_scribe.presentation.history_index.select_rows(
+                perimeters,
+                perimeter_positions,
+            )
+            point_rows = peri_scribe.presentation.history_index.select_rows(
+                points,
+                point_positions,
+            )
             history = peri_scribe.areas.prepare_history(
                 perimeter_rows,
                 point_rows,

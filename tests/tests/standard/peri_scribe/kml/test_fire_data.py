@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import datetime
 
 import pytest
@@ -15,11 +16,70 @@ import peri_scribe.presentation.fire_data
 import spatial_data.measurements
 import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.kml.fire_data
+import tests.helpers.doubles.peri_scribe.presentation.fire_data
 import tests.helpers.factories.geography
 import tests.helpers.factories.geometry
 import tests.helpers.factories.peri_scribe.kml.parsing
 import tests.helpers.factories.peri_scribe.presentation.fire_data
 import tests.helpers.factories.time
+
+
+@pytest.mark.parametrize("prepared_history", [False, True])
+def test_fire_geometries_preserves_images_with_optional_prepared_history(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    prepared_history: bool,
+) -> None:
+    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
+        tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
+            "Bug",
+            "active",
+            identifier="id-bug",
+        ),
+    ])
+    perimeters = (
+        tests.helpers.factories.peri_scribe.presentation.fire_data
+    ).description_perimeter_frame()
+    points = (
+        tests.helpers.factories.peri_scribe.presentation.fire_data
+    ).description_point_frame()
+    empty = perimeters.iloc[0:0]
+    expected = peri_scribe.kml.fire_data.fire_geometries(
+        index,
+        perimeters,
+        points,
+        empty,
+    )
+    prepared = peri_scribe.presentation.fire_data.prepare_fire_data(
+        index,
+        perimeters,
+        points,
+        empty,
+    )
+    monkeypatch.setattr(
+        peri_scribe.presentation.fire_data,
+        "prepare_fire_data",
+        tests.helpers.doubles.peri_scribe.kml.fire_data.prepared_fires_stub([
+            dataclasses.replace(
+                fire,
+                history=fire.history if prepared_history else None,
+            )
+            for fire in prepared
+        ]),
+    )
+    calls = tests.helpers.doubles.peri_scribe.presentation.fire_data.record_selections(
+        monkeypatch,
+    )
+    actual = peri_scribe.kml.fire_data.fire_geometries(
+        index,
+        perimeters,
+        points,
+        empty,
+    )
+    assert actual == expected
+    assert any(frame_id == id(points) for frame_id, _positions in calls) == (
+        not prepared_history
+    )
 
 
 def test_fire_geometries_attaches_plot_images() -> None:

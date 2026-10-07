@@ -281,6 +281,25 @@ def fire_plots(
             point_rows,
             incident_rows,
         )
+    return fire_plots_from_history(perimeter_rows, history)
+
+
+def fire_plots_from_history(
+    perimeter_rows: geopandas.GeoDataFrame,
+    history: peri_scribe.areas.PreparedHistory,
+) -> tuple[FirePlot, ...]:
+    """Keep plots consistent with the fire's prepared reporting and area evidence.
+
+    Perimeter rows supply exterior measurements; all other chart evidence comes from
+    the prepared history, including an empty history with no accepted observations.
+
+    Args:
+        perimeter_rows: The fire's selected perimeter history rows.
+        history: The fire's reconciled reporting and area evidence.
+
+    Returns:
+        The fire's plots, in area, perimeter, cost, then personnel order.
+    """
     area_points = tuple(
         svg_charts.models.SeriesPoint(
             observation_time=estimate.time,
@@ -333,8 +352,6 @@ def fire_plots(
                     points=contained_perimeter_points(
                         perimeter_rows,
                         exterior_measurements,
-                        point_rows=point_rows,
-                        incident_rows=incident_rows,
                         updates=updates,
                     ),
                 ),
