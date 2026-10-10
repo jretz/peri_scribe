@@ -187,7 +187,7 @@ local browser cache root is `.cache/playwright`; set
 the same platform, architecture, and Playwright-version directory. Repeated test runs
 reuse the installed browser files. `mise upgrade-dependencies` refreshes npm packages
 alongside mise tools and Python dependencies, installs the matching browser, and runs
-the regular tests. Review the resulting lockfile changes.
+the regular and formal tests. Review the resulting lockfile changes.
 
 Run `mise test-viewer` for simulated tests and `mise test-browser` for real headless
 Chromium tests. Both collect JavaScript coverage without enforcing an individual suite's

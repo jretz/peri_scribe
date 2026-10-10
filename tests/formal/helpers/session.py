@@ -93,7 +93,7 @@ def directory() -> pathlib.Path | None:
 
 
 @contextlib.contextmanager
-def scope(path: pathlib.Path) -> collections.abc.Iterator[pathlib.Path]:
+def scope(path: pathlib.Path) -> collections.abc.Generator[pathlib.Path]:
     """Only a completed run can remove the evidence still needed by its children.
 
     Args:
@@ -119,7 +119,7 @@ def scope(path: pathlib.Path) -> collections.abc.Iterator[pathlib.Path]:
 
 
 @contextlib.contextmanager
-def temporary() -> collections.abc.Iterator[pathlib.Path]:
+def temporary() -> collections.abc.Generator[pathlib.Path]:
     """Every top-level run starts with fresh evidence regardless of inherited settings.
 
     Yields:

@@ -41,6 +41,8 @@ async function* checkedEvents(events) {
 }
 
 /** Retain Node's failure details and summary. */
-const reporter = events => Readable.from(checkedEvents(events)).compose(new spec());
+async function* reporter(events) {
+  yield* Readable.from(checkedEvents(events)).compose(new spec());
+}
 
 export default reporter;

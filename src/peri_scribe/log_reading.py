@@ -129,7 +129,7 @@ def log_paths(
 
 
 @contextlib.contextmanager
-def read_lock(directory: pathlib.Path) -> typing.Iterator[None]:
+def read_lock(directory: pathlib.Path) -> typing.Generator[None]:
     """Share the writer's lock without creating files in a watched directory.
 
     Args:

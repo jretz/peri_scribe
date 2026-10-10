@@ -252,7 +252,7 @@ class Reader:
         )
 
         @contextlib.contextmanager
-        def lock(directory: pathlib.Path) -> collections.abc.Iterator[bool]:
+        def lock(directory: pathlib.Path) -> collections.abc.Generator[bool]:
             """A failed acquisition cannot silently enter the model's reader phase.
 
             Args:

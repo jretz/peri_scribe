@@ -76,7 +76,7 @@ def scope(
     context: str,
     *,
     unconditional: bool = False,
-) -> collections.abc.Iterator[None]:
+) -> collections.abc.Generator[None]:
     """Commit complete preparations together and discard interrupted transactions.
 
     Nested consumers borrow the active store only when all cache semantics agree.

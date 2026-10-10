@@ -89,7 +89,7 @@ def scope(
     year_directory: pathlib.Path,
     *,
     unconditional: bool = False,
-) -> collections.abc.Iterator[None]:
+) -> collections.abc.Generator[None]:
     """Let standalone stages and complete publications use the same validated products.
 
     Args:

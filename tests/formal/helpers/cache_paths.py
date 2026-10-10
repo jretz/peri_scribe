@@ -241,7 +241,7 @@ class Observer:
 
 
 @contextlib.contextmanager
-def connections(observer: Observer) -> collections.abc.Iterator[None]:
+def connections(observer: Observer) -> collections.abc.Generator[None]:
     """Keep production connection setup and cleanup while observing its real SQL.
 
     Args:

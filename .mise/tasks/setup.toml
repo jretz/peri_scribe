@@ -11,7 +11,7 @@ run = [
     'micromamba run --prefix "$GEOS_PREFIX" env CC=cc uv sync --upgrade',
     "npm update --ignore-scripts --no-audit --no-fund",
     { task = "browser-install" },
-    { task = "test" },
+    { task = "test-all" },
 ]
 
 [node-dependencies]

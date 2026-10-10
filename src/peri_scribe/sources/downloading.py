@@ -298,7 +298,7 @@ def download_and_convert(
 
 
 @contextlib.contextmanager
-def completed_download(output: pathlib.Path) -> typing.Iterator[pathlib.Path]:
+def completed_download(output: pathlib.Path) -> typing.Generator[pathlib.Path]:
     """Keep interrupted conversions from becoming reusable source files.
 
     Args:

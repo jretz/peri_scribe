@@ -146,7 +146,7 @@ def write_fire_scores_ccdf(
 
 
 @contextlib.contextmanager
-def publication_path(path: pathlib.Path) -> typing.Iterator[pathlib.Path]:
+def publication_path(path: pathlib.Path) -> typing.Generator[pathlib.Path]:
     """Keep the public name on a complete file throughout serialization.
 
     Staging beside the destination keeps replacement on one filesystem. Readers opening

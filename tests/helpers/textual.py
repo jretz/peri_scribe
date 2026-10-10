@@ -95,7 +95,7 @@ async def scroll_end(widget: textual.widget.Widget) -> None:
 @contextlib.asynccontextmanager
 async def mounted[Application: textual.app.App[None]](
     app: Application,
-) -> typing.AsyncIterator[Session[Application]]:
+) -> typing.AsyncGenerator[Session[Application]]:
     """Give each test fresh widgets and close their tasks before leaving the loop.
 
     Args:

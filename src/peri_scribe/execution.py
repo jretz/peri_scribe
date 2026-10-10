@@ -27,7 +27,7 @@ CURRENT: contextvars.ContextVar[Values | None] = contextvars.ContextVar(
 
 
 @contextlib.contextmanager
-def sharing() -> collections.abc.Iterator[None]:
+def sharing() -> collections.abc.Generator[None]:
     """Keep a failed or partial publication from leaking results into another run.
 
     Yields:
