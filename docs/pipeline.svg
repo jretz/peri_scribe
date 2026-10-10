@@ -59,7 +59,7 @@
   <g id="sources" class="node network" transform="translate(24 24)">
     <rect width="792" height="86"/>
     <text class="heading" x="16" y="32">Sources across the United States</text>
-    <text class="body" x="16" y="62">Fire perimeters and incident reports; evacuations, buildings, cities and state boundaries.</text>
+    <text class="body" x="16" y="62">Fire feeds; evacuations, buildings, Natural Earth places and state boundaries.</text>
   </g>
   <path id="sources-to-fetch" class="edge" d="M 256 110 V 160"/>
   <text class="small" x="24" y="142">Stages · run order</text>
@@ -68,7 +68,7 @@
     <rect width="464" height="110"/>
     <text class="heading" x="16" y="32">1 / Fetch</text>
     <text class="body" x="16" y="62">Collect new and changed fire observations.</text>
-    <text class="body" x="16" y="86">Keep source records and geographic reference data.</text>
+    <text class="body" x="16" y="86">Refresh reference data and preserve source records.</text>
   </g>
   <path id="fetch-to-sources" class="edge" d="M 488 215 H 536"/>
   <g id="source-files" class="node disk" transform="translate(536 160)">

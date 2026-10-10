@@ -100,11 +100,11 @@ def make_city_measurement_recorder(
     return nearest_city
 
 
-def make_city_layer_reader(
+def make_city_reader(
     *,
-    calls: list[tuple[pathlib.Path, str]],
+    calls: list[pathlib.Path],
 ) -> typing.Callable[..., geopandas.GeoDataFrame]:
-    """Create a callback to isolate derived-layer reads from persistent geography.
+    """Create a callback to isolate city-cache reads from persistent geography.
 
     Args:
         calls: Shared list recording dependency calls for assertions.
@@ -113,17 +113,16 @@ def make_city_layer_reader(
         The callback bound to the supplied dependencies.
     """
 
-    def read_layer(path: pathlib.Path, layer_name: str) -> geopandas.GeoDataFrame:
-        """Isolate derived-layer reads from persistent geography.
+    def read_cities(year_directory: pathlib.Path) -> geopandas.GeoDataFrame:
+        """Keep the report's dependency assertion independent of SQLite storage.
 
         Args:
-            path: The requested path, without reading its contents.
-            layer_name: The requested history layer.
+            year_directory: The requested year, without reading its cache.
 
         Returns:
-            The synthetic history frame used by this scenario.
+            The synthetic city frame used by this scenario.
         """
-        calls.append((path, layer_name))
+        calls.append(year_directory)
         return geopandas.GeoDataFrame()
 
-    return read_layer
+    return read_cities

@@ -21,7 +21,7 @@ PORTLAND_LATITUDE = 45.5051
 def city_frame(
     rows: list[tuple[str | None, str | None, tuple[float, float] | None]],
 ) -> geopandas.GeoDataFrame:
-    """Build a major-cities frame from (name, state, coordinates) rows.
+    """Build a populated-places frame from (name, state, coordinates) rows.
 
     A row whose name, state, or coordinates are None holds that missing value, so tests
     can exercise the filtering of unusable rows.

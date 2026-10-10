@@ -6,6 +6,7 @@ import pytest
 
 import peri_scribe.phases
 import peri_scribe.pipeline_stages
+import peri_scribe.sources.catalog
 import tests.helpers.factories.peri_scribe.monitor.events
 
 
@@ -34,6 +35,37 @@ def test_planned_paths_separates_each_feed() -> None:
         for path in paths
         if path[-1].phase == peri_scribe.phases.Phase.COLLECT_FEED
     } == {"alpha", "beta"}
+
+
+@pytest.mark.parametrize("gated", [False, True])
+def test_planned_paths_schedules_each_reference_source_once(*, gated: bool) -> None:
+    branches = peri_scribe.sources.catalog.configured_phase_branches()
+    paths = peri_scribe.phases.planned_paths(branches, gated=gated)
+    collections = [
+        path
+        for path in paths
+        if path[-1].phase == peri_scribe.phases.Phase.COLLECT_EXTERNAL_SOURCE
+    ]
+    assert sorted(path[-1].branch for path in collections) == sorted(branches.sources)
+    city = next(path for path in collections if path[-1].branch == branches.cities)
+    evacuations = next(
+        path for path in collections if path[-1].branch == branches.evacuations
+    )
+    if gated:
+        assert city[-2].phase == peri_scribe.phases.Phase.CITY_CHECK
+        assert evacuations[-2].phase == peri_scribe.phases.Phase.EVACUATION_CHECK
+        gate = next(
+            path
+            for path in paths
+            if path[-1].phase == peri_scribe.phases.Phase.PUBLICATION_GATE
+        )
+        assert paths.index(evacuations) < paths.index(city) < paths.index(gate)
+    else:
+        assert city[-2].phase == peri_scribe.phases.Phase.EXTERNAL_SOURCE_REFRESH
+        assert evacuations[-2].phase == peri_scribe.phases.Phase.EXTERNAL_SOURCE_REFRESH
+        assert all(
+            path[-1].phase != peri_scribe.phases.Phase.CITY_CHECK for path in paths
+        )
 
 
 @pytest.mark.parametrize("gated", [False, True])

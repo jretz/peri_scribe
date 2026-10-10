@@ -8,6 +8,7 @@ import us
 
 import peri_scribe.exceptions
 import peri_scribe.sources.catalog
+import peri_scribe.sources.external_data
 import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.sources.external_source
 import tests.helpers.factories.peri_scribe.sources.external_source
@@ -23,7 +24,7 @@ def test_buildings_source_covers_every_us_state() -> None:
 def test_every_external_source_has_a_retrieval_url() -> None:
     for source in peri_scribe.sources.catalog.EXTERNAL_SOURCES:
         assert source.url
-        if not source.compact_database:
+        if source.kind is peri_scribe.sources.external_data.ExternalSourceKind.ARCGIS:
             assert source.layer_name
 
 

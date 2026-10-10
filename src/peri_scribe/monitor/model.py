@@ -215,6 +215,7 @@ def plan_for_run(
                     feeds=tuple(str(name) for name in values.get("feeds", ())),
                     sources=tuple(str(name) for name in values.get("sources", ())),
                     evacuations=str(values.get("evacuations", "")),
+                    cities=str(values.get("cities", "")),
                 )
     return peri_scribe.phases.planned_paths(branches, gated=gated)
 

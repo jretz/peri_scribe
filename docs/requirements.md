@@ -21,13 +21,23 @@ is kept as its latest GeoPackage, while the buildings source is stored as a comp
 SQLite database at `sources/buildings.sqlite`. A successful empty evacuation response
 clears the stored zones and counts as a change when zones were previously present.
 Repeated empty responses leave that empty snapshot unchanged. Retrieval failures retain
-the stored version when one exists. Other external ArcGIS sources, including major
-cities, treat empty responses as retrieval failures and warn when retaining cached data.
+the stored version when one exists.
+
+Location descriptions use every U.S. place, including territories, in Natural Earth's
+1:10m populated places simple dataset. `sources/cities.sqlite` stores each place's name,
+two-letter state or territory code, and latitude/longitude from its point geometry.
+Population and rankings do not affect eligibility or selection. Each fetch checks the
+fixed download URL with a conditional GET when saved HTTP validators are available.
+An unchanged response reuses the validated database. A new download rebuilds the
+database from scratch, validates it, and atomically replaces the previous file. Source
+version, checksums, HTTP validators, and schema version are retained as metadata.
+Download or conversion failures log details and retain a valid database; without one,
+they raise an exception and stop the run.
 
 `run` performs the following operations:
 
 1. Fetch fire feeds incrementally, the external sources (buildings, evacuations, and
-   major cities), and the administrative-boundary GeoPackage at
+   Natural Earth places), and the administrative-boundary GeoPackage at
    `sources/CA_border_with_AZ_NV_and_OR.gpkg`, which is downloaded only when missing or
    unusable.
 2. Write `derived/history_of_full_geography.gpkg` with `perimeter_history`,
@@ -38,7 +48,7 @@ cities, treat empty responses as retrieval failures and warn when retaining cach
 6. Write `reports/PeriScribe Fires <year>.md`.
 
 These operations form the stages fetch, geography, score, kmz, and reports. Without
-publication gating, later stages run after fetch when fire or evacuation data changed,
+publication gating, later stages run after fetch when fire, evacuation, or city data changed,
 a full fetch requires a rebuild, unfinished or deferred work remains, or `--unconditional`
 is provided. Publication gating can defer changed inputs until its policy permits a
 build. A single stage or a range can be selected with `--only`, `--from`, and `--to`.
@@ -101,6 +111,10 @@ including each update's previous mapped acreage from retained logs and compresse
 archives. Missing logs across month boundaries are treated as absent history. Missing
 previous acreage means an initial change equal to current acreage.
 Repeated updates for the same fire remain separate; decreases are included.
+Visible locations are recalculated from the current fire geometry and current city
+database, using the same fire association as previews. Rows without a matched current
+fire or usable geometry retain their logged locations. Refreshing the city dataset
+rebuilds reports and updates without creating new fire-update events or rewriting logs.
 Malformed fire-update checkpoints or pending journals must stop publication before
 mutating durable evidence. Invalid pending intent remains available for repair.
 

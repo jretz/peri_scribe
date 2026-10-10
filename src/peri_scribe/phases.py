@@ -21,6 +21,7 @@ class Phase(enum.StrEnum):
     WRITE_SNAPSHOT = "write-snapshot"
     UPDATE_CURRENT_STATE = "update-current-state"
     EVACUATION_CHECK = "evacuation-check"
+    CITY_CHECK = "city-check"
     PUBLICATION_GATE = "publication-gate"
     DEFERRED_FETCH = "deferred-fetch"
     SOURCE_INDEX = "source-index"
@@ -58,6 +59,7 @@ CHILDREN: collections.abc.Mapping[Identifier, tuple[Identifier, ...]] = (
             Phase.SOURCE_INDEX,
             Phase.EXTERNAL_SOURCE_REFRESH,
             Phase.EVACUATION_CHECK,
+            Phase.CITY_CHECK,
             Phase.PUBLICATION_GATE,
             Phase.DEFERRED_FETCH,
         ),
@@ -73,6 +75,7 @@ CHILDREN: collections.abc.Mapping[Identifier, tuple[Identifier, ...]] = (
             Phase.UPDATE_CURRENT_STATE,
         ),
         Phase.EVACUATION_CHECK: (Phase.COLLECT_EXTERNAL_SOURCE,),
+        Phase.CITY_CHECK: (Phase.COLLECT_EXTERNAL_SOURCE,),
         Phase.DEFERRED_FETCH: (
             Phase.ADMINISTRATIVE_BOUNDARIES,
             Phase.SOURCE_INDEX,
@@ -141,6 +144,7 @@ class Branches:
     feeds: tuple[str, ...] = ()
     sources: tuple[str, ...] = ()
     evacuations: str = ""
+    cities: str = ""
 
 
 def branch_name(identifier: str, fields: collections.abc.Mapping[str, object]) -> str:
@@ -171,7 +175,7 @@ def planned_paths(
 
     Args:
         branches: Configured feed and external-source names.
-        gated: Whether publication uses the evacuation check and deferred fetch.
+        gated: Whether publication checks reference data before deferred fetch.
         roots: The phases to expand at this level.
         parent: The enclosing phase instances.
 
@@ -187,8 +191,14 @@ def planned_paths(
             names = branches.sources or names
             if parent and parent[-1].phase == Phase.EVACUATION_CHECK:
                 names = (branches.evacuations,)
+            elif parent and parent[-1].phase == Phase.CITY_CHECK:
+                names = (branches.cities,)
             elif gated:
-                names = tuple(name for name in names if name != branches.evacuations)
+                names = tuple(
+                    name
+                    for name in names
+                    if name not in {branches.evacuations, branches.cities}
+                )
         children = CHILDREN.get(identifier, ())
         if identifier == peri_scribe.pipeline_stages.Stage.FETCH:
             excluded = (
@@ -200,6 +210,7 @@ def planned_paths(
                 if gated
                 else (
                     Phase.EVACUATION_CHECK,
+                    Phase.CITY_CHECK,
                     Phase.PUBLICATION_GATE,
                     Phase.DEFERRED_FETCH,
                 )

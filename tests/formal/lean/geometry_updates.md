@@ -129,3 +129,13 @@ separate HTTP refresh protocol.
 The builder crash adapter excludes the optional preview when comparing the complete
 logged occurrences against its persistence oracle. All identity, acreage, timestamp,
 ownership, multiplicity, and publication-boundary checks remain exact.
+
+Publication decorates the collected snapshot with each matched current fire's preview
+and nearest-city location, using the report's location calculation and the existing
+alias/ownership mapping. Missing current fires or unavailable locations retain the
+logged location. This presentation adapter does not change the immutable journal,
+snapshot selection, acreage baselines, or ownership state, so it needs no additional
+transition model. Ordinary tests cover the location overlay, history-owner matching,
+fallbacks, and preservation of all other fields. The modeled snapshot remains the
+undecorated result of `snapshot_from_entries`; browser replacement conformance already
+covers changing a displayed location.

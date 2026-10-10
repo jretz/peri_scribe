@@ -68,7 +68,7 @@ theorem require_preserves_force (state : Pending) (requested : List Stage)
 
 /-- Decision order matches publication.decide after mapping comparison is complete. -/
 inductive Reason where
-  | noPublication | evacuations | sourceHistory | noChanges
+  | noPublication | evacuations | cities | sourceHistory | noChanges
   | area | timer | belowThreshold
   deriving DecidableEq, Repr
 
@@ -78,10 +78,12 @@ structure Decision where
   deriving DecidableEq, Repr
 
 def gate
-    (valid evacuationsChanged historyChanged pending mappingProceed timerDue : Bool)
+    (valid evacuationsChanged citiesChanged historyChanged pending
+      mappingProceed timerDue : Bool)
     : Decision :=
   if !valid then ⟨true, .noPublication⟩
   else if evacuationsChanged then ⟨true, .evacuations⟩
+  else if citiesChanged then ⟨true, .cities⟩
   else if historyChanged then ⟨true, .sourceHistory⟩
   else if !pending then ⟨false, .noChanges⟩
   else if mappingProceed then ⟨true, .area⟩
@@ -89,23 +91,29 @@ def gate
   else ⟨false, .belowThreshold⟩
 
 theorem invalid_checkpoint_never_skips
-    (evacuations history pending mapping timer : Bool) :
-    (gate false evacuations history pending mapping timer).proceed = true := by
+    (evacuations cities history pending mapping timer : Bool) :
+    (gate false evacuations cities history pending mapping timer).proceed = true := by
   simp [gate]
 
+theorem changed_cities_require_publication
+    (valid evacuations history pending mapping timer : Bool) :
+    (gate valid evacuations true history pending mapping timer).proceed = true := by
+  cases valid <;> cases evacuations <;> simp [gate]
+
 theorem timer_needs_pending_data (mapping timer : Bool) :
-    gate true false false false mapping timer = ⟨false, .noChanges⟩ := by
+    gate true false false false false mapping timer = ⟨false, .noChanges⟩ := by
   simp [gate]
 
 theorem pending_timer_eventually_proceeds (mapping : Bool) :
-    (gate true false false true mapping true).proceed = true := by
+    (gate true false false false true mapping true).proceed = true := by
   cases mapping <;> rfl
 
 theorem skip_requires_trustworthy_unchanged_baseline
-    (valid evacuations history pending mapping timer : Bool)
-    (skipped : (gate valid evacuations history pending mapping timer).proceed = false) :
-    valid = true ∧ evacuations = false ∧ history = false := by
-  cases valid <;> cases evacuations <;> cases history <;>
+    (valid evacuations cities history pending mapping timer : Bool)
+    (skipped :
+      (gate valid evacuations cities history pending mapping timer).proceed = false) :
+    valid = true ∧ evacuations = false ∧ cities = false ∧ history = false := by
+  cases valid <;> cases evacuations <;> cases cities <;> cases history <;>
     simp_all [gate]
 
 end PeriScribe.Pipeline

@@ -114,6 +114,7 @@ def test_fire_kml_names_the_document() -> None:
     )
     assert attribution is not None
     assert "CAL FIRE/NIFC FIRIS" in attribution
+    assert "Natural Earth populated places" in attribution
     assert "Open Data Commons Open Database License (ODbL)" in attribution
     top_level = tests.helpers.peri_scribe.kml.parsing.top_level_folder(document)
     assert (

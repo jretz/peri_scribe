@@ -13,8 +13,6 @@ import datetime
 import pathlib
 import typing
 
-import geopandas
-
 import peri_scribe.fires.derived_layers
 import peri_scribe.fires.index
 import peri_scribe.fires.score_files
@@ -26,12 +24,11 @@ import peri_scribe.presentation.index
 import peri_scribe.presentation.selection
 import peri_scribe.presentation.views
 import peri_scribe.report.locations
-import peri_scribe.sources.catalog
-import peri_scribe.sources.external_data
-import spatial_data.layers
+import peri_scribe.sources.cities
 
 
 if typing.TYPE_CHECKING:
+    import geopandas
     import pint
 
 
@@ -97,23 +94,17 @@ def fire_identity(
 
 
 def read_cities_layer(year_directory: pathlib.Path) -> geopandas.GeoDataFrame:
-    """Read the major cities layer for *year_directory*, or return an empty frame.
+    """Read the cached city points, or return an empty frame when unavailable.
 
-    The layer lives at the fixed path the major-cities external source writes, and a
-    year that has not fetched it yet yields an empty frame so the report can still be
-    gathered without one.
+    A standalone report can still be gathered when its year has no usable city cache.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
 
     Returns:
-        The major cities layer's features, or an empty frame when the layer is absent.
+        Natural Earth city points, or an empty frame when the cache is unavailable.
     """
-    source = peri_scribe.sources.catalog.MAJOR_CITIES_SOURCE
-    path = peri_scribe.sources.external_data.output_path(year_directory, source)
-    if not path.is_file():
-        return geopandas.GeoDataFrame()
-    return spatial_data.layers.read_layer(path, source.layer_name or source.name)
+    return peri_scribe.sources.cities.read_cities(year_directory)
 
 
 def fire_location(
@@ -130,7 +121,7 @@ def fire_location(
 
     Args:
         fire: The fire to locate.
-        cities: The major cities to choose among.
+        cities: The populated places to choose among.
 
     Returns:
         The fire's location phrase, or None.
@@ -161,7 +152,7 @@ def fire_locations(
 
     Args:
         fires: The fires to locate.
-        cities: The major cities to choose among.
+        cities: The populated places to choose among.
 
     Returns:
         The location phrase of each located fire, keyed by report identity.
@@ -283,9 +274,9 @@ def located_entries(
 ) -> tuple[FireReportEntry, ...]:
     """Return the report entries for one fire list, each carrying its location.
 
-    The location phrases are computed from the year's major cities for exactly the fires
-    in *fires*, so a fire that appears in several report lists is located once per list
-    it appears in, and every gathered list carries its fires' phrases.
+    The location phrases use the year's city cache for exactly the fires in *fires*, so
+    a fire that appears in several report lists is located once per list it appears in,
+    and every gathered list carries its fires' phrases.
 
     Args:
         fires: The fires to describe.
@@ -447,7 +438,7 @@ def report_from_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
     Args:
         fires: Prepared fires eligible for presentation.
         fire_scores: The saved scores selecting the report's ranked sections.
-        year_directory: The year directory containing the major cities layer.
+        year_directory: The year directory containing the city cache.
 
     Returns:
         The report's sections and their deduplicated fire details.

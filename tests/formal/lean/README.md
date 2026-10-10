@@ -36,7 +36,7 @@ structural encoding proofs with parsed Markdown, HTML, XML, and saved KMZ artifa
 | Module | Python boundary | Checked guarantees |
 | --- | --- | --- |
 | `Pipeline` | `pipeline_state.require_stages`, `complete_stage` | Invalidation is exactly the union of previous and requested stages; a later success cannot clear a prerequisite; unconditional work stays forced until the last required stage succeeds. |
-| `Pipeline` | `publication.decide` | Missing checkpoints cannot authorize a skip; unchanged inputs stay skipped even when the timer expires; pending data proceeds when the timer expires; skipping requires a valid, unchanged baseline. |
+| `Pipeline` | `publication.decide` | Missing checkpoints cannot authorize a skip; changed city contents require publication; unchanged inputs stay skipped even when the timer expires; pending data proceeds when the timer expires; skipping requires a valid, unchanged baseline. |
 | `AreaPolicy` | `areas.report_can_take_over`, `accepted_reports` | Takeover requires a subsequent report, at least ten acres of growth, and growth beyond a known survey baseline; takeover cannot occur before one day; takeover before three days requires two distinct eligible confirmations; waiting preserves eligibility; confirmed decreases remain eligible. |
 | `Reconciliation` | `incidents.simultaneous_updates`, `reconcile_updates` | Each field's winning value keeps its complete supporting evidence; conflicting values follow feed priority; equal reports are idempotent; confirmed evidence survives an unconfirmed duplicate; stale unconfirmed fields cannot revert confirmed measurements, with the explicit acreage-growth exception. |
 | `Geography` | `fires.differential.corrected_geometries`, `differential_rows_for_fire` | The optimized reverse-intersection recurrence equals the independent intersection-of-every-later-footprint specification; corrected footprints are nested; growth rings are pairwise disjoint and their union reconstructs the final corrected footprint. |
@@ -196,7 +196,7 @@ reports `3`; pending masks use the corresponding bits `1`, `2`, `4`, and `8`.
 | --- | --- |
 | `complete MASK FORCE STAGE` | Remaining mask and force flag after success. |
 | `require MASK FORCE REQUESTED_MASK NEW_FORCE` | Combined pending mask and force flag. |
-| `gate VALID EVAC_CHANGED HISTORY_CHANGED PENDING MAPPING_PROCEED TIMER_DUE` | Proceed flag and reason code. |
+| `gate VALID EVAC_CHANGED CITIES_CHANGED HISTORY_CHANGED PENDING MAPPING_PROCEED TIMER_DUE` | Proceed flag and reason code. |
 | `takeover MAPPED REPORTED REPORT_NEWER BASELINE AGE CONFIRMATIONS` | Whether the report can replace the mapping. |
 | `accept PREVIOUS CURRENT CONFIRMED` | Whether this acreage report is accepted. Missing previous reports are accepted. |
 | `score SIZE GROWTH FIRST_MAPPING BUILDINGS EVACUATION IMPORTANCE` | Weighted total from raw integer acres/counts; importance is awarded points `0..3`. |
@@ -211,7 +211,7 @@ and ring-partition properties are proved for arbitrary point types and histories
 
 Gate reason codes are `0` missing publication, `1` evacuation changes, `2` source
 history changes, `3` no unpublished data, `4` mapped area change, `5` expired timer,
-and `6` below threshold.
+`6` below threshold, and `7` city reference changes.
 
 Keep the formal definitions, theorem statements, source correspondence, and Python
 conformance cases together when behavior changes. A passing old theorem does not

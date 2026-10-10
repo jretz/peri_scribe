@@ -59,6 +59,7 @@ def pendingText (state : Pipeline.Pending) : String :=
 def reasonCode : Pipeline.Reason → Nat
   | .noPublication => 0
   | .evacuations => 1
+  | .cities => 7
   | .sourceHistory => 2
   | .noChanges => 3
   | .area => 4
@@ -90,9 +91,10 @@ def respond (words : List String) : Except String String := do
     let state := Pipeline.Pending.mk (← pending mask) (← boolean force)
     return pendingText
       (Pipeline.require state (← pending requested) (← boolean newForce))
-  | ["gate", valid, evacuations, history, hasPending, mapping, timer] =>
+  | ["gate", valid, evacuations, cities, history, hasPending, mapping, timer] =>
     let decision := Pipeline.gate (← boolean valid) (← boolean evacuations)
-      (← boolean history) (← boolean hasPending) (← boolean mapping) (← boolean timer)
+      (← boolean cities) (← boolean history) (← boolean hasPending)
+      (← boolean mapping) (← boolean timer)
     return s!"{bit decision.proceed} {reasonCode decision.reason}"
   | ["takeover", mapped, reported, newer, baseline, age, confirmations] =>
     let evidence := AreaPolicy.Evidence.mk (← natural mapped) (← natural reported)

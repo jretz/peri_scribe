@@ -1,4 +1,4 @@
-"""Describing a fire's location relative to the nearest major city.
+"""Describing a fire's location relative to the nearest reference place.
 
 The reports identify each fire's location by the city whose point lies closest to the
 fire's mapped area: the nearest city names the location, and the location phrase reads
@@ -310,7 +310,7 @@ def nearest_city(
 
     Args:
         geometry: The fire's interior or point geometry, in WGS 84 degrees.
-        cities: The major cities to choose among.
+        cities: The populated places to choose among.
 
     Returns:
         The nearest city and its distance and direction facts, or None when *cities*

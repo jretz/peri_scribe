@@ -9,8 +9,9 @@ import peri_scribe.phases
 
 BRANCHES = peri_scribe.phases.Branches(
     feeds=("alpha", "beta"),
-    sources=("evacuations", "buildings"),
+    sources=("evacuations", "buildings", "cities"),
     evacuations="evacuations",
+    cities="cities",
 )
 
 

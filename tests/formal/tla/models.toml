@@ -103,6 +103,12 @@ module = "StaticDownload"
 config = "StaticDownloadLiveness"
 
 [[models]]
+name = "conditional-download"
+module = "ConditionalDownload"
+config = "ConditionalDownload"
+conformance = true
+
+[[models]]
 name = "worker-lifetime"
 module = "WorkerLifetime"
 config = "WorkerLifetime"

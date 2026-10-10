@@ -70,7 +70,12 @@ precedence and handling of ambiguous or cyclic relationships.
   to their source records and classifications. It is distinct from the derived history
   GeoPackages.
 - **External source** — A supporting dataset, such as evacuation zones, building
-  locations, or major cities, used alongside the fire feeds.
+  locations, or Natural Earth places, used alongside the fire feeds.
+- **Reference place** — An eligible U.S. place, including territories, from Natural
+  Earth's 1:10m populated places simple dataset. `sources/cities.sqlite` keeps its name,
+  postal state or territory code, and geometry coordinates. The nearest reference place
+  supplies distance and direction in report and update locations, without ranking or
+  population weighting.
 - **Source content fingerprint** — A comparison identity for an external dataset's
   attribute names, normalized values, coordinate reference, and geometry. Field
   boundaries remain unambiguous; row order is ignored while duplicate rows are retained.

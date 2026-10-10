@@ -2,7 +2,7 @@
 EXTENDS Integers
 
 \* Shape interpretation is a boundary: comparison categories come from domain tests.
-Inputs == [checkpointValid: BOOLEAN, evacuationsChanged: BOOLEAN,
+Inputs == [checkpointValid: BOOLEAN, evacuationsChanged: BOOLEAN, citiesChanged: BOOLEAN,
            historyChanged: BOOLEAN, newSnapshots: BOOLEAN,
            mappingUncertain: BOOLEAN, olderMapping: BOOLEAN,
            areaChange: -2..2, timerDue: BOOLEAN,
@@ -12,6 +12,7 @@ Absolute(number) == IF number < 0 THEN -number ELSE number
 GateReason(input) ==
     CASE ~input.checkpointValid -> "no publication"
       [] input.evacuationsChanged -> "evacuations"
+      [] input.citiesChanged -> "cities"
       [] input.historyChanged -> "source history"
       [] ~input.newSnapshots -> "no changes"
       [] input.mappingUncertain -> "uncertain mapping"
@@ -31,7 +32,7 @@ Spec == Init /\ [][Next]_variables
 
 TypeOK ==
     /\ input \in Inputs
-    /\ reason \in {"no publication", "evacuations", "source history",
+    /\ reason \in {"no publication", "evacuations", "cities", "source history",
                    "no changes", "uncertain mapping", "area", "timer",
                    "below threshold"}
     /\ decision \in BOOLEAN
@@ -39,14 +40,16 @@ TypeOK ==
 RebuildOverridesGate == input.fullFetch \/ input.forced \/ input.pending => run
 SkipRequiresEvidence ==
     ~run => input.checkpointValid /\ ~input.evacuationsChanged
-            /\ ~input.historyChanged /\ ~input.pending
+            /\ ~input.citiesChanged /\ ~input.historyChanged /\ ~input.pending
+CitiesRequirePublication == input.citiesChanged => run
 TimerNeedsUnpublishedInputs ==
     reason = "timer" => input.newSnapshots /\ input.timerDue
 NoChangesIgnoreTimer ==
     input.checkpointValid /\ ~input.evacuationsChanged /\ ~input.historyChanged
-    /\ ~input.newSnapshots => ~decision
+    /\ ~input.citiesChanged /\ ~input.newSnapshots => ~decision
 AreaIncludesShrinkage ==
     input.checkpointValid /\ ~input.evacuationsChanged /\ ~input.historyChanged
-    /\ input.newSnapshots /\ ~input.mappingUncertain /\ ~input.olderMapping
+    /\ ~input.citiesChanged /\ input.newSnapshots
+    /\ ~input.mappingUncertain /\ ~input.olderMapping
     /\ Absolute(input.areaChange) = 2 => reason = "area"
 =============================================================================

@@ -91,7 +91,7 @@ The primary workflow is:
 ![PeriScribe pipeline stages and their outputs](pipeline.svg)
 
 `run` organizes these steps into the stages fetch, geography, score, kmz, and reports.
-After fetch, it skips the derived outputs only when no fire or evacuation data changed
+After fetch, it skips derived outputs only when no fire, evacuation, or city data changed
 and no rebuild is required. A scheduled full fetch requires an unconditional derived
 rebuild, even when it writes no new snapshot. `--unconditional` forces the selected
 stages to run and bypasses prior history reuse when geography is selected; `--only`,
@@ -148,6 +148,17 @@ Live external-source comparison fingerprints normalized attributes, geometry, at
 names, and coordinate reference meaning. Field framing distinguishes embedded bytes
 from field boundaries. Row and column order do not affect comparison; repeated rows
 retain their multiplicity, and missing-value representations normalize together.
+
+Natural Earth's U.S. populated places, including territories, are stored in
+`sources/cities.sqlite`. Its four operational columns are name, two-letter state or
+territory code, longitude, and latitude taken from the source geometry. Metadata records
+the schema and source versions, download URL, archive and content checksums, and HTTP
+validators. Each fetch checks the source, including before a publication gate can skip.
+A successful download produces a complete validated replacement beside the existing
+database before atomic publication. Failed refreshes retain a valid prior database and
+log details; without a usable database they raise an exception. Publication compares
+the canonical four-field content digest, so a metadata-only change does not rebuild
+outputs. Collection and publication cache format versions invalidate older checkpoints.
 
 Derived data is written below `data/<year>/derived/`:
 
@@ -254,7 +265,11 @@ summaries. Aliases resolve current fires to durable log buckets, then ownership 
 buckets to their current owner. A bucket's identifier can differ from its owner's
 report identity. Each fire is rendered once per snapshot and shares its latest preview
 across repeated updates. Optional `preview` fields contain WebP data URLs and add no
-fields to durable logs or checkpoints. The presentation preview modules draw all
+fields to durable logs or checkpoints. The same association refreshes each visible
+row's location from the current fire geometry and city database. Unmatched rows and
+fires without usable location evidence retain the logged location. These display
+changes do not create update events or alter acreage history. The presentation preview
+modules draw all
 KMZ-colored growth rings and the latest three complete outlines using a local azimuthal
 equidistant projection.
 Each candidate rotation uniformly fits and centers the map's convex hull within a
@@ -449,8 +464,8 @@ snapshot.
 
 `pipeline_state.py` stores unfinished derived stages and their unconditional rebuild
 requirement in `data/<year>/run_state.json`. A scheduled full fetch records that
-requirement before fetching. Fetch failures, changed fire snapshots, and evacuation
-changes also leave downstream work pending. Completing the fetch updates its timestamp
+requirement before fetching. Fetch failures, changed fire snapshots, and evacuation or
+city changes also leave downstream work pending. Completing the fetch updates its timestamp
 without clearing pending derived work, so a later incremental fetch with no changes
 still allows a failed rebuild to be retried.
 
@@ -504,8 +519,6 @@ The reference layers have separate retrieval policies:
 
 - [Cal OES evacuations][cal-oes-evacuations] — query the full layer, compare, and retain
   the current version.
-- [USA major cities][usa-major-cities] — query the full layer, compare, and retain the
-  current version.
 - [USA generalized state boundaries][usa-state-boundaries] — query California,
   Arizona, Nevada, and Oregon only when the stored border is missing or unusable.
 
@@ -513,8 +526,20 @@ The reference layers have separate retrieval policies:
 [wfigs-perimeters]: https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Interagency_Perimeters_Current/FeatureServer/0
 [wfigs-locations]: https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/WFIGS_Incident_Locations_Current/FeatureServer/0
 [cal-oes-evacuations]: https://services.arcgis.com/BLN4oKB0N1YSgvY8/arcgis/rest/services/CA_EVACUATIONS_CalOESHosted_view/FeatureServer/0
-[usa-major-cities]: https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_Major_Cities_/FeatureServer/0
 [usa-state-boundaries]: https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/USA_States_Generalized_Boundaries/FeatureServer/0
+
+### Natural Earth populated places
+
+The [1:10m populated places simple ZIP][natural-earth-places] supplies all location
+references. Each fetch uses its fixed URL with the cached ETag, or Last-Modified when
+there is no ETag. A 304 response leaves the validated SQLite file unchanged. A 200
+response is converted from scratch and published only after validation. The converter
+includes U.S. states, DC, and territories, normalizes their postal codes, and takes
+coordinates from geometry. All included places are eligible; reports use geodesic
+distance to the nearest place, across state boundaries, without population weighting.
+Natural Earth data is public domain.
+
+[natural-earth-places]: https://naturalearth.s3.amazonaws.com/10m_cultural/ne_10m_populated_places_simple.zip
 
 ### Building index and state archives
 

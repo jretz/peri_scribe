@@ -208,13 +208,26 @@ def test_phase_tree_honors_recorded_plan_and_stage_selection() -> None:
             stages=["fetch"],
             branches={
                 "feeds": ["recorded-feed"],
-                "sources": ["zones"],
+                "sources": ["zones", "places"],
                 "evacuations": "zones",
+                "cities": "places",
             },
         ),
     )
     tree = peri_scribe.monitor.model.phase_tree(run, peri_scribe.phases.Branches())
     assert any(phase.path[-1].branch == "recorded-feed" for phase in tree.phases)
+    assert [
+        phase.path for phase in tree.phases if phase.path[-1].branch == "places"
+    ] == [
+        (
+            peri_scribe.phases.Segment(phase="fetch"),
+            peri_scribe.phases.Segment(phase="city-check"),
+            peri_scribe.phases.Segment(
+                phase="collect-external-source",
+                branch="places",
+            ),
+        ),
+    ]
     assert all(phase.path[0].phase == "fetch" for phase in tree.phases)
 
 

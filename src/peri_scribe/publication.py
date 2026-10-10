@@ -22,6 +22,7 @@ import peri_scribe.models
 import peri_scribe.perimeters.size_filtering
 import peri_scribe.perimeters.versions
 import peri_scribe.sources.catalog
+import peri_scribe.sources.cities
 import peri_scribe.sources.external_data
 import peri_scribe.sources.feeds
 import peri_scribe.sources.snapshots
@@ -113,13 +114,15 @@ class Collection(pydantic.BaseModel):
             directory.
         mappings: Raw mapping measurements keyed by their snapshot paths.
         evacuations: The saved evacuation file's identity, or None when absent.
+        cities: The saved city coordinates and names digest, or None when unavailable.
     """
 
     model_config = pydantic.ConfigDict(extra="forbid", frozen=True)
-    version: typing.Literal[3] = 3
+    version: typing.Literal[4] = 4
     files: dict[str, FileStamp] = pydantic.Field(default_factory=dict)
     mappings: dict[str, tuple[Mapping, ...]] = pydantic.Field(default_factory=dict)
     evacuations: FileStamp | None = None
+    cities: str | None = None
 
 
 class PublishedFire(pydantic.BaseModel):
@@ -147,15 +150,17 @@ class Publication(pydantic.BaseModel):
         files: The source snapshot inventory processed for this publication.
         fires: The published baselines keyed by derived fire identity.
         evacuations: The processed evacuation file's identity, or None when absent.
+        cities: The processed city coordinates and names digest, or None when absent.
     """
 
     model_config = pydantic.ConfigDict(extra="forbid", frozen=True)
-    version: typing.Literal[3] = 3
+    version: typing.Literal[4] = 4
     created_at: pydantic.AwareDatetime
     output: FileStamp
     files: dict[str, FileStamp]
     fires: dict[str, PublishedFire]
     evacuations: FileStamp | None = None
+    cities: str | None = None
 
 
 class Reason(enum.StrEnum):
@@ -169,6 +174,7 @@ class Reason(enum.StrEnum):
     SOURCE_HISTORY = "previously processed source history changed"
     UNCERTAIN_MAPPING = "mapping cannot be compared reliably"
     EVACUATIONS = "evacuation data changed"
+    CITIES = "city reference data changed"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -414,10 +420,12 @@ def collect(year_directory: pathlib.Path) -> Collection:
         peri_scribe.sources.catalog.EVACUATIONS_SOURCE,
     )
     evacuations = file_stamp(evacuation_path) if evacuation_path.exists() else None
+    cities = peri_scribe.sources.cities.database_digest(year_directory)
     if (
         cached.files == files
         and set(cached.mappings) == set(files)
         and cached.evacuations == evacuations
+        and cached.cities == cities
     ):
         return cached
     mappings: dict[str, tuple[Mapping, ...]] = {}
@@ -438,6 +446,7 @@ def collect(year_directory: pathlib.Path) -> Collection:
         files=files,
         mappings=first_captures(mappings),
         evacuations=evacuations,
+        cities=cities,
     )
     write_state(collection_path(year_directory), state)
     return state
@@ -566,6 +575,8 @@ def decide(
         return Decision(proceed=True, reason=Reason.NO_PUBLICATION)
     if collection.evacuations != published.evacuations:
         return Decision(proceed=True, reason=Reason.EVACUATIONS)
+    if collection.cities != published.cities:
+        return Decision(proceed=True, reason=Reason.CITIES)
     if any(
         collection.files.get(path) != stamp for path, stamp in published.files.items()
     ):
@@ -579,7 +590,7 @@ def decide(
     )
     decision = mapping_decision(candidates, threshold)
     if not decision.proceed and now - published.created_at >= threshold.interval:
-        return dataclasses.replace(decision, proceed=True, reason=Reason.TIMER)
+        decision = dataclasses.replace(decision, proceed=True, reason=Reason.TIMER)
     return decision
 
 
@@ -731,5 +742,6 @@ def commit(
         files=collection.files,
         fires=fires,
         evacuations=collection.evacuations,
+        cities=collection.cities,
     )
     write_state(publication_path(year_directory), state)

@@ -33,6 +33,7 @@ import peri_scribe.report.gathering
 import peri_scribe.report.markdown
 import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.catalog
+import peri_scribe.sources.cities
 import peri_scribe.sources.digests
 import peri_scribe.sources.external_data
 import peri_scribe.sources.external_sources
@@ -220,9 +221,8 @@ def show_colormap(*, trim_start: int, trim_end: int) -> None:
 def stored_evacuations_digest(year_directory: pathlib.Path) -> str | None:
     """Return the stored evacuations GeoPackage's content digest, or None.
 
-    The evacuation layer is the only external source that changes in place: its fetch
-    replaces the stored GeoPackage only when the layer's features changed, so comparing
-    the digest before and after the fetch reports whether the fetch found changes.
+    Its fetch replaces the stored GeoPackage only when the layer's features changed,
+    so comparing the digest before and after the fetch reports content changes.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
@@ -380,12 +380,12 @@ def run_fetch_stage(
         year_directory,
         full_fetch_interval=full_fetch_interval,
     )
-    evacuations_changed = refresh_external_sources(year_directory)
-    if not (result.changed or evacuations_changed or full or deferred):
+    external_changed = refresh_external_sources(year_directory)
+    if not (result.changed or external_changed or full or deferred):
         peri_scribe.pipeline_state.write_state(year_directory, previous)
     return (
         result.changed
-        or evacuations_changed
+        or external_changed
         or unconditional
         or bool(peri_scribe.pipeline_state.read_state(year_directory).remaining)
     )
@@ -398,7 +398,7 @@ def run_gated_fetch_stage(
     unconditional: bool,
     threshold: peri_scribe.publication.Threshold,
 ) -> bool:
-    """Retain geometry and check evacuations before deciding to build outputs.
+    """Check live reference data and retained geometry before deciding to publish.
 
     Args:
         year_directory: The directory holding the year's sources and outputs.
@@ -419,11 +419,18 @@ def run_gated_fetch_stage(
         defer_index=True,
     )
     try:
-        with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.EVACUATION_CHECK):
-            fetch_external_source(
+        for phase, source in (
+            (
+                peri_scribe.phases.Phase.EVACUATION_CHECK,
                 peri_scribe.sources.catalog.EVACUATIONS_SOURCE,
-                year_directory,
-            )
+            ),
+            (
+                peri_scribe.phases.Phase.CITY_CHECK,
+                peri_scribe.sources.catalog.CITIES_SOURCE,
+            ),
+        ):
+            with peri_scribe.logging.log_phase(phase):
+                fetch_external_source(source, year_directory)
         with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.PUBLICATION_GATE):
             decision = publication_decision(year_directory, threshold)
     except Exception, SystemExit:
@@ -464,7 +471,11 @@ def run_gated_fetch_stage(
                 peri_scribe.sources.full_fetch_state.state_path(year_directory),
                 last_full_fetch=datetime.datetime.now(datetime.UTC),
             )
-        refresh_external_sources(year_directory, include_evacuations=False)
+        refresh_external_sources(
+            year_directory,
+            include_evacuations=False,
+            include_cities=False,
+        )
     return True
 
 
@@ -498,16 +509,18 @@ def refresh_external_sources(
     year_directory: pathlib.Path,
     *,
     include_evacuations: bool = True,
+    include_cities: bool = True,
 ) -> bool:
-    """Observe evacuation changes separately from fire-feed completion.
+    """Observe reference-data changes independently of fire-feed completion.
 
     Args:
         year_directory: The year directory holding the external source data.
         include_evacuations: Fetch evacuations here when they were not checked before
             the publication gate.
+        include_cities: Fetch cities here when they were not checked before the gate.
 
     Returns:
-        Whether evacuation geography changed.
+        Whether evacuation geography or city locations changed.
     """
     with peri_scribe.logging.log_phase(
         peri_scribe.phases.Phase.EXTERNAL_SOURCE_REFRESH,
@@ -515,16 +528,30 @@ def refresh_external_sources(
         evacuations_digest_before = (
             stored_evacuations_digest(year_directory) if include_evacuations else None
         )
+        cities_digest_before = (
+            peri_scribe.sources.cities.database_digest(year_directory)
+            if include_cities
+            else None
+        )
         for source in peri_scribe.sources.catalog.EXTERNAL_SOURCES:
             if (
                 not include_evacuations
                 and source is peri_scribe.sources.catalog.EVACUATIONS_SOURCE
             ):
                 continue
+            if (
+                not include_cities
+                and source is peri_scribe.sources.catalog.CITIES_SOURCE
+            ):
+                continue
             fetch_external_source(source, year_directory)
         return (
             include_evacuations
             and stored_evacuations_digest(year_directory) != evacuations_digest_before
+        ) or (
+            include_cities
+            and peri_scribe.sources.cities.database_digest(year_directory)
+            != cities_digest_before
         )
 
 
@@ -609,7 +636,7 @@ PIPELINE_STAGES: tuple[PipelineStage, ...] = (
         name=peri_scribe.pipeline_stages.Stage.FETCH,
         description=(
             "Fetch fire feeds, external sources (buildings, evacuations, and "
-            "major cities), and the administrative-boundary GeoPackage."
+            "Natural Earth places), and the administrative-boundary GeoPackage."
         ),
     ),
     PipelineStage(
@@ -743,10 +770,11 @@ def selected_stage_range(
 
         The pipeline is fetch, geography, score, kmz, reports, run in order. By default
         the full pipeline runs. The fetch stage fetches every configured fire feed, the
-        external sources (buildings, evacuations, and major cities), and the
+        external sources (buildings, evacuations, and Natural Earth places), and the
         administrative-boundary GeoPackage, which is downloaded only when it is missing
         or unusable. When the fetch wrote a new fire snapshot or replaced the stored
-        evacuations, the remaining stages run; otherwise the pipeline ends after fetch.
+        evacuations or city locations, the remaining stages run; otherwise the pipeline
+        ends after fetch.
         --full-fetch-interval schedules a full fetch of every fire feed (storing only
         new or changed features), catching source edits the incremental fetch would
         miss: the first run with the option fetches in full, and a later run fetches in
@@ -760,11 +788,12 @@ def selected_stage_range(
         Select a single stage with --only, a range with --from and --to, or list the
         stages with --list-stages. An error in any step stops the pipeline.
         --publish-threshold AREA TIME_DELTA saves fire geometry and checks evacuations
-        before deciding whether to build outputs. A mapped-area increase or decrease of
-        at least AREA since the last published mapping triggers a build. Otherwise,
-        unpublished changes wait until TIME_DELTA since the last completed local KMZ.
-        Evacuation changes, scheduled full fetches, failed builds, and --unconditional
-        bypass the gate. For example: --publish-threshold "25 acre" 5m.
+        and city locations before deciding whether to build outputs. A mapped-area
+        increase or decrease of at least AREA since the last published mapping triggers
+        a build. Otherwise, unpublished changes wait until TIME_DELTA since the last
+        completed local KMZ. Evacuation or city changes, scheduled full fetches, failed
+        builds, and --unconditional bypass the gate. For example:
+        --publish-threshold "25 acre" 5m.
         {peri_scribe.cli_options.year_directory_default_help()}
         """,
     ),
@@ -947,7 +976,7 @@ def run_selected_stages(
                             STAGE_INDEX[stage.name] + 1 : end + 1
                         ]
                     ),
-                    "No fire or evacuation data changed",
+                    "No fire, evacuation, or city data changed",
                 )
             break
         if (

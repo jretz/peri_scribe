@@ -16,6 +16,7 @@ import peri_scribe.geo.package
 import peri_scribe.models
 import peri_scribe.publication
 import peri_scribe.sources.catalog
+import peri_scribe.sources.cities
 import peri_scribe.sources.external_data
 import peri_scribe.sources.feeds
 import spatial_data.measurements
@@ -307,6 +308,7 @@ def test_incident_updates_wait_for_timer() -> None:
         peri_scribe.publication.Reason.NO_PUBLICATION,
         peri_scribe.publication.Reason.SOURCE_HISTORY,
         peri_scribe.publication.Reason.EVACUATIONS,
+        peri_scribe.publication.Reason.CITIES,
     ],
 )
 def test_missing_checkpoint_or_changed_acknowledged_inputs_require_build(
@@ -322,6 +324,8 @@ def test_missing_checkpoint_or_changed_acknowledged_inputs_require_build(
                 "evacuations": tests.helpers.factories.peri_scribe.publication.STAMP,
             },
         )
+    elif reason == peri_scribe.publication.Reason.CITIES:
+        saved = saved.model_copy(update={"cities": "changed"})
     decision = peri_scribe.publication.decide(
         saved,
         None if reason == peri_scribe.publication.Reason.NO_PUBLICATION else published,
@@ -361,6 +365,45 @@ def test_checkpoint_requires_matching_completed_output(tmp_path: pathlib.Path) -
     assert peri_scribe.publication.read_publication(tmp_path, output) is None
 
 
+def test_collect_refreshes_city_dependency_without_remeasuring_fire_history(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sources = tmp_path / "sources"
+    tests.helpers.factories.peri_scribe.publication.write_perimeter_snapshot(
+        sources,
+        shapely.box(-121, 40, -120.99, 40.01),
+        {},
+    )
+    initial = peri_scribe.publication.collect(tmp_path)
+    monkeypatch.setattr(
+        peri_scribe.sources.cities,
+        "database_digest",
+        lambda _directory: "new cities",
+    )
+    with unittest.mock.patch.object(
+        peri_scribe.publication,
+        "snapshot_mappings",
+        wraps=peri_scribe.publication.snapshot_mappings,
+    ) as reader:
+        refreshed = peri_scribe.publication.collect(tmp_path)
+    reader.assert_not_called()
+    assert refreshed.cities == "new cities"
+    assert refreshed.mappings == initial.mappings
+    output = tmp_path / "output.kmz"
+    output.write_bytes(b"complete")
+    peri_scribe.publication.commit(tmp_path, output, refreshed, {})
+    checkpoint = peri_scribe.publication.read_publication(tmp_path, output)
+    assert checkpoint is not None
+    assert checkpoint.cities == refreshed.cities
+    assert not peri_scribe.publication.decide(
+        refreshed,
+        checkpoint,
+        tests.helpers.factories.peri_scribe.publication.THRESHOLD,
+        checkpoint.created_at,
+    ).proceed
+
+
 def test_corrupt_state_cannot_authorize_skip(tmp_path: pathlib.Path) -> None:
     state = tmp_path / "state.json"
     state.write_text('{"version": "invalid"}')
@@ -395,7 +438,7 @@ def test_collect_recomputes_measurements_from_version_two_cache(
     )
 
 
-@pytest.mark.parametrize("version", [1, 2])
+@pytest.mark.parametrize("version", [1, 2, 3])
 def test_read_publication_rejects_outdated_checkpoint(
     tmp_path: pathlib.Path,
     version: int,

@@ -108,11 +108,13 @@ this recovery scenario.
 ### Publication gate
 
 `PublicationGate.tla` maps to `publication.decide`, `publication.mapping_decision`, and
-the override expression in `pipeline.run_gated_fetch_stage`. Its 5,120 input valuations
-cover ten independent Boolean categories and signed area changes -2 through 2 with
+the override expression in `pipeline.run_gated_fetch_stage`. Its 10,240 input valuations
+cover eleven independent Boolean categories and signed area changes -2 through 2 with
 threshold 2. They check missing-checkpoint and changed-input evidence, recovery/force
 overrides, both growth and shrinkage at the threshold, and the rule that a timer alone
-does not publish when no snapshots are pending.
+does not publish when no snapshots are pending. Changed city contents require publication
+independently of mapped-area thresholds or timers; the content digest is abstracted as
+the `citiesChanged` category.
 
 `mappingUncertain` is the result of candidate-identity ambiguity or uncertainty in an
 eligible candidate after older mappings have been discarded. It is not a raw

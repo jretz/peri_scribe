@@ -17,6 +17,7 @@ import peri_scribe.logging
 import peri_scribe.output
 import peri_scribe.pipeline
 import peri_scribe.sources.administrative_boundaries
+import peri_scribe.sources.cities
 import peri_scribe.sources.fetching
 import peri_scribe.sources.full_fetch_state
 import peri_scribe.sources.validation
@@ -100,6 +101,7 @@ def run_stubs(
         *,
         changed: bool,
         evacuations_changed: bool = False,
+        cities_changed: bool = False,
         stored_state: (
             peri_scribe.sources.full_fetch_state.FullFetchState | None
         ) = None,
@@ -110,6 +112,7 @@ def run_stubs(
             changed: Whether source collection reports changed fire observations.
             evacuations_changed: Whether evacuation contents differ across the simulated
                 fetch.
+            cities_changed: Whether city locations differ across the simulated fetch.
             stored_state: Previously recorded full-fetch checkpoint, or None if absent.
 
         Returns:
@@ -201,6 +204,12 @@ def run_stubs(
         # fetch; the two observations differ only when the fetch replaced the stored
         # evacuations.
         digests = ["before", "after"] if evacuations_changed else ["same", "same"]
+        cities = iter(["before", "after"] if cities_changed else ["same", "same"])
+        monkeypatch.setattr(
+            peri_scribe.sources.cities,
+            "database_digest",
+            lambda _directory: next(cities, "after" if cities_changed else "same"),
+        )
 
         def stored_evacuations_digest(_year_directory: pathlib.Path) -> str | None:
             """Simulate evacuation contents before and after collection.

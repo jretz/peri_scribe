@@ -8,6 +8,7 @@ import itertools
 import json
 import pathlib
 import typing
+import unittest.mock
 
 import pytest
 import structlog
@@ -390,7 +391,7 @@ def test_run_logs_failure_tracebacks_to_the_year_directory(
         assert "raise_error" in entry["exception"]
 
 
-def test_gate_skip_checks_evacuations_and_preserves_checkpoint_without_pending_failure(
+def test_run_gated_fetch_stage_checks_live_sources_before_skipping(
     scenario: tests.helpers.peri_scribe.main_publication.Scenario,
     runner: click.testing.CliRunner,
     cli_log_output: structlog.testing.LogCapture,
@@ -413,6 +414,7 @@ def test_gate_skip_checks_evacuations_and_preserves_checkpoint_without_pending_f
     assert scenario.stubs.history_calls == []
     assert scenario.stubs.external_calls == [
         (peri_scribe.sources.catalog.EVACUATIONS_SOURCE, scenario.year),
+        (peri_scribe.sources.catalog.CITIES_SOURCE, scenario.year),
     ]
     assert scenario.stubs.ensure_boundary_calls == []
     assert not peri_scribe.pipeline_state.read_state(scenario.year).remaining
@@ -429,7 +431,7 @@ def test_gate_skip_checks_evacuations_and_preserves_checkpoint_without_pending_f
         entry["phase"]
         for entry in cli_log_output.entries
         if entry.get("event") == "Finished phase"
-    } == {"fetch", "evacuation-check", "publication-gate"}
+    } == {"fetch", "evacuation-check", "city-check", "publication-gate"}
 
 
 def test_timer_builds_saved_updates_on_unchanged_fetch_and_advances_checkpoint(
@@ -465,6 +467,9 @@ def test_timer_builds_saved_updates_on_unchanged_fetch_and_advances_checkpoint(
     assert [source for source, _year in scenario.stubs.external_calls].count(
         peri_scribe.sources.catalog.EVACUATIONS_SOURCE,
     ) == 1
+    assert [source for source, _year in scenario.stubs.external_calls].count(
+        peri_scribe.sources.catalog.CITIES_SOURCE,
+    ) == 1
     published = peri_scribe.publication.read_publication(scenario.year, scenario.output)
     assert published is not None
     assert published.files == scenario.inputs.files
@@ -474,7 +479,7 @@ def test_timer_builds_saved_updates_on_unchanged_fetch_and_advances_checkpoint(
 
 @pytest.mark.parametrize(
     "override",
-    ["unconditional", "full", "pending", "checkpoint", "evacuations"],
+    ["unconditional", "full", "pending", "checkpoint", "evacuations", "cities"],
 )
 def test_required_work_bypasses_area_and_timer_gate(
     scenario: tests.helpers.peri_scribe.main_publication.Scenario,
@@ -494,12 +499,15 @@ def test_required_work_bypasses_area_and_timer_gate(
         )
     elif override == "checkpoint":
         peri_scribe.publication.publication_path(scenario.year).unlink()
-    else:
+    elif override == "evacuations":
         changed = scenario.inputs.model_copy(
             update={
                 "evacuations": tests.helpers.factories.peri_scribe.publication.STAMP,
             },
         )
+        monkeypatch.setattr(peri_scribe.publication, "collect", lambda _year: changed)
+    else:
+        changed = scenario.inputs.model_copy(update={"cities": "changed"})
         monkeypatch.setattr(peri_scribe.publication, "collect", lambda _year: changed)
     with time_machine.travel(
         tests.helpers.peri_scribe.main_publication.NOW,
@@ -564,6 +572,62 @@ def test_failed_fetch_or_check_requires_retry_without_advancing_publication(
     assert (
         peri_scribe.publication.publication_path(scenario.year).read_bytes() == before
     )
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        peri_scribe.exceptions.ExternalDataError("city fetch failed"),
+        SystemExit("failure"),
+    ],
+)
+def test_run_gated_fetch_stage_retries_city_failure_after_evacuations_succeed(
+    scenario: tests.helpers.peri_scribe.main_publication.Scenario,
+    runner: click.testing.CliRunner,
+    error: BaseException,
+) -> None:
+    checkpoint = peri_scribe.publication.publication_path(scenario.year)
+    before = checkpoint.read_bytes()
+    output = scenario.output.read_bytes()
+    arguments = [
+        "run",
+        str(scenario.year),
+        *tests.helpers.peri_scribe.main_publication.OPTIONS,
+    ]
+    with (
+        time_machine.travel(tests.helpers.peri_scribe.main_publication.NOW, tick=False),
+        unittest.mock.patch.object(
+            peri_scribe.pipeline,
+            "fetch_external_source",
+            side_effect=[None, error],
+        ) as fetch,
+    ):
+        result = runner.invoke(peri_scribe.main.cli, arguments)
+    assert fetch.call_args_list == [
+        unittest.mock.call(
+            peri_scribe.sources.catalog.EVACUATIONS_SOURCE,
+            scenario.year,
+        ),
+        unittest.mock.call(peri_scribe.sources.catalog.CITIES_SOURCE, scenario.year),
+    ]
+    assert result.exit_code != 0
+    assert result.exception is error
+    assert checkpoint.read_bytes() == before
+    assert scenario.output.read_bytes() == output
+    assert scenario.stubs.kmz_calls == []
+    assert (
+        peri_scribe.pipeline_state.read_state(scenario.year).remaining
+        == peri_scribe.pipeline_state.DERIVED_STAGES
+    )
+    with time_machine.travel(
+        tests.helpers.peri_scribe.main_publication.NOW,
+        tick=False,
+    ):
+        retry = runner.invoke(peri_scribe.main.cli, arguments)
+    assert retry.exit_code == 0, retry.output
+    assert scenario.stubs.kmz_calls == [scenario.year]
+    assert scenario.stubs.report_calls == [scenario.year]
+    assert not peri_scribe.pipeline_state.read_state(scenario.year).remaining
 
 
 def test_partial_kmz_run_invalidates_checkpoint_without_acknowledging_new_sources(
@@ -858,11 +922,17 @@ def test_run_fetches_external_sources_but_skips_later_stages_when_nothing_change
 
 
 @pytest.mark.usefixtures("current_year")
-def test_run_runs_stages_when_evacuations_changed(
+@pytest.mark.parametrize("source", ["evacuations", "cities"])
+def test_run_runs_stages_when_reference_data_changed(
     runner: click.testing.CliRunner,
     run_stubs: typing.Callable[..., tests.helpers.doubles.peri_scribe.main.RunStubs],
+    source: str,
 ) -> None:
-    stubs = run_stubs(changed=False, evacuations_changed=True)
+    stubs = run_stubs(
+        changed=False,
+        evacuations_changed=source == "evacuations",
+        cities_changed=source == "cities",
+    )
     result = runner.invoke(peri_scribe.main.cli, ["run"])
     assert result.exit_code == 0
     year_directory = (

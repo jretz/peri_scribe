@@ -99,3 +99,10 @@ new identities. Bounded run eviction intentionally discards a run's in-memory co
 batch/stream equivalence is claimed only for unbounded processing. Retained structural
 progress may grow during a long run. The retention theorem preserves terminal outcomes,
 not every phase inferred solely from an ordinary record that has since expired.
+
+The city reference check uses the same generic phase paths and status reconstruction.
+Its catalogue entry, configured branch, recorded-plan parsing, and placement before the
+publication gate are presentation adapters with no new transition policy. Ordinary
+regressions require the city source exactly once per plan, under its check for gated
+runs and under external refresh otherwise, and preserve recorded source names. The
+existing monitor conformance checks continue to cover the reconstructed phase statuses.

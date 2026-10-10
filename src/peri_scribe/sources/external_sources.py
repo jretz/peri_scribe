@@ -7,7 +7,7 @@ per-state source stores one GeoPackage per state under its own directory. Either
 datasets sit in the same tree as the fire-feed snapshots, so everything a report needs
 is in one place. The datasets cover the whole United States, not just California.
 
-Two retrieval kinds are supported:
+Three retrieval kinds are supported:
 
 - ``arcgis``: an ArcGIS FeatureServer layer is queried and stored as a GeoPackage
   holding the layer's latest version. The layers are live (the evacuation zones refresh
@@ -17,6 +17,9 @@ Two retrieval kinds are supported:
 - ``download``: a file (typically a zip archive) is downloaded, extracted, and converted
   to a GeoPackage holding the same data. These datasets are static, so a source whose
   GeoPackage already exists is left alone.
+- ``cities``: Natural Earth's populated places are conditionally requested on every
+  fetch and normalized to SQLite. Only a complete validated replacement is published;
+  retrieval failures retain an existing usable generation.
 
 A download source covers the whole country as one archive per state (the building
 footprints). A combined source concatenates the per-state results into a single
@@ -57,6 +60,7 @@ import peri_scribe.logging
 import peri_scribe.phases
 import peri_scribe.sources.buildings
 import peri_scribe.sources.catalog
+import peri_scribe.sources.cities
 import peri_scribe.sources.digests
 import peri_scribe.sources.downloading
 import peri_scribe.sources.external_data
@@ -82,7 +86,8 @@ def fetch_external_source(
     version; a fetch that cannot retrieve the layer logs a warning and keeps the stored
     version so the caller can proceed. A download source's archive is downloaded,
     extracted, and converted to a GeoPackage, with the per-state results combined into
-    one file when the source combines them.
+    one file when the source combines them. Cities use conditional HTTP requests and
+    retain only named points and matching download metadata in SQLite.
 
     Args:
         source: The external source to retrieve.
@@ -99,6 +104,8 @@ def fetch_external_source(
             source,
             year_directory,
         )
+    if source.kind is peri_scribe.sources.external_data.ExternalSourceKind.CITIES:
+        return peri_scribe.sources.cities.fetch_cities_database(source, year_directory)
     if source.kind is peri_scribe.sources.external_data.ExternalSourceKind.ARCGIS:
         return (fetch_arcgis_source(source, year_directory),)
     if source.kind is peri_scribe.sources.external_data.ExternalSourceKind.DOWNLOAD:

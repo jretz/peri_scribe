@@ -59,6 +59,47 @@ cleanup; abrupt process termination may leave private staging directories, which
 reusable output paths. Power-loss durability is not established. An empty or otherwise
 failed conversion is not a successful publication.
 
+## ConditionalDownload
+
+`ConditionalDownload.tla` checks the Natural Earth city database refresh in
+`sources/cities.py::fetch_cities_database`. One invocation starts with or without a
+usable database and with no validator, Last-Modified, ETag, or both. Every invocation
+issues a request. Only a validated existing database supplies a conditional validator;
+ETag takes precedence. A 304 response can reuse that database and is fatal without it.
+An invalid existing file is abstracted as no usable database, regardless of validators
+that might be readable from its metadata.
+
+The checked graph contains 120 states. Download, conversion, validation, and atomic
+publication are separate transitions. Request, conversion, validation, and replacement
+failures preserve a usable prior database; without one they must abort. A replacement
+must be fully built and validated before it becomes visible. Interruption is possible
+before and after replacement. The model makes no liveness claim: a failed server may
+never supply a usable response.
+
+Conformance replays 96 concrete cases: absent, invalid, and valid SQLite databases;
+all four validator inventories; successful replacement, 304, request failure,
+conversion failure, validation failure, replacement failure, and interruption during
+conversion or immediately before replacement. The adapter observes actual request
+headers, SQLite creation and validation, and the published bytes around real atomic
+replacement. Every observation must extend the same full TLC execution. A regression
+rejects publication before conversion and validation even though both endpoint states
+are independently reachable. Archive decoding is supplied as parsed fixture records;
+ordinary tests exercise real ZIP and geospatial decoding.
+
+Six subprocess cases terminate without executing cleanup during partial conversion,
+after staging validation, and after atomic replacement, with both absent and valid
+previous data. The parent checks the flushed observations against the same graph and
+requires the selected hard exit status. A fresh interpreter validates the retained
+SQLite output and either performs a conditional 304 reuse or rebuilds absent output.
+Abandoned private staging files cannot authorize conditional reuse.
+
+The contract assumes a single cooperating writer, same-filesystem atomic replacement,
+and correct identification of a usable SQLite database. Ordinary tests exercise schema,
+row-coordinate and digest validation; the abstract model does not establish upstream
+geographic truth, HTTP server correctness, SQLite correctness, or power-loss durability.
+Publication dependencies on the resulting content digest are a separate pipeline
+contract. Private staging files left by hard termination cannot be read as final data.
+
 ## WorkerLifetime
 
 `WorkerLifetime.tla` checks `concurrency.py::{run_blocking,finish_worker,cancellable}`

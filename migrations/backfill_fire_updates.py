@@ -595,8 +595,8 @@ def reconstruct(
         raise click.ClickException(message)
     print("Loaded historical inputs", flush=True)
     (working / "sources").mkdir()
-    (working / "sources" / "major_cities.gpkg").symlink_to(
-        (year / "sources" / "major_cities.gpkg").resolve(),
+    (working / "sources" / "cities.sqlite").symlink_to(
+        (year / "sources" / "cities.sqlite").resolve(),
     )
     records: list[dict[str, object]] = []
     previous_rows: frozenset[int] = frozenset()
@@ -706,7 +706,7 @@ def main(year: pathlib.Path, output: pathlib.Path, limit: int | None) -> None:
 
         Args:
             fire: A historical summary.
-            cities: The fixed available major cities layer.
+            cities: The fixed available populated places.
 
         Returns:
             The shared report location phrase.

@@ -19,9 +19,7 @@ import peri_scribe.presentation.perimeters
 import peri_scribe.presentation.views
 import peri_scribe.report.gathering
 import peri_scribe.report.locations
-import peri_scribe.sources.catalog
-import peri_scribe.sources.external_data
-import spatial_data.layers
+import peri_scribe.sources.cities
 import tests.helpers.doubles.peri_scribe.fires.derived_layers
 import tests.helpers.doubles.peri_scribe.report.gathering
 import tests.helpers.factories.peri_scribe.kml.parsing
@@ -612,30 +610,22 @@ def test_located_entries_attach_location_phrases(
     assert entries[0].location == "15 mi ESE of Portland, OR"
 
 
-def test_read_cities_layer_reads_stored_layer(
+def test_read_cities_layer_uses_the_city_cache_reader(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     year_directory = tmp_path / "2026"
-    path = peri_scribe.sources.external_data.output_path(
-        year_directory,
-        peri_scribe.sources.catalog.MAJOR_CITIES_SOURCE,
-    )
-    path.parent.mkdir(parents=True)
-    path.touch()
-    calls: list[tuple[pathlib.Path, str]] = []
+    calls: list[pathlib.Path] = []
 
-    read_layer = (
-        tests.helpers.doubles.peri_scribe.report.gathering.make_city_layer_reader(
-            calls=calls,
-        )
+    read_cities = tests.helpers.doubles.peri_scribe.report.gathering.make_city_reader(
+        calls=calls,
     )
 
-    monkeypatch.setattr(spatial_data.layers, "read_layer", read_layer)
+    monkeypatch.setattr(peri_scribe.sources.cities, "read_cities", read_cities)
 
     frame = peri_scribe.report.gathering.read_cities_layer(year_directory)
 
-    assert calls == [(path, "major_cities")]
+    assert calls == [year_directory]
     assert frame.empty
 
 

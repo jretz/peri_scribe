@@ -60,18 +60,17 @@ EVACUATIONS_SOURCE = peri_scribe.sources.external_data.ExternalSource(
 )
 
 
-MAJOR_CITIES_SOURCE = peri_scribe.sources.external_data.ExternalSource(
-    name="major_cities",
-    kind=peri_scribe.sources.external_data.ExternalSourceKind.ARCGIS,
+CITIES_SOURCE = peri_scribe.sources.external_data.ExternalSource(
+    name="cities",
+    kind=peri_scribe.sources.external_data.ExternalSourceKind.CITIES,
     url=(
-        "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/"
-        "USA_Major_Cities_/FeatureServer/0"
+        "https://naturalearth.s3.amazonaws.com/10m_cultural/"
+        "ne_10m_populated_places_simple.zip"
     ),
-    layer_name="major_cities",
 )
 
 
-EXTERNAL_SOURCES = (BUILDINGS_SOURCE, EVACUATIONS_SOURCE, MAJOR_CITIES_SOURCE)
+EXTERNAL_SOURCES = (BUILDINGS_SOURCE, EVACUATIONS_SOURCE, CITIES_SOURCE)
 
 
 def configured_phase_branches() -> peri_scribe.phases.Branches:
@@ -84,4 +83,5 @@ def configured_phase_branches() -> peri_scribe.phases.Branches:
         feeds=tuple(feed.name for feed in peri_scribe.sources.feeds.FEEDS),
         sources=tuple(source.name for source in EXTERNAL_SOURCES),
         evacuations=EVACUATIONS_SOURCE.name,
+        cities=CITIES_SOURCE.name,
     )

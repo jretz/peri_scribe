@@ -69,8 +69,8 @@
     <g id="overview-network" class="node network" transform="translate(24 100)">
       <rect width="792" height="110"/>
       <text class="heading" x="16" y="32">External resources</text>
-      <text class="body" x="16" y="62">CAL FIRE/FIRIS + WFIGS perimeter/location feeds; evacuations, cities and state boundaries; ArcGIS</text>
-      <text class="body" x="16" y="86">SDK; Microsoft download index + state/DC archive family.</text>
+      <text class="body" x="16" y="62">CAL FIRE/FIRIS + WFIGS feeds; evacuations and state boundaries; Natural Earth places;</text>
+      <text class="body" x="16" y="86">ArcGIS SDK; Microsoft download index + state/DC archive family.</text>
     </g>
     <g id="edge-network-fetch">
       <path class="edge" d="M 420 210 V 258"/>
@@ -78,7 +78,7 @@
     <g id="overview-fetch" class="node process" transform="translate(24 258)">
       <rect width="792" height="110"/>
       <text class="heading" x="16" y="32">1 / Fetch</text>
-      <text class="body" x="16" y="62">Query and compare changed/missing/status-flip IDs; stream building centroid / tile arrays; derive</text>
+      <text class="body" x="16" y="62">Compare changed/missing/status-flip IDs; stream buildings; conditionally fetch cities; derive</text>
       <text class="body" x="16" y="86">borders; save changes and check full-fetch / publication gates.</text>
     </g>
     <g id="fetch-memory" class="node memory" transform="translate(24 416)">
@@ -176,7 +176,7 @@
       <rect width="792" height="110"/>
       <text class="heading" x="16" y="32">4 / KMZ + update publication</text>
       <text class="body" x="16" y="62">Assemble maps; commit successful KMZ baseline; append new mapping updates with recovery journal;</text>
-      <text class="body" x="16" y="86">build 48-hour JSON snapshot and copy viewer.</text>
+      <text class="body" x="16" y="86">publish 48-hour JSON with current previews and locations; copy viewer.</text>
     </g>
     <g id="overview-summaries" class="node memory" transform="translate(24 1652)">
       <rect width="378" height="182"/>
@@ -208,7 +208,7 @@
       <rect width="792" height="110"/>
       <text class="heading" x="16" y="32">5 / Reports</text>
       <text class="body" x="16" y="62">Reuse shared presentation facts where available; render selected fires and details as Markdown; use</text>
-      <text class="body" x="16" y="86">major-city reference data for location text.</text>
+      <text class="body" x="16" y="86">Natural Earth places for nearest-place location text.</text>
     </g>
     <g id="overview-report-memory" class="node memory" transform="translate(24 2064)">
       <rect width="378" height="134"/>
@@ -236,8 +236,8 @@
       <text class="heading" x="16" y="32">Reference files / sources/</text>
       <text class="body" x="16" y="62">buildings.sqlite → nearby-building counts</text>
       <text class="body" x="16" y="86">evacuations.gpkg → scores + publication gate</text>
-      <text class="body" x="16" y="110">major_cities.gpkg → report / update</text>
-      <text class="body" x="16" y="134">locations</text>
+      <text class="body" x="16" y="110">cities.sqlite → locations + gate</text>
+      <text class="body" x="16" y="134">Coordinates, version and HTTP validators</text>
       <text class="body" x="16" y="158">CA_border_with_AZ_NV_and_OR.gpkg →</text>
       <text class="body" x="16" y="182">classification</text>
     </g>

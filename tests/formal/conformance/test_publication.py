@@ -9,14 +9,15 @@ def test_decide_matches_lean_gate_precedence_and_timer_boundary() -> None:
         tests.formal.helpers.publication.Gate(
             valid=valid,
             evacuations=evacuations,
+            cities=cities,
             history=history,
             pending=pending,
             mapping=mapping,
             elapsed=elapsed,
         )
-        for valid, evacuations, history, pending, mapping in itertools.product(
+        for valid, evacuations, cities, history, pending, mapping in itertools.product(
             (False, True),
-            repeat=5,
+            repeat=6,
         )
         for elapsed in (-1, 0, 299, 300, 301)
     ]

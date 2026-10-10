@@ -23,6 +23,10 @@ import peri_scribe.report.gathering
 from measurement_units import units
 
 
+if typing.TYPE_CHECKING:
+    import geopandas
+
+
 WINDOW = datetime.timedelta(hours=48)
 type HistoryIdentity = peri_scribe.fire_update_records.HistoryIdentity
 Acreage = peri_scribe.fire_update_records.Acreage
@@ -170,18 +174,23 @@ def write_html(path: pathlib.Path) -> None:
 def with_previews(
     snapshot: Snapshot,
     fires: collections.abc.Sequence[peri_scribe.presentation.fire_data.FireSummary],
+    cities: geopandas.GeoDataFrame,
     *,
     state: peri_scribe.fire_updates.State | None = None,
 ) -> Snapshot:
-    """Reuse each current fire's preview across its visible log occurrences.
+    """Reuse each current fire's preview and location across its visible occurrences.
+
+    Locations describe the fire's current geography. A historical occurrence without
+    a matching current fire or available geography retains its recorded location.
 
     Args:
         snapshot: Chronological updates with current history ownership already applied.
         fires: The same prepared fires used to produce the completed KMZ.
+        cities: City points used by the report's nearest-city location calculation.
         state: Saved alias-to-bucket assignments and current history owners.
 
     Returns:
-        The snapshot with available previews, preserving all logged fields and order.
+        The decorated snapshot, preserving other logged fields, baselines, and order.
     """
     aliases = state.aliases if state is not None else {}
     owners = state.owners if state is not None else {}
@@ -193,7 +202,10 @@ def with_previews(
             by_identity[
                 peri_scribe.fire_update_records.IDENTITY.validate_json(owner)
             ] = fire
-    previews: dict[peri_scribe.presentation.selection.AreaKey, str | None] = {}
+    presentation: dict[
+        peri_scribe.presentation.selection.AreaKey,
+        tuple[str | None, str | None],
+    ] = {}
     updates = []
     for update in snapshot.updates:
         identity = update.history_identity or update.identity()
@@ -202,9 +214,16 @@ def with_previews(
             updates.append(update)
             continue
         key = peri_scribe.report.gathering.fire_identity(fire)
-        if key not in previews:
-            previews[key] = peri_scribe.previews.fire_preview(fire)
-        updates.append(update.model_copy(update={"preview": previews[key]}))
+        if key not in presentation:
+            presentation[key] = (
+                peri_scribe.previews.fire_preview(fire),
+                peri_scribe.report.gathering.fire_location(fire, cities),
+            )
+        preview, location = presentation[key]
+        fields = {"preview": preview}
+        if location is not None:
+            fields["location"] = location
+        updates.append(update.model_copy(update=fields))
     return snapshot.model_copy(update={"updates": tuple(updates)})
 
 
@@ -219,7 +238,7 @@ def write_updates_page(
 
     Args:
         year_directory: The year directory holding the completed KMZ and logs.
-        fires: Prepared KMZ fires supplying the latest preview for each visible fire.
+        fires: Prepared KMZ fires supplying current previews and locations.
     """
     state = peri_scribe.fire_updates.read_authoritative(
         peri_scribe.fire_updates.state_path(year_directory),
@@ -230,7 +249,12 @@ def write_updates_page(
         datetime.datetime.now(datetime.UTC),
         owners=state.owners if state is not None else None,
     )
-    snapshot = with_previews(snapshot, fires, state=state)
+    snapshot = with_previews(
+        snapshot,
+        fires,
+        peri_scribe.report.gathering.read_cities_layer(year_directory),
+        state=state,
+    )
     directory = year_directory / peri_scribe.paths.MAPS_DIRECTORY_NAME
     write_html(directory / "updates.html")
     peri_scribe.publication.write_state(directory / "updates.json", snapshot)

@@ -19,6 +19,7 @@ class ExternalSourceKind(enum.Enum):
 
     ARCGIS = "arcgis"
     DOWNLOAD = "download"
+    CITIES = "cities"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -38,12 +39,13 @@ class ExternalSource:
     feature's centroid point instead of its original geometry, and ``geodata_suffix``
     names the file (or file geodatabase directory, for a ``.gdb`` archive) inside the
     extracted archive that holds the vector data. When ``keep_attributes`` is false the
-    converted GeoPackage holds only the geometry, dropping every attribute column. When
-    ``compact_database`` is true the source's output is the compact buildings SQLite
-    database (``sources/{name}.sqlite``), produced and read by the dedicated buildings
-    converter rather than the generic GeoPackage conversion paths; the database holds no
-    named layers, so ``layer_name`` is not required, and the other conversion options do
-    not apply.
+    converted GeoPackage holds only the geometry, dropping every attribute column.
+    ``cities`` sources use a dedicated conditional downloader and normalized SQLite
+    database of named points. When ``compact_database`` is true the source's output is
+    the compact buildings SQLite database (``sources/{name}.sqlite``), produced and read
+    by the dedicated buildings converter rather than the generic GeoPackage conversion
+    paths; the database holds no named layers, so ``layer_name`` is not required, and
+    the other conversion options do not apply.
     """
 
     name: str
@@ -105,7 +107,7 @@ def output_path(
     named for the source (or, for a live ArcGIS source, at that same fixed path holding
     its latest version). A per-state download source produces one file per state, so its
     files stay under the source's own directory. A compact source uses the ``.sqlite``
-    suffix; every other source stores a GeoPackage.
+    suffix, as does the dedicated cities source; every other source stores a GeoPackage.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
@@ -121,7 +123,11 @@ def output_path(
     if source.combine and state is not None:
         message = f"Source {source.name} combines its states into one database"
         raise ValueError(message)
-    suffix = ".sqlite" if source.compact_database else ".gpkg"
+    suffix = (
+        ".sqlite"
+        if source.compact_database or source.kind is ExternalSourceKind.CITIES
+        else ".gpkg"
+    )
     if state is not None:
         return (
             external_source_directory_path(year_directory, source) / f"{state}{suffix}"

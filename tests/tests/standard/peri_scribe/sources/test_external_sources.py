@@ -256,12 +256,16 @@ def test_fetch_arcgis_source_replaces_empty_version_when_features_return(
     assert stored.geometry.tolist() == [shapely.geometry.Point(-121.0, 40.0)]
 
 
-def test_fetch_arcgis_source_keeps_major_cities_when_response_empty(
+def test_fetch_arcgis_source_keeps_non_evacuation_data_when_response_empty(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
     log_output: structlog.testing.LogCapture,
 ) -> None:
-    source = peri_scribe.sources.catalog.MAJOR_CITIES_SOURCE
+    source = dataclasses.replace(
+        peri_scribe.sources.catalog.EVACUATIONS_SOURCE,
+        name="places",
+        layer_name="places",
+    )
     tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_feature_set(
         monkeypatch,
         tests.helpers.factories.arcgis.wgs84_feature_set([(1, "City", -121.0, 40.0)]),
@@ -281,23 +285,27 @@ def test_fetch_arcgis_source_keeps_major_cities_when_response_empty(
         entry["log_level"] == "warning"
         and entry["event"] == "Failed to fetch external source; keeping current data"
         and entry["source"] == source.name
-        and entry["error"] == "External source major_cities returned no features"
+        and entry["error"] == "External source places returned no features"
         for entry in log_output.entries
     )
 
 
-def test_fetch_arcgis_source_raises_for_empty_major_cities_without_cache(
+def test_fetch_arcgis_source_raises_for_empty_non_evacuation_data_without_cache(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    source = peri_scribe.sources.catalog.MAJOR_CITIES_SOURCE
+    source = dataclasses.replace(
+        peri_scribe.sources.catalog.EVACUATIONS_SOURCE,
+        name="places",
+        layer_name="places",
+    )
     tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_feature_set(
         monkeypatch,
         arcgis.features.FeatureSet([]),
     )
     with pytest.raises(
         peri_scribe.exceptions.ExternalDataError,
-        match="External source major_cities returned no features",
+        match="External source places returned no features",
     ):
         peri_scribe.sources.external_sources.fetch_arcgis_source(source, tmp_path)
     assert not peri_scribe.sources.external_data.output_path(tmp_path, source).exists()
@@ -785,7 +793,11 @@ def test_fetch_arcgis_source_keeps_millisecond_comparisons_for_other_sources(
         {"EditDate": [pd.Timestamp("2026-09-08 22:30:35.576")]},
         [shapely.geometry.Point(-121.0, 40.0)],
     )
-    source = peri_scribe.sources.catalog.MAJOR_CITIES_SOURCE
+    source = dataclasses.replace(
+        peri_scribe.sources.catalog.EVACUATIONS_SOURCE,
+        name="places",
+        layer_name="places",
+    )
     tests.helpers.doubles.peri_scribe.sources.external_sources.install_arcgis_query_stubs(
         monkeypatch,
         dataframe,

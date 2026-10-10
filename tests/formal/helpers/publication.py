@@ -15,6 +15,7 @@ REASONS = (
     peri_scribe.publication.Reason.AREA,
     peri_scribe.publication.Reason.TIMER,
     peri_scribe.publication.Reason.BELOW_THRESHOLD,
+    peri_scribe.publication.Reason.CITIES,
 )
 INTERVAL_SECONDS = 300
 
@@ -25,6 +26,7 @@ class Gate:
 
     valid: bool
     evacuations: bool
+    cities: bool
     history: bool
     pending: bool
     mapping: bool
@@ -39,6 +41,7 @@ class Gate:
         values = (
             self.valid,
             self.evacuations,
+            self.cities,
             self.history,
             self.pending,
             self.mapping,
@@ -70,6 +73,7 @@ def implementation_decision(case: Gate) -> peri_scribe.publication.Decision:
     collection = collection.model_copy(
         update={
             "evacuations": stamp if case.evacuations else None,
+            "cities": "changed" if case.cities else None,
             "files": {
                 **collection.files,
                 **({baseline.source_file: stamp} if case.history else {}),

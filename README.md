@@ -65,7 +65,7 @@ It reuses unchanged histories, rebuilds affected fires, and shares the resulting
 across scores, maps, and reports. The KMZ stage also produces a browser viewer showing
 the last 48 hours of mapping updates.
 
-Routine runs skip derived work when fire and evacuation data are unchanged and no
+Routine runs skip derived work when fire, evacuation, and city data are unchanged and no
 rebuild is pending. Failed work is retried on a later run. The optional
 `--publish-threshold` can defer output generation until a mapped-area change or elapsed
 time reaches the configured threshold.

@@ -59,9 +59,9 @@ EVACUATIONS_SOURCE_URL = (
     "https://services.arcgis.com/BLN4oKB0N1YSgvY8/arcgis/rest/services/"
     "CA_EVACUATIONS_CalOESHosted_view/FeatureServer"
 )
-MAJOR_CITIES_SOURCE_URL = (
-    "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/"
-    "USA_Major_Cities_/FeatureServer"
+CITIES_SOURCE_URL = (
+    "https://www.naturalearthdata.com/downloads/10m-cultural-vectors/"
+    "10m-populated-places/"
 )
 STATE_BOUNDARIES_SOURCE_URL = (
     "https://services.arcgis.com/P3ePLMYs2RVChkJx/arcgis/rest/services/"
@@ -94,8 +94,8 @@ ROOT_DOCUMENT_ATTRIBUTION = document_text.encoding.CData(f"""
             </a>
         </li>
         <li>
-            <a href="{MAJOR_CITIES_SOURCE_URL}">
-                Esri / U.S. Census Bureau USA Major Cities
+            <a href="{CITIES_SOURCE_URL}">
+                Natural Earth populated places
             </a>
         </li>
         <li>
