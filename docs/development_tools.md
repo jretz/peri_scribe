@@ -196,35 +196,3 @@ which requires 100% combined JavaScript line, branch, and function coverage, alo
 the separate Python coverage requirement. Reports map the script to `updates.html`.
 See [Testing](testing.md#browser-viewer-tests) for test ownership, isolated runs, and
 browser debugging.
-
-## Backfill fire update history
-
-Run the standalone migration against a copy of a retained year directory and use a
-separate output directory:
-
-```sh
-.venv/bin/python -m migrations.backfill_fire_updates \
-  /path/to/copied/2026 /tmp/fire-updates-backfill
-```
-
-The Click command accepts `--limit N` to replay at most N builds with new perimeters for
-a smoke run and `--help` for usage. It reconstructs monthly fire-update logs from
-successful KMZ runs and retained history, and writes a checkpoint and an audit under the
-output directory.
-Closed monthly logs follow the same seven-day compression grace period as normal runs.
-An input copy with no successful KMZ builds is rejected without changing the output
-directory. Run the migration's isolated regression tests with:
-
-```sh
-.venv/bin/python -m pytest -o addopts='' --no-cov -q migrations/test_backfill_fire_updates.py
-```
-
-Review the audit before copying the reconstructed logs and checkpoint into the active
-year directory. Its `complete` flag indicates whether the output covers every successful
-build in the retained evidence. The audit records the requested `limit`, input-history
-bounds separately from the covered `first_completed` and `last_completed`, and the
-`last_replayed_completed` build that advanced the checkpoint. Unchanged builds count as
-covered without consuming the replay limit. An incomplete audit identifies a smoke-run
-checkpoint that should not replace the current baseline. The migration does not publish
-these files or generate the viewer's `updates.json`; the next successful KMZ phase
-generates the viewer files from the logs.
