@@ -3,6 +3,9 @@
 Interprets each configured feed's layer into fire records, full source rows, and complex
 memberships, and provides the attribute-value helpers the rest of the project uses to
 read those rows.
+
+Design notes:
+[Authenticated parsed source cache](../../../docs/algorithms/parsed-source-cache.md).
 """
 
 from __future__ import annotations

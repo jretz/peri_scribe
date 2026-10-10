@@ -1,4 +1,9 @@
-"""CLI entry point for peri_scribe — fetch and symbolize fire geography."""
+"""CLI entry point for peri_scribe — fetch and symbolize fire geography.
+
+Design notes:
+[Pipeline publication](../../docs/algorithms/pipeline-publication.md).
+[Output serialization](../../docs/algorithms/output-serialization.md).
+"""
 
 from __future__ import annotations
 

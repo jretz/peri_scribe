@@ -3,6 +3,9 @@
 They live in their own module because both the low-level feed metadata reader and the
 download machinery need them, and the download machinery reaches the feed reader through
 its imports.
+
+Design notes:
+[Incremental source collection](../../../docs/algorithms/source-collection.md).
 """
 
 from __future__ import annotations

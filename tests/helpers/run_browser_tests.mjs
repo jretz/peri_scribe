@@ -1,3 +1,4 @@
+/** Design: ../../docs/algorithms/verification-tooling.md */
 import childProcess from "node:child_process";
 import path from "node:path";
 

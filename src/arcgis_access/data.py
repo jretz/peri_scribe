@@ -2,6 +2,10 @@
 
 Converts ArcGIS FeatureSet query results into GeoDataFrames in the layer's native
 spatial reference and provides retry-aware querying for ArcGIS feature layers.
+
+Design notes:
+[Source interpretation and validation](../../docs/algorithms/source-validation.md).
+[Incremental source collection](../../docs/algorithms/source-collection.md).
 """
 
 from __future__ import annotations

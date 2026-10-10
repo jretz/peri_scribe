@@ -1,4 +1,8 @@
-"""Authenticate complete source generations before loading fire observations."""
+"""Authenticate complete source generations before loading fire observations.
+
+Algorithm reasoning and contracts:
+[Geography generations](../../../docs/algorithms/geography-generations.md)
+"""
 
 from __future__ import annotations
 

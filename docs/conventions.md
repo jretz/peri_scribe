@@ -37,6 +37,17 @@ All English prose in code, whether in comments or docstrings, should be wrapped 
 in 88 columns. If the first word on the next line (with any adjacent punctuation) will
 fit on the previous line, it must be moved there.
 
+## Algorithm Documentation
+
+Follow [Algorithm Design](algorithm_design.md) to assess reasoning complexity before
+implementing new algorithms and when changing existing behavior or assumptions. The
+classification determines whether docstrings, a focused explanation, or a dedicated
+design note is required. Keep algorithm walkthroughs and derivations in documentation,
+with links from owning modules; comments and docstrings continue to explain why.
+Algorithm notes should make liberal use of explanatory SVG graphics, with animation
+only where it aids understanding, following the guide's SVG requirements. Write simple
+linear sequences and lists directly in Markdown rather than drawing them as SVGs.
+
 ## Import Style
 
 In general, avoid using `from <module> import <name>`. Instead, use `import <module>`

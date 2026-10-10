@@ -1,4 +1,8 @@
-"""Feed classes and last-edit timestamp observation for peri_scribe."""
+"""Feed classes and last-edit timestamp observation for peri_scribe.
+
+Design notes:
+[Incremental source collection](../../../docs/algorithms/source-collection.md).
+"""
 
 from __future__ import annotations
 

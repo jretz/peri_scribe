@@ -1,0 +1,182 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="780" viewBox="0 0 840 780"
+     role="img" aria-labelledby="title description" style="max-width:100%;height:auto">
+  <title id="title">Measure to the fire, not just its centroid</title>
+  <desc id="description">Two places and a fixed irregular fire show why center-only
+    selection can fail. Distance endpoints move from the centroid to the nearest point
+    in the fire, and the corresponding distance bars shorten. A is closer to the
+    centroid, 119.1 schematic units versus B's 318.8. B is closer to the fire,
+    28.4 units versus A's 43.8. Both comparisons remain visible below with reduced
+    motion. This is a planar illustration; the implementation uses a separate
+    place-centered projection for each candidate. Interpolation is explanatory,
+    not an iterative nearest-point search.</desc>
+  <defs><style>
+      :root { color-scheme:light dark; --bg:#fbfcfe; --text:#172e40;
+        --muted:#526779; --edge:#526779; --fire:#fff7e8; --a:#197685;
+        --b:#7957aa; --card:#f1f5f9; }
+      @media (prefers-color-scheme:dark) {
+        :root { --bg:#111820; --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe;
+          --fire:#362c1c; --a:#7bdfdf; --b:#c5a3ef; --card:#1b2733; }
+      }
+      text { font-family:system-ui,sans-serif; font-size:16px; fill:var(--text); }
+      .heading { font-size:21px; font-weight:700; }
+      .label { font-weight:650; }
+      .small { font-size:14px; }
+      .muted { fill:var(--muted); }
+      .fire { fill:var(--fire); stroke:var(--edge); stroke-width:2; }
+      .reference { fill:none; stroke:var(--edge); stroke-width:1.5; stroke-dasharray:5 4; }
+      .measure { fill:none; stroke-width:3; }
+      .a-line { stroke:var(--a); }
+      .b-line { stroke:var(--b); }
+      .a-fill { fill:var(--a); }
+      .b-fill { fill:var(--b); }
+      .endpoint { fill:var(--bg); stroke-width:2.5; }
+      .card { fill:var(--card); stroke:var(--edge); stroke-width:1; rx:12; }
+      .centroid-stage { opacity:0; }
+      .area-stage { opacity:1; }
+      #distance-a { transform:scaleX(43.803826); }
+      #distance-b { transform:scaleX(28.442925); }
+      #nearest-a { transform:translate(350.353103px,107.562759px); }
+      #nearest-b { transform:translate(650px,175px); }
+      /* Static defaults show the actual area distances; both comparisons stay below. */
+      @media (prefers-reduced-motion:no-preference) {
+        #measure-a { animation:measure-a 20s linear infinite; }
+        #measure-b { animation:measure-b 20s linear infinite; }
+        #nearest-a { animation:endpoint-a 20s linear infinite; }
+        #nearest-b { animation:endpoint-b 20s linear infinite; }
+        #distance-a { animation:bar-a 20s linear infinite; }
+        #distance-b { animation:bar-b 20s linear infinite; }
+        .centroid-stage { animation:centroid-label 20s linear infinite; }
+        .area-stage { animation:area-label 20s linear infinite; }
+      }
+      @keyframes centroid-label {
+        0%, 15%, 100% { opacity:1; }
+        17%, 98% { opacity:0; }
+      }
+      @keyframes area-label {
+        0%, 43%, 82%, 100% { opacity:0; }
+        45%, 80% { opacity:1; }
+      }
+      @keyframes measure-a {
+        0%, 15%, 100% { d:path("M 340 65 L 359.164826 182.577552"); }
+        45%, 80% { d:path("M 340 65 L 350.353103 107.562759"); }
+      }
+      @keyframes endpoint-a {
+        0%, 15%, 100% { transform:translate(359.164826px,182.577552px); }
+        45%, 80% { transform:translate(350.353103px,107.562759px); }
+      }
+      /* Bar lengths sample the moving endpoint at 21 fractions; maximum error
+         is less than 0.021 schematic units (SVG pixels). */
+      @keyframes bar-a {
+        0%, 15%, 100% { transform:scaleX(119.129221); }
+        16.5%, 99% { transform:scaleX(115.356579); }
+        18%, 98% { transform:scaleX(111.584200); }
+        19.5%, 97% { transform:scaleX(107.812112); }
+        21%, 96% { transform:scaleX(104.040346); }
+        22.5%, 95% { transform:scaleX(100.268938); }
+        24%, 94% { transform:scaleX(96.497931); }
+        25.5%, 93% { transform:scaleX(92.727373); }
+        27%, 92% { transform:scaleX(88.957322); }
+        28.5%, 91% { transform:scaleX(85.187844); }
+        30%, 90% { transform:scaleX(81.419020); }
+        31.5%, 89% { transform:scaleX(77.650944); }
+        33%, 88% { transform:scaleX(73.883732); }
+        34.5%, 87% { transform:scaleX(70.117522); }
+        36%, 86% { transform:scaleX(66.352485); }
+        37.5%, 85% { transform:scaleX(62.588832); }
+        39%, 84% { transform:scaleX(58.826830); }
+        40.5%, 83% { transform:scaleX(55.066816); }
+        42%, 82% { transform:scaleX(51.309228); }
+        43.5%, 81% { transform:scaleX(47.554641); }
+        45%, 80% { transform:scaleX(43.803826); }
+      }
+      @keyframes measure-b {
+        0%, 15%, 100% { d:path("M 678 180 L 359.164826 182.577552"); }
+        45%, 80% { d:path("M 678 180 L 650.000000 175.000000"); }
+      }
+      @keyframes endpoint-b {
+        0%, 15%, 100% { transform:translate(359.164826px,182.577552px); }
+        45%, 80% { transform:translate(650.000000px,175.000000px); }
+      }
+      @keyframes bar-b {
+        0%, 15%, 100% { transform:scaleX(318.845592); }
+        16.5%, 99% { transform:scaleX(304.301358); }
+        18%, 98% { transform:scaleX(289.757371); }
+        19.5%, 97% { transform:scaleX(275.213670); }
+        21%, 96% { transform:scaleX(260.670302); }
+        22.5%, 95% { transform:scaleX(246.127328); }
+        24%, 94% { transform:scaleX(231.584821); }
+        25.5%, 93% { transform:scaleX(217.042876); }
+        27%, 92% { transform:scaleX(202.501612); }
+        28.5%, 91% { transform:scaleX(187.961188); }
+        30%, 90% { transform:scaleX(173.421817); }
+        31.5%, 89% { transform:scaleX(158.883785); }
+        33%, 88% { transform:scaleX(144.347499); }
+        34.5%, 87% { transform:scaleX(129.813545); }
+        36%, 86% { transform:scaleX(115.282804); }
+        37.5%, 85% { transform:scaleX(100.756667); }
+        39%, 84% { transform:scaleX(86.237460); }
+        40.5%, 83% { transform:scaleX(71.729393); }
+        42%, 82% { transform:scaleX(57.240935); }
+        43.5%, 81% { transform:scaleX(42.792009); }
+        45%, 80% { transform:scaleX(28.442925); }
+      }
+    </style></defs>
+  <rect width="840" height="780" fill="var(--bg)"/>
+  <text x="24" y="35" class="heading">Measure to the fire, not just its centroid</text>
+  <text x="24" y="65" class="muted">Watch the measurement endpoints change. The places and fire stay fixed.</text>
+  <g id="comparison-map" transform="translate(0 80)">
+    <path id="elongated-fire" d="M 130.000 160.000 L 150.000 136.000 L 187.000 140.000 L 206.000 114.000 L 257.000 120.000 L 283.000 102.000 L 328.000 113.000 L 365.000 104.000 L 403.000 130.000 L 440.000 127.000 L 464.000 146.000 L 503.000 137.000 L 527.000 154.000 L 565.000 146.000 L 593.000 165.000 L 625.000 158.000 L 650.000 175.000 L 635.000 197.000 L 603.000 197.000 L 585.000 220.000 L 549.000 211.000 L 526.000 230.000 L 482.000 221.000 L 456.000 243.000 L 417.000 235.000 L 386.000 257.000 L 347.000 247.000 L 310.000 269.000 L 284.000 248.000 L 248.000 255.000 L 221.000 232.000 L 186.000 240.000 L 158.000 220.000 L 163.000 198.000 L 139.000 187.000 Z" class="fire"/>
+    <path d="M 340 65 L 359.164826 182.577552 M 678 180 L 359.164826 182.577552" class="reference"/>
+    <path id="measure-a" d="M 340 65 L 350.353103 107.562759" class="measure a-line"/>
+    <path id="measure-b" d="M 678 180 L 650 175" class="measure b-line"/>
+    <circle cx="359.164826" cy="182.577552" r="4" fill="var(--text)"/>
+    <text x="370" y="202">centroid</text>
+    <circle id="nearest-a" r="5" class="endpoint a-line"/>
+    <circle id="nearest-b" r="5" class="endpoint b-line"/>
+    <circle cx="340" cy="65" r="6" class="a-fill"/>
+    <text x="324" y="42" class="label">A</text>
+    <circle cx="678" cy="180" r="6" class="b-fill"/>
+    <text x="696" y="184" class="label">B</text>
+  </g>
+  <text x="24" y="382" class="small muted">Displayed distance (schematic units, u)</text>
+  <text x="25" y="410" class="label">A</text>
+  <text x="25" y="446" class="label">B</text>
+  <g transform="translate(57 395)"><rect id="distance-a" width="1" height="20" class="a-fill"/></g>
+  <g transform="translate(57 431)"><rect id="distance-b" width="1" height="20" class="b-fill"/></g>
+  <g class="centroid-stage"><text x="455" y="418" class="label">Center comparison: A is nearer</text></g>
+  <g class="area-stage"><text x="455" y="418" class="label">Area comparison: B wins</text></g>
+  <g id="static-center">
+    <rect x="24" y="478" width="386" height="196" class="card"/>
+    <text x="40" y="507" class="label">Center comparison</text>
+    <g transform="translate(10 510) scale(.34)">
+      <use href="#elongated-fire"/>
+      <path d="M 340 65 L 359.164826 182.577552" class="measure a-line"/><path d="M 678 180 L 359.164826 182.577552" class="measure b-line"/>
+      <circle cx="340" cy="65" r="8" class="a-fill"/>
+      <circle cx="678" cy="180" r="8" class="b-fill"/>
+      <text x="316" y="46" style="font-size:38px">A</text>
+      <text x="690" y="196" style="font-size:38px">B</text>
+    </g>
+    <text x="292" y="549" class="small">A: 119.1 u</text>
+    <text x="292" y="578" class="small">B: 318.8 u</text>
+    <text x="40" y="650">A is nearer the centroid</text>
+  </g>
+  <g id="static-area">
+    <rect x="430" y="478" width="386" height="196" class="card"/>
+    <text x="446" y="507" class="label">Area comparison</text>
+    <g transform="translate(416 510) scale(.34)">
+      <use href="#elongated-fire"/>
+      <path d="M 340 65 L 350.353103 107.562759" class="measure a-line"/><path d="M 678 180 L 650.000000 175.000000" class="measure b-line"/>
+      <circle cx="340" cy="65" r="8" class="a-fill"/>
+      <circle cx="678" cy="180" r="8" class="b-fill"/>
+      <text x="316" y="46" style="font-size:38px">A</text>
+      <text x="690" y="196" style="font-size:38px">B</text>
+    </g>
+    <text x="698" y="549" class="small">A: 43.8 u</text>
+    <text x="698" y="578" class="small">B: 28.4 u</text>
+    <text x="446" y="650">B is nearest to the fire</text>
+  </g>
+  <text x="24" y="710" class="muted">Solid lines change what is measured; dashed lines retain the centroid reference.</text>
+  <text x="24" y="738" class="muted">Interpolation explains the operands, not the nearest-point library’s search steps.</text>
+  <text x="24" y="764" class="small muted">Planar schematic; actual candidates use separate place-centered projections.</text>
+</svg>

@@ -1,4 +1,8 @@
-"""Shared fire facts and plain-text formatting for reports and map balloons."""
+"""Shared fire facts and plain-text formatting for reports and map balloons.
+
+Design notes:
+[Output serialization](../../../docs/algorithms/output-serialization.md).
+"""
 
 from __future__ import annotations
 

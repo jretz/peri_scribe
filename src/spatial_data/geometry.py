@@ -3,6 +3,10 @@
 These are the operations more than one package area needs and no single one owns. They
 work on shapely geometries alone, so nothing that measures or cleans a geometry has to
 depend on the area that happens to use it first.
+
+See [Geometry contracts] for the contract and correctness argument.
+
+[Geometry contracts]: ../../docs/algorithms/spatial-queries-and-measurements.md
 """
 
 from __future__ import annotations

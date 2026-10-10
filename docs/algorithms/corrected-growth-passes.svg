@@ -1,0 +1,365 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="1110"
+     viewBox="0 0 840 1110" role="img" style="max-width:100%;height:auto"
+     aria-labelledby="growth-title growth-description">
+  <title id="growth-title">Correct fire perimeters backward, then reveal new growth forward</title>
+  <desc id="growth-description">Three irregular fire perimeters remain visible across
+    the top. Blue copies slide down into the backward row before the backward pass begins.
+    A translucent copy of the latest perimeter then slides onto the middle one.
+    Ground outside that copy turns rose and dissolves. The corrected
+    middle footprint then slides onto the earliest one and trims it in the same way.
+    Copies of all three corrected footprints slide down into the forward row, changing
+    from blue to gold. Then copies slide diagonally from the complete corrected footprints
+    above onto the next footprint and dissolve already counted ground. Three disjoint amber
+    growth regions remain. Static and reduced-motion views show original, corrected and
+    difference geometry together; hatching identifies the retracted original ground.</desc>
+  <defs>
+    <style>
+      :root { color-scheme:light dark; --paper:#fbfcfe; --panel:#f3f6fa;
+        --ink:#183145; --muted:#53697d; --rule:#d7e0e8;
+        --mapped:#bed9ea; --mapped-line:#39769a;
+        --growth:#f5cc73; --growth-line:#936418;
+        --removed:#d66d86; --removed-line:#a83f5d;
+        --ghost-fill:#a596d0; --ghost-line:#694797; }
+      @media (prefers-color-scheme:dark) {
+        :root { --paper:#111a24; --panel:#182532; --ink:#e4edf5; --muted:#afc2d1;
+          --rule:#334959; --mapped:#294f68; --mapped-line:#8bbada;
+          --growth:#765724; --growth-line:#efc574;
+          --removed:#a04560; --removed-line:#ed97ae;
+          --ghost-fill:#9c89c9; --ghost-line:#d4bafc; }
+      }
+      text { font-family:system-ui,sans-serif; font-size:15px; fill:var(--ink); }
+      .title { font-size:22px; font-weight:700; }
+      .section { font-size:18px; font-weight:700; }
+      .column { font-size:17px; font-weight:650; }
+      .muted { fill:var(--muted); }
+      .panel { fill:var(--panel); stroke:var(--rule); rx:14; }
+      .mapped { fill:var(--mapped); }
+      .map-outline { fill:none; stroke:var(--mapped-line); stroke-width:2; }
+      .growth { fill:var(--growth); }
+      .growth-outline { fill:none; stroke:var(--growth-line); stroke-width:2; }
+      .retracted-reference { fill:url(#retracted-hatching); stroke:var(--removed-line);
+        stroke-width:1.2; stroke-dasharray:3 3; }
+      .ghost { opacity:0; pointer-events:none; transform:translate(420px,596px); }
+      .ghost-shape { fill:var(--ghost-fill); fill-opacity:.24;
+        stroke:var(--ghost-line); stroke-width:2.5; stroke-dasharray:7 4; }
+      .ghost-label { fill:var(--ghost-line); font-size:15px; font-weight:700;
+        paint-order:stroke; stroke:var(--paper); stroke-width:4; stroke-linejoin:round; }
+      .retraction, .old-outline, .already-counted, .whole-outline { opacity:0; }
+      .forward-geometry { fill:var(--growth); stroke:var(--growth-line); }
+      .forward-geometry .growth { fill:inherit; stroke:none; }
+      .forward-geometry .already-counted { stroke:none; }
+      .forward-geometry .growth-outline { stroke:inherit; }
+      .static-caption { font-size:14px; }
+
+      @media (prefers-reduced-motion:no-preference) {
+
+        .working-geometry { animation:loop-reset 36s linear infinite; }
+
+        .backward-geometry { animation:backward-descent 36s linear infinite; }
+
+        .forward-geometry { animation:forward-descent 36s linear infinite; }
+
+        #ghost-back-2 { animation:back-from-2 36s linear infinite; }
+
+        #ghost-back-1 { animation:back-from-1 36s linear infinite; }
+
+        #ghost-forward-0 { animation:forward-from-0 36s linear infinite; }
+
+        #ghost-forward-1 { animation:forward-from-1 36s linear infinite; }
+
+        #retraction-0 { animation:remove-0 36s linear infinite; }
+
+        #original-outline-0 { animation:old-outline-0 36s linear infinite; }
+
+        #corrected-outline-0 { animation:new-outline-0 36s linear infinite; }
+
+        #retraction-1 { animation:remove-1 36s linear infinite; }
+
+        #original-outline-1 { animation:old-outline-1 36s linear infinite; }
+
+        #corrected-outline-1 { animation:new-outline-1 36s linear infinite; }
+
+        #already-counted-1 { animation:subtract-1 36s linear infinite; }
+
+        #growth-outline-1 { animation:growth-outline-1 36s linear infinite; }
+
+        #whole-outline-1 { animation:whole-outline-1 36s linear infinite; }
+
+        #already-counted-2 { animation:subtract-2 36s linear infinite; }
+
+        #growth-outline-2 { animation:growth-outline-2 36s linear infinite; }
+
+        #whole-outline-2 { animation:whole-outline-2 36s linear infinite; }
+
+      }
+      @keyframes backward-descent {
+        0.0000% { opacity:0; transform:translateY(-290px); }
+        1.3889% { opacity:1; transform:translateY(-290px); }
+        6.9444%, 100.0000% { opacity:1; transform:translateY(0); }
+      }
+      @keyframes remove-1 {
+        0.0000% { opacity:1; fill:var(--mapped); }
+        16.6667% { opacity:1; fill:var(--mapped); }
+        18.3333% { opacity:1; fill:var(--removed); }
+        19.4444% { opacity:1; fill:var(--removed); }
+        25.0000% { opacity:0; fill:var(--removed); }
+        100.0000% { opacity:0; fill:var(--removed); }
+      }
+      @keyframes old-outline-1 {
+        0.0000% { opacity:1; }
+        16.6667% { opacity:1; }
+        25.0000% { opacity:0; }
+        100.0000% { opacity:0; }
+      }
+      @keyframes new-outline-1 {
+        0.0000% { opacity:0; }
+        16.6667% { opacity:0; }
+        25.0000% { opacity:1; }
+        100.0000% { opacity:1; }
+      }
+      @keyframes remove-0 {
+        0.0000% { opacity:1; fill:var(--mapped); }
+        34.7222% { opacity:1; fill:var(--mapped); }
+        36.3889% { opacity:1; fill:var(--removed); }
+        37.5000% { opacity:1; fill:var(--removed); }
+        43.0556% { opacity:0; fill:var(--removed); }
+        100.0000% { opacity:0; fill:var(--removed); }
+      }
+      @keyframes old-outline-0 {
+        0.0000% { opacity:1; }
+        34.7222% { opacity:1; }
+        43.0556% { opacity:0; }
+        100.0000% { opacity:0; }
+      }
+      @keyframes new-outline-0 {
+        0.0000% { opacity:0; }
+        34.7222% { opacity:0; }
+        43.0556% { opacity:1; }
+        100.0000% { opacity:1; }
+      }
+      @keyframes back-from-2 {
+        0.0000% { opacity:0; transform:translate(670px,596px); }
+        8.3333% { opacity:0; transform:translate(670px,596px); }
+        9.4444% { opacity:1; transform:translate(670px,596px); }
+        16.6667% { opacity:1; transform:translate(420px,596px); }
+        25.0000% { opacity:1; transform:translate(420px,596px); }
+        26.1111% { opacity:0; transform:translate(420px,596px); }
+        100.0000% { opacity:0; transform:translate(420px,596px); }
+      }
+      @keyframes back-from-1 {
+        0.0000% { opacity:0; transform:translate(420px,596px); }
+        26.3889% { opacity:0; transform:translate(420px,596px); }
+        27.5000% { opacity:1; transform:translate(420px,596px); }
+        34.7222% { opacity:1; transform:translate(170px,596px); }
+        43.0556% { opacity:1; transform:translate(170px,596px); }
+        44.1667% { opacity:0; transform:translate(170px,596px); }
+        100.0000% { opacity:0; transform:translate(170px,596px); }
+      }
+      @keyframes forward-from-0 {
+        0.0000% { opacity:0; transform:translate(170px,596px); }
+        50.0000% { opacity:0; transform:translate(170px,596px); }
+        51.1111% { opacity:1; transform:translate(170px,596px); }
+        59.7222% { opacity:1; transform:translate(420px,916px); }
+        65.2778% { opacity:1; transform:translate(420px,916px); }
+        66.6667% { opacity:0; transform:translate(420px,916px); }
+        100.0000% { opacity:0; transform:translate(420px,916px); }
+      }
+      @keyframes forward-from-1 {
+        0.0000% { opacity:0; transform:translate(420px,596px); }
+        66.6667% { opacity:0; transform:translate(420px,596px); }
+        67.7778% { opacity:1; transform:translate(420px,596px); }
+        76.3889% { opacity:1; transform:translate(670px,916px); }
+        81.9444% { opacity:1; transform:translate(670px,916px); }
+        83.3333% { opacity:0; transform:translate(670px,916px); }
+        100.0000% { opacity:0; transform:translate(670px,916px); }
+      }
+      @keyframes forward-descent {
+        0.0000%, 43.0556% {
+          opacity:0; transform:translateY(-320px);
+          fill:var(--mapped); stroke:var(--mapped-line);
+        }
+        44.4444% {
+          opacity:1; transform:translateY(-320px);
+          fill:var(--mapped); stroke:var(--mapped-line);
+        }
+        50.0000%, 100.0000% {
+          opacity:1; transform:translateY(0);
+          fill:var(--growth); stroke:var(--growth-line);
+        }
+      }
+      @keyframes loop-reset {
+        0.0000% { opacity:1; }
+        95.8333% { opacity:1; }
+        98.6111% { opacity:0; }
+        100.0000% { opacity:0; }
+      }
+      @keyframes subtract-1 {
+        0.0000% { opacity:1; fill:inherit; }
+        59.7222% { opacity:1; fill:inherit; }
+        61.1111% { opacity:1; fill:var(--ghost-fill); }
+        61.9444% { opacity:1; fill:var(--ghost-fill); }
+        65.2778% { opacity:0; fill:var(--ghost-fill); }
+        100.0000% { opacity:0; fill:var(--ghost-fill); }
+      }
+      @keyframes growth-outline-1 {
+        0.0000% { opacity:0; }
+        59.7222% { opacity:0; }
+        65.2778% { opacity:1; }
+        100.0000% { opacity:1; }
+      }
+      @keyframes whole-outline-1 {
+        0.0000% { opacity:1; }
+        59.7222% { opacity:1; }
+        65.2778% { opacity:0; }
+        100.0000% { opacity:0; }
+      }
+      @keyframes subtract-2 {
+        0.0000% { opacity:1; fill:inherit; }
+        76.3889% { opacity:1; fill:inherit; }
+        77.7778% { opacity:1; fill:var(--ghost-fill); }
+        78.6111% { opacity:1; fill:var(--ghost-fill); }
+        81.9444% { opacity:0; fill:var(--ghost-fill); }
+        100.0000% { opacity:0; fill:var(--ghost-fill); }
+      }
+      @keyframes growth-outline-2 {
+        0.0000% { opacity:0; }
+        76.3889% { opacity:0; }
+        81.9444% { opacity:1; }
+        100.0000% { opacity:1; }
+      }
+      @keyframes whole-outline-2 {
+        0.0000% { opacity:1; }
+        76.3889% { opacity:1; }
+        81.9444% { opacity:0; }
+        100.0000% { opacity:0; }
+      }
+    </style>
+
+    <pattern id="retracted-hatching" width="7" height="7" patternUnits="userSpaceOnUse">
+      <path d="M -2,2 L 2,-2 M 0,7 L 7,0 M 5,9 L 9,5"
+            fill="none" stroke="var(--removed-line)" stroke-width="1.4"/>
+    </pattern>
+    <path id="observed-0" d="M -72.000,-10.000 L -58.000,14.000 L -52.000,35.000 L -30.000,40.000 L -21.000,59.000 L -1.000,53.000 L 14.000,67.000 L 34.000,78.000 L 46.000,55.000 L 65.000,40.000 L 68.000,12.000 L 49.000,-4.000 L 58.000,-24.000 L 40.000,-40.000 L 28.000,-56.000 L 4.000,-53.000 L -14.000,-65.000 L -36.000,-57.000 L -44.000,-40.000 L -65.000,-32.000 Z"/>
+    <path id="observed-1" d="M -90.000,-12.000 L -65.000,17.000 L -57.000,34.000 L -36.000,32.000 L -9.000,47.000 L 5.000,40.000 L 24.000,46.000 L 48.000,29.000 L 67.000,26.000 L 84.000,5.000 L 72.000,-11.000 L 70.000,-31.000 L 46.000,-37.000 L 32.000,-55.000 L 10.000,-60.000 L -10.000,-71.000 L -34.000,-64.000 L -55.000,-75.000 L -61.000,-58.000 L -84.000,-47.000 L -75.000,-30.000 Z"/>
+    <path id="observed-2" d="M -79.000,-15.000 L -56.000,9.000 L -60.000,29.000 L -46.000,49.000 L -26.000,47.000 L -7.000,56.000 L 9.000,67.000 L 28.000,60.000 L 46.000,74.000 L 69.000,65.000 L 75.000,46.000 L 89.000,33.000 L 96.000,12.000 L 79.000,-3.000 L 84.000,-29.000 L 67.000,-43.000 L 64.000,-61.000 L 44.000,-74.000 L 33.000,-65.000 L 9.000,-73.000 L -7.000,-62.000 L -35.000,-53.000 L -46.000,-40.000 L -64.000,-36.000 Z"/>
+    <path id="corrected-2" d="M -79.000,-15.000 L -56.000,9.000 L -60.000,29.000 L -46.000,49.000 L -26.000,47.000 L -7.000,56.000 L 9.000,67.000 L 28.000,60.000 L 46.000,74.000 L 69.000,65.000 L 75.000,46.000 L 89.000,33.000 L 96.000,12.000 L 79.000,-3.000 L 84.000,-29.000 L 67.000,-43.000 L 64.000,-61.000 L 44.000,-74.000 L 33.000,-65.000 L 9.000,-73.000 L -7.000,-62.000 L -35.000,-53.000 L -46.000,-40.000 L -64.000,-36.000 Z"/>
+    <path id="corrected-1" d="M -59.807,28.035 L -58.026,31.821 L -56.531,33.955 L -36.000,32.000 L -9.000,47.000 L 5.000,40.000 L 24.000,46.000 L 48.000,29.000 L 67.000,26.000 L 84.000,5.000 L 72.000,-11.000 L 70.000,-31.000 L 46.000,-37.000 L 32.000,-55.000 L 10.000,-60.000 L -1.061,-66.083 L -7.000,-62.000 L -35.000,-53.000 L -46.000,-40.000 L -64.000,-36.000 L -79.000,-15.000 L -56.000,9.000 Z"/>
+    <path id="corrected-0" d="M -72.000,-10.000 L -68.565,-4.111 L -56.000,9.000 L -57.412,16.059 L -52.411,33.563 L -36.000,32.000 L -9.000,47.000 L 5.000,40.000 L 24.000,46.000 L 48.000,29.000 L 66.491,26.080 L 68.000,12.000 L 49.000,-4.000 L 58.000,-24.000 L 40.000,-40.000 L 28.082,-55.890 L 27.742,-55.968 L 4.000,-53.000 L -8.687,-61.458 L -35.000,-53.000 L -41.494,-45.325 L -44.000,-40.000 L -65.000,-32.000 Z"/>
+    <path id="growth-0" d="M -72.000,-10.000 L -68.565,-4.111 L -56.000,9.000 L -57.412,16.059 L -52.411,33.563 L -36.000,32.000 L -9.000,47.000 L 5.000,40.000 L 24.000,46.000 L 48.000,29.000 L 66.491,26.080 L 68.000,12.000 L 49.000,-4.000 L 58.000,-24.000 L 40.000,-40.000 L 28.082,-55.890 L 27.742,-55.968 L 4.000,-53.000 L -8.687,-61.458 L -35.000,-53.000 L -41.494,-45.325 L -44.000,-40.000 L -65.000,-32.000 Z"/>
+    <path id="retracted-0" d="M -68.564,-4.110 L -58.000,14.000 L -57.412,16.058 L -56.000,9.000 Z
+        M -52.411,33.563 L -52.000,35.000 L -30.000,40.000 L -21.000,59.000 L -1.000,53.000 L 14.000,67.000 L 34.000,78.000 L 46.000,55.000 L 65.000,40.000 L 66.491,26.080 L 48.000,29.000 L 24.000,46.000 L 5.000,40.000 L -9.000,47.000 L -36.000,32.000 Z
+        M 28.082,-55.890 L 28.000,-56.000 L 27.743,-55.968 Z
+        M -8.687,-61.458 L -14.000,-65.000 L -36.000,-57.000 L -41.494,-45.325 L -35.000,-53.000 Z"/>
+    <path id="growth-1" d="M -59.807,28.035 L -58.026,31.821 L -56.531,33.955 L -52.411,33.563 L -57.412,16.059 Z
+        M 66.491,26.080 L 67.000,26.000 L 84.000,5.000 L 72.000,-11.000 L 70.000,-31.000 L 46.000,-37.000 L 32.000,-55.000 L 28.082,-55.890 L 40.000,-40.000 L 58.000,-24.000 L 49.000,-4.000 L 68.000,12.000 Z
+        M 27.741,-55.968 L 10.000,-60.000 L -1.061,-66.083 L -7.000,-62.000 L -8.687,-61.458 L 4.000,-53.000 Z
+        M -41.494,-45.325 L -46.000,-40.000 L -64.000,-36.000 L -79.000,-15.000 L -68.565,-4.112 L -72.000,-10.000 L -65.000,-32.000 L -44.000,-40.000 Z"/>
+    <path id="retracted-1" d="M -90.000,-12.000 L -65.000,17.000 L -59.807,28.035 L -56.000,9.000 L -79.000,-15.000 L -64.000,-36.000 L -46.000,-40.000 L -35.000,-53.000 L -7.000,-62.000 L -1.061,-66.083 L -10.000,-71.000 L -34.000,-64.000 L -55.000,-75.000 L -61.000,-58.000 L -84.000,-47.000 L -75.000,-30.000 Z
+        M -58.024,31.824 L -57.000,34.000 L -56.531,33.955 Z"/>
+    <path id="growth-2" d="M -59.807,28.035 L -60.000,29.000 L -58.027,31.818 Z
+        M -56.531,33.955 L -46.000,49.000 L -26.000,47.000 L -7.000,56.000 L 9.000,67.000 L 28.000,60.000 L 46.000,74.000 L 69.000,65.000 L 75.000,46.000 L 89.000,33.000 L 96.000,12.000 L 79.000,-3.000 L 84.000,-29.000 L 67.000,-43.000 L 64.000,-61.000 L 44.000,-74.000 L 33.000,-65.000 L 9.000,-73.000 L -1.061,-66.083 L 10.000,-60.000 L 32.000,-55.000 L 46.000,-37.000 L 70.000,-31.000 L 72.000,-11.000 L 84.000,5.000 L 67.000,26.000 L 48.000,29.000 L 24.000,46.000 L 5.000,40.000 L -9.000,47.000 L -36.000,32.000 Z"/>
+  </defs>
+  <rect width="840" height="1110" fill="var(--paper)"/>
+  <text x="24" y="35" class="title" text-anchor="start">Correct the past, then isolate new growth</text>
+  <text x="24" y="62" class="muted" text-anchor="start">The moving copy aligns the same ground in different observations.</text>
+  <rect x="24" y="87" width="20" height="15" class="mapped"/>
+  <text x="53" y="100" class="" text-anchor="start">Mapped footprint</text>
+  <rect x="224" y="87" width="20" height="15" class="retracted-reference"/>
+  <text x="253" y="100" class="" text-anchor="start">Retracted ground</text>
+  <rect x="434" y="87" width="20" height="15" class="growth"/>
+  <text x="463" y="100" class="" text-anchor="start">New growth</text>
+  <text x="170" y="139" class="column" text-anchor="middle">Observation 0</text>
+  <text x="420" y="139" class="column" text-anchor="middle">Observation 1</text>
+  <text x="670" y="139" class="column" text-anchor="middle">Observation 2</text>
+  <rect x="24" y="156" width="792" height="268" class="panel"/>
+  <rect x="24" y="442" width="792" height="276" class="panel"/>
+  <rect x="24" y="736" width="792" height="309" class="panel"/>
+  <text x="42" y="185" class="section" text-anchor="start">Original observations</text>
+  <text x="42" y="210" class="muted" text-anchor="start">Hatching marks ground that later evidence retracts.</text>
+  <g id="original-panel-0" transform="translate(170,306)">
+    <use href="#observed-0" class="mapped" />
+    <use href="#observed-0" class="map-outline" />
+    <use href="#retracted-0" class="retracted-reference" />
+  </g>
+  <text x="170" y="410" class="" text-anchor="middle">G0 · initial map</text>
+  <g id="original-panel-1" transform="translate(420,306)">
+    <use href="#observed-1" class="mapped" />
+    <use href="#observed-1" class="map-outline" />
+    <use href="#retracted-1" class="retracted-reference" />
+  </g>
+  <text x="420" y="410" class="" text-anchor="middle">G1 · revised map</text>
+  <g id="original-panel-2" transform="translate(670,306)">
+    <use href="#observed-2" class="mapped" />
+    <use href="#observed-2" class="map-outline" />
+  </g>
+  <text x="670" y="410" class="" text-anchor="middle">G2 · latest map</text>
+  <text x="42" y="471" class="section" text-anchor="start">Backward intersection  ←</text>
+  <text x="42" y="495" class="muted" text-anchor="start">Keep only ground shared with the corrected next observation.</text>
+  <g class="working-geometry" id="corrected-working-row">
+    <g class="backward-geometry">
+      <g transform="translate(170,596)">
+    <use href="#corrected-0" class="mapped" />
+    <use href="#retracted-0" class="retraction" id="retraction-0"/>
+    <use href="#observed-0" class="map-outline old-outline" id="original-outline-0"/>
+    <use href="#corrected-0" class="map-outline" id="corrected-outline-0"/>
+      </g>
+      <g transform="translate(420,596)">
+    <use href="#corrected-1" class="mapped" />
+    <use href="#retracted-1" class="retraction" id="retraction-1"/>
+    <use href="#observed-1" class="map-outline old-outline" id="original-outline-1"/>
+    <use href="#corrected-1" class="map-outline" id="corrected-outline-1"/>
+      </g>
+      <g transform="translate(670,596)">
+    <use href="#corrected-2" class="mapped" />
+    <use href="#corrected-2" class="map-outline" id="corrected-outline-2"/>
+      </g>
+    </g>
+  </g>
+  <text x="170" y="701" class="" text-anchor="middle">C₀ = G₀ ∩ C₁</text>
+  <text x="420" y="701" class="" text-anchor="middle">C₁ = G₁ ∩ G₂</text>
+  <text x="670" y="701" class="" text-anchor="middle">C₂ = G₂</text>
+  <text x="42" y="765" class="section" text-anchor="start">Forward difference  →</text>
+  <text x="42" y="789" class="muted" text-anchor="start">Subtract the full corrected predecessor; the remainder is new ground.</text>
+  <g class="working-geometry" id="forward-working-row">
+    <g class="forward-geometry">
+      <g transform="translate(170,916)">
+    <use href="#growth-0" class="growth" />
+    <use href="#growth-0" class="growth-outline" id="growth-outline-0"/>
+      </g>
+      <g transform="translate(420,916)">
+    <use href="#growth-1" class="growth" />
+    <use href="#corrected-0" class="already-counted" id="already-counted-1"/>
+    <use href="#corrected-1" class="growth-outline whole-outline" id="whole-outline-1"/>
+    <use href="#growth-1" class="growth-outline" id="growth-outline-1"/>
+      </g>
+      <g transform="translate(670,916)">
+    <use href="#growth-2" class="growth" />
+    <use href="#corrected-1" class="already-counted" id="already-counted-2"/>
+    <use href="#corrected-2" class="growth-outline whole-outline" id="whole-outline-2"/>
+    <use href="#growth-2" class="growth-outline" id="growth-outline-2"/>
+      </g>
+    </g>
+  </g>
+  <text x="170" y="1024" class="" text-anchor="middle">D₀ = C₀</text>
+  <text x="420" y="1024" class="" text-anchor="middle">D₁ = C₁ − C₀</text>
+  <text x="670" y="1024" class="" text-anchor="middle">D₂ = C₂ − C₁</text>
+  <g id="ghost-back-2" class="ghost">
+    <use href="#corrected-2" class="ghost-shape" />
+  <text x="0" y="0" class="ghost-label" text-anchor="middle">G₂</text>
+  </g>
+  <g id="ghost-back-1" class="ghost">
+    <use href="#corrected-1" class="ghost-shape" />
+  <text x="0" y="0" class="ghost-label" text-anchor="middle">C₁</text>
+  </g>
+  <g id="ghost-forward-0" class="ghost">
+    <use href="#corrected-0" class="ghost-shape" />
+  <text x="0" y="0" class="ghost-label" text-anchor="middle">C₀</text>
+  </g>
+  <g id="ghost-forward-1" class="ghost">
+    <use href="#corrected-1" class="ghost-shape" />
+  <text x="0" y="0" class="ghost-label" text-anchor="middle">C₁</text>
+  </g>
+  <text x="24" y="1074" class="static-caption muted" text-anchor="start">The amber regions are disjoint; together they cover the latest perimeter.</text>
+  <text x="24" y="1097" class="static-caption muted" text-anchor="start">Illustrative perimeters. Static / reduced motion shows all three stages.</text>
+</svg>

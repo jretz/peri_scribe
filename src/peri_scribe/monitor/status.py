@@ -1,4 +1,8 @@
-"""Health projections explain freshness and recovery using recorded evidence."""
+"""Health projections explain freshness and recovery using recorded evidence.
+
+Algorithm reasoning and contracts:
+[Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
+"""
 
 import dataclasses
 import datetime

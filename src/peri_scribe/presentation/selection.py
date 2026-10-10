@@ -1,4 +1,7 @@
-"""Selecting fire identities, histories, and qualifying geography for presentation."""
+"""Selecting fire identities, histories, and qualifying geography for presentation.
+
+[Algorithm note](../../../docs/algorithms/presentation-selection.md)
+"""
 
 from __future__ import annotations
 

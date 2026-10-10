@@ -1,0 +1,60 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="420" viewBox="0 0 840 420" role="img" aria-labelledby="preview-objective-title preview-objective-description" style="max-width:100%;height:auto">
+  <title id="preview-objective-title">Prefer a useful fit with readable north-dart clearance</title>
+  <desc id="preview-objective-description">Two orientations of the same irregular fire perimeter illustrate the size minus weighted-overlap objective. Dashed convex map hulls enclose the fire shapes. A slightly smaller fit can win because its hull obstructs less of the buffered north-dart hull. The scores are illustrative, not measurements of these schematic shapes.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="var(--edge)" />
+    </marker>
+    <style>
+    :root { color-scheme: light dark; --background:#fbfcfe; --text:#172e40;
+      --muted:#526779; --edge:#526779; --blue:#eaf3fc; --blue-line:#5791bf;
+      --amber:#fff7e8; --amber-line:#c69a46; --purple:#f0edfa; --purple-line:#9481c6; }
+    @media (prefers-color-scheme:dark) {
+      :root { --background:#111820; --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe;
+        --blue:#172c3e; --blue-line:#6198c2; --amber:#362c1c; --amber-line:#c4a45f;
+        --purple:#2b253e; --purple-line:#a391d0; }
+    }
+    text { font-family:system-ui,sans-serif; font-size:16px; fill:var(--text); }
+    .heading { font-size:20px; font-weight:700; }
+    .label { font-weight:650; }
+    .muted { fill:var(--muted); }
+    .blue { fill:var(--blue); stroke:var(--blue-line); }
+    .amber { fill:var(--amber); stroke:var(--amber-line); }
+    .purple { fill:var(--purple); stroke:var(--purple-line); }
+    .box { stroke-width:2; rx:12; }
+    .edge { fill:none; stroke:var(--edge); stroke-width:2; marker-end:url(#arrow); }
+    .line { fill:none; stroke:var(--edge); stroke-width:2; }
+    .dash { stroke-dasharray:6 5; }
+    .point { fill:var(--text); }
+    .map-hull { fill:none; stroke:var(--edge); stroke-width:1.5; stroke-dasharray:5 4; }
+</style>
+  </defs>
+  <rect width="840" height="420" fill="var(--background)" />
+  <text x="24" y="34" class="heading">Prefer a useful fit with readable north-dart clearance</text>
+  <g id="candidate-a">
+    <rect class="box blue" x="44" y="84" width="326" height="185" />
+    <path id="fire-a" class="amber" d="M82.000 224.000 L95.000 204.000 L113.000 210.000 L125.000 187.000 L151.000 190.000 L169.000 161.000 L196.000 169.000 L218.000 141.000 L250.000 146.000 L264.000 121.000 L289.000 128.000 L309.000 109.000 L332.000 113.000 L346.000 145.000 L332.000 153.000 L323.000 176.000 L298.000 175.000 L282.000 195.000 L257.000 191.000 L233.000 208.000 L205.000 208.000 L192.000 228.000 L161.000 222.000 L139.000 246.000 L112.000 240.000 L102.000 228.000 Z" stroke-width="2" />
+    <path id="map-hull-a" class="map-hull" d="M309.000 109.000 L264.000 121.000 L169.000 161.000 L95.000 204.000 L82.000 224.000 L112.000 240.000 L139.000 246.000 L192.000 228.000 L282.000 195.000 L323.000 176.000 L346.000 145.000 L332.000 113.000 Z" />
+    <path class="purple" d="M338 93 L355 151 L339 141 L324 151 Z" stroke-width="2" />
+    <text x="64" y="302" class="label">A: size 1.00; overlap 0.10</text>
+    <text x="64" y="331" class="">Score = 1.00 − 0.75 × 0.10 = 0.925</text>
+  </g>
+  <g id="candidate-b">
+    <rect class="box blue" x="465" y="84" width="326" height="185" />
+    <path id="fire-b" class="amber" d="M495.108 204.985 L510.296 187.529 L526.776 195.722 L541.407 175.249 L565.977 181.641 L587.182 156.214 L612.037 167.544 L636.949 143.618 L667.012 152.741 L683.835 130.617 L706.904 140.716 L728.680 125.165 L750.233 132.112 L759.361 164.740 L744.833 170.535 L733.083 191.413 L709.204 187.077 L691.135 204.128 L667.661 196.911 L642.313 210.001 L615.417 206.221 L600.230 223.677 L571.263 213.729 L546.890 233.812 L521.765 224.404 L513.780 211.527 Z" stroke-width="2" />
+    <path id="map-hull-b" class="map-hull" d="M728.680 125.165 L683.835 130.617 L587.182 156.214 L510.296 187.529 L495.108 204.985 L521.765 224.404 L546.890 233.812 L600.230 223.677 L691.135 204.128 L733.083 191.413 L759.361 164.740 L750.233 132.112 Z" />
+    <path class="purple" d="M760 93 L777 151 L761 141 L746 151 Z" stroke-width="2" />
+    <text x="483" y="302" class="label">B: size 0.97; overlap 0.01</text>
+    <text x="483" y="331" class="">Score = 0.97 − 0.75 × 0.01 = 0.9625</text>
+  </g>
+  <g id="geometry-legend">
+    <path class="amber" d="M46 355 L51 347 L59 350 L64 345 L70 352 L66 361 L55 363 L50 359 Z" stroke-width="2" />
+    <text x="81" y="361" class="muted">Fire perimeter</text>
+    <path class="map-hull" d="M250 356 H285" />
+    <text x="297" y="361" class="muted">Convex map hull</text>
+    <path class="purple" d="M511 346 L517 363 L511 360 L505 363 Z" stroke-width="1.5" />
+    <text x="530" y="361" class="muted">North dart</text>
+  </g>
+  <text x="24" y="389" class="muted">Scoring uses the fitted map hull and the full buffered dart hull at its final anchor.</text>
+</svg>

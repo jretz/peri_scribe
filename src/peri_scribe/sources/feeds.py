@@ -1,4 +1,8 @@
-"""The configured ArcGIS feature-layer feeds that supply fire data."""
+"""The configured ArcGIS feature-layer feeds that supply fire data.
+
+Design notes:
+[Incremental source collection](../../../docs/algorithms/source-collection.md).
+"""
 
 from __future__ import annotations
 

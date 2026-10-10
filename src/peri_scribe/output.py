@@ -1,4 +1,9 @@
-"""Output operations for peri_scribe."""
+"""Output operations for peri_scribe.
+
+Design notes:
+[Output serialization](../../docs/algorithms/output-serialization.md).
+[Pipeline publication](../../docs/algorithms/pipeline-publication.md).
+"""
 
 from __future__ import annotations
 

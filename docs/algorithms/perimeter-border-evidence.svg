@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="443"
+     viewBox="0 0 840 443" role="img" style="max-width:100%;height:auto"
+     aria-labelledby="perimeter-border-evidence-title perimeter-border-evidence-description">
+  <title id="perimeter-border-evidence-title">Crossing needs geometric area evidence on both sides</title>
+  <desc id="perimeter-border-evidence-description">Three schematics show an inside fire, a crossing fire, and an outside fire. Dashed lines are the interstate border. Identifiers alone cannot assert crossing.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"/>
+    </marker>
+    <style>
+      :root { color-scheme: light dark; --background:#fbfcfe; --text:#172e40;
+        --edge:#526779; --blue:#eaf3fc; --blue-border:#5791bf;
+        --gold:#fff7e8; --gold-border:#c69a46; --purple:#f0edfa;
+        --purple-border:#9481c6; }
+      @media (prefers-color-scheme: dark) {
+        :root { --background:#111820; --text:#e4edf5; --edge:#9caebe;
+          --blue:#172c3e; --blue-border:#6198c2; --gold:#362c1c;
+          --gold-border:#c4a45f; --purple:#2b253e; --purple-border:#a391d0; }
+      }
+      text { font-family:system-ui,sans-serif; fill:var(--text); font-size:16px; }
+      .heading { font-size:21px; font-weight:700; }
+      .label { font-size:17px; font-weight:650; }
+      .page { fill:var(--background); }
+      .blue { fill:var(--blue); stroke:var(--blue-border); stroke-width:2; }
+      .gold { fill:var(--gold); stroke:var(--gold-border); stroke-width:2; }
+      .purple { fill:var(--purple); stroke:var(--purple-border); stroke-width:2; }
+      .edge { fill:none; stroke:var(--edge); stroke-width:2; marker-end:url(#arrow); }
+      .line { fill:none; stroke:var(--edge); stroke-width:2; }
+      .dashed { stroke-dasharray:7 5; }
+    </style>
+
+  </defs>
+  <rect class="page" width="840" height="443"/>
+  <text x="24" y="35" class="heading">Crossing needs geometric area evidence on both sides</text>
+  <rect id="inside-case" x="24" y="74" width="248" height="266" rx="10" class="blue"/>
+  <text x="38" y="103" class="label">Inside</text>
+  <text x="38" y="132" class=""></text>
+  <rect id="crossing-case" x="296" y="74" width="248" height="266" rx="10" class="gold"/>
+  <text x="310" y="103" class="label">Crossing</text>
+  <text x="310" y="132" class=""></text>
+  <rect id="outside-case" x="568" y="74" width="248" height="266" rx="10" class="purple"/>
+  <text x="582" y="103" class="label">Outside</text>
+  <text x="582" y="132" class=""></text>
+  <path class="line dashed" d="M 191 125 V 245"/>
+  <path class="line dashed" d="M 420 125 V 245"/>
+  <path class="line dashed" d="M 635 125 V 245"/>
+<path id="inside-shape" d="M 54 182 L 58.2 165.2 L 72.6 159.2 L 78 147.2 L 92.4 144.8 L 100.8 138.2 L 113.4 143.6 L 124.2 141.2 L 133.2 152 L 144.6 158 L 143.4 170.6 L 151.8 179 L 147 190.4 L 149.4 201.2 L 135 206 L 129 216.2 L 115.8 220.4 L 105 212 L 91.2 215.6 L 82.2 206 L 70.8 207.8 L 67.8 197 L 58.8 191 Z" class="purple"/>
+<path id="crossing-shape" d="M 352 182 L 357.6 165.2 L 376.8 159.2 L 384 147.2 L 403.2 144.8 L 414.4 138.2 L 431.2 143.6 L 445.6 141.2 L 457.6 152 L 472.8 158 L 471.2 170.6 L 482.4 179 L 476 190.4 L 479.2 201.2 L 460 206 L 452 216.2 L 434.4 220.4 L 420 212 L 401.6 215.6 L 389.6 206 L 374.4 207.8 L 370.4 197 L 358.4 191 Z" class="purple"/>
+<path id="outside-shape" d="M 682 182 L 686.2 165.2 L 700.6 159.2 L 706 147.2 L 720.4 144.8 L 728.8 138.2 L 741.4 143.6 L 752.2 141.2 L 761.2 152 L 772.6 158 L 771.4 170.6 L 779.8 179 L 775 190.4 L 777.4 201.2 L 763 206 L 757 216.2 L 743.8 220.4 L 733 212 L 719.2 215.6 L 710.2 206 L 698.8 207.8 L 695.8 197 L 686.8 191 Z" class="blue"/>
+  <text x="41" y="282" class="">Inside fraction = 1</text>
+  <text x="41" y="309" class="">No crossing</text>
+  <text x="311" y="282" class="">Inside area &gt; 0</text>
+  <text x="311" y="309" class="">Outside threshold met</text>
+  <text x="584" y="282" class="">Inside fraction = 0</text>
+  <text x="584" y="309" class="">No crossing</text>
+  <text x="24" y="379" class="">Dashed line: interstate border. The box is on the left side in each schematic.</text>
+  <text x="24" y="410" class="">Distance or extent conflict can mean “near”; identifiers only add evidence.</text>
+</svg>

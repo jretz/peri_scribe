@@ -1,4 +1,7 @@
-"""Grouping fire records that identify the same fire."""
+"""Grouping fire records that identify the same fire.
+
+[Grouping and ownership](../../../docs/algorithms/fire-grouping-and-ownership.md)
+"""
 
 from __future__ import annotations
 

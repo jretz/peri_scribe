@@ -1,4 +1,8 @@
-"""Time newly available source polygons through the first consuming KMZ run."""
+"""Time newly available source polygons through the first consuming KMZ run.
+
+Design notes:
+[Latency evidence](../../../docs/algorithms/latency-evidence.md).
+"""
 
 from __future__ import annotations
 

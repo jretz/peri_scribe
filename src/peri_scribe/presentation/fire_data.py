@@ -1,4 +1,10 @@
-"""Prepare fire summaries and history evidence shared by output formats."""
+"""Prepare fire summaries and history evidence shared by output formats.
+
+[Algorithm note](../../../docs/algorithms/presentation-selection.md)
+
+Design notes:
+[Incident area selection](../../../docs/algorithms/incident-area-selection.md).
+"""
 
 from __future__ import annotations
 

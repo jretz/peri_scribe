@@ -1,4 +1,8 @@
-"""Retain disposable deterministic products without retaining their inputs in RAM."""
+"""Retain disposable deterministic products without retaining their inputs in RAM.
+
+[Product cache reasoning](../../docs/algorithms/product-caching.md)
+explains the contract and correctness argument.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,8 @@
-"""Share complete checked pipeline contracts without repeating graph preprocessing."""
+"""Share complete checked pipeline contracts without repeating graph preprocessing.
+
+Design notes:
+[Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
+"""
 
 from __future__ import annotations
 

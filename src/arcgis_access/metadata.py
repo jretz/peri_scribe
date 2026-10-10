@@ -1,4 +1,8 @@
-"""ArcGIS REST metadata requests and last-edit observations."""
+"""ArcGIS REST metadata requests and last-edit observations.
+
+Design notes:
+[Incremental source collection](../../docs/algorithms/source-collection.md).
+"""
 
 from __future__ import annotations
 

@@ -3,6 +3,8 @@
 Turns each source row into a labeled observation, collapses and merges observations that
 describe the same moment, and drops perimeters whose geometry collapsed below the size
 the source reports.
+
+[Reconciliation](../../../docs/algorithms/perimeter-reconciliation.md)
 """
 
 from __future__ import annotations

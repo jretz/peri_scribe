@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="510"
+     viewBox="0 0 840 510" role="img" style="max-width:100%;height:auto"
+     aria-labelledby="perimeter-cleaning-title perimeter-cleaning-description">
+  <title id="perimeter-cleaning-title">Remove artifacts without erasing a whole small fire</title>
+  <desc id="perimeter-cleaning-description">A copy of an irregular fire moves into the
+    derived result. Its below-floor detached part dissolves and its below-floor hole
+    fills with retained area. The original remains visible. A wholly small fire is
+    copied unchanged because no substantial part survives the floor. Reduced motion
+    shows the original and finished result together. This illustrates area filtering,
+    not later simplification or repair; the schematic has no geographic scale.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"/>
+    </marker>
+    <style>
+      :root { color-scheme: light dark; --background:#fbfcfe; --text:#172e40;
+        --edge:#526779; --blue:#eaf3fc; --blue-border:#5791bf;
+        --gold:#fff7e8; --gold-border:#c69a46; --purple:#f0edfa;
+        --purple-border:#9481c6; }
+      @media (prefers-color-scheme: dark) {
+        :root { --background:#111820; --text:#e4edf5; --edge:#9caebe;
+          --blue:#172c3e; --blue-border:#6198c2; --gold:#362c1c;
+          --gold-border:#c4a45f; --purple:#2b253e; --purple-border:#a391d0; }
+      }
+      text { font-family:system-ui,sans-serif; fill:var(--text); font-size:16px; }
+      .heading { font-size:21px; font-weight:700; }
+      .label { font-size:17px; font-weight:650; }
+      .muted { fill:var(--edge); }
+      .page { fill:var(--background); }
+      .blue { fill:var(--blue); stroke:var(--blue-border); stroke-width:2; }
+      .purple { fill:var(--purple); stroke:var(--purple-border); stroke-width:2; }
+      .hole { fill:var(--background); stroke:var(--purple-border); stroke-width:2; }
+      .edge { fill:none; stroke:var(--edge); stroke-width:2; marker-end:url(#arrow); }
+      .line { fill:none; stroke:var(--edge); stroke-width:1.5; }
+      #cleaning-copy { transform:translateX(421px); }
+      #removed-artifacts { opacity:0; }
+      #whole-small-copy { transform:translateX(421px); }
+      /* Default: labeled input and result. Copies move only when motion is allowed. */
+      @media (prefers-reduced-motion:no-preference) {
+        #cleaning-copy { animation:copy-to-result 20s linear infinite; }
+        #removed-artifacts { animation:remove-artifacts 20s linear infinite; }
+        #whole-small-copy { animation:copy-to-result 20s linear infinite; }
+      }
+      @keyframes copy-to-result {
+        0%, 5% { transform:translateX(0); opacity:0; }
+        8% { transform:translateX(0); opacity:1; }
+        28%, 87% { transform:translateX(421px); opacity:1; }
+        94%, 100% { transform:translateX(421px); opacity:0; }
+      }
+      @keyframes remove-artifacts {
+        0%, 38% { opacity:1; }
+        53%, 100% { opacity:0; }
+      }
+    </style>
+  </defs>
+  <rect class="page" width="840" height="510"/>
+  <text x="24" y="35" class="heading">Remove artifacts without erasing a whole small fire</text>
+  <text x="24" y="62" class="muted">Copy the input, then filter area only when a substantial part remains.</text>
+  <text x="63" y="100" class="label">Original geometry</text>
+  <text x="484" y="100" class="label">Derived geometry</text>
+  <g id="original-geometry">
+    <path id="original-main" d="M 68 181 L 76.4 157.2 L 105.2 148.7 L 116 131.7 L 144.8 128.3 L 161.6 118.95 L 186.8 126.6 L 208.4 123.2 L 226.4 138.5 L 249.2 147 L 246.8 164.85 L 263.6 176.75 L 254 192.9 L 258.8 208.2 L 230 215 L 218 229.45 L 191.6 235.4 L 170 223.5 L 142.4 228.6 L 124.4 215 L 101.6 217.55 L 95.6 202.25 L 77.6 193.75 Z Z" class="blue"/>
+    <path id="tiny-hole" d="M 168 165 L 178 164 L 184 171 L 180 181 L 171 180 L 166 173 Z" class="hole"/>
+    <path id="tiny-part" d="M 286 173 L 291 165 L 302 165 L 310 174 L 307 184 L 296 189 L 287 183 Z" class="purple"/>
+  </g>
+  <path class="edge" d="M 335 181 H 466"/>
+  <g id="cleaning-copy">
+    <path id="cleaned-main" d="M 68 181 L 76.4 157.2 L 105.2 148.7 L 116 131.7 L 144.8 128.3 L 161.6 118.95 L 186.8 126.6 L 208.4 123.2 L 226.4 138.5 L 249.2 147 L 246.8 164.85 L 263.6 176.75 L 254 192.9 L 258.8 208.2 L 230 215 L 218 229.45 L 191.6 235.4 L 170 223.5 L 142.4 228.6 L 124.4 215 L 101.6 217.55 L 95.6 202.25 L 77.6 193.75 Z Z" class="blue"/>
+    <g id="removed-artifacts">
+      <path id="hole-copy" d="M 168 165 L 178 164 L 184 171 L 180 181 L 171 180 L 166 173 Z" class="hole"/>
+      <path id="detached-part-copy" d="M 286 173 L 291 165 L 302 165 L 310 174 L 307 184 L 296 189 L 287 183 Z" class="purple"/>
+    </g>
+  </g>
+  <text x="63" y="274">Small hole + detached part</text>
+  <text x="484" y="274">Fill the hole; drop the extra part</text>
+  <path class="line" d="M 24 300 H 816"/>
+  <text x="24" y="332" class="label">Fallback: every part is below the floor</text>
+  <path id="whole-small-input" d="M 69 351 L 71 346 L 75 345 L 77 348 L 81 348 L 80 353 L 76 357 L 72 356 Z" class="purple"/>
+  <path class="edge" d="M 335 351 H 466"/>
+  <g id="whole-small-copy"><path d="M 69 351 L 71 346 L 75 345 L 77 348 L 81 348 L 80 353 L 76 357 L 72 356 Z" class="purple"/></g>
+  <text x="63" y="386">Only tiny parts</text>
+  <text x="484" y="386">Original geometry retained</text>
+  <text x="24" y="412">Purple marks the below-floor artifacts, not a different fire type.</text>
+  <text x="24" y="443" class="muted">Sliding shows a derived copy, not a fire moving. Original inputs stay visible.</text>
+  <text x="24" y="474" class="muted">Schematic: degree² thresholds; later simplification and repair are not shown.</text>
+</svg>

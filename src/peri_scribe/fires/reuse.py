@@ -1,4 +1,8 @@
-"""Validated reuse of complete fire histories from prior derived files."""
+"""Validated reuse of complete fire histories from prior derived files.
+
+Algorithm reasoning and contracts:
+[Geography generations](../../../docs/algorithms/geography-generations.md)
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,7 @@
-"""Shared perimeter policy for geography generation and historical replay."""
+"""Shared perimeter policy for geography generation and historical replay.
+
+[Reconciliation](../../../docs/algorithms/perimeter-reconciliation.md)
+"""
 
 import peri_scribe.models
 import peri_scribe.perimeters.size_filtering

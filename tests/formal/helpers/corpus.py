@@ -1,4 +1,8 @@
-"""Share only complete checked model data within one formal invocation."""
+"""Share only complete checked model data within one formal invocation.
+
+Design notes:
+[Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
+"""
 
 import asyncio
 import collections.abc

@@ -4,6 +4,9 @@ The report is assembled from the same derived outputs the KMZ reads: the fire in
 saved fire scores, and the full and differential history layers. The gathering returns a
 frozen :class:`FireReport` whose lists are already selected and ordered, so a renderer
 only has to format them.
+
+Design notes:
+[Shared fire selection and ranking](../../../docs/algorithms/presentation-selection.md).
 """
 
 from __future__ import annotations

@@ -1,4 +1,7 @@
-"""Preserve incident attributes before perimeter reconciliation removes snapshots."""
+"""Preserve incident attributes before perimeter reconciliation removes snapshots.
+
+[Incident and area policy](../../../docs/algorithms/incident-area-selection.md)
+"""
 
 from __future__ import annotations
 

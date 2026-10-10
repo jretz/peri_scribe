@@ -1,0 +1,61 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="420" viewBox="0 0 840 420" role="img" aria-labelledby="overlap-filters-title overlap-filters-description" style="max-width:100%;height:auto">
+  <title id="overlap-filters-title">Envelope overlap is necessary, but not sufficient</title>
+  <desc id="overlap-filters-description">Irregular fire perimeters show both cases. A query inside an unburned hole passes the envelope tests but fails intersects. A query sharing a perimeter edge passes intersects.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="var(--edge)" />
+    </marker>
+    <style>
+    :root { color-scheme: light dark; --background:#fbfcfe; --text:#172e40;
+      --muted:#526779; --edge:#526779; --blue:#eaf3fc; --blue-line:#5791bf;
+      --amber:#fff7e8; --amber-line:#c69a46; --purple:#f0edfa; --purple-line:#9481c6; }
+    @media (prefers-color-scheme:dark) {
+      :root { --background:#111820; --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe;
+        --blue:#172c3e; --blue-line:#6198c2; --amber:#362c1c; --amber-line:#c4a45f;
+        --purple:#2b253e; --purple-line:#a391d0; }
+    }
+    text { font-family:system-ui,sans-serif; font-size:16px; fill:var(--text); }
+    .heading { font-size:20px; font-weight:700; }
+    .label { font-weight:650; }
+    .muted { fill:var(--muted); }
+    .blue { fill:var(--blue); stroke:var(--blue-line); }
+    .amber { fill:var(--amber); stroke:var(--amber-line); }
+    .purple { fill:var(--purple); stroke:var(--purple-line); }
+    .box { stroke-width:2; rx:12; }
+    .edge { fill:none; stroke:var(--edge); stroke-width:2; marker-end:url(#arrow); }
+    .line { fill:none; stroke:var(--edge); stroke-width:2; }
+    .dash { stroke-dasharray:6 5; }
+    .point { fill:var(--text); }
+</style>
+  </defs>
+  <rect width="840" height="420" fill="var(--background)" />
+  <text x="24" y="34" class="heading">Envelope overlap is necessary, but not sufficient</text>
+  <g id="layer-index">
+    <rect class="box blue" x="24" y="64" width="235" height="90" />
+    <text x="40" y="93" class="label">Layer R-tree</text>
+    <text x="40" y="123" class="">Select candidate features</text>
+  </g>
+  <g id="query-index">
+    <rect class="box amber" x="300" y="64" width="237" height="90" />
+    <text x="316" y="93" class="label">Query STRtree</text>
+    <text x="316" y="123" class="">Select candidate pairs</text>
+  </g>
+  <g id="predicate">
+    <rect class="box purple" x="579" y="64" width="231" height="90" />
+    <text x="595" y="93" class="label">Exact intersects</text>
+    <text x="595" y="123" class="">Return original positions</text>
+  </g>
+  <path id="layer-query" class="edge" d="M259 109 H295" />
+  <path id="query-predicate" class="edge" d="M537 109 H574" />
+  <g id="hole-case">
+    <path id="fire-with-hole" class="blue" d="M 49.000 264.000 L 63.000 235.000 L 90.000 239.000 L 102.000 215.000 L 140.000 210.000 L 166.000 221.000 L 189.000 211.000 L 222.000 224.000 L 224.000 242.000 L 250.000 250.000 L 258.000 278.000 L 243.000 294.000 L 249.000 322.000 L 215.000 335.000 L 191.000 324.000 L 164.000 338.000 L 135.000 326.000 L 110.000 332.000 L 87.000 313.000 L 60.000 313.000 L 67.000 285.000 Z M 111.000 255.000 L 124.000 235.000 L 148.000 239.000 L 165.000 231.000 L 183.000 246.000 L 202.000 251.000 L 201.000 280.000 L 192.000 312.000 L 170.000 308.000 L 151.000 318.000 L 120.000 306.000 L 112.000 286.000 Z" fill-rule="evenodd" stroke-width="2" />
+    <path id="query-in-hole" class="amber" d="M 138.000 254.000 L 154.000 249.000 L 166.000 255.000 L 172.000 270.000 L 165.000 284.000 L 146.000 291.000 L 131.000 280.000 L 130.000 264.000 Z" stroke-width="2" />
+    <text x="48" y="369" class="">Inside hole: no exact overlap</text>
+  </g>
+  <g id="touch-case">
+    <path id="fire-touching-edge" class="blue" d="M 465.000 263.000 L 477.000 235.000 L 506.000 241.000 L 520.000 215.000 L 553.000 210.000 L 576.000 222.000 L 603.000 214.000 L 625.000 228.000 L 648.000 235.000 L 661.000 248.000 L 675.000 251.000 L 675.000 312.000 L 650.000 320.000 L 624.000 311.000 L 603.000 335.000 L 578.000 325.000 L 554.000 338.000 L 526.000 327.000 L 505.000 335.000 L 486.000 314.000 L 467.000 306.000 L 474.000 286.000 Z" stroke-width="2" />
+    <path id="query-sharing-edge" class="amber" d="M 675.000 251.000 L 703.000 241.000 L 728.000 251.000 L 744.000 246.000 L 765.000 261.000 L 775.000 279.000 L 762.000 296.000 L 767.000 312.000 L 735.000 322.000 L 711.000 310.000 L 690.000 318.000 L 675.000 312.000 Z" stroke-width="2" />
+    <text x="465" y="369" class="">Shared edge: intersects = true</text>
+  </g>
+</svg>

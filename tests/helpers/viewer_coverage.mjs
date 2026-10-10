@@ -1,3 +1,4 @@
+/** Design: ../../docs/algorithms/verification-tooling.md */
 import assert from "node:assert/strict";
 import { Readable } from "node:stream";
 import { spec } from "node:test/reporters";

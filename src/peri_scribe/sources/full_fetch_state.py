@@ -1,4 +1,8 @@
-"""The recorded cadence of full fire-feed fetches for the run command."""
+"""The recorded cadence of full fire-feed fetches for the run command.
+
+Design notes:
+[Pipeline publication](../../../docs/algorithms/pipeline-publication.md).
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,7 @@
-"""Fire identity and grouping keys."""
+"""Fire identity and grouping keys.
+
+[Grouping and ownership](../../../docs/algorithms/fire-grouping-and-ownership.md)
+"""
 
 from __future__ import annotations
 

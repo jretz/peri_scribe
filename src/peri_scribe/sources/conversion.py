@@ -1,4 +1,8 @@
-"""Converting geodata files into GeoPackage layers."""
+"""Converting geodata files into GeoPackage layers.
+
+Design notes:
+[External source refresh](../../../docs/algorithms/external-source-refresh.md).
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,9 @@
-"""Textual presents immutable monitoring data without owning its interpretation."""
+"""Textual presents immutable monitoring data without owning its interpretation.
+
+Algorithm reasoning and contracts:
+[Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
+[Worker lifetimes](../../../docs/algorithms/worker-lifetimes.md)
+"""
 
 import asyncio
 import compression.zstd

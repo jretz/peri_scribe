@@ -1,0 +1,73 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="540"
+     viewBox="0 0 840 540" role="img" aria-labelledby="figure-title figure-description"
+     style="max-width:100%;height:auto">
+  <title id="figure-title">One owner; both historical routes survive</title>
+  <desc id="figure-description">Fire A and fire B both claim history H. B initially wins on mapped freshness. A later correction makes A newer and transfers ownership while preserving both routes.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8"
+            markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10z" fill="var(--edge)"/>
+    </marker>
+    <style>
+    :root { color-scheme:light dark; --background:#fbfcfe; --text:#172e40;
+      --muted:#526779; --edge:#526779; --disk:#eaf3fc; --disk-border:#5791bf;
+      --process:#fff7e8; --process-border:#c69a46; --network:#f0edfa;
+      --network-border:#9481c6; }
+    @media (prefers-color-scheme:dark) { :root { --background:#111820;
+      --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe; --disk:#172c3e;
+      --disk-border:#6198c2; --process:#362c1c; --process-border:#c4a45f;
+      --network:#2b253e; --network-border:#a391d0; } }
+    svg { background:var(--background); }
+    text { fill:var(--text); font-family:system-ui,sans-serif; font-size:17px; }
+    .title { font-size:23px; font-weight:700; }
+    .heading { font-size:18px; font-weight:700; }
+    .muted { fill:var(--muted); font-size:16px; }
+    .disk { fill:var(--disk); stroke:var(--disk-border); }
+    .process { fill:var(--process); stroke:var(--process-border); }
+    .network { fill:var(--network); stroke:var(--network-border); }
+    .node { stroke-width:2; rx:12; }
+    .edge { stroke:var(--edge); stroke-width:2.5; fill:none; marker-end:url(#arrow); }
+    .line { stroke:var(--edge); stroke-width:2; fill:none; }
+    .dashed { stroke-dasharray:7 5; }
+    </style>
+  </defs>
+  <rect width="840" height="540" fill="var(--background)"/>
+  <text x="24" y="38" class="title">One owner; both historical routes survive</text>
+  <g id="earlier-a">
+<rect x="24" y="74" width="250" height="92" class="node network"/>
+<text x="40" y="103" class="heading">A · mapping 10:00</text>
+<text x="40" y="132" class="">Claims H</text>
+</g>
+<g id="earlier-b">
+<rect x="566" y="74" width="250" height="92" class="node network"/>
+<text x="582" y="103" class="heading">B · mapping 11:00</text>
+<text x="582" y="132" class="">Claims H</text>
+</g>
+<g id="earlier-history">
+<rect x="300" y="184" width="240" height="94" class="node disk"/>
+<text x="316" y="213" class="heading">Bucket H · owner B</text>
+<text x="316" y="242" class="">Saved evidence: p</text>
+</g>
+<path id="a-claim" class="edge dashed" d="M149 166 V210 H300"/>
+<path id="b-claim" class="edge " d="M691 166 V210 H540"/>
+<text x="24" y="315" class="muted">Later correction changes the winner; stored evidence stays in H.</text>
+<g id="later-a">
+<rect x="24" y="350" width="250" height="92" class="node network"/>
+<text x="40" y="379" class="heading">A · mapping 12:00</text>
+<text x="40" y="408" class="">Still claims H</text>
+</g>
+<g id="later-b">
+<rect x="566" y="350" width="250" height="92" class="node network"/>
+<text x="582" y="379" class="heading">B · mapping 11:00</text>
+<text x="582" y="408" class="">Still claims H</text>
+</g>
+<g id="later-history">
+<rect x="300" y="350" width="240" height="94" class="node disk"/>
+<text x="316" y="379" class="heading">Bucket H · owner A</text>
+<text x="316" y="408" class="">Saved evidence: p</text>
+</g>
+<path id="a-wins" class="edge " d="M274 396 H300"/>
+<path id="b-loses" class="edge dashed" d="M691 442 V470 H420 V444"/>
+<text x="24" y="498" class="muted">Solid arrow: current winner. Dashed arrow: retained losing claim.</text>
+</svg>

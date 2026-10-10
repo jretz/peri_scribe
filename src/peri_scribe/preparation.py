@@ -1,4 +1,8 @@
-"""Bind disposable preparation to the publication's code and native runtime."""
+"""Bind disposable preparation to the publication's code and native runtime.
+
+Design notes:
+[Product caching](../../docs/algorithms/product-caching.md).
+"""
 
 from __future__ import annotations
 

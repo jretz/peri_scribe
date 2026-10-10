@@ -1,4 +1,8 @@
-"""Require existing conformance checks to distinguish real, isolated source defects."""
+"""Require existing conformance checks to distinguish real, isolated source defects.
+
+Design notes:
+[Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
+"""
 
 import ast
 import dataclasses

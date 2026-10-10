@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="434" viewBox="0 0 840 434" role="img" aria-labelledby="title description" style="max-width:100%;height:auto">
+  <title id="title">Prune places with a conditional distance bound</title>
+  <desc id="description">An irregular fire perimeter, its area centroid and a circle containing the entire footprint explain candidate pruning.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+  <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"/>
+  </marker>
+    <style>
+      :root { color-scheme: light dark; --bg:#fbfcfe; --text:#172e40; --muted:#526779; --edge:#526779; --blue:#eaf3fc; --green:#ecf7ee; --gold:#fff7e8; --purple:#f0edfa; --accent:#197685; }
+      @media (prefers-color-scheme: dark) { :root { --bg:#111820; --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe; --blue:#172c3e; --green:#1b3025; --gold:#362c1c; --purple:#2b253e; --accent:#7bdfdf; } }
+      text { font-family:system-ui,sans-serif; font-size:16px; fill:var(--text); }
+      .title { font-size:21px; font-weight:700; }
+      .heading { font-size:18px; font-weight:650; }
+      .muted { fill:var(--muted); }
+      .card { stroke:var(--edge); stroke-width:1.5; rx:12; }
+      .edge { fill:none; stroke:var(--edge); stroke-width:2; marker-end:url(#arrow); }
+      .axis { stroke:var(--edge); stroke-width:2; fill:none; }
+      .accent { stroke:var(--accent); stroke-width:4; fill:none; }
+    </style>
+  </defs>
+  <rect width="840" height="434" fill="var(--bg)"/>
+  <text x="28" y="36" class="title" text-anchor="start">Prune places with a conditional distance bound</text>
+  <path id="bounded-fire" d="M 233.284 174.427 L 244.284 151.427 L 269.284 150.427 L 287.284 125.427 L 317.284 137.427 L 341.284 122.427 L 363.284 144.427 L 389.284 134.427 L 408.284 153.427 L 436.284 157.427 L 444.284 178.427 L 467.284 191.427 L 453.284 217.427 L 429.284 220.427 L 409.284 241.427 L 379.284 230.427 L 355.284 252.427 L 324.284 243.427 L 300.284 254.427 L 280.284 234.427 L 255.284 237.427 L 245.284 213.427 L 227.284 199.427 Z" fill="var(--gold)" stroke="var(--edge)" stroke-width="2"/>
+  <circle id="radius-bound" cx="340" cy="190" r="135" fill="none" stroke="var(--edge)" stroke-dasharray="7 5"/>
+  <circle id="centroid" cx="340" cy="190" r="5" fill="var(--text)"/>
+  <text x="350" y="187" class="" text-anchor="start">c: centroid</text>
+  <text x="380" y="88" class="" text-anchor="start">r: radius bound</text>
+  <path d="M 340 190 L 440 100" class="axis"/>
+  <g id="bound">
+<rect x="615" y="115" width="197" height="133" fill="var(--blue)" class="card "/>
+<text x="633" y="144" class="heading" text-anchor="start">Candidate test</text>
+<text x="633" y="172" class="" text-anchor="start">distance to c</text>
+<text x="633" y="195" class="" text-anchor="start">≤ d0 + 2r</text>
+</g>
+  <text x="28" y="374" class="muted" text-anchor="start">The proof needs a radius containing the complete geometry.</text>
+  <text x="28" y="401" class="muted" text-anchor="start">Implementation: vertex radius + 1 km margin; numerical limits still apply.</text>
+</svg>

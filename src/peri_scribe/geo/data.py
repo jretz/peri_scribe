@@ -1,4 +1,8 @@
-"""Application phase logging around ArcGIS layer queries and conversion."""
+"""Application phase logging around ArcGIS layer queries and conversion.
+
+Design notes:
+[Source interpretation and validation](../../../docs/algorithms/source-validation.md).
+"""
 
 from __future__ import annotations
 

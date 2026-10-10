@@ -1,4 +1,8 @@
-"""Compact run and snapshot evidence from a bounded stream of diagnostic logs."""
+"""Compact run and snapshot evidence from a bounded stream of diagnostic logs.
+
+Design notes:
+[Latency evidence](../../../docs/algorithms/latency-evidence.md).
+"""
 
 from __future__ import annotations
 

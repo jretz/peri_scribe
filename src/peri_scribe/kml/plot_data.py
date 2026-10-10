@@ -3,6 +3,8 @@
 Each fire's history supplies the measurements for its area, perimeter, and cost lines.
 These helpers read the history layers into the points and series a plot draws, keeping
 only the lines that span enough observation times to show growth.
+
+[Algorithm note](../../../docs/algorithms/chart-layout.md)
 """
 
 from __future__ import annotations

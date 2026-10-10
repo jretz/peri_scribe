@@ -1,4 +1,8 @@
-"""Native directory notifications wake readers for changes to monitor inputs."""
+"""Native directory notifications wake readers for changes to monitor inputs.
+
+Algorithm reasoning and contracts:
+[Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
+"""
 
 import asyncio
 import collections.abc

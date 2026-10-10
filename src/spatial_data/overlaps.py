@@ -1,4 +1,11 @@
-"""Indexed overlap queries read candidate geometries in bounded chunks."""
+"""Indexed overlap queries avoid decoding unrelated layer features.
+
+The indexed path retains all selected candidates; the unindexed path bounds each read
+by feature count. Neither strategy bounds the vertices in an individual geometry.
+
+[Spatial query reasoning](../../docs/algorithms/spatial-queries-and-measurements.md)
+explains the contract and correctness argument.
+"""
 
 from __future__ import annotations
 

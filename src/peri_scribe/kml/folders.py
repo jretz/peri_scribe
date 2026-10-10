@@ -2,6 +2,10 @@
 
 These helpers append each fire's folder and the top-level active and inactive status
 folders to a shared :class:`kml_io.geometry.KmlWriter`.
+
+Design notes:
+[Output serialization](../../../docs/algorithms/output-serialization.md).
+[Corrected growth rings](../../../docs/algorithms/corrected-growth-rings.md).
 """
 
 from __future__ import annotations

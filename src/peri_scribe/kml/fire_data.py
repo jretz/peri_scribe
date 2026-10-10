@@ -1,4 +1,8 @@
-"""Attach map imagery and progression colors to shared fire summaries."""
+"""Attach map imagery and progression colors to shared fire summaries.
+
+Design notes:
+[Shared fire selection and ranking](../../../docs/algorithms/presentation-selection.md).
+"""
 
 from __future__ import annotations
 

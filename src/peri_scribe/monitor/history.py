@@ -1,4 +1,8 @@
-"""Compact evidence keeps health independent of the interactive log retention window."""
+"""Compact evidence keeps health independent of the interactive log retention window.
+
+Algorithm reasoning and contracts:
+[Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
+"""
 
 import collections.abc
 import compression.zstd

@@ -1,4 +1,9 @@
-"""Record interesting fires with new mapping after successful KMZ generation."""
+"""Record interesting fires with new mapping after successful KMZ generation.
+
+Algorithm reasoning and contracts:
+[History ownership](../../docs/algorithms/history-ownership.md)
+[Update journal](../../docs/algorithms/update-journal.md)
+"""
 
 from __future__ import annotations
 

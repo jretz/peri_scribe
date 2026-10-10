@@ -2,6 +2,9 @@
 
 The writer caches serialized rings so geometry appearing in several folders is formatted
 only once. Callers own the destination stream and choose the document's presentation.
+
+Design notes:
+[Output serialization](../../docs/algorithms/output-serialization.md).
 """
 
 from __future__ import annotations

@@ -1,4 +1,9 @@
-"""Source definitions and paths shared by collectors and converters."""
+"""Source definitions and paths shared by collectors and converters.
+
+Design notes:
+[External source refresh](../../../docs/algorithms/external-source-refresh.md).
+[Source interpretation and validation](../../../docs/algorithms/source-validation.md).
+"""
 
 from __future__ import annotations
 

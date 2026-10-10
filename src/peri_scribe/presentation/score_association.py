@@ -1,4 +1,7 @@
-"""Resolve saved scores once against the complete collection of showable identities."""
+"""Resolve saved scores once against the complete collection of showable identities.
+
+[Algorithm note](../../../docs/algorithms/presentation-selection.md)
+"""
 
 from __future__ import annotations
 

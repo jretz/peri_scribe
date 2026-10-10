@@ -1,4 +1,8 @@
-"""Immutable run and phase projections shared by terminal and future web consumers."""
+"""Immutable run and phase projections shared by terminal and future web consumers.
+
+Algorithm reasoning and contracts:
+[Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
+"""
 
 import collections.abc
 import dataclasses

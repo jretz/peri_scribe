@@ -1,4 +1,8 @@
-"""Draw small, proportionate fire maps with a north dart on transparent backgrounds."""
+"""Draw small, proportionate fire maps with a north dart on transparent backgrounds.
+
+[Preview orientation reasoning](../../../docs/algorithms/preview-orientation.md)
+explains the contract and correctness argument.
+"""
 
 from __future__ import annotations
 

@@ -1,0 +1,203 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="810"
+     viewBox="0 0 840 810" role="img" style="max-width:100%;height:auto"
+     aria-labelledby="centroid-moments-title centroid-moments-description">
+  <title id="centroid-moments-title">A courtyard moves the building's centroid</title>
+  <desc id="centroid-moments-description">The stepped building exterior stays fixed,
+    with area 100 and center (5,5). A courtyard centered at (7,5) grows from 2 by 2
+    to 6 by 4, moving the remaining building centroid from (4.916667,5) to (4.368421,5).
+    Moving the large courtyard left to (3,5) moves the centroid right to (5.631579,5).
+    The sequence reverses smoothly. Three labeled comparison states remain visible
+    without animation and in reduced motion. A centroid can lie inside a courtyard.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="var(--edge)"/>
+    </marker>
+    <style>
+      :root { color-scheme:light dark; --background:#fbfcfe; --text:#172e40;
+        --muted:#526779; --edge:#526779; --blue:#eaf3fc; --blue-line:#5791bf;
+        --amber:#fff7e8; --amber-line:#a87622; --centroid:#7045a5;
+        --panel:#f3f6fa; --rule:#d7e0e8; }
+      @media (prefers-color-scheme:dark) {
+        :root { --background:#111820; --text:#e4edf5; --muted:#acbdcb;
+          --edge:#9caebe; --blue:#172c3e; --blue-line:#6198c2;
+          --amber:#362c1c; --amber-line:#e7bd6c; --centroid:#d4b6ff;
+          --panel:#182532; --rule:#334959; }
+      }
+      text { font-family:system-ui,sans-serif; font-size:16px; fill:var(--text); }
+      .title { font-size:22px; font-weight:700; }
+      .label { font-weight:650; }
+      .muted { fill:var(--muted); }
+      .small { font-size:14px; }
+      .footprint { fill:var(--blue); stroke:var(--blue-line); stroke-width:2; }
+      .courtyard { fill:var(--background); stroke:var(--amber-line); stroke-width:2;
+        vector-effect:non-scaling-stroke; }
+      .exterior-center { fill:none; stroke:var(--muted); stroke-width:1.5; }
+      .hole-center { fill:var(--amber-line); }
+      .centroid { fill:var(--centroid); stroke:var(--background); stroke-width:2; }
+      .blue-box { fill:var(--blue); stroke:var(--blue-line); }
+      .amber-box { fill:var(--amber); stroke:var(--amber-line); }
+      .box { stroke-width:1.5; rx:12; }
+      .comparison { fill:var(--panel); stroke:var(--rule); stroke-width:1.5; rx:12; }
+      .edge { fill:none; stroke:var(--edge); stroke-width:2; marker-end:url(#arrow); }
+      #courtyard-motion { transform:translate(278px,275px) scale(30,30); }
+      #courtyard-center { transform:translate(278px,275px); }
+      #building-centroid { transform:translate(215.5px,275px); }
+      @media (prefers-reduced-motion:no-preference) {
+        #courtyard-motion { animation:courtyard-size-and-position 32s linear infinite; }
+        #courtyard-center { animation:courtyard-position 32s linear infinite; }
+        #building-centroid { animation:remaining-area-centroid 32s linear infinite; }
+      }
+      @keyframes courtyard-size-and-position {
+        0.0000% { transform:translate(278px,275px) scale(30,30); }
+        9.3750% { transform:translate(278px,275px) scale(30,30); }
+        21.8750% { transform:translate(278px,275px) scale(90,60); }
+        31.2500% { transform:translate(278px,275px) scale(90,60); }
+        50.0000% { transform:translate(158px,275px) scale(90,60); }
+        59.3750% { transform:translate(158px,275px) scale(90,60); }
+        78.1250% { transform:translate(278px,275px) scale(90,60); }
+        90.6250% { transform:translate(278px,275px) scale(30,30); }
+        100.0000% { transform:translate(278px,275px) scale(30,30); }
+      }
+      @keyframes courtyard-position {
+        0.0000% { transform:translate(278px,275px); }
+        9.3750% { transform:translate(278px,275px); }
+        21.8750% { transform:translate(278px,275px); }
+        31.2500% { transform:translate(278px,275px); }
+        50.0000% { transform:translate(158px,275px); }
+        59.3750% { transform:translate(158px,275px); }
+        78.1250% { transform:translate(278px,275px); }
+        90.6250% { transform:translate(278px,275px); }
+        100.0000% { transform:translate(278px,275px); }
+      }
+      /* Resizing changes area quadratically. Samples keep centroid interpolation
+         within 0.012 SVG pixels of the area-weighted result throughout each resize. */
+      @keyframes remaining-area-centroid {
+        0.0000% { transform:translate(215.500000px,275px); }
+        9.3750% { transform:translate(215.500000px,275px); }
+        10.0000% { transform:translate(215.093730px,275px); }
+        10.6250% { transform:translate(214.655405px,275px); }
+        11.2500% { transform:translate(214.183791px,275px); }
+        11.8750% { transform:translate(213.677530px,275px); }
+        12.5000% { transform:translate(213.135135px,275px); }
+        13.1250% { transform:translate(212.554974px,275px); }
+        13.7500% { transform:translate(211.935257px,275px); }
+        14.3750% { transform:translate(211.274021px,275px); }
+        15.0000% { transform:translate(210.569117px,275px); }
+        15.6250% { transform:translate(209.818182px,275px); }
+        16.2500% { transform:translate(209.018625px,275px); }
+        16.8750% { transform:translate(208.167598px,275px); }
+        17.5000% { transform:translate(207.261967px,275px); }
+        18.1250% { transform:translate(206.298279px,275px); }
+        18.7500% { transform:translate(205.272727px,275px); }
+        19.3750% { transform:translate(204.181102px,275px); }
+        20.0000% { transform:translate(203.018745px,275px); }
+        20.6250% { transform:translate(201.780488px,275px); }
+        21.2500% { transform:translate(200.460584px,275px); }
+        21.8750% { transform:translate(199.052632px,275px); }
+        31.2500% { transform:translate(199.052632px,275px); }
+        50.0000% { transform:translate(236.947368px,275px); }
+        59.3750% { transform:translate(236.947368px,275px); }
+        78.1250% { transform:translate(199.052632px,275px); }
+        78.7500% { transform:translate(200.460584px,275px); }
+        79.3750% { transform:translate(201.780488px,275px); }
+        80.0000% { transform:translate(203.018745px,275px); }
+        80.6250% { transform:translate(204.181102px,275px); }
+        81.2500% { transform:translate(205.272727px,275px); }
+        81.8750% { transform:translate(206.298279px,275px); }
+        82.5000% { transform:translate(207.261967px,275px); }
+        83.1250% { transform:translate(208.167598px,275px); }
+        83.7500% { transform:translate(209.018625px,275px); }
+        84.3750% { transform:translate(209.818182px,275px); }
+        85.0000% { transform:translate(210.569117px,275px); }
+        85.6250% { transform:translate(211.274021px,275px); }
+        86.2500% { transform:translate(211.935257px,275px); }
+        86.8750% { transform:translate(212.554974px,275px); }
+        87.5000% { transform:translate(213.135135px,275px); }
+        88.1250% { transform:translate(213.677530px,275px); }
+        88.7500% { transform:translate(214.183791px,275px); }
+        89.3750% { transform:translate(214.655405px,275px); }
+        90.0000% { transform:translate(215.093730px,275px); }
+        90.6250% { transform:translate(215.500000px,275px); }
+        100.0000% { transform:translate(215.500000px,275px); }
+      }
+    </style>
+  </defs>
+  <rect width="840" height="810" fill="var(--background)"/>
+  <text x="24" y="35" class="title">A courtyard moves the building's centroid</text>
+  <text x="24" y="62" class="muted">The centroid shifts away from the area removed by the courtyard.</text>
+  <text x="38" y="102" class="label">Building footprint · fixed exterior</text>
+  <path id="building-footprint" class="footprint" d="M 38 350 L 98 350 L 98 425 L 338 425 L 338 350 L 398 350 L 398 200 L 338 200 L 338 125 L 98 125 L 98 200 L 38 200 Z"/>
+  <g id="courtyard-motion">
+    <rect id="courtyard" class="courtyard" x="-1" y="-1" width="2" height="2"/>
+  </g>
+  <path id="exterior-center" class="exterior-center" d="M211 275 H225 M218 268 V282"/>
+  <g id="courtyard-center">
+    <path class="hole-center" d="M0 -4 L4 0 L0 4 L-4 0 Z"/>
+  </g>
+  <g id="building-centroid">
+    <circle class="centroid" r="6"/>
+  </g>
+  <g id="translated-ring">
+    <rect class="box blue-box" x="440" y="91" width="376" height="128"/>
+    <text x="456" y="119" class="label">1. Compute each ring's moments</text>
+    <text x="456" y="149">Translate vertices before cross products.</text>
+    <text x="456" y="175">Restore offsets before combining rings.</text>
+    <text x="456" y="201">Outer area = 100; center = (5, 5).</text>
+  </g>
+  <path id="combine-moments" class="edge" d="M628 219 V237"/>
+  <g id="signed-combination">
+    <rect class="box amber-box" x="440" y="243" width="376" height="182"/>
+    <text x="456" y="271" class="label">2. Subtract courtyard moments</text>
+    <text x="456" y="301">Cₓ = (500 − Aₕ × hₓ) / (100 − Aₕ)</text>
+    <text x="456" y="327">Cᵧ = (500 − Aₕ × hᵧ) / (100 − Aₕ)</text>
+    <text x="456" y="360">Aₕ = courtyard area; h = its center.</text>
+    <text x="456" y="389">A larger hole moves C farther from h.</text>
+    <text x="456" y="412" class="small muted">Combine separate building parts by area too.</text>
+  </g>
+  <g id="legend">
+    <path class="exterior-center" d="M30 457 H44 M37 450 V464"/>
+    <text x="53" y="463">Exterior center (fixed)</text>
+    <path class="hole-center" d="M311 452 L316 457 L311 462 L306 457 Z"/>
+    <text x="327" y="463">Courtyard center h</text>
+    <circle class="centroid" cx="573" cy="457" r="6"/>
+    <text x="589" y="463">Building centroid C</text>
+  </g>
+  <text x="24" y="500" class="label">Compare three moments · same scale</text>
+  <g id="small-right">
+    <rect class="comparison" x="24" y="518" width="248" height="222"/>
+    <text x="40" y="547" class="label">Small, on the right</text>
+    <path class="footprint" d="M 88 636 L 108 636 L 108 661 L 188 661 L 188 636 L 208 636 L 208 586 L 188 586 L 188 561 L 108 561 L 108 586 L 88 586 Z"/>
+    <rect class="courtyard" x="158" y="601" width="20" height="20"/>
+    <path class="exterior-center" d="M144 611 H152 M148 607 V615"/>
+    <path class="hole-center" d="M168 608.5 l2.5 2.5 l-2.5 2.5 l-2.5 -2.5 Z"/>
+    <circle class="centroid" cx="147.166667" cy="611" r="3.5"/>
+    <text x="40" y="692">Aₕ = 4; h = (7, 5)</text>
+    <text x="40" y="720" class="label">C = (4.916667, 5)</text>
+  </g>
+  <g id="large-right">
+    <rect class="comparison" x="296" y="518" width="248" height="222"/>
+    <text x="312" y="547" class="label">Larger, same center</text>
+    <path class="footprint" d="M 360 636 L 380 636 L 380 661 L 460 661 L 460 636 L 480 636 L 480 586 L 460 586 L 460 561 L 380 561 L 380 586 L 360 586 Z"/>
+    <rect class="courtyard" x="410" y="591" width="60" height="40"/>
+    <path class="exterior-center" d="M416 611 H424 M420 607 V615"/>
+    <path class="hole-center" d="M440 608.5 l2.5 2.5 l-2.5 2.5 l-2.5 -2.5 Z"/>
+    <circle class="centroid" cx="413.684211" cy="611" r="3.5"/>
+    <text x="312" y="692">Aₕ = 24; h = (7, 5)</text>
+    <text x="312" y="720" class="label">C = (4.368421, 5)</text>
+  </g>
+  <g id="large-left">
+    <rect class="comparison" x="568" y="518" width="248" height="222"/>
+    <text x="584" y="547" class="label">Same size, moved left</text>
+    <path class="footprint" d="M 632 636 L 652 636 L 652 661 L 732 661 L 732 636 L 752 636 L 752 586 L 732 586 L 732 561 L 652 561 L 652 586 L 632 586 Z"/>
+    <rect class="courtyard" x="642" y="591" width="60" height="40"/>
+    <path class="exterior-center" d="M688 611 H696 M692 607 V615"/>
+    <path class="hole-center" d="M672 608.5 l2.5 2.5 l-2.5 2.5 l-2.5 -2.5 Z"/>
+    <circle class="centroid" cx="698.315789" cy="611" r="3.5"/>
+    <text x="584" y="692">Aₕ = 24; h = (3, 5)</text>
+    <text x="584" y="720" class="label">C = (5.631579, 5)</text>
+  </g>
+  <text x="24" y="769" class="muted">C is the centroid of the remaining building area; it can lie in the courtyard.</text>
+  <text x="24" y="795" class="small muted">Static / reduced motion keeps all three comparisons visible. Coordinates are projected units.</text>
+</svg>

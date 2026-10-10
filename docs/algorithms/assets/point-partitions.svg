@@ -1,0 +1,79 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="420" viewBox="0 0 840 420" role="img" aria-labelledby="point-partitions-title point-partitions-description" style="max-width:100%;height:auto">
+  <title id="point-partitions-title">A tile belongs to exactly one temporary partition</title>
+  <desc id="point-partitions-description">Different chunks contain duplicate point A in tile 33. Both records reach partition 1 and are preserved in the compressed tile row.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="var(--edge)" />
+    </marker>
+    <style>
+    :root { color-scheme: light dark; --background:#fbfcfe; --text:#172e40;
+      --muted:#526779; --edge:#526779; --blue:#eaf3fc; --blue-line:#5791bf;
+      --amber:#fff7e8; --amber-line:#c69a46; --purple:#f0edfa; --purple-line:#9481c6; }
+    @media (prefers-color-scheme:dark) {
+      :root { --background:#111820; --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe;
+        --blue:#172c3e; --blue-line:#6198c2; --amber:#362c1c; --amber-line:#c4a45f;
+        --purple:#2b253e; --purple-line:#a391d0; }
+    }
+    text { font-family:system-ui,sans-serif; font-size:16px; fill:var(--text); }
+    .heading { font-size:20px; font-weight:700; }
+    .label { font-weight:650; }
+    .muted { fill:var(--muted); }
+    .blue { fill:var(--blue); stroke:var(--blue-line); }
+    .amber { fill:var(--amber); stroke:var(--amber-line); }
+    .purple { fill:var(--purple); stroke:var(--purple-line); }
+    .box { stroke-width:2; rx:12; }
+    .edge { fill:none; stroke:var(--edge); stroke-width:2; marker-end:url(#arrow); }
+    .line { fill:none; stroke:var(--edge); stroke-width:2; }
+    .dash { stroke-dasharray:6 5; }
+    .point { fill:var(--text); }
+</style>
+  </defs>
+  <rect width="840" height="420" fill="var(--background)" />
+  <text x="24" y="34" class="heading">A tile belongs to exactly one temporary partition</text>
+  <g id="chunk-a">
+    <rect class="box blue" x="24" y="64" width="235" height="105" />
+    <text x="40" y="93" class="label">Archive chunk A</text>
+    <text x="40" y="123" class="">tile 33: A, B</text>
+    <text x="40" y="148" class="">tile 34: C</text>
+  </g>
+  <g id="chunk-b">
+    <rect class="box blue" x="24" y="205" width="235" height="105" />
+    <text x="40" y="234" class="label">Archive chunk B</text>
+    <text x="40" y="264" class="">tile 33: A again</text>
+    <text x="40" y="289" class="">tile 49: D</text>
+  </g>
+  <g id="partition-one">
+    <rect class="box amber" x="313" y="64" width="215" height="125" />
+    <text x="329" y="93" class="label">Partition 1</text>
+    <text x="329" y="123" class="">33 mod 16 = 1</text>
+    <text x="329" y="148" class="">49 mod 16 = 1</text>
+    <text x="329" y="173" class="">A, B, A, D</text>
+  </g>
+  <g id="partition-two">
+    <rect class="box amber" x="313" y="228" width="215" height="82" />
+    <text x="329" y="257" class="label">Partition 2</text>
+    <text x="329" y="287" class="">34 mod 16 = 2: C</text>
+  </g>
+  <g id="tile-rows">
+    <rect class="box purple" x="585" y="64" width="225" height="246" />
+    <text x="601" y="93" class="label">Complete tile rows</text>
+    <text x="601" y="123" class="">Tile 33 → A, A, B</text>
+    <text x="601" y="148" class="">Count = 3</text>
+    <text x="601" y="173" class="">Tile 49 → D</text>
+    <text x="601" y="198" class="">Count = 1</text>
+    <text x="601" y="223" class="">Tile 34 → C</text>
+    <text x="601" y="248" class="">Count = 1</text>
+  </g>
+  <path id="a-to-one" class="edge" d="M259 118 H308" />
+  <path id="a-to-two" class="edge" d="M259 143 H273 V282 H308" />
+  <!-- Both rows in chunk B enter partition 1. The bridge crosses A's route without
+       connecting it to partition 2. -->
+  <path d="M268 258 Q273 250 278 258" fill="none" stroke="var(--background)" stroke-width="7" />
+  <path id="b-to-one" class="edge" d="M259 258 H268 Q273 250 278 258 H292 V208 H420 V194" />
+  <path id="one-to-tile-33" class="edge" d="M528 118 H580" />
+  <path id="one-to-tile-49" class="edge" d="M528 143 H551 V168 H580" />
+  <path id="two-to-tile-34" class="edge" d="M528 282 H563 V218 H580" />
+  <text x="24" y="353" class="">Quantize → route by tile → sort one whole partition → compress complete tiles.</text>
+  <text x="24" y="380" class="muted">Whole-partition memory depends on density; duplicate records are never removed.</text>
+</svg>

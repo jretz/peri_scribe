@@ -1,4 +1,8 @@
-"""Share actual execution prefixes while isolating independently checked branches."""
+"""Share actual execution prefixes while isolating independently checked branches.
+
+Design notes:
+[Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
+"""
 
 from __future__ import annotations
 

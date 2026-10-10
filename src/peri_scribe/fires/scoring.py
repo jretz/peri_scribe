@@ -1,4 +1,7 @@
-"""Scoring points and the fire score model."""
+"""Scoring points and the fire score model.
+
+[Scoring](../../../docs/algorithms/fire-scoring.md)
+"""
 
 from __future__ import annotations
 

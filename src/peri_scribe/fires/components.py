@@ -1,4 +1,7 @@
-"""Retain source-group identities independently of names and external identifiers."""
+"""Retain source-group identities independently of names and external identifiers.
+
+[Grouping and ownership](../../../docs/algorithms/fire-grouping-and-ownership.md)
+"""
 
 from __future__ import annotations
 

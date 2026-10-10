@@ -1,4 +1,8 @@
-"""Ordered row fingerprints let per-fire caches skip materializing unchanged slices."""
+"""Ordered row fingerprints let per-fire caches skip materializing unchanged slices.
+
+[Evidence and cache reasoning](../../docs/algorithms/product-caching.md)
+explains the contract and correctness argument.
+"""
 
 from __future__ import annotations
 

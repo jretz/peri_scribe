@@ -1,4 +1,8 @@
-"""Building the KML description text for each fire placemark."""
+"""Building the KML description text for each fire placemark.
+
+Design notes:
+[Output serialization](../../../docs/algorithms/output-serialization.md).
+"""
 
 from __future__ import annotations
 

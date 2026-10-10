@@ -3,6 +3,9 @@
 The geography stage writes the full and differential history GeoPackages, and the score,
 KMZ, and report stages read them back. This module holds the one description of which
 files and layers those are, so the stages cannot drift apart about them.
+
+Algorithm reasoning and contracts:
+[Geography generations](../../../docs/algorithms/geography-generations.md)
 """
 
 from __future__ import annotations

@@ -1,4 +1,7 @@
-"""Classifying fires relative to the California interstate border."""
+"""Classifying fires relative to the California interstate border.
+
+[Geometry policy](../../../docs/algorithms/perimeter-geometry-policy.md)
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,7 @@
-"""Buffering fire geometries for building-count distance."""
+"""Buffering fire geometries for building-count distance.
+
+[Scoring](../../../docs/algorithms/fire-scoring.md)
+"""
 
 from __future__ import annotations
 

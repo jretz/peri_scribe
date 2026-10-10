@@ -11,6 +11,8 @@ substantially larger suggests the fire extends beyond what FIRIS mapped. The ter
 signal flags out-of-state fire units and points of origin. CROSSES_CALIFORNIA_BORDER
 requires the geometry to span the California border; the weaker signals only ever
 support the near-border classifications.
+
+[Geometry policy](../../../docs/algorithms/perimeter-geometry-policy.md)
 """
 
 from __future__ import annotations

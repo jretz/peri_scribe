@@ -1,4 +1,8 @@
-"""Run every registered TLC configuration with explicit success expectations."""
+"""Run every registered TLC configuration with explicit success expectations.
+
+Design notes:
+[Verification evidence and execution](../../docs/algorithms/verification-tooling.md).
+"""
 
 from __future__ import annotations
 

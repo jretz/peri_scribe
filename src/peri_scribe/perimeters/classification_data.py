@@ -1,4 +1,7 @@
-"""Shared evidence and geometry preparation for border classification."""
+"""Shared evidence and geometry preparation for border classification.
+
+[Geometry policy](../../../docs/algorithms/perimeter-geometry-policy.md)
+"""
 
 from __future__ import annotations
 

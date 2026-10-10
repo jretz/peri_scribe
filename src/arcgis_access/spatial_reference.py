@@ -3,6 +3,8 @@
 Collects every wkid reported by a layer's metadata, extents, and query response, then
 chooses the candidate whose plausible coordinate domain fits the returned features'
 coordinate bounds.
+
+[Algorithm note](../../docs/algorithms/source-validation.md)
 """
 
 from __future__ import annotations

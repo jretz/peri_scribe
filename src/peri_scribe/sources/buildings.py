@@ -1,4 +1,8 @@
-"""Download policy and cooperative cancellation for building point datasets."""
+"""Download policy and cooperative cancellation for building point datasets.
+
+[Construction and query reasoning](../../../docs/algorithms/compact-point-storage.md)
+explains the contract and correctness argument.
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,9 @@
-"""Keep Natural Earth's eligible US places in a validated local SQLite database."""
+"""Keep Natural Earth's eligible US places in a validated local SQLite database.
+
+Design notes:
+[External source refresh](../../../docs/algorithms/external-source-refresh.md).
+[Nearest place descriptions](../../../docs/algorithms/nearest-place.md).
+"""
 
 from __future__ import annotations
 

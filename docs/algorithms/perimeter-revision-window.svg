@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="374"
+     viewBox="0 0 840 374" role="img" style="max-width:100%;height:auto"
+     aria-labelledby="perimeter-revision-window-title perimeter-revision-window-description">
+  <title id="perimeter-revision-window-title">A revision group stays anchored to its first observation</title>
+  <desc id="perimeter-revision-window-description">Observations at zero and four minutes form a revision group; eight minutes is near the previous observation but outside the five-minute anchored window.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"/>
+    </marker>
+    <style>
+      :root { color-scheme: light dark; --background:#fbfcfe; --text:#172e40;
+        --edge:#526779; --blue:#eaf3fc; --blue-border:#5791bf;
+        --gold:#fff7e8; --gold-border:#c69a46; --purple:#f0edfa;
+        --purple-border:#9481c6; }
+      @media (prefers-color-scheme: dark) {
+        :root { --background:#111820; --text:#e4edf5; --edge:#9caebe;
+          --blue:#172c3e; --blue-border:#6198c2; --gold:#362c1c;
+          --gold-border:#c4a45f; --purple:#2b253e; --purple-border:#a391d0; }
+      }
+      text { font-family:system-ui,sans-serif; fill:var(--text); font-size:16px; }
+      .heading { font-size:21px; font-weight:700; }
+      .label { font-size:17px; font-weight:650; }
+      .page { fill:var(--background); }
+      .blue { fill:var(--blue); stroke:var(--blue-border); stroke-width:2; }
+      .gold { fill:var(--gold); stroke:var(--gold-border); stroke-width:2; }
+      .purple { fill:var(--purple); stroke:var(--purple-border); stroke-width:2; }
+      .edge { fill:none; stroke:var(--edge); stroke-width:2; marker-end:url(#arrow); }
+      .line { fill:none; stroke:var(--edge); stroke-width:2; }
+      .dashed { stroke-dasharray:7 5; }
+    </style>
+
+  </defs>
+  <rect class="page" width="840" height="374"/>
+  <text x="24" y="35" class="heading">A revision group stays anchored to its first observation</text>
+  <rect id="anchored-window" x="80" y="95" width="400" height="101" rx="10" class="blue"/>
+  <text x="100" y="124" class="label">Group 1: anchored window [00:00, 00:05]</text>
+  <path class="edge" d="M 80 231 H 770"/>
+  <path class="line" d="M 112 192 V 245"/>
+  <path class="line" d="M 402 192 V 245"/>
+  <path class="line" d="M 692 192 V 245"/>
+  <text x="86" y="278" class="">00:00</text>
+  <text x="376" y="278" class="">00:04</text>
+  <text x="666" y="278" class="">00:08</text>
+  <text x="96" y="169" class="">First</text>
+  <text x="357" y="169" class="">Revision</text>
+  <rect id="new-group" x="560" y="80" width="252" height="116" rx="10" class="gold"/>
+  <text x="574" y="109" class="label">Group 2 starts</text>
+  <text x="574" y="138" class="">Only four minutes after</text>
+  <text x="574" y="162" class="">the retained revision, but</text>
+  <text x="574" y="186" class="">eight after the anchor.</text>
+  <text x="80" y="322" class="">Every revision must match the anchor AND the currently retained version.</text>
+  <text x="80" y="348" class="">Otherwise close edits could chain separate surveys indefinitely.</text>
+</svg>

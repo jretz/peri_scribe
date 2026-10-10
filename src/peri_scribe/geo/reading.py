@@ -1,4 +1,8 @@
-"""Reading fire rows and memberships from GeoPackage files and caches."""
+"""Reading fire rows and memberships from GeoPackage files and caches.
+
+Design notes:
+[Authenticated parsed source cache](../../../docs/algorithms/parsed-source-cache.md).
+"""
 
 from __future__ import annotations
 

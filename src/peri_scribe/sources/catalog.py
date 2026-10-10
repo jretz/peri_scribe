@@ -1,4 +1,8 @@
-"""Configured source names and locations shared by observers and collectors."""
+"""Configured source names and locations shared by observers and collectors.
+
+Algorithm reasoning and contracts:
+[Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
+"""
 
 import us
 

@@ -1,4 +1,9 @@
-"""Geodesic measurements share one unit registry across their callers."""
+"""Geodesic measurements share one unit registry across their callers.
+
+See [Measurement reasoning] for the contract and correctness argument.
+
+[Measurement reasoning]: ../../docs/algorithms/spatial-queries-and-measurements.md
+"""
 
 from __future__ import annotations
 

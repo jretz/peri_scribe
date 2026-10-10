@@ -14,6 +14,11 @@ correctness properties, model and check the proposed approach before writing its
 implementation code. Apply the same ordering to changes in existing formal contracts.
 The purpose is to find design errors while the approach is still easy to change.
 
+Use [Algorithm Design](algorithm_design.md) to assess reasoning complexity and choose the
+required documentation depth. That classification supplements these verification
+requirements. A low score does not waive modeling, proof, or implementation-conformance
+checks required by this guide.
+
 1. State the intended guarantees, input domain, failure modes, and environmental
    assumptions independently of an implementation.
 2. Add or extend the smallest useful TLA+ model or Lean specification under

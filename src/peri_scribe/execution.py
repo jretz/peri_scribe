@@ -1,4 +1,8 @@
-"""Share completed work only while one publication owns its inputs."""
+"""Share completed work only while one publication owns its inputs.
+
+Algorithm reasoning and contracts:
+[Geography generations](../../docs/algorithms/geography-generations.md)
+"""
 
 from __future__ import annotations
 

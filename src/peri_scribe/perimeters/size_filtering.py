@@ -1,4 +1,7 @@
-"""Filtering out implausibly small reported perimeters."""
+"""Filtering out implausibly small reported perimeters.
+
+[Geometry policy](../../../docs/algorithms/perimeter-geometry-policy.md)
+"""
 
 from __future__ import annotations
 

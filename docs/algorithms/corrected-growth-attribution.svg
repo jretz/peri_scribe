@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="428"
+     viewBox="0 0 840 428" role="img" style="max-width:100%;height:auto"
+     aria-labelledby="corrected-growth-attribution-title corrected-growth-attribution-description">
+  <title id="corrected-growth-attribution-title">A growth block keeps its last observation’s attributes</title>
+  <desc id="corrected-growth-attribution-description">Candidate zero and non-growth row one share corrected footprint [0,3]. Candidate zero takes row one metadata. Candidate two carries its own metadata and the (3,5] growth ring.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"/>
+    </marker>
+    <style>
+      :root { color-scheme: light dark; --background:#fbfcfe; --text:#172e40;
+        --edge:#526779; --blue:#eaf3fc; --blue-border:#5791bf;
+        --gold:#fff7e8; --gold-border:#c69a46; --purple:#f0edfa;
+        --purple-border:#9481c6; }
+      @media (prefers-color-scheme: dark) {
+        :root { --background:#111820; --text:#e4edf5; --edge:#9caebe;
+          --blue:#172c3e; --blue-border:#6198c2; --gold:#362c1c;
+          --gold-border:#c4a45f; --purple:#2b253e; --purple-border:#a391d0; }
+      }
+      text { font-family:system-ui,sans-serif; fill:var(--text); font-size:16px; }
+      .heading { font-size:21px; font-weight:700; }
+      .label { font-size:17px; font-weight:650; }
+      .page { fill:var(--background); }
+      .blue { fill:var(--blue); stroke:var(--blue-border); stroke-width:2; }
+      .gold { fill:var(--gold); stroke:var(--gold-border); stroke-width:2; }
+      .purple { fill:var(--purple); stroke:var(--purple-border); stroke-width:2; }
+      .edge { fill:none; stroke:var(--edge); stroke-width:2; marker-end:url(#arrow); }
+      .line { fill:none; stroke:var(--edge); stroke-width:2; }
+      .dashed { stroke-dasharray:7 5; }
+    </style>
+
+  </defs>
+  <rect class="page" width="840" height="428"/>
+  <text x="24" y="35" class="heading">A growth block keeps its last observation’s attributes</text>
+  <rect id="first-row" x="24" y="80" width="248" height="147" rx="10" class="blue"/>
+  <text x="38" y="109" class="label">Row 0 · initial map</text>
+  <text x="38" y="138" class="">Corrected footprint [0,3]</text>
+  <text x="38" y="162" class="">Growth candidate 0</text>
+  <text x="38" y="186" class="">Original date: day 0</text>
+  <rect id="correcting-row" x="296" y="80" width="248" height="147" rx="10" class="blue"/>
+  <text x="310" y="109" class="label">Row 1 · correction</text>
+  <text x="310" y="138" class="">Corrected footprint [0,3]</text>
+  <text x="310" y="162" class="">No added ground</text>
+  <text x="310" y="186" class="">Updated date: day 1</text>
+  <rect id="next-candidate" x="568" y="80" width="248" height="147" rx="10" class="gold"/>
+  <text x="582" y="109" class="label">Row 2 · new growth</text>
+  <text x="582" y="138" class="">Corrected footprint [0,5]</text>
+  <text x="582" y="162" class="">Growth candidate 2</text>
+  <text x="582" y="186" class="">Updated date: day 2</text>
+  <path id="candidate-geometry" class="edge" d="M 148 227 V 252 H 156.34 V 281"/>
+  <path id="representative-metadata" class="edge" d="M 420 227 V 252 H 309.04 V 281"/>
+  <path id="next-output" class="edge" d="M 692 227 V 281"/>
+  <rect id="first-output" x="24" y="286" width="520" height="95" rx="10" class="purple"/>
+  <text x="38" y="315" class="label">Ring 1: <tspan id="geometry-field">geometry [0,3]</tspan>; <tspan id="metadata-field">metadata from row 1</tspan></text>
+  <text x="38" y="344" class="">Candidate 0 represents its whole non-growth block.</text>
+  <rect id="second-output" x="568" y="286" width="248" height="95" rx="10" class="gold"/>
+  <text x="582" y="315" class="label">Ring 2: geometry (3,5]</text>
+  <text x="582" y="344" class="">Metadata from row 2.</text>
+</svg>

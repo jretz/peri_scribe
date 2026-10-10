@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="770"
+     viewBox="0 0 840 770" role="img" aria-labelledby="figure-title figure-description"
+     style="max-width:100%;height:auto">
+  <title id="figure-title">Coverage merges overlap and preserves gaps</title>
+  <desc id="figure-description">Every observed timestamp contributes a forty-eight-hour
+    interval. Copies of intervals zero through forty-eight, twenty-four through
+    seventy-two, and one hundred through one hundred forty-eight descend onto the same
+    time axis. The first two overlap and merge into zero through seventy-two. The future
+    interval stays separate. A now marker moves from hour sixty, through the inclusive
+    endpoint seventy-two, to uncovered hour eighty. Three static views preserve the
+    aligned inputs, merged union, and uncovered gap when animation is unavailable.</desc>
+  <defs>
+    <style>
+      :root { color-scheme:light dark; --background:#fbfcfe; --text:#172e40;
+        --muted:#526779; --edge:#526779; --blue:#eaf3fc; --blue-border:#5791bf;
+        --gold:#fff0cb; --gold-border:#b58a2c; --purple:#f0edfa;
+        --purple-border:#9481c6; --alert:#9c442d; --panel:#f4f7fb; }
+      @media (prefers-color-scheme:dark) { :root { --background:#111820;
+        --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe; --blue:#172c3e;
+        --blue-border:#6198c2; --gold:#44361c; --gold-border:#c4a45f;
+        --purple:#2b253e; --purple-border:#a391d0; --alert:#efa389;
+        --panel:#19232e; } }
+      svg { background:var(--background); }
+      text { fill:var(--text); font:17px system-ui,sans-serif; }
+      .title { font-size:23px; font-weight:700; }
+      .heading { font-size:18px; font-weight:700; }
+      .muted { fill:var(--muted); font-size:16px; }
+      .small { font-size:15px; }
+      .blue { fill:var(--blue); stroke:var(--blue-border); }
+      .gold { fill:var(--gold); stroke:var(--gold-border); }
+      .purple { fill:var(--purple); stroke:var(--purple-border); }
+      .band { stroke-width:2; }
+      .axis { stroke:var(--edge); stroke-width:1.5; fill:none; }
+      .guide { stroke:var(--edge); stroke-width:1; stroke-dasharray:3 5;
+        opacity:.35; }
+      .panel { fill:var(--panel); stroke:var(--edge); stroke-width:1; }
+      .now-line { stroke:var(--alert); stroke-width:3; }
+      .now-label { fill:var(--alert); font-weight:700; }
+      .moving { opacity:0; }
+      #now-marker { transform:translateX(470px); }
+      #covered-status { opacity:0; }
+      /* The bands retain their hour coordinates: only vertical alignment changes.
+         The marker's second journey starts strictly after the inclusive endpoint. */
+      @media (prefers-reduced-motion:no-preference) {
+        #copy-zero { animation:drop-zero 28s linear infinite; }
+        #copy-twenty-four { animation:drop-twenty-four 28s linear infinite; }
+        #copy-future { animation:drop-future 28s linear infinite; }
+        #merged-union { animation:merge 28s linear infinite; }
+        #static-future { opacity:0; }
+        #now-marker { animation:advance-now 28s linear infinite; }
+        #covered-status { animation:covered 28s steps(1,end) infinite; }
+        #gap-status { animation:gap 28s steps(1,end) infinite; }
+      }
+      @keyframes drop-zero {
+        0%,10.714286% { transform:translateY(0); opacity:0; }
+        11.428571% { transform:translateY(0); opacity:1; }
+        25%,32.142857% { transform:translateY(216px); opacity:1; }
+        39.285714%,100% { transform:translateY(216px); opacity:0; }
+      }
+      @keyframes drop-twenty-four {
+        0%,10.714286% { transform:translateY(0); opacity:0; }
+        11.428571% { transform:translateY(0); opacity:1; }
+        25%,32.142857% { transform:translateY(160px); opacity:1; }
+        39.285714%,100% { transform:translateY(160px); opacity:0; }
+      }
+      @keyframes drop-future {
+        0%,10.714286% { transform:translateY(0); opacity:0; }
+        11.428571% { transform:translateY(0); opacity:1; }
+        25%,92.857143% { transform:translateY(104px); opacity:1; }
+        96.428571%,100% { transform:translateY(104px); opacity:0; }
+      }
+      @keyframes merge {
+        0%,32.142857% { opacity:0; }
+        39.285714%,92.857143% { opacity:1; }
+        96.428571%,100% { opacity:0; }
+      }
+      @keyframes advance-now {
+        0%,39.285714% { transform:translateX(380px); opacity:0; }
+        42.857143%,53.571429% { transform:translateX(380px); opacity:1; }
+        64.285714%,71.428571% { transform:translateX(434px); opacity:1; }
+        82.142857%,92.857143% { transform:translateX(470px); opacity:1; }
+        96.428571%,100% { transform:translateX(470px); opacity:0; }
+      }
+      @keyframes covered {
+        0% { opacity:0; }
+        42.857143% { opacity:1; }
+        71.428572%,100% { opacity:0; }
+      }
+      @keyframes gap {
+        0% { opacity:0; }
+        71.428572% { opacity:1; }
+        92.857143%,100% { opacity:0; }
+      }
+    </style>
+  </defs>
+  <rect width="840" height="770" fill="var(--background)"/>
+  <text x="24" y="38" class="title">Coverage merges overlap and preserves gaps</text>
+  <text x="24" y="69" class="muted">Each observed event t contributes [t, t + 48 hours].</text>
+
+  <!-- One shared linear time scale: x = 110 + 4.5 × hours. -->
+  <path class="axis" d="M110 110 H776"/>
+  <g class="muted" text-anchor="middle">
+    <text x="110" y="100">0</text><text x="218" y="100">24</text>
+    <text x="326" y="100">48</text><text x="434" y="100">72</text>
+    <text x="560" y="100">100</text><text x="776" y="100">148 h</text>
+  </g>
+  <path class="guide" d="M110 110 V397 M218 110 V295 M326 110 V295
+    M434 110 V397 M560 110 V397 M776 110 V397"/>
+  <g id="input-zero">
+    <text x="24" y="161" class="muted">Event 0</text>
+    <rect x="110" y="135" width="216" height="40" class="blue band"/>
+    <text x="160" y="161" text-anchor="middle">[0,48]</text>
+  </g>
+  <g id="input-twenty-four">
+    <text x="24" y="217" class="muted">Event 24</text>
+    <rect x="218" y="191" width="216" height="40" class="blue band"/>
+    <text x="376" y="217" text-anchor="middle">[24,72]</text>
+  </g>
+  <g id="input-future">
+    <text x="24" y="273" class="muted">Event 100</text>
+    <rect x="560" y="247" width="216" height="40" class="purple band"/>
+    <text x="668" y="273" text-anchor="middle">[100,148]</text>
+  </g>
+  <text x="24" y="377" class="heading">Union</text>
+  <path class="axis" d="M110 396 H776"/>
+  <text x="493" y="378" class="muted" text-anchor="middle">gap</text>
+  <g id="merged-union">
+    <rect x="110" y="351" width="324" height="40" class="gold band"/>
+    <text x="272" y="377" text-anchor="middle">Merged [0,72]</text>
+  </g>
+  <g id="static-future">
+    <rect x="560" y="351" width="216" height="40" class="purple band"/>
+    <text x="668" y="377" text-anchor="middle">Future [100,148]</text>
+  </g>
+  <!-- Copies leave the original intervals visible for comparison. -->
+  <g id="copy-zero" class="moving">
+    <rect x="110" y="135" width="216" height="40" class="blue band"/>
+    <text x="160" y="161" text-anchor="middle">[0,48]</text>
+  </g>
+  <g id="copy-twenty-four" class="moving">
+    <rect x="218" y="191" width="216" height="40" class="blue band"/>
+    <text x="376" y="217" text-anchor="middle">[24,72]</text>
+  </g>
+  <g id="copy-future" class="moving">
+    <rect x="560" y="247" width="216" height="40" class="purple band"/>
+    <text x="668" y="273" text-anchor="middle">[100,148]</text>
+  </g>
+  <g id="now-marker">
+    <path d="M0 342 V399" class="now-line"/>
+    <path d="M-5 336 H5 L0 343z" fill="var(--alert)"/>
+    <text x="0" y="423" class="now-label" text-anchor="middle">now</text>
+  </g>
+  <text id="covered-status" x="24" y="463" class="heading">Now lies in [0,72]: covered, including hour 72.</text>
+  <text id="gap-status" x="24" y="463" class="heading">Now lies in (72,100): no current coverage.</text>
+  <text x="24" y="493" class="muted">Coverage expires one microsecond after hour 72; it resumes at hour 100.</text>
+
+  <text x="24" y="539" class="heading">Static comparison: alignment → union → projection</text>
+  <g id="static-alignment">
+    <rect x="24" y="558" width="252" height="152" rx="10" class="panel"/>
+    <text x="38" y="584" class="heading">Align the intervals</text>
+    <path class="axis" d="M43 647 H250"/>
+    <rect x="43" y="607" width="67.2" height="16" class="blue band"/>
+    <rect x="76.6" y="625" width="67.2" height="16" class="blue band"/>
+    <rect x="183" y="607" width="67.2" height="16" class="purple band"/>
+    <path d="M76.6 604 V644 M110.2 604 V644" class="guide"/>
+    <text x="38" y="672" class="small">Overlap [24,48] belongs</text>
+    <text x="38" y="693" class="small">to both input intervals.</text>
+  </g>
+  <g id="static-union">
+    <rect x="294" y="558" width="252" height="152" rx="10" class="panel"/>
+    <text x="308" y="584" class="heading">Merge the overlap</text>
+    <path class="axis" d="M313 647 H520"/>
+    <rect x="313" y="617" width="100.8" height="24" class="gold band"/>
+    <rect x="453" y="617" width="67.2" height="24" class="purple band"/>
+    <text x="308" y="672" class="small">[0,72] and [100,148]</text>
+    <text x="308" y="693" class="small">remain separate intervals.</text>
+  </g>
+  <g id="static-projection">
+    <rect x="564" y="558" width="252" height="152" rx="10" class="panel"/>
+    <text x="578" y="584" class="heading">Project at hour 80</text>
+    <path class="axis" d="M583 647 H790"/>
+    <rect x="583" y="617" width="100.8" height="24" class="gold band"/>
+    <rect x="723" y="617" width="67.2" height="24" class="purple band"/>
+    <path d="M695 603 V648" class="now-line"/>
+    <text x="695" y="600" class="small now-label" text-anchor="middle">80</text>
+    <text x="578" y="672" class="small">Hour 80 lies in the gap;</text>
+    <text x="578" y="693" class="small">future data cannot cover it.</text>
+  </g>
+  <text x="24" y="742" class="muted">Trimming a verbose event does not discard the coverage it contributed.</text>
+</svg>

@@ -9,12 +9,14 @@ its latest perimeter — rather than to its point, so a fire that reaches a city
 from its mapped center. A fire with only a point location is measured from that point
 instead.
 
-The distance is geodesic so it is accurate anywhere on Earth. Each candidate city is
-measured in an azimuthal equidistant projection centered on that city, whose distances
-from its center equal the true geodesic distances, so the projected distance and
-direction equal the geodesic ones. The nearest city is chosen exactly among the cities
-that could plausibly be nearest, found by bounding how far the nearest city can lie from
-the interior's centroid.
+Each candidate city is measured in an azimuthal equidistant projection centered on that
+city. Radial distances use the geodesic metric; projected polygon segments and candidate
+pruning retain the numerical assumptions described in the design note. The search uses
+a centroid-distance bound based on vertex radius plus a fixed margin, then chooses the
+nearest measured candidate with deterministic ties.
+
+Design notes:
+[Nearest place descriptions](../../../docs/algorithms/nearest-place.md).
 """
 
 from __future__ import annotations
@@ -168,10 +170,9 @@ def azimuthal_equidistant_projection(
     """Return the azimuthal equidistant projection centered on the given point.
 
     The projection preserves geodesic distances and directions from its center: every
-    point's distance from the center and the direction toward it in the projection equal
-    the true geodesic distance and bearing. Measuring in this projection is therefore
-    the exact way to measure one city's distance and direction to a fire's interior or
-    point location.
+    transformed point's radial distance and direction use the geodesic metric.
+    Polygon edges between transformed vertices remain straight projected segments;
+    their approximation limits are described in the module's design note.
 
     Args:
         centered_longitude: The projection center's longitude, in degrees.
@@ -196,8 +197,8 @@ def distance_and_bearing_from_point(
     The distance is measured to the geometry itself — a fire's interior or its point
     location — so a point inside or on the geometry is at distance zero and has no one
     nearest part to bear toward. The measurement is made in the azimuthal equidistant
-    projection centered on the point, whose distances and directions from its center are
-    geodesically exact.
+    projection centered on the point. Its radial metric is geodesic, while the geometry
+    uses straight segments between transformed vertices and floating-point operations.
 
     Args:
         geometry: The fire's interior or point geometry, in WGS 84 degrees.
@@ -205,7 +206,7 @@ def distance_and_bearing_from_point(
         latitude: The point's latitude, in degrees.
 
     Returns:
-        The geodesic distance from the point to the geometry, zero when the point lies
+        The projected estimate of geodesic distance, zero when the point lies
         inside or on it, and the bearing clockwise from north toward the nearest part of
         the geometry, or None when the point lies inside.
     """
@@ -243,13 +244,12 @@ def plausible_city_indices(
 ) -> list[int]:
     """Return the indices of the cities that could be nearest to *geometry*.
 
-    The exact distance to a city is measured in a projection centered on that city, so
-    only the cities that could plausibly be nearest are measured. A city at the true
-    minimum distance lies within twice the geometry's radius of the city closest to the
-    geometry's centroid, because that radius bounds how far the nearest part of the
-    geometry can be from the centroid; the radius is measured to the geometry's boundary
-    vertices — zero for a point geometry — so cities are compared by geodesic distance
-    from the centroid.
+    Cities are screened by geodesic distance from the geometry's centroid before the
+    more expensive projected comparison. The triangle-inequality argument requires a
+    radius enclosing every point of the geometry. This implementation uses maximum
+    boundary-vertex distance plus a fixed margin; its sufficiency for arbitrary curved
+    or extreme geometries is not established. See the design note for the conditional
+    bound and numerical assumptions. Point geometry has zero vertex radius.
 
     Args:
         geometry: The fire's interior or point geometry, in WGS 84 degrees.

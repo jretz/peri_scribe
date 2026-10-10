@@ -1,4 +1,11 @@
-"""Parsing attribute values out of GeoPackage rows."""
+"""Parsing attribute values out of GeoPackage rows.
+
+[Algorithm note](../../../docs/algorithms/source-validation.md)
+
+Design notes:
+[Aircraft recognition](../../../docs/algorithms/aircraft-recognition.md).
+[Fire grouping and ownership](../../../docs/algorithms/fire-grouping-and-ownership.md).
+"""
 
 from __future__ import annotations
 

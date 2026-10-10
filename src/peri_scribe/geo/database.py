@@ -1,4 +1,8 @@
-"""The record cache database that stores parsed snapshot rows."""
+"""The record cache database that stores parsed snapshot rows.
+
+Design notes:
+[Authenticated parsed source cache](../../../docs/algorithms/parsed-source-cache.md).
+"""
 
 from __future__ import annotations
 

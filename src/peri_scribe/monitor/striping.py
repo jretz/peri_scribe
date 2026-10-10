@@ -1,4 +1,8 @@
-"""Shared row shading keeps terminal lists readable across themes and layouts."""
+"""Shared row shading keeps terminal lists readable across themes and layouts.
+
+Algorithm reasoning and contracts:
+[Terminal rendering](../../../docs/algorithms/terminal-rendering.md)
+"""
 
 import collections.abc
 import functools

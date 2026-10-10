@@ -1,4 +1,7 @@
-"""Digest comparisons for detecting whether stored external data changed."""
+"""Digest comparisons for detecting whether stored external data changed.
+
+[Algorithm note](../../../docs/algorithms/source-validation.md)
+"""
 
 from __future__ import annotations
 

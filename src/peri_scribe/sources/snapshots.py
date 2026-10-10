@@ -1,4 +1,8 @@
-"""Naming and locating GeoPackage snapshots and the directories that hold them."""
+"""Naming and locating GeoPackage snapshots and the directories that hold them.
+
+Design notes:
+[Incremental source collection](../../../docs/algorithms/source-collection.md).
+"""
 
 from __future__ import annotations
 

@@ -1,10 +1,10 @@
-"""Converting streamed polygon archives into bounded centroid chunks.
+"""Converting streamed polygon archives without retaining whole archives in memory.
 
 GeoJSON polygon archives can exceed memory when decompressed. Streaming keeps archive
 bytes incremental: ``stream_unzip`` decompresses each member as the
 bytes arrive, and the parsed geometry feeds the centroid conversion directly. Neither
-the archive nor the GeoJSON is ever written to disk, and the conversion never holds more
-than one bounded chunk of features in memory.
+the archive nor the GeoJSON is ever written to disk. Feature boundaries preserve whole
+polygons, so one large feature can exceed the vertex threshold for a conversion chunk.
 
 The centroid of each footprint is the polygon's area-weighted centroid, computed in
 EPSG:3857 so the result matches a projection-aware centroid. Each ring is translated to
@@ -13,6 +13,9 @@ its own first point before the shoelace sums: EPSG:3857 coordinates are on the o
 lose precision to catastrophic cancellation (the area itself can come out wrong by
 meters). Centroid is translation-invariant, so each ring's offset is added back,
 area-weighted.
+
+[Building centroid reasoning](../../docs/algorithms/building-centroids.md)
+explains the contract and correctness argument.
 """
 
 from __future__ import annotations

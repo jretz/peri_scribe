@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="560"
+     viewBox="0 0 840 560" role="img" aria-labelledby="figure-title figure-description"
+     style="max-width:100%;height:auto">
+  <title id="figure-title">Reuse depends on complete evidence and environment</title>
+  <desc id="figure-description">Ordered source bytes and derivation context determine a whole generation. All raw rows for each fire and the same context determine its per-fire key. Output signatures authenticate actual bytes and complete layers.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8"
+            markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10z" fill="var(--edge)"/>
+    </marker>
+    <style>
+    :root { color-scheme:light dark; --background:#fbfcfe; --text:#172e40;
+      --muted:#526779; --edge:#526779; --disk:#eaf3fc; --disk-border:#5791bf;
+      --process:#fff7e8; --process-border:#c69a46; --network:#f0edfa;
+      --network-border:#9481c6; }
+    @media (prefers-color-scheme:dark) { :root { --background:#111820;
+      --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe; --disk:#172c3e;
+      --disk-border:#6198c2; --process:#362c1c; --process-border:#c4a45f;
+      --network:#2b253e; --network-border:#a391d0; } }
+    svg { background:var(--background); }
+    text { fill:var(--text); font-family:system-ui,sans-serif; font-size:17px; }
+    .title { font-size:23px; font-weight:700; }
+    .heading { font-size:18px; font-weight:700; }
+    .muted { fill:var(--muted); font-size:16px; }
+    .disk { fill:var(--disk); stroke:var(--disk-border); }
+    .process { fill:var(--process); stroke:var(--process-border); }
+    .network { fill:var(--network); stroke:var(--network-border); }
+    .node { stroke-width:2; rx:12; }
+    .edge { stroke:var(--edge); stroke-width:2.5; fill:none; marker-end:url(#arrow); }
+    .line { stroke:var(--edge); stroke-width:2; fill:none; }
+    .dashed { stroke-dasharray:7 5; }
+    </style>
+  </defs>
+  <rect width="840" height="560" fill="var(--background)"/>
+  <text x="24" y="38" class="title">Reuse depends on complete evidence and environment</text>
+  <g id="source">
+<rect x="24" y="76" width="372" height="116" class="node disk"/>
+<text x="40" y="105" class="heading">Ordered source snapshots</text>
+<text x="40" y="134" class="">Relative paths + exact bytes</text>
+<text x="40" y="160" class="">Includes all observations</text>
+</g>
+<g id="context">
+<rect x="444" y="76" width="372" height="116" class="node network"/>
+<text x="460" y="105" class="heading">Derivation context</text>
+<text x="460" y="134" class="">Code, runtime, settings</text>
+<text x="460" y="160" class="">Administrative boundaries</text>
+</g>
+<path id="source-whole" class="edge " d="M210 192 V244"/>
+<path id="context-whole" class="edge " d="M630 192 V216 H210 V244"/>
+<path id="context-fire" class="edge " d="M630 192 V244"/>
+<g id="whole">
+<rect x="24" y="244" width="372" height="116" class="node process"/>
+<text x="40" y="273" class="heading">Whole-generation key</text>
+<text x="40" y="302" class="">May skip all reconstruction</text>
+<text x="40" y="328" class="">Only if classification is complete</text>
+</g>
+<g id="fire">
+<rect x="444" y="244" width="372" height="116" class="node process"/>
+<text x="460" y="273" class="heading">Per-fire key</text>
+<text x="460" y="302" class="">All raw rows + provenance + aliases</text>
+<text x="460" y="328" class="">Includes discarded observations</text>
+</g>
+<path id="whole-output" class="edge " d="M210 360 V402"/>
+<path id="fire-output" class="edge " d="M630 360 V402"/>
+<g id="authentication">
+<rect x="24" y="402" width="792" height="114" class="node disk"/>
+<text x="40" y="431" class="heading">Authenticate the published result before reuse</text>
+<text x="40" y="460" class="">Checksum matches actual bytes; version and complete layers agree.</text>
+<text x="40" y="486" class="">A matching input key alone does not prove that output publication finished.</text>
+</g>
+</svg>

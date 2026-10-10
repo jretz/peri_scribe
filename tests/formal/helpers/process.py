@@ -1,4 +1,8 @@
-"""Run local proof tools with bounded waits and without a command shell."""
+"""Run local proof tools with bounded waits and without a command shell.
+
+Design notes:
+[Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
+"""
 
 import asyncio
 import contextlib

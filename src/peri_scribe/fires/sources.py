@@ -1,4 +1,8 @@
-"""Reading fire records from GeoPackage files and listing the distinct fires."""
+"""Reading fire records from GeoPackage files and listing the distinct fires.
+
+[Grouping and ownership](../../../docs/algorithms/fire-grouping-and-ownership.md)
+[Generation and reuse](../../../docs/algorithms/geography-generations.md)
+"""
 
 from __future__ import annotations
 

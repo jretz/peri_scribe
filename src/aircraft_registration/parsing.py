@@ -4,6 +4,9 @@ Recognition uses ICAO-notified marks and Annex 7 syntax, refined by sourced nati
 formats. It establishes a possible registration, not whether a mark has been issued.
 Source dates, exceptions, and coverage limits are documented in
 ``docs/aircraft_registration.md``.
+
+Design notes:
+[Aircraft recognition](../../docs/algorithms/aircraft-recognition.md).
 """
 
 from __future__ import annotations

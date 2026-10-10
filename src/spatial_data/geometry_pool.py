@@ -1,4 +1,8 @@
-"""Sharing immutable snapshot geometries within one source read."""
+"""Sharing immutable snapshot geometries within one source read.
+
+[Geometry sharing reasoning](../../docs/algorithms/geometry-sharing.md)
+explains the contract and correctness argument.
+"""
 
 from __future__ import annotations
 

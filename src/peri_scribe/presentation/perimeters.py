@@ -1,4 +1,8 @@
-"""Shared perimeter observations for selection and presentation."""
+"""Shared perimeter observations for selection and presentation.
+
+Design notes:
+[Shared fire selection and ranking](../../../docs/algorithms/presentation-selection.md).
+"""
 
 from __future__ import annotations
 

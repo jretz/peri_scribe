@@ -1,0 +1,64 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="420" viewBox="0 0 840 420" role="img" aria-labelledby="cache-evidence-title cache-evidence-description" style="max-width:100%;height:auto">
+  <title id="cache-evidence-title">Ordered, typed evidence determines reuse</title>
+  <desc id="cache-evidence-description">Schema and each typed row are hashed independently. Selected row order and caller identity are combined into a product key, inside the runtime context.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="var(--edge)" />
+    </marker>
+    <style>
+    :root { color-scheme: light dark; --background:#fbfcfe; --text:#172e40;
+      --muted:#526779; --edge:#526779; --blue:#eaf3fc; --blue-line:#5791bf;
+      --amber:#fff7e8; --amber-line:#c69a46; --purple:#f0edfa; --purple-line:#9481c6; }
+    @media (prefers-color-scheme:dark) {
+      :root { --background:#111820; --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe;
+        --blue:#172c3e; --blue-line:#6198c2; --amber:#362c1c; --amber-line:#c4a45f;
+        --purple:#2b253e; --purple-line:#a391d0; }
+    }
+    text { font-family:system-ui,sans-serif; font-size:16px; fill:var(--text); }
+    .heading { font-size:20px; font-weight:700; }
+    .label { font-weight:650; }
+    .muted { fill:var(--muted); }
+    .blue { fill:var(--blue); stroke:var(--blue-line); }
+    .amber { fill:var(--amber); stroke:var(--amber-line); }
+    .purple { fill:var(--purple); stroke:var(--purple-line); }
+    .box { stroke-width:2; rx:12; }
+    .edge { fill:none; stroke:var(--edge); stroke-width:2; marker-end:url(#arrow); }
+    .line { fill:none; stroke:var(--edge); stroke-width:2; }
+    .dash { stroke-dasharray:6 5; }
+    .point { fill:var(--text); }
+</style>
+  </defs>
+  <rect width="840" height="420" fill="var(--background)" />
+  <text x="24" y="34" class="heading">Ordered, typed evidence determines reuse</text>
+  <g id="identity">
+    <rect class="box blue" x="24" y="67" width="234" height="130" />
+    <text x="40" y="96" class="label">Caller identity</text>
+    <text x="40" y="126" class="">Canonical fire identity</text>
+    <text x="40" y="151" class="">Policy/configuration</text>
+    <text x="40" y="176" class="">All extra dependencies</text>
+  </g>
+  <g id="schema">
+    <rect class="box blue" x="286" y="67" width="263" height="130" />
+    <text x="302" y="96" class="label">Schema hash</text>
+    <text x="302" y="126" class="">Column order and dtypes</text>
+    <text x="302" y="151" class="">Active geometry and CRS</text>
+    <text x="302" y="176" class="">Index labels excluded</text>
+  </g>
+  <g id="rows">
+    <rect class="box blue" x="577" y="67" width="233" height="130" />
+    <text x="593" y="96" class="label">Typed row hashes</text>
+    <text x="593" y="126" class="">A: geometry + attributes</text>
+    <text x="593" y="151" class="">B: geometry + attributes</text>
+    <text x="593" y="176" class="">Exact units and scalar bits</text>
+  </g>
+  <g id="ordered-key">
+    <rect class="box amber" x="158" y="264" width="524" height="108" />
+    <text x="174" y="293" class="label">Key = hash(<tspan id="identity-parameter">identity</tspan>, <tspan id="schema-parameter">schema</tspan>, <tspan id="rows-parameter">ordered row hashes</tspan>)</text>
+    <text x="174" y="323" class="">Select [A, B] ≠ select [B, A].</text>
+    <text x="174" y="348" class="">Runtime context and namespace also gate the hit.</text>
+  </g>
+  <path id="identity-key" class="edge" d="M141 197 V230 H293.1 V259" />
+  <path id="schema-key" class="edge" d="M417.5 197 V230 H360.38 V259" />
+  <path id="rows-key" class="edge" d="M693.5 197 V230 H475.27 V259" />
+</svg>

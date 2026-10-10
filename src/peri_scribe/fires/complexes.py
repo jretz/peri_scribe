@@ -1,4 +1,7 @@
-"""Resolve current complex ownership from incident declarations and mergers."""
+"""Resolve current complex ownership from incident declarations and mergers.
+
+[Grouping and ownership](../../../docs/algorithms/fire-grouping-and-ownership.md)
+"""
 
 from __future__ import annotations
 

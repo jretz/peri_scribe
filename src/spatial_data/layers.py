@@ -1,4 +1,8 @@
-"""Bounded vector-layer reads and GeoPackage writes share neutral layer records."""
+"""Bounded vector-layer reads and GeoPackage writes share neutral layer records.
+
+[Layer streaming reasoning](../../docs/algorithms/spatial-queries-and-measurements.md)
+explains the contract and correctness argument.
+"""
 
 from __future__ import annotations
 

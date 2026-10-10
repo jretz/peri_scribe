@@ -1,3 +1,4 @@
+/** Design: ../../../docs/algorithms/verification-tooling.md */
 import fs from "node:fs/promises";
 
 import { recordCoverage } from "../javascript_coverage.mjs";

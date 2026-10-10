@@ -1,4 +1,7 @@
-"""Reveal placemarks through timed Google Earth tour updates."""
+"""Reveal placemarks through timed Google Earth tour updates.
+
+[Progression presentation](../../docs/algorithms/progression-presentation.md)
+"""
 
 from __future__ import annotations
 

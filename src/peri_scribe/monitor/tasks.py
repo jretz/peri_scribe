@@ -1,4 +1,8 @@
-"""Keep evidence reads, publication, and descriptor retirement under one owner."""
+"""Keep evidence reads, publication, and descriptor retirement under one owner.
+
+Algorithm reasoning and contracts:
+[Worker lifetimes](../../../docs/algorithms/worker-lifetimes.md)
+"""
 
 import asyncio
 import collections.abc

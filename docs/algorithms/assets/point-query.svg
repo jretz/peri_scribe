@@ -1,0 +1,65 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="420" viewBox="0 0 840 420" role="img" aria-labelledby="point-query-title point-query-description" style="max-width:100%;height:auto">
+  <title id="point-query-title">Broad candidate filters precede strict containment</title>
+  <desc id="point-query-description">Requested tiles contain duplicate points inside an irregular fire perimeter, a point on its boundary, and a point in an unburned hole. Only the duplicate interior points count.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="var(--edge)" />
+    </marker>
+    <style>
+    :root { color-scheme: light dark; --background:#fbfcfe; --text:#172e40;
+      --muted:#526779; --edge:#526779; --blue:#eaf3fc; --blue-line:#5791bf;
+      --amber:#fff7e8; --amber-line:#c69a46; --purple:#f0edfa; --purple-line:#9481c6; }
+    @media (prefers-color-scheme:dark) {
+      :root { --background:#111820; --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe;
+        --blue:#172c3e; --blue-line:#6198c2; --amber:#362c1c; --amber-line:#c4a45f;
+        --purple:#2b253e; --purple-line:#a391d0; }
+    }
+    text { font-family:system-ui,sans-serif; font-size:16px; fill:var(--text); }
+    .heading { font-size:20px; font-weight:700; }
+    .label { font-weight:650; }
+    .muted { fill:var(--muted); }
+    .blue { fill:var(--blue); stroke:var(--blue-line); }
+    .amber { fill:var(--amber); stroke:var(--amber-line); }
+    .purple { fill:var(--purple); stroke:var(--purple-line); }
+    .box { stroke-width:2; rx:12; }
+    .edge { fill:none; stroke:var(--edge); stroke-width:2; marker-end:url(#arrow); }
+    .line { fill:none; stroke:var(--edge); stroke-width:2; }
+    .dash { stroke-dasharray:6 5; }
+    .point { fill:var(--text); }
+</style>
+  </defs>
+  <rect width="840" height="420" fill="var(--background)" />
+  <text x="24" y="34" class="heading">Broad candidate filters precede strict containment</text>
+  <g id="tile-select">
+    <rect class="box blue" x="24" y="66" width="234" height="108" />
+    <text x="40" y="95" class="label">1. Select tiles</text>
+    <text x="40" y="125" class="">Rounded query envelope</text>
+    <text x="40" y="150" class="">Read each tile once</text>
+  </g>
+  <g id="integer-filter">
+    <rect class="box amber" x="302" y="66" width="236" height="108" />
+    <text x="318" y="95" class="label">2. Filter integer pairs</text>
+    <text x="318" y="125" class="">Inclusive encoded bounds</text>
+    <text x="318" y="150" class="">Retain possible matches</text>
+  </g>
+  <g id="exact-filter">
+    <rect class="box purple" x="582" y="66" width="228" height="108" />
+    <text x="598" y="95" class="label">3. Exact containment</text>
+    <text x="598" y="125" class="">Decode to degrees</text>
+    <text x="598" y="150" class="">Exclude boundaries</text>
+  </g>
+  <path id="select-filter" class="edge" d="M258 121 H297" />
+  <path id="filter-exact" class="edge" d="M538 121 H577" />
+  <g id="query-polygon">
+    <path id="fire-query-perimeter" class="blue" d="M 62.000 320.000 L 74.000 298.000 L 66.000 276.000 L 83.000 249.000 L 110.000 250.000 L 126.000 232.000 L 158.000 239.000 L 180.000 226.000 L 212.000 239.000 L 241.000 232.000 L 260.000 248.000 L 293.000 245.000 L 305.000 268.000 L 297.000 288.000 L 312.000 315.000 L 294.000 335.000 L 272.000 332.000 L 255.000 353.000 L 227.000 344.000 L 205.000 364.000 L 178.000 350.000 L 151.000 359.000 L 127.000 342.000 L 100.000 350.000 L 91.000 332.000 Z M 233.000 284.000 L 239.000 270.000 L 254.000 264.000 L 271.000 273.000 L 280.000 289.000 L 269.000 305.000 L 272.000 318.000 L 252.000 320.000 L 237.000 307.000 Z" fill-rule="evenodd" stroke-width="2" />
+    <circle class="point" cx="132" cy="285" r="7" />
+    <circle class="point" cx="62" cy="320" r="5" />
+    <circle class="point" cx="256" cy="292" r="5" />
+    <text x="146" y="285" class="">×2</text>
+  </g>
+  <text x="356" y="248" class="label">Interior A appears twice → count 2</text>
+  <text x="356" y="283" class="">Point on exterior boundary → count 0</text>
+  <text x="356" y="318" class="">Point inside polygon hole → count 0</text>
+  <text x="356" y="353" class="muted">Result concerns quantized stored points.</text>
+</svg>

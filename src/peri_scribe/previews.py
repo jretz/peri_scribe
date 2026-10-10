@@ -1,4 +1,8 @@
-"""Encode the viewer's small fire maps as lossless WebP data URLs."""
+"""Encode the viewer's small fire maps as lossless WebP data URLs.
+
+[Preview rendering reasoning](../../docs/algorithms/preview-orientation.md)
+explains the contract and correctness argument.
+"""
 
 from __future__ import annotations
 

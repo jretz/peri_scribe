@@ -1,4 +1,7 @@
-"""Building and reading the fire source index for a year's data."""
+"""Building and reading the fire source index for a year's data.
+
+[Generation and reuse](../../../docs/algorithms/geography-generations.md)
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,8 @@
-"""Shared, bounded readers preserve diagnostic occurrences through clock changes."""
+"""Shared, bounded readers preserve diagnostic occurrences through clock changes.
+
+Algorithm reasoning and contracts:
+[Log retention](../../docs/algorithms/log-retention.md)
+"""
 
 import compression.zstd
 import contextlib

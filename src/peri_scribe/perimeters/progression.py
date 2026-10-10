@@ -4,6 +4,8 @@ A fire's growth is read from the differential perimeter history, whose rings eac
 the area the fire added at one growth step. Each ring carries its own area and
 observation time, and the KMZ output colors each ring by where its time falls in the
 fire's active growth span.
+
+[Growth rings](../../../docs/algorithms/corrected-growth-rings.md)
 """
 
 from __future__ import annotations

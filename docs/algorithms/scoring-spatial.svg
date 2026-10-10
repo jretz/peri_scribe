@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="456"
+     viewBox="0 0 840 456" role="img" style="max-width:100%;height:auto"
+     aria-labelledby="scoring-spatial-title scoring-spatial-description">
+  <title id="scoring-spatial-title">Building exposure and evacuation overlap use different geometries</title>
+  <desc id="scoring-spatial-description">Building centroids must lie strictly inside the projected buffer. A point on its boundary is excluded. Evacuation overlap uses the unbuffered fire footprint and includes touches.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"/>
+    </marker>
+    <style>
+      :root { color-scheme: light dark; --background:#fbfcfe; --text:#172e40;
+        --edge:#526779; --blue:#eaf3fc; --blue-border:#5791bf;
+        --gold:#fff7e8; --gold-border:#c69a46; --purple:#f0edfa;
+        --purple-border:#9481c6; }
+      @media (prefers-color-scheme: dark) {
+        :root { --background:#111820; --text:#e4edf5; --edge:#9caebe;
+          --blue:#172c3e; --blue-border:#6198c2; --gold:#362c1c;
+          --gold-border:#c4a45f; --purple:#2b253e; --purple-border:#a391d0; }
+      }
+      text { font-family:system-ui,sans-serif; fill:var(--text); font-size:16px; }
+      .heading { font-size:21px; font-weight:700; }
+      .label { font-size:17px; font-weight:650; }
+      .page { fill:var(--background); }
+      .blue { fill:var(--blue); stroke:var(--blue-border); stroke-width:2; }
+      .gold { fill:var(--gold); stroke:var(--gold-border); stroke-width:2; }
+      .purple { fill:var(--purple); stroke:var(--purple-border); stroke-width:2; }
+      .edge { fill:none; stroke:var(--edge); stroke-width:2; marker-end:url(#arrow); }
+      .line { fill:none; stroke:var(--edge); stroke-width:2; }
+      .dashed { stroke-dasharray:7 5; }
+    </style>
+
+  </defs>
+  <rect class="page" width="840" height="456"/>
+  <text x="24" y="35" class="heading">Building exposure and evacuation overlap use different geometries</text>
+  <text x="24" y="82" class="label">Building signal</text>
+  <text x="444" y="82" class="label">Evacuation signal</text>
+<path id="buffer" d="M 85.878 233.415 L 93.878 245.415 L 106.529 256.882 L 109.433 258.431 L 109.936 259.88 L 118.323 273.22 L 131.71 281.529 L 147.386 283.124 L 151.044 282.662 L 154.281 285.424 L 168.329 292.709 L 184.15 293.062 L 193.419 291.127 L 199.509 294.917 L 212.643 299.788 L 226.634 299.118 L 248.634 293.518 L 259.56 288.624 L 268.198 280.334 L 270.908 276.648 L 283.018 273.418 L 295.345 267.338 L 304.38 256.979 L 308.73 243.941 L 307.723 230.232 L 307.44 229.213 L 308.972 226.301 L 312.661 214.861 L 312.262 202.848 L 307.821 191.678 L 300.487 183.374 L 299.313 171.264 L 291.799 158.348 L 279.582 149.743 L 266.56 144.26 L 256.239 134.351 L 242.16 126.107 L 225.874 125.14 L 216.787 126.756 L 204.351 122.492 L 188.969 120.833 L 174.374 125.968 L 166.823 130.714 L 150.374 132.907 L 135.368 138.624 L 124.495 150.441 L 122.117 154.668 L 110.932 158.396 L 97.019 167.086 L 88.593 181.16 L 81.593 203.56 L 80.355 218.973 Z" class="blue"/>
+<path id="building-fire" d="M 115 214 L 122 191.6 L 146 183.6 L 155 167.6 L 179 164.4 L 193 155.6 L 214 162.8 L 232 159.6 L 247 174 L 266 182 L 264 198.8 L 278 210 L 270 225.2 L 274 239.6 L 250 246 L 240 259.6 L 218 265.2 L 200 254 L 177 258.8 L 162 246 L 143 248.4 L 138 234 L 123 226 Z" class="gold"/>
+<circle id="inside-centroid" cx="104" cy="209" r="6" fill="var(--text)"/>
+<circle id="boundary-centroid" cx="312.661" cy="214.861" r="6" fill="var(--text)"/>
+  <text x="55" y="113" class="">Projected buffer</text>
+  <text x="69" y="340" class="">● Inside: count it</text>
+  <text x="69" y="366" class="">● On boundary: exclude it</text>
+<path id="evacuation-zone" d="M 627 115 L 704 115 L 704 132 L 795 132 L 795 210 L 778 210 L 778 292 L 702 292 L 702 306 L 615 306 L 615 234 L 601 234 L 601 175 L 627 175 Z" class="purple"/>
+<path id="evacuation-fire" d="M 485 214 L 492 191.6 L 516 183.6 L 525 167.6 L 549 164.4 L 563 155.6 L 584 162.8 L 602 159.6 L 617 174 L 636 182 L 634 198.8 L 648 210 L 640 225.2 L 644 239.6 L 620 246 L 610 259.6 L 588 265.2 L 570 254 L 547 258.8 L 532 246 L 513 248.4 L 508 234 L 493 226 Z" class="gold"/>
+  <text x="697" y="161" class="">Zone</text>
+  <text x="555" y="220" class="">Fire</text>
+  <text x="468" y="340" class="">Fire ∩ zone is nonempty: true</text>
+  <text x="468" y="366" class="">No building buffer in this test.</text>
+  <text x="24" y="414" class="">Gold: current fire geometry. Blue: buffer. Purple: evacuation zone.</text>
+  <text x="24" y="442" class="">Projected one-mile buffering has latitude-dependent ground distance.</text>
+</svg>

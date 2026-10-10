@@ -1,4 +1,8 @@
-"""HTML balloons describing a fire and its map images."""
+"""HTML balloons describing a fire and its map images.
+
+Design notes:
+[Output serialization](../../../docs/algorithms/output-serialization.md).
+"""
 
 from __future__ import annotations
 

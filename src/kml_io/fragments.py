@@ -1,4 +1,8 @@
-"""Keep exact polygon boundary text reusable without retaining source geometries."""
+"""Keep exact polygon boundary text reusable without retaining source geometries.
+
+Design notes:
+[Output serialization](../../docs/algorithms/output-serialization.md).
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,8 @@
-"""Writing the fire history GeoPackage files."""
+"""Writing the fire history GeoPackage files.
+
+Algorithm reasoning and contracts:
+[Geography generations](../../../docs/algorithms/geography-generations.md)
+"""
 
 from __future__ import annotations
 

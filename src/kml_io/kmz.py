@@ -1,4 +1,8 @@
-"""Publish complete KMZ archives while streaming their document contents."""
+"""Publish complete KMZ archives while streaming their document contents.
+
+Design notes:
+[Output serialization](../../docs/algorithms/output-serialization.md).
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,8 @@
-"""Downloading archive files and locating geodata inside them."""
+"""Downloading archive files and locating geodata inside them.
+
+Design notes:
+[External source refresh](../../../docs/algorithms/external-source-refresh.md).
+"""
 
 from __future__ import annotations
 

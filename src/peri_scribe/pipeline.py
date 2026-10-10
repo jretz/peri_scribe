@@ -1,4 +1,8 @@
-"""Pipeline commands load their generation dependencies only when selected."""
+"""Pipeline commands load their generation dependencies only when selected.
+
+Algorithm reasoning and contracts:
+[Pipeline publication](../../docs/algorithms/pipeline-publication.md)
+"""
 
 from __future__ import annotations
 

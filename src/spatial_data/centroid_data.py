@@ -1,4 +1,8 @@
-"""Shared geometry chunks keep streaming and centroid calculations independent."""
+"""Shared geometry chunks keep streaming and centroid calculations independent.
+
+[Building centroid reasoning](../../docs/algorithms/building-centroids.md)
+explains the contract and correctness argument.
+"""
 
 from __future__ import annotations
 

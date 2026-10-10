@@ -1,3 +1,4 @@
+/** Design: ../../docs/algorithms/verification-tooling.md */
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
 import fs from "node:fs/promises";

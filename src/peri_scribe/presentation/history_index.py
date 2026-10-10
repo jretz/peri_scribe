@@ -4,6 +4,8 @@ Each history layer is scanned many times while KML geometry is built, once per f
 find the rows belonging to that fire. This module builds one compact index of row
 positions up front, so each fire is answered with dictionary lookups and a small slice
 instead of a boolean filter over the whole frame.
+
+[Algorithm note](../../../docs/algorithms/presentation-selection.md)
 """
 
 from __future__ import annotations

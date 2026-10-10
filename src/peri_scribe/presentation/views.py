@@ -1,4 +1,7 @@
-"""Rank and select the fire views shared by maps and reports."""
+"""Rank and select the fire views shared by maps and reports.
+
+[Algorithm note](../../../docs/algorithms/presentation-selection.md)
+"""
 
 from __future__ import annotations
 

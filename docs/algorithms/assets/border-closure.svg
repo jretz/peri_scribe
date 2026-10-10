@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="480"
+     viewBox="0 0 840 480" role="img" style="max-width:100%;height:auto"
+     aria-labelledby="border-closure-title border-closure-description">
+  <title id="border-closure-title">Close the interstate path beyond the coast and southern edge</title>
+  <desc id="border-closure-description">The path runs westmost Pacific/Oregon endpoint through interstate borders to the Mexico/Arizona endpoint. Dashed closure runs south to latitude 31, west to longitude minus 126, then north and east.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"/>
+    </marker>
+    <style>
+      :root { color-scheme: light dark; --background:#fbfcfe; --text:#172e40;
+        --edge:#526779; --blue:#eaf3fc; --blue-border:#5791bf;
+        --gold:#fff7e8; --gold-border:#c69a46; --purple:#f0edfa;
+        --purple-border:#9481c6; }
+      @media (prefers-color-scheme: dark) {
+        :root { --background:#111820; --text:#e4edf5; --edge:#9caebe;
+          --blue:#172c3e; --blue-border:#6198c2; --gold:#362c1c;
+          --gold-border:#c4a45f; --purple:#2b253e; --purple-border:#a391d0; }
+      }
+      text { font-family:system-ui,sans-serif; fill:var(--text); font-size:16px; }
+      .heading { font-size:21px; font-weight:700; }
+      .label { font-size:17px; font-weight:650; }
+      .page { fill:var(--background); }
+      .blue { fill:var(--blue); stroke:var(--blue-border); stroke-width:2; }
+      .gold { fill:var(--gold); stroke:var(--gold-border); stroke-width:2; }
+      .purple { fill:var(--purple); stroke:var(--purple-border); stroke-width:2; }
+      .edge { fill:none; stroke:var(--edge); stroke-width:2; marker-end:url(#arrow); }
+      .line { fill:none; stroke:var(--edge); stroke-width:2; }
+      .dashed { stroke-dasharray:7 5; }
+    </style>
+
+  </defs>
+  <rect class="page" width="840" height="480"/>
+  <text x="24" y="35" class="heading">Close the interstate path beyond the coast and southern edge</text>
+<path id="classification-box" d="M 290 130 L 370 130 L 405 215 L 545 275 L 600 310 L 600 380 L 110 380 L 110 130 Z" class="blue"/>
+<path id="interstate-path" d="M 290 130 L 370 130 L 405 215 L 545 275 L 600 310" fill="none" stroke="var(--gold-border)" stroke-width="5"/>
+  <path class="edge dashed" d="M 600 310 V 380 H 110 V 130 H 290"/>
+<circle id="northwest-endpoint" cx="290" cy="130" r="6" fill="var(--text)"/>
+<circle id="southeast-endpoint" cx="600" cy="310" r="6" fill="var(--text)"/>
+  <text x="185" y="99" class="label">Start: Pacific / Oregon</text>
+  <text x="571" y="279" class="label">End: Mexico / Arizona</text>
+  <text x="186" y="276" class="label">Classification box</text>
+  <text x="497" y="185" class="label">Interstate path</text>
+  <text x="24" y="220" class="">Offshore</text>
+  <text x="24" y="243" class="">−126°</text>
+  <text x="269" y="411" class="">Southern closure: latitude 31°</text>
+  <text x="24" y="450" class="">Solid gold follows the source path; dashed edges close the box. Schematic only.</text>
+</svg>

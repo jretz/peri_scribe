@@ -1,4 +1,8 @@
-"""Retry utilities."""
+"""Retry utilities.
+
+Design notes:
+[Incremental source collection](../../docs/algorithms/source-collection.md).
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,8 @@
-"""Size OSC 1337 images to the terminal's visible width with an explicit pixel cap."""
+"""Size OSC 1337 images to the terminal's visible width with an explicit pixel cap.
+
+Algorithm reasoning and contracts:
+[Terminal rendering](../../docs/algorithms/terminal-rendering.md)
+"""
 
 from __future__ import annotations
 

@@ -1,4 +1,8 @@
-"""Terminal widgets translate user gestures into monitor actions."""
+"""Terminal widgets translate user gestures into monitor actions.
+
+Algorithm reasoning and contracts:
+[Terminal rendering](../../../docs/algorithms/terminal-rendering.md)
+"""
 
 import enum
 import re

@@ -4,6 +4,9 @@ The differential history is derived from the full history GeoPackage. The point 
 copied unchanged, while the perimeter layer shows the area each perimeter added over the
 previous one. Reductions in later perimeters are folded into the previous perimeter as
 corrections, so the differential layer shows only growth.
+
+[Growth rings](../../../docs/algorithms/corrected-growth-rings.md)
+[Generation and reuse](../../../docs/algorithms/geography-generations.md)
 """
 
 from __future__ import annotations

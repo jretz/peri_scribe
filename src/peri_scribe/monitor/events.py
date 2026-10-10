@@ -1,4 +1,8 @@
-"""Normalize structured records without coupling their consumers to a presentation."""
+"""Normalize structured records without coupling their consumers to a presentation.
+
+Algorithm reasoning and contracts:
+[Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
+"""
 
 import collections.abc
 import dataclasses

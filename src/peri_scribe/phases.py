@@ -1,4 +1,8 @@
-"""One typed catalogue defines observable work and its permitted hierarchy."""
+"""One typed catalogue defines observable work and its permitted hierarchy.
+
+Algorithm reasoning and contracts:
+[Monitor evidence](../../docs/algorithms/monitor-evidence.md)
+"""
 
 import collections.abc
 import dataclasses

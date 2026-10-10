@@ -1,4 +1,8 @@
-"""Detecting which fetched features are new or changed since the last snapshot."""
+"""Detecting which fetched features are new or changed since the last snapshot.
+
+Design notes:
+[Incremental source collection](../../../docs/algorithms/source-collection.md).
+"""
 
 from __future__ import annotations
 

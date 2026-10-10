@@ -1,4 +1,8 @@
-"""Typed cache values preserve measurements without executing stored objects."""
+"""Typed cache values preserve measurements without executing stored objects.
+
+[Typed cache reasoning](../../docs/algorithms/product-caching.md)
+explains the contract and correctness argument.
+"""
 
 from __future__ import annotations
 

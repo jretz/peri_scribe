@@ -55,15 +55,23 @@ includes data-source links and attribution.
 ## Pipeline
 
 A full `run` turns observations from across the United States into fire histories,
-rankings, maps, and reports. The stages run from top to bottom; each stage's main
-outputs are shown alongside it.
+rankings, maps, and reports. It uses fire feeds, evacuation zones, building footprints,
+Natural Earth places, and state boundaries. The stages run in this order:
 
-![PeriScribe pipeline stages and their outputs](docs/pipeline.svg)
+1. **Fetch:** Collect new and changed fire observations and refresh reference data.
+   Preserve the original observations and geographic reference datasets.
+2. **Geography:** Match records to fires, reconcile corrections, and build histories of
+   perimeters, points, incident reports, and growth rings.
+3. **Score:** Rank fires using size, growth, first mapping, nearby buildings, evacuation
+   overlap, and incident complexity. Save scores, explanations, and a distribution chart.
+4. **KMZ and updates:** Build Google Earth maps and record mapping updates for the
+   browser viewer, which shows the last 48 hours of updates.
+5. **Reports:** Summarize selected fires with locations, current area, and recent growth
+   in readable Markdown reports.
 
 The pipeline preserves original observations so it can account for later corrections.
 It reuses unchanged histories, rebuilds affected fires, and shares the resulting facts
-across scores, maps, and reports. The KMZ stage also produces a browser viewer showing
-the last 48 hours of mapping updates.
+across scores, maps, and reports.
 
 Routine runs skip derived work when fire, evacuation, and city data are unchanged and no
 rebuild is pending. Failed work is retried on a later run. The optional

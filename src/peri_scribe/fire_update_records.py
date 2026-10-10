@@ -1,4 +1,8 @@
-"""Shared identity and payload schemas for durable journals and public snapshots."""
+"""Shared identity and payload schemas for durable journals and public snapshots.
+
+Algorithm reasoning and contracts:
+[Update journal](../../docs/algorithms/update-journal.md)
+"""
 
 import json
 import typing

@@ -1,4 +1,7 @@
-"""Computing California border geometry and neighbor state borders."""
+"""Computing California border geometry and neighbor state borders.
+
+[Border construction](../../../docs/algorithms/border-construction.md)
+"""
 
 from __future__ import annotations
 

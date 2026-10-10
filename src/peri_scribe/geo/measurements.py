@@ -1,4 +1,8 @@
-"""Shared measurements stored alongside the geometry they describe."""
+"""Shared measurements stored alongside the geometry they describe.
+
+Design notes:
+[Source interpretation and validation](../../../docs/algorithms/source-validation.md).
+"""
 
 from __future__ import annotations
 

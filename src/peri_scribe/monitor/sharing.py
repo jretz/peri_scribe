@@ -1,4 +1,8 @@
-"""Bounded pools share immutable log metadata without aliasing mutable records."""
+"""Bounded pools share immutable log metadata without aliasing mutable records.
+
+Algorithm reasoning and contracts:
+[Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
+"""
 
 import collections.abc
 import dataclasses

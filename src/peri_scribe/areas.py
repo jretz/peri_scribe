@@ -1,4 +1,7 @@
-"""A shared area estimate follows mapping until incident reports outgrow it."""
+"""A shared area estimate follows mapping until incident reports outgrow it.
+
+[Incident and area policy](../../docs/algorithms/incident-area-selection.md)
+"""
 
 from __future__ import annotations
 

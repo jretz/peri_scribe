@@ -1,4 +1,7 @@
-"""Validating that stored source snapshots cover a complete snapshot."""
+"""Validating that stored source snapshots cover a complete snapshot.
+
+[Algorithm note](../../../docs/algorithms/source-validation.md)
+"""
 
 from __future__ import annotations
 

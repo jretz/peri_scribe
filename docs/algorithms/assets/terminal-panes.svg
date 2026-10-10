@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="680" viewBox="0 0 840 680"
+     role="img" aria-labelledby="terminal-panes-title terminal-panes-description" style="max-width:100%;height:auto">
+  <title id="terminal-panes-title">Clamping stops the divider while the request continues</title>
+  <desc id="terminal-panes-description">An animated request moves across an eighty-cell terminal. The leading pane follows between twenty-four and fifty-six cells, then stops while the request continues. Static examples show requests ten, forty and seventy producing splits twenty-four/fifty-six, forty/forty and fifty-six/twenty-four. A separate twenty-cell terminal reduces both minima to ten. Smooth motion illustrates cell-sized updates.</desc>
+  <defs><style>
+    :root { color-scheme:light dark; --background:#fbfcfe; --text:#172e40;
+      --muted:#526779; --blue:#eaf3fc; --blue-line:#5791bf;
+      --gold:#fff7e8; --gold-line:#ad7725; --purple:#f0edfa; --purple-line:#8065b5; }
+    @media (prefers-color-scheme:dark) { :root { --background:#111820;
+      --text:#e4edf5; --muted:#acbdcb; --blue:#172c3e; --blue-line:#74abd5;
+      --gold:#362c1c; --gold-line:#dfb566; --purple:#2b253e; --purple-line:#b7a1e7; } }
+    text { fill:var(--text); font:16px system-ui,sans-serif; }
+    .title { font-size:23px; font-weight:700; }
+    .heading { font-size:18px; font-weight:650; }
+    .muted { fill:var(--muted); }
+    .blue { fill:var(--blue); stroke:var(--blue-line); stroke-width:2; }
+    .purple { fill:var(--purple); stroke:var(--purple-line); stroke-width:2; }
+    .line { fill:none; stroke:var(--muted); stroke-width:1.5; }
+    .dashed { stroke-dasharray:5 5; }
+
+    #requested-divider { transform:translateX(690px); }
+    #actual-divider { transform:translateX(564px); }
+    #leading-pane-fill { transform:scaleX(504); }
+    @media (prefers-reduced-motion:no-preference) {
+      #requested-divider { animation:requested-position 24s linear infinite; }
+      #actual-divider { animation:clamped-position 24s linear infinite; }
+      #leading-pane-fill { animation:clamped-width 24s linear infinite; }
+    }
+    @keyframes requested-position {
+      0.0000000% { transform:translateX(420px); }
+      8.3333333% { transform:translateX(420px); }
+      25.0000000% { transform:translateX(690px); }
+      33.3333333% { transform:translateX(690px); }
+      66.6666667% { transform:translateX(150px); }
+      75.0000000% { transform:translateX(150px); }
+      91.6666667% { transform:translateX(420px); }
+      100.0000000% { transform:translateX(420px); }
+    }
+@keyframes clamped-position {
+      0.0000000% { transform:translateX(420px); }
+      8.3333333% { transform:translateX(420px); }
+      17.2222222% { transform:translateX(564px); }
+      25.0000000% { transform:translateX(564px); }
+      33.3333333% { transform:translateX(564px); }
+      41.1111111% { transform:translateX(564px); }
+      58.8888889% { transform:translateX(276px); }
+      66.6666667% { transform:translateX(276px); }
+      75.0000000% { transform:translateX(276px); }
+      82.7777778% { transform:translateX(276px); }
+      91.6666667% { transform:translateX(420px); }
+      100.0000000% { transform:translateX(420px); }
+    }
+@keyframes clamped-width {
+      0.0000000% { transform:scaleX(360); }
+      8.3333333% { transform:scaleX(360); }
+      17.2222222% { transform:scaleX(504); }
+      25.0000000% { transform:scaleX(504); }
+      33.3333333% { transform:scaleX(504); }
+      41.1111111% { transform:scaleX(504); }
+      58.8888889% { transform:scaleX(216); }
+      66.6666667% { transform:scaleX(216); }
+      75.0000000% { transform:scaleX(216); }
+      82.7777778% { transform:scaleX(216); }
+      91.6666667% { transform:scaleX(360); }
+      100.0000000% { transform:scaleX(360); }
+    }
+
+  </style></defs>
+  <rect width="840" height="680" fill="var(--background)"/>
+  <text x="24" y="36" class="title">The pointer keeps moving; the pane boundary stops</text>
+  <text x="24" y="67" class="muted">80 cells total · leading width = clamp(request, 24, 56)</text>
+  <text x="60" y="104" class="heading">Leading pane</text>
+  <text x="780" y="104" text-anchor="end" class="heading">Trailing pane</text>
+  <rect x="60" y="148" width="720" height="100" class="purple"/>
+  <g transform="translate(60 148)">
+    <rect id="leading-pane-fill" width="1" height="100" fill="var(--blue)"/>
+  </g>
+  <path class="line" d="M60 148 H780 V248 H60 Z"/>
+  <path id="minimum-leading-guide" class="line dashed" d="M276 128 V280"/>
+  <path id="minimum-trailing-guide" class="line dashed" d="M564 128 V280"/>
+  <g id="actual-divider">
+    <path d="M0 143 V253" stroke="var(--blue-line)" stroke-width="5"/>
+    <rect x="-5" y="183" width="10" height="30" rx="3" fill="var(--blue-line)"/>
+  </g>
+  <g id="requested-divider">
+    <path d="M0 132 V261" fill="none" stroke="var(--gold-line)" stroke-width="2" stroke-dasharray="4 4"/>
+    <path d="M-9 120 L9 120 L0 134 Z" fill="var(--gold-line)"/>
+  </g>
+  <text x="60" y="303" class="muted">0</text>
+  <text x="276" y="303" text-anchor="middle">24 minimum</text>
+  <text x="564" y="303" text-anchor="middle">56 maximum</text>
+  <text x="780" y="303" text-anchor="end" class="muted">80</text>
+  <path d="M60 337 H92" stroke="var(--gold-line)" stroke-width="3" stroke-dasharray="4 4"/>
+  <text x="103" y="343">Requested boundary</text>
+  <path d="M348 337 H380" stroke="var(--blue-line)" stroke-width="4"/>
+  <text x="391" y="343">Actual boundary</text>
+  <text x="24" y="390" class="heading">Both limits protect the neighboring pane</text>
+  <g id="static-request-10" transform="translate(24 419)">
+    <text x="0" y="0" class="heading">Request 10 → 24 / 56</text>
+    <rect y="22" width="232" height="52" class="purple"/>
+    <rect y="22" width="69.6" height="52" class="blue"/>
+    <path d="M29 14 V82" stroke="var(--gold-line)" stroke-width="2" stroke-dasharray="4 4"/>
+    <text x="34.8" y="54" text-anchor="middle">24</text>
+    <text x="150.8" y="54" text-anchor="middle">56</text>
+  </g>
+  <g id="static-request-40" transform="translate(302 419)">
+    <text x="0" y="0" class="heading">Request 40 → 40 / 40</text>
+    <rect y="22" width="232" height="52" class="purple"/>
+    <rect y="22" width="116" height="52" class="blue"/>
+    <path d="M116 14 V82" stroke="var(--gold-line)" stroke-width="2" stroke-dasharray="4 4"/>
+    <text x="58" y="54" text-anchor="middle">40</text>
+    <text x="174" y="54" text-anchor="middle">40</text>
+  </g>
+  <g id="static-request-70" transform="translate(580 419)">
+    <text x="0" y="0" class="heading">Request 70 → 56 / 24</text>
+    <rect y="22" width="232" height="52" class="purple"/>
+    <rect y="22" width="162.4" height="52" class="blue"/>
+    <path d="M203 14 V82" stroke="var(--gold-line)" stroke-width="2" stroke-dasharray="4 4"/>
+    <text x="81.2" y="54" text-anchor="middle">56</text>
+    <text x="197.2" y="54" text-anchor="middle">24</text>
+  </g>
+  <text x="24" y="544" class="heading">A smaller terminal reduces both minima first</text>
+  <rect x="24" y="562" width="116" height="54" class="blue"/>
+  <rect x="140" y="562" width="116" height="54" class="purple"/>
+  <text x="82" y="595" text-anchor="middle">10</text>
+  <text x="198" y="595" text-anchor="middle">10</text>
+  <text x="283" y="585">20 total: min(24, floor(20 / 2)) = 10</text>
+  <text x="283" y="611" class="muted">Only the 10 / 10 split fits both reduced minima.</text>
+  <text x="24" y="655" class="muted">Motion smooths cell-sized updates; all three clamped states remain visible below.</text>
+
+</svg>

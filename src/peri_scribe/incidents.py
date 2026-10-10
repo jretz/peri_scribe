@@ -1,4 +1,7 @@
-"""Incident reports have their own clock, independent of mapped polygons."""
+"""Incident reports have their own clock, independent of mapped polygons.
+
+[Incident and area policy](../../docs/algorithms/incident-area-selection.md)
+"""
 
 from __future__ import annotations
 

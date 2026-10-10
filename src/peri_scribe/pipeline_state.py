@@ -1,4 +1,9 @@
-"""Durable rebuild requirements and one writer per year directory."""
+"""Durable rebuild requirements and one writer per year directory.
+
+Algorithm reasoning and contracts:
+[Pipeline publication](../../docs/algorithms/pipeline-publication.md)
+[Geography generations](../../docs/algorithms/geography-generations.md)
+"""
 
 from __future__ import annotations
 

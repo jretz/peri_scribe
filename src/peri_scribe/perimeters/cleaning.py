@@ -5,6 +5,8 @@ artifacts — zero-area parts and holes, and doubled-back "hairline" slits — t
 Earth's tessellator cannot render. These functions remove those artifacts from
 perimeters read from the sources directory before they are written to the derived
 directory, without changing the source files.
+
+[Geometry policy](../../../docs/algorithms/perimeter-geometry-policy.md)
 """
 
 from __future__ import annotations

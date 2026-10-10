@@ -1,0 +1,79 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="640"
+     viewBox="0 0 840 640" role="img" aria-labelledby="figure-title figure-description"
+     style="max-width:100%;height:auto">
+  <title id="figure-title">Fit logical cells, then fall back explicitly</title>
+  <desc id="figure-description">A terminal image first prefers an eligible logical cell report. If it is unavailable, usable OS pixel geometry provides cell dimensions. Available cells no wider than the cap produce character-cell controls. Otherwise explicit pixel controls preserve the configured cap.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8"
+            markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10z" fill="var(--edge)"/>
+    </marker>
+    <style>
+    :root { color-scheme:light dark; --background:#fbfcfe; --text:#172e40;
+      --muted:#526779; --edge:#526779; --disk:#eaf3fc; --disk-border:#5791bf;
+      --process:#fff7e8; --process-border:#c69a46; --network:#f0edfa;
+      --network-border:#9481c6; }
+    @media (prefers-color-scheme:dark) { :root { --background:#111820;
+      --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe; --disk:#172c3e;
+      --disk-border:#6198c2; --process:#362c1c; --process-border:#c4a45f;
+      --network:#2b253e; --network-border:#a391d0; } }
+    svg { background:var(--background); }
+    text { fill:var(--text); font-family:system-ui,sans-serif; font-size:17px; }
+    .title { font-size:23px; font-weight:700; }
+    .heading { font-size:18px; font-weight:700; }
+    .muted { fill:var(--muted); font-size:16px; }
+    .disk { fill:var(--disk); stroke:var(--disk-border); }
+    .process { fill:var(--process); stroke:var(--process-border); }
+    .network { fill:var(--network); stroke:var(--network-border); }
+    .node { stroke-width:2; rx:12; }
+    .edge { stroke:var(--edge); stroke-width:2.5; fill:none; marker-end:url(#arrow); }
+    .line { stroke:var(--edge); stroke-width:2; fill:none; }
+    .dashed { stroke-dasharray:7 5; }
+    </style>
+  </defs>
+  <rect width="840" height="640" fill="var(--background)"/>
+  <text x="24" y="38" class="title">Fit logical cells, then fall back explicitly</text>
+  <g id="output">
+<rect x="24" y="76" width="792" height="80" class="node disk"/>
+<text x="40" y="105" class="heading">Output is a TTY with more than one column</text>
+<text x="40" y="134" class="">Otherwise use explicit pixel controls.</text>
+</g>
+<path id="output-query" class="edge " d="M420 156 V174 H210 V194"/>
+<g id="logical">
+<rect x="24" y="194" width="372" height="116" class="node process"/>
+<text x="40" y="223" class="heading">1 · Logical cell report</text>
+<text x="40" y="252" class="">Foreground; no queued input</text>
+<text x="40" y="278" class="">250 ms wait; at most 128 bytes</text>
+</g>
+<g id="system">
+<rect x="444" y="194" width="372" height="116" class="node disk"/>
+<text x="460" y="223" class="heading">2 · OS pixel geometry</text>
+<text x="460" y="252" class="">Fallback when report unavailable</text>
+<text x="460" y="278" class="">Requires rows and pixel width/height</text>
+</g>
+<path id="query-os" class="edge " d="M396 250 H444"/>
+<path id="logical-choose" class="edge " d="M210 310 V352"/>
+<path id="system-choose" class="edge " d="M630 310 V352"/>
+<g id="choose">
+<rect x="24" y="352" width="792" height="92" class="node network"/>
+<text x="40" y="381" class="heading">Are cell dimensions available and one cell no wider than the cap?</text>
+<text x="40" y="410" class="">Choose exactly one representation.</text>
+</g>
+<path id="usable" class="edge " d="M210 444 V508"/>
+<path id="unusable" class="edge " d="M630 444 V508"/>
+<text x="227" y="484" class="heading">Yes</text>
+<text x="647" y="484" class="heading">No</text>
+<g id="cells">
+<rect x="24" y="508" width="372" height="100" class="node process"/>
+<text x="40" y="537" class="heading">Character-cell controls</text>
+<text x="40" y="566" class="">Leave one column of margin.</text>
+<text x="40" y="592" class="">Floor width; ceil height.</text>
+</g>
+<g id="pixels">
+<rect x="444" y="508" width="372" height="100" class="node disk"/>
+<text x="460" y="537" class="heading">Explicit pixel controls</text>
+<text x="460" y="566" class="">Preserve maximum pixel width.</text>
+<text x="460" y="592" class="">Height follows the aspect ratio.</text>
+</g>
+</svg>

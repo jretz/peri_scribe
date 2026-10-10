@@ -1,4 +1,7 @@
-"""SVG distribution curves, logarithmic share axes, and optional annotations."""
+"""SVG distribution curves, logarithmic share axes, and optional annotations.
+
+[Algorithm note](../../docs/algorithms/chart-layout.md)
+"""
 
 from __future__ import annotations
 

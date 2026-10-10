@@ -1,4 +1,9 @@
-"""Read-only file adapters keep tailing and report refresh outside the UI model."""
+"""Read-only file adapters keep tailing and report refresh outside the UI model.
+
+Algorithm reasoning and contracts:
+[Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
+[Log retention](../../../docs/algorithms/log-retention.md)
+"""
 
 import collections
 import compression.zstd

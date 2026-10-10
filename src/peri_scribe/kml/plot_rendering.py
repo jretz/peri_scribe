@@ -3,6 +3,10 @@
 A fire's plot is skipped when none of its lines span enough observation times. Rendering
 is pure string assembly, so the plots are drawn inline: the whole season renders in well
 under a second.
+
+Design notes:
+[Time series and distribution charts](../../../docs/algorithms/chart-layout.md).
+[Product caching](../../../docs/algorithms/product-caching.md).
 """
 
 from __future__ import annotations

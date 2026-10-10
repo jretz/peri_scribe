@@ -1,4 +1,9 @@
-"""Rendering a gathered fire report as Markdown."""
+"""Rendering a gathered fire report as Markdown.
+
+Design notes:
+[Output serialization](../../../docs/algorithms/output-serialization.md).
+[Shared fire selection and ranking](../../../docs/algorithms/presentation-selection.md).
+"""
 
 from __future__ import annotations
 

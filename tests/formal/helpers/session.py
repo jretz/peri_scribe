@@ -1,4 +1,8 @@
-"""Give one formal invocation temporary evidence shared by all of its child tools."""
+"""Give one formal invocation temporary evidence shared by all of its child tools.
+
+Design notes:
+[Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
+"""
 
 import collections.abc
 import contextlib

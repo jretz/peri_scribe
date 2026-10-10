@@ -9,6 +9,9 @@
 - [Development Tools](docs/development_tools.md) — Tools and setup for development.
 - [Conventions](docs/conventions.md) — Coding conventions and style guide for the
   project. These must be read and adhered to when writing code.
+- [Algorithm Design](docs/algorithm_design.md) — Complexity assessment and documentation
+  requirements. Read before designing or implementing new algorithms. Reassess existing
+  algorithms when changing behavior or assumptions, and provide the required explanation.
 - [Testing](docs/testing.md) — Testing guidelines and instructions for the
   project. These must be read and adhered to when writing code.
 - [Formal Verification](docs/formal_verification.md) — Model, proof, and conformance

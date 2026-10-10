@@ -1,4 +1,8 @@
-"""Compare saved mapping updates with the inputs of a completed local KMZ."""
+"""Compare saved mapping updates with the inputs of a completed local KMZ.
+
+Algorithm reasoning and contracts:
+[Pipeline publication](../../docs/algorithms/pipeline-publication.md)
+"""
 
 from __future__ import annotations
 

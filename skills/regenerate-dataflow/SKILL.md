@@ -1,9 +1,9 @@
 ---
 name: regenerate-dataflow
 description: >-
-  Update the pipeline SVGs in README.md and docs/architecture.md, plus documented
-  network resources, from PeriScribe's current implementation. Use for maintaining
-  pipeline diagrams as the project evolves.
+  Update the Markdown pipeline overview in README.md, the dataflow SVG in
+  docs/architecture.md, and documented network resources from PeriScribe's current
+  implementation. Use for maintaining pipeline documentation as the project evolves.
 ---
 
 # Regenerate the pipeline dataflow diagram
@@ -19,15 +19,14 @@ established presentation below unless the user's current request changes it.
 
 ## README overview
 
-[docs/pipeline.svg](../../docs/pipeline.svg) is the introductory diagram embedded in
-[README.md](../../README.md). Keep it focused on the five stages and their main saved
-outputs, including incident-report histories and the browser update viewer. Match the
-detailed SVG's palette, type sizes, static format, and light/dark behavior. Downward
-arrows show stage order; side arrows connect stages to their outputs. Explain the work
-in plain language, leaving file inventories, memory structures, and recovery mechanics
-to the detailed diagram. The exhaustive coverage guidance below applies to
-`docs/dataflow.svg`. When pipeline behavior changes, keep both diagrams consistent
-without expanding the README to the detailed diagram's scope.
+The [README pipeline overview](../../README.md#pipeline) is an ordered Markdown list
+of the five stages and their main saved outputs, including incident-report histories
+and the browser update viewer. Keep this simple sequence directly in the text. Explain
+the work in plain language, leaving file inventories, memory structures, and recovery
+mechanics to the detailed diagram. The exhaustive coverage guidance below applies to
+`docs/dataflow.svg`. When pipeline behavior changes, keep the overview and diagram
+consistent without expanding the README to the detailed diagram's scope. Architecture
+links to this overview rather than duplicating it.
 
 ## Trace the current pipeline
 

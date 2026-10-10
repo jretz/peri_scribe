@@ -1,4 +1,8 @@
-"""Own blocking workers until their writes and resources have finished."""
+"""Own blocking workers until their writes and resources have finished.
+
+Algorithm reasoning and contracts:
+[Worker lifetimes](../../docs/algorithms/worker-lifetimes.md)
+"""
 
 import asyncio
 import threading

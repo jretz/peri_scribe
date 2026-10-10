@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="585"
+     viewBox="0 0 840 585" role="img" aria-labelledby="figure-title figure-description"
+     style="max-width:100%;height:auto">
+  <title id="figure-title">Record rebuild requirements before changing sources</title>
+  <desc id="figure-description">A successful unchanged incremental fetch can restore the exact prior requirements. Changed or interrupted fetch retains all derived stages, and a retry inherits those requirements. Completing a later stage cannot clear an earlier prerequisite.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8"
+            markerHeight="8" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10z" fill="var(--edge)"/>
+    </marker>
+    <style>
+    :root { color-scheme:light dark; --background:#fbfcfe; --text:#172e40;
+      --muted:#526779; --edge:#526779; --disk:#eaf3fc; --disk-border:#5791bf;
+      --process:#fff7e8; --process-border:#c69a46; --network:#f0edfa;
+      --network-border:#9481c6; }
+    @media (prefers-color-scheme:dark) { :root { --background:#111820;
+      --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe; --disk:#172c3e;
+      --disk-border:#6198c2; --process:#362c1c; --process-border:#c4a45f;
+      --network:#2b253e; --network-border:#a391d0; } }
+    svg { background:var(--background); }
+    text { fill:var(--text); font-family:system-ui,sans-serif; font-size:17px; }
+    .title { font-size:23px; font-weight:700; }
+    .heading { font-size:18px; font-weight:700; }
+    .muted { fill:var(--muted); font-size:16px; }
+    .disk { fill:var(--disk); stroke:var(--disk-border); }
+    .process { fill:var(--process); stroke:var(--process-border); }
+    .network { fill:var(--network); stroke:var(--network-border); }
+    .node { stroke-width:2; rx:12; }
+    .edge { stroke:var(--edge); stroke-width:2.5; fill:none; marker-end:url(#arrow); }
+    .line { stroke:var(--edge); stroke-width:2; fill:none; }
+    .dashed { stroke-dasharray:7 5; }
+    </style>
+  </defs>
+  <rect width="840" height="585" fill="var(--background)"/>
+  <text x="24" y="38" class="title">Record rebuild requirements before changing sources</text>
+  <g id="before">
+<rect x="24" y="76" width="792" height="86" class="node disk"/>
+<text x="40" y="105" class="heading">Prior marker</text>
+<text x="40" y="134" class="">Reports pending; unconditional flag preserved.</text>
+</g>
+<path id="prior-protect" class="edge " d="M420 162 V198"/>
+<g id="protected">
+<rect x="24" y="198" width="792" height="86" class="node process"/>
+<text x="40" y="227" class="heading">Before input mutation</text>
+<text x="40" y="256" class="">Require geography → score → KMZ → reports.</text>
+</g>
+<path id="protect-change" class="edge " d="M216 284 V326"/>
+<path id="protect-restore" class="edge " d="M628 284 V326"/>
+<g id="changed">
+<rect x="24" y="326" width="384" height="116" class="node disk"/>
+<text x="40" y="355" class="heading">Changed or interrupted fetch</text>
+<text x="40" y="384" class="">Keep all derived requirements.</text>
+<text x="40" y="410" class="">Retry inherits the surviving marker.</text>
+</g>
+<g id="unchanged">
+<rect x="440" y="326" width="376" height="116" class="node disk"/>
+<text x="456" y="355" class="heading">Successful unchanged fetch</text>
+<text x="456" y="384" class="">Restore the exact prior marker.</text>
+<text x="456" y="410" class="">Only when no full/deferred work.</text>
+</g>
+<g id="prerequisite">
+<rect x="24" y="484" width="792" height="72" class="node network"/>
+<text x="40" y="513" class="heading">A later-stage success cannot clear an earlier pending prerequisite.</text>
+</g>
+</svg>

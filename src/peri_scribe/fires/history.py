@@ -6,6 +6,9 @@ that appears in both keeps the source most likely to be correct at each moment u
 border-classification rules. Point history comes from the single incident location
 source, so every distinct attribute state is kept while the location itself never
 creates a version.
+
+[Reconciliation](../../../docs/algorithms/perimeter-reconciliation.md)
+[Geometry policy](../../../docs/algorithms/perimeter-geometry-policy.md)
 """
 
 from __future__ import annotations

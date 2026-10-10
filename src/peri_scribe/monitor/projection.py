@@ -1,4 +1,8 @@
-"""Reuse status until evidence or a displayed time boundary changes."""
+"""Reuse status until evidence or a displayed time boundary changes.
+
+Algorithm reasoning and contracts:
+[Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
+"""
 
 import dataclasses
 import datetime

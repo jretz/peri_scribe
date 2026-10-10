@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="424" viewBox="0 0 840 424" role="img" aria-labelledby="title description" style="max-width:100%;height:auto">
+  <title id="title">Evidence style changes without breaking the series</title>
+  <desc id="description">Adjacent stroke segments share their preceding endpoint.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+  <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"/>
+  </marker>
+    <style>
+      :root { color-scheme: light dark; --bg:#fbfcfe; --text:#172e40; --muted:#526779; --edge:#526779; --blue:#eaf3fc; --green:#ecf7ee; --gold:#fff7e8; --purple:#f0edfa; --accent:#197685; }
+      @media (prefers-color-scheme: dark) { :root { --bg:#111820; --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe; --blue:#172c3e; --green:#1b3025; --gold:#362c1c; --purple:#2b253e; --accent:#7bdfdf; } }
+      text { font-family:system-ui,sans-serif; font-size:16px; fill:var(--text); }
+      .title { font-size:21px; font-weight:700; }
+      .heading { font-size:18px; font-weight:650; }
+      .muted { fill:var(--muted); }
+      .card { stroke:var(--edge); stroke-width:1.5; rx:12; }
+      .edge { fill:none; stroke:var(--edge); stroke-width:2; marker-end:url(#arrow); }
+      .axis { stroke:var(--edge); stroke-width:2; fill:none; }
+      .accent { stroke:var(--accent); stroke-width:4; fill:none; }
+    </style>
+  </defs>
+  <rect width="840" height="424" fill="var(--bg)"/>
+  <text x="28" y="36" class="title" text-anchor="start">Evidence style changes without breaking the series</text>
+  <path d="M 75 290 H 765 M 75 290 V 75" class="axis"/>
+  <path d="M 120 245 L 305 170" stroke="var(--accent)" stroke-width="4" fill="none"/>
+  <path d="M 305 170 L 505 130 L 710 92" stroke="var(--accent)" stroke-width="4" stroke-dasharray="10 7" fill="none"/>
+  <circle cx="120" cy="245" r="5" fill="var(--text)"/>
+  <text x="130" y="269" class="" text-anchor="start">A</text>
+  <circle cx="305" cy="170" r="5" fill="var(--text)"/>
+  <text x="315" y="194" class="" text-anchor="start">B</text>
+  <circle cx="505" cy="130" r="5" fill="var(--text)"/>
+  <text x="515" y="154" class="" text-anchor="start">C</text>
+  <circle cx="710" cy="92" r="5" fill="var(--text)"/>
+  <text x="720" y="116" class="" text-anchor="start">D</text>
+  <text x="390" y="325" class="" text-anchor="start">Observation time</text>
+  <text x="95" y="75" class="" text-anchor="start">Value</text>
+  <text x="105" y="369" class="muted" text-anchor="start">A → B: mapped stroke. B → C → D: reported stroke.</text>
+  <text x="105" y="396" class="muted" text-anchor="start">The destination C changes style; B is shared to keep the line connected.</text>
+</svg>

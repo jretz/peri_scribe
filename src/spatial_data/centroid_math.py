@@ -1,4 +1,8 @@
-"""Computing polygon centroids from raw geometry bytes."""
+"""Computing polygon centroids from raw geometry bytes.
+
+[Building centroid reasoning](../../docs/algorithms/building-centroids.md)
+explains the contract and correctness argument.
+"""
 
 from __future__ import annotations
 

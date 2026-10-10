@@ -21,6 +21,8 @@ way, only the features near a fire are ever read.
 
 The results are written to ``{year}/derived/fire_scores.json``, along with a
 ``{year}/derived/fire_scores_ccdf.html`` complementary CDF of the scores.
+
+[Scoring](../../../docs/algorithms/fire-scoring.md)
 """
 
 from __future__ import annotations

@@ -1,4 +1,10 @@
-"""Shared logging configuration and execution context for consistent diagnostics."""
+"""Shared logging configuration and execution context for consistent diagnostics.
+
+Algorithm reasoning and contracts:
+[Log retention](../../docs/algorithms/log-retention.md)
+[Update journal](../../docs/algorithms/update-journal.md)
+[Monitor evidence](../../docs/algorithms/monitor-evidence.md)
+"""
 
 import collections.abc
 import compression.zstd

@@ -6,6 +6,9 @@ containment, counting duplicate coordinates and excluding polygon boundaries.
 
 The on-disk ``building_count`` column is part of the format contract; point payloads
 carry no domain attributes and can represent any collection of WGS84 points.
+
+[Storage and query reasoning](../../docs/algorithms/compact-point-storage.md)
+explains the contract and correctness argument.
 """
 
 from __future__ import annotations

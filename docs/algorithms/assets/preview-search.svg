@@ -1,0 +1,82 @@
+<?xml version='1.0' encoding='utf-8'?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="420" viewBox="0 0 840 420" role="img" aria-labelledby="preview-search-title preview-search-description" style="max-width:100%;height:auto">
+  <title id="preview-search-title">Coarse coverage → separated starts → fine local probes</title>
+  <desc id="preview-search-description">Three always-visible stages illustrate candidate sampling, retaining distinct starts across discontinuities, and refining with smaller steps.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 Z" fill="var(--edge)" />
+    </marker>
+    <style>
+    :root { color-scheme: light dark; --background:#fbfcfe; --text:#172e40;
+      --muted:#526779; --edge:#526779; --blue:#eaf3fc; --blue-line:#5791bf;
+      --amber:#fff7e8; --amber-line:#c69a46; --purple:#f0edfa; --purple-line:#9481c6; }
+    @media (prefers-color-scheme:dark) {
+      :root { --background:#111820; --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe;
+        --blue:#172c3e; --blue-line:#6198c2; --amber:#362c1c; --amber-line:#c4a45f;
+        --purple:#2b253e; --purple-line:#a391d0; }
+    }
+    text { font-family:system-ui,sans-serif; font-size:16px; fill:var(--text); }
+    .heading { font-size:20px; font-weight:700; }
+    .label { font-weight:650; }
+    .muted { fill:var(--muted); }
+    .blue { fill:var(--blue); stroke:var(--blue-line); }
+    .amber { fill:var(--amber); stroke:var(--amber-line); }
+    .purple { fill:var(--purple); stroke:var(--purple-line); }
+    .box { stroke-width:2; rx:12; }
+    .edge { fill:none; stroke:var(--edge); stroke-width:2; marker-end:url(#arrow); }
+    .line { fill:none; stroke:var(--edge); stroke-width:2; }
+    .dash { stroke-dasharray:6 5; }
+    .point { fill:var(--text); }
+
+    </style>
+  </defs>
+  <rect width="840" height="420" fill="var(--background)" />
+  <text x="24" y="34" class="heading">Coarse coverage → separated starts → fine local probes</text>
+  <g id="coarse-stage">
+    <g id="coarse-card">
+      <rect class="box blue" x="24" y="65" width="239" height="224" />
+      <text x="40" y="94" class="label">1. Cover the half-turn</text>
+      <text x="40" y="124" class="">0.025° candidate grid</text>
+      <text x="40" y="149" class="">Sample raster-dependent</text>
+      <text x="40" y="174" class="">dart overlap at each angle.</text>
+    </g>
+    <path class="line" d="M48 240 L83 220 L117 226 L140 195 L158 234 L187 203 L233 213" />
+    <circle class="point" cx="48" cy="240" r="3" />
+    <circle class="point" cx="83" cy="220" r="3" />
+    <circle class="point" cx="117" cy="226" r="3" />
+    <circle class="point" cx="140" cy="195" r="3" />
+    <circle class="point" cx="158" cy="234" r="3" />
+    <circle class="point" cx="187" cy="203" r="3" />
+    <circle class="point" cx="233" cy="213" r="3" />
+  </g>
+  <g id="seed-stage">
+    <g id="seed-card">
+      <rect class="box amber" x="302" y="65" width="237" height="224" />
+      <text x="318" y="94" class="label">2. Keep distinct starts</text>
+      <text x="318" y="124" class="">Up to six separated seeds</text>
+      <text x="318" y="149" class="">Plus the size-only reference</text>
+      <text x="318" y="174" class="">Repeat at four weights.</text>
+    </g>
+    <path class="line" d="M326 240 L361 220 L395 226 L418 195 L436 234 L465 203 L509 213" />
+    <circle class="purple" cx="418" cy="195" r="8" stroke-width="2" />
+    <circle class="purple" cx="465" cy="203" r="8" stroke-width="2" />
+  </g>
+  <g id="refine-stage">
+    <g id="refine-card">
+      <rect class="box purple" x="579" y="65" width="231" height="224" />
+      <text x="595" y="94" class="label">3. Refine each start</text>
+      <text x="595" y="124" class="">Four 21-probe rounds</text>
+      <text x="595" y="149" class="">Shrink step tenfold</text>
+      <text x="595" y="174" class="">Keep angles in range.</text>
+    </g>
+    <path class="line" d="M600 239 L620 225 L640 235 L660 207 L680 228 L700 218 L720 237 L760 244" />
+    <path class="line dash" d="M650 190 V252 M670 190 V252" />
+  </g>
+  <path id="coarse-seed" class="edge" d="M263 179 H297" />
+  <path id="seed-refine" class="edge" d="M539 179 H574" />
+  <g id="sampled-result">
+    <rect class="box blue" x="24" y="324" width="786" height="80" />
+    <text x="40" y="353" class="label">Select the best sampled score at weight 0.75</text>
+    <text x="40" y="383" class="">Tolerance ties favor the reference. A narrow unsampled optimum may still be missed.</text>
+  </g>
+</svg>

@@ -1,4 +1,7 @@
-"""SVG time-series charts with measured legends and complete UTC-day axes."""
+"""SVG time-series charts with measured legends and complete UTC-day axes.
+
+[Algorithm note](../../docs/algorithms/chart-layout.md)
+"""
 
 from __future__ import annotations
 

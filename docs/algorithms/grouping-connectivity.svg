@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="840" height="420"
+     viewBox="0 0 840 420" role="img" style="max-width:100%;height:auto"
+     aria-labelledby="grouping-connectivity-title grouping-connectivity-description">
+  <title id="grouping-connectivity-title">Identity edges create connected components</title>
+  <desc id="grouping-connectivity-description">A and B share an identifier. B and C share a nearby name. All three connect. Same-named distant D stays separate.</desc>
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+            markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"/>
+    </marker>
+    <style>
+      :root { color-scheme: light dark; --background:#fbfcfe; --text:#172e40;
+        --edge:#526779; --blue:#eaf3fc; --blue-border:#5791bf;
+        --gold:#fff7e8; --gold-border:#c69a46; --purple:#f0edfa;
+        --purple-border:#9481c6; }
+      @media (prefers-color-scheme: dark) {
+        :root { --background:#111820; --text:#e4edf5; --edge:#9caebe;
+          --blue:#172c3e; --blue-border:#6198c2; --gold:#362c1c;
+          --gold-border:#c4a45f; --purple:#2b253e; --purple-border:#a391d0; }
+      }
+      text { font-family:system-ui,sans-serif; fill:var(--text); font-size:16px; }
+      .heading { font-size:21px; font-weight:700; }
+      .label { font-size:17px; font-weight:650; }
+      .page { fill:var(--background); }
+      .blue { fill:var(--blue); stroke:var(--blue-border); stroke-width:2; }
+      .gold { fill:var(--gold); stroke:var(--gold-border); stroke-width:2; }
+      .purple { fill:var(--purple); stroke:var(--purple-border); stroke-width:2; }
+      .edge { fill:none; stroke:var(--edge); stroke-width:2; marker-end:url(#arrow); }
+      .line { fill:none; stroke:var(--edge); stroke-width:2; }
+      .dashed { stroke-dasharray:7 5; }
+    </style>
+
+  </defs>
+  <rect class="page" width="840" height="420"/>
+  <text x="24" y="35" class="heading">Identity edges create connected components</text>
+  <rect id="record-a" x="24" y="76" width="224" height="116" rx="10" class="blue"/>
+  <text x="38" y="105" class="label">A · Canyon</text>
+  <text x="38" y="134" class="">Identifier: X</text>
+  <text x="38" y="158" class="">Location: west</text>
+  <rect id="record-b" x="306" y="76" width="224" height="116" rx="10" class="blue"/>
+  <text x="320" y="105" class="label">B · Canyon</text>
+  <text x="320" y="134" class="">Identifier: X</text>
+  <text x="320" y="158" class="">Location: central</text>
+  <rect id="record-c" x="588" y="76" width="224" height="116" rx="10" class="blue"/>
+  <text x="602" y="105" class="label">C · Canyon</text>
+  <text x="602" y="134" class="">Identifier: Y</text>
+  <text x="602" y="158" class="">Near B: 0.03°</text>
+  <path class="edge" marker-start="url(#arrow)" d="M 248 132 H 306"/>
+  <path class="edge" marker-start="url(#arrow)" d="M 530 132 H 588"/>
+  <text x="86" y="222" class="">A ↔ B: shared ID</text>
+  <text x="463" y="222" class="">B ↔ C: shared name + proximity</text>
+  <path class="line" d="M 80 245 H 760"/>
+  <text x="136" y="274" class="">One component: transitive connectivity, even if A is not near C</text>
+  <rect id="record-d" x="24" y="303" width="788" height="90" rx="10" class="purple"/>
+  <text x="38" y="332" class="label">D · Canyon · distant location</text>
+  <text x="38" y="361" class="">No shared identifier; no proximity edge → a separate component.</text>
+</svg>

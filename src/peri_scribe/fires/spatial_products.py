@@ -1,4 +1,8 @@
-"""Retain exact spatial products while querying current external data generations."""
+"""Retain exact spatial products while querying current external data generations.
+
+[Scoring](../../../docs/algorithms/fire-scoring.md)
+[Generation and reuse](../../../docs/algorithms/geography-generations.md)
+"""
 
 from __future__ import annotations
 

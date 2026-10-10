@@ -1,4 +1,8 @@
-"""Publish a static viewer and a recent snapshot of the fire-update log."""
+"""Publish a static viewer and a recent snapshot of the fire-update log.
+
+Design notes:
+[Update snapshots and browser reconciliation](../../docs/algorithms/update-viewer.md).
+"""
 
 import collections.abc
 import compression.zstd

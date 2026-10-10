@@ -1,4 +1,8 @@
-"""Keep source text separate from document syntax at serialization boundaries."""
+"""Keep source text separate from document syntax at serialization boundaries.
+
+Design notes:
+[Output serialization](../../docs/algorithms/output-serialization.md).
+"""
 
 from __future__ import annotations
 

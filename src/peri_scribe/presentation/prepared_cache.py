@@ -1,4 +1,8 @@
-"""Validate persistent fire facts independently from rendering and current scores."""
+"""Validate persistent fire facts independently from rendering and current scores.
+
+Design notes:
+[Product caching](../../../docs/algorithms/product-caching.md).
+"""
 
 from __future__ import annotations
 

@@ -3,6 +3,9 @@
 The output is a compressed KML document (a KMZ file). Symbolization styles and placemark
 style URLs are defined in code; progression-map ring colors are computed from the Turbo
 colormap.
+
+Design notes:
+[Output serialization](../../../docs/algorithms/output-serialization.md).
 """
 
 from __future__ import annotations

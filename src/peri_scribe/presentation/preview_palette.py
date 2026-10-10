@@ -1,4 +1,8 @@
-"""Quantize antialiased previews while preserving their required colors and opacity."""
+"""Quantize antialiased previews while preserving their required colors and opacity.
+
+[Palette reduction reasoning](../../../docs/algorithms/preview-palette.md)
+explains the contract and correctness argument.
+"""
 
 from __future__ import annotations
 

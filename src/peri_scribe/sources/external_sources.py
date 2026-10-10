@@ -42,6 +42,9 @@ longer matches the expected format.
 
 The fire-source reader skips these files, so their GeoPackages are never mistaken for
 fire snapshots.
+
+Design notes:
+[External source refresh](../../../docs/algorithms/external-source-refresh.md).
 """
 
 from __future__ import annotations

@@ -9,9 +9,10 @@ The 256 RGB triples below are Turbo's full lookup table; linear interpolation be
 consecutive entries makes the colormap continuous. The dark extremes at either end of
 that table read poorly on the map, so :data:`TURBO_RAMP` slices them off (see
 :data:`TURBO_TRIM_FROM_START` and :data:`TURBO_TRIM_FROM_END`) and everything else
-samples that trimmed ramp. A fire's rings are colored by the day they were observed: the
-first observed day gets the cool end of the ramp and the last gets the hot end, with
-longer fires sampling more of it.
+samples that trimmed ramp. Active-window anchoring keeps small early or late rings from
+compressing most growth into one color; short active windows use the hotter ramp range.
+
+[Progression presentation](../../../docs/algorithms/progression-presentation.md)
 """
 
 from __future__ import annotations

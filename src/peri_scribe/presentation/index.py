@@ -1,4 +1,7 @@
-"""Prepare histories and select the fires shared by output formats."""
+"""Prepare histories and select the fires shared by output formats.
+
+[Algorithm note](../../../docs/algorithms/presentation-selection.md)
+"""
 
 from __future__ import annotations
 

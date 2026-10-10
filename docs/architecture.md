@@ -6,6 +6,11 @@ PeriScribe is a command-line application. `src/peri_scribe/main.py` defines the 
 coordinates the pipeline; domain logic is divided among source retrieval, geography
 processing, fire scoring, and KML modules.
 
+[Algorithm Design](algorithm_design.md) defines complexity assessment and documentation
+requirements for new and changed algorithms. The [algorithm note index](algorithms/README.md)
+and [coverage inventory](algorithms/INVENTORY.md) link existing explanations and local
+assessments. Owning sections and module docstrings also link the relevant reasoning.
+
 The top-level packages express reusable responsibilities. They ship together in the
 same distribution, with one dependency set and release cycle:
 
@@ -38,6 +43,11 @@ they need. Import-boundary tests enforce these dependencies.
 
 ### Spatial package boundary
 
+Algorithm notes explain [streamed centroids](algorithms/building-centroids.md),
+[compact point storage](algorithms/compact-point-storage.md),
+[indexed overlaps and measurements](algorithms/spatial-queries-and-measurements.md), and
+[immutable geometry sharing](algorithms/geometry-sharing.md).
+
 Geospatial primitives and spatial streaming/storage share one `spatial_data` package.
 The storage paths already depend directly on coordinate-system construction, geometry
 conversion, and projection-aware centroid math. The pure foundation is small, and a
@@ -57,6 +67,15 @@ concurrent downloads, cooperative cancellation, validation before atomic publica
 and refresh policy remain in `peri_scribe/sources/buildings.py`.
 
 ### Shared fire presentation
+
+The shared policy is explained in [selection and ranking](algorithms/presentation-selection.md).
+Output reasoning covers [nearest places](algorithms/nearest-place.md),
+[text and streamed serialization](algorithms/output-serialization.md),
+[progression colors, tours and icons](algorithms/progression-presentation.md),
+[chart construction](algorithms/chart-layout.md),
+[preview orientation](algorithms/preview-orientation.md),
+[preview palettes](algorithms/preview-palette.md), and
+[update snapshots and browser reconciliation](algorithms/update-viewer.md).
 
 `peri_scribe/presentation/` owns fire qualification, prepared histories, summary facts,
 ranking, row selection, and descriptive text shared by reports and maps. Its
@@ -86,11 +105,9 @@ destination before replacing the public name. An interrupted write preserves the
 complete document; this is a per-file process-interruption guarantee, not a transaction
 across outputs or a power-loss durability guarantee.
 
-The primary workflow is:
+The primary workflow runs fetch, geography, score, kmz, and reports in order. The
+[README pipeline overview](../README.md#pipeline) describes each stage and its main outputs.
 
-![PeriScribe pipeline stages and their outputs](pipeline.svg)
-
-`run` organizes these steps into the stages fetch, geography, score, kmz, and reports.
 After fetch, it skips derived outputs only when no fire, evacuation, or city data changed
 and no rebuild is required. A scheduled full fetch requires an unconditional derived
 rebuild, even when it writes no new snapshot. `--unconditional` forces the selected
@@ -115,6 +132,11 @@ they do not establish power-loss durability.
 ![Pipeline dataflow diagram](dataflow.svg)
 
 ## Data handling
+
+[Incremental source collection](algorithms/source-collection.md) explains candidate
+selection and snapshot publication. [Fire grouping](algorithms/fire-grouping-and-ownership.md)
+and [mission registration recognition](algorithms/aircraft-recognition.md) explain identity
+evidence; [history ownership](algorithms/history-ownership.md) explains later transfers.
 
 Fire-feed data is kept close to the source format: source attributes, geometry, source
 coordinate reference systems, and observation metadata are retained in the snapshot
@@ -346,6 +368,13 @@ the notification.
 
 ## Data validation and cleansing
 
+See [source interpretation](algorithms/source-validation.md),
+[border construction](algorithms/border-construction.md),
+[perimeter geometry policy](algorithms/perimeter-geometry-policy.md),
+[perimeter reconciliation](algorithms/perimeter-reconciliation.md), and
+[corrected growth rings](algorithms/corrected-growth-rings.md) for scored assessments,
+worked examples and the assumptions behind each transformation.
+
 Source coordinate reference systems are interpreted from feed metadata, with checks for
 coordinate scale where feeds are inconsistent. Derived processing classifies sources
 against the California border, reconciles competing perimeter records, removes
@@ -363,6 +392,10 @@ geometry. Extra stored features and columns are permitted. Duplicate IDs and unk
 different coordinate references are reported explicitly and prevent validation success.
 
 ## Incident evidence and area selection
+
+[Incident and area selection](algorithms/incident-area-selection.md) gives the policy
+timeline and correctness argument. [Fire scoring](algorithms/fire-scoring.md) explains
+how these observations combine with spatial evidence.
 
 `fires/incident_history.py` derives reporting history from original observations before
 perimeter reconciliation can remove unchanged or superseded polygons. Incident fields
@@ -389,6 +422,10 @@ independently of the selected current area. Area quantities carry their units; c
 convert explicitly rather than assuming acres or square meters.
 
 ## Publication reuse and performance
+
+The reuse protocols are explained in [product caches](algorithms/product-caching.md),
+[parsed source caches](algorithms/parsed-source-cache.md), and
+[authenticated geography generations](algorithms/geography-generations.md).
 
 `execution.py` shares source grouping and classification across indexing and geography,
 then shares derived frames, area histories, and summaries across scoring, KMZ, and
@@ -457,6 +494,16 @@ by these measurements.
 
 ## Recovery and scheduling
 
+See [pipeline publication](algorithms/pipeline-publication.md),
+[update journaling](algorithms/update-journal.md),
+[log retention](algorithms/log-retention.md), and
+[worker lifetimes](algorithms/worker-lifetimes.md) for durable ordering and interruption
+arguments. [Monitor evidence](algorithms/monitor-evidence.md),
+[terminal rendering](algorithms/terminal-rendering.md), and
+[latency attribution](algorithms/latency-evidence.md) explain how execution is observed.
+[Verification tooling](algorithms/verification-tooling.md) explains the machinery that
+checks paths, replays histories and authenticates test evidence.
+
 `--full-fetch-interval` compares the last successful full-fetch time in
 `sources/fetch_state.json` with the requested interval. The first run with the option
 fetches in full. A full fetch refreshes `sources/fires.json` even if it writes no new
@@ -501,6 +548,9 @@ geospatial processing and GeoPackages; Pydantic validates serialized documents; 
 implements the CLI.
 
 ## Network resources
+
+[External refresh](algorithms/external-source-refresh.md) explains conditional city
+requests, evacuation replacement, archive discovery and static reference reuse.
 
 ### ArcGIS source layers
 

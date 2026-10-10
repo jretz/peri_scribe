@@ -1,4 +1,8 @@
-"""Index normalized published rows while retaining only the current generation."""
+"""Index normalized published rows while retaining only the current generation.
+
+[Published-row reuse reasoning](../../docs/algorithms/product-caching.md)
+explains the contract and correctness argument.
+"""
 
 from __future__ import annotations
 

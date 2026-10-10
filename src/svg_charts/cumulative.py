@@ -1,4 +1,7 @@
-"""Raster empirical CDFs with shared elapsed-time axes and compact statistics."""
+"""Raster empirical CDFs with shared elapsed-time axes and compact statistics.
+
+[Algorithm note](../../docs/algorithms/chart-layout.md)
+"""
 
 from __future__ import annotations
 

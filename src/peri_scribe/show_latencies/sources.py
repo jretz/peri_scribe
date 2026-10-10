@@ -1,4 +1,8 @@
-"""Read source-declared polygon versions without loading or comparing coordinates."""
+"""Read source-declared polygon versions without loading or comparing coordinates.
+
+Design notes:
+[Latency evidence](../../../docs/algorithms/latency-evidence.md).
+"""
 
 from __future__ import annotations
 

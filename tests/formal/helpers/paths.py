@@ -1,4 +1,8 @@
-"""Match observations to one TLC execution while retaining hidden-state choices."""
+"""Match observations to one TLC execution while retaining hidden-state choices.
+
+Design notes:
+[Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
+"""
 
 from __future__ import annotations
 

@@ -3,6 +3,8 @@
 A tour replays the fire's growth rings oldest first. These helpers name the tour's
 placemarks, choose its playback rate, and emit the animated visibility updates that
 reveal each ring in turn.
+
+[Progression presentation](../../../docs/algorithms/progression-presentation.md)
 """
 
 from __future__ import annotations
@@ -22,7 +24,7 @@ if typing.TYPE_CHECKING:
 
 
 # A tour advances through fire time at one second of playback per day, and holds the
-# final frame for two seconds. Fires spanning more than the base-rate span play faster
+# final frame for one second. Fires spanning more than the base-rate span play faster
 # so the whole progression takes about MAXIMUM_TOUR_PLAYBACK instead of one second per
 # day.
 TOUR_PLAYBACK_RATE = 1.0
@@ -182,7 +184,7 @@ def progression_tour(
 
     The tour shows the innermost ring alone, then waits for the fire time between
     observations at the tour's playback rate before revealing each next ring, and holds
-    the final frame for two seconds. The playback rate is one second per day for fires
+    the final frame for one second. The playback rate is one second per day for fires
     spanning at most the base-rate span, and faster for longer fires so the whole
     progression takes about MAXIMUM_TOUR_PLAYBACK. Callers place it where they want it
     in the folder; it targets the rings by their placemark ids, so the rings' listing

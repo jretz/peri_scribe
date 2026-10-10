@@ -1,3 +1,4 @@
+/** Design: ../../docs/algorithms/verification-tooling.md */
 import assert from "node:assert/strict";
 import childProcess from "node:child_process";
 import fs from "node:fs/promises";

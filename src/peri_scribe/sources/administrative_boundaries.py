@@ -1,4 +1,8 @@
-"""Administrative boundary GeoPackages: fetching, computation, and upkeep."""
+"""Administrative boundary GeoPackages: fetching, computation, and upkeep.
+
+Design notes:
+[External source refresh](../../../docs/algorithms/external-source-refresh.md).
+"""
 
 from __future__ import annotations
 
