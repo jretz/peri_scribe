@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 370" role="img" aria-labelledby="title desc">
+  <title id="title">Independent domain and presentation lifetimes</title>
+  <desc id="desc">A domain lane publishes health before preparing other resources. A presentation lane paints Status, then starts background preparation. Two overlapping row generations show how the older result is discarded. Shutdown detaches the presentation while admitted workers settle.</desc>
+  <style>
+    :root { color-scheme: light dark; }
+    text { font: 15px system-ui, sans-serif; fill: #e4edf5; }
+    .background { fill: #111820; }
+    .label { font-weight: 600; }
+    .small { font-size: 13px; }
+    .line { stroke: #718596; stroke-width: 2; }
+    .domain { fill: #173440; stroke: #67b7ca; }
+    .ui { fill: #2b253e; stroke: #a391d0; }
+    .old { fill: #3b2b21; stroke: #d5a078; }
+    .connector { fill: none; stroke: #9caebe; stroke-width: 2; }
+    .selection { stroke: #a391d0; stroke-dasharray: 3 4; }
+    .stop { stroke: #ed9999; stroke-width: 2; stroke-dasharray: 6 5; }
+    @media (prefers-color-scheme: light) {
+      text { fill: #172d40; }
+      .background { fill: #f8fafc; }
+      .line { stroke: #a0b0bf; }
+      .domain { fill: #d9eff5; stroke: #30788c; }
+      .ui { fill: #e7e2f5; stroke: #77609e; }
+      .old { fill: #f6e5da; stroke: #ae7149; }
+      .connector { stroke: #607b8a; }
+      .selection { stroke: #77609e; }
+      .stop { stroke: #ad4e4e; }
+    }
+  </style>
+  <rect width="1000" height="370" rx="12" class="background"/>
+  <text x="24" y="34" class="label">Complete data and prepared content have independent lifetimes</text>
+  <text x="25" y="88">Domain</text><path d="M150 83H960" class="line"/>
+  <text x="25" y="159">Terminal</text><path d="M150 154H960" class="line"/>
+  <text x="25" y="235">Generation A</text><path d="M150 230H960" class="line"/>
+  <text x="25" y="297">Generation B</text><path d="M150 292H960" class="line"/>
+  <rect x="155" y="60" width="170" height="45" rx="6" class="domain"/><text x="170" y="88">Health publication</text>
+  <rect x="343" y="131" width="145" height="45" rx="6" class="ui"/><text x="357" y="159">Status painted</text>
+  <path d="M325 86L343 140M488 145L510 104" class="connector"/>
+  <rect x="510" y="60" width="240" height="45" rx="6" class="domain"/><text x="525" y="88">Other resources prepared</text>
+  <rect x="540" y="208" width="180" height="44" rx="6" class="old"/><text x="554" y="236">Old filters → discard</text>
+  <path d="M620 180V311" class="selection"/>
+  <text x="615" y="194" text-anchor="end" class="small">Selection changes</text>
+  <rect x="724" y="270" width="125" height="44" rx="6" class="ui"/><text x="739" y="298">Current rows</text>
+  <path d="M869 49V327" class="stop"/><text x="857" y="347" text-anchor="end" class="small">Detach on shutdown</text>
+  <text x="950" y="126" text-anchor="end" class="small">Workers settle</text>
+  <text x="25" y="347" class="small">Time →</text>
+</svg>

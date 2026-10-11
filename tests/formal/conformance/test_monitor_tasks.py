@@ -35,7 +35,7 @@ async def test_owner_matches_tlc_execution_for_competing_monitor_operations(
 
 
 @pytest.mark.asyncio
-async def test_monitor_app_public_operations_match_tlc_execution(
+async def test_monitor_session_public_requests_match_tlc_execution(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

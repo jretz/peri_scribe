@@ -7,14 +7,11 @@ import functools
 import pathlib
 import re
 import typing
-import unittest.mock
 
-import peri_scribe.monitor.app
+import peri_scribe.monitor.session
 import tests.formal.helpers.corpus
 import tests.formal.helpers.paths
 import tests.helpers.doubles.peri_scribe.monitor.tasks
-import tests.helpers.factories.peri_scribe.monitor.events
-import tests.helpers.textual
 
 
 if typing.TYPE_CHECKING:
@@ -127,7 +124,7 @@ async def application_replay(
     cancel: bool,
     lock: bool = False,
 ) -> list[tests.helpers.doubles.peri_scribe.monitor.tasks.Observation]:
-    """Exercise public monitor methods on mounted widgets and real compressed logs.
+    """Exercise domain requests using real compressed archives and retained log readers.
 
     Args:
         directory: An isolated observed year directory.
@@ -141,26 +138,20 @@ async def application_replay(
     """
     directory /= "2026"
     await asyncio.to_thread(directory.mkdir, parents=True)
-    app = peri_scribe.monitor.app.MonitorApp(
+    session = peri_scribe.monitor.session.MonitorSession(
         directory,
         directory / "report.md",
-        tests.helpers.factories.peri_scribe.monitor.events.BRANCHES,
     )
-    monkeypatch.setattr(app, "set_interval", unittest.mock.Mock())
-    monkeypatch.setattr(
-        peri_scribe.monitor.app,
-        "watch_files",
-        unittest.mock.AsyncMock(),
-    )
-    async with tests.helpers.textual.mounted(app):
-        if lock:
-            replay_lock = (
-                tests.helpers.doubles.peri_scribe.monitor.tasks.shared_lock_replay
+    if lock:
+        return (
+            await tests.helpers.doubles.peri_scribe.monitor.tasks.session_lock_replay(
+                session,
+                monkeypatch,
             )
-            return await replay_lock(app, monkeypatch)
-        return await tests.helpers.doubles.peri_scribe.monitor.tasks.application_replay(
-            app,
-            monkeypatch,
-            stop=stop,
-            cancel=cancel,
         )
+    return await tests.helpers.doubles.peri_scribe.monitor.tasks.session_replay(
+        session,
+        monkeypatch,
+        stop=stop,
+        cancel=cancel,
+    )

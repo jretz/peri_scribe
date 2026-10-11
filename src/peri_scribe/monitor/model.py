@@ -8,6 +8,7 @@ import collections.abc
 import dataclasses
 import datetime
 import enum
+import functools
 import json
 import typing
 
@@ -21,6 +22,15 @@ from measurement_units import units
 
 MAXIMUM_RUNS = 100
 MAXIMUM_EVENTS_PER_RUN = 10000
+PROGRESS_MESSAGES = {
+    "Starting command",
+    "Finished command",
+    "Starting phase",
+    "Finished phase",
+    "Planned phases",
+    "Skipped phases",
+    "Another run owns this year; skipping invocation",
+}
 
 
 class Status(enum.StrEnum):
@@ -44,6 +54,14 @@ class Run:
     open_path: peri_scribe.phases.Path = ()
     status: Status = Status.ACTIVE
 
+    @functools.cached_property
+    def last_timestamp(self) -> datetime.datetime:
+        """Reuse the latest observation while this immutable event tuple survives."""
+        return max(
+            (event.timestamp for event in self.events if event.timestamp),
+            default=datetime.datetime.min.replace(tzinfo=datetime.UTC),
+        )
+
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class State:
@@ -55,7 +73,7 @@ class State:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class PhaseView:
+class PhaseState:
     """Pending, observed, and completed work share a presentation-neutral identity."""
 
     path: peri_scribe.phases.Path
@@ -76,11 +94,59 @@ class Omission:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class PhaseTree:
-    """A complete tree projection needs no widget or rendering-library objects."""
+    """A hierarchy retains phase states, omissions, and their evidence-based reasons."""
 
-    phases: tuple[PhaseView, ...]
+    phases: tuple[PhaseState, ...]
     omissions: tuple[Omission, ...] = ()
     reasons: tuple[str, ...] = ()
+
+
+@dataclasses.dataclass(kw_only=True, slots=True)
+class PendingRun:
+    """Batch-local mutable work never changes a published immutable run."""
+
+    original: Run
+    command: str
+    open_path: peri_scribe.phases.Path
+    status: Status
+    events: list[peri_scribe.monitor.events.Event] = dataclasses.field(
+        default_factory=list,
+    )
+    progress: list[peri_scribe.monitor.events.Event] = dataclasses.field(
+        default_factory=list,
+    )
+
+
+def reduce_record(
+    pending: PendingRun,
+    fields: dict[str, object],
+    sequence: int,
+) -> None:
+    """Keep each record's phase context local to its owning batch accumulator.
+
+    Args:
+        pending: Private unpublished work for the record's run.
+        fields: The complete original fields.
+        sequence: The record's stable global observation position.
+    """
+    event = peri_scribe.monitor.events.make_event(fields, sequence, pending.open_path)
+    message = event.message
+    if message == "Starting command":
+        pending.command = str(fields.get("command", "unknown"))
+        pending.open_path = ()
+    elif message == "Starting phase":
+        pending.open_path = event.path
+    elif message == "Finished phase":
+        pending.open_path = event.path[:-1]
+    elif message == "Finished command":
+        pending.status = (
+            Status.FAILED if fields.get("status") == "failed" else Status.COMPLETED
+        )
+        pending.command = str(fields.get("command", pending.command))
+        pending.open_path = ()
+    pending.events.append(event)
+    if message.startswith("Publication gate ") or message in PROGRESS_MESSAGES:
+        pending.progress.append(event)
 
 
 def append_records(
@@ -89,18 +155,18 @@ def append_records(
     *,
     bounded: bool = True,
 ) -> State:
-    """Correlate a batch without mutating the state held by a reader or another view.
+    """Correlate a batch without mutating the state retained by another consumer.
 
     Args:
         state: The previously published stream state.
         records: Newly completed JSON records in file order.
-        bounded: Whether to apply the interactive log view's retention limits.
+        bounded: Whether to apply the diagnostic event retention limits.
 
     Returns:
         Updated bounded run history with stable event sequence numbers.
     """
     runs = {run.identifier: run for run in state.runs}
-    pending: dict[str, list[peri_scribe.monitor.events.Event]] = {}
+    pending: dict[str, PendingRun] = {}
     unscoped = state.unscoped_run
     sequence = state.sequence
     for fields in records:
@@ -108,58 +174,30 @@ def append_records(
         if fields.get("event") == "Starting command" and not fields.get("run_id"):
             unscoped = f"observed-{sequence}"
         identifier = str(fields.get("run_id") or unscoped)
-        run = runs.get(identifier, Run(identifier=identifier))
-        event = peri_scribe.monitor.events.make_event(fields, sequence, run.open_path)
-        path = run.open_path
-        status = run.status
-        command = run.command
-        if event.message == "Starting command":
-            command = str(fields.get("command", "unknown"))
-            path = ()
-        elif event.message == "Starting phase":
-            path = event.path
-        elif event.message == "Finished phase":
-            path = event.path[:-1]
-        elif event.message == "Finished command":
-            status = (
-                Status.FAILED if fields.get("status") == "failed" else Status.COMPLETED
+        current = pending.get(identifier)
+        if current is None:
+            run = runs.get(identifier)
+            if run is None:
+                run = Run(identifier=identifier)
+                runs[identifier] = run
+            current = PendingRun(
+                original=run,
+                command=run.command,
+                open_path=run.open_path,
+                status=run.status,
             )
-            command = str(fields.get("command", command))
-            path = ()
-        pending.setdefault(identifier, []).append(event)
+            pending[identifier] = current
+        reduce_record(current, fields, sequence)
+    for identifier, current in pending.items():
+        run = current.original
+        retained = (*run.events, *current.events)
         runs[identifier] = dataclasses.replace(
             run,
-            command=command,
-            open_path=path,
-            status=status,
-        )
-    for identifier, events in pending.items():
-        run = runs[identifier]
-        runs[identifier] = dataclasses.replace(
-            run,
-            events=(
-                (*run.events, *events)[-MAXIMUM_EVENTS_PER_RUN:]
-                if bounded
-                else (*run.events, *events)
-            ),
-            progress=(
-                *run.progress,
-                *(
-                    event
-                    for event in events
-                    if event.message.startswith("Publication gate ")
-                    or event.message
-                    in {
-                        "Starting command",
-                        "Finished command",
-                        "Starting phase",
-                        "Finished phase",
-                        "Planned phases",
-                        "Skipped phases",
-                        "Another run owns this year; skipping invocation",
-                    }
-                ),
-            ),
+            command=current.command,
+            open_path=current.open_path,
+            status=current.status,
+            events=retained[-MAXIMUM_EVENTS_PER_RUN:] if bounded else retained,
+            progress=(*run.progress, *current.progress),
         )
     return State(
         runs=tuple(runs.values())[-MAXIMUM_RUNS:] if bounded else tuple(runs.values()),
@@ -250,7 +288,7 @@ def recorded_duration(event: peri_scribe.monitor.events.Event) -> pint.Quantity:
 
 def omission_reason(
     path: peri_scribe.phases.Path,
-    views: collections.abc.Mapping[peri_scribe.phases.Path, PhaseView],
+    phases: collections.abc.Mapping[peri_scribe.phases.Path, PhaseState],
     run: Run,
     skipped: collections.abc.Mapping[peri_scribe.phases.Path, str],
 ) -> str:
@@ -258,7 +296,7 @@ def omission_reason(
 
     Args:
         path: An unentered planned phase.
-        views: Work already observed in this run.
+        phases: Work already observed in this run.
         run: The command's latest known outcome.
         skipped: Explicitly skipped branches and their reasons.
 
@@ -275,7 +313,7 @@ def omission_reason(
             else "No start recorded before command completed"
         )
     for index in range(1, len(path)):
-        parent = views.get(path[:index])
+        parent = phases.get(path[:index])
         if parent and parent.status in {Status.COMPLETED, Status.FAILED}:
             return f"No start recorded before {parent.path[-1].phase} {parent.status}"
     return ""
@@ -283,13 +321,13 @@ def omission_reason(
 
 def skipped_paths(
     events: tuple[peri_scribe.monitor.events.Event, ...],
-    views: collections.abc.Mapping[peri_scribe.phases.Path, PhaseView],
+    phases: collections.abc.Mapping[peri_scribe.phases.Path, PhaseState],
 ) -> dict[peri_scribe.phases.Path, str]:
     """Keep explicit execution decisions separate from missing phase observations.
 
     Args:
         events: The run's retained records.
-        views: Planned and observed phase instances.
+        phases: Planned and observed phase instances.
 
     Returns:
         Explicitly skipped paths with their reasons.
@@ -306,7 +344,7 @@ def skipped_paths(
                     for name in names
                 })
         if event.message == "Publication gate skipped":
-            for path in views:
+            for path in phases:
                 if path[0].phase != peri_scribe.pipeline_stages.Stage.FETCH or any(
                     segment.phase == peri_scribe.phases.Phase.DEFERRED_FETCH
                     for segment in path
@@ -314,11 +352,11 @@ def skipped_paths(
                     skipped[path] = reason
         selected = fields.get("stages")
         if event.message == "Planned phases" and isinstance(selected, list):
-            for path in views:
+            for path in phases:
                 if path[0].phase not in selected:
                     skipped[path] = "Stage not selected"
         if event.message == "Another run owns this year; skipping invocation":
-            skipped.update(dict.fromkeys(views, "Another run owns this year"))
+            skipped.update(dict.fromkeys(phases, "Another run owns this year"))
     return skipped
 
 
@@ -332,7 +370,7 @@ def phase_tree(run: Run, branches: peri_scribe.phases.Branches) -> PhaseTree:
     Returns:
         Visible phase states, trimmed branches, and decision explanations.
     """
-    views = {path: PhaseView(path=path) for path in plan_for_run(run, branches)}
+    phases = {path: PhaseState(path=path) for path in plan_for_run(run, branches)}
     reasons = [
         f"{event.message}: {event.fields.get('reason', '')}"
         for event in evidence(run)
@@ -342,15 +380,15 @@ def phase_tree(run: Run, branches: peri_scribe.phases.Branches) -> PhaseTree:
         fields = event.fields
         for index in range(1, len(event.path) + 1):
             path = event.path[:index]
-            current = views.get(path, PhaseView(path=path))
+            current = phases.get(path, PhaseState(path=path))
             if current.status == Status.WAITING:
-                views[path] = dataclasses.replace(
+                phases[path] = dataclasses.replace(
                     current,
                     status=Status.ACTIVE,
                     started_at=event.timestamp,
                 )
         if event.message in {"Starting phase", "Finished phase"} and event.path:
-            current = views[event.path]
+            current = phases[event.path]
             status = Status.ACTIVE
             elapsed = current.duration
             if event.message == "Finished phase":
@@ -360,7 +398,7 @@ def phase_tree(run: Run, branches: peri_scribe.phases.Branches) -> PhaseTree:
                     else Status.COMPLETED
                 )
                 elapsed = current.duration + recorded_duration(event)
-            views[event.path] = dataclasses.replace(
+            phases[event.path] = dataclasses.replace(
                 current,
                 status=status,
                 duration=elapsed,
@@ -368,25 +406,25 @@ def phase_tree(run: Run, branches: peri_scribe.phases.Branches) -> PhaseTree:
                 if status == Status.ACTIVE
                 else current.started_at,
             )
-    skipped = skipped_paths(evidence(run), views)
-    visible: list[PhaseView] = []
+    skipped = skipped_paths(evidence(run), phases)
+    included: list[PhaseState] = []
     omissions: list[Omission] = []
-    for path, view in views.items():
+    for path, phase in phases.items():
         if any(path[: len(omitted.path)] == omitted.path for omitted in omissions):
             continue
         reason = (
-            omission_reason(path, views, run, skipped)
-            if view.status == Status.WAITING
+            omission_reason(path, phases, run, skipped)
+            if phase.status == Status.WAITING
             else ""
         )
         if reason:
             omissions.append(Omission(path=path, reason=reason))
-        elif run.status != Status.ACTIVE and view.status == Status.ACTIVE:
-            visible.append(dataclasses.replace(view, status=Status.STOPPED))
+        elif run.status != Status.ACTIVE and phase.status == Status.ACTIVE:
+            included.append(dataclasses.replace(phase, status=Status.STOPPED))
         else:
-            visible.append(view)
+            included.append(phase)
     return PhaseTree(
-        phases=tuple(visible),
+        phases=tuple(included),
         omissions=tuple(omissions),
         reasons=tuple(dict.fromkeys(reasons)),
     )
@@ -403,7 +441,7 @@ def filter_events(
 
     Args:
         run: The selected run.
-        minimum_level: The minimum severity to display.
+        minimum_level: The minimum included severity.
         query: Case-insensitive text matched against every original JSON field.
         path: A selected phase and its descendants, or the entire run.
 

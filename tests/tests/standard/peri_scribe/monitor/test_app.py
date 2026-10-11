@@ -13,7 +13,6 @@ import rich.json
 import textual.events
 import textual.widgets
 
-import peri_scribe.monitor.app
 import peri_scribe.monitor.model
 import peri_scribe.monitor.storage
 import peri_scribe.monitor.widgets
@@ -136,9 +135,12 @@ async def test_monitor_app_pause_keeps_collecting(
     )
     await monitor_session.app.refresh_files()
     assert monitor_session.app.visible_state is visible
-    assert monitor_session.app.state.sequence > visible.sequence
+    assert monitor_session.app.controller.snapshot.records.sequence > visible.sequence
     await tests.helpers.textual.invoke(monitor_session.app.action_toggle_follow)
-    assert monitor_session.app.visible_state is monitor_session.app.state
+    assert (
+        monitor_session.app.visible_state
+        is monitor_session.app.controller.snapshot.records
+    )
 
 
 @pytest.mark.asyncio
@@ -197,7 +199,7 @@ async def test_monitor_app_report_uses_current_file_and_mtime(
     )
     assert await tests.helpers.textual.invoke(viewer.document.goto_anchor, "moonshine")
     assert (
-        monitor_session.app.report.modified
+        monitor_session.app.controller.snapshot.report.modified
         == datetime.datetime.fromtimestamp(
             path.stat().st_mtime,
             datetime.UTC,
@@ -209,12 +211,11 @@ async def test_monitor_app_report_uses_current_file_and_mtime(
 
 
 @pytest.mark.asyncio
-async def test_monitor_app_defers_report_loading_until_its_tab_is_selected(
+async def test_monitor_app_prepares_report_before_its_tab_is_selected(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = monitor_session
-    assert session.app.report == peri_scribe.monitor.storage.Report()
     read = unittest.mock.Mock(wraps=peri_scribe.monitor.storage.read_report)
     monkeypatch.setattr(peri_scribe.monitor.storage, "read_report", read)
     viewer = session.app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
@@ -224,13 +225,13 @@ async def test_monitor_app_defers_report_loading_until_its_tab_is_selected(
     await session.app.refresh_files()
     session.app.report_path.write_text("# Latest")
     await session.app.refresh_files()
-    read.assert_not_called()
-    update.assert_not_called()
+    expected_updates = [unittest.mock.call("# First"), unittest.mock.call("# Latest")]
+    assert read.call_count == len(expected_updates)
+    assert update.await_args_list == expected_updates
     await session.pilot.press("5")
-    update.assert_awaited_once_with("# Latest")
     await session.app.refresh_files()
     await session.pilot.press("1", "5")
-    update.assert_awaited_once()
+    assert update.await_args_list == expected_updates
 
 
 @pytest.mark.asyncio
@@ -245,12 +246,12 @@ async def test_monitor_app_refreshes_replaced_report_while_paused(
     temporary.write_text("# Replacement")
     temporary.replace(path)
     await monitor_session.app.refresh_files()
-    assert monitor_session.app.report.content == "# Replacement"
+    assert monitor_session.app.controller.snapshot.report.content == "# Replacement"
 
 
 @pytest.mark.parametrize("tab", ["1", "2", "3", "4"])
 @pytest.mark.asyncio
-async def test_monitor_app_suspends_report_refresh_until_returning_to_its_tab(
+async def test_monitor_app_refreshes_report_while_another_tab_is_selected(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
     tab: str,
@@ -265,16 +266,15 @@ async def test_monitor_app_suspends_report_refresh_until_returning_to_its_tab(
     monkeypatch.setattr(viewer.document, "update", update)
     session.app.report_path.write_text("# Replacement")
     await session.app.refresh_files()
-    read.assert_not_called()
-    update.assert_not_called()
-    assert session.app.report.content == "# Original"
-    await session.pilot.press("5")
-    assert session.app.report.content == "# Replacement"
+    read.assert_called_once()
     update.assert_awaited_once_with("# Replacement")
+    assert session.app.controller.snapshot.report.content == "# Replacement"
+    await session.pilot.press("5")
+    update.assert_awaited_once()
 
 
 @pytest.mark.asyncio
-async def test_render_report_discards_a_read_completed_after_leaving_its_tab(
+async def test_monitor_app_retains_report_preparation_after_leaving_its_tab(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -292,9 +292,9 @@ async def test_render_report_discards_a_read_completed_after_leaving_its_tab(
             session.app,
         ),
     )
-    await peri_scribe.monitor.app.render_report(session.app)
-    update.assert_not_called()
-    assert session.app.report.content == "# Original"
+    await session.app.refresh_files()
+    update.assert_awaited_once_with("# Hidden update")
+    assert session.app.controller.snapshot.report.content == "# Hidden update"
 
 
 @pytest.mark.asyncio
@@ -378,9 +378,11 @@ async def test_monitor_app_loads_older_month_on_request(
         )
     await monitor_session.app.refresh_files()
     await monitor_session.app.load_older()
-    assert monitor_session.app.state.runs[0].identifier == "archive"
+    assert (
+        monitor_session.app.controller.snapshot.records.runs[0].identifier == "archive"
+    )
     await monitor_session.app.load_older()
-    assert len(monitor_session.app.state.runs) == 1
+    assert len(monitor_session.app.controller.snapshot.records.runs) == 1
 
 
 @pytest.mark.asyncio
@@ -431,13 +433,15 @@ async def test_monitor_app_preserves_live_events_arriving_during_archive_loading
                 run_id="new",
             ),
         )
-        session.app.files_changed = True
-        await tests.helpers.doubles.peri_scribe.monitor.app.tick(session.clock)
+        session.app.controller.session.files_changed = True
+        refresh = asyncio.create_task(session.app.controller.session.tick())
+        await asyncio.sleep(0)
     finally:
         release.set()
+    await refresh
     await session.pilot.pause()
     await session.app.refresh_files()
-    assert [run.identifier for run in session.app.state.runs] == [
+    assert [run.identifier for run in session.app.controller.snapshot.records.runs] == [
         "archive",
         "initial",
         "new",
@@ -515,7 +519,7 @@ async def test_monitor_app_scrollbars_keep_terminal_edge_neutral(
 ) -> None:
     session = scrolling_session
     await tests.helpers.textual.invoke(session.app.action_view, tab)
-    await peri_scribe.monitor.app.render_report(session.app)
+    await session.app.controller.render_report()
     await session.refresh()
     pane = session.app.query_one(selector)
     assert pane.show_vertical_scrollbar
@@ -587,7 +591,7 @@ async def test_monitor_app_refresh_files_does_not_scroll_a_viewer_removed_during
     await session.app.refresh_files()
     assert not viewer.is_attached
     scroll.assert_not_called()
-    assert session.app.report.content == "# Updated report"
+    assert session.app.controller.snapshot.report.content == "# Updated report"
 
 
 @pytest.mark.asyncio

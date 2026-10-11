@@ -180,13 +180,13 @@ def replay_projection(
         observed,
         previous,
     )
-    assert snapshot.view == peri_scribe.monitor.status.project(
+    assert snapshot.assessment == peri_scribe.monitor.status.project(
         current_history,
         files,
         observed,
     ), state
-    assert snapshot.view.coverage.health == int(state["coverage"]), state
-    source = snapshot.view.metrics[3].target
+    assert snapshot.assessment.coverage.health == int(state["coverage"]), state
+    source = snapshot.assessment.metrics[3].target
     expected = int(state["latestSuccess"])
     assert (None if source is None else source.when) == (
         None if expected == -1 else now + datetime.timedelta(days=expected)
@@ -253,7 +253,7 @@ def replay_projection_boundaries(history: peri_scribe.monitor.history.History) -
                 observed,
                 snapshot,
             )
-            assert snapshot.view == peri_scribe.monitor.status.project(
+            assert snapshot.assessment == peri_scribe.monitor.status.project(
                 history,
                 outputs,
                 observed,

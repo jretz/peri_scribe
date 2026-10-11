@@ -1,4 +1,4 @@
-"""Timestamp queries preserve occurrences through escaping, archives, and rollback."""
+"""Timestamp queries preserve ordered occurrences through escaping and archives."""
 
 import compression.zstd
 import io
@@ -62,20 +62,36 @@ def test_seek_since_never_deserializes_probes(monkeypatch: pytest.MonkeyPatch) -
     parser.assert_not_called()
 
 
-def test_seek_since_preserves_recent_occurrences_before_a_clock_rollback() -> None:
-    old = b'{"timestamp":"2026-09-01T10:00:00+00:00"}\n'
+def test_seek_since_uses_bounded_probes_for_a_long_ordered_prefix(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    old = b'{"timestamp":"2026-08-31"}\n'
     recent = b'{"timestamp":"2026-09-01T12:00:00+00:00"}\n'
-    rollback = b'{"timestamp":"2026-09-01T11:00:00+00:00"}\n'
-    with io.BytesIO(old + recent + rollback) as stream:
+    timestamp = unittest.mock.Mock(wraps=peri_scribe.log_reading.line_timestamp)
+    monkeypatch.setattr(peri_scribe.log_reading, "line_timestamp", timestamp)
+    with io.BytesIO(old * 10000 + recent) as stream:
         peri_scribe.log_reading.seek_since(
             stream,
             tests.helpers.factories.peri_scribe.show_latencies.evidence.NOW,
         )
-        assert stream.read() == recent + rollback
+        assert stream.read() == recent
+    maximum_probes = 25
+    assert timestamp.call_count < maximum_probes
+
+
+def test_seek_since_preserves_all_equal_cutoff_occurrences() -> None:
+    old = b'{"timestamp":"2026-09-01T10:00:00+00:00"}\n'
+    recent = b'{"timestamp":"2026-09-01T12:00:00+00:00"}\n'
+    with io.BytesIO(old + recent + recent) as stream:
+        peri_scribe.log_reading.seek_since(
+            stream,
+            tests.helpers.factories.peri_scribe.show_latencies.evidence.NOW,
+        )
+        assert stream.read() == recent + recent
 
 
 @pytest.mark.parametrize("compressed", [True, False])
-def test_complete_lines_preserves_every_matching_occurrence_after_clock_rollback(
+def test_complete_lines_preserves_every_matching_ordered_occurrence(
     tmp_path: pathlib.Path,
     *,
     compressed: bool,
@@ -83,9 +99,9 @@ def test_complete_lines_preserves_every_matching_occurrence_after_clock_rollback
     path = tmp_path / ("2026-09.jsonl.zst" if compressed else "2026-09.jsonl")
     old = b'{"timestamp":"2026-09-01T10:00:00+00:00"}\n'
     recent = b'{"timestamp":"2026-09-01T12:00:00+00:00"}\n'
-    rollback = b'{"timestamp":"2026-09-01T11:00:00+00:00"}\n'
+    older = b'{"timestamp":"2026-09-01T11:00:00+00:00"}\n'
     future = b'{"timestamp":"2026-09-02T12:00:00+00:00"}\n'
-    contents = old + recent + rollback + future + recent
+    contents = old + older + recent + recent + future
     path.write_bytes(compression.zstd.compress(contents) if compressed else contents)
     now = tests.helpers.factories.peri_scribe.show_latencies.evidence.NOW
 
@@ -104,7 +120,7 @@ def test_complete_lines_skips_old_json_and_filters_every_upper_bound_violation(
     old = b'{"timestamp":"2026-08-31", "broken":}\n' * 10000
     recent = b'{"timestamp":"2026-09-01T12:00:00+00:00"}\n'
     future = b'{"timestamp":"2026-09-02", "broken":}\n'
-    contents = old + recent + future + recent
+    contents = old + recent + recent + future
     path.write_bytes(compression.zstd.compress(contents) if compressed else contents)
     now = tests.helpers.factories.peri_scribe.show_latencies.evidence.NOW
     assert tuple(

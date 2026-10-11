@@ -2,7 +2,6 @@
 
 import collections.abc
 import dataclasses
-import functools
 import pathlib
 import typing
 import unittest.mock
@@ -14,6 +13,7 @@ import textual.widgets
 import time_machine
 
 import peri_scribe.monitor.app
+import peri_scribe.monitor.session
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.factories.peri_scribe.monitor.status
 import tests.helpers.textual
@@ -43,8 +43,13 @@ async def monitor_session(
     """
     monkeypatch.setattr(textual.constants, "COLOR_SYSTEM", "truecolor")
     monkeypatch.setattr(
-        peri_scribe.monitor.app,
-        "watch_files",
+        peri_scribe.monitor.session,
+        "watch",
+        unittest.mock.AsyncMock(),
+    )
+    monkeypatch.setattr(
+        peri_scribe.monitor.session,
+        "clock",
         unittest.mock.AsyncMock(),
     )
     directory = tmp_path / "2026"
@@ -54,22 +59,22 @@ async def monitor_session(
         directory / "report.md",
         tests.helpers.factories.peri_scribe.monitor.events.BRANCHES,
     )
-    interval = unittest.mock.Mock(
-        wraps=functools.partial(app.set_interval, pause=True),
-    )
-    monkeypatch.setattr(app, "set_interval", interval)
     with time_machine.travel(
         tests.helpers.factories.peri_scribe.monitor.status.NOW,
         tick=False,
     ):
         async with tests.helpers.textual.mounted(app) as session:
             await tests.helpers.textual.invoke(app.action_view, "pipeline")
+            await app.controller.activate("pipeline")
+            await app.controller.flush_display()
             await session.refresh()
+            if app.controller.background is not None:
+                await app.controller.background
             yield Session(
                 app=app,
                 pilot=session.pilot,
                 directory=directory,
-                clock=interval.call_args.args[1],
+                clock=app.controller.session.tick,
             )
 
 
@@ -144,7 +149,7 @@ def file_watching_session(
     request: pytest.FixtureRequest,
 ) -> tuple[
     collections.abc.Callable[
-        [peri_scribe.monitor.app.MonitorApp],
+        [peri_scribe.monitor.session.MonitorSession],
         collections.abc.Coroutine[typing.Any, typing.Any, None],
     ],
     Session,
@@ -157,5 +162,5 @@ def file_watching_session(
     Returns:
         The native-hint consumer and a controlled monitor session.
     """
-    watcher = peri_scribe.monitor.app.watch_files
+    watcher = peri_scribe.monitor.session.watch
     return watcher, request.getfixturevalue("monitor_session")

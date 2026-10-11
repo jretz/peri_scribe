@@ -83,67 +83,55 @@ append.
 
 `lean/PeriScribe/LogSeeking.lean` separates complete records with positive, variable
 byte lengths from an arbitrary incomplete final tail. Dated records use natural-number
-times; undated records occupy bytes but cannot move the timestamp boundary. The safe
-reference boundary retires only an older prefix before the first dated occurrence at or
-beyond the inclusive cutoff. Within that prefix it stops immediately after the final
-complete older record, retaining subsequent undated diagnostics.
+times; undated records occupy bytes but cannot move the timestamp boundary. Production
+queries require nondecreasing dated timestamps within each logical monthly log. The
+reference boundary is immediately after the last complete record older than the inclusive
+cutoff; subsequent undated diagnostics and unfinished tail bytes remain available.
 
-The proofs establish that:
+`chronological_byte_search_matches_reference` proves that byte-offset binary search,
+using the next complete dated record after each probe, equals that reference. The proof
+covers arbitrary positive record lengths, duplicate timestamps, undated positions, and
+unfinished tail lengths. `safe_boundary_equals_ordered_reference` connects ordered
+logs to the independently defined prefix-retirement policy. The separate window proofs
+preserve occurrence order and multiplicity while applying inclusive bounds and retaining
+undated diagnostics. Upper-bound violations do not terminate the stream.
 
-- The safe boundary is the exact end of a complete prefix containing no eligible dated
-  occurrence, stays within complete bytes, and ignores unfinished tail length.
-- For every timestamp ordering, no dated occurrence at or beyond the lower bound is
-  skipped. A forward scan carrying the byte position and last older endpoint equals
-  the independent recursive reference for arbitrary positive record lengths.
-- Dropping that byte prefix and filtering dated records gives exactly the same ordered
-  sequence as filtering the entire file. This preserves occurrence multiplicity, not
-  merely set membership, without assuming clock monotonicity.
-- Window selection filters every occurrence independently. It preserves order and
-  multiplicity, applies both inclusive bounds, and distributes over appended histories.
-  A too-new record cannot hide a later eligible record after rollback.
-- On chronologically ordered logs the safe boundary equals the earlier last-old-record
-  reference. The existing binary-search proofs remain valid under their stated
-  chronological premise; production uses the checked forward scan.
+`OracleLogSeeking.lean` executes the proved binary search and independent recursive
+boundary. `conformance/test_log_seeking.py` compares actual Python seek offsets, exact byte
+suffixes, and plain/compressed occurrences with this compiled oracle for **3,840
+histories**. Cases exhaust sequences of zero to four records over three nondecreasing
+dated times and arbitrary undated positions, with three byte-layout variants, four
+cutoffs, and presence/absence of an incomplete tail. They exercise Unicode byte widths,
+escaped quotes and braces, misleading nested timestamps, equivalent timezone offsets,
+missing/unparseable timestamps, inclusion filtering, and inclusive upper bounds. Actual
+files and concatenated Zstandard frames include frames split within a record. No Python
+search translation supplies expected results.
 
-`OracleLogSeeking.lean` executes both the proved forward scan and the recursive safe
-reference, then applies the complete window filter. `conformance/test_log_seeking.py`
-compares the actual Python seek offset, exact byte suffix, and returned occurrences with
-this compiled oracle for **8,184 histories**. The cases exhaust all sequences of zero to
-four dated/undated records over three dated times, with three byte-layout variants, four
-cutoffs, and presence/absence of an incomplete tail. They exercise forward and backward
-clock changes, Unicode byte widths, escaped quotes and braces, misleading nested
-timestamps, equivalent timezone offsets, missing/unparseable timestamps, inclusion
-filtering, and inclusive upper bounds. Every history uses actual plain files and
-concatenated Zstandard frames, including frames split within a record. No Python search
-translation supplies expected results.
-
-Another **128 real monitor reader lifetimes** cover every three-record timestamp
-ordering in plain and archived storage. The compiled oracle determines retained run
-observations; repeated catch-up must not duplicate them, and file bytes stay unchanged.
-Ordinary regressions were confirmed failing before the fix: a `00:00, 00:02, 00:01`
-history sought from `00:02` returned EOF, and an upper-bound violation hid a matching
-later occurrence in both plain and compressed logs. The regressions also cover actual
-monitor startup and unchanged recorded timestamps.
+Another **76 real monitor reader lifetimes** cover every three-record ordered dated/
+undated sequence in plain and archived storage. The compiled oracle determines retained
+run observations; repeated catch-up must not duplicate them, and file bytes stay unchanged.
+The earlier arbitrary-order prefix-retirement theorems remain mathematically valid but
+are not the production seek contract. A stored sequence such as `00:00, 00:02, 00:01`
+violates the explicit ordering assumption and may cause binary search to skip eligible
+records. Observation-clock reversal remains supported by monitor retention/projection.
 
 ### Seeking cost and limits
 
-Seeking now scans the old byte prefix through the first eligible dated occurrence,
-using bounded memory and lightweight timestamp extraction. Startup can therefore read
-the entire old prefix, and upper-bound queries continue through the rest of a component.
-Ordinary follower polls keep their retained cursor and do not repeat startup seeking.
-Compressed reads already scan their input sequentially. Long reads hold the shared
-rotation lock longer and can delay cooperating writers; no bounded latency is claimed.
+Plain seeking makes O(log P) byte probes for P file bytes. Probe cost includes scanning
+past a split record and any undated stretch before a usable timestamp; unusually long
+records or undated stretches can dominate bytes examined. Startup then reads the selected
+suffix, while ordinary follower polls keep their cursor. Compressed components stream
+sequentially. Shared locks can delay writers; no bounded latency is claimed.
 
 The theorem proves the abstract byte-record algorithm. Finite conformance connects real
 UTF-8, JSON timestamp extraction, calendar parsing, file operations, and Zstandard
 decompression. It does not prove those parsers, source-clock truth, libraries, or
 arbitrary concurrent mutation. The existing reader/rotation contract supplies coherent
-files and stable discovery; externally placing records into the wrong monthly filename
-is outside time-based month discovery.
+files and stable discovery; records placed into an incorrect monthly filename are outside
+time-based month discovery.
 
-Plain and compressed readers deliberately have different treatment of old undated
-prefixes: a plain file retires the older prefix before its first eligible timestamp,
-whereas a compressed file
-scans from the beginning and can retain earlier undated diagnostics. The oracle checks
-each policy separately. Completeness claims for plain files concern eligible dated
-records and undated records remaining after prefix retirement, not all undated history.
+Plain and compressed readers have different treatment of old undated prefixes: plain
+seeking retires the prefix through the last older dated record, whereas compressed reads
+scan from the beginning and can retain earlier undated diagnostics. The oracle checks
+each policy separately. Plain completeness concerns eligible dated records and undated
+records after prefix retirement, not every undated record in history.

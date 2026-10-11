@@ -314,3 +314,20 @@ conformance = true
 name = "durable-update-validation-liveness"
 module = "DurableUpdateValidation"
 config = "DurableUpdateValidationLiveness"
+
+[[models]]
+name = "monitor-session"
+module = "MonitorSession"
+config = "MonitorSession"
+conformance = true
+
+[[models]]
+name = "monitor-backward-context"
+module = "MonitorBackwardContext"
+config = "MonitorBackwardContext"
+conformance = true
+
+[[models]]
+name = "monitor-backward-context-liveness"
+module = "MonitorBackwardContext"
+config = "MonitorBackwardContextLiveness"

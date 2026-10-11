@@ -1,5 +1,8 @@
 """Domain projections represent progress, explicit skips, and incomplete evidence."""
 
+import dataclasses
+import datetime
+
 import pytest
 
 import peri_scribe.monitor.events
@@ -57,6 +60,82 @@ def test_append_records_bounds_retained_runs(monkeypatch: pytest.MonkeyPatch) ->
         ),
     )
     assert [run.identifier for run in state.runs] == ["second"]
+
+
+@pytest.mark.parametrize("batch_size", [1, 2, 3, 8])
+def test_append_records_preserves_multiplicity_context_and_original_state(
+    batch_size: int,
+) -> None:
+    original = peri_scribe.monitor.model.append_records(
+        peri_scribe.monitor.model.State(),
+        ({"event": "Starting command", "run_id": "first", "command": "run"},),
+        bounded=False,
+    )
+    original_runs = original.runs
+    original_events = original.runs[0].events
+    repeated: dict[str, object] = {
+        "event": "Progress",
+        "run_id": "first",
+        "values": [1, 2],
+    }
+    records: tuple[dict[str, object], ...] = (
+        {"event": "Starting phase", "run_id": "first", "phase": "fetch"},
+        {"event": "Starting command", "run_id": "second", "command": "other"},
+        repeated,
+        repeated,
+        {"event": "Finished phase", "run_id": "first", "phase": "fetch"},
+        {"event": "Finished command", "run_id": "second", "status": "failed"},
+        {"event": "Starting command", "command": "legacy"},
+        {"event": "Legacy progress"},
+    )
+    complete = peri_scribe.monitor.model.append_records(
+        original,
+        records,
+        bounded=False,
+    )
+    batches = original
+    for start in range(0, len(records), batch_size):
+        batches = peri_scribe.monitor.model.append_records(
+            batches,
+            records[start : start + batch_size],
+            bounded=False,
+        )
+    assert batches == complete
+    assert original.runs is original_runs
+    assert original.runs[0].events is original_events
+    assert len(original_events) == 1
+    first = batches.runs[0]
+    assert [event.sequence for event in first.events] == [1, 2, 4, 5, 6]
+    assert [event.path for event in first.events[2:4]] == [
+        (peri_scribe.phases.Segment(phase="fetch"),),
+    ] * 2
+    assert batches.runs[1].status is peri_scribe.monitor.model.Status.FAILED
+    assert batches.runs[2].identifier == "observed-8"
+
+
+def test_run_last_timestamp_follows_replacement_without_changing_original() -> None:
+    original = tests.helpers.factories.peri_scribe.monitor.events.run(
+        {"event": "Later", "timestamp": "2040-01-02T00:00:00Z"},
+        {"event": "Earlier", "timestamp": "2040-01-01T00:00:00Z"},
+    )
+    original_latest = original.last_timestamp
+    earlier = dataclasses.replace(original, events=original.events[1:])
+    assert earlier.last_timestamp < original_latest
+    assert original.last_timestamp == original_latest
+    assert dataclasses.replace(original, events=()).last_timestamp == (
+        datetime.datetime.min.replace(tzinfo=datetime.UTC)
+    )
+
+
+def test_plan_for_run_keeps_configured_branches_after_damaged_metadata() -> None:
+    run = tests.helpers.factories.peri_scribe.monitor.events.run(
+        {"event": "Starting command", "command": "run"},
+        {"event": "Planned phases", "branches": "damaged"},
+    )
+    branches = tests.helpers.factories.peri_scribe.monitor.events.BRANCHES
+    assert peri_scribe.monitor.model.plan_for_run(run, branches) == (
+        peri_scribe.phases.planned_paths(branches, gated=False)
+    )
 
 
 def test_phase_tree_starts_with_all_phases_waiting() -> None:

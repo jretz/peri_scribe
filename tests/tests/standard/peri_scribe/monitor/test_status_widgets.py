@@ -5,6 +5,7 @@ import rich.text
 import textual.events
 import textual.widgets
 
+import peri_scribe.monitor.health_presentation
 import peri_scribe.monitor.status
 import peri_scribe.monitor.status_widgets
 import peri_scribe.monitor.theme
@@ -82,7 +83,7 @@ async def test_status_pane_update_table_displays_unlinked_observations(
         pane.update_table,
         "recent",
         (
-            peri_scribe.monitor.status.Metric(
+            peri_scribe.monitor.health_presentation.Metric(
                 label="Unknown time",
                 text="History unavailable",
                 health=peri_scribe.monitor.status.Health.WARNING,

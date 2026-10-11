@@ -11,12 +11,12 @@
     place-centered projection for each candidate. Interpolation is explanatory,
     not an iterative nearest-point search.</desc>
   <defs><style>
-      :root { color-scheme:light dark; --bg:#fbfcfe; --text:#172e40;
-        --muted:#526779; --edge:#526779; --fire:#fff7e8; --a:#197685;
-        --b:#7957aa; --card:#f1f5f9; }
-      @media (prefers-color-scheme:dark) {
-        :root { --bg:#111820; --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe;
-          --fire:#362c1c; --a:#7bdfdf; --b:#c5a3ef; --card:#1b2733; }
+      :root { color-scheme:light dark; --bg:#111820; --text:#e4edf5;
+        --muted:#acbdcb; --edge:#9caebe; --fire:#362c1c; --a:#7bdfdf;
+        --b:#c5a3ef; --card:#1b2733; }
+      @media (prefers-color-scheme:light) {
+        :root { --bg:#fbfcfe; --text:#172e40; --muted:#526779; --edge:#526779;
+          --fire:#fff7e8; --a:#197685; --b:#7957aa; --card:#f1f5f9; }
       }
       text { font-family:system-ui,sans-serif; font-size:16px; fill:var(--text); }
       .heading { font-size:21px; font-weight:700; }

@@ -259,16 +259,36 @@ preserves the archived prefix before a later plain tail, including equal timesta
 legitimate repeated rows. Stable chronological sorting consequently preserves the correct
 acreage predecessor when histories are projected into their current owners.
 Reading does not recover or modify the log files. The monitor reads the diagnostic series.
-Timestamp bounds apply to each dated record independently, so backward wall-clock
-changes cannot hide later matching records. Plain-log startup scans the prefix through
-the first eligible timestamp; retained monitor readers continue incrementally from
-their saved byte offset. Upper bounds filter records through the rest of the stream.
+Timestamp queries assume nondecreasing recorded timestamps within each monthly occurrence
+stream, preserving distinct equal-time records. Plain-log startup binary-searches for the
+first eligible timestamp; retained monitor readers continue incrementally from their
+saved byte offset. Compressed components are streamed through decompression. Missing
+command starts use backward block reads in a plain month, falling back to streamed
+context recovery for archived or mixed months and incomplete backward results.
 It tracks archive generations and replays bounded recent history with run-context
 restoration when an already consumed month changes. This catches records appended and
 compressed between polls without retaining duplicate visible events.
-One asynchronous task owner serializes monitor refresh, archive selection, history aging,
-and report publication. An admitted operation retains ownership through worker completion
-even if its caller is cancelled. Unmount stops admission and display updates, signals
+`monitor.session` owns the asynchronous task owner, readers, notification consumer,
+reconciliation clock, and immutable versioned snapshots. It serializes health refresh,
+diagnostic record ingestion, historical selection, retention, and report loading without
+importing the terminal framework. Latest-value subscriptions coalesce undelivered complete
+snapshots. Domain health projection contains structured facts and policy deadlines;
+human labels, age text, and their cosmetic refresh deadlines belong to
+`monitor.health_presentation`.
+
+`monitor.controller` consumes snapshots and translates user intent into domain requests.
+It first prepares a complete Status frame, then starts background preparation after the
+terminal's refresh callback. Early navigation joins existing work and promotes queued
+requests. `monitor.display` prepares immutable rows off the event loop;
+`monitor.rendering` applies them on the UI thread, rejecting superseded generations and
+preserving navigation and scroll state. `monitor.app` owns widget composition and input
+handlers. A presentation-only structural contract keeps the controller and rendering
+independent of the concrete application, including their type annotations. See
+[monitor sessions](algorithms/monitor-sessions.md) and
+[monitor presentation](algorithms/monitor-presentation.md) for lifecycle boundaries.
+
+An admitted operation retains ownership through worker completion even if its caller is
+cancelled. Unmount detaches subscriptions, stops admission and display updates, signals
 readers to stop, and asynchronously waits for admitted work before closing descriptors.
 A read already waiting for the cooperating writer lock finishes after that writer
 releases it; the event loop remains available while shutdown waits.

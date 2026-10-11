@@ -208,6 +208,16 @@ intermediate states of transformations in this static explanation; a final frame
 is insufficient when those states carry the reasoning. Diagrams illustrate the
 correctness argument; they do not replace its assumptions or guarantees.
 
+All SVG diagrams must automatically support light and dark appearance.
+Declare `color-scheme: light dark`, define a complete dark palette in unconditional
+styles, and override it inside `@media (prefers-color-scheme: light)` for light
+appearance. Dark must remain the fallback when the renderer does not support media
+queries. Include an explicit background using the active palette. Theme backgrounds,
+text, shape fills, gradient stops, borders, connectors, and arrowheads so every element
+remains legible in both modes. Keep the styles inside the SVG so it works as a standalone
+file and an embedded image. See the [monitor presentation
+SVG](algorithms/assets/monitor-presentation.svg) for an example.
+
 Save SVG assets beside the note or in its assets subdirectory, with descriptive names
 and relative links from the note. Keep SVG sources readable and editable, with semantic
 element IDs, scalable layouts, legible labels, and a descriptive title and description.
@@ -215,8 +225,10 @@ When boxes correspond to parameters, fields, or ordered outputs, arrange them in
 same order. Center arrows on their actual targets: the relevant box boundary for a
 whole-node connection, or the specific parameter or subelement for an individual mapping.
 When adding or changing a figure, inspect it in the intended documentation viewer at
-normal reading width. For animated figures, inspect both the sequence and its static
-or reduced-motion explanation, checking that the illustrated behavior matches the note.
+normal reading width in both light and dark modes, and verify the dark fallback with
+media queries disabled or ignored. For animated figures, inspect both the sequence and
+its static or reduced-motion explanation, checking that the illustrated behavior matches
+the note.
 
 ## Importance and verification
 

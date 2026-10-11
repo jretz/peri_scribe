@@ -2,6 +2,7 @@
 
 import datetime
 
+import peri_scribe.monitor.health_presentation
 import peri_scribe.monitor.history
 import peri_scribe.monitor.status
 import peri_scribe.phases
@@ -58,7 +59,7 @@ def history(*records: dict[str, object]) -> peri_scribe.monitor.history.History:
     )
 
 
-def view(*records: dict[str, object]) -> peri_scribe.monitor.status.View:
+def view(*records: dict[str, object]) -> peri_scribe.monitor.health_presentation.View:
     """Give widget tests fixed health evidence without file collection.
 
     Args:
@@ -68,9 +69,12 @@ def view(*records: dict[str, object]) -> peri_scribe.monitor.status.View:
         A status projection with unavailable artifacts at the fixed observation time.
     """
     missing = peri_scribe.monitor.status.Output(missing=True)
-    return peri_scribe.monitor.status.project(
-        history(*records),
-        peri_scribe.monitor.status.Files(kmz=missing, report=missing),
+    return peri_scribe.monitor.health_presentation.present(
+        peri_scribe.monitor.status.project(
+            history(*records),
+            peri_scribe.monitor.status.Files(kmz=missing, report=missing),
+            NOW,
+        ),
         NOW,
     )
 

@@ -1,10 +1,9 @@
-"""Health colors require current artifacts and evidence of actual recovery."""
+"""Health classifications preserve evidence and freshness policy."""
 
 import dataclasses
 import datetime
 import os
 import pathlib
-import unittest.mock
 
 import pytest
 
@@ -38,7 +37,7 @@ def test_output_metric_colors_exact_freshness_boundaries(
 ) -> None:
     now = tests.helpers.factories.peri_scribe.monitor.status.NOW
     output = peri_scribe.monitor.status.Output(modified=now - elapsed)
-    metric = peri_scribe.monitor.status.output_metric("KMZ", "kmz", output, (), now)
+    metric = peri_scribe.monitor.status.output_metric("kmz", output, (), now)
     assert metric.health == expected
 
 
@@ -57,7 +56,6 @@ def test_output_metric_starting_a_build_does_not_renew_freshness(phase: str) -> 
         ),
     )
     metric = peri_scribe.monitor.status.output_metric(
-        phase,
         phase,
         peri_scribe.monitor.status.Output(modified=now),
         peri_scribe.monitor.status.evidence(history),
@@ -83,7 +81,6 @@ def test_output_metric_unknown_or_future_time_is_not_healthy(
 ) -> None:
     assert (
         peri_scribe.monitor.status.output_metric(
-            "Report",
             "reports",
             output,
             (),
@@ -107,7 +104,6 @@ def test_output_metric_unavailable_artifact_overrides_build_history(
 ) -> None:
     assert (
         peri_scribe.monitor.status.output_metric(
-            "KMZ",
             "kmz",
             peri_scribe.monitor.status.Output(error="unavailable", missing=missing),
             (),
@@ -182,42 +178,6 @@ def test_read_files_reports_pending_work_without_writing(
     )
 
 
-@pytest.mark.parametrize(
-    ("elapsed", "expected"),
-    [
-        (None, "unknown"),
-        (datetime.timedelta(seconds=30), "<1m"),
-        (datetime.timedelta(minutes=12), "12m"),
-        (datetime.timedelta(hours=2, minutes=3), "2h 3m"),
-        (datetime.timedelta(days=3, hours=2), "3d 2h"),
-    ],
-)
-def test_age_compact_elapsed_values(
-    elapsed: datetime.timedelta | None,
-    expected: str,
-) -> None:
-    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
-    assert (
-        peri_scribe.monitor.status.age(
-            now - elapsed if elapsed is not None else None,
-            now,
-        )
-        == expected
-    )
-
-
-def test_path_label_preserves_every_ancestor_and_source() -> None:
-    assert (
-        peri_scribe.monitor.status.path_label((
-            peri_scribe.phases.Segment(phase="fetch"),
-            peri_scribe.phases.Segment(phase="fire-collection"),
-            peri_scribe.phases.Segment(phase="collect-feed", branch="WFIGS"),
-            peri_scribe.phases.Segment(phase="query-features"),
-        ))
-        == "fetch → fire-collection → collect-feed [WFIGS] → query-features"
-    )
-
-
 def test_failure_metric_source_check_cannot_resolve_report_failure() -> None:
     history = tests.helpers.factories.peri_scribe.monitor.status.history(
         *tests.helpers.factories.peri_scribe.monitor.status.failed_run(),
@@ -229,7 +189,6 @@ def test_failure_metric_source_check_cannot_resolve_report_failure() -> None:
     assert (
         peri_scribe.monitor.status.failure_metric(
             peri_scribe.monitor.status.evidence(history),
-            tests.helpers.factories.peri_scribe.monitor.status.NOW,
         ).health
         == peri_scribe.monitor.status.Health.BAD
     )
@@ -245,10 +204,9 @@ def test_failure_metric_matching_stage_completion_proves_recovery() -> None:
     )
     metric = peri_scribe.monitor.status.failure_metric(
         peri_scribe.monitor.status.evidence(history),
-        tests.helpers.factories.peri_scribe.monitor.status.NOW,
     )
     assert metric.health == peri_scribe.monitor.status.Health.GOOD
-    assert "Recovered" in metric.text
+    assert metric.recovered is not None
     assert metric.target is not None
     assert metric.target.run == "failed"
 
@@ -264,7 +222,10 @@ def test_exception_groups_count_one_propagated_failure() -> None:
     )
     assert len(groups) == 1
     assert groups[0].occurrences == 1
-    assert groups[0].path == "reports → prepare-fire-histories"
+    assert groups[0].path == (
+        peri_scribe.phases.Segment(phase="reports"),
+        peri_scribe.phases.Segment(phase="prepare-fire-histories"),
+    )
     assert groups[0].health == peri_scribe.monitor.status.Health.BAD
 
 
@@ -293,7 +254,7 @@ def test_exception_groups_count_retries_and_affected_runs() -> None:
     assert groups[0].occurrences == expected_occurrences
     assert groups[0].runs == {"first", "second"}
     assert groups[0].latest.run == "second"
-    assert groups[0].outcome == "Recovered"
+    assert groups[0].outcome == peri_scribe.monitor.status.RecoveryState.RECOVERED
 
 
 def test_exception_groups_window_excludes_old_and_future_errors() -> None:
@@ -358,51 +319,6 @@ def test_signature_normalizes_incidental_values_and_preserves_http_code() -> Non
     assert peri_scribe.monitor.status.signature("") == "Unknown exception"
 
 
-@pytest.mark.parametrize(
-    ("changes", "text"),
-    [
-        ({"caught_up": False}, "Loading"),
-        ({"errors": ("unreadable",)}, "unreadable"),
-        ({"coverage": ()}, "No log entries"),
-        ({"undated": 1}, "undated"),
-        ({}, "48-hour window loaded"),
-    ],
-)
-def test_coverage_metric_exposes_incomplete_history(
-    changes: dict[str, object],
-    text: str,
-) -> None:
-    history = dataclasses.replace(
-        tests.helpers.factories.peri_scribe.monitor.status.history(
-            tests.helpers.factories.peri_scribe.monitor.status.record("Recent"),
-        ),
-        **changes,
-    )
-    assert (
-        text
-        in peri_scribe.monitor.status.coverage_metric(
-            history,
-            tests.helpers.factories.peri_scribe.monitor.status.NOW,
-        ).text
-    )
-
-
-@pytest.mark.parametrize("hours", [49, -1])
-def test_coverage_metric_errors_without_entries_in_the_last_48_hours(
-    hours: int,
-) -> None:
-    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
-    history = tests.helpers.factories.peri_scribe.monitor.status.history(
-        tests.helpers.factories.peri_scribe.monitor.status.record(
-            "Outside window",
-            when=now - datetime.timedelta(hours=hours),
-        ),
-    )
-    metric = peri_scribe.monitor.status.coverage_metric(history, now)
-    assert metric.health == peri_scribe.monitor.status.Health.BAD
-    assert metric.text == "No log entries in the last 48 hours"
-
-
 @pytest.mark.parametrize("future_first", [False, True])
 def test_coverage_metric_accepts_recent_entries_alongside_future_progress(
     *,
@@ -423,62 +339,6 @@ def test_coverage_metric_accepts_recent_entries_alongside_future_progress(
         peri_scribe.monitor.status.coverage_metric(history, now).health
         == peri_scribe.monitor.status.Health.GOOD
     )
-
-
-def test_project_missing_outputs_remain_red_during_a_build() -> None:
-    history = tests.helpers.factories.peri_scribe.monitor.status.history(
-        tests.helpers.factories.peri_scribe.monitor.status.record(
-            "Starting command",
-            command="run",
-        ),
-        tests.helpers.factories.peri_scribe.monitor.status.record(
-            "Starting phase",
-            phase="kmz.build-kml",
-        ),
-    )
-    output = peri_scribe.monitor.status.Output(error="Missing", missing=True)
-    view = peri_scribe.monitor.status.project(
-        history,
-        peri_scribe.monitor.status.Files(
-            kmz=output,
-            report=output,
-            pending=("kmz", "reports"),
-        ),
-        tests.helpers.factories.peri_scribe.monitor.status.NOW,
-    )
-    assert view.overview.health == peri_scribe.monitor.status.Health.BAD
-    assert "kmz → build-kml" in view.metrics[2].text
-    assert view.metrics[4].health == peri_scribe.monitor.status.Health.ACTIVE
-
-
-def test_project_report_behind_latest_kmz_is_warning() -> None:
-    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
-    history = tests.helpers.factories.peri_scribe.monitor.status.history(
-        tests.helpers.factories.peri_scribe.monitor.status.finished(
-            "reports",
-            when=now - datetime.timedelta(minutes=1),
-        ),
-        tests.helpers.factories.peri_scribe.monitor.status.finished("kmz"),
-    )
-    view = peri_scribe.monitor.status.project(
-        history,
-        tests.helpers.factories.peri_scribe.monitor.status.files(),
-        now,
-    )
-    assert view.metrics[1].health == peri_scribe.monitor.status.Health.WARNING
-    assert "caught up" in view.metrics[1].text
-
-
-@pytest.mark.parametrize("phase", ["", "reports", "reports.prepare-fire-histories"])
-def test_project_report_catching_up_during_build_is_active(phase: str) -> None:
-    view = peri_scribe.monitor.status.project(
-        tests.helpers.factories.peri_scribe.monitor.status.report_build(phase=phase),
-        tests.helpers.factories.peri_scribe.monitor.status.files(),
-        tests.helpers.factories.peri_scribe.monitor.status.NOW,
-    )
-    assert view.metrics[1].health == peri_scribe.monitor.status.Health.ACTIVE
-    assert "Report generation in progress" in view.metrics[1].text
-    assert "caught up" not in view.metrics[1].text
 
 
 def test_project_report_generation_does_not_require_attention() -> None:
@@ -642,69 +502,6 @@ def test_project_only_report_work_in_a_later_run_explains_report_lag(
     assert view.metrics[1].health == health
 
 
-def test_project_fresh_complete_system_is_green() -> None:
-    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
-    history = tests.helpers.factories.peri_scribe.monitor.status.history(
-        tests.helpers.factories.peri_scribe.monitor.status.record(
-            "Starting command",
-            command="run",
-            when=now - datetime.timedelta(days=3),
-        ),
-        tests.helpers.factories.peri_scribe.monitor.status.finished("fetch"),
-        tests.helpers.factories.peri_scribe.monitor.status.record(
-            "Publication gate skipped",
-            reason="no unpublished data",
-        ),
-        tests.helpers.factories.peri_scribe.monitor.status.record(
-            "Finished command",
-            command="run",
-            status="completed",
-        ),
-    )
-    view = peri_scribe.monitor.status.project(
-        history,
-        tests.helpers.factories.peri_scribe.monitor.status.files(),
-        now,
-    )
-    assert view.overview.health == peri_scribe.monitor.status.Health.GOOD
-    assert view.recent[0].text == "run · Checked · publication deferred"
-
-
-def test_activity_metric_lock_skip_cannot_hide_active_phase() -> None:
-    history = tests.helpers.factories.peri_scribe.monitor.status.history(
-        tests.helpers.factories.peri_scribe.monitor.status.record(
-            "Starting command",
-            command="run",
-        ),
-        tests.helpers.factories.peri_scribe.monitor.status.record(
-            "Starting phase",
-            phase="fetch.query-features",
-        ),
-        tests.helpers.factories.peri_scribe.monitor.status.record(
-            "Starting command",
-            run_id="skipped",
-            command="run",
-        ),
-        tests.helpers.factories.peri_scribe.monitor.status.record(
-            "Another run owns this year; skipping invocation",
-            run_id="skipped",
-        ),
-        tests.helpers.factories.peri_scribe.monitor.status.record(
-            "Finished command",
-            run_id="skipped",
-            status="completed",
-        ),
-    )
-    metric = peri_scribe.monitor.status.activity_metric(
-        history,
-        tests.helpers.factories.peri_scribe.monitor.status.NOW,
-    )
-    assert metric.target is not None
-    assert metric.target.run == "run-1"
-    assert "fetch → query-features" in metric.text
-    assert "lock" in peri_scribe.monitor.status.recent_metrics(history)[0].text
-
-
 @pytest.mark.parametrize(
     ("files", "health"),
     [
@@ -731,65 +528,6 @@ def test_publication_metric_pending_or_unreadable_state_needs_attention(
     health: peri_scribe.monitor.status.Health,
 ) -> None:
     assert peri_scribe.monitor.status.publication_metric(files, ()).health == health
-
-
-def test_transition_metrics_include_failure_recovery_and_outputs() -> None:
-    history = tests.helpers.factories.peri_scribe.monitor.status.history(
-        *tests.helpers.factories.peri_scribe.monitor.status.failed_run(),
-        tests.helpers.factories.peri_scribe.monitor.status.finished(
-            "reports",
-            run_id="later",
-        ),
-        tests.helpers.factories.peri_scribe.monitor.status.finished(
-            "kmz",
-            run_id="later",
-        ),
-    )
-    view = peri_scribe.monitor.status.project(
-        history,
-        tests.helpers.factories.peri_scribe.monitor.status.files(),
-        tests.helpers.factories.peri_scribe.monitor.status.NOW,
-    )
-    assert {metric.text for metric in view.transitions} == {
-        "Run failed",
-        "Failed work recovered",
-        "KMZ updated",
-        "Report updated",
-    }
-
-
-@pytest.mark.parametrize("same_time", [True, False])
-def test_transition_metrics_format_only_the_eight_selected_rows(
-    monkeypatch: pytest.MonkeyPatch,
-    *,
-    same_time: bool,
-) -> None:
-    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
-    history = tests.helpers.factories.peri_scribe.monitor.status.history(
-        *(
-            tests.helpers.factories.peri_scribe.monitor.status.finished(
-                "kmz",
-                run_id=str(index),
-                when=now if same_time else now - datetime.timedelta(minutes=20 - index),
-            )
-            for index in range(20)
-        ),
-    )
-    formatter = unittest.mock.Mock(wraps=peri_scribe.monitor.status.local_time)
-    monkeypatch.setattr(peri_scribe.monitor.status, "local_time", formatter)
-    metrics = peri_scribe.monitor.status.transition_metrics(
-        peri_scribe.monitor.status.evidence(history),
-        peri_scribe.monitor.status.Metric(
-            label="Failure",
-            text="None",
-            health=peri_scribe.monitor.status.Health.GOOD,
-        ),
-    )
-    expected = range(8) if same_time else range(19, 11, -1)
-    assert [metric.target.run for metric in metrics if metric.target] == [
-        str(index) for index in expected
-    ]
-    assert formatter.call_count == len(metrics)
 
 
 def test_project_reuses_observations_without_freezing_future_event_visibility() -> None:

@@ -292,12 +292,12 @@ def replay_omissions() -> None:
     )
     selected = SEGMENTS[:3]
     for (run, explicit, first, second), outcome in zip(cases, expected, strict=True):
-        parents: dict[peri_scribe.phases.Path, peri_scribe.monitor.model.PhaseView] = {
-            selected[:1]: peri_scribe.monitor.model.PhaseView(
+        parents: dict[peri_scribe.phases.Path, peri_scribe.monitor.model.PhaseState] = {
+            selected[:1]: peri_scribe.monitor.model.PhaseState(
                 path=selected[:1],
                 status=STATUSES[first],
             ),
-            selected[:2]: peri_scribe.monitor.model.PhaseView(
+            selected[:2]: peri_scribe.monitor.model.PhaseState(
                 path=selected[:2],
                 status=STATUSES[second],
             ),

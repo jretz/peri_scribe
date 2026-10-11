@@ -95,6 +95,25 @@ recovery from missing/corrupt archives, cancellation during a scan, undated
 records, startup files already outside discovery limits, and recovery of a start record
 that is absent from the available logs.
 
+`tla/MonitorBackwardContext.tla` checks the backward fast path before its implementation.
+Its **13,460 states** cover histories of up to four records from two command IDs, ordinary
+and important records, command starts, and every requested-command subset. A command start
+is its invocation's first record and an ID is never reused. Each reverse step retains
+eligible context and removes a pending command at its start. Once every start is found,
+the returned sequence must equal the independently selected forward context exactly.
+Missing starts require the complete forward fallback. Safety checks occurrence uniqueness
+and original file order; fair scanning establishes eventual completion.
+
+`conformance/test_monitor_backward_context.py` replays all **2,884 completed searches**
+through actual JSONL files and `history.backward_context`, comparing exact occurrence
+indices with TLC. Missing-start cases execute the streamed context fallback. This model
+covers context already before its requested boundary; the Lean seeking checks establish
+the byte boundary. Ordinary tests cover unequal run cutoffs, duplicate exception records,
+undated records, Unicode and long records split across reverse blocks, cancellation,
+compressed/mixed fallback, and avoiding unrelated old-prefix decoding. Resource ownership
+and rotation remain the separate reader/task contracts. The model does not promise
+completion under a permanently blocked filesystem or recover starts absent from logs.
+
 [Reader composition](reader_rotation.md) extends these checks across archive and plain
 components, committed rotation receipts, and successive polls. Changed archives trigger
 a bounded recent-history replay with context restoration, covering a late tail that is
@@ -115,12 +134,16 @@ Conformance compares all 10,731 completed transitions against real `history.appe
 `history.extend_coverage`, `projection.refresh`, and `status.project`. One abstract time
 unit maps to 24 hours, making the modeled window exactly the application's 48-hour
 window. It checks the model's merged intervals, coverage health, and last successful
-source timestamp. Every full cached view must also equal fresh evaluation, including
+source timestamp. Every cached health assessment must equal fresh evaluation, including
 diagnostic metadata changes. Additional replays over the same 73 histories exercise
 microseconds before/at/after minute, hour, six-hour freshness, day, and 48-hour expiry
 boundaries, backwards clocks, new evidence, and artifact-error/pending-work changes.
 
-The full-view comparison is implementation-conformance evidence; the TLA+ checked scope
+The full-assessment comparison is implementation-conformance evidence; the checked scope
 remains the specified coverage, compaction, and success-selection contract. Detailed
 exception grouping, every display string, datetime overflow, the correctness of all
 source timestamps, and arbitrary histories are not proved by this finite model.
+
+The presentation adapter formats immutable assessments without introducing health
+policy or state transitions. Ordinary tests cover labels and independent cosmetic age
+deadlines; no additional formal model is needed for that adapter.

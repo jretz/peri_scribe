@@ -388,7 +388,7 @@ def test_reader_skips_old_records_before_processing_the_recent_window(
 
 
 @pytest.mark.parametrize("compressed", [False, True])
-def test_reader_preserves_recent_evidence_before_clock_rollback(
+def test_reader_preserves_recent_evidence_after_ordered_prefix(
     tmp_path: pathlib.Path,
     *,
     compressed: bool,
@@ -400,7 +400,7 @@ def test_reader_preserves_recent_evidence_before_clock_rollback(
             run_id=str(index),
             when=now - datetime.timedelta(hours=age),
         )
-        for index, age in enumerate((49, 1, 50))
+        for index, age in enumerate((50, 49, 1))
     )
     path = tests.helpers.factories.peri_scribe.monitor.events.write_log(
         tmp_path,
@@ -414,7 +414,7 @@ def test_reader_preserves_recent_evidence_before_clock_rollback(
     with contextlib.closing(peri_scribe.monitor.history.Reader(path.parent)) as reader:
         history = reader.catch_up(now)
         assert reader.catch_up(now) == history
-    assert [run.identifier for run in history.state.runs] == ["1"]
+    assert [run.identifier for run in history.state.runs] == ["2"]
     expected_time = now - datetime.timedelta(hours=1)
     assert history.state.runs[0].events[0].timestamp == expected_time
 
@@ -456,7 +456,7 @@ def test_reader_restores_active_run_context_before_the_recent_window(
     assert [
         event.timestamp for event in run.events if event.message == "Starting command"
     ] == [started]
-    activity = peri_scribe.monitor.status.activity_metric(history, now)
+    activity = peri_scribe.monitor.status.activity_metric(history)
     assert activity.health == peri_scribe.monitor.status.Health.ACTIVE
     assert activity.target is not None
     assert activity.target.event.timestamp == now

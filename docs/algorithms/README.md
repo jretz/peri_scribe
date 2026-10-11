@@ -71,6 +71,8 @@ labeled explanation without motion, including when reduced motion is requested.
 | [Log rotation, coherent reads, and time windows](log-retention.md) | Rotation receipts, coherent reads and time windows. |
 | [Cancellation and monitor resource ownership](worker-lifetimes.md) | Cancellation through admitted work and resource cleanup. |
 | [Monitor evidence, coverage, and cached status](monitor-evidence.md) | Planned phases, sparse evidence and incremental cursors. |
+| [Observable monitor sessions](monitor-sessions.md) | Domain request ownership, versioned subscriptions, priority and resource retirement. |
+| [Monitor presentation scheduling](monitor-presentation.md) | First-frame gating, background preparation and obsolete-result rejection. |
 | [Latency attribution from retained evidence](latency-evidence.md) | Attributing source publication to the first eligible run. |
 | [Verification evidence and execution](verification-tooling.md) | Checked graph paths, prefix replay and fresh coverage evidence. |
 

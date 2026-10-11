@@ -29,27 +29,155 @@ class Health(enum.IntEnum):
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Target:
-    """Recorded identity makes navigation independent of a table's current ordering."""
+    """Recorded identity associates each finding with its command and event."""
 
     run: str
     event: peri_scribe.monitor.events.Event
 
     @property
     def when(self) -> datetime.datetime:
-        """Keep undated navigation targets sortable without asserting a known age."""
+        """Keep undated evidence targets sortable without asserting a known age."""
         return self.event.timestamp or datetime.datetime.min.replace(
             tzinfo=datetime.UTC,
         )
 
 
+class OutputIssue(enum.Enum):
+    """Artifact evidence distinguishes read failures from unknown observation times."""
+
+    NONE = "none"
+    UNAVAILABLE = "unavailable"
+    UNKNOWN_TIME = "unknown-time"
+
+
+class Alignment(enum.Enum):
+    """A report may lag a map while a related command is still producing it."""
+
+    CURRENT = "current"
+    UPDATING = "updating"
+    LAGGING = "lagging"
+
+
+class PublicationState(enum.Enum):
+    """Recorded decisions and recovery requirements distinguish publication outcomes."""
+
+    UNKNOWN = "unknown"
+    UNAVAILABLE = "unavailable"
+    PENDING = "pending"
+    ACTIVE = "active"
+    DECIDED = "decided"
+    COMPLETED = "completed"
+
+
+class CoverageState(enum.Enum):
+    """Collection limitations remain distinct from an observed empty interval."""
+
+    LOADING = "loading"
+    INCOMPLETE = "incomplete"
+    EMPTY = "empty"
+    UNDATED = "undated"
+    COMPLETE = "complete"
+
+
+class RecoveryState(enum.Enum):
+    """Only matching successful work can establish recovery."""
+
+    RECOVERED = "recovered"
+    FAILED = "failed"
+    UNCONFIRMED = "unconfirmed"
+
+
+class Outcome(enum.Enum):
+    """Command outcomes distinguish useful checks from produced artifacts."""
+
+    BUILT = "built"
+    COMPLETED = "completed"
+    LOCKED = "locked"
+    DEFERRED = "deferred"
+    FAILED = "failed"
+    ACTIVE = "active"
+    STOPPED = "stopped"
+    WAITING = "waiting"
+
+
+class TransitionKind(enum.Enum):
+    """Recorded state changes retain their source evidence."""
+
+    KMZ = "kmz"
+    REPORT = "report"
+    PUBLICATION = "publication"
+    FAILURE = "failure"
+    RECOVERY = "recovery"
+
+
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Metric:
-    """A labeled observation carries its health and optional supporting evidence."""
+    """A health classification retains the evidence supporting its conclusion."""
 
-    label: str
-    text: str
     health: Health
     target: Target | None = None
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class OutputMetric(Metric):
+    """Artifact freshness preserves its timestamp and the source of uncertainty."""
+
+    timestamp: datetime.datetime | None = None
+    issue: OutputIssue = OutputIssue.NONE
+    error: str = ""
+    alignment: Alignment = Alignment.CURRENT
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ActivityMetric(Metric):
+    """Observed command activity does not establish process liveness."""
+
+    started: datetime.datetime | None = None
+    path: peri_scribe.phases.Path = ()
+    status: peri_scribe.monitor.model.Status | None = None
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class FailureMetric(Metric):
+    """Failure origin, completion, and recovery are separate recorded observations."""
+
+    finished: Target | None = None
+    recovered: Target | None = None
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class PublicationMetric(Metric):
+    """Recovery state and publication decisions retain their original facts."""
+
+    state: PublicationState
+    pending: tuple[str, ...] = ()
+    error: str = ""
+    reason: str | None = None
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class CoverageMetric(Metric):
+    """Collection completeness identifies why evidence may be insufficient."""
+
+    state: CoverageState
+    errors: tuple[str, ...] = ()
+    undated: int = 0
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class RunOutcome(Metric):
+    """Each command's recorded result remains distinct from other invocations."""
+
+    command: str
+    outcome: Outcome
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class Transition(Metric):
+    """A bounded history of significant changes retains recorded decision reasons."""
+
+    kind: TransitionKind
+    reason: str = ""
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -76,25 +204,33 @@ class ExceptionSummary:
     """Counts describe occurrences, not repeated logging by enclosing phases."""
 
     description: str
-    path: str
+    path: peri_scribe.phases.Path
+    context: str
     occurrences: int
     runs: frozenset[str]
     first: datetime.datetime
     latest: Target
     health: Health
-    outcome: str
+    outcome: RecoveryState
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class View:
-    """A presentation-neutral snapshot can serve terminal and future web consumers."""
+class Assessment:
+    """Health facts remain independent of language, layout, and presentation timing."""
 
     overview: Metric
-    metrics: tuple[Metric, ...]
+    metrics: tuple[
+        OutputMetric,
+        OutputMetric,
+        ActivityMetric,
+        Metric,
+        PublicationMetric,
+        FailureMetric,
+    ]
     exceptions: tuple[ExceptionSummary, ...]
-    recent: tuple[Metric, ...]
-    transitions: tuple[Metric, ...]
-    coverage: Metric
+    recent: tuple[RunOutcome, ...]
+    transitions: tuple[Transition, ...]
+    coverage: CoverageMetric
 
 
 def read_output(path: pathlib.Path) -> Output:
@@ -150,59 +286,6 @@ def read_files(
         report=read_output(report_path),
         pending=pending,
         error=error,
-    )
-
-
-def path_label(path: peri_scribe.phases.Path) -> str:
-    """Keep every ancestor and source instance visible in the current activity.
-
-    Args:
-        path: The observed execution scope.
-
-    Returns:
-        A complete human-readable breadcrumb.
-    """
-    return " → ".join(
-        segment.phase + (f" [{segment.branch}]" if segment.branch else "")
-        for segment in path
-    )
-
-
-def age(timestamp: datetime.datetime | None, now: datetime.datetime) -> str:
-    """Use stable compact ages without rounding across a freshness boundary.
-
-    Args:
-        timestamp: The recorded observation time.
-        now: The current aware time.
-
-    Returns:
-        An elapsed duration or an explicit unknown marker.
-    """
-    if timestamp is None:
-        return "unknown"
-    minutes = max(0, int((now - timestamp) / datetime.timedelta(minutes=1)))
-    if minutes < 1:
-        return "<1m"
-    if datetime.timedelta(minutes=minutes) < datetime.timedelta(hours=1):
-        return f"{minutes}m"
-    hours, minutes = divmod(minutes, 60)
-    if datetime.timedelta(hours=hours) < datetime.timedelta(days=1):
-        return f"{hours}h {minutes}m"
-    days, hours = divmod(hours, 24)
-    return f"{days}d {hours}h"
-
-
-def local_time(timestamp: datetime.datetime | None) -> str:
-    """Absolute timestamps make ages and observation coverage independently checkable.
-
-    Args:
-        timestamp: An optional recorded instant.
-
-    Returns:
-        Local time with its timezone, or an explicit unknown marker.
-    """
-    return (
-        timestamp.astimezone().strftime("%b %d %H:%M:%S %Z") if timestamp else "unknown"
     )
 
 
@@ -272,42 +355,36 @@ def recovery(target: Target, observations: tuple[Target, ...]) -> Target | None:
 
 
 def output_metric(
-    label: str,
     phase: str,
     output: Output,
     observations: tuple[Target, ...],
     now: datetime.datetime,
-) -> Metric:
-    """Starting or failing a build cannot renew the last successful output's age.
+) -> OutputMetric:
+    """Starting or failing a build cannot renew the last successful artifact's age.
 
     Args:
-        label: The user-facing artifact name.
         phase: The stage that produces the artifact.
         output: Filesystem evidence about the actual artifact.
         observations: Chronological build evidence.
         now: The observation time.
 
     Returns:
-        Freshness severity and the producing run when known.
+        Freshness severity, timestamp, and the producing run when known.
     """
     target = next(
         (item for item in reversed(observations) if completed(item, phase)),
         None,
     )
     if output.error:
-        return Metric(
-            label=label,
-            text=output.error,
+        return OutputMetric(
+            issue=OutputIssue.UNAVAILABLE,
+            error=output.error,
             health=Health.BAD if output.missing else Health.WARNING,
             target=target,
         )
     timestamp = target.event.timestamp if target else output.modified
     if timestamp is None or timestamp > now:
-        return Metric(
-            label=label,
-            text="Timestamp unknown or in the future",
-            health=Health.WARNING,
-        )
+        return OutputMetric(issue=OutputIssue.UNKNOWN_TIME, health=Health.WARNING)
     elapsed = now - timestamp
     health = (
         Health.BAD
@@ -316,25 +393,20 @@ def output_metric(
         if elapsed >= datetime.timedelta(hours=5)
         else Health.GOOD
     )
-    qualifier = " · OVER 6 HOURS" if health == Health.BAD else ""
-    basis = (
-        "last successful build" if target else "file updated; build history unavailable"
-    )
-    return Metric(
-        label=label,
-        text=f"{age(timestamp, now)} old{qualifier}\n{local_time(timestamp)} · {basis}",
-        health=health,
-        target=target,
-    )
+    return OutputMetric(timestamp=timestamp, health=health, target=target)
 
 
-def report_alignment(report: Metric, kmz: Metric, activity: Metric) -> Metric:
+def report_alignment(
+    report: OutputMetric,
+    kmz: OutputMetric,
+    activity: ActivityMetric,
+) -> OutputMetric:
     """Reports normally follow KMZ publication without indicating a system problem.
 
     Args:
         report: Freshness of the last successful report.
         kmz: Freshness of the latest successful KMZ.
-        activity: The current pipeline activity, independent of historical selection.
+        activity: The latest recorded pipeline activity.
 
     Returns:
         Expected progress or an unresolved mismatch, preserving freshness severity.
@@ -355,25 +427,18 @@ def report_alignment(report: Metric, kmz: Metric, activity: Metric) -> Metric:
     )
     return dataclasses.replace(
         report,
-        text=report.text
-        + (
-            "\nReport generation in progress"
-            if updating
-            else "\nReport has not caught up with the latest KMZ"
-        ),
+        alignment=Alignment.UPDATING if updating else Alignment.LAGGING,
         health=max(report.health, Health.ACTIVE if updating else Health.WARNING),
     )
 
 
 def failure_metric(
     observations: tuple[Target, ...],
-    now: datetime.datetime,
-) -> Metric:
+) -> FailureMetric:
     """Retain historical failures while requiring matching work to prove recovery.
 
     Args:
         observations: Chronological observations across commands.
-        now: The observation time.
 
     Returns:
         The latest failed run and whether its failed work later succeeded.
@@ -388,11 +453,7 @@ def failure_metric(
         None,
     )
     if failure is None:
-        return Metric(
-            label="Last failed run",
-            text="None in available history",
-            health=Health.GOOD,
-        )
+        return FailureMetric(health=Health.GOOD)
     origin = next(
         (
             item
@@ -404,17 +465,9 @@ def failure_metric(
         failure,
     )
     recovered = recovery(origin, observations)
-    description = (
-        f"Recovered {age(recovered.event.timestamp, now)} ago"
-        if recovered
-        else "Recovery not yet recorded"
-    )
-    return Metric(
-        label="Last failed run",
-        text=(
-            f"{age(failure.event.timestamp, now)} ago · {description}\n"
-            f"{path_label(origin.event.path)}"
-        ),
+    return FailureMetric(
+        finished=failure,
+        recovered=recovered,
         health=Health.GOOD if recovered else Health.BAD,
         target=origin,
     )
@@ -455,7 +508,7 @@ def exception_groups(
     Returns:
         Groups ordered by their most recent occurrence, each linked to its origin.
     """
-    groups: dict[tuple[str, str], ExceptionSummary] = {}
+    groups: dict[tuple[str, peri_scribe.phases.Path, str], ExceptionSummary] = {}
     previous: dict[str, Target] = {}
     runs = {run.identifier: run for run in history.state.runs}
     for item in observations:
@@ -478,27 +531,32 @@ def exception_groups(
             or not now - peri_scribe.monitor.history.WINDOW <= timestamp <= now
         ):
             continue
-        scope = path_label(event.path) or str(
-            event.fields.get("feed") or event.fields.get("source") or "Command",
+        context = (
+            ""
+            if event.path
+            else str(
+                event.fields.get("feed") or event.fields.get("source") or "",
+            )
         )
-        key = (description, scope)
+        key = (description, event.path, context)
         prior_group = groups.get(key)
         recovered = recovery(item, observations)
         failed = runs[item.run].status == peri_scribe.monitor.model.Status.FAILED
         health = Health.GOOD if recovered else Health.BAD if failed else Health.WARNING
         outcome = (
-            "Recovered"
+            RecoveryState.RECOVERED
             if recovered
-            else "Failed run"
+            else RecoveryState.FAILED
             if failed
-            else "Recovery unconfirmed"
+            else RecoveryState.UNCONFIRMED
         )
         if prior_group and prior_group.health > health:
             health = prior_group.health
             outcome = prior_group.outcome
         groups[key] = ExceptionSummary(
             description=description,
-            path=scope,
+            path=event.path,
+            context=context,
             occurrences=(prior_group.occurrences if prior_group else 0) + 1,
             runs=(prior_group.runs if prior_group else frozenset()) | {item.run},
             first=prior_group.first if prior_group else timestamp,
@@ -517,13 +575,11 @@ def exception_groups(
 
 def activity_metric(
     history: peri_scribe.monitor.history.History,
-    now: datetime.datetime,
-) -> Metric:
+) -> ActivityMetric:
     """A lock-skipped invocation cannot conceal the run doing the actual work.
 
     Args:
         history: Available run observations.
-        now: The current observation time.
 
     Returns:
         The latest pipeline activity with its complete phase path.
@@ -541,11 +597,7 @@ def activity_metric(
         None,
     )
     if run is None:
-        return Metric(
-            label="Current activity",
-            text="Waiting for pipeline evidence",
-            health=Health.WARNING,
-        )
+        return ActivityMetric(health=Health.WARNING)
     latest = run.events[-1]
     started = next(
         (
@@ -556,18 +608,10 @@ def activity_metric(
         None,
     )
     active = run.status == peri_scribe.monitor.model.Status.ACTIVE
-    text = (
-        (
-            f"{path_label(run.open_path) or 'Command started'}\n"
-            f"Elapsed {age(started, now)} · last recorded progress "
-            f"{age(latest.timestamp, now)} ago · completion not yet recorded"
-        )
-        if active
-        else f"Latest run {run.status} · {age(latest.timestamp, now)} ago"
-    )
-    return Metric(
-        label="Current activity",
-        text=text,
+    return ActivityMetric(
+        started=started,
+        path=run.open_path,
+        status=run.status,
         health=Health.ACTIVE
         if active
         else Health.BAD
@@ -577,7 +621,10 @@ def activity_metric(
     )
 
 
-def publication_metric(files: Files, observations: tuple[Target, ...]) -> Metric:
+def publication_metric(
+    files: Files,
+    observations: tuple[Target, ...],
+) -> PublicationMetric:
     """Explain waiting and unfinished work alongside unconditional output age limits.
 
     Args:
@@ -596,24 +643,26 @@ def publication_metric(files: Files, observations: tuple[Target, ...]) -> Metric
         None,
     )
     if files.error:
-        return Metric(
-            label="Publication",
-            text=files.error,
+        return PublicationMetric(
+            state=PublicationState.UNAVAILABLE,
+            error=files.error,
             health=Health.WARNING,
             target=gate,
         )
     if files.pending:
-        return Metric(
-            label="Publication",
-            text="Rebuild pending: " + " → ".join(files.pending),
+        return PublicationMetric(
+            state=PublicationState.PENDING,
+            pending=files.pending,
             health=Health.WARNING,
             target=gate,
         )
     if gate:
-        reason = str(gate.event.fields.get("reason", "Unknown reason"))
-        return Metric(
-            label="Publication",
-            text=f"Last decision: {reason}",
+        reason = (
+            str(gate.event.fields["reason"]) if "reason" in gate.event.fields else None
+        )
+        return PublicationMetric(
+            state=PublicationState.DECIDED,
+            reason=reason,
             health=Health.GOOD,
             target=gate,
         )
@@ -622,15 +671,13 @@ def publication_metric(files: Files, observations: tuple[Target, ...]) -> Metric
         None,
     )
     if built:
-        return Metric(
-            label="Publication",
-            text="Latest build completed",
+        return PublicationMetric(
+            state=PublicationState.COMPLETED,
             health=Health.GOOD,
             target=built,
         )
-    return Metric(
-        label="Publication",
-        text="No publication decision recorded",
+    return PublicationMetric(
+        state=PublicationState.UNKNOWN,
         health=Health.WARNING,
     )
 
@@ -638,41 +685,37 @@ def publication_metric(files: Files, observations: tuple[Target, ...]) -> Metric
 def coverage_metric(
     history: peri_scribe.monitor.history.History,
     now: datetime.datetime,
-) -> Metric:
-    """Never equate missing or unreadable history with an absence of exceptions.
+) -> CoverageMetric:
+    """Missing or unreadable history cannot establish the absence of exceptions.
 
     Args:
         history: Evidence and its collection diagnostics.
         now: The observation time.
 
     Returns:
-        Explicit availability of the requested 48-hour window.
+        Availability and limitations of the inclusive 48-hour interval.
     """
     if not history.caught_up:
-        text = "Loading history · counts are incomplete"
+        state = CoverageState.LOADING
     elif history.errors:
-        text = "History incomplete · " + "; ".join(history.errors)
+        state = CoverageState.INCOMPLETE
     elif not any(period.start <= now <= period.end for period in history.coverage):
-        return Metric(
-            label="History",
-            text="No log entries in the last 48 hours",
-            health=Health.BAD,
-        )
+        return CoverageMetric(state=CoverageState.EMPTY, health=Health.BAD)
     elif history.undated:
-        text = (
-            f"History incomplete · {history.undated} undated records "
-            "excluded from timed metrics"
-        )
+        state = CoverageState.UNDATED
     else:
-        return Metric(
-            label="History",
-            text="48-hour window loaded from available logs",
-            health=Health.GOOD,
-        )
-    return Metric(label="History", text=text, health=Health.WARNING)
+        return CoverageMetric(state=CoverageState.COMPLETE, health=Health.GOOD)
+    return CoverageMetric(
+        state=state,
+        errors=history.errors,
+        undated=history.undated,
+        health=Health.WARNING,
+    )
 
 
-def recent_metrics(history: peri_scribe.monitor.history.History) -> tuple[Metric, ...]:
+def recent_metrics(
+    history: peri_scribe.monitor.history.History,
+) -> tuple[RunOutcome, ...]:
     """Distinct run outcomes make normal checks and lock contention recognizable.
 
     Args:
@@ -681,35 +724,40 @@ def recent_metrics(history: peri_scribe.monitor.history.History) -> tuple[Metric
     Returns:
         The twelve most recent command outcomes.
     """
-    results: list[Metric] = []
+    results: list[RunOutcome] = []
     for run in reversed(history.state.runs[-12:]):
         last = run.events[-1]
         messages = {event.message for event in run.events}
-        outcome = str(run.status)
+        outcome = {
+            peri_scribe.monitor.model.Status.ACTIVE: Outcome.ACTIVE,
+            peri_scribe.monitor.model.Status.FAILED: Outcome.FAILED,
+            peri_scribe.monitor.model.Status.STOPPED: Outcome.STOPPED,
+            peri_scribe.monitor.model.Status.WAITING: Outcome.WAITING,
+        }.get(run.status, Outcome.COMPLETED)
         health = Health.WARNING
         if run.status == peri_scribe.monitor.model.Status.COMPLETED:
             health = Health.GOOD
             outcome = (
-                "Built outputs"
+                Outcome.BUILT
                 if any(
                     completed(Target(run=run.identifier, event=event), "kmz")
                     for event in run.events
                 )
-                else "Completed"
+                else Outcome.COMPLETED
             )
             if "Another run owns this year; skipping invocation" in messages:
-                outcome = "Skipped · another run held the lock"
+                outcome = Outcome.LOCKED
                 health = Health.WARNING
             elif "Publication gate skipped" in messages:
-                outcome = "Checked · publication deferred"
+                outcome = Outcome.DEFERRED
         elif run.status == peri_scribe.monitor.model.Status.FAILED:
             health = Health.BAD
         elif run.status == peri_scribe.monitor.model.Status.ACTIVE:
             health = Health.ACTIVE
         results.append(
-            Metric(
-                label=local_time(last.timestamp),
-                text=f"{run.command} · {outcome}",
+            RunOutcome(
+                command=run.command,
+                outcome=outcome,
                 health=health,
                 target=Target(run=run.identifier, event=last),
             ),
@@ -723,27 +771,27 @@ def project(
     now: datetime.datetime,
     *,
     observations: tuple[Target, ...] | None = None,
-    tables: View | None = None,
-) -> View:
-    """Derive a live overview independently of whichever historical run is selected.
+    previous: Assessment | None = None,
+) -> Assessment:
+    """Assess current health from complete evidence and artifact observations.
 
     Args:
         history: Compact diagnostic evidence.
         files: Current artifact and recovery snapshots.
-        now: The observation time for ages and the exception window.
+        now: The observation time for freshness and the exception interval.
         observations: Previously sorted evidence from the same history state.
-        tables: Tables from the same evidence and exception window, when unchanged.
+        previous: Facts from the same evidence and exception interval, when unchanged.
 
     Returns:
-        All Status content and links without terminal-specific formatting.
+        Health classifications and their recorded supporting facts.
     """
     if observations is None:
         observations = evidence(history)
     if observations and observations[-1].when > now:
         observations = tuple(item for item in observations if item.when <= now)
-    activity = activity_metric(history, now)
-    kmz = output_metric("KMZ", "kmz", files.kmz, observations, now)
-    report = output_metric("Report", "reports", files.report, observations, now)
+    activity = activity_metric(history)
+    kmz = output_metric("kmz", files.kmz, observations, now)
+    report = output_metric("reports", files.report, observations, now)
     report = report_alignment(report, kmz, activity)
     check = next(
         (
@@ -754,61 +802,37 @@ def project(
         None,
     )
     source = Metric(
-        label="Last successful source check",
-        text=f"{age(check.when, now)} ago · {local_time(check.when)}"
-        if check
-        else "No successful check recorded",
         health=Health.GOOD
         if check and now - check.when <= datetime.timedelta(hours=6)
         else Health.WARNING,
         target=check,
     )
-    failure = failure_metric(observations, now)
+    failure = failure_metric(observations)
     publication = publication_metric(files, observations)
     if files.pending and activity.health == Health.ACTIVE and not files.error:
         publication = dataclasses.replace(
             publication,
-            text="Build in progress · pending: " + " → ".join(files.pending),
+            state=PublicationState.ACTIVE,
             health=Health.ACTIVE,
         )
     metrics = (kmz, report, activity, source, publication, failure)
     coverage = coverage_metric(history, now)
     groups = (
-        tables.exceptions if tables else exception_groups(history, observations, now)
+        previous.exceptions
+        if previous
+        else exception_groups(history, observations, now)
     )
-    exceptions = Metric(
-        label="Exceptions",
-        text=(
-            f"{sum(group.health >= Health.WARNING for group in groups)} groups "
-            "without confirmed recovery"
-        ),
-        health=max((group.health for group in groups), default=Health.GOOD),
+    overall = max(
+        (item.health for item in (*metrics, coverage, *groups)),
+        default=Health.GOOD,
     )
-    problems = sorted(
-        (
-            item
-            for item in (*metrics, coverage, exceptions)
-            if item.health >= Health.WARNING
-        ),
-        key=lambda item: item.health,
-        reverse=True,
-    )
-    overview = Metric(
-        label="Needs attention" if problems else "System okay",
-        text=" · ".join(
-            f"{item.label}: {item.text.splitlines()[0]}" for item in problems[:3]
-        )
-        if problems
-        else "Outputs are current · no unresolved run failure recorded",
-        health=problems[0].health if problems else Health.GOOD,
-    )
-    return View(
-        overview=overview,
+    return Assessment(
+        overview=Metric(health=overall if overall >= Health.WARNING else Health.GOOD),
         metrics=metrics,
         exceptions=groups,
-        recent=tables.recent if tables else recent_metrics(history),
-        transitions=tables.transitions
-        if tables
+        recent=previous.recent if previous else recent_metrics(history),
+        transitions=previous.transitions
+        if previous
         else transition_metrics(observations, failure),
         coverage=coverage,
     )
@@ -816,8 +840,8 @@ def project(
 
 def transition_metrics(
     observations: tuple[Target, ...],
-    failure: Metric,
-) -> tuple[Metric, ...]:
+    failure: FailureMetric,
+) -> tuple[Transition, ...]:
     """Retain meaningful changes after the current state has moved on.
 
     Args:
@@ -827,38 +851,46 @@ def transition_metrics(
     Returns:
         The eight most recent publication, failure, and recovery transitions.
     """
-    transitions: list[tuple[Target, str, Health]] = []
+    transitions: list[Transition] = []
     for item in observations:
         event = item.event
-        label = ""
+        kind = None
+        reason = ""
         health = Health.GOOD
         if completed(item, "kmz"):
-            label = "KMZ updated"
+            kind = TransitionKind.KMZ
         elif completed(item, "reports"):
-            label = "Report updated"
+            kind = TransitionKind.REPORT
         elif event.message.startswith("Publication gate "):
-            label = str(event.fields.get("reason", event.message))
+            kind = TransitionKind.PUBLICATION
+            reason = str(event.fields.get("reason", event.message))
         elif (
             event.message == "Finished command"
             and event.fields.get("status") == "failed"
         ):
-            label = "Run failed"
+            kind = TransitionKind.FAILURE
             health = Health.BAD
-        if label:
-            transitions.append((item, label, health))
-    recovered = recovery(failure.target, observations) if failure.target else None
+        if kind is not None and (kind != TransitionKind.PUBLICATION or reason):
+            transitions.append(
+                Transition(target=item, kind=kind, reason=reason, health=health),
+            )
+    recovered = failure.recovered
     if recovered:
-        transitions.append((recovered, "Failed work recovered", Health.GOOD))
-    return tuple(
-        Metric(
-            label=local_time(item.event.timestamp),
-            text=label,
-            health=health,
-            target=item,
+        transitions.append(
+            Transition(
+                target=recovered,
+                kind=TransitionKind.RECOVERY,
+                health=Health.GOOD,
+            ),
         )
-        for item, label, health in heapq.nlargest(
+    return tuple(
+        heapq.nlargest(
             8,
             transitions,
-            key=lambda transition: transition[0].when,
-        )
+            key=lambda transition: (
+                transition.target.when
+                if transition.target
+                else datetime.datetime.min.replace(tzinfo=datetime.UTC)
+            ),
+        ),
     )

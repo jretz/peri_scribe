@@ -52,7 +52,7 @@ and [geometry sharing and viewer row semantics](lean/geometry_updates.md).
 The identity and recovery checks also cover
 [anonymous source components](lean/component_identity.md),
 [source-validation soundness](lean/source_validation.md),
-[clock rollback during log queries](log_rotation_seeking.md),
+[ordered timestamp log queries](log_rotation_seeking.md),
 [ownership composed with chronological snapshots](lean/projected_snapshots.md),
 [ownership recomputation after acknowledgement](lean/identity_recomputation.md), and
 [validation of durable update intent](tla/durable_update_validation.md).
@@ -70,7 +70,8 @@ Domain extensions cover [coordinate-reference selection](lean/coordinate_referen
 Further checks cover [raw feed decoding](lean/raw_decoding.md),
 [correctable history ownership](lean/identity_transfer.md),
 [complete publication baselines](lean/publication_baseline.md), and
-[monitor task coordination and shutdown](tla/monitor_tasks.md).
+[monitor task coordination and shutdown](tla/monitor_tasks.md), and
+[observable monitor sessions](tla/monitor_session.md).
 
 See the [formal verification guide](../../docs/formal_verification.md) for commands,
 maintenance rules, assumptions, and implementation-conformance requirements.

@@ -9,6 +9,7 @@ import textual.events
 import textual.message
 import textual.widgets
 
+import peri_scribe.monitor.health_presentation
 import peri_scribe.monitor.status
 import peri_scribe.monitor.theme
 import peri_scribe.monitor.widgets
@@ -41,7 +42,9 @@ class OpenEvidence(textual.message.Message):
         self.target = target
 
 
-def metric_text(metric: peri_scribe.monitor.status.Metric) -> rich.text.Text:
+def metric_text(
+    metric: peri_scribe.monitor.health_presentation.Metric,
+) -> rich.text.Text:
     """Literal text prevents source names and exceptions from becoming markup.
 
     Args:
@@ -80,7 +83,10 @@ class StatusLink(textual.widgets.Static, can_focus=True):
         super().__init__(id=identifier, markup=False)
         self.target: peri_scribe.monitor.status.Target | None = None
 
-    def show_metric(self, metric: peri_scribe.monitor.status.Metric) -> None:
+    def show_metric(
+        self,
+        metric: peri_scribe.monitor.health_presentation.Metric,
+    ) -> None:
         """Update color and navigation together so clicks always match the text.
 
         Args:
@@ -127,7 +133,7 @@ class StatusPane(textual.containers.VerticalScroll):
     def __init__(self) -> None:
         """Maintain only presentation caches; the parent owns live evidence."""
         super().__init__(id="status-content")
-        self.view: peri_scribe.monitor.status.View | None = None
+        self.view: peri_scribe.monitor.health_presentation.View | None = None
         self.targets: dict[tuple[str, str], peri_scribe.monitor.status.Target] = {}
 
     @typing.override
@@ -188,7 +194,7 @@ class StatusPane(textual.containers.VerticalScroll):
     def update_table(
         self,
         name: str,
-        metrics: tuple[peri_scribe.monitor.status.Metric, ...],
+        metrics: tuple[peri_scribe.monitor.health_presentation.Metric, ...],
     ) -> None:
         """Preserve a selected observation when newer rows arrive above it.
 
@@ -228,7 +234,7 @@ class StatusPane(textual.containers.VerticalScroll):
             table.move_cursor(row=table.get_row_index(selected))
         table.scroll_to(position.x, position.y, animate=False)
 
-    def show_view(self, view: peri_scribe.monitor.status.View) -> None:
+    def show_view(self, view: peri_scribe.monitor.health_presentation.View) -> None:
         """Refresh live ages even while the Pipeline tab is browsing a past run.
 
         Args:
@@ -263,7 +269,7 @@ class StatusPane(textual.containers.VerticalScroll):
 
     def show_exceptions(
         self,
-        groups: tuple[peri_scribe.monitor.status.ExceptionSummary, ...],
+        groups: tuple[peri_scribe.monitor.health_presentation.ExceptionSummary, ...],
     ) -> None:
         """Keep each count attached to its latest instance when group order changes.
 
@@ -291,9 +297,11 @@ class StatusPane(textual.containers.VerticalScroll):
                 rich.text.Text(key, style=COLORS[group.health]),
                 str(group.occurrences),
                 str(len(group.runs)),
-                peri_scribe.monitor.status.local_time(group.first)
+                peri_scribe.monitor.health_presentation.local_time(group.first)
                 + "\n"
-                + peri_scribe.monitor.status.local_time(group.latest.event.timestamp),
+                + peri_scribe.monitor.health_presentation.local_time(
+                    group.latest.event.timestamp,
+                ),
                 rich.text.Text(
                     f"{SYMBOLS[group.health]} {group.outcome}",
                     style=COLORS[group.health],

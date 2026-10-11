@@ -57,6 +57,8 @@ Additional inventories describe the newer system boundaries:
   successive monitor observations across archive replacement and late plain tails.
 - [Execution assurance](../execution_assurance.md): continuous TLC transition paths and
   fresh-process recovery after actual abrupt exits and kills.
+- [Observable monitor session](monitor_session.md): priority admission, immutable
+  publication versions, coalesced subscriptions, and stop/close boundaries.
 - [Monitor task coordination](monitor_tasks.md): shared evidence ownership, cancellation,
   publication barriers, and asynchronous descriptor shutdown.
 

@@ -12,15 +12,15 @@
     aligned inputs, merged union, and uncovered gap when animation is unavailable.</desc>
   <defs>
     <style>
-      :root { color-scheme:light dark; --background:#fbfcfe; --text:#172e40;
-        --muted:#526779; --edge:#526779; --blue:#eaf3fc; --blue-border:#5791bf;
-        --gold:#fff0cb; --gold-border:#b58a2c; --purple:#f0edfa;
-        --purple-border:#9481c6; --alert:#9c442d; --panel:#f4f7fb; }
-      @media (prefers-color-scheme:dark) { :root { --background:#111820;
-        --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe; --blue:#172c3e;
-        --blue-border:#6198c2; --gold:#44361c; --gold-border:#c4a45f;
-        --purple:#2b253e; --purple-border:#a391d0; --alert:#efa389;
-        --panel:#19232e; } }
+      :root { color-scheme:light dark; --background:#111820; --text:#e4edf5;
+        --muted:#acbdcb; --edge:#9caebe; --blue:#172c3e; --blue-border:#6198c2;
+        --gold:#44361c; --gold-border:#c4a45f; --purple:#2b253e;
+        --purple-border:#a391d0; --alert:#efa389; --panel:#19232e; }
+      @media (prefers-color-scheme:light) { :root { --background:#fbfcfe;
+        --text:#172e40; --muted:#526779; --edge:#526779; --blue:#eaf3fc;
+        --blue-border:#5791bf; --gold:#fff0cb; --gold-border:#b58a2c;
+        --purple:#f0edfa; --purple-border:#9481c6; --alert:#9c442d;
+        --panel:#f4f7fb; } }
       svg { background:var(--background); }
       text { fill:var(--text); font:17px system-ui,sans-serif; }
       .title { font-size:23px; font-weight:700; }

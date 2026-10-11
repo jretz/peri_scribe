@@ -1,4 +1,4 @@
-"""Compaction and complete cached views agree with checked projection transitions."""
+"""Compaction and cached health assessments agree with checked transitions."""
 
 import pathlib
 

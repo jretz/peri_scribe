@@ -11,7 +11,7 @@ import peri_scribe.monitor.status
 import tests.helpers.factories.peri_scribe.monitor.status
 
 
-def test_refresh_reuses_status_until_a_displayed_age_changes() -> None:
+def test_refresh_reuses_health_across_cosmetic_age_changes() -> None:
     now = tests.helpers.factories.peri_scribe.monitor.status.NOW
     history = tests.helpers.factories.peri_scribe.monitor.status.history(
         tests.helpers.factories.peri_scribe.monitor.status.finished("kmz"),
@@ -33,8 +33,8 @@ def test_refresh_reuses_status_until_a_displayed_age_changes() -> None:
         now + datetime.timedelta(minutes=1),
         first,
     )
-    assert later.view != first.view
-    assert later.view.transitions is first.view.transitions
+    assert later is first
+    assert later.assessment.transitions is first.assessment.transitions
 
 
 @pytest.mark.parametrize(
@@ -58,7 +58,11 @@ def test_refresh_matches_fresh_status_across_age_and_expiry_boundaries(
     snapshot = peri_scribe.monitor.projection.refresh(history, files, now)
     later = now + datetime.timedelta(seconds=offset)
     actual = peri_scribe.monitor.projection.refresh(history, files, later, snapshot)
-    assert actual.view == peri_scribe.monitor.status.project(history, files, later)
+    assert actual.assessment == peri_scribe.monitor.status.project(
+        history,
+        files,
+        later,
+    )
 
 
 def test_refresh_tracks_failure_completion_age_separately_from_origin() -> None:
@@ -76,7 +80,11 @@ def test_refresh_tracks_failure_completion_age_separately_from_origin() -> None:
     after = now + datetime.timedelta(seconds=88)
     snapshot = peri_scribe.monitor.projection.refresh(history, files, before)
     actual = peri_scribe.monitor.projection.refresh(history, files, after, snapshot)
-    assert actual.view == peri_scribe.monitor.status.project(history, files, after)
+    assert actual.assessment == peri_scribe.monitor.status.project(
+        history,
+        files,
+        after,
+    )
 
 
 def test_refresh_tracks_active_elapsed_time_independently_of_last_progress() -> None:
@@ -97,7 +105,7 @@ def test_refresh_tracks_active_elapsed_time_independently_of_last_progress() -> 
         files,
         later,
         first,
-    ).view == peri_scribe.monitor.status.project(history, files, later)
+    ).assessment == peri_scribe.monitor.status.project(history, files, later)
 
 
 def test_refresh_invalidates_metadata_and_file_changes() -> None:
@@ -116,7 +124,7 @@ def test_refresh_invalidates_metadata_and_file_changes() -> None:
         files,
         now,
         snapshot,
-    ).view == peri_scribe.monitor.status.project(history, files, now)
+    ).assessment == peri_scribe.monitor.status.project(history, files, now)
 
 
 def test_refresh_invalidates_changed_evidence() -> None:
@@ -132,7 +140,7 @@ def test_refresh_invalidates_changed_evidence() -> None:
         files,
         now,
         snapshot,
-    ).view == peri_scribe.monitor.status.project(updated, files, now)
+    ).assessment == peri_scribe.monitor.status.project(updated, files, now)
 
 
 def test_refresh_invalidates_time_moving_backward() -> None:
@@ -149,7 +157,7 @@ def test_refresh_invalidates_time_moving_backward() -> None:
         files,
         now,
         future,
-    ).view == peri_scribe.monitor.status.project(history, files, now)
+    ).assessment == peri_scribe.monitor.status.project(history, files, now)
 
 
 def test_refresh_empty_history_without_timestamps_has_no_clock_deadline() -> None:
@@ -172,8 +180,30 @@ def test_refresh_handles_far_future_diagnostic_timestamps() -> None:
     )
     files = tests.helpers.factories.peri_scribe.monitor.status.files()
     snapshot = peri_scribe.monitor.projection.refresh(history, files, now)
-    assert snapshot.view == peri_scribe.monitor.status.project(history, files, now)
+    assert snapshot.assessment == peri_scribe.monitor.status.project(
+        history,
+        files,
+        now,
+    )
     assert history.expires is None
+
+
+def test_refresh_rechecks_future_artifact_when_its_timestamp_arrives() -> None:
+    now = tests.helpers.factories.peri_scribe.monitor.status.NOW
+    future = now + datetime.timedelta(seconds=30)
+    history = peri_scribe.monitor.history.History()
+    output = peri_scribe.monitor.status.Output(modified=future)
+    files = peri_scribe.monitor.status.Files(kmz=output, report=output)
+    snapshot = peri_scribe.monitor.projection.refresh(history, files, now)
+    assert snapshot.changes_at == future
+    assert snapshot.assessment.metrics[0].issue == (
+        peri_scribe.monitor.status.OutputIssue.UNKNOWN_TIME
+    )
+    updated = peri_scribe.monitor.projection.refresh(history, files, future, snapshot)
+    assert (
+        updated.assessment.metrics[0].health == peri_scribe.monitor.status.Health.GOOD
+    )
+    assert updated.assessment.metrics[0].timestamp == future
 
 
 @pytest.mark.parametrize(
@@ -222,4 +252,4 @@ def test_refresh_tracks_coverage_across_compacted_progress_and_future_entries(
         now + offset,
         snapshot,
     )
-    assert result.view.coverage.health == expected
+    assert result.assessment.coverage.health == expected

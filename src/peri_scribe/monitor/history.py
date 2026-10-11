@@ -4,6 +4,7 @@ Algorithm reasoning and contracts:
 [Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
 """
 
+import collections
 import collections.abc
 import compression.zstd
 import dataclasses
@@ -12,6 +13,7 @@ import operator
 import pathlib
 import threading
 import typing
+import weakref
 
 import peri_scribe.log_reading
 import peri_scribe.monitor.events
@@ -21,6 +23,11 @@ import peri_scribe.monitor.storage
 
 WINDOW = datetime.timedelta(hours=48)
 BATCH_SIZE = 2000
+MAXIMUM_NORMALIZED_RUNS = 4096
+NORMALIZED_RUNS: collections.OrderedDict[
+    int,
+    weakref.ReferenceType[peri_scribe.monitor.model.Run],
+] = collections.OrderedDict()
 STRUCTURAL_MESSAGES = {
     "Starting command",
     "Finished command",
@@ -81,10 +88,7 @@ def last_time(run: peri_scribe.monitor.model.Run) -> datetime.datetime:
     Returns:
         Its latest timestamp, or an aware minimum when none is known.
     """
-    return max(
-        (event.timestamp for event in run.events if event.timestamp),
-        default=datetime.datetime.min.replace(tzinfo=datetime.UTC),
-    )
+    return run.last_timestamp
 
 
 def retain(
@@ -157,18 +161,7 @@ def append(
         ),
         bounded=False,
     )
-    runs = tuple(
-        dataclasses.replace(
-            run,
-            progress=(),
-            events=tuple(
-                event
-                for event in run.events
-                if event is run.events[-1] or important(event.fields)
-            ),
-        )
-        for run in map(chronological_run, state.runs)
-    )
+    runs = tuple(compact_run(run) for run in state.runs)
     state = dataclasses.replace(state, runs=runs)
     return expire(
         dataclasses.replace(
@@ -195,25 +188,25 @@ def extend_coverage(
         Disjoint inclusive coverage intervals in chronological order.
     """
     maximum = datetime.datetime.max.replace(tzinfo=datetime.UTC)
-    periods = [
-        *coverage,
-        *(
-            Coverage(
-                start=timestamp,
-                end=timestamp + WINDOW if timestamp <= maximum - WINDOW else maximum,
-            )
-            for timestamp in timestamps
-        ),
-    ]
+    maximum_start = maximum - WINDOW
+    periods = [(period.start, period.end) for period in coverage]
+    periods.extend(
+        (timestamp, timestamp + WINDOW if timestamp <= maximum_start else maximum)
+        for timestamp in timestamps
+    )
+    ordered = iter(sorted(periods, key=operator.itemgetter(0)))
+    first = next(ordered, None)
+    if first is None:
+        return ()
     merged: list[Coverage] = []
-    for period in sorted(periods, key=operator.attrgetter("start")):
-        if merged and period.start <= merged[-1].end:
-            merged[-1] = dataclasses.replace(
-                merged[-1],
-                end=max(merged[-1].end, period.end),
-            )
+    current_start, current_end = first
+    for start, end in ordered:
+        if start <= current_end:
+            current_end = max(current_end, end)
         else:
-            merged.append(period)
+            merged.append(Coverage(start=current_start, end=current_end))
+            current_start, current_end = start, end
+    merged.append(Coverage(start=current_start, end=current_end))
     return tuple(merged)
 
 
@@ -244,6 +237,36 @@ def expire(history: History, now: datetime.datetime) -> History:
         retained_at=now,
         expires=min(deadlines, default=None),
     )
+
+
+def compact_run(
+    run: peri_scribe.monitor.model.Run,
+) -> peri_scribe.monitor.model.Run:
+    """Reuse normalized immutable runs without retaining discarded run histories.
+
+    Args:
+        run: Newly reconstructed or previously compacted evidence.
+
+    Returns:
+        Chronological structural evidence and its most recent ordinary event.
+    """
+    reference = NORMALIZED_RUNS.get(id(run))
+    if reference is not None and reference() is run:
+        return run
+    ordered = chronological_run(run)
+    compacted = dataclasses.replace(
+        ordered,
+        progress=(),
+        events=tuple(
+            event
+            for event in ordered.events
+            if event is ordered.events[-1] or important(event.fields)
+        ),
+    )
+    NORMALIZED_RUNS[id(compacted)] = weakref.ref(compacted)
+    if len(NORMALIZED_RUNS) > MAXIMUM_NORMALIZED_RUNS:
+        NORMALIZED_RUNS.popitem(last=False)
+    return compacted
 
 
 def chronological_run(
@@ -378,6 +401,93 @@ def context_records(
             timestamp = peri_scribe.monitor.events.timestamp(fields.get("timestamp"))
             if timestamp is not None and timestamp < cutoff:
                 yield fields
+
+
+def reverse_lines(
+    stream: typing.BinaryIO,
+    end: int,
+    stopped: threading.Event,
+    *,
+    block_size: int = 64 * 1024,
+) -> typing.Iterator[bytes]:
+    """Recover nearby context without retaining unrelated earlier records.
+
+    Args:
+        stream: An uncompressed component protected by the reader's shared lock.
+        end: The byte immediately after a complete record's newline, or zero.
+        stopped: Cancellation shared with the owning reader.
+        block_size: Maximum bytes read at once, independent of individual line size.
+
+    Yields:
+        Complete nonempty records in reverse file order, without their newlines.
+    """
+    remaining = end
+    fragments: list[bytes] = []
+    while remaining and not stopped.is_set():
+        size = min(block_size, remaining)
+        remaining -= size
+        stream.seek(remaining)
+        parts = stream.read(size).split(b"\n")
+        if len(parts) == 1:
+            fragments.append(parts[0])
+            continue
+        ending = parts.pop() + b"".join(reversed(fragments))
+        fragments = [parts[0]]
+        if ending.strip():
+            yield ending
+        for line in reversed(parts[1:]):
+            if stopped.is_set():
+                return
+            if line.strip():
+                yield line
+    if not stopped.is_set() and (first := b"".join(reversed(fragments))).strip():
+        yield first
+
+
+def backward_context(
+    path: pathlib.Path,
+    cutoffs: collections.abc.Mapping[str, datetime.datetime],
+    stopped: threading.Event,
+) -> tuple[dict[str, object], ...] | None:
+    """Use local command starts only when the whole selected context is available.
+
+    A command ID starts with its unique start record. Collecting before publication
+    permits a streamed fallback when a start belongs to another month or archive.
+
+    Args:
+        path: A monthly representative selected under the reader's shared lock.
+        cutoffs: The exclusive upper timestamp boundary for each missing command.
+        stopped: Cancellation shared with the owning reader.
+
+    Returns:
+        Complete selected context in file order, or None to use streamed recovery.
+    """
+    if not cutoffs or stopped.is_set():
+        return ()
+    if path.suffix == ".zst" or peri_scribe.log_reading.log_components(path) != (path,):
+        return None
+    pending = set(cutoffs)
+    selected = []
+    with path.open("rb") as stream:
+        peri_scribe.log_reading.seek_since(stream, max(cutoffs.values()))
+        for line in reverse_lines(stream, stream.tell(), stopped):
+            if stopped.is_set():
+                return ()
+            fields = peri_scribe.monitor.events.parse_record(
+                line.decode("utf-8", errors="replace"),
+            )
+            identifier = str(fields.get("run_id") or "")
+            if identifier not in pending or not important(fields):
+                continue
+            timestamp = peri_scribe.monitor.events.timestamp(fields.get("timestamp"))
+            if timestamp is None or timestamp >= cutoffs[identifier]:
+                continue
+            selected.append(fields)
+            if fields.get("event") == "Starting command":
+                pending.remove(identifier)
+                if not pending:
+                    return tuple(reversed(selected))
+    return () if stopped.is_set() else None
 
 
 class Reader:
@@ -542,8 +652,11 @@ class Reader:
                 break
             started: set[str] = set()
             try:
+                records = backward_context(path, cutoffs, self.stopped)
                 for batch in record_batches(
-                    context_records(
+                    records
+                    if records is not None
+                    else context_records(
                         records_from(path),
                         cutoffs,
                         self.stopped,

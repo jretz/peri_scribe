@@ -145,21 +145,27 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 | Module | Explanation or local assessment |
 | --- | --- |
 | [__init__.py](../../src/peri_scribe/monitor/__init__.py) | **0/0/0/0/0**: package exports or marker; no decision algorithm. |
-| [app.py](../../src/peri_scribe/monitor/app.py) | [monitor evidence](monitor-evidence.md); [worker lifetimes](worker-lifetimes.md) |
+| [app.py](../../src/peri_scribe/monitor/app.py) | [monitor presentation](monitor-presentation.md) |
 | [changes.py](../../src/peri_scribe/monitor/changes.py) | [monitor evidence](monitor-evidence.md) |
 | [cli.py](../../src/peri_scribe/monitor/cli.py) | Straightforward **0/1/0/0/1** (2). Independent command selection and one application-run boundary. |
+| [controller.py](../../src/peri_scribe/monitor/controller.py) | [monitor presentation](monitor-presentation.md) |
+| [display.py](../../src/peri_scribe/monitor/display.py) | [monitor presentation](monitor-presentation.md) |
 | [events.py](../../src/peri_scribe/monitor/events.py) | [monitor evidence](monitor-evidence.md) |
+| [health_presentation.py](../../src/peri_scribe/monitor/health_presentation.py) | [monitor presentation](monitor-presentation.md); [monitor evidence](monitor-evidence.md) |
 | [history.py](../../src/peri_scribe/monitor/history.py) | [monitor evidence](monitor-evidence.md) |
 | [model.py](../../src/peri_scribe/monitor/model.py) | [monitor evidence](monitor-evidence.md) |
 | [presentation.py](../../src/peri_scribe/monitor/presentation.py) | Straightforward **0/1/1/1/0** (3). Independent display rules, ordinary unit formatting and bounded row/text materialization. |
 | [projection.py](../../src/peri_scribe/monitor/projection.py) | [monitor evidence](monitor-evidence.md) |
+| [rendering.py](../../src/peri_scribe/monitor/rendering.py) | [monitor presentation](monitor-presentation.md) |
 | [screenshots.py](../../src/peri_scribe/monitor/screenshots.py) | Straightforward **1/1/0/1/1** (4). One capture sequence, timestamp naming rule, bounded screen rows and exclusive file creation. |
+| [session.py](../../src/peri_scribe/monitor/session.py) | [observable monitor sessions](monitor-sessions.md) |
 | [sharing.py](../../src/peri_scribe/monitor/sharing.py) | [monitor evidence](monitor-evidence.md) |
 | [status.py](../../src/peri_scribe/monitor/status.py) | [monitor evidence](monitor-evidence.md) |
 | [status_widgets.py](../../src/peri_scribe/monitor/status_widgets.py) | Straightforward **1/1/0/1/0** (3). Widget focus/refresh state, independent metric rendering and ordinary displayed rows. |
 | [storage.py](../../src/peri_scribe/monitor/storage.py) | [monitor evidence](monitor-evidence.md); [log retention](log-retention.md) |
 | [striping.py](../../src/peri_scribe/monitor/striping.py) | [terminal rendering](terminal-rendering.md) |
 | [tasks.py](../../src/peri_scribe/monitor/tasks.py) | [worker lifetimes](worker-lifetimes.md) |
+| [terminal_contract.py](../../src/peri_scribe/monitor/terminal_contract.py) | **0/0/0/0/0**: structural presentation interfaces; no executable decision policy. |
 | [theme.py](../../src/peri_scribe/monitor/theme.py) | Straightforward **0/1/0/0/0** (1). Independent constants map statuses to fixed colors. |
 | [widgets.py](../../src/peri_scribe/monitor/widgets.py) | [terminal rendering](terminal-rendering.md) |
 

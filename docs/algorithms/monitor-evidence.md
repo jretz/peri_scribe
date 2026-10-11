@@ -47,6 +47,23 @@ for recent runs whose command start lies before the window, scanning older month
 those starts are found. Context records precede each run's recent cutoff and are tracked
 separately to avoid repeated restoration.
 
+For a month represented by one plain file, binary-seek to the greatest missing-run cutoff
+and scan backward in 64 KiB blocks. Retain only important dated records strictly before
+their own run's cutoff, stopping each run at its command start. Command IDs are unique to
+an invocation and its start precedes its other records. Once all selected starts are
+found, reverse the selected records and ingest them in their original file order. The
+recent/context timestamp partitions stay disjoint, including equal cutoff timestamps.
+
+Publish no tentative backward result until every requested start is present. If any start
+is absent from that month, use the streamed forward context pass and continue into older
+months. Archived or mixed archive/plain months use that same streamed path, retaining
+receipt-based occurrence identity and avoiding backward decompression. Both searches run
+under the same shared rotation lock as catch-up; shutdown is checked between reverse
+blocks and records. Let B be bytes examined before the last required start, C selected
+context bytes, and L the longest record. Backward scanning costs O(B) time and O(C + L +
+64 KiB) memory; fragments of a large record are joined once. A missing start can require
+one reverse pass plus the linear fallback. No index or persistent cache is written.
+
 Run IDs keep concurrent commands separate. Logging assigns command IDs, records nested
 phase instances through context variables, validates catalogue parentage, and measures
 duration with a monotonic performance clock. Readers prefer explicit instance segments,
@@ -60,6 +77,47 @@ Legacy records without IDs get observation-local grouping. Interactive state bou
 and event rows; compact health state instead keeps structural messages, exceptions and
 each run's last event. Shared immutable strings and encoded phase paths reduce repeated
 metadata without sharing mutable decoded containers between callers.
+
+### Batched reconstruction and bounded reuse
+
+The representation changes retain the evidence contract above. Their separate complexity
+assessment is **2/2/1/2/0 = 7 (involved)**: phase ancestry depends on record order,
+retention and terminal outcomes interact, coverage uses interval union, and immutable
+batching avoids repeated reconstruction. They add no external effects or ownership policy.
+
+Decode ordinary JSON in the native decoder, falling back to the standard decoder for
+valid syntax outside that decoder's accepted domain. Retained values, integer precision,
+and float values remain unchanged. Slot-backed events avoid per-instance dictionaries.
+Cache short timestamp parsing (4,096 entries) and short phase encodings (512 entries),
+sharing only immutable results. Long inputs bypass these caches. Raw phase metadata is
+decoded into independent containers on access. Other nested JSON fields also use
+immutable serialized values, and each access materializes an independent container.
+Copying the record's top-level mapping and isolating nested values prevents either a
+caller or a subscriber from mutating a published event through a retained input alias.
+
+Within a batch, collect each command's events and phase stack in local mutable buffers,
+then freeze each changed command once. Preserve event order, sequence numbers, legacy
+command grouping, ancestry, outcomes, and bounded-retention semantics. A command's latest
+timestamp is computed once per immutable command version. Compaction recognizes already
+normalized command objects with a bounded weak-reference identity table (4,096 entries),
+so unchanged commands do not repeatedly traverse their event histories. Identity reuse
+must also match the live weak reference; an integer object ID alone is insufficient.
+Externally constructed histories still take the ordinary normalization path.
+
+For example, a new batch extends command B but leaves A unchanged. Reuse A's compact
+immutable events, compact B's new version, and extend coverage with timestamps from
+**every** new record before discarding ordinary verbose events. Retaining only important
+timestamps would create false coverage gaps. Coverage merging constructs final interval
+objects after scalar endpoints are merged, avoiding one allocation per covered record.
+
+For a batch of B records and retained R commands, ingestion traverses new records and
+changed command evidence rather than every old event per batch. Retention still sorts
+R commands, costing O(R log R), and final state construction remains O(R). Auxiliary
+buffers are proportional to the batch and changed command evidence; caches have fixed
+entry limits and do not retain complete old histories. Pure reconstruction remains
+checked against the Lean oracle; focused tests cover immutable-container independence,
+cache eviction, mixed explicit/legacy identities, and phase-stack carry-over across
+batches. The caches alter representation and work reuse, not domain policy.
 
 For every observed timestamp t, contribute coverage interval [t, t + 48 hours]. Sort and
 merge overlapping inclusive intervals. Use all observed records for coverage, including
@@ -78,11 +136,12 @@ comparisons retain the alignment, merge, and gap with reduced motion or no anima
 Coverage expires one microsecond after hour 72; the animation does not depict time at
 microsecond resolution.*
 
-The status projection caches evidence tables separately from display metrics. Reuse the
+The status projection caches evidence facts separately from presentation. Reuse the
 whole snapshot only with unchanged immutable state, equal metadata/files, forward time,
 and no reached deadline. Reuse evidence tables until a future observation becomes current
-or an exception leaves its inclusive window. Recompute display at age-unit boundaries,
-the strict six-hour freshness boundary, and coverage start/expiry. Backward clocks force
+or an exception leaves its inclusive window. Recompute health at the strict six-hour
+freshness boundary and coverage start/expiry. Presentation separately updates age text at
+age-unit boundaries. Backward clocks force
 re-evaluation. Successful nonfuture completion can acknowledge a source check; a failed
 attempt cannot be treated as a successful refresh.
 

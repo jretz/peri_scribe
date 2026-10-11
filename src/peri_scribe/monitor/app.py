@@ -5,13 +5,7 @@ Algorithm reasoning and contracts:
 [Worker lifetimes](../../../docs/algorithms/worker-lifetimes.md)
 """
 
-import asyncio
-import compression.zstd
-import dataclasses
-import datetime
-import functools
 import pathlib
-import time
 import typing
 
 import rich.json
@@ -22,25 +16,18 @@ import textual.containers
 import textual.widgets
 import textual.widgets.tree
 
-import peri_scribe.monitor.changes
+import peri_scribe.monitor.controller
 import peri_scribe.monitor.events
-import peri_scribe.monitor.history
 import peri_scribe.monitor.model
 import peri_scribe.monitor.presentation
-import peri_scribe.monitor.projection
-import peri_scribe.monitor.status
+import peri_scribe.monitor.rendering
 import peri_scribe.monitor.status_widgets
 import peri_scribe.monitor.storage
 import peri_scribe.monitor.striping
-import peri_scribe.monitor.tasks
 import peri_scribe.monitor.theme
 import peri_scribe.monitor.widgets
 import peri_scribe.paths
 import peri_scribe.phases
-from measurement_units import units
-
-
-POLL_INTERVAL = 500 * units.milliseconds
 
 
 class MonitorApp(peri_scribe.monitor.striping.StripedApp):
@@ -104,28 +91,19 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
         self.report_path = report_path
         self.kmz_path = peri_scribe.paths.kmz_path(year_directory)
         self.branches = branches
-        self.follower = peri_scribe.monitor.storage.Follower(year_directory / "logs")
-        self.history_reader = peri_scribe.monitor.history.Reader(
-            year_directory / "logs",
-        )
-        self.files_changed = True
-        self.reconcile_at = 0.0
-        self.watching_stopped = asyncio.Event()
-        self.status_snapshot: peri_scribe.monitor.projection.Snapshot | None = None
-        self.state = peri_scribe.monitor.model.State()
-        self.visible_state = self.state
+        self.visible_state = peri_scribe.monitor.model.State()
         self.selected_run = ""
         self.selected_phase: peri_scribe.phases.Path = ()
         self.following = True
-        self.report = peri_scribe.monitor.storage.Report()
-        self.rendered_report = self.report
-        self.operations = peri_scribe.monitor.tasks.Owner()
-        self.archives: tuple[pathlib.Path, ...] = ()
-        self.loaded_archives: set[pathlib.Path] = set()
-        self.rows: dict[int, peri_scribe.monitor.events.Event] = {}
+        self.rendered_report = peri_scribe.monitor.storage.Report()
+        self.controller = peri_scribe.monitor.controller.Controller(self)
+        self.rows: dict[
+            textual.widgets.DataTable,
+            dict[str, peri_scribe.monitor.events.Event],
+        ] = {}
         self.tree_nodes: dict[
             peri_scribe.phases.Path,
-            textual.widgets.tree.TreeNode[peri_scribe.monitor.model.PhaseView],
+            textual.widgets.tree.TreeNode[peri_scribe.monitor.model.PhaseState],
         ] = {}
 
     @typing.override
@@ -188,7 +166,7 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
         yield textual.widgets.Footer()
 
     async def on_mount(self) -> None:
-        """Load existing state before attaching the recurring read-only observer."""
+        """Attach presentation to the observable session after controls exist."""
         self.sub_title = str(self.year_directory)
         for table in self.query(peri_scribe.monitor.widgets.EventTable):
             table.add_columns("Time", "Level", "Event")
@@ -197,23 +175,15 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
             "Command",
             "Outcome",
         )
-        self.run_worker(watch_files(self))
-        await self.refresh_files()
-        self.set_interval(
-            POLL_INTERVAL.m_as("seconds"),
-            functools.partial(self.call_later, refresh_clock, self),
-        )
+        await self.controller.start()
 
     async def on_unmount(self) -> None:
-        """Close retained log handles after the presentation exits."""
-        self.watching_stopped.set()
-        self.history_reader.stopped.set()
-        await self.operations.close(functools.partial(close_readers, self))
+        """Detach presentation and settle admitted work before releasing controls."""
+        await self.controller.close()
 
     async def refresh_files(self) -> None:
-        """Keep health live while reserving report work for its visible tab."""
-        await self.operations.run(functools.partial(refresh_owned, self))
-        await render_report(self)
+        """Forward an explicit refresh request to the presentation controller."""
+        await self.controller.refresh()
 
     def current_run(self) -> peri_scribe.monitor.model.Run:
         """Keep a stable selection when the observer is paused or looking at history.
@@ -233,87 +203,8 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
         )
 
     def render_state(self) -> None:
-        """Keep table positions stable while rendering updated projections."""
-        run = self.current_run()
-        projection = peri_scribe.monitor.model.phase_tree(run, self.branches)
-        tree = self.query_one("#phase-tree", textual.widgets.Tree)
-        previous = tree.scroll_offset
-        expanded = {path: node.is_expanded for path, node in self.tree_nodes.items()}
-        cursor = tree.cursor_node
-        cursor_path = cursor.data.path if cursor is not None and cursor.data else ()
-        tree.clear()
-        self.tree_nodes.clear()
-        for phase in projection.phases:
-            parent = self.tree_nodes.get(phase.path[:-1], tree.root)
-            self.tree_nodes[phase.path] = parent.add(
-                peri_scribe.monitor.presentation.phase_label(phase),
-                data=phase,
-                expand=expanded.get(phase.path, True),
-            )
-        tree.root.expand()
-        if cursor_path in self.tree_nodes:
-            tree.call_after_refresh(tree.move_cursor, self.tree_nodes[cursor_path])
-        tree.scroll_to(previous.x, previous.y, animate=False)
-        if self.selected_phase not in self.tree_nodes:
-            self.selected_phase = ()
-        reasons = [
-            *projection.reasons,
-            *(
-                f"Trimmed {omission.path[-1].phase}: {omission.reason}"
-                for omission in projection.omissions
-            ),
-        ]
-        self.query_one("#decisions", textual.widgets.Static).update("\n".join(reasons))
-        self.rows.clear()
-        for stream in self.query(peri_scribe.monitor.widgets.Stream):
-            self.render_stream(stream, run)
-        table = self.query_one("#run-table", peri_scribe.monitor.widgets.TintedTable)
-        row = table.cursor_row
-        table.clear()
-        table.row_tints = tuple(
-            peri_scribe.monitor.theme.RUN_TINTS.get(item.status)
-            for item in reversed(self.state.runs)
-        )
-        for item in reversed(self.state.runs):
-            table.add_row(
-                *peri_scribe.monitor.presentation.run_cells(item),
-                key=item.identifier,
-            )
-        table.move_cursor(row=row)
-
-    def render_stream(
-        self,
-        stream: peri_scribe.monitor.widgets.Stream,
-        run: peri_scribe.monitor.model.Run,
-    ) -> None:
-        """Use the same domain filter for both terminal log layouts.
-
-        Args:
-            stream: The terminal controls to populate.
-            run: The selected domain run.
-        """
-        events = peri_scribe.monitor.model.filter_events(
-            run,
-            minimum_level=str(stream.query_one(textual.widgets.Select).value),
-            query=stream.query_one(textual.widgets.Input).value,
-            path=self.selected_phase if stream.id == "pipeline-stream" else (),
-        )
-        table = stream.query_one(peri_scribe.monitor.widgets.EventTable)
-        row = table.cursor_row
-        position = table.scroll_offset
-        table.clear()
-        table.row_tints = tuple(
-            peri_scribe.monitor.theme.EVENT_TINTS.get(event.level) for event in events
-        )
-        for event in events:
-            self.rows[event.sequence] = event
-            table.add_row(
-                *peri_scribe.monitor.presentation.event_cells(event),
-                key=str(event.sequence),
-            )
-        table.move_cursor(row=max(0, len(events) - 1) if self.following else row)
-        if not self.following:
-            table.scroll_to(position.x, position.y, animate=False)
+        """Schedule preparation from the latest controls without blocking input."""
+        self.controller.schedule_display()
 
     @textual.on(peri_scribe.monitor.status_widgets.OpenEvidence)
     async def open_status_evidence(
@@ -326,9 +217,7 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
             message: The live observation selected in Status.
         """
         message.stop()
-        await self.operations.run(
-            functools.partial(open_evidence_owned, self, message.target),
-        )
+        await self.controller.open_evidence(message.target)
 
     @textual.on(textual.widgets.Tree.NodeSelected, "#phase-tree")
     def select_phase(self, event: textual.widgets.Tree.NodeSelected) -> None:
@@ -355,16 +244,17 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
         """
         if event.data_table.id == "run-table":
             self.following = False
-            self.visible_state = self.state
+            self.visible_state = self.controller.snapshot.records
             self.selected_run = str(event.row_key.value)
             self.selected_phase = ()
             self.action_view("pipeline")
             self.render_state()
         else:
-            selected = self.rows[int(str(event.row_key.value))]
-            self.query_one("#details", textual.widgets.Static).update(
-                rich.json.JSON(peri_scribe.monitor.presentation.details(selected)),
-            )
+            selected = self.rows.get(event.data_table, {}).get(str(event.row_key.value))
+            if selected is not None:
+                self.query_one("#details", textual.widgets.Static).update(
+                    rich.json.JSON(peri_scribe.monitor.presentation.details(selected)),
+                )
 
     @textual.on(textual.widgets.Input.Changed)
     @textual.on(textual.widgets.Select.Changed)
@@ -394,13 +284,13 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
         self.query_one("#inspection").display = show
         self.query_one("#inspection-divider").display = show
         self.query_one("#decisions").display = show
-        if event.pane.id == "report":
-            await render_report(self)
+        peri_scribe.monitor.rendering.show_activity(self)
+        self.run_worker(self.controller.activate(event.pane.id or "status"))
 
     @textual.on(textual.widgets.Button.Pressed, "#older")
     async def load_older(self) -> None:
         """Load archived history independently of current log collection."""
-        await self.operations.run(functools.partial(load_older_owned, self))
+        await self.controller.load_older()
 
     def action_view(self, name: str) -> None:
         """Expose direct keyboard navigation without coupling tab names to domain data.
@@ -420,8 +310,12 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
     def action_live(self) -> None:
         """Return both log views to the newest retained command and event."""
         self.following = True
-        self.visible_state = self.state
-        self.selected_run = self.state.runs[-1].identifier if self.state.runs else ""
+        self.visible_state = self.controller.snapshot.records
+        self.selected_run = (
+            self.controller.snapshot.records.runs[-1].identifier
+            if self.controller.snapshot.records.runs
+            else ""
+        )
         self.selected_phase = ()
         self.render_state()
 
@@ -438,318 +332,3 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
         for field in self.query(textual.widgets.Input):
             field.value = ""
         self.render_state()
-
-
-async def open_evidence_owned(
-    app: MonitorApp,
-    target: peri_scribe.monitor.status.Target,
-) -> None:
-    """Publish selected evidence only while the operation's presentation is mounted.
-
-    Args:
-        app: The observer holding exclusive evidence ownership.
-        target: The health observation whose original run should be inspected.
-    """
-    try:
-        run = await asyncio.to_thread(
-            peri_scribe.monitor.history.load_run,
-            app.year_directory / "logs",
-            target.run,
-        )
-    except (OSError, EOFError, compression.zstd.ZstdError) as error:
-        if presentation_available(app):
-            app.notify(f"Unable to load run: {error}", severity="error")
-        return
-    if not presentation_available(app):
-        return
-    if not run.events:
-        app.notify(
-            "The selected run's logs are no longer available",
-            severity="warning",
-        )
-        return
-    app.following = False
-    app.selected_run = run.identifier
-    app.visible_state = dataclasses.replace(
-        app.state,
-        runs=(
-            *tuple(
-                item for item in app.state.runs if item.identifier != run.identifier
-            ),
-            run,
-        ),
-    )
-    selected = next(
-        (
-            event
-            for event in reversed(run.events)
-            if event.fields == target.event.fields
-        ),
-        run.events[-1],
-    )
-    app.selected_phase = selected.path
-    stream = app.query_one("#pipeline-stream", peri_scribe.monitor.widgets.Stream)
-    stream.query_one(textual.widgets.Input).value = ""
-    stream.query_one(textual.widgets.Select).value = "debug"
-    app.action_view("pipeline")
-    app.render_state()
-    app.query_one("#details", textual.widgets.Static).update(
-        rich.json.JSON(peri_scribe.monitor.presentation.details(selected)),
-    )
-    table = stream.query_one(peri_scribe.monitor.widgets.EventTable)
-    table.move_cursor(row=table.get_row_index(str(selected.sequence)))
-    table.focus()
-
-
-def close_readers(app: MonitorApp) -> None:
-    """Retire both retained cursors only after their owning operations finish.
-
-    Args:
-        app: The terminal observer whose operation owns the evidence state.
-    """
-    app.follower.close()
-    app.history_reader.close()
-
-
-async def refresh_owned(app: MonitorApp) -> None:
-    """Publish a complete evidence snapshot while excluding overlapping readers.
-
-    Args:
-        app: The terminal observer whose operation owns the evidence state.
-    """
-    batch = await asyncio.to_thread(app.follower.poll)
-    state = app.state
-    if batch.records:
-        state = await asyncio.to_thread(
-            peri_scribe.monitor.model.append_records,
-            app.state,
-            batch.records,
-        )
-    now = datetime.datetime.now(datetime.UTC)
-    history = await asyncio.to_thread(app.history_reader.catch_up, now)
-    files = await asyncio.to_thread(
-        peri_scribe.monitor.status.read_files,
-        app.year_directory,
-        app.kmz_path,
-        app.report_path,
-    )
-    if not presentation_available(app):
-        return
-    app.state = state
-    app.archives = batch.archives
-    app.query_one("#older", textual.widgets.Button).disabled = not any(
-        path not in app.loaded_archives for path in app.archives
-    )
-    if batch.records:
-        if app.following:
-            app.visible_state = app.state
-            app.selected_run = app.state.runs[-1].identifier
-        app.render_state()
-    elif not app.state.runs:
-        app.render_state()
-    peri_scribe.monitor.widgets.update_content(
-        app.query_one("#file-status", textual.widgets.Static),
-        "\n".join(batch.errors) or ("Waiting for logs" if not app.state.runs else ""),
-    )
-    show_status(app, history, files, now)
-    app.files_changed |= not batch.caught_up
-    app.reconcile_at = (
-        time.monotonic()
-        + peri_scribe.monitor.changes.RECONCILE_INTERVAL.m_as("seconds")
-    )
-
-
-async def load_older_owned(app: MonitorApp) -> None:
-    """Merge archives with the latest evidence under the same publication owner.
-
-    Args:
-        app: The terminal observer whose operation owns the evidence state.
-    """
-    path = next(
-        (path for path in app.archives if path not in app.loaded_archives),
-        None,
-    )
-    if path is None:
-        return
-    batch = await asyncio.to_thread(peri_scribe.monitor.storage.read_archive, path)
-    current = sorted(
-        (
-            event
-            for run in app.state.runs
-            for event in peri_scribe.monitor.model.evidence(run)
-        ),
-        key=lambda event: event.sequence,
-    )
-    state = await asyncio.to_thread(
-        peri_scribe.monitor.model.append_records,
-        peri_scribe.monitor.model.State(),
-        (*batch.records, *(dict(event.fields) for event in current)),
-    )
-    if not presentation_available(app):
-        return
-    app.loaded_archives.add(path)
-    app.state = state
-    app.visible_state = app.state
-    peri_scribe.monitor.widgets.update_content(
-        app.query_one("#file-status", textual.widgets.Static),
-        "\n".join(batch.errors),
-    )
-    app.render_state()
-
-
-async def watch_files(app: MonitorApp) -> None:
-    """Coalesce notifications while the UI keeps ownership of file reads.
-
-    Args:
-        app: The observer collecting native change hints.
-    """
-    async for _ in peri_scribe.monitor.changes.watch(
-        app.year_directory,
-        app.watching_stopped,
-    ):
-        app.files_changed = True
-
-
-async def refresh_clock(app: MonitorApp) -> None:
-    """Advance ages independently of reads and reconcile native notifications.
-
-    Args:
-        app: The observer whose display and inputs may need refreshing.
-    """
-    refreshed = await app.operations.run(functools.partial(refresh_clock_owned, app))
-    if refreshed:
-        await render_report(app)
-
-
-async def refresh_clock_owned(app: MonitorApp) -> bool:
-    """Keep expiration folds from overwriting an in-flight evidence reader.
-
-    Args:
-        app: The observer holding exclusive ownership of its evidence state.
-
-    Returns:
-        Whether a file refresh also requires a visible report refresh.
-    """
-    if not app.is_running or not app.query("#views"):
-        return False
-    if app.files_changed or time.monotonic() >= app.reconcile_at:
-        app.files_changed = False
-        await refresh_owned(app)
-        return True
-    if app.status_snapshot is not None:
-        now = datetime.datetime.now(datetime.UTC)
-        history = peri_scribe.monitor.history.append(
-            app.history_reader.history,
-            (),
-            now,
-        )
-        app.history_reader.history = history
-        show_status(app, history, app.status_snapshot.files, now)
-    return False
-
-
-def show_status(
-    app: MonitorApp,
-    history: peri_scribe.monitor.history.History,
-    files: peri_scribe.monitor.status.Files,
-    now: datetime.datetime,
-) -> None:
-    """Keep live metrics and the activity banner current without rereading files.
-
-    Args:
-        app: The observer presenting live status.
-        history: Current health evidence.
-        files: Latest observed artifact metadata.
-        now: The current wall-clock time.
-    """
-    app.status_snapshot = peri_scribe.monitor.projection.refresh(
-        history,
-        files,
-        now,
-        app.status_snapshot,
-    )
-    app.query_one(peri_scribe.monitor.status_widgets.StatusPane).show_view(
-        app.status_snapshot.view,
-    )
-    run = app.current_run()
-    pending = app.state.sequence - app.visible_state.sequence
-    description = peri_scribe.monitor.presentation.activity(
-        run,
-        datetime.datetime.now(datetime.UTC),
-    )
-    mode = "FOLLOW" if app.following else f"PAUSED · {pending} new events"
-    peri_scribe.monitor.widgets.update_content(
-        app.query_one("#activity", textual.widgets.Static),
-        "LIVE STATUS · select an observation to inspect its Pipeline evidence"
-        if app.query_one("#views", textual.widgets.TabbedContent).active == "status"
-        else f"{mode} · {description}",
-        layout=False,
-    )
-
-
-def presentation_available(app: MonitorApp) -> bool:
-    """Make shutdown's publication barrier independent of framework callback ordering.
-
-    Args:
-        app: The terminal observer whose state may be presented.
-
-    Returns:
-        Whether new publication is permitted on the mounted presentation.
-    """
-    return bool(
-        not app.operations.stopped.is_set() and app.is_running and app.query("#views"),
-    )
-
-
-def report_visible(app: MonitorApp) -> bool:
-    """Limit report work to a selected tab that remains mounted during file reads.
-
-    Args:
-        app: The terminal observer whose report may be selected.
-
-    Returns:
-        Whether its report tab is currently available and selected.
-    """
-    return bool(
-        presentation_available(app)
-        and app.query_one("#views", textual.widgets.TabbedContent).active == "report",
-    )
-
-
-async def render_report(app: MonitorApp) -> None:
-    """Read and render the visible report while preserving its reading position.
-
-    Args:
-        app: The terminal observer whose report is being read.
-    """
-    await app.operations.run(functools.partial(render_report_owned, app))
-
-
-async def render_report_owned(app: MonitorApp) -> None:
-    """Keep report publication inside the same lifetime as its file and UI work.
-
-    Args:
-        app: The terminal observer holding exclusive evidence ownership.
-    """
-    if not report_visible(app):
-        return
-    report = await asyncio.to_thread(
-        peri_scribe.monitor.storage.read_report,
-        app.report_path,
-        app.report,
-    )
-    if not report_visible(app):
-        return
-    app.report = report
-    if report == app.rendered_report:
-        return
-    app.query_one("#report-time", textual.widgets.Static).update(
-        f"{app.report_path.name}\n{peri_scribe.monitor.presentation.report_heading(report)}",
-    )
-    viewer = app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
-    position = viewer.scroll_offset
-    await viewer.document.update(report.content)
-    if not app.operations.stopped.is_set():
-        app.rendered_report = report
-        if viewer.is_attached:
-            viewer.scroll_to(position.x, position.y, animate=False)

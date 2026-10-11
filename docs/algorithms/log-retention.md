@@ -7,7 +7,10 @@ compressing older months. [log_reading.py](../../src/peri_scribe/log_reading.py)
 coherent monthly sequence across the archive and any later plain tail. Ordinary identical
 diagnostic lines are distinct occurrences; only journal batches have an explicit
 idempotency identity. Inputs may contain undated/malformed lines, UTF-8 text, incomplete
-last lines, and timestamps moving backward. Date-window endpoints are inclusive.
+last lines, and equal timestamps. Dated occurrences have nondecreasing timestamps within
+each logical monthly log, compared as aware instants. This requirement permits byte-offset
+binary search; timestamp regressions in stored logs are outside its completeness
+guarantee. Date-window endpoints are inclusive.
 
 Writers and readers cooperate through `.rotation.lock`. A reader holds the shared lock
 through iteration; callers must close abandoned iterators promptly. Rotation uses local
@@ -20,7 +23,7 @@ comparison uses aware instants, with naive parsed timestamps interpreted as UTC.
 | --- | --- | --- |
 | History and state | 2 | Late arrivals and retained reader cursors span several rotation epochs. |
 | Rule interaction | 2 | Receipt authentication determines whether a plain file is a duplicate source or a new tail. |
-| Mathematical reasoning | 1 | Ordered sequence filtering must preserve multiplicity despite clock rollback. |
+| Mathematical reasoning | 1 | Binary probes must preserve the inclusive boundary across unequal byte lengths and undated records. |
 | Scale and representation | 3 | Streaming compressed frames and byte cursors preserve complete records without materializing archives. |
 | Failure and concurrency | 3 | Receipt, archive replacement and source retirement survive separate interruptions under shared/exclusive locks. |
 
@@ -46,11 +49,15 @@ selects archive only; otherwise select archive followed by the distinct plain ta
 Holding the shared lock across both components prevents a mixed view during rotation.
 Physical duplication is permitted while logical occurrence duplication is forbidden.
 
-`seek_since` scans complete dated records until the first eligible timestamp and retires
-only the older prefix. It leaves following undated records and an incomplete tail
-available. After seeking, filtering tests every occurrence independently; a timestamp
-above the upper bound does not terminate the scan. Lightweight token scanning tracks JSON
-nesting so a nested source timestamp cannot move the root timestamp boundary.
+`seek_since` binary-searches byte positions within the observed plain-file size. A probe
+skips a split line and reads forward to the next complete dated record. An older timestamp
+moves the lower bound just after that record; a recent timestamp or absent complete
+timestamp moves the upper bound to the probe. Ordered dated records make these decisions
+monotonic. The result is immediately after the last complete old record, leaving following
+undated records and any incomplete tail available. After seeking, filtering tests every
+occurrence independently so an upper-bound violation cannot hide later undated diagnostics.
+Lightweight token scanning tracks JSON nesting so a nested source timestamp cannot move
+the root timestamp boundary.
 
 ## Worked examples and boundaries
 
@@ -65,16 +72,16 @@ Start with two byte-identical diagnostic occurrences d,d in the plain source:
    late occurrence. Read the archive followed by this new tail; the next rotation
    produces d,d,d. Deduplicating by line bytes would incorrectly produce d.
 
-For records in file order 00:00, 00:02, 00:01, seeking from 00:01 retires only the first
-record. Filtering the retained suffix for the inclusive window [00:01, 00:01] skips
-00:02 but still returns the following 00:01 record. Exceeding the upper bound must not
-stop the scan.
+For records in file order 00:00, undated, 00:01, 00:01, 00:02, seeking from 00:01 retires
+only the first record. The intervening undated diagnostic and both equal-time occurrences
+remain. Seeking from 00:02 instead retires through the second 00:01 occurrence. An
+unfinished last JSON record is not delivered until a newline completes it; UTF-8 byte
+offsets must never become character offsets.
 
-Seeking from 00:02 instead retains the same suffix beginning at the second record.
-Filtering removes the later old record but never loses the eligible one.
-Binary search requires monotone timestamps and cannot supply this guarantee. An unfinished
-last JSON record is not delivered until a newline completes it; UTF-8 byte offsets must
-never become character offsets.
+A sequence 00:00, 00:02, 00:01 violates the storage ordering contract. Binary probes cannot
+establish that no hidden earlier eligible occurrence exists; there is no inferred safety
+from sampling only part of the file. The monitor's separate observation clock can still
+move backward and must invalidate time-dependent caches.
 
 Plain seeking deliberately retires undated history before its last old dated boundary.
 Compressed reads scan from the beginning and can retain earlier undated diagnostics.
@@ -87,9 +94,12 @@ inode cursors, archive-change replay and context restoration.
 Let A be archived bytes, P plain bytes, D decompressed archive bytes, and J distinct journal
 batch IDs. Rotation hashes and copies O(A + P) bytes and may scan O(D) to collect batch
 IDs; temporary disk holds the new archive, and memory is O(J + largest line) beyond codec
-buffers. A window read is linear in bytes examined, including decompression; startup seek
-may scan the whole old prefix. This correctness choice intentionally gives no logarithmic
-seek or bounded writer-latency guarantee. Shared locks can delay writers during long reads.
+buffers. Plain startup seeking uses O(log P) byte probes, followed by a linear read of the
+selected suffix. Each probe scans forward across at most the remaining split record and
+an undated stretch; long records or long undated stretches can make the bytes read exceed
+O(log P). Memory is bounded by the largest line. Compressed components remain sequential
+streams. Shared locks can delay writers during long reads; no bounded writer latency is
+claimed.
 
 Atomic file replacement, stable cooperative locks, immutable compression sources, valid
 archives and collision-resistant checksums are assumptions. Rotation is not exactly-once

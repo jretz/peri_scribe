@@ -15,18 +15,19 @@
     difference geometry together; hatching identifies the retracted original ground.</desc>
   <defs>
     <style>
-      :root { color-scheme:light dark; --paper:#fbfcfe; --panel:#f3f6fa;
-        --ink:#183145; --muted:#53697d; --rule:#d7e0e8;
-        --mapped:#bed9ea; --mapped-line:#39769a;
-        --growth:#f5cc73; --growth-line:#936418;
-        --removed:#d66d86; --removed-line:#a83f5d;
-        --ghost-fill:#a596d0; --ghost-line:#694797; }
-      @media (prefers-color-scheme:dark) {
-        :root { --paper:#111a24; --panel:#182532; --ink:#e4edf5; --muted:#afc2d1;
-          --rule:#334959; --mapped:#294f68; --mapped-line:#8bbada;
-          --growth:#765724; --growth-line:#efc574;
-          --removed:#a04560; --removed-line:#ed97ae;
-          --ghost-fill:#9c89c9; --ghost-line:#d4bafc; }
+      :root { color-scheme: light dark;
+        --paper:#111a24; --panel:#182532; --ink:#e4edf5; --muted:#afc2d1;
+        --rule:#334959; --mapped:#294f68; --mapped-line:#8bbada;
+        --growth:#765724; --growth-line:#efc574;
+        --removed:#a04560; --removed-line:#ed97ae;
+        --ghost-fill:#9c89c9; --ghost-line:#d4bafc; }
+      @media (prefers-color-scheme: light) {
+        :root { --paper:#fbfcfe; --panel:#f3f6fa;
+          --ink:#183145; --muted:#53697d; --rule:#d7e0e8;
+          --mapped:#bed9ea; --mapped-line:#39769a;
+          --growth:#f5cc73; --growth-line:#936418;
+          --removed:#d66d86; --removed-line:#a83f5d;
+          --ghost-fill:#a596d0; --ghost-line:#694797; }
       }
       text { font-family:system-ui,sans-serif; font-size:15px; fill:var(--ink); }
       .title { font-size:22px; font-weight:700; }

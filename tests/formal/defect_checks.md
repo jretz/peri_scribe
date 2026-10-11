@@ -18,7 +18,7 @@ files and Lean/TLA+ specifications are not changed.
 | Compute previous acreage within the original bucket instead of its current owner | Lean composition of ownership projection and the complete chronological snapshot |
 | Accept equal coordinates under different coordinate reference systems | Lean relational coverage and complete source-validation diagnostics |
 | Hide duplicate source IDs during validation | Lean unique-row coverage and complete source-validation diagnostics |
-| Stop log reading at the first timestamp above the upper bound | Lean occurrence completeness across arbitrary timestamp order |
+| Stop log reading at the first timestamp above the upper bound | Lean occurrence completeness including subsequent undated diagnostics |
 | Omit derived-stage requirements before source mutation in `run_fetch_stage` | TLC fetch-interruption replay, including unchanged retries |
 | Accept unrelated authenticated full/differential geography generations | Continuous TLC reader execution against actual GeoPackages and signatures |
 | Omit the chart axis label from its cache key | Lean dependency contract and actual persistent-cache/fresh rendering comparison |
@@ -29,7 +29,7 @@ files and Lean/TLA+ specifications are not changed.
 | Omit an archive prefix while its month has a late plain tail | TLC reader observations against complete production reads |
 | Temporarily roll back an acknowledged checkpoint | One continuous TLC execution through actual builder writes |
 | Accept a nonfinite raw number | Lean's typed decoding reference |
-| Permit monitor publication after unmount begins | Continuous TLC execution of mounted application operations |
+| Permit monitor publication after session stop | Continuous TLC execution of domain requests and descriptor retirement |
 | Give undated history claims priority over dated mapping | Lean raw-alias claim selection and real unique writer allocation |
 
 The helper confirms the interpreter loaded the temporary production module. Source

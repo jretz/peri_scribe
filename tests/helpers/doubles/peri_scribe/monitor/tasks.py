@@ -15,6 +15,7 @@ import typing
 
 import peri_scribe.monitor.app
 import peri_scribe.monitor.model
+import peri_scribe.monitor.session
 import peri_scribe.monitor.tasks
 import tests.helpers.doubles.concurrency
 import tests.helpers.doubles.peri_scribe.monitor.app
@@ -89,7 +90,7 @@ class Scenario:
         await closing
 
 
-async def cancelled(task: asyncio.Task[None], repetitions: int) -> None:
+async def cancelled[Result](task: asyncio.Task[Result], repetitions: int) -> None:
     """Allow cancellation delivery without letting the controlled worker finish.
 
     Args:
@@ -103,26 +104,26 @@ async def cancelled(task: asyncio.Task[None], repetitions: int) -> None:
 
 
 @dataclasses.dataclass(kw_only=True)
-class Application:
-    """Record real app state and operation lifetimes without replacing their effects."""
+class Session:
+    """Observe session evidence and descriptor ownership at operation boundaries."""
 
-    app: peri_scribe.monitor.app.MonitorApp
+    session: peri_scribe.monitor.session.MonitorSession
     active: set[int] = dataclasses.field(default_factory=set)
     observations: list[Observation] = dataclasses.field(default_factory=list)
     retired: bool = False
 
     def remember(self) -> None:
-        """Project actual visible evidence and resource lifetimes onto TLC variables."""
+        """Project committed evidence and resource lifetime onto TLC variables."""
         identifiers = {"archive": 1, "new": 2}
         self.observations.append(
             (
-                self.app.operations.stopped.is_set(),
+                self.session.owner.stopped.is_set(),
                 self.retired,
                 tuple(sorted(self.active)),
                 tuple(
                     sorted(
                         identifiers[run.identifier]
-                        for run in self.app.state.runs
+                        for run in self.session.snapshot.records.runs
                         if run.identifier in identifiers
                     ),
                 ),
@@ -131,24 +132,37 @@ class Application:
 
     async def observe(
         self,
-        identifier: int,
         function: collections.abc.Callable[
-            [peri_scribe.monitor.app.MonitorApp],
-            collections.abc.Coroutine[typing.Any, typing.Any, None],
+            [
+                peri_scribe.monitor.session.MonitorSession,
+                peri_scribe.monitor.session.Request,
+            ],
+            collections.abc.Coroutine[
+                typing.Any,
+                typing.Any,
+                peri_scribe.monitor.session.Snapshot,
+            ],
         ],
-        app: peri_scribe.monitor.app.MonitorApp,
-    ) -> None:
-        """Observe the production operation before and after its ordinary effects.
+        session: peri_scribe.monitor.session.MonitorSession,
+        request: peri_scribe.monitor.session.Request,
+    ) -> peri_scribe.monitor.session.Snapshot:
+        """Retain every admission, publication, and retirement in one execution.
 
         Args:
-            identifier: The operation's checked evidence identity.
-            function: Unmodified production operation.
-            app: The observer invoking that operation through its public API.
+            function: Unmodified production request execution.
+            session: The domain owner admitting the request.
+            request: The request whose contribution is recorded.
+
+        Returns:
+            The unmodified request result.
         """
+        identifier = (
+            1 if isinstance(request, peri_scribe.monitor.session.LoadOlder) else 2
+        )
         self.active.add(identifier)
         self.remember()
         try:
-            await function(app)
+            return await function(session, request)
         finally:
             self.remember()
             self.active.remove(identifier)
@@ -156,17 +170,20 @@ class Application:
 
     def close(
         self,
-        function: collections.abc.Callable[[peri_scribe.monitor.app.MonitorApp], None],
-        app: peri_scribe.monitor.app.MonitorApp,
+        function: collections.abc.Callable[
+            [peri_scribe.monitor.session.MonitorSession],
+            None,
+        ],
+        session: peri_scribe.monitor.session.MonitorSession,
     ) -> None:
-        """Record descriptor retirement after the real app releases both readers.
+        """Record descriptor retirement only after both actual readers close.
 
         Args:
             function: Unmodified production descriptor cleanup.
-            app: The observer whose readers are being retired.
+            session: The observer whose resources are being retired.
         """
         self.remember()
-        function(app)
+        function(session)
         self.retired = True
         self.remember()
 
@@ -203,35 +220,59 @@ async def application_replay(
     stop: bool,
     cancel: bool,
 ) -> list[Observation]:
-    """Compete actual archive and live refresh APIs while their threads are suspended.
+    """Exercise the same owned domain operations beneath a mounted terminal.
 
     Args:
-        app: A mounted headless monitor with automatic refresh paused.
-        monkeypatch: Restores the boundary observers and controlled worker gate.
-        stop: Whether unmount begins while the archive append is suspended.
-        cancel: Whether the archive caller cancels after admission.
+        app: The mounted consumer whose domain session is exercised.
+        monkeypatch: Restores boundary observers after the scenario.
+        stop: Whether shutdown begins while archive ingestion is suspended.
+        cancel: Whether the archive requester cancels after admission.
 
     Returns:
-        The actual state-publication and descriptor-retirement execution.
+        The domain publication and descriptor-retirement execution.
     """
-    scenario = Application(app=app)
-    scenario.remember()
-    for identifier, name in ((1, "load_older_owned"), (2, "refresh_owned")):
-        monkeypatch.setattr(
-            peri_scribe.monitor.app,
-            name,
-            functools.partial(
-                scenario.observe,
-                identifier,
-                getattr(peri_scribe.monitor.app, name),
-            ),
-        )
-    monkeypatch.setattr(
-        peri_scribe.monitor.app,
-        "close_readers",
-        functools.partial(scenario.close, peri_scribe.monitor.app.close_readers),
+    return await session_replay(
+        app.controller.session,
+        monkeypatch,
+        stop=stop,
+        cancel=cancel,
     )
-    app.archives = (archive(app.year_directory),)
+
+
+async def session_replay(
+    session: peri_scribe.monitor.session.MonitorSession,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    stop: bool,
+    cancel: bool,
+) -> list[Observation]:
+    """Compete archive and live requests while their actual workers are suspended.
+
+    Args:
+        session: An isolated session with automatic observation disabled.
+        monkeypatch: Restores boundary observers and the controlled worker gate.
+        stop: Whether shutdown begins while archive ingestion is suspended.
+        cancel: Whether the archive requester cancels after admission.
+
+    Returns:
+        The actual publication and descriptor-retirement execution.
+    """
+    scenario = Session(session=session)
+    scenario.remember()
+    monkeypatch.setattr(
+        peri_scribe.monitor.session,
+        "execute",
+        functools.partial(scenario.observe, peri_scribe.monitor.session.execute),
+    )
+    monkeypatch.setattr(
+        peri_scribe.monitor.session,
+        "release",
+        functools.partial(scenario.close, peri_scribe.monitor.session.release),
+    )
+    session.snapshot = dataclasses.replace(
+        session.snapshot,
+        archives=(archive(session.year_directory),),
+    )
     started, release = threading.Event(), threading.Event()
     monkeypatch.setattr(
         peri_scribe.monitor.model,
@@ -242,41 +283,45 @@ async def application_replay(
             append=peri_scribe.monitor.model.append_records,
         ),
     )
-    loading = asyncio.create_task(app.load_older())
+    loading = asyncio.create_task(
+        session.request(peri_scribe.monitor.session.LoadOlder()),
+    )
     closing = None
     try:
         assert await asyncio.to_thread(started.wait, 5)
         tests.helpers.factories.peri_scribe.monitor.events.write_log(
-            app.year_directory,
+            session.year_directory,
             tests.helpers.factories.peri_scribe.monitor.events.record(
                 "Starting command",
                 command="run",
                 run_id="new",
             ),
         )
-        refresh = asyncio.create_task(app.refresh_files())
+        refresh = asyncio.create_task(
+            session.request(peri_scribe.monitor.session.RefreshRecords()),
+        )
         await asyncio.sleep(0)
         if cancel:
             await cancelled(loading, 2)
         if stop:
-            closing = asyncio.create_task(app.on_unmount())
-            await app.operations.stopped.wait()
+            closing = asyncio.create_task(session.close())
+            await session.owner.stopped.wait()
             scenario.remember()
             assert not scenario.retired
         assert scenario.active == {1}
     finally:
         release.set()
     outcomes = await asyncio.gather(loading, refresh, return_exceptions=True)
-    assert outcomes[1] is None
+    assert isinstance(outcomes[1], peri_scribe.monitor.session.Snapshot)
     if cancel:
         assert isinstance(outcomes[0], asyncio.CancelledError)
     else:
-        assert outcomes[0] is None
+        assert isinstance(outcomes[0], peri_scribe.monitor.session.Snapshot)
     if closing is not None:
         await closing
     else:
-        closing = asyncio.create_task(app.on_unmount())
-        await app.operations.stopped.wait()
+        closing = asyncio.create_task(session.close())
+        await session.owner.stopped.wait()
         scenario.remember()
         await closing
     return scenario.observations
@@ -332,49 +377,67 @@ async def shared_lock_replay(
     app: peri_scribe.monitor.app.MonitorApp,
     monkeypatch: pytest.MonkeyPatch,
 ) -> list[Observation]:
-    """Unmount and repeatedly cancel while a real shared flock waits for a writer.
+    """Keep the mounted consumer's readers alive while a real writer holds its lock.
 
     Args:
-        app: A mounted monitor whose periodic refreshes are paused.
-        monkeypatch: Restores entry/exit observers after descriptor retirement.
+        app: A mounted monitor with automatic observation paused.
+        monkeypatch: Restores the request and descriptor boundary observers.
 
     Returns:
-        The actual owned lock-wait and shutdown execution for TLC comparison.
+        The actual owned lock-wait and shutdown execution.
+    """
+    return await session_lock_replay(app.controller.session, monkeypatch)
+
+
+async def session_lock_replay(
+    session: peri_scribe.monitor.session.MonitorSession,
+    monkeypatch: pytest.MonkeyPatch,
+) -> list[Observation]:
+    """Repeatedly cancel reads and shutdown while a shared flock waits for a writer.
+
+    Args:
+        session: An isolated domain observer without automatic reconciliation.
+        monkeypatch: Restores request and descriptor boundary observers.
+
+    Returns:
+        The actual resource-lifetime execution for comparison with TLC.
     """
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
-        app.year_directory,
+        session.year_directory,
         tests.helpers.factories.peri_scribe.monitor.events.record(
             "Starting command",
             command="run",
             run_id="initial",
         ),
     )
-    await app.refresh_files()
-    streams = [cursor.stream for cursor in app.follower.cursors.values()]
-    previous = app.state
-    scenario = Application(app=app)
+    await session.request(peri_scribe.monitor.session.RefreshRecords())
+    streams = [cursor.stream for cursor in session.follower.cursors.values()]
+    previous = session.snapshot
+    scenario = Session(session=session)
     scenario.remember()
     monkeypatch.setattr(
-        peri_scribe.monitor.app,
-        "refresh_owned",
-        functools.partial(scenario.observe, 1, peri_scribe.monitor.app.refresh_owned),
+        peri_scribe.monitor.session,
+        "execute",
+        functools.partial(scenario.observe, peri_scribe.monitor.session.execute),
     )
     monkeypatch.setattr(
-        peri_scribe.monitor.app,
-        "close_readers",
-        functools.partial(scenario.close, peri_scribe.monitor.app.close_readers),
+        peri_scribe.monitor.session,
+        "release",
+        functools.partial(scenario.close, peri_scribe.monitor.session.release),
     )
-    reading = PausedCall(function=app.follower.poll)
+    reading = PausedCall(function=session.follower.poll)
     reading.release.set()
-    monkeypatch.setattr(app.follower, "poll", reading)
-    lock_path = app.year_directory / "logs" / ".rotation.lock"
+    monkeypatch.setattr(session.follower, "poll", reading)
+    lock_path = session.year_directory / "logs" / ".rotation.lock"
     with await asyncio.to_thread(lock_path.open, "ab") as writer:
         fcntl.flock(writer, fcntl.LOCK_EX)
-        active = asyncio.create_task(app.refresh_files())
+        active = asyncio.create_task(
+            session.request(peri_scribe.monitor.session.RefreshRecords()),
+        )
         try:
             assert await asyncio.to_thread(reading.started.wait, 5)
-            closing = asyncio.create_task(app.on_unmount())
-            await app.operations.stopped.wait()
+            closing = asyncio.create_task(session.close())
+            await session.owner.stopped.wait()
             scenario.remember()
             await cancelled(active, 2)
             await cancelled(closing, 2)
@@ -388,6 +451,6 @@ async def shared_lock_replay(
     assert all(isinstance(outcome, asyncio.CancelledError) for outcome in outcomes)
     assert reading.finished.is_set()
     assert all(stream.closed for stream in streams)
-    assert app.state is previous
+    assert session.snapshot is previous
     assert scenario.retired
     return scenario.observations

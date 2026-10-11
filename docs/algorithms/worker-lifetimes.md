@@ -48,18 +48,18 @@ termination is attempted.
 For the monitor, `Owner.run` acquires an asynchronous lock, refuses admission after stop,
 and retains ownership while an independently shielded operation settles. Cancellation
 while waiting admits no work. Cancellation after admission can still let consumed evidence
-publish while the monitor is mounted, because otherwise the reader cursor could advance
-without that evidence reaching the visible state.
+publish while the session remains open, because otherwise the reader cursor could advance
+without that evidence reaching a committed snapshot.
 
 ![Shutdown sets the publication barrier before waiting](assets/monitor-shutdown.svg)
 
 *Shutdown first closes admission/publication, then waits for the admitted operation, then
-closes descriptors. The worker can finish after stop but cannot publish a new UI result.*
+closes descriptors. The worker can finish after stop but cannot publish a new snapshot.*
 
-Unmount sets the owner stop flag and the health reader's cooperative stop event. The app's
-post-await guards prevent new state, notifications, report checkpoints or scroll-state
-publication after stop. `Owner.close` asynchronously waits for the same lock, calls reader
-cleanup in a thread, and marks closed only after success. Repeated/concurrent close requests
+Session shutdown sets the owner stop flag and the health reader's cooperative stop event.
+Its publication guard rejects a new snapshot after stop. `Owner.close` asynchronously
+waits for the same lock, calls reader cleanup in a thread, and marks closed only after
+success. Repeated/concurrent close requests
 therefore close descriptors once; failed cleanup can be retried without reopening admission.
 An already-started Markdown rendering call may finish, but its completion cannot advance
 the app's rendered-report checkpoint after shutdown.
@@ -89,17 +89,18 @@ include all preceding work and file-lock waits. Cancellation settlement is unbou
 a dependency hangs. There is no OS lock-fairness, hard thread-kill or deadline guarantee.
 Workers must retain their resources and cooperate where stop checks are supported.
 
-Pure UI presentation helpers do not need a separate formal lifecycle model; any helper
-that reads shared evidence or publishes after an await must enter the owner and check the
-stop barrier. Direct calls to UI-only handlers after teardown and Textual internals are
-outside the contract. File consistency remains the [log reader](log-retention.md) contract.
+Every helper that reads shared evidence enters the session owner and checks the stop
+barrier before publication. Terminal presentation has a separate controller lifetime;
+it observes immutable snapshots without accessing readers. Direct calls to UI-only
+handlers after teardown and Textual internals are outside the domain contract. File
+consistency remains the [log reader](log-retention.md) contract.
 
 ## Implementation and verification
 
 Owners: [concurrency.py](../../src/peri_scribe/concurrency.py),
 [monitor/tasks.py](../../src/peri_scribe/monitor/tasks.py), and
-[monitor/app.py](../../src/peri_scribe/monitor/app.py), especially `refresh_owned`,
-`load_older_owned`, `open_evidence_owned`, `render_report_owned` and unmount.
+[monitor/session.py](../../src/peri_scribe/monitor/session.py), especially `execute`,
+`publish`, `MonitorSession.close`, `finish`, and `release`.
 Ordinary [owner tests](../../tests/tests/standard/peri_scribe/monitor/test_tasks.py) and
 [app task tests](../../tests/tests/standard/peri_scribe/monitor/test_app_tasks.py) exercise
 repeat cancellation, worker failure, blocked locks, cleanup retry and late completion.
@@ -111,6 +112,6 @@ MonitorTasks safety/liveness graphs and exact progress assumptions.
 [Worker lifetime conformance](../../tests/formal/conformance/test_worker_lifetime.py)
 and [monitor task conformance](../../tests/formal/conformance/test_monitor_tasks.py)
 check concrete schedules against continuous TLC execution paths, including an actual
-blocked file lock. The deliberate publication-after-unmount defect check establishes that
+blocked file lock. The deliberate publication-after-stop defect check establishes that
 the bridge rejects removal of the stop guard. Finite conformance is not a proof of every
 possible Python scheduler or library implementation.

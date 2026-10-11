@@ -165,7 +165,7 @@ DEFECTS = (
         diagnostic="assert outcome(result) == answer",
     ),
     Defect(
-        name="log-upper-bound-stops-before-clock-rollback",
+        name="log-upper-bound-hides-undated-diagnostics",
         module="peri_scribe.log_reading",
         function="component_lines",
         original="if until is not None and time > until:\n                    continue",
@@ -197,14 +197,14 @@ DEFECTS = (
         diagnostic="result(parser(candidate.raw)) == reference",
     ),
     Defect(
-        name="monitor-publication-after-unmount",
-        module="peri_scribe.monitor.app",
-        function="presentation_available",
-        original="not app.operations.stopped.is_set() and app.is_running",
-        replacement="app.is_running",
+        name="monitor-publication-after-stop",
+        module="peri_scribe.monitor.session",
+        function="publish",
+        original="session.owner.stopped.is_set() or snapshot is session.snapshot",
+        replacement="snapshot is session.snapshot",
         test=(
             "test_monitor_tasks.py::"
-            "test_monitor_app_public_operations_match_tlc_execution"
+            "test_monitor_session_public_requests_match_tlc_execution"
         ),
         diagnostic="no compatible TLC execution",
     ),

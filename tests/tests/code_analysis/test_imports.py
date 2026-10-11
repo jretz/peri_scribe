@@ -45,6 +45,42 @@ def test_no_circular_imports() -> None:
         pytest.fail(f"Circular import: {cycle}", pytrace=False)
 
 
+def test_monitor_domain_remains_independent_of_presentation() -> None:
+    directory = pathlib.Path(__file__).resolve().parents[3] / "src/peri_scribe/monitor"
+    domain = {
+        "changes",
+        "events",
+        "history",
+        "model",
+        "projection",
+        "session",
+        "sharing",
+        "status",
+        "storage",
+        "tasks",
+    }
+    for module in domain:
+        path = directory / f"{module}.py"
+        for node in ast.walk(ast.parse(path.read_text(encoding="utf-8"))):
+            if isinstance(node, ast.Import):
+                names = [alias.name for alias in node.names]
+            elif isinstance(node, ast.ImportFrom) and node.module:
+                names = [
+                    node.module,
+                    *(f"{node.module}.{item.name}" for item in node.names),
+                ]
+            else:
+                continue
+            for name in names:
+                assert name.split(".")[0] not in {"textual", "rich"}, (
+                    f"Domain imports a presentation framework: {path}:{node.lineno}"
+                )
+                if name.startswith("peri_scribe.monitor."):
+                    assert name.split(".")[2] in domain, (
+                        f"Domain imports a presentation module: {path}:{node.lineno}"
+                    )
+
+
 @pytest.mark.parametrize(
     ("package", "forbidden"),
     [

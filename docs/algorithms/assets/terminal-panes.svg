@@ -4,12 +4,12 @@
   <title id="terminal-panes-title">Clamping stops the divider while the request continues</title>
   <desc id="terminal-panes-description">An animated request moves across an eighty-cell terminal. The leading pane follows between twenty-four and fifty-six cells, then stops while the request continues. Static examples show requests ten, forty and seventy producing splits twenty-four/fifty-six, forty/forty and fifty-six/twenty-four. A separate twenty-cell terminal reduces both minima to ten. Smooth motion illustrates cell-sized updates.</desc>
   <defs><style>
-    :root { color-scheme:light dark; --background:#fbfcfe; --text:#172e40;
-      --muted:#526779; --blue:#eaf3fc; --blue-line:#5791bf;
-      --gold:#fff7e8; --gold-line:#ad7725; --purple:#f0edfa; --purple-line:#8065b5; }
-    @media (prefers-color-scheme:dark) { :root { --background:#111820;
-      --text:#e4edf5; --muted:#acbdcb; --blue:#172c3e; --blue-line:#74abd5;
-      --gold:#362c1c; --gold-line:#dfb566; --purple:#2b253e; --purple-line:#b7a1e7; } }
+    :root { color-scheme:light dark; --background:#111820; --text:#e4edf5;
+      --muted:#acbdcb; --blue:#172c3e; --blue-line:#74abd5;
+      --gold:#362c1c; --gold-line:#dfb566; --purple:#2b253e; --purple-line:#b7a1e7; }
+    @media (prefers-color-scheme:light) { :root { --background:#fbfcfe;
+      --text:#172e40; --muted:#526779; --blue:#eaf3fc; --blue-line:#5791bf;
+      --gold:#fff7e8; --gold-line:#ad7725; --purple:#f0edfa; --purple-line:#8065b5; } }
     text { fill:var(--text); font:16px system-ui,sans-serif; }
     .title { font-size:23px; font-weight:700; }
     .heading { font-size:18px; font-weight:650; }

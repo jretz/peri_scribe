@@ -1,4 +1,4 @@
-"""Shared, bounded readers preserve diagnostic occurrences through clock changes.
+"""Shared, bounded readers preserve ordered diagnostic occurrences through rotation.
 
 Algorithm reasoning and contracts:
 [Log retention](../../docs/algorithms/log-retention.md)
@@ -90,22 +90,24 @@ def timestamp_after(
 
 
 def seek_since(stream: typing.BinaryIO, since: datetime.datetime) -> None:
-    """Retire only an older prefix, preserving later records through clock rollback.
+    """Locate the older prefix of a log whose dated records are ordered by time.
 
     Undated records after the prefix's last older timestamp remain available for
     diagnostics. An unfinished final line remains available for its writer to finish.
 
     Args:
-        stream: A seekable, uncompressed log with arbitrary timestamp order.
+        stream: A seekable, uncompressed log with nondecreasing dated timestamps.
         since: The inclusive timestamp cutoff.
     """
     lower = 0
-    end = stream.seek(0, os.SEEK_END)
-    stream.seek(0)
-    while (time := timestamp_after(stream, stream.tell(), end)) is not None:
-        if time >= since:
-            break
-        lower = stream.tell()
+    end = upper = stream.seek(0, os.SEEK_END)
+    while lower < upper:
+        middle = (lower + upper) // 2
+        time = timestamp_after(stream, middle, end)
+        if time is not None and time < since:
+            lower = stream.tell()
+        else:
+            upper = middle
     stream.seek(lower)
 
 

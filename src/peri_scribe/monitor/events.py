@@ -7,14 +7,20 @@ Algorithm reasoning and contracts:
 import collections.abc
 import dataclasses
 import datetime
+import functools
 import json
+
+import pydantic_core
 
 import peri_scribe.log_reading
 import peri_scribe.monitor.sharing
 import peri_scribe.phases
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
+MAXIMUM_TIMESTAMP_LENGTH = 128
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True, slots=True)
 class Event:
     """Retained records preserve their original fields and resolved execution scope."""
 
@@ -25,7 +31,7 @@ class Event:
 
     @property
     def message(self) -> str:
-        """Expose a displayable event even when a third-party record is incomplete."""
+        """Expose a normalized message even when a third-party record is incomplete."""
         return str(self.fields.get("event", ""))
 
     @property
@@ -44,15 +50,43 @@ def parse_record(line: str) -> dict[str, object]:
         JSON fields or a warning containing the original text.
     """
     try:
-        value = json.loads(line, object_hook=peri_scribe.monitor.sharing.fields)
-        if isinstance(value, dict):
-            return value
-    except ValueError:
-        pass
+        value = pydantic_core.from_json(line)
+    except TypeError, ValueError:
+        # The standard decoder also accepts lone surrogates and deeper nesting.
+        try:
+            value = json.loads(line, object_hook=peri_scribe.monitor.sharing.fields)
+        except ValueError:
+            value = None
+    if isinstance(value, dict):
+        return value
     return {"event": line.rstrip(), "level": "warning", "malformed": True}
 
 
-timestamp = peri_scribe.log_reading.timestamp
+@functools.lru_cache(maxsize=4096)
+def timestamp_text(value: str) -> datetime.datetime | None:
+    """Share immutable dates repeated across nearby records.
+
+    Args:
+        value: A short timestamp string.
+
+    Returns:
+        Its normalized date or None when it is invalid.
+    """
+    return peri_scribe.log_reading.timestamp(value)
+
+
+def timestamp(value: object) -> datetime.datetime | None:
+    """Bound cached text while preserving arbitrary damaged timestamp fields.
+
+    Args:
+        value: A possibly absent or damaged timestamp field.
+
+    Returns:
+        Its normalized date or None when it is invalid.
+    """
+    if type(value) is str and len(value) <= MAXIMUM_TIMESTAMP_LENGTH:
+        return timestamp_text(value)
+    return peri_scribe.log_reading.timestamp(value)
 
 
 def event_path(
@@ -120,9 +154,12 @@ def make_event(
     Returns:
         An immutable event ready for a reducer or a presentation adapter.
     """
+    metadata = peri_scribe.monitor.sharing.phase_metadata(fields.get("phase_segments"))
     return Event(
         sequence=sequence,
-        fields=peri_scribe.monitor.sharing.record(fields),
-        path=peri_scribe.monitor.sharing.path(event_path(fields, parent)),
+        fields=peri_scribe.monitor.sharing.record(fields, metadata=metadata),
+        path=metadata.path
+        if metadata is not None
+        else peri_scribe.monitor.sharing.path(event_path(fields, parent)),
         timestamp=timestamp(fields.get("timestamp")),
     )

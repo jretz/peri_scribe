@@ -11,37 +11,37 @@
     <style>
       :root {
         color-scheme: light dark;
-        --background: #fbfcfe;
-        --text: #172e40;
-        --muted: #526779;
-        --edge: #526779;
-        --disk-fill: #eaf3fc;
-        --disk-border: #5791bf;
-        --memory-fill: #ecf7ee;
-        --memory-border: #639570;
-        --process-fill: #fff7e8;
-        --process-border: #c69a46;
-        --network-fill: #f0edfa;
-        --network-border: #9481c6;
-        --control-fill: #f3f4f5;
-        --control-border: #94a0ab;
+        --background: #111820;
+        --text: #e4edf5;
+        --muted: #acbdcb;
+        --edge: #9caebe;
+        --disk-fill: #172c3e;
+        --disk-border: #6198c2;
+        --memory-fill: #1b3025;
+        --memory-border: #76a982;
+        --process-fill: #362c1c;
+        --process-border: #c4a45f;
+        --network-fill: #2b253e;
+        --network-border: #a391d0;
+        --control-fill: #252d35;
+        --control-border: #8595a3;
       }
-      @media (prefers-color-scheme: dark) {
+      @media (prefers-color-scheme: light) {
         :root {
-          --background: #111820;
-          --text: #e4edf5;
-          --muted: #acbdcb;
-          --edge: #9caebe;
-          --disk-fill: #172c3e;
-          --disk-border: #6198c2;
-          --memory-fill: #1b3025;
-          --memory-border: #76a982;
-          --process-fill: #362c1c;
-          --process-border: #c4a45f;
-          --network-fill: #2b253e;
-          --network-border: #a391d0;
-          --control-fill: #252d35;
-          --control-border: #8595a3;
+          --background: #fbfcfe;
+          --text: #172e40;
+          --muted: #526779;
+          --edge: #526779;
+          --disk-fill: #eaf3fc;
+          --disk-border: #5791bf;
+          --memory-fill: #ecf7ee;
+          --memory-border: #639570;
+          --process-fill: #fff7e8;
+          --process-border: #c69a46;
+          --network-fill: #f0edfa;
+          --network-border: #9481c6;
+          --control-fill: #f3f4f5;
+          --control-border: #94a0ab;
         }
       }
       svg { background: var(--background); }

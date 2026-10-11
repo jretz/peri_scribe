@@ -2,6 +2,7 @@
 
 import asyncio
 import collections.abc
+import dataclasses
 import datetime
 import functools
 import typing
@@ -13,9 +14,9 @@ import rich.text
 import textual.widgets
 import time_machine
 
-import peri_scribe.monitor.app
 import peri_scribe.monitor.changes
 import peri_scribe.monitor.history
+import peri_scribe.monitor.session
 import peri_scribe.monitor.status
 import peri_scribe.monitor.status_widgets
 import peri_scribe.monitor.storage
@@ -178,15 +179,18 @@ async def test_monitor_app_status_links_load_run_beyond_interactive_history(
         ),
     )
     await session.app.refresh_files()
-    assert all(run.identifier != "failed" for run in session.app.state.runs)
+    assert all(
+        run.identifier != "failed"
+        for run in session.app.controller.snapshot.records.runs
+    )
     completed = asyncio.Event()
     monkeypatch.setattr(
-        peri_scribe.monitor.app,
-        "open_evidence_owned",
+        session.app.controller,
+        "open_evidence",
         functools.partial(
             tests.helpers.doubles.peri_scribe.monitor.app.open_evidence_with_completion,
             completed,
-            peri_scribe.monitor.app.open_evidence_owned,
+            session.app.controller.open_evidence,
         ),
     )
     await tests.helpers.textual.invoke(
@@ -328,11 +332,11 @@ async def test_refresh_clock_updates_freshness_without_reading_files(
     )
     await session.app.refresh_files()
     read = unittest.mock.AsyncMock()
-    monkeypatch.setattr(peri_scribe.monitor.app, "refresh_owned", read)
-    session.app.files_changed = False
-    session.app.reconcile_at = float("inf")
+    monkeypatch.setattr(peri_scribe.monitor.session, "refresh_health", read)
+    session.app.controller.session.files_changed = False
+    session.app.controller.session.reconcile_at = float("inf")
     with time_machine.travel(now + datetime.timedelta(hours=7), tick=False):
-        await peri_scribe.monitor.app.refresh_clock(session.app)
+        await session.app.controller.session.tick()
     read.assert_not_awaited()
     pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
     assert pane.view is not None
@@ -348,17 +352,17 @@ async def test_refresh_clock_reads_on_notification_or_reconciliation_deadline(
     notification: bool,
 ) -> None:
     session = monitor_session
-    read = unittest.mock.AsyncMock()
-    monkeypatch.setattr(peri_scribe.monitor.app, "refresh_owned", read)
-    session.app.files_changed = notification
-    session.app.reconcile_at = float("inf") if notification else 0
-    await peri_scribe.monitor.app.refresh_clock(session.app)
+    read = unittest.mock.AsyncMock(wraps=peri_scribe.monitor.session.refresh_health)
+    monkeypatch.setattr(peri_scribe.monitor.session, "refresh_health", read)
+    session.app.controller.session.files_changed = notification
+    session.app.controller.session.reconcile_at = float("inf") if notification else 0
+    await session.app.controller.session.tick()
     read.assert_awaited_once()
-    assert not session.app.files_changed
+    assert not session.app.controller.session.files_changed
 
 
 @pytest.mark.asyncio
-async def test_refresh_clock_ignores_unmounted_views(
+async def test_monitor_app_ignores_clock_updates_after_views_unmount(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -366,10 +370,10 @@ async def test_refresh_clock_ignores_unmounted_views(
     await tests.helpers.fixtures.peri_scribe.monitor.application.remove_views(
         session.app,
     )
-    read = unittest.mock.AsyncMock()
-    monkeypatch.setattr(peri_scribe.monitor.app, "refresh_owned", read)
-    await peri_scribe.monitor.app.refresh_clock(session.app)
-    read.assert_not_awaited()
+    previous = session.app.controller.snapshot
+    await session.app.controller.session.tick()
+    await session.pilot.pause()
+    assert session.app.controller.snapshot is previous
 
 
 @pytest.mark.asyncio
@@ -378,12 +382,15 @@ async def test_refresh_clock_waits_for_initial_status(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = monitor_session
-    session.app.status_snapshot = None
-    session.app.files_changed = False
-    session.app.reconcile_at = float("inf")
+    session.app.controller.session.snapshot = dataclasses.replace(
+        session.app.controller.session.snapshot,
+        health=None,
+    )
+    session.app.controller.session.files_changed = False
+    session.app.controller.session.reconcile_at = float("inf")
     read = unittest.mock.AsyncMock()
-    monkeypatch.setattr(peri_scribe.monitor.app, "refresh_owned", read)
-    await peri_scribe.monitor.app.refresh_clock(session.app)
+    monkeypatch.setattr(peri_scribe.monitor.session, "refresh_health", read)
+    await session.app.controller.session.tick()
     read.assert_not_awaited()
 
 
@@ -391,7 +398,7 @@ async def test_refresh_clock_waits_for_initial_status(
 async def test_watch_files_coalesces_notifications_without_reading_from_the_worker(
     file_watching_session: tuple[
         collections.abc.Callable[
-            [peri_scribe.monitor.app.MonitorApp],
+            [peri_scribe.monitor.session.MonitorSession],
             collections.abc.Coroutine[typing.Any, typing.Any, None],
         ],
         tests.helpers.fixtures.peri_scribe.monitor.application.Session,
@@ -400,16 +407,16 @@ async def test_watch_files_coalesces_notifications_without_reading_from_the_work
 ) -> None:
     watcher, session = file_watching_session
     hints = tests.helpers.doubles.peri_scribe.monitor.changes.notifications(
-        session.app.watching_stopped,
+        session.app.controller.session.watching_stopped,
     )
     monkeypatch.setattr(
         peri_scribe.monitor.changes,
         "watch",
         unittest.mock.Mock(return_value=hints),
     )
-    session.app.files_changed = False
+    session.app.controller.session.files_changed = False
     read = unittest.mock.AsyncMock()
-    monkeypatch.setattr(peri_scribe.monitor.app, "refresh_owned", read)
-    await watcher(session.app)
-    assert session.app.files_changed
+    monkeypatch.setattr(peri_scribe.monitor.session, "refresh_health", read)
+    await watcher(session.app.controller.session)
+    assert session.app.controller.session.files_changed
     read.assert_not_awaited()

@@ -98,8 +98,27 @@ writer lock so rotation cannot change the selected components mid-read. A runnin
 monitor must catch up when new records are appended and compressed between polls.
 Update snapshots use the same archived-prefix and later-tail ordering, including equal
 timestamps, so rotation cannot change a fire's previous-acreage baseline.
-Timestamp queries must retain every matching dated diagnostic record even when the
-system clock moves backward between writes.
+Diagnostic timestamp queries assume nondecreasing recorded timestamps within each monthly
+log's occurrence order, including its archived prefix and later plain tail. Equal
+timestamps remain distinct occurrences. Readers may use binary search under this ordering
+contract; logs whose recorded timestamps move backward are outside that query guarantee.
+Undated diagnostics and unfinished final records must retain their documented handling.
+This storage assumption does not make the observation clock monotonic: monitor ages,
+retention, and health must still respond correctly when that clock moves backward.
+The monitor's domain session owns evidence loading, filesystem observation, refresh
+scheduling, and resource cleanup independently of its presentation. It publishes
+immutable, versioned snapshots to subscribers; a slow subscriber may receive the newest
+complete snapshot without receiving every intermediate version. Domain concepts and APIs
+must not depend on terminal widgets, tabs, display formatting, or navigation choices.
+The terminal initially shows a complete Status assessment. After that first frame is
+displayed, it proactively prepares the remaining content in the background. Selecting
+content while preparation is pending reuses that work and gives queued requests priority;
+it does not restart an admitted read. Browsing paused evidence remains stable while the
+session continues collecting live data. Cosmetic age updates belong to presentation;
+health expiry and evidence retention belong to the domain session.
+The startup target is 1–2 seconds from launching `mise monitor` to the first complete
+Status frame on the current benchmark machine with `data/2026`. Report fresh-process
+measurements and filesystem-cache conditions separately from later background completion.
 Overlapping monitor operations must serialize evidence and display updates. Shutdown
 stops new work and publication, waits for admitted readers, and closes their descriptors
 without blocking the event loop; cancelled callers must not abandon active readers.

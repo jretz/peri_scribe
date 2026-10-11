@@ -30,7 +30,7 @@ PHASE_STYLES = {
 }
 
 
-def phase_label(view: peri_scribe.monitor.model.PhaseView) -> rich.text.Text:
+def phase_label(view: peri_scribe.monitor.model.PhaseState) -> rich.text.Text:
     """Render every catalogue phase through the same state-based presentation.
 
     Args:

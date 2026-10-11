@@ -6,7 +6,6 @@ import unittest.mock
 import pytest
 import textual.widgets
 
-import peri_scribe.monitor.app
 import peri_scribe.monitor.history
 import peri_scribe.monitor.status
 import peri_scribe.monitor.status_widgets
@@ -34,9 +33,9 @@ async def test_monitor_app_archive_and_refresh_preserve_owned_evidence(
         stop=stop,
         cancel=cancel,
     )
-    assert [run.identifier for run in monitor_session.app.state.runs] == (
-        [] if stop else ["archive", "new"]
-    )
+    assert [
+        run.identifier for run in monitor_session.app.controller.snapshot.records.runs
+    ] == ([] if stop else ["archive", "new"])
 
 
 @pytest.mark.asyncio
@@ -83,7 +82,7 @@ async def test_monitor_app_open_status_evidence_cannot_publish_after_unmount(
     try:
         assert await asyncio.to_thread(reading.started.wait, 5)
         closing = asyncio.create_task(app.on_unmount())
-        await app.operations.stopped.wait()
+        await app.controller.session.owner.stopped.wait()
         assert not closing.done()
     finally:
         reading.release.set()
@@ -107,11 +106,11 @@ async def test_render_report_does_not_publish_completion_after_unmount(
     )
     monkeypatch.setattr(document, "update", update)
     previous = app.rendered_report
-    rendering = asyncio.create_task(peri_scribe.monitor.app.render_report(app))
+    rendering = asyncio.create_task(app.controller.refresh())
     try:
         await asyncio.wait_for(update.started.wait(), 5)
         closing = asyncio.create_task(app.on_unmount())
-        await app.operations.stopped.wait()
+        await app.controller.session.owner.stopped.wait()
         assert not closing.done()
     finally:
         update.release.set()

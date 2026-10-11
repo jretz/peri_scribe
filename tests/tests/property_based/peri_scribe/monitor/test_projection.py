@@ -53,7 +53,7 @@ def test_refresh_matches_uncached_status_for_arbitrary_clock_sequences(
             observed,
             snapshot,
         )
-        assert snapshot.view == peri_scribe.monitor.status.project(
+        assert snapshot.assessment == peri_scribe.monitor.status.project(
             history,
             files,
             observed,

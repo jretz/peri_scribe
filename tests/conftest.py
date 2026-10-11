@@ -35,6 +35,8 @@ pytest_plugins = [
     "tests.helpers.fixtures.peri_scribe.logging",
     "tests.helpers.fixtures.peri_scribe.main",
     "tests.helpers.fixtures.peri_scribe.monitor.application",
+    "tests.helpers.fixtures.peri_scribe.monitor.controller",
+    "tests.helpers.fixtures.peri_scribe.monitor.session",
     "tests.helpers.fixtures.peri_scribe.monitor.screenshots",
     "tests.helpers.fixtures.peri_scribe.monitor.status_widgets",
     "tests.helpers.fixtures.peri_scribe.monitor.widgets",

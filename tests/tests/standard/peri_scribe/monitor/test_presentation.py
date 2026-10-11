@@ -18,7 +18,7 @@ from measurement_units import units
 def test_phase_label_handles_each_status_with_literal_source_name(
     status: peri_scribe.monitor.model.Status,
 ) -> None:
-    view = peri_scribe.monitor.model.PhaseView(
+    view = peri_scribe.monitor.model.PhaseState(
         path=(peri_scribe.phases.Segment(phase="collect-feed", branch="[red]alpha"),),
         status=status,
         duration=2 * units.seconds,

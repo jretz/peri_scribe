@@ -85,7 +85,7 @@ def line(number: int, time: int | None, layout: int, *, included: bool) -> bytes
 
 
 def cases() -> tuple[SearchCase, ...]:
-    """Cover every short dated/undated ordering with diverse byte layouts.
+    """Cover ordered dated records and arbitrary undated positions and byte layouts.
 
     Returns:
         Exhaustive timestamp histories with several representative physical encodings.
@@ -93,6 +93,9 @@ def cases() -> tuple[SearchCase, ...]:
     result = []
     for length in range(5):
         for times in itertools.product((None, 0, 1, 2), repeat=length):
+            dated = tuple(time for time in times if time is not None)
+            if dated != tuple(sorted(dated)):
+                continue
             for layout, cutoff, unfinished in itertools.product(
                 range(3),
                 range(4),
@@ -206,7 +209,7 @@ def replay(directory: pathlib.Path) -> int:
 
 
 def replay_monitor(directory: pathlib.Path) -> int:
-    """Follow arbitrary clock orderings through the real persistent monitor reader.
+    """Follow ordered records through the real persistent monitor reader.
 
     Args:
         directory: Isolated directories for independent histories and storage formats.
@@ -226,6 +229,8 @@ def replay_monitor(directory: pathlib.Path) -> int:
             partial=b'{"unfinished":',
         )
         for times in itertools.product((None, 0, 1, 2), repeat=3)
+        if tuple(time for time in times if time is not None)
+        == tuple(sorted(time for time in times if time is not None))
     )
     results = tests.formal.helpers.oracle.evaluate(
         [case.request() for case in histories],

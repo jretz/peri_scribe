@@ -10,14 +10,14 @@
       <path d="M0 0 L10 5 L0 10z" fill="var(--edge)"/>
     </marker>
     <style>
-    :root { color-scheme:light dark; --background:#fbfcfe; --text:#172e40;
-      --muted:#526779; --edge:#526779; --disk:#eaf3fc; --disk-border:#5791bf;
-      --process:#fff7e8; --process-border:#c69a46; --network:#f0edfa;
-      --network-border:#9481c6; }
-    @media (prefers-color-scheme:dark) { :root { --background:#111820;
-      --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe; --disk:#172c3e;
-      --disk-border:#6198c2; --process:#362c1c; --process-border:#c4a45f;
-      --network:#2b253e; --network-border:#a391d0; } }
+    :root { color-scheme:light dark; --background:#111820; --text:#e4edf5;
+      --muted:#acbdcb; --edge:#9caebe; --disk:#172c3e; --disk-border:#6198c2;
+      --process:#362c1c; --process-border:#c4a45f; --network:#2b253e;
+      --network-border:#a391d0; }
+    @media (prefers-color-scheme:light) { :root { --background:#fbfcfe;
+      --text:#172e40; --muted:#526779; --edge:#526779; --disk:#eaf3fc;
+      --disk-border:#5791bf; --process:#fff7e8; --process-border:#c69a46;
+      --network:#f0edfa; --network-border:#9481c6; } }
     svg { background:var(--background); }
     text { fill:var(--text); font-family:system-ui,sans-serif; font-size:17px; }
     .title { font-size:23px; font-weight:700; }

@@ -12,13 +12,13 @@
       <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"/>
     </marker>
     <style>
-      :root { color-scheme:light dark; --bg:#fbfcfe; --text:#172e40;
-        --muted:#526779; --edge:#526779; --blue:#eaf3fc; --green:#ecf7ee;
-        --purple:#f0edfa; --accent:#24764c; --change:#326caf; --line:#bac7d1; }
-      @media (prefers-color-scheme:dark) {
-        :root { --bg:#111820; --text:#e4edf5; --muted:#acbdcb; --edge:#9caebe;
-          --blue:#172c3e; --green:#1b3025; --purple:#2b253e;
-          --accent:#76c89a; --change:#86b9f5; --line:#50616e; }
+      :root { color-scheme:light dark; --bg:#111820; --text:#e4edf5;
+        --muted:#acbdcb; --edge:#9caebe; --blue:#172c3e; --green:#1b3025;
+        --purple:#2b253e; --accent:#76c89a; --change:#86b9f5; --line:#50616e; }
+      @media (prefers-color-scheme:light) {
+        :root { --bg:#fbfcfe; --text:#172e40; --muted:#526779; --edge:#526779;
+          --blue:#eaf3fc; --green:#ecf7ee; --purple:#f0edfa;
+          --accent:#24764c; --change:#326caf; --line:#bac7d1; }
       }
       text { font-family:system-ui,sans-serif; font-size:16px; fill:var(--text); }
       .title { font-size:21px; font-weight:700; }

@@ -56,21 +56,19 @@ async def remove_viewer_during_update(
 async def open_evidence_with_completion(
     completed: asyncio.Event,
     operation: collections.abc.Callable[
-        [peri_scribe.monitor.app.MonitorApp, peri_scribe.monitor.status.Target],
+        [peri_scribe.monitor.status.Target],
         collections.abc.Awaitable[None],
     ],
-    app: peri_scribe.monitor.app.MonitorApp,
     target: peri_scribe.monitor.status.Target,
 ) -> None:
-    """Expose completion of real evidence navigation after its clicked message arrives.
+    """Expose completion of navigation requested through the real status control.
 
     Args:
-        completed: Signal that loading and publication have both finished.
-        operation: The unmodified evidence-navigation operation.
-        app: The observer receiving the clicked evidence.
-        target: The evidence selected through the actual status control.
+        completed: Signal that retrieval and presentation have both finished.
+        operation: The controller's unmodified evidence command.
+        target: The immutable observation selected by the user.
     """
-    await operation(app, target)
+    await operation(target)
     completed.set()
 
 

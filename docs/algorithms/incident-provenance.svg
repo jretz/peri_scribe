@@ -15,15 +15,16 @@
       <path d="M0 0 L10 5 L0 10 Z" fill="var(--edge)"/>
     </marker>
     <style>
-    :root { color-scheme:light dark; --background:#fbfcfe; --text:#172e40;
-      --muted:#526779; --edge:#526779; --blue:#eaf3fc; --blue-line:#5791bf;
-      --gold:#fff7e8; --gold-line:#c69a46; --purple:#f0edfa;
-      --purple-line:#9481c6; }
-    @media (prefers-color-scheme:dark) {
-      :root { --background:#111820; --text:#e4edf5; --muted:#acbdcb;
-        --edge:#9caebe; --blue:#172c3e; --blue-line:#6198c2;
-        --gold:#362c1c; --gold-line:#c4a45f; --purple:#2b253e;
-        --purple-line:#a391d0; }
+    :root { color-scheme: light dark;
+      --background:#111820; --text:#e4edf5; --muted:#acbdcb;
+      --edge:#9caebe; --blue:#172c3e; --blue-line:#6198c2;
+      --gold:#362c1c; --gold-line:#c4a45f; --purple:#2b253e;
+      --purple-line:#a391d0; }
+    @media (prefers-color-scheme: light) {
+      :root { --background:#fbfcfe; --text:#172e40;
+        --muted:#526779; --edge:#526779; --blue:#eaf3fc; --blue-line:#5791bf;
+        --gold:#fff7e8; --gold-line:#c69a46; --purple:#f0edfa;
+        --purple-line:#9481c6; }
     }
     text { font-family:system-ui,sans-serif; font-size:17px; fill:var(--text); }
     .heading { font-size:22px; font-weight:700; }

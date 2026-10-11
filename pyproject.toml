@@ -12,6 +12,7 @@ dependencies = [
     "pillow",
     "pint",
     "pydantic",
+    "pydantic-core",
     "pygments",  # For pytest code highlighting
     "pyproj",
     "pytest-asyncio",

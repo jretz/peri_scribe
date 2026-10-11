@@ -1,4 +1,4 @@
-"""Reuse status until evidence or a displayed time boundary changes.
+"""Reuse health findings until evidence or a policy boundary changes.
 
 Algorithm reasoning and contracts:
 [Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
@@ -19,7 +19,7 @@ class Snapshot:
     files: peri_scribe.monitor.status.Files
     observed_at: datetime.datetime
     observations: tuple[peri_scribe.monitor.status.Target, ...]
-    view: peri_scribe.monitor.status.View
+    assessment: peri_scribe.monitor.status.Assessment
     changes_at: datetime.datetime | None
     evidence_changes_at: datetime.datetime | None
 
@@ -35,7 +35,7 @@ def evidence_deadline(
         now: The beginning of the cached evidence's validity.
 
     Returns:
-        The first instant that time alone changes the evidence tables.
+        The first instant that time alone changes the evidence classifications.
     """
     deadlines = []
     for item in observations:
@@ -48,65 +48,44 @@ def evidence_deadline(
     return min(deadlines, default=None)
 
 
-def display_deadline(
+def policy_deadline(
     history: peri_scribe.monitor.history.History,
     files: peri_scribe.monitor.status.Files,
-    observations: tuple[peri_scribe.monitor.status.Target, ...],
-    view: peri_scribe.monitor.status.View,
+    assessment: peri_scribe.monitor.status.Assessment,
     now: datetime.datetime,
 ) -> datetime.datetime | None:
-    """Keep ages, freshness warnings, and coverage exact between evidence changes.
+    """Refresh health only when time can change an evidence-based classification.
 
     Args:
-        history: Run details used by the live activity and coverage metrics.
-        files: Artifact timestamps, including timestamps without build evidence.
-        observations: Sorted evidence used to explain failure and recovery.
-        view: The displayed metrics and their navigation targets.
-        now: The beginning of this display's validity.
+        history: Inclusive coverage intervals and collection diagnostics.
+        files: Artifact observations, including future timestamps.
+        assessment: Current freshness and source-check findings.
+        now: The beginning of the assessment's validity.
 
     Returns:
-        The earliest possible change to a displayed age or severity.
+        The next freshness or coverage policy boundary.
     """
-    timestamps = {metric.target.when for metric in view.metrics if metric.target}
-    timestamps.update(
-        output.modified for output in (files.kmz, files.report) if output.modified
-    )
-    active, failure = view.metrics[2], view.metrics[-1]
-    if active.target:
-        run = next(
-            run for run in history.state.runs if run.identifier == active.target.run
-        )
-        timestamps.update(
-            event.timestamp
-            for event in run.events
-            if event.timestamp and event.message == "Starting command"
-        )
-    if failure.target:
-        # Failure ages describe completion; navigation identifies the earlier origin.
-        timestamps.update(
-            item.when
-            for item in observations
-            if item.run == failure.target.run
-            and item.event.message == "Finished command"
-        )
-        recovered = peri_scribe.monitor.status.recovery(failure.target, observations)
-        if recovered:
-            timestamps.add(recovered.when)
+    kmz, report, _, source, _, _ = assessment.metrics
+    timestamps = {
+        kmz.timestamp,
+        report.timestamp,
+        source.target.when if source.target else None,
+        *(output.modified for output in (files.kmz, files.report)),
+    }
     deadlines = []
     for timestamp in timestamps:
+        if timestamp is None:
+            continue
         if timestamp > now:
             deadlines.append(timestamp)
         else:
-            elapsed = now - timestamp
-            step = (
-                datetime.timedelta(hours=1)
-                if elapsed >= datetime.timedelta(days=1)
-                else datetime.timedelta(minutes=1)
-            )
-            deadlines.append(timestamp + (elapsed // step + 1) * step)
-            strict_limit = timestamp + datetime.timedelta(hours=6, microseconds=1)
-            if strict_limit > now:
-                deadlines.append(strict_limit)
+            for elapsed in (
+                datetime.timedelta(hours=5),
+                datetime.timedelta(hours=6, microseconds=1),
+            ):
+                boundary = timestamp + elapsed
+                if boundary > now:
+                    deadlines.append(boundary)
     maximum = datetime.datetime.max.replace(tzinfo=datetime.UTC)
     for period in history.coverage:
         if period.start > now:
@@ -122,7 +101,7 @@ def refresh(
     now: datetime.datetime,
     previous: Snapshot | None = None,
 ) -> Snapshot:
-    """Reuse evidence tables and the display independently of advancing wall time.
+    """Reuse evidence classifications and health independently of advancing wall time.
 
     Args:
         history: Current evidence and collection diagnostics.
@@ -159,7 +138,7 @@ def refresh(
         if previous is not None and same_state
         else peri_scribe.monitor.status.evidence(history)
     )
-    tables = (
+    reusable = (
         previous
         if (
             previous is not None
@@ -173,21 +152,23 @@ def refresh(
         else None
     )
     evidence_changes_at = (
-        tables.evidence_changes_at if tables else evidence_deadline(observations, now)
+        reusable.evidence_changes_at
+        if reusable
+        else evidence_deadline(observations, now)
     )
-    view = peri_scribe.monitor.status.project(
+    assessment = peri_scribe.monitor.status.project(
         history,
         files,
         now,
         observations=observations,
-        tables=tables.view if tables else None,
+        previous=reusable.assessment if reusable else None,
     )
     changes_at = min(
         (
             value
             for value in (
                 evidence_changes_at,
-                display_deadline(history, files, observations, view, now),
+                policy_deadline(history, files, assessment, now),
             )
             if value is not None
         ),
@@ -198,7 +179,7 @@ def refresh(
         files=files,
         observed_at=now,
         observations=observations,
-        view=view,
+        assessment=assessment,
         changes_at=changes_at,
         evidence_changes_at=evidence_changes_at,
     )

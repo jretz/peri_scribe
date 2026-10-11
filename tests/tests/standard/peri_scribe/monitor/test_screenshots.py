@@ -10,7 +10,6 @@ import pytest
 import rich.text
 import textual.widgets
 
-import peri_scribe.monitor.app
 import peri_scribe.monitor.screenshots
 import tests.helpers.assertions.peri_scribe.monitor.screenshots
 import tests.helpers.doubles.peri_scribe.monitor.screenshots
@@ -65,7 +64,7 @@ async def test_snapshot_screen_export_snapshot_preserves_unicode_and_scrolled_co
 ) -> None:
     session = scrolling_session
     await tests.helpers.textual.invoke(session.app.action_view, "report")
-    await peri_scribe.monitor.app.render_report(session.app)
+    await session.app.controller.render_report()
     await session.refresh()
     viewer = session.app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
     await tests.helpers.textual.scroll_end(viewer)
