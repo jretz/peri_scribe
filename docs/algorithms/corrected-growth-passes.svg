@@ -51,6 +51,8 @@
       .forward-geometry .growth { fill:inherit; stroke:none; }
       .forward-geometry .already-counted { stroke:none; }
       .forward-geometry .growth-outline { stroke:inherit; }
+      /* Whole footprints conceal shared-edge seams until subtraction begins. */
+      .whole-footprint { opacity:0; fill:inherit; stroke:none; }
       .static-caption { font-size:14px; }
 
       @media (prefers-reduced-motion:no-preference) {
@@ -83,11 +85,15 @@
 
         #already-counted-1 { animation:subtract-1 36s linear infinite; }
 
+        #whole-footprint-1 { animation:whole-footprint-1 36s step-end infinite; }
+
         #growth-outline-1 { animation:growth-outline-1 36s linear infinite; }
 
         #whole-outline-1 { animation:whole-outline-1 36s linear infinite; }
 
         #already-counted-2 { animation:subtract-2 36s linear infinite; }
+
+        #whole-footprint-2 { animation:whole-footprint-2 36s step-end infinite; }
 
         #growth-outline-2 { animation:growth-outline-2 36s linear infinite; }
 
@@ -203,6 +209,10 @@
         65.2778% { opacity:0; fill:var(--ghost-fill); }
         100.0000% { opacity:0; fill:var(--ghost-fill); }
       }
+      @keyframes whole-footprint-1 {
+        0.0000% { opacity:1; }
+        59.7222%, 100.0000% { opacity:0; }
+      }
       @keyframes growth-outline-1 {
         0.0000% { opacity:0; }
         59.7222% { opacity:0; }
@@ -222,6 +232,10 @@
         78.6111% { opacity:1; fill:var(--ghost-fill); }
         81.9444% { opacity:0; fill:var(--ghost-fill); }
         100.0000% { opacity:0; fill:var(--ghost-fill); }
+      }
+      @keyframes whole-footprint-2 {
+        0.0000% { opacity:1; }
+        76.3889%, 100.0000% { opacity:0; }
       }
       @keyframes growth-outline-2 {
         0.0000% { opacity:0; }
@@ -331,12 +345,14 @@
       <g transform="translate(420,916)">
     <use href="#growth-1" class="growth" />
     <use href="#corrected-0" class="already-counted" id="already-counted-1"/>
+    <use href="#corrected-1" class="whole-footprint" id="whole-footprint-1"/>
     <use href="#corrected-1" class="growth-outline whole-outline" id="whole-outline-1"/>
     <use href="#growth-1" class="growth-outline" id="growth-outline-1"/>
       </g>
       <g transform="translate(670,916)">
     <use href="#growth-2" class="growth" />
     <use href="#corrected-1" class="already-counted" id="already-counted-2"/>
+    <use href="#corrected-2" class="whole-footprint" id="whole-footprint-2"/>
     <use href="#corrected-2" class="growth-outline whole-outline" id="whole-outline-2"/>
     <use href="#growth-2" class="growth-outline" id="growth-outline-2"/>
       </g>
