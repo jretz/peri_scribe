@@ -1,8 +1,9 @@
 """Building the line-plot data for each fire's KML balloon.
 
-Each fire's history supplies the measurements for its area, perimeter, and cost lines.
-These helpers read the history layers into the points and series a plot draws, keeping
-only the lines that span enough observation times to show growth.
+Each fire's history supplies the measurements for its area, perimeter, cost, and
+personnel lines. These helpers read the history layers into the points and series a plot
+draws, keeping only the lines that span enough observation times to show change over
+time.
 
 [Algorithm note](../../../docs/algorithms/chart-layout.md)
 """
@@ -27,7 +28,7 @@ if typing.TYPE_CHECKING:
 
 
 # A line is skipped unless its measurement exists on at least this many distinct
-# observation times; one point cannot show how a fire grew.
+# observation times; one point cannot show how a measurement changed.
 MINIMUM_OBSERVATION_TIMES = 2
 
 # Area and cost are scaled to these units before plotting so their values stay in a
@@ -82,11 +83,11 @@ class FirePlot:
 def exterior_perimeter_measurements(
     frame: geopandas.GeoDataFrame,
 ) -> tuple[ExteriorMeasurement, ...]:
-    """Return each perimeter row's observation time and exterior length in miles.
+    """Return each perimeter row's observation time and unit-bearing exterior length.
 
-    Each row's exterior length is measured exactly once here, so the exterior and
-    contained perimeter lines built from the measurements never measure the same
-    geometry twice.
+    Use each row's stored exterior length when available and measure its geometry
+    otherwise. The exterior and contained perimeter lines share these values, avoiding a
+    second measurement for the contained line.
 
     Args:
         frame: The perimeter history layer.
@@ -397,7 +398,7 @@ def has_multiple_observation_times(
         points: One line's measurements.
 
     Returns:
-        True when the line has enough times to show growth.
+        True when the line has enough times to show change over time.
     """
     return len({point.observation_time for point in points}) >= (
         MINIMUM_OBSERVATION_TIMES

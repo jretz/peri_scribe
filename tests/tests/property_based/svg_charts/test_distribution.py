@@ -1,4 +1,4 @@
-"""Verify serialized documents, GeoPackages, and score distribution plots."""
+"""Check strict exceedance shares against direct counts."""
 
 from __future__ import annotations
 

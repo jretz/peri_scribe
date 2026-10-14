@@ -49,7 +49,7 @@ class Scenario:
         return self.directory / "sources" / mutation.value
 
     def mutate(self, mutation: Mutation) -> bool:
-        """Write a revision once, optionally losing the process before acknowledgment.
+        """Write a revision once, optionally interrupting before acknowledgment.
 
         Args:
             mutation: The input currently being refreshed.

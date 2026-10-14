@@ -86,7 +86,7 @@ def test_perimeter_is_implausibly_small_flags_collapsed_geometry() -> None:
     assert peri_scribe.perimeters.size_filtering.perimeter_is_implausibly_small(version)
 
 
-def test_perimeter_is_implausibly_small_flags_small_incident_size() -> None:
+def test_perimeter_is_implausibly_small_flags_geometry_below_incident_size() -> None:
     tiny = tests.helpers.factories.geometry.polygon(
         (0, 0),
         (0.0001, 0),

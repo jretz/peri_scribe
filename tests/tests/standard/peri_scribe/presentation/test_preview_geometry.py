@@ -97,7 +97,7 @@ def test_best_angle_accepts_small_overlap_to_preserve_a_larger_map() -> None:
     )
 
 
-def test_best_angle_finds_narrow_clearance_optimum_for_brushy_canyon() -> None:
+def test_best_angle_meets_known_clearance_score_for_brushy_canyon() -> None:
     factories = tests.helpers.factories.peri_scribe.presentation.preview_geometry
     reference = tests.helpers.reference.peri_scribe.presentation.preview_geometry
     footprint = factories.brushy_canyon_hull()
@@ -264,7 +264,7 @@ def test_north_dart_hull_includes_rendered_pixel_squares_and_two_pixel_clearance
     assert hull.bounds[2] == pytest.approx(130)
 
 
-def test_draw_map_preserves_holes_solid_fill_outline_order_and_flush_dart() -> None:
+def test_draw_map_preserves_holes_solid_fill_outline_colors_and_flush_dart() -> None:
     hole = (
         (-121.008, 36.003),
         (-121.004, 36.003),

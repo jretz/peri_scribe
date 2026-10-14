@@ -303,10 +303,11 @@ def classified_reused_fires(
     path: pathlib.Path,
     reused: collections.abc.Collection[int],
 ) -> frozenset[int]:
-    """Carry forward classification proof only from authenticated complete histories.
+    """Reuse classifications only when a complete authenticated history supports them.
 
-    A complete generation tag proves that all its non-complex fires were classified.
-    Matching per-fire derivation keys keep that proof valid for the reused histories.
+    A complete generation tag establishes that all its non-complex fires were
+    classified. Matching per-fire derivation keys establish that the evidence and
+    dependencies used for each reused history are still the same.
 
     Args:
         path: The previous full-history output whose rows are being reused.

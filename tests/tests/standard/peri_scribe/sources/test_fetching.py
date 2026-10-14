@@ -56,7 +56,7 @@ def test_fetch_feed_dataframe_raises_without_change_columns() -> None:
         )
 
 
-def test_fetch_feed_dataframe_returns_none_when_dedupe_removes_all(
+def test_fetch_feed_dataframe_returns_none_when_fetched_frame_is_empty(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     feed = tests.helpers.factories.peri_scribe.sources.feed_types.change_feed()
@@ -249,7 +249,7 @@ def test_fetch_feed_dataframe_fetches_stored_active_rows_now_inactive(
     )
 
 
-def test_fetch_feed_dataframe_returns_none_when_flip_candidates_are_unchanged(
+def test_fetch_feed_dataframe_returns_none_when_no_change_candidates_are_found(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     feed = tests.helpers.factories.peri_scribe.sources.feed_types.change_feed()

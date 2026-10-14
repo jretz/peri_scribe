@@ -125,12 +125,11 @@ def share_tick_text(value: float) -> str:
 
 
 def curve_knees(samples: collections.abc.Sequence[float]) -> list[tuple[float, float]]:
-    """Return the (value, complementary share) pairs where the CCDF bends most.
+    """Return the two points where the complementary-share curve bends most.
 
-    The curve is the complementary share plotted with a logarithmic y-axis, so the fit
-    is over (value, log share) coordinates. The two knees are the breakpoints of the
-    three-line-segment fit with the smallest total squared error; fewer than five
-    visible points leaves no room for two breakpoints.
+    The displayed curve uses a logarithmic y-axis, so fitting uses (value, log share)
+    coordinates. The two knees divide the best three-segment fit, measured by total
+    squared error. Fewer than five visible points leave no room for both breakpoints.
 
     Args:
         samples: The numeric samples to plot.
@@ -241,7 +240,7 @@ class CcdfLayout:
         """Return the value-axis tick values.
 
         Returns:
-            The tick values from zero to the axis top.
+            Regular tick values starting at zero.
         """
         step = svg_charts.svg.nice_step(
             self.highest_value,
@@ -285,10 +284,10 @@ def ccdf_layout(samples: collections.abc.Sequence[float]) -> CcdfLayout:
 
 
 def ccdf_curve_path(values: np.ndarray, shares: np.ndarray, layout: CcdfLayout) -> str:
-    """Return the SVG path data drawing the complementary CDF as a step curve.
+    """Return the SVG path for the complementary CDF as a step curve.
 
-    The curve steps rather than slopes: samples between the ones that occur hold their
-    share flat, which is what a cumulative distribution actually does.
+    The share changes only at observed values. Drawing flat steps between those values
+    preserves that meaning; sloping lines would imply changes where no samples occurred.
 
     Args:
         values: The distinct samples.

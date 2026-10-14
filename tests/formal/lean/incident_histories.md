@@ -1,5 +1,9 @@
 # Complete incident histories
 
+Incident reports can omit fields, arrive out of order, or revise one measurement while
+leaving others unchanged. Each field needs its own supporting evidence so a later sparse
+report doesn't erase or borrow a value from another field.
+
 `PeriScribe/IncidentHistory.lean` extends the local `Reconciliation` rules through
 arbitrary histories of arbitrary fields. The executable reference sorts by observation
 clock, direct-feed priority, snapshot serial, and filename, selects one source for each

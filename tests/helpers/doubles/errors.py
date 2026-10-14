@@ -1,4 +1,4 @@
-"""Replace errors dependencies with controlled test doubles."""
+"""Provide controlled failures for substituted dependencies."""
 
 from __future__ import annotations
 

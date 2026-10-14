@@ -176,7 +176,8 @@ def check_transition(
 ) -> None:
     """Require Lean's invalidation decision and exact fresh output on a real cache.
 
-    Each call owns a fresh execution scope so memoized input ownership stays valid.
+    Each call uses a fresh execution scope because memoized inputs must remain unchanged
+    within their owning scope.
 
     Args:
         directory: Isolated storage for one dependency mutation.

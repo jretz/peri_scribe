@@ -1,4 +1,8 @@
-"""Require existing conformance checks to distinguish real, isolated source defects.
+"""Check that established conformance tests reject specific production defects.
+
+A test must pass against unchanged source before its failure can demonstrate that it
+detected an introduced defect. Tool failures and changed assertions would not establish
+that connection.
 
 Design notes:
 [Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).

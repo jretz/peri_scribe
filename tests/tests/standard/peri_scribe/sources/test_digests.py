@@ -1,4 +1,4 @@
-"""Tests for peri_scribe.sources.external_sources."""
+"""Tests for peri_scribe.sources.digests."""
 
 from __future__ import annotations
 
@@ -51,7 +51,7 @@ def test_dataframe_digest_treats_missing_values_equally() -> None:
     assert digest(frame(pd.NaT)) == baseline
 
 
-def test_dataframe_digest_covers_every_attribute_kind() -> None:
+def test_dataframe_digest_accepts_mixed_attribute_types() -> None:
     dataframe = tests.helpers.factories.geography.geo_frame(
         {
             "a": ["x", "y"],

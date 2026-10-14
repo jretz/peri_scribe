@@ -1,10 +1,14 @@
 # Lean policy and algorithm proofs
 
-These proofs check selected deterministic policies and mathematical algorithms used by
-the pipeline and its supporting data stores. They use Lean's standard libraries, with
-no external packages.
-The tool version comes from the repository's mise configuration and lockfile; this
-directory does not maintain an independent toolchain pin.
+These proofs check selected policies and algorithms used by the pipeline and its data
+stores. Each proof applies to every input in its stated mathematical domain. Tests then
+compare the same executable Lean definitions with the real implementation on documented
+cases. Keeping those two claims separate makes it clear what has been proved and what
+has been checked through execution.
+
+The proofs use Lean's standard libraries without external packages. The tool version
+comes from the repository's mise configuration and lockfile; this directory has no
+independent toolchain pin.
 
 Run `mise formal-lean` from the repository root. The task builds every proof and
 all executable references registered as default targets in `lakefile.toml`. Run
@@ -47,7 +51,7 @@ structural encoding proofs with parsed Markdown, HTML, XML, and saved KMZ artifa
 | `AreaHistory` | `areas.area_history` | The selection fold preserves source evidence and effective event times; fresh surveys restore mapped selection. The executable specification includes accepted reports, distinct confirmations, timestamp ties, and inserted deadlines. |
 | `IncidentHistory` | `incidents`, `fires.incident_history` | Complete multi-field histories remain chronological; selected source metadata survives; effective values have earlier same-field support; sparse confirmations have independent ledgers; normalized incident history survives polygon removal. |
 | `IdentityOutput` | `fires.sources`, `presentation.selection`, `presentation.history_index`, `presentation.fire_data` | Component and tagged-history ownership, exact eligible observation retention, chronological alias aggregation, and explicit identifier/name fallback boundaries. |
-| `SparseEvidence` | `areas`, `presentation.selection`, `presentation.index` | Dated-history precedence, sparse current and historical fallback, missing versus zero, visibility witnesses, and continued qualification after dated corrections. |
+| `SparseEvidence` | `areas`, `presentation.selection`, `presentation.index` | Dated-history precedence, sparse current and historical fallback, missing versus zero, visibility witnesses, and continued qualification when an already qualifying dated history is extended. |
 | `SpatialIndex` | `point_store.tile_id`, `tile_ids_for_box`, `point_counts_within` | Tile enumeration is complete and duplicate-free; counting across the enumerated tiles equals exhaustive bag counting under the stated containment assumptions. |
 | `Grouping` | `fires.grouping.group_fire_record_indices` | Executable class merging computes exactly undirected connectivity, independent of edge order and duplicate edges; parent-pointer operations have explicit representation obligations. |
 | `PerimeterVersions` | `perimeters.versions`, `areas` | Revision windows remain anchored; collapsing observations preserves provenance; supersession retains its witness; survey freshness follows the last actual survey. |
@@ -99,46 +103,32 @@ The [domain proof inventory](domain.md) details the identity, complete area-hist
 spatial-index, and grouping proofs, their conformance cases, and the `oracleDomain`
 protocol.
 
-The [evidence inventory](evidence.md) covers perimeter versions, survey freshness,
-publication candidates, and `oracleEvidence`. The [ingestion inventory](../ingestion_extensions.md)
-covers incremental collection, point construction, and `oracleIngestion`.
-The [complete incident-history inventory](incident_histories.md) covers sequence
-reconciliation, field-specific evidence support, and real storage conformance.
-The [presentation inventory](presentation.md) covers identity through output and sparse
-evidence selection.
-The [cache dependency inventory](cache_dependencies.md),
-[complex ownership inventory](complex_ownership.md), and
-[ranked views and output references](output_references.md) describe their policy and
-artifact conformance boundaries.
-The [typed codec inventory](cache_codec.md) covers the structured encoding proof and
-exact representation fixtures.
-The [perimeter composition inventory](perimeter_composition.md) covers complete
-reconciliation and border classification, including optimized geometry handling.
-The [centroid and monitor inventory](centroids_monitor.md) covers exact footprint
-moments, streaming feature preservation, and run/phase reconstruction.
-The [source fingerprint inventory](source_digest.md) covers source-change encoding,
-schema identity, and row-bag equivalence.
-The [source validation inventory](source_validation.md) covers complete stored-content
-coverage, unique identifiers, and compatible coordinate references.
-The [spatial boundary inventory](spatial_boundaries.md) covers indexed overlaps,
-differential-row attribution, and integer coordinate conversion.
-The [geometry-sharing and viewer inventory](geometry_updates.md) covers persistent
-compressed trees and update history through displayed rows.
-The [projected snapshot inventory](projected_snapshots.md) composes current ownership
-with exact chronological predecessors, visible changes, and immutable source records.
-The [log rotation and seeking inventory](../log_rotation_seeking.md) covers byte-level
-reader contracts and their real-file conformance.
-The [coordinate-reference inventory](coordinate_reference.md) covers numerical candidate
-filtering and reference-selection policy. The
-[identity lifecycle inventory](identity_lifecycle.md) covers name adoption and complete
-allocation under compatible existing ownership, plus persistent checkpoint evidence. The
-[policy detail inventory](policy_details.md) covers complete notable selection and
-chart evidence preservation.
-The [raw decoding inventory](raw_decoding.md) covers typed field fallback and timestamp
-normalization. The [history ownership inventory](identity_transfer.md) covers competing
-claims, inherited evidence, durable alias lineage, and current viewer grouping while
-preserving original logs. [Publication baselines](publication_baseline.md) extend
-visible-source ownership through repeated rows and index membership.
+The inventories below connect each group of proofs to its implementation checks:
+
+| Inventory | Scope |
+| --- | --- |
+| [Perimeter evidence](evidence.md) | Perimeter versions, survey freshness, publication candidates, and `oracleEvidence`. |
+| [Ingestion](../ingestion_extensions.md) | Incremental collection, point construction, and `oracleIngestion`. |
+| [Incident histories](incident_histories.md) | Complete sequence reconciliation, the evidence supporting each field, and real storage checks. |
+| [Presentation](presentation.md) | Identity through output and selection from sparse evidence. |
+| [Cache dependencies](cache_dependencies.md) | Keys include every declared input that can change the cached result. |
+| [Complex ownership](complex_ownership.md) | Current parent selection, releases, and mergers through incident history. |
+| [Ranked views and output references](output_references.md) | Consistent score ownership across outputs and valid references to fire details and resources. |
+| [Typed codecs](cache_codec.md) | Structured encoding and fixtures for exact representations. |
+| [Perimeter composition](perimeter_composition.md) | Complete reconciliation and border classification, including optimized geometry handling. |
+| [Centroids and monitor reconstruction](centroids_monitor.md) | Exact footprint moments, preservation of streamed features, and reconstruction of runs and phases. |
+| [Source fingerprints](source_digest.md) | Source-change encoding, schema identity, and row comparisons that ignore order but preserve duplicates. |
+| [Source validation](source_validation.md) | Coverage of complete stored content, unique identifiers, and compatible coordinate references. |
+| [Spatial boundaries](spatial_boundaries.md) | Indexed overlaps, attribution of differential rows, and integer coordinate conversion. |
+| [Geometry sharing and viewer updates](geometry_updates.md) | Persistent compressed trees and update history through displayed rows. |
+| [Projected snapshots](projected_snapshots.md) | Current ownership composed with exact chronological predecessors, visible changes, and immutable source records. |
+| [Log rotation and seeking](../log_rotation_seeking.md) | Byte-level reader contracts and checks using real files. |
+| [Coordinate references](coordinate_reference.md) | Numerical candidate filtering and reference-selection policy. |
+| [Identity lifecycle](identity_lifecycle.md) | Name adoption and complete allocation under compatible existing ownership, plus persistent checkpoint evidence. |
+| [Policy details](policy_details.md) | Complete notable selection and preservation of chart evidence. |
+| [Raw decoding](raw_decoding.md) | Typed field fallback and timestamp normalization. |
+| [History ownership](identity_transfer.md) | Competing claims, inherited evidence, durable alias lineage, and current viewer grouping while preserving original logs. |
+| [Publication baselines](publication_baseline.md) | Visible-source ownership through repeated rows and index membership. |
 
 ## Explicit assumptions and exclusions
 

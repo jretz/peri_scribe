@@ -1,4 +1,4 @@
-"""Generate borders examples with constrained domains."""
+"""Generate border paths with reordered and reversed segments."""
 
 from __future__ import annotations
 

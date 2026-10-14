@@ -2,11 +2,12 @@
 
 ## Contract and assessment
 
-Terminal row shading should preserve alternate-row brightness, add a recognizable status
-hue, and leave focus/selection backgrounds, text and mouse targets intact. Pane resizing
-should give mouse and keyboard users the same limits, expressed in terminal cells and
-stored as flexible proportions. These presentation algorithms consume Textual/Rich colors,
-segment metadata, pane dimensions and pointer positions; they do not decide health status.
+Readers need to distinguish alternating rows, recognize status colors, and still see
+which row has focus or is selected. Row shading must preserve those distinctions along
+with the text and mouse targets. Pane resizing should give mouse and keyboard users the
+same limits, expressed in terminal cells and stored as flexible proportions. These
+presentation algorithms consume Textual/Rich colors, segment metadata, pane dimensions
+and pointer positions; they do not decide health status.
 
 | Dimension | Score | Concrete reason |
 | --- | --- | --- |
@@ -97,8 +98,7 @@ and [worker lifetimes](worker-lifetimes.md).
 [terminal_images.py](../../src/peri_scribe/terminal_images.py) supplies OSC 1337 image
 width/height controls to the [latency display](../../src/peri_scribe/show_latencies/cli.py).
 Inputs are an output text stream, a finite positive maximum width with pixel units, and
-a
-finite positive aspect ratio (image width divided by image height). These numerical
+a finite positive aspect ratio (image width divided by image height). These numerical
 preconditions come from the caller; the sizing helpers do not validate arbitrary invalid
 ratios. Outputs are decimal character-cell dimensions when trustworthy terminal geometry
 is available, otherwise explicit pixel dimensions.
@@ -118,14 +118,13 @@ user input with terminal responses.
 
 ![Logical sizing, OS geometry and explicit-pixel fallback](assets/terminal-image-sizing.svg)
 
-*Precedence is static: prefer a logical cell report, then usable OS geometry, then explicit
-pixel controls. The image width leaves one terminal column free when cell sizing succeeds.
-Motion would not improve this decision diagram.*
+*Prefer a logical cell report, then usable OS geometry, then explicit pixel controls.
+When cell sizing succeeds, the image width leaves one terminal column free.*
 
 The algorithm prepares the pixel fallback first: `int(maximum_width)` pixels wide and
 `round(width / aspect_ratio)` pixels high. Redirected streams immediately use it. For a
-TTY, obtain rows, columns and optional pixel dimensions with `TIOCGWINSZ`; one or fewer
-columns cannot support the one-column-margin policy and uses fallback.
+TTY, obtain rows, columns and optional pixel dimensions with `TIOCGWINSZ`. A terminal with
+one or fewer columns cannot leave a column free, so it uses the fallback.
 
 Query the **output** terminal opened read/write, so redirected standard input does not
 prevent measuring an interactive output. Before changing input mode, skip the query if

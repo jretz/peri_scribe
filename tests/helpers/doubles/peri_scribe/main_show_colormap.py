@@ -1,4 +1,4 @@
-"""Replace main show colormap dependencies with controlled test doubles."""
+"""Record the trim windows passed to the colormap renderer."""
 
 from __future__ import annotations
 

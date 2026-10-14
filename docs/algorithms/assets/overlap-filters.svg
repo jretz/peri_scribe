@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <svg xmlns="http://www.w3.org/2000/svg" width="840" height="420" viewBox="0 0 840 420" role="img" aria-labelledby="overlap-filters-title overlap-filters-description" style="max-width:100%;height:auto">
   <title id="overlap-filters-title">Envelope overlap is necessary, but not sufficient</title>
-  <desc id="overlap-filters-description">Irregular fire perimeters show both cases. A query inside an unburned hole passes the envelope tests but fails intersects. A query sharing a perimeter edge passes intersects.</desc>
+  <desc id="overlap-filters-description">Bounding boxes identify possible overlaps, but the geometry test decides the result. A query inside an unburned hole passes the box tests without intersecting the fire. A query that shares a perimeter edge does intersect, because a boundary touch counts.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 Z" fill="var(--edge)" />

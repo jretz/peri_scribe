@@ -1,5 +1,9 @@
 """Share actual execution prefixes while isolating independently checked branches.
 
+Histories with identical beginnings can reuse that work only if each continuation gets
+the same files and surviving model states. Private copies let branches continue without
+changing the evidence used by their parent or siblings.
+
 Design notes:
 [Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
 """
@@ -90,7 +94,7 @@ def weight(branch: Branch) -> int:
 
 
 def partition(roots: tuple[Branch, ...], count: int) -> tuple[tuple[Branch, ...], ...]:
-    """Balance complete prefix trees while preserving their exact once-only ownership.
+    """Balance work while assigning each complete prefix tree to exactly one batch.
 
     Args:
         roots: The full checked inventory grouped by actual common prefixes.

@@ -202,7 +202,7 @@ def replay(states: list[dict[str, str]], directory: pathlib.Path) -> int:
     """Fault every serialization boundary for all public document writers.
 
     Args:
-        states: Entire checked TLC graph.
+        states: All reachable checked TLC states.
         directory: Isolated case directory.
 
     Returns:

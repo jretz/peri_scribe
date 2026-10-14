@@ -15,15 +15,13 @@ import zipfile
 
 KMZ_DOCUMENT_FILENAME = "doc.kml"
 
-# DEFLATE is the compression Google Earth expects inside a KMZ. Level 6 is used instead
-# of the maximum 9: the output is within 1% of level 9's size but compresses several
-# times faster.
+# Google Earth expects DEFLATE compression inside a KMZ. Level 6 limits compression work
+# while still shrinking the repeated tags and coordinates in the KML document.
 KMZ_COMPRESSION = zipfile.ZIP_DEFLATED
 KMZ_COMPRESSION_LEVEL = 6
 
-# Raster formats that are already compressed, so passing them through DEFLATE again
-# costs time for no size benefit. Everything else the archive carries -- the KML
-# document and the SVG plots -- is text, which DEFLATE shrinks by roughly two thirds.
+# These raster formats already compress their contents, so another compression pass
+# usually saves little space. KML and SVG are text and benefit from DEFLATE.
 ALREADY_COMPRESSED_IMAGE_SUFFIXES = (".gif", ".jpeg", ".jpg", ".png")
 
 

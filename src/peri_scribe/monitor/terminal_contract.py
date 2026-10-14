@@ -1,4 +1,4 @@
-"""Describe terminal capabilities without coupling presentation to its concrete app."""
+"""Describe the controls and callbacks needed to present monitor data in a terminal."""
 
 import collections.abc
 import pathlib
@@ -20,7 +20,7 @@ if typing.TYPE_CHECKING:
 
 
 class Preparation(typing.Protocol):
-    """Widget application only needs committed data and preparation authorization."""
+    """Expose the completed data and revision that permit a prepared widget update."""
 
     @property
     def snapshot(self) -> peri_scribe.monitor.session.Snapshot:
@@ -45,7 +45,7 @@ class Preparation(typing.Protocol):
         ...
 
     async def flush_display(self) -> None:
-        """Wait until the current preparation relinquishes ownership."""
+        """Wait for the current display preparation to finish."""
         ...
 
 
@@ -123,7 +123,7 @@ class Host(typing.Protocol):
         ...
 
     def call_after_refresh(self, callback: collections.abc.Callable[[], None]) -> bool:
-        """Let actual frame completion authorize subsequent preparation.
+        """Schedule preparation after the current frame has finished rendering.
 
         Args:
             callback: The action eligible after the next completed frame.

@@ -13,7 +13,7 @@ def test_curve_knees_finds_two_breakpoints() -> None:
     ) == [(100, pytest.approx(0.3)), (300, pytest.approx(0.1))]
 
 
-def test_curve_knees_returns_empty_without_a_bend() -> None:
+def test_curve_knees_returns_empty_without_enough_visible_points() -> None:
     assert svg_charts.distribution.curve_knees([]) == []
     assert svg_charts.distribution.curve_knees([5, 5, 5]) == []
     assert svg_charts.distribution.curve_knees([10, 20]) == []

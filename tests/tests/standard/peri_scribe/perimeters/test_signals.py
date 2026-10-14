@@ -1,4 +1,4 @@
-"""Tests for peri_scribe.perimeters.border_classification."""
+"""Tests for peri_scribe.perimeters.signals."""
 
 from __future__ import annotations
 

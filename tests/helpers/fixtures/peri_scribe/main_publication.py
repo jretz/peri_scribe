@@ -24,15 +24,15 @@ def scenario(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> tests.helpers.peri_scribe.main_publication.Scenario:
-    """Start with a published 100-acre map and a downloaded 110-acre update.
+    """Simulate a published 100-acre map awaiting a 110-acre source update.
 
     Args:
-        run_stubs: The fixture factory replacing external pipeline operations.
+        run_stubs: The fixture factory replacing pipeline stages and checkpoint access.
         tmp_path: The isolated root for this scenario's files.
         monkeypatch: The fixture installing temporary pipeline substitutes.
 
     Returns:
-        An isolated year with source geometry saved but not acknowledged by publication.
+        An isolated year with simulated source changes awaiting publication.
     """
     year = tmp_path / "data/2026"
     year.mkdir(parents=True)

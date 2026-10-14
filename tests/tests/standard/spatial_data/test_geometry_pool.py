@@ -110,7 +110,7 @@ def test_geometry_pool_from_wkb_preserves_geometry_on_digest_collision(
     assert pool.from_wkb(second_wkb) is second_shared
 
 
-def test_geometry_pool_from_wkb_preserves_non_native_byte_order() -> None:
+def test_geometry_pool_from_wkb_decodes_non_native_byte_order() -> None:
     geometry = shapely.Point(1, 2, 3)
     pool = spatial_data.geometry_pool.GeometryPool()
     decoded = pool.from_wkb(shapely.to_wkb(geometry, byte_order=0))

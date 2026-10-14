@@ -1,5 +1,9 @@
 """Match observations to one TLC execution while retaining hidden-state choices.
 
+The same visible files can correspond to different internal model states. Each new
+observation must remain compatible with the entire preceding execution; matching an
+individually reachable state would allow transitions the model forbids.
+
 Design notes:
 [Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
 """
@@ -17,7 +21,7 @@ if typing.TYPE_CHECKING:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Contract[Value: collections.abc.Hashable]:
-    """Projection equality never creates an edge between unrelated abstract states."""
+    """Equal observed values do not make unrelated model states interchangeable."""
 
     graph: tests.formal.helpers.tlc.Graph
     values: dict[int, Value]
@@ -73,7 +77,7 @@ class Contract[Value: collections.abc.Hashable]:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Path[Value: collections.abc.Hashable]:
-    """Keep every surviving full abstract state after the complete concrete prefix."""
+    """Retain every model state still compatible with the complete observed history."""
 
     contract: Contract[Value]
     candidates: frozenset[int]

@@ -153,7 +153,7 @@ export async function readContributions(directory, descriptor) {
   return contributions.flat();
 }
 
-/** V8 offsets share one denominator before locations are mapped back into the HTML. */
+/** Merge ranges for the same script, then map coverage locations into the HTML. */
 export async function coverageMap(entries, descriptor) {
   validateEntries(entries, descriptor.script);
   const merged = v8Coverage.mergeScriptCovs(entries.map(entry => ({

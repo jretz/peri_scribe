@@ -1,4 +1,4 @@
-"""Generate changes examples with constrained domains."""
+"""Generate source rows with attribute and geometry changes."""
 
 from __future__ import annotations
 

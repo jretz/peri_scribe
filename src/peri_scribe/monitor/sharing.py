@@ -1,4 +1,7 @@
-"""Bounded pools share immutable log metadata without aliasing mutable records.
+"""Reuse repeated log metadata without sharing mutable records between consumers.
+
+The pools have fixed limits so shared strings and paths cannot grow without bound. JSON
+containers remain independent when decoded for inspection.
 
 Algorithm reasoning and contracts:
 [Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
@@ -127,7 +130,7 @@ class Record(collections.abc.Mapping[str, object]):
 
 @functools.lru_cache(maxsize=512)
 def encoded(value: str) -> str:
-    """Share bounded serialized phase metadata without mutable container aliasing.
+    """Cache serialized phase metadata so callers can decode independent containers.
 
     Args:
         value: A short JSON representation of raw phase metadata.
@@ -219,7 +222,7 @@ def metadata_for_key(key: PhaseKey) -> PhaseMetadata:
 
 
 def phase_metadata(value: object) -> PhaseMetadata | None:
-    """Select the shared ordinary representation without weakening the fallback.
+    """Reuse recognized phase metadata and retain every field of unfamiliar records.
 
     Args:
         value: The complete original phase_segments field.

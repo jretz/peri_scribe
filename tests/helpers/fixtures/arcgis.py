@@ -1,4 +1,4 @@
-"""Isolate arcgis tests with explicit fixtures."""
+"""Isolate ArcGIS tests with explicit fixtures."""
 
 from __future__ import annotations
 

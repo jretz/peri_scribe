@@ -20,10 +20,10 @@ def new_folder_scenario() -> tuple[
     list[peri_scribe.kml.fire_data.FireGeometry],
     peri_scribe.models.FireScores,
 ]:
-    """Return one fire that qualifies for every new top-level folder.
+    """Build a fire selected by the recency, type, growth, and personnel filters.
 
     Returns:
-        The fire and its score.
+        A one-fire list and the score document containing that fire's score.
     """
     fire = peri_scribe.kml.fire_data.FireGeometry(
         name="Alpha",
@@ -52,8 +52,8 @@ def new_folder_scenario() -> tuple[
             peri_scribe.models.FireScoreEntry(
                 name="Alpha",
                 score=10,
-                explanation="No notable size, growth, threat, or "
-                "official-importance signals.",
+                explanation="No points from size, growth, nearby buildings, "
+                "evacuation zones, or incident complexity.",
             ),
         ],
     )

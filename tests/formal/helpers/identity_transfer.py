@@ -559,7 +559,7 @@ def boundary_cases() -> tuple[Resolution, ...]:
     """Legacy direct buckets and provenance-only reservations also constrain allocation.
 
     Returns:
-        Three cases whose histories are absent from ordinary alias/perimeter indexes.
+        Owner-only and lineage-only reservations, plus competition for a legacy bucket.
     """
     fires = [observation(("a",), (1,))]
     return (

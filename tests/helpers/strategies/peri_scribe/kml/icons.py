@@ -1,4 +1,4 @@
-"""Generate icons examples with constrained domains."""
+"""Generate pixel data for custom PNG encoding tests."""
 
 from __future__ import annotations
 

@@ -5,8 +5,8 @@ description: "Run project tests in a sandbox."
 
 # Run Tests in a Sandbox
 
-Use this skill at the end of every turn that modifies code to ensure the changes do not
-break existing functionality.
+Use this skill at the end of every turn that modifies code to check that existing
+behavior still works.
 
 Run the regular checks from the project root:
 
@@ -33,8 +33,9 @@ mise test-browser
 mise test-browser -- --grep 'heading'
 ```
 
-The individual JavaScript tasks record their own coverage without enforcing the
-combined threshold. Run the complete `mise test` after focused checks. See
+Individual JavaScript tasks record coverage without enforcing the combined threshold,
+so they can give useful feedback while working on one suite. Run the complete
+`mise test` after focused checks. See
 [Testing](../../docs/testing.md#browser-viewer-tests) for reports and browser debugging.
 
 If sandbox restrictions prevent access to mise's existing tools or caches, or prevent

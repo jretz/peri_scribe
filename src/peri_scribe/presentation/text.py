@@ -28,11 +28,6 @@ if typing.TYPE_CHECKING:
     import pint
 
 
-# The smallest computed or reported area that keeps a fire in the KMZ output. Fires
-# whose every area indication is missing or below this are the season's long tail of
-# tiny incidents, which clutter Google Earth without adding information.
-
-
 FIRE_BEHAVIOR_ATTRIBUTE_KEYS: dict[int, tuple[str, str]] = {
     0: ("FireBehaviorGeneral", "attr_FireBehaviorGeneral"),
     1: ("FireBehaviorGeneral1", "attr_FireBehaviorGeneral1"),
@@ -322,9 +317,8 @@ def score_explanation_for(
 ) -> str | None:
     """Return the score explanation matching *fire_identifiers* or *name*.
 
-    A fire's explanation is found by its identifiers first, so fires that share a name
-    but not an identity each show their own explanation; a fire no identifier matches
-    falls back to its name.
+    Identifier matches keep same-name fires' explanations separate. The name is a
+    fallback only when no identifier matches.
 
     Args:
         notes_by_identifier: Explanations keyed by score entry identifier.

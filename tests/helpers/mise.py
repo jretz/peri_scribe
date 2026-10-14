@@ -1,4 +1,4 @@
-"""Evaluate project environment settings without tools or host configuration."""
+"""Evaluate project environment settings with an isolated mise configuration."""
 
 from __future__ import annotations
 

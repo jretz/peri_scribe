@@ -1,4 +1,4 @@
-"""Generate areas examples with constrained domains."""
+"""Generate chronological report and mapping examples."""
 
 from __future__ import annotations
 

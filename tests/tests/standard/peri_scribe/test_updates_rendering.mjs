@@ -59,7 +59,7 @@ test("startPage formats missing acreage and changes smaller than one tenth acre"
       "−<0.1");
   });
 
-test("startPage counts unnamed identifiers by name while retaining separate IDs",
+test("startPage counts fires without IDs by name and keeps identified fires distinct",
   async () => {
     const unnamed = {
       ...viewer.update("Timber", 10), identifier: null, location: null
@@ -278,7 +278,7 @@ test("startPage filters case insensitively", async () => {
   assert.deepEqual(page.document.querySelectorAll(".fire-name").map(
     node => node.textContent), ["Timber"]);
   assert.equal(page.document.getElementById("sort-status").textContent,
-    "1 updates shown.");
+    "1 update shown.");
 });
 
 for (const query of ["IM", "missing"]) {

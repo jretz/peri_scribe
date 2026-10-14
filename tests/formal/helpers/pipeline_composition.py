@@ -181,7 +181,8 @@ def executions(graph: tests.formal.helpers.tlc.Graph) -> Executions:
         graph: Complete checked graph shared by every batch in this run.
 
     Returns:
-        The directed contract and one concrete initial-state history per old outcome.
+        The directed contract and one history from an initial state to each distinct
+        invocation outcome.
     """
     previous: dict[int, int | None] = dict.fromkeys(graph.initial)
     queue = collections.deque(graph.initial)
@@ -469,7 +470,7 @@ class Replay:
         )
 
     def collect(self, directory: pathlib.Path) -> peri_scribe.publication.Collection:
-        """Collect reads persisted inputs rather than a fetch result or expected output.
+        """Read the persisted source generation so the gate observes stored inputs.
 
         Args:
             directory: The year supplied by the production coordinator.
@@ -572,7 +573,7 @@ class Replay:
         )
 
     def interrupt(self, boundary: str) -> None:
-        """Process loss bypasses ordinary exception handlers at a modeled boundary.
+        """A simulated interruption bypasses ordinary exception handlers.
 
         Args:
             boundary: The persistent transition about to execute.
@@ -750,7 +751,7 @@ def replay(
         complete_stage(year, stage)
 
     def clear(year: pathlib.Path) -> None:
-        """Exercise a process loss after all pending stages protect deferred inputs.
+        """Simulate an interruption after all pending stages protect deferred inputs.
 
         Args:
             year: The year whose durable intent is being consumed.

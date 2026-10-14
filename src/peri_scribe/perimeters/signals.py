@@ -37,8 +37,9 @@ def geometry_signal(
 
     The portion of the union lying inside the box is inside California (or in the ocean
     or Mexico sliver the box absorbs); the rest lies on the far side of the interstate
-    border. A fire crosses the border when it lies on both sides of it. A fire is inside
-    when most of it lies within the box.
+    border. Crossing requires positive inside area and outside area exceeding either
+    the configured fraction or absolute-area threshold. The inside flag requires an
+    inside fraction at least as large as its configured threshold.
 
     Args:
         union: The fire's union geometry in California Albers, or None.
@@ -60,10 +61,10 @@ def geometry_signal(
             inside=False,
         )
     box, border = boundaries.box, boundaries.border
-    # A one-sided collection has exact extreme fractions and a border distance equal
-    # to the minimum over its parts. No box intersection is needed, and crossing is
-    # impossible because it requires area on both sides. The absolute outside area
-    # still requires a union so overlapping parts contribute only once.
+    # If all parts lie on the same side, their side and nearest border distance can be
+    # read directly. There is no need to intersect them with the box, and they cannot
+    # cross the border. Measuring outside area still needs a union so overlapping parts
+    # count once.
     if isinstance(union, shapely.GeometryCollection) and (
         all(box.contains(part) for part in union.geoms)
         or all(not box.intersects(part) for part in union.geoms)
@@ -72,10 +73,9 @@ def geometry_signal(
         distance_to_boundary = (
             min(part.distance(border) for part in parts) * units.meters
         )
-        # The area fractions follow from which side the parts lie on. A part with no
-        # area (a point or line) contributes none, so the union has positive area
-        # exactly when some part does, and a one-sided union's fraction is the extreme
-        # value when it has area and 0 when it does not.
+        # A collection on one side has all its area on that side. Its fraction is 1
+        # there and 0 on the other side. Points and lines contribute no area, so a
+        # collection containing only those has fractions of 0 on both sides.
         has_area = any(part.area > 0 for part in parts)
         if all(box.contains(part) for part in parts):
             inside_area_fraction = 1.0 if has_area else 0.0
@@ -299,9 +299,9 @@ def unit_state_code_is_out_of_california(token: str) -> bool:
 def state_tokens_from_mission(mission: str) -> list[str]:
     """Return the state-code tokens a mission code can carry.
 
-    A mission that is itself a unique fire identifier (``YYYY-UNIT-######``) carries the
-    state in its unit token. Otherwise the state is the mission's leading token when
-    that token is a two-letter code, as in ``NV-CCD-BUG``.
+    A mission accepted by :func:`peri_scribe.models.is_unique_fire_identifier` carries
+    the state candidate in its unit token. Otherwise the candidate is the mission's
+    leading token when it has two characters, as in ``NV-CCD-BUG``.
 
     Args:
         mission: The fire's mapping mission code.

@@ -4,13 +4,14 @@
 
 [logging.py](../../src/peri_scribe/logging.py) retains monthly JSONL occurrences while
 compressing older months. [log_reading.py](../../src/peri_scribe/log_reading.py) reads a
-coherent monthly sequence across the archive and any later plain tail. Ordinary identical
-diagnostic lines are distinct occurrences; only journal batches have an explicit
-idempotency identity. Inputs may contain undated/malformed lines, UTF-8 text, incomplete
-last lines, and equal timestamps. Dated occurrences have nondecreasing timestamps within
-each logical monthly log, compared as aware instants. This requirement permits byte-offset
-binary search; timestamp regressions in stored logs are outside its completeness
-guarantee. Date-window endpoints are inclusive.
+coherent monthly sequence across the archive and any later plain tail. Two identical
+diagnostic lines still represent two occurrences. Only journal batches carry an explicit
+identity that allows a retry to be recognized and skipped. Inputs may contain undated or
+malformed lines, UTF-8 text, incomplete last lines, and equal timestamps. Dated
+occurrences have nondecreasing timestamps within each logical monthly log, compared as
+aware instants. This requirement permits byte-offset binary search; timestamp
+regressions in stored logs are outside its completeness guarantee. Date-window endpoints
+are inclusive.
 
 Writers and readers cooperate through `.rotation.lock`. A reader holds the shared lock
 through iteration; callers must close abandoned iterators promptly. Rotation uses local
@@ -47,7 +48,8 @@ longer selects the month, so a late append cannot recreate a source before retir
 A reader performs the same authentication without modifying files. A committed receipt
 selects archive only; otherwise select archive followed by the distinct plain tail.
 Holding the shared lock across both components prevents a mixed view during rotation.
-Physical duplication is permitted while logical occurrence duplication is forbidden.
+The same bytes may temporarily exist in both files, but the reader must return each
+occurrence only once.
 
 `seek_since` binary-searches byte positions within the observed plain-file size. A probe
 skips a split line and reads forward to the next complete dated record. An older timestamp
@@ -84,10 +86,10 @@ from sampling only part of the file. The monitor's separate observation clock ca
 move backward and must invalidate time-dependent caches.
 
 Plain seeking deliberately retires undated history before its last old dated boundary.
-Compressed reads scan from the beginning and can retain earlier undated diagnostics.
-These are explicit different startup policies. Month discovery assumes records are placed
-in the correct writer-local monthly file. The [monitor](monitor-evidence.md) adds retained
-inode cursors, archive-change replay and context restoration.
+Compressed reads scan from the beginning and can retain earlier undated diagnostics. The
+two formats therefore have different startup policies. Month discovery assumes records
+are placed in the correct writer-local monthly file. The [monitor](monitor-evidence.md)
+adds retained inode cursors, archive-change replay and context restoration.
 
 ## Costs and limitations
 

@@ -3,13 +3,12 @@
      viewBox="0 0 840 770" role="img" aria-labelledby="figure-title figure-description"
      style="max-width:100%;height:auto">
   <title id="figure-title">Coverage merges overlap and preserves gaps</title>
-  <desc id="figure-description">Every observed timestamp contributes a forty-eight-hour
-    interval. Copies of intervals zero through forty-eight, twenty-four through
-    seventy-two, and one hundred through one hundred forty-eight descend onto the same
-    time axis. The first two overlap and merge into zero through seventy-two. The future
-    interval stays separate. A now marker moves from hour sixty, through the inclusive
-    endpoint seventy-two, to uncovered hour eighty. Three static views preserve the
-    aligned inputs, merged union, and uncovered gap when animation is unavailable.</desc>
+  <desc id="figure-description">Each observed event starts a 48-hour interval. Intervals
+    from hours 0 to 48 and 24 to 72 overlap and merge into 0 to 72. The interval from
+    100 to 148 stays separate, leaving a gap. The moving now marker is covered at hour
+    60 and at the inclusive endpoint 72, but uncovered at hour 80. Animation aligns the
+    input intervals before merging them. Three static views preserve the input
+    alignment, union, and uncovered gap when animation is unavailable.</desc>
   <defs>
     <style>
       :root { color-scheme:light dark; --background:#111820; --text:#e4edf5;
@@ -182,8 +181,8 @@
     <path class="axis" d="M583 647 H790"/>
     <rect x="583" y="617" width="100.8" height="24" class="gold band"/>
     <rect x="723" y="617" width="67.2" height="24" class="purple band"/>
-    <path d="M695 603 V648" class="now-line"/>
-    <text x="695" y="600" class="small now-label" text-anchor="middle">80</text>
+    <path d="M695 613 V648" class="now-line"/>
+    <text x="695" y="609" class="small now-label" text-anchor="middle">80</text>
     <text x="578" y="672" class="small">Hour 80 lies in the gap;</text>
     <text x="578" y="693" class="small">future data cannot cover it.</text>
   </g>

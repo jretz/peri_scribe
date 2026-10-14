@@ -57,7 +57,7 @@ class Threshold:
 
 
 class FileStamp(pydantic.BaseModel):
-    """Native filesystem metadata identifies the exact file a checkpoint covers.
+    """Keep file metadata so a checkpoint can detect replaced or removed inputs.
 
     Args:
         size: The file size in bytes.
@@ -70,7 +70,7 @@ class FileStamp(pydantic.BaseModel):
 
 
 class Mapping(pydantic.BaseModel):
-    """A raw mapping's measurement, identity and original collection provenance.
+    """Keep a mapping's area and identity with where and when it was collected.
 
     Args:
         source_file: The snapshot path relative to the sources directory.
@@ -78,7 +78,8 @@ class Mapping(pydantic.BaseModel):
         identifiers: The fire identifiers associated with this mapping.
         name: The source's fire name.
         observed_at: The effective mapping date, or None when unavailable.
-        captured_at: The earliest local capture of this fire's geometry.
+        captured_at: The earliest local capture linked by geometry and fire identifiers,
+            or this snapshot's capture time when no identifier is available.
         serial: The source snapshot's serial number.
         shape: The normalized geometry digest, or an empty string for missing geometry.
         area_square_meters: The raw geodesic area, or None when it cannot be measured.
@@ -130,7 +131,7 @@ class Collection(pydantic.BaseModel):
 
 
 class PublishedFire(pydantic.BaseModel):
-    """Aliases follow the derived fire identity; only displayed mappings set area.
+    """Keep each published fire's aliases and the area of its displayed mappings.
 
     Args:
         identifiers: The identifiers and aliases belonging to the derived fire.
@@ -318,7 +319,7 @@ def mapping_order(mapping: Mapping) -> tuple[datetime.datetime, int, int]:
 
 
 def shape_measurement(geometry: shapely.Geometry | None) -> tuple[str, float | None]:
-    """Consistent ring orientation prevents multipart cancellation in geodesic area.
+    """Orient rings so polygon exteriors add together and their holes subtract.
 
     Args:
         geometry: The raw mapping geometry in WGS84, or None when unavailable.
@@ -459,16 +460,17 @@ def collect(year_directory: pathlib.Path) -> Collection:
 def first_captures(
     snapshots: dict[str, tuple[Mapping, ...]],
 ) -> dict[str, tuple[Mapping, ...]]:
-    """Attribute-only republication must not move a geometry's first-capture clock.
+    """Keep a shape's first collection time when only its attributes are republished.
 
-    Capture times propagate through chains of aliases for the same shape so repeated
-    collection does not move them.
+    Carry that time through chains of aliases for the same shape. Otherwise repeatedly
+    collecting unchanged geometry could make old mapping appear newly captured.
 
     Args:
         snapshots: Source paths and their mapping measurements, including repeat shapes.
 
     Returns:
-        Measurements carrying the earliest capture of their fire and shape.
+        Measurements carrying the earliest capture linked by identifiers and shape;
+        unidentified mappings retain their own capture time.
     """
     captured: dict[tuple[str, str], datetime.datetime] = {}
     linked: dict[tuple[str, str], set[tuple[str, str]]] = {}

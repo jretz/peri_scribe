@@ -161,14 +161,14 @@ def test_fire_kml_puts_top_fires_before_status_folders() -> None:
             peri_scribe.models.FireScoreEntry(
                 name="Zulu",
                 score=3,
-                explanation="No notable size, growth, threat, or "
-                "official-importance signals.",
+                explanation="No points from size, growth, nearby buildings, "
+                "evacuation zones, or incident complexity.",
             ),
             peri_scribe.models.FireScoreEntry(
                 name="Alpha",
                 score=2,
-                explanation="No notable size, growth, threat, or "
-                "official-importance signals.",
+                explanation="No points from size, growth, nearby buildings, "
+                "evacuation zones, or incident complexity.",
             ),
         ],
     )
@@ -287,9 +287,9 @@ def test_fire_kml_loads_new_folders_unchecked() -> None:
         top_level,
         "Active Fires",
     )
-    # The new folders hold their fires directly and load unchecked, so "Top Fires by
-    # Name" stays the last radio option with visible content and loads checked; the
-    # status folders stay unchecked beneath it.
+    # The filtered fire folders load unchecked, leaving "Top Fires by Name" as the last
+    # radio option with visible content. Google Earth selects it on opening; the status
+    # folders beneath it remain unchecked.
     for name in tests.helpers.factories.peri_scribe.kml.builder.NEW_FOLDER_NAMES:
         folder = tests.helpers.peri_scribe.kml.parsing.folder_named(top_level, name)
         assert tests.helpers.peri_scribe.kml.parsing.visibility(folder) == 0
@@ -345,14 +345,14 @@ def test_fire_kml_loads_top_fires_by_name_checked() -> None:
             peri_scribe.models.FireScoreEntry(
                 name="Zulu",
                 score=3,
-                explanation="No notable size, growth, threat, or "
-                "official-importance signals.",
+                explanation="No points from size, growth, nearby buildings, "
+                "evacuation zones, or incident complexity.",
             ),
             peri_scribe.models.FireScoreEntry(
                 name="Alpha",
                 score=2,
-                explanation="No notable size, growth, threat, or "
-                "official-importance signals.",
+                explanation="No points from size, growth, nearby buildings, "
+                "evacuation zones, or incident complexity.",
             ),
         ],
     )
@@ -373,10 +373,9 @@ def test_fire_kml_loads_top_fires_by_name_checked() -> None:
         top_level,
         "Active Fires",
     )
-    # The top-level radios load with only "Top Fires by Name" checked, so its fires are
-    # the default view on load. The unchecked top-level radios hide their whole trees,
-    # so they carry no visible content and their radio buttons load off instead of being
-    # selected. A status folder with no fires is omitted.
+    # "Top Fires by Name" is the default view. Other radio folders hide their trees so
+    # Google Earth doesn't select them because of visible descendants. Empty status
+    # folders are omitted.
     assert tests.helpers.peri_scribe.kml.parsing.folder_names(top_level) == [
         "Top Fires by Name",
         "Top Fires by Score",

@@ -3,7 +3,7 @@
      viewBox="0 0 840 640" role="img" aria-labelledby="figure-title figure-description"
      style="max-width:100%;height:auto">
   <title id="figure-title">Fit logical cells, then fall back explicitly</title>
-  <desc id="figure-description">A terminal image first prefers an eligible logical cell report. If it is unavailable, usable OS pixel geometry provides cell dimensions. Available cells no wider than the cap produce character-cell controls. Otherwise explicit pixel controls preserve the configured cap.</desc>
+  <desc id="figure-description">Image sizing first uses an eligible logical cell report, then usable OS pixel geometry if the report is unavailable. When those measurements are usable and one cell fits within the width cap, sizing uses character cells and leaves one column free. Otherwise it uses explicit pixel dimensions to preserve the configured cap.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8"
             markerHeight="8" orient="auto-start-reverse">

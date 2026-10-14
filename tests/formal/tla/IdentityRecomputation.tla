@@ -8,8 +8,8 @@ Histories == 0..(HistoryCount + FireCount - 1)
 Missing == HistoryCount + FireCount
 Fresh(fire) == HistoryCount + fire
 
-\* Each fire represents one disjoint group of current aliases. Their union of known
-\* buckets is explicit. Fire order is the fixed mapped-time/identity priority.
+\* Each fire represents one disjoint group of current aliases and the union of the
+\* histories they reach. Fire order fixes priority by mapped time, then identity.
 Contenders(routes, history) == {fire \in Fires : history \in routes[fire]}
 Winner(routes, history) ==
     IF Contenders(routes, history) = {} THEN Missing

@@ -37,7 +37,7 @@ def test_filename_prefix_slugifies_name() -> None:
     )
 
 
-def test_filename_prefix_falls_back_to_fire_for_empty_name() -> None:
+def test_filename_prefix_falls_back_to_fire_for_empty_slug() -> None:
     assert peri_scribe.kml.plot_rendering.filename_prefix(None, "!!!") == "fire"
 
 

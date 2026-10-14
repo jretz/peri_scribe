@@ -49,9 +49,8 @@ def added_areas_for_rings(
 ) -> tuple[pint.Quantity[float], ...]:
     """Return each ring's exact added area without retaining geometry cache keys.
 
-    The folder views each serialize a fire once, and a fire's drawn ring sequence
-    carries the same ring objects into every view, so the cumulative union work is
-    computed for the first view and reused by the rest instead of repeated per view.
+    The same ring objects appear in every folder view of a fire. Their cumulative unions
+    only need to be computed for the first view; later views can reuse the areas.
 
     Args:
         rings: The fire's growth rings in chronological order.
@@ -129,12 +128,11 @@ def ring_added_areas(
 ) -> tuple[pint.Quantity[float], ...]:
     """Return each ring's added area, in chronological order.
 
-    A ring's added area is the area of the fire once that ring is included minus the
-    area of the fire with only the earlier rings, measured from the ring geometries as
-    the KMZ draws them. The interior ring balloons show each ring's added area so a
-    reader can see how much new ground that ring's observation added; measuring the
-    unions rather than trusting each ring's own area keeps that figure honest when a
-    ring re-covers ground an earlier ring already claimed.
+    A ring can cover ground already included in an earlier ring, so its own area isn't
+    necessarily new growth. The added area is the difference between the union including
+    that ring and the union of all earlier rings, using the geometries drawn in the KMZ.
+    The interior balloon shows this difference so readers can see how much new ground
+    the observation added.
 
     Args:
         rings: The fire's growth rings in chronological order.
@@ -149,14 +147,14 @@ def interior_ring_colors(
     rings: typing.Sequence[peri_scribe.perimeters.progression.Ring],
     perimeters: typing.Sequence[peri_scribe.presentation.perimeters.Perimeter],
 ) -> tuple[tuple[peri_scribe.perimeters.progression.Ring, str], ...]:
-    """Return the (ring, color) pairs a fire's interior folder draws.
+    """Return the ring/color pairs drawn in a fire's interior folder.
 
-    Only dated rings can carry a progression color, so the folder draws the dated rings,
-    each colored for the day it was observed. A fire whose rings carry no observation
-    times falls back to its latest perimeter in the hottest color, so every fire with a
-    perimeter still shows an interior; the interior folder and the added areas
-    precomputed while plots render both derive the drawn rings from this one function,
-    so their ring sequences cannot drift apart.
+    Observation dates determine progression colors, so only dated rings can be shown as
+    a progression. If no rings have dates, the latest perimeter uses the hottest color.
+    This keeps an interior visible for every fire with a perimeter.
+
+    The folder and the added-area preparation both use this function. They must agree on
+    which rings are drawn so each balloon reports the area added by its actual ring.
 
     Args:
         rings: The fire's growth rings in chronological order.
@@ -195,12 +193,11 @@ def interior_ring_colors(
 def precompute_interior_added_areas(
     fires: typing.Sequence[peri_scribe.presentation.fire_data.FireSummary],
 ) -> None:
-    """Warm the added-area cache for every pending fire's drawn rings.
+    """Prepare cached added areas for every pending fire's drawn rings.
 
-    The folder-writing phase asks each fire for the same added areas, and computing them
-    there lengthens that single-threaded phase, so this runs before the plots are drawn
-    instead: by the time the folders are written every fire's cumulative union work is
-    done and the folder's requests hit the cache.
+    Folder writing is single-threaded and needs these same areas. Computing the
+    cumulative unions before plot rendering keeps that work out of the folder-writing
+    phase; its later requests can use the cache.
 
     Args:
         fires: The prepared fires with their perimeter observations and progression

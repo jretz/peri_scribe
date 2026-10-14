@@ -1,8 +1,8 @@
-"""Spatial reference resolution for ArcGIS query results.
+"""Choose a spatial reference that fits the coordinates ArcGIS returned.
 
-Collects every wkid reported by a layer's metadata, extents, and query response, then
-chooses the candidate whose plausible coordinate domain fits the returned features'
-coordinate bounds.
+A layer can report different wkids in its metadata, extents, and query response.
+Collecting all of them lets the returned coordinate bounds help distinguish the
+candidates instead of trusting one report unconditionally.
 
 [Algorithm note](../../docs/algorithms/source-validation.md)
 """
@@ -33,7 +33,7 @@ logger = structlog.get_logger()
 # Smaller coordinates cannot reliably distinguish projected units from degrees.
 MINIMUM_PROJECTED_MAGNITUDE = 1.0 * units.km
 
-# The fallback covers Earth-based projections whose metadata has no area of use.
+# A broad fallback is used when projected CRS metadata has no area of use.
 PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK = 25_000.0 * units.km
 
 
@@ -127,16 +127,16 @@ def bounds_of(
 def projected_maximum_magnitude_in_crs_units(crs: pyproj.CRS) -> float:
     """Return the largest coordinate magnitude a projected CRS plausibly produces.
 
-    Derived from the CRS's area of use: its corners are transformed into the CRS, giving
-    the coordinate extent in the CRS's own units.
+    Transform the four corners of the CRS's area of use and take their largest finite
+    coordinate magnitude. This is a plausibility estimate, not a bound on every point a
+    nonlinear projection can produce inside that area.
 
     Args:
         crs: The projected coordinate reference system whose extent is needed.
 
     Returns:
-        The largest coordinate magnitude the CRS plausibly produces, or the
-        ``PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK`` constant when the CRS has no area of
-        use.
+        The estimated magnitude, or ``PROJECTED_MAXIMUM_MAGNITUDE_FALLBACK`` when the
+        CRS has no area of use or its transformed corners supply no usable magnitude.
     """
     area = crs.area_of_use
     if area is None:
@@ -323,12 +323,12 @@ def classify_candidates_for_bounds(
     candidates: set[int],
     bounds: tuple[float, float, float, float],
 ) -> tuple[list[int], dict[int, str], list[str]]:
-    """Classify candidates by how their coordinate range fits the bounds.
+    """Group candidates by whether their expected coordinate ranges fit the bounds.
 
-    A candidate whose expected coordinate range does not fit the bounds is excluded,
-    with a description of why. A geographic candidate whose expected range fits but
-    whose area of use does not contain the coordinates is kept, but reported as outside
-    its area of use.
+    An unknown or incompatible coordinate range excludes a candidate, with a reason. A
+    geographic candidate whose range fits but whose area of use does not contain the
+    coordinates is kept separately. That distinction lets selection consider it as a
+    fallback when no better candidate fits.
 
     Args:
         candidates: The spatial-reference identifiers reported by the source.
@@ -336,10 +336,10 @@ def classify_candidates_for_bounds(
             the source units.
 
     Returns:
-        A tuple of the wkids that fit the bounds and contain the coordinates in their
-        area of use, the wkids that fit the bounds but not the coordinates in their area
-        of use (mapped to their area of use text), and the descriptions of the excluded
-        candidates.
+        Three groups: matching wkids, geographic wkids whose coordinate ranges fit but
+        whose areas of use exclude the coordinates (mapped to area descriptions), and
+        reasons for excluding the remaining candidates. Projected candidates do not
+        need to pass the geographic area-of-use check.
     """
     matches: list[int] = []
     outside_area: dict[int, str] = {}
@@ -371,16 +371,16 @@ def select_spatial_reference_wkid(
     candidates: set[int],
     bounds: tuple[float, float, float, float] | None,
 ) -> SpatialReferenceSelection:
-    """Choose a wkid from the candidates for coordinates with these bounds.
+    """Choose a wkid that fits the coordinates, or explain why none can be chosen.
 
-    Candidates whose plausible coordinate domain — derived from pyproj's CRS database —
-    does not fit the returned features' coordinate bounds are excluded, as are
-    geographic candidates whose area of use does not contain the coordinates. When
-    exactly one candidate remains, it wins and the selection carries a warning listing
-    the excluded candidates and the reason. When no candidate remains but exactly one
-    was excluded only by the area-of-use check, that candidate is chosen with a warning,
-    because its coordinate range is plausible and no better candidate is reported. When
-    no wkid can be chosen, the selection carries a failure message that explains why.
+    Coordinate-range heuristics combine fixed limits with pyproj's CRS metadata. A
+    candidate must fit those ranges and, for a geographic reference, its area of use.
+    One matching candidate wins; several matches are ambiguous. If none matches but
+    exactly one failed only the area-of-use check, use it with a warning: its coordinate
+    range is plausible and the source reports no better candidate.
+
+    Warnings explain which alternatives were excluded. With no geometry to check, accept
+    a single reported candidate; multiple candidates remain ambiguous.
 
     Args:
         candidates: The spatial-reference identifiers reported by the source.
@@ -464,11 +464,10 @@ def choose_spatial_reference_id(
 ) -> int:
     """Pick the spatial reference id for the coordinates a query returned.
 
-    Collects every wkid the layer reports (layer metadata, layer extents, and the query
-    response) and selects the candidate whose plausible coordinate domain fits the
-    returned features' coordinate bounds. If the selection carries a warning, it is
-    logged; if no wkid can be chosen, NoSpatialReferenceError is raised so no output is
-    written.
+    The layer metadata, layer extents, and query response can each supply candidates.
+    Selection checks them together against the coordinate bounds and logs any warning.
+    If it cannot choose one, NoSpatialReferenceError stops the caller from writing
+    coordinates with an unsupported spatial reference.
 
     Args:
         layer: The ArcGIS feature layer supplying metadata and extents.
@@ -480,7 +479,8 @@ def choose_spatial_reference_id(
         The chosen spatial reference wkid.
 
     Raises:
-        NoSpatialReferenceError: If no candidate wkid matches the returned coordinates.
+        NoSpatialReferenceError: If no candidate can be selected, including when several
+            candidates match and the choice is ambiguous.
     """
     candidates = layer_wkids(layer) | spatial_reference_wkids(
         feature_set.spatial_reference,

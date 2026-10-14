@@ -109,7 +109,7 @@ def open_cursor(
 
 
 class Follower:
-    """Own file handles at the I/O boundary while consumers receive plain batches."""
+    """Keep log files open across polls and give consumers batches of their records."""
 
     def __init__(self, directory: pathlib.Path, *, tail: bool = True) -> None:
         """Keep watching independent of whether the logging directory exists yet.
@@ -164,7 +164,7 @@ class Follower:
             return Batch(errors=(str(error),), caught_up=False)
 
     def poll_locked(self, *, since: datetime.datetime | None = None) -> Batch:
-        """Keep discovered sources distinct from receipted copies in an archive.
+        """Avoid rereading source files that a rotation receipt confirms are archived.
 
         Args:
             since: The earliest timestamp to seek when opening a new log.

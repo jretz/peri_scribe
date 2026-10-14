@@ -24,7 +24,7 @@ export async function collect(source, invocation) {
   return collectCoverage(source, invocation, descriptor.filename);
 }
 
-/** Each test owns evidence whose lifetime cannot overlap a normal test invocation. */
+/** Private temporary storage keeps synthetic coverage separate from suite results. */
 export async function directory(context) {
   const result = await fs.mkdtemp(path.join(os.tmpdir(), "coverage-test-"));
   context.after(() => fs.rm(result, { recursive: true, force: true }));

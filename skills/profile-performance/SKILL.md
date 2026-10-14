@@ -1,13 +1,14 @@
 ---
 name: profile-performance
-description: "Measure PeriScribe CPU, memory, I/O, and multiprocessing hotspots on representative local data."
+description: "Measure PeriScribe CPU, memory, I/O, and concurrency costs on representative local data."
 ---
 
 # Profile Performance
 
-Use this skill when a PeriScribe workflow is slow, memory-intensive, or sensitive to
-process count. Produce measurements and a focused recommendation; do not optimize based
-only on inspection.
+Use this skill when a PeriScribe workflow is slow, uses too much memory, or changes
+performance with worker count. Measure where the time and memory go, then recommend a
+focused next step. Code that looks expensive is a reason to measure, not enough evidence
+to justify an optimization by itself.
 
 ## Scope and setup
 
@@ -23,14 +24,13 @@ only on inspection.
    - `tracemalloc` for Python allocation growth;
    - `/usr/bin/time -l` on macOS for process-level wall time, peak resident memory, and
      I/O;
-   - a small controlled comparison of serial and multiprocessing modes for KMZ rendering
-     or other worker-based stages.
+   - a controlled comparison of worker counts when the operation allows that choice.
 
 ## Measurement rules
 
 - Profile representative workloads: include enough snapshots, geometries, or building
   tiles to expose scaling behavior, but note the dataset identity and size.
-- Separate cold-start effects (imports, Matplotlib font cache) from steady-state
+- Separate cold-start effects, such as imports and cache population, from steady-state
   measurements. Run repeated trials when the result is noisy and report the range or
   median.
 - Attribute the cost to a pipeline stage: source reading, geometry operations, building
@@ -44,8 +44,8 @@ only on inspection.
 
 ## Deliverable
 
-Report the command and dataset, environment, baseline, measurements by stage,
-peak-memory and I/O observations, and the smallest evidence-backed next step.
-Distinguish an observed hotspot from a hypothesis. If recommending a code change,
-include the expected tradeoff and a follow-up benchmark; do not implement it unless the
-user separately requests an optimization.
+Report the command, dataset, environment, baseline, measurements by stage, peak memory,
+and I/O observations. Recommend the smallest next step supported by those measurements,
+and distinguish what was measured from what is still a hypothesis. If recommending a
+code change, explain the expected tradeoff and how to benchmark it afterward. Implement
+it only when the user has also requested an optimization.

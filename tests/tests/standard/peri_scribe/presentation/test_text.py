@@ -1,4 +1,4 @@
-"""Area provenance identifies the supporting observation instead of the policy clock."""
+"""Fire descriptions preserve source facts, area provenance, and score explanations."""
 
 from __future__ import annotations
 
@@ -119,7 +119,7 @@ def test_fire_description_uses_latest_incident_values() -> None:
         entry,
         tests.helpers.factories.peri_scribe.presentation.fire_data.description_perimeter_frame(),
         tests.helpers.factories.peri_scribe.presentation.fire_data.description_point_frame(),
-        of_note="Over 100,000 acres, and a Type 1 Incident.",
+        of_note="At least 100,000 acres, and a Type 1 Incident.",
     )
     assert description.area is not None
     assert description.area.m_as("acres") == pytest.approx(
@@ -134,8 +134,7 @@ def test_fire_description_uses_latest_incident_values() -> None:
     assert description.estimated_cost_to_date.m_as("dollars") == pytest.approx(3_000.0)
     assert description.estimated_final_cost is not None
     assert description.estimated_final_cost.m_as("dollars") == pytest.approx(3_500.0)
-    # Personnel comes from the sources' attributes, where the point feed's value wins
-    # when both feeds carry it.
+    # The point row supplies the only dated incident report, so its personnel is used.
     assert description.total_personnel == pytest.approx(500.0)
     assert description.mission == "CA-BUG-2"
     assert description.source == "FIRIS / NIFC"
@@ -172,7 +171,7 @@ def test_fire_description_uses_latest_incident_values() -> None:
     )
     assert description.fire_behavior == "Active; Creeping; Smoldering; Running"
     assert description.landowner_category == "Federal"
-    assert description.of_note == "Over 100,000 acres, and a Type 1 Incident."
+    assert description.of_note == "At least 100,000 acres, and a Type 1 Incident."
 
 
 def test_fire_description_presents_geometry_when_reported_understates() -> None:
@@ -223,7 +222,7 @@ def test_fire_description_uses_geometry_within_agreement() -> None:
     )
 
 
-def test_fire_description_falls_back_to_point_when_perimeter_missing() -> None:
+def test_fire_description_uses_point_when_perimeter_attributes_are_missing() -> None:
     entry = tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
         "Bug",
         "active",
@@ -277,7 +276,7 @@ def test_fire_description_falls_back_to_point_when_perimeter_missing() -> None:
         24,
         tzinfo=datetime.UTC,
     )
-    # The exterior perimeter follows the small agreement-scale geometry.
+    # The exterior perimeter uses the geometry even when the point supplies the acreage.
     measured_perimeter = spatial_data.measurements.exterior_perimeter(
         tests.helpers.factories.geometry.square(0.0032),
     )

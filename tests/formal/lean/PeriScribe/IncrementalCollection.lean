@@ -2,8 +2,8 @@ import Std
 
 namespace PeriScribe.IncrementalCollection
 
-/-- Identifiers are unique in the current service view. Query predicates are
-    evaluated against that same view; fetching is not a database snapshot protocol. -/
+/-- This policy assumes unique identifiers and a stable service view across queries.
+    Fetching itself does not make those queries a database snapshot transaction. -/
 def candidates (current : List Nat) (changed missing flipped : Nat → Bool) : List Nat :=
   ((current.filter changed) ++ (current.filter missing) ++
     (current.filter flipped)).eraseDups
@@ -51,8 +51,8 @@ theorem collected_once (current : List Nat) (unique : current.Nodup)
   rw [collect_equals_declarative]
   exact unique.filter _
 
-/-- This names the provider guarantee needed for incremental completeness.
-    Backdated edits outside every route are deliberately not assumed covered. -/
+/-- Incremental completeness depends on this provider guarantee. A backdated edit
+    outside every selection route can still be missed. -/
 theorem complete_for_observable_edits (current : List Nat)
     (changed missing flipped different : Nat → Bool)
     (observable : ∀ id ∈ current, different id = true →

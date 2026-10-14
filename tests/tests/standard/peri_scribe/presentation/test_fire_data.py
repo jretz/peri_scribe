@@ -365,7 +365,7 @@ def test_fire_summaries_sorts_by_case_folded_name() -> None:
     assert [fire.name for fire in fires] == ["aB", "Ac", "AD", "ae"]
 
 
-def test_fire_summaries_puts_score_explanation_in_balloon() -> None:
+def test_fire_summaries_puts_score_explanation_in_description() -> None:
     index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([
         tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
             "Bug",
@@ -383,7 +383,7 @@ def test_fire_summaries_puts_score_explanation_in_balloon() -> None:
                 name="Bug",
                 identifier="id-bug",
                 score=389,
-                explanation="Over 100,000 acres, and a Type 1 Incident.",
+                explanation="At least 100,000 acres, and a Type 1 Incident.",
             ),
         ],
     )
@@ -396,7 +396,8 @@ def test_fire_summaries_puts_score_explanation_in_balloon() -> None:
     )
     assert with_scores.description is not None
     assert (
-        with_scores.description.of_note == "Over 100,000 acres, and a Type 1 Incident."
+        with_scores.description.of_note
+        == "At least 100,000 acres, and a Type 1 Incident."
     )
     (without_scores,) = peri_scribe.presentation.fire_data.fire_summaries(
         index,
@@ -630,7 +631,7 @@ def test_fire_summaries_keeps_anonymous_component_geography_separate(
     assert [len(fire.perimeters) for fire in summaries] == [1, 1]
 
 
-def test_prepare_fire_data_selects_component_points_and_incident_reports(
+def test_prepare_fire_data_selects_component_points_and_prepares_histories(
     tmp_path: pathlib.Path,
 ) -> None:
     factory = tests.helpers.factories.peri_scribe.component_identity

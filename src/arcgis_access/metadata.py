@@ -28,7 +28,7 @@ def fetch_layer_metadata(
     Args:
         url: The layer's REST endpoint URL.
         user_agent: The caller identity sent with requests.
-        timeout_seconds: Maximum request wait in seconds.
+        timeout_seconds: Connect and read-inactivity timeout in seconds.
 
     Returns:
         The parsed JSON metadata payload.
@@ -53,14 +53,14 @@ def observe_layer_last_edit_timestamp(
 ) -> int | None:
     """Observe and return the layer's ``editingInfo.lastEditDate`` value.
 
-    The timestamp is in epoch milliseconds. The server only updates it when the data is
-    actually edited. Transient network failures and rate-limit responses are retried
-    before giving up.
+    The timestamp is in epoch milliseconds and describes the layer as a whole. It is the
+    provider's change signal, not proof that every feature edit advanced the clock.
+    Transient network failures and rate-limit responses are retried before giving up.
 
     Args:
         url: The layer's REST endpoint URL.
         user_agent: The caller identity sent with requests.
-        timeout_seconds: Maximum request wait in seconds.
+        timeout_seconds: Connect and read-inactivity timeout in seconds.
         name: Human-readable layer identifier for log messages.
 
     Returns:

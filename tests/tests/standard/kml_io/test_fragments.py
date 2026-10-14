@@ -1,4 +1,4 @@
-"""Persistent boundary text must preserve XML and bound retained inputs."""
+"""Boundary caches preserve XML, release source geometry, and limit retained bytes."""
 
 import pathlib
 import weakref

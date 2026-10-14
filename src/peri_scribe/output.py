@@ -106,7 +106,7 @@ def write_document(
     """Write *document* to *path* as pretty-printed JSON.
 
     The fire index and the fire scores are both versioned documents holding the season's
-    fires, so they share one on-disk shape and one writer.
+    fires, so they share the top-level fields and one writer.
 
     Args:
         path: The JSON file to write.

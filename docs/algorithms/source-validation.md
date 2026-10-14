@@ -1,8 +1,9 @@
 # Source interpretation and validation
 
-Source interpretation establishes which coordinates and attributes may be compared.
-Validation then checks whether saved observations cover a complete provider response.
-Content digests answer the separate question of whether an external layer changed.
+Before comparing source data, the reader needs to know what its coordinates and
+attributes mean. Source interpretation establishes that basis. Validation then checks
+whether the saved observations include a complete provider response. Content digests
+answer a separate question: has an external layer changed?
 
 ## Contract and assessment
 
@@ -47,8 +48,10 @@ does not establish the provider's true CRS.
 
 ## Coverage and content identity
 
-Coverage permits extra historical observations. A content digest retains every row's
-multiplicity, so an added duplicate is still a content change.
+Coverage permits extra historical observations: retaining more than the provider
+currently returns doesn't make the saved history incomplete. A content digest preserves
+the number of occurrences of every row, so adding a duplicate still counts as a content
+change.
 
 Coverage requires unique object IDs in both frames, the same known CRS, and every
 attribute column supplied by the complete response. For each complete ID, the saved

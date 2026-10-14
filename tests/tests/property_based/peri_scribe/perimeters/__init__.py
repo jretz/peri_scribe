@@ -1,1 +1,1 @@
-"""Verify perimeters behavior with isolated tests."""
+"""Verify perimeter processing with isolated tests."""

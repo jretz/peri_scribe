@@ -1,4 +1,4 @@
-"""Verify fire identities, complex membership, and model validation."""
+"""Verify canonical identifiers, name normalization, and time comparisons."""
 
 from __future__ import annotations
 

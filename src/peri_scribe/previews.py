@@ -45,7 +45,7 @@ def cached_content(key: str) -> bytes | None:
         key: Fingerprint of every ordered geometry and color used to draw the map.
 
     Returns:
-        A complete native-size lossless WebP, or None so it is rendered again.
+        A decodable native-size WebP, or None so it is rendered again.
     """
     content = spatial_data.product_cache.get(NAMESPACE, key)
     if content is None:

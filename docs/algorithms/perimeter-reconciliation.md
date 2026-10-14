@@ -2,11 +2,12 @@
 
 ## Contract and context
 
-A fire's retained FIRIS and WFIGS observations become one chronological perimeter history.
-Inputs carry geometry, effective observation time, snapshot time/serial, object ID, raw
-attributes, and source lineage; classification chooses the preferred feed. Geometry is
-already in a common coordinate domain for equality and overlap. Output retains source
-attribution and is suitable for cleaning and full-history measurement.
+Reconciliation combines a fire's retained FIRIS and WFIGS observations into one
+chronological perimeter history. Inputs carry geometry, effective observation time,
+snapshot time/serial, object ID, raw attributes, and source lineage; classification
+chooses the preferred feed. Geometry is already in a common coordinate domain for
+equality and overlap. Output retains source attribution and is suitable for cleaning and
+full-history measurement.
 
 The effective clock is the observation date, then the row's edit/modification date, then
 its snapshot date. Snapshot time is only a fallback: a newly downloaded old polygon is
@@ -22,8 +23,8 @@ not automatically a new survey. This policy runs both in generation and historic
 | Scale and representation | 2 | Complete provenance and source attributes must survive reductions in differently ordered histories. |
 | Failure and concurrency | 0 | Selection is an in-memory policy; persistence belongs to generation. |
 
-**Complex, total 10.** Discarded mappings must remain explainable from their retained
-lineage or final rejection witness.
+**Complex, total 10.** For every discarded mapping, the retained lineage or final
+rejection evidence must explain why it was removed.
 
 ## Approach and invariants
 
@@ -82,13 +83,12 @@ original attribute survives: winner precedence intentionally resolves conflicts.
 
 ## Worked examples and boundaries
 
-An inside fire has a FIRIS survey at 10:00 and a WFIGS observation at 12:00. The latter
-is
-within four hours, so FIRIS wins even if shapes differ; WFIGS remains in the winner's
-lineage. If WFIGS instead publishes at 17:00 with capture 09:30 and 0.98 footprint overlap,
-credible delayed-capture evidence can still justify absorption. A 0.80 overlap cannot
-justify that delayed-copy route. A truly newer capture outside the capture tolerance
-also stays eligible.
+An inside fire has a FIRIS survey at 10:00 and a WFIGS observation at 12:00. The WFIGS
+observation is within four hours, so FIRIS wins even if shapes differ; WFIGS remains in
+the winner's lineage. If WFIGS instead publishes at 17:00 with capture 09:30 and 0.98
+footprint overlap, credible delayed-capture evidence can still justify absorption. A
+0.80 overlap cannot justify that delayed-copy route. A truly newer capture outside the
+capture tolerance also stays eligible.
 
 A repeated footprint at a later publication time normally keeps its first effective time.
 A different flight object from a recognized flight source, or a plausible capture date
@@ -102,9 +102,10 @@ compatibility. Arbitrary regrouping or globally picking the newest snapshot cann
 preserve these distinctions.
 
 Point histories use a different contract: sort by snapshot serial and retain one version
-per distinct normalized attribute state. A location-only move updates the retained
-version's geometry and source snapshot without creating a new incident state. Independent
-incident reporting is extracted before perimeter removal; see
+per change in normalized attributes. Consecutive repetitions share a version; a return
+to an earlier attribute state creates another version. A location-only move updates the
+retained version's geometry and source snapshot without creating a new incident state.
+Independent incident reporting is extracted before perimeter removal; see
 [incident and area selection](incident-area-selection.md).
 
 ## Costs and limitations
@@ -115,10 +116,11 @@ also depend on vertex counts and intersection complexity; they are not constant-
 operations. Retained rows are O(N), while repeatedly copying growing lineage can require
 quadratic work and transient storage. Source attribute byte size is another input bound.
 
-The fixed tolerances deliberately express policy. There is no claim of optimal scientific
-source selection, exact real-world capture truth, or robustness for arbitrary invalid
-polygons. Dateless histories and exact input ties retain implementation ordering rules;
-the formal composition model's narrower timed domain is documented below.
+The fixed tolerances express the chosen policy. Satisfying them doesn't establish that
+the selected source is scientifically best, that its capture time is true, or that
+arbitrary invalid polygons can be handled safely. Histories without dates and exact
+input ties retain the implementation's ordering rules. The formal composition model's
+narrower timed domain is documented below.
 
 ## Implementation and verification
 

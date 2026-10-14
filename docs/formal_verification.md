@@ -1,7 +1,8 @@
 # Formal Verification
 
-Formal checks describe selected guarantees of the pipeline, data stores, browser,
-monitor, and domain algorithms. Read this guide before designing or implementing new
+Formal checks help establish specific guarantees about the pipeline, data stores,
+browser, monitor, and domain algorithms. The guarantees depend on the assumptions and
+bounds recorded with each check. Read this guide before designing or implementing new
 system behavior, and when changing a modeled protocol, a proved policy, or the checks
 that connect them to Python or JavaScript. The specifications live in `tests/formal/`,
 alongside the other verification code.
@@ -36,10 +37,10 @@ introduce no new policy or state transitions may need only ordinary tests. Recor
 formal verification adds no useful guarantee in the change description when omitting it
 for a new component. Small code size alone is not a reason to skip modeling a protocol.
 
-A passing check supports the stated properties within the model's assumptions and bounds.
-It does not establish that the requirements are right, that every relevant behavior was
-modeled, or that the eventual implementation conforms. Review those boundaries and retain
-the implementation checks described below.
+A passing check supports the stated properties under the model's assumptions and
+bounds. Readers still need to assess whether the requirements are right, whether the
+model includes the relevant behavior, and whether the implementation agrees with it.
+Review those limits and keep the implementation checks described below.
 
 ## Running checks
 
@@ -69,11 +70,12 @@ emitted together on completion. Failures and timeouts make the suite fail after 
 other selected configurations finish; interrupting the runner cancels active processes
 and removes their temporary storage. Set `env PERI_SCRIBE_TLC_JOBS=1 mise formal-tla`
 for serial execution, or use another positive count. The underlying runner also accepts
-`--jobs`, which takes precedence over that environment variable. Top-level formal phases
-run sequentially inside one temporary evidence session. The model-checking phase
-publishes complete graphs for configurations used by conformance, and the later pytest
-phase consumes that same checked evidence. Standalone commands create their own fresh
-session when needed.
+`--jobs`, which takes precedence over that environment variable.
+
+Top-level formal phases run sequentially inside one temporary evidence session. The
+model-checking phase publishes complete graphs for configurations used by conformance,
+and the later pytest phase consumes that same checked evidence. Standalone commands
+create their own fresh session when needed.
 
 Each outer proof job owns a private POSIX process group, including tools started by
 nested pytest runs. Cancellation and timeouts terminate that entire group and drain its
@@ -100,14 +102,16 @@ The pipeline composition check distributes all 19,240 complete histories, contai
 once; each continuation receives an independent copy of the actual durable files and the
 full surviving TLC path. Timestamp-preserving copies retain publication identities. This
 requires 19,240 concrete invocations while preserving every complete history and
-mutation-boundary observation. The complete raw graph, typed projections, action
-mappings, history catalogue, and balanced prefix batches are prepared once per evidence
-session. Typed indexed tables retain exact node identities and successor order while
-avoiding repeated projection parsing and history reconstruction in workers. Regressions
-compare serialized contracts with their original complete graphs, require independent
-decoded containers, compare shared prefixes with fresh complete replays, and check copy
-isolation. `ReplayPrefixes.lean` proves composition under explicit determinism and
-exact-copy assumptions; Python tests check those adapter obligations.
+mutation-boundary observation.
+
+The complete raw graph, typed projections, action mappings, history catalogue, and
+balanced prefix batches are prepared once per evidence session. Typed indexed tables
+retain exact node identities and successor order while avoiding repeated projection
+parsing and history reconstruction in workers. Regressions compare serialized contracts
+with their original complete graphs, require independent decoded containers, compare
+shared prefixes with fresh complete replays, and check copy isolation.
+`ReplayPrefixes.lean` proves composition under explicit determinism and exact-copy
+assumptions; Python tests check those adapter obligations.
 
 Identity feedback and coordinate-reference checks use 12 batches each, and all 36
 hard-process crash scenarios are independent items. Batching preserves model bounds,
@@ -124,10 +128,10 @@ reject expired or incompatible inherited storage. Each worker retains its own de
 read-only contract. Failed producers cannot publish partial results, and a new top-level
 run always regenerates its evidence. No checked corpus is reused across runs.
 
-Pure Lean oracle requests are batched across independent cases, preserving their original
-order and exact response counts. Case-local identity and signature tables remain private.
-Requests that depend on preceding oracle responses remain sequential. This changes only
-the transport of requests to the same compiled definitions.
+Independent requests to the Lean reference run in batches to reduce transport work.
+They retain their original order and exact response counts, and each case keeps its own
+identity and signature tables. A request that needs an earlier response must still run
+after it. Batching does not change the compiled definitions being evaluated.
 
 Journal persistence fixtures supply fixed valid preview and icon images and a stable
 fixture-only runtime fingerprint. Real preview selection, KMZ and snapshot
@@ -190,10 +194,10 @@ all inputs in their stated domain. Duplication is appropriate when a policy part
 in a temporal protocol and also benefits from an unbounded theorem or an executable
 reference.
 
-State the desired property independently of the implementation. Include a meaningful
-claim beyond type correctness, such as preservation of outstanding work, prerequisite
-ordering, agreement with a declarative algorithm, or recovery without duplicate batches.
-Avoid adding formal syntax that merely restates a result as its own assumption.
+State the desired property independently of the implementation. It must say something
+beyond whether types agree: for example, unfinished work survives a failure, prerequisites
+run in order, an algorithm agrees with a declarative definition, or recovery avoids
+duplicate batches. Assuming the desired result and then proving it adds no useful check.
 
 Keep source mappings explicit. A model may span multiple Python modules. Identify the
 functions, serialized states, and effects it covers, including work deliberately outside
@@ -258,11 +262,11 @@ to reject it. Keep specifications and assertions unchanged between those executi
 Tool failures and import errors are not evidence that a behavioral defect was detected.
 Maintain these checks when the owning implementation is refactored.
 
-For ordered persistence protocols, compare complete observed executions with TLC's
-exported transition graph. Membership of each observation in the reachable-state set
-alone does not establish that their order is permitted. Keep compatible full abstract
-states across the trace; explicitly identify internal steps, stuttering, crashes, and
-environmental events. Include a trace whose individual states are reachable but whose
+For persistence protocols where order matters, compare complete observed executions
+with TLC's exported transition graph. A sequence can contain only reachable states and
+still put them in an order the protocol forbids. Keep compatible full abstract states
+across the trace, and identify internal steps, stuttering, crashes, and environmental
+events explicitly. Include a trace whose individual states are reachable but whose
 ordering violates the protocol.
 
 Retain a curated subprocess crash matrix alongside inexpensive exception injection.

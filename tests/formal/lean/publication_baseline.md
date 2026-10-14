@@ -1,7 +1,9 @@
 # Publication baseline ownership
 
-`PeriScribe/PublicationBaseline.lean` contains 27 theorems about the complete collection
-processed by `publication.published_fires(collection, perimeters, index)`.
+Publication needs a baseline tied to the source actually displayed for each fire.
+Repeated rows can add aliases, but the final displayed row still determines that owner's
+source. `PeriScribe/PublicationBaseline.lean` contains 27 theorems about the complete
+collection processed by `publication.published_fires(collection, perimeters, index)`.
 `OraclePublicationBaseline.lean` builds `oraclePublicationBaseline` from the same
 definitions. This extends the single-row raw-source join in [Publication evidence].
 

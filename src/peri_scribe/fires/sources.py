@@ -95,10 +95,10 @@ def read_fire_geopackage(
 def read_fire_sources(directory: pathlib.Path) -> ReadFireSources:
     """Read the fire rows and complex memberships under *directory* in one pass.
 
-    Every GeoPackage file anywhere below *directory* is read, so snapshots stored under
-    ``sources/{feed}/{serial}.gpkg`` are all found. Each file is read once and its rows
-    and memberships are collected together, so the two never need to agree on ordering
-    from separate passes.
+    Search recursively for fire-source snapshots, including those in serial-number
+    buckets. External datasets and current-state caches are excluded. Read each snapshot
+    once and collect its rows and memberships together so their association does not
+    depend on the ordering of separate passes.
 
     Args:
         directory: The directory tree holding GeoPackage files with fire data.
@@ -111,8 +111,8 @@ def read_fire_sources(directory: pathlib.Path) -> ReadFireSources:
         read_fire_geopackage,
         geometry_pool=spatial_data.geometry_pool.GeometryPool(),
     )
-    # GeoPackage reads release the GIL, so the files are read in parallel and the
-    # results are collected in file order to keep rows, paths, and memberships aligned.
+    # Worker threads can overlap the parts of GeoPackage reading that release the GIL.
+    # Collect results in file order to keep rows, paths, and memberships aligned.
     rows: list[peri_scribe.geo.package.FireRowRecord] = []
     paths: list[pathlib.Path] = []
     memberships: list[peri_scribe.models.ComplexMembership] = []
@@ -134,15 +134,17 @@ def read_fire_sources(directory: pathlib.Path) -> ReadFireSources:
 
 
 def group_fire_sources(read: ReadFireSources) -> FireRecordGroups:
-    """Group the read fire rows and memberships into distinct fires.
+    """Group source rows and complex memberships into distinct fires.
 
-    Fire records sharing any identifier are the same fire; records sharing only a name
-    are merged only when they are spatially compatible, so distinct fires that happen to
-    share a name (e.g. "Canyon" in California vs. Alaska) stay separate. The most common
-    spelling of each name is the one kept, and a fire is active when any of its records
-    is active. A fire whose records are spatially or temporally spread out is reported
-    with a warning. Fires that are complex parents are represented by a FireComplex
-    instead of listed as fires, and member fires carry a circular link to their complex.
+    A shared identifier connects records directly. A shared name connects them only when
+    their geometries are compatible, so a "Canyon" fire in California remains separate
+    from one in Alaska. The preferred name uses the most common mixed case spelling when
+    available, otherwise the most common spelling. A fire is active if any of its
+    records is active.
+
+    Records spread far apart generate an info log entry; long time spans generate a
+    debug entry so a possible mistaken grouping can be inspected. Complex parents become
+    FireComplex objects, and each member fire links back to its current complex.
 
     Args:
         read: The fire rows, their source files, and the complex memberships.

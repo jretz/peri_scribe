@@ -1,8 +1,13 @@
 # Complete perimeter reconciliation and border classification
 
-`PerimeterComposition.lean` adds 27 theorems and `BorderClassification.lean` adds 18.
-The `oraclePerimeters` executable evaluates the definitions appearing in those proofs.
-The six conformance tests compare complete production results with that executable and
+Perimeter reconciliation applies several decisions in sequence. Checking each decision
+alone doesn't show that the complete sequence retains the right source evidence. These
+checks follow that evidence through reconciliation and separately check the border
+classification used to choose a preferred source.
+
+`PerimeterComposition.lean` has 27 theorems and `BorderClassification.lean` has 18. The
+`oraclePerimeters` executable evaluates the definitions appearing in those proofs. The
+six conformance tests compare complete production results with that executable and
 exercise actual geometry, unit conversion, timestamps, and source-specific projection.
 
 ## Reconciliation through every pass
@@ -30,19 +35,20 @@ is additionally checked against Python, including attributes introduced by a los
 that later cause size rejection.
 
 `helpers/perimeter_composition.py` supplies 1,013 histories, each under both source
-preferences, comparing both the pre-filter and final results: 4,052 full-result comparisons.
-Each row comparison includes its original source identity, effective time, complete source
-lineage, reported computed/incident areas, and three independently conflicting or absent
-attributes, raw source/category keys, and capture presence/year. Cases cross revision
-and contemporaneous deadlines, capture metadata, source
-and category agreement, input permutations, repeated geometry, publication winners,
-existing lineage, missing/zero attributes, and final size rejection. Five hundred seeded
-histories contain up to seven observations. The adapter invokes the actual full pipeline;
-it does not mock GEOS or implement a second Python reconciliation policy. Another 320
-histories vary missing, null, primary, alias, and conflicting policy keys. Merging updates
-the normalized source/category/capture fields before subsequent absorption and revision
-passes. A present null remains a present key; an absent key can inherit the losing feed's
-capture, which may change the later policy decision.
+preferences, comparing both the pre-filter and final results: 4,052 full-result
+comparisons. Each row comparison includes its original source identity, effective time,
+complete source lineage, reported computed/incident areas, and three independently
+conflicting or absent attributes, raw source/category keys, and capture presence/year.
+Cases cross revision and contemporaneous deadlines, capture metadata, source and
+category agreement, input permutations, repeated geometry, publication winners, existing
+lineage, missing/zero attributes, and final size rejection. Five hundred seeded
+histories contain up to seven observations. The adapter invokes the actual full
+pipeline; it does not mock GEOS or implement a second Python reconciliation policy.
+
+Another 320 histories vary missing, null, primary, alias, and conflicting policy keys.
+Merging updates the normalized source/category/capture fields before subsequent
+absorption and revision passes. A present null remains a present key; an absent key can
+inherit the losing feed's capture, which may change the later policy decision.
 
 The inherited geometric domain is positive-width unit-height rectangles, with exact
 rational overlap thresholds. Conformance realizes their ratios with geographic rectangles

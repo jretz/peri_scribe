@@ -1,9 +1,11 @@
 # Complete notable views and chart evidence
 
-`NotableViews.lean` and `ChartEvidence.lean` cover eligibility and evidence that remain
-after identity association and history reconciliation. `OraclePolicyDetails.lean`
-executes the definitions used by all 38 theorems. Build with `mise formal-lean` and run
-the actual Python/SVG comparisons with `mise formal-conformance`.
+These checks ask which fires qualify as new and notable, which observations support a
+containment estimate, and whether chart lines preserve the selected evidence styles.
+`NotableViews.lean` and `ChartEvidence.lean` cover those decisions after identity
+association and history reconciliation. `OraclePolicyDetails.lean` executes the
+definitions used by all 38 theorems. Build with `mise formal-lean` and run the actual
+Python/SVG comparisons with `mise formal-conformance`.
 
 ## Complete new-and-notable selection
 

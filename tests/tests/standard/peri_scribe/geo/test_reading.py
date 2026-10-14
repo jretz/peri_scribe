@@ -1,4 +1,4 @@
-"""Tests for peri_scribe.geo.package."""
+"""Tests for peri_scribe.geo.reading."""
 
 from __future__ import annotations
 

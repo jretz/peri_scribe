@@ -1,10 +1,14 @@
 # Diagnostic log rotation and byte seeking
 
+Rotating a log must preserve every occurrence, including two diagnostics with identical
+contents. Finding a time window has a different requirement: plain-file byte seeking
+assumes dated records are in nondecreasing timestamp order. Window filtering itself
+retains occurrence order and doesn't stop at the first timestamp above the upper bound.
+
 These checks cover `logging.compress_log`, `recover_rotation`, `rotation_paths`, and
-`append_monthly_records`, together with `log_reading.timestamp_after`, `seek_since`,
-and `complete_lines`. Rotation and seeking have separate contracts: rotating an archive
-preserves occurrences, while seeking and window selection admit arbitrary timestamp
-order, including backward wall-clock adjustments.
+`append_monthly_records`, together with `log_reading.timestamp_after`, `seek_since`, and
+`complete_lines`. The seeking assumptions and the treatment of undated records are
+spelled out below.
 
 ## Rotation protocol
 

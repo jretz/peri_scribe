@@ -74,7 +74,7 @@ async def open_evidence_with_completion(
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class BlockedArchiveAppend:
-    """Hold an archive's state replacement while the live clock delivers new records."""
+    """Hold an archive's state replacement while the live clock requests a refresh."""
 
     started: threading.Event
     release: threading.Event
@@ -87,7 +87,7 @@ class BlockedArchiveAppend:
         *,
         bounded: bool = True,
     ) -> peri_scribe.monitor.model.State:
-        """Expose a stale archive snapshot without delaying independent live ingestion.
+        """Hold archive processing while a live refresh request waits for admission.
 
         Args:
             state: The snapshot captured before archive processing began.

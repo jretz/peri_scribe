@@ -2,11 +2,15 @@
 
 ## Contract and context
 
-Reuse must produce the same complete histories as recomputation for unchanged inputs.
-A generation identifies source bytes and derivation dependencies; a signature separately
-authenticates the actual published output bytes and declared layers. Full geography and
-differential geography are separate GeoPackages, and their metadata are separate files.
-A successful downstream read must authenticate their relationship while excluding writers.
+Reusing saved work must produce the same complete histories as recomputing unchanged
+inputs. A generation identifies the source bytes and the dependencies used to derive the
+result. A separate signature authenticates the bytes and declared layers actually
+published. Both checks matter: matching inputs alone cannot establish that the saved
+output is intact.
+
+Full geography and differential geography are separate GeoPackages, each with a separate
+metadata file. Before returning data, a downstream reader must authenticate their
+relationship while holding a lock that excludes writers.
 
 Inputs include ordered source snapshots, all raw observations/provenance, grouped fires,
 code and runtime dependencies, cleaning/classification settings and boundary data. Outputs
@@ -37,15 +41,16 @@ and exact layer declaration permit skipping all reconstruction unless forced.
 When that shortcut fails, derive per-fire keys from *all* source evidence, including
 observations reconciliation discards, geometry bytes, attributes, provenance, aliases,
 component identity, complex membership and the derivation context. Reuse rows only from
-an
-authenticated prior file and matching per-fire keys; reconstruct affected fires in full.
+an authenticated prior file and matching per-fire keys; reconstruct affected fires in full.
 A later correction can therefore revise early history. Matching only the most recent
 surviving perimeter would miss corrections to a discarded observation.
 
 ![Dependencies contributing to a reusable generation](assets/geography-dependencies.svg)
 
-*Whole-generation identity protects the complete input inventory. Per-fire identity allows
-unchanged histories to survive a change elsewhere, without omitting discarded evidence.*
+*The whole-generation key accounts for every input. A per-fire key lets an unchanged
+fire reuse its history when another fire changes. Both include evidence that
+reconciliation discarded, because a correction to that evidence can still change the
+result.*
 
 Classification must be complete for every non-complex fire before saving a whole-generation
 tag. A prior complete authenticated generation can supply classification evidence for

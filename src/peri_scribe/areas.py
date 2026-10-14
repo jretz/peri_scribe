@@ -278,9 +278,12 @@ def report_can_take_over(
 ) -> bool:
     """Require evidence of subsequent growth before reports displace a mapping.
 
-    Ordinary growth must outlast the staleness threshold. Rapid growth can qualify
-    sooner when distinct formal reports corroborate it. Both routes require an absolute
-    increase and growth beyond any report already known at the survey.
+    A report can take over once the mapping is old enough and the reported growth meets
+    the policy's thresholds. Rapid growth can qualify sooner when distinct formal
+    reports corroborate it. Confirmations are counted by formal report time; all unknown
+    times share one entry, so they can contribute one confirmation but cannot establish
+    several. Both routes require an absolute increase over the mapped area and growth
+    beyond any report already known at the survey.
 
     Args:
         mapping: The latest mapping that established survey freshness.
@@ -360,12 +363,16 @@ def area_history(
     policy: AreaPolicy = DEFAULT_POLICY,
     updates: tuple[peri_scribe.incidents.IncidentUpdate, ...] | None = None,
 ) -> tuple[AreaEstimate, ...]:
-    """Provide one source-attributed area history for charts, scores, and descriptions.
+    """Provide one area history, with its sources, for charts, scores, and descriptions.
 
-    Geometry leads while mapping is fresh. Reports supply area without mapping and can
-    take over when subsequent growth satisfies the policy. A fresh mapping restores
-    geometry, including legitimate downward corrections. Policy deadlines within the
-    observed history expose eligible growth even without another feed edit.
+    Geometry supplies the area while mapping is fresh. Reports supply it when there is
+    no mapping, and can take over when later growth meets the policy's thresholds. A
+    fresh mapping restores geometry as the source, including legitimate downward
+    corrections.
+
+    A report can become eligible as a mapping ages even if no further feed edit arrives.
+    Policy deadlines within the observed history let the selected area reflect that
+    change.
 
     Args:
         perimeters: The fire's perimeter history with geometry and source metadata.
@@ -500,11 +507,12 @@ def historical_area(
     *,
     history: tuple[AreaEstimate, ...] | None = None,
 ) -> pint.Quantity[float] | None:
-    """Keep formerly qualifying fires visible after legitimate acreage corrections.
+    """Return the largest selected dated area, falling back to sparse evidence.
 
     Dated estimates use the same policy as current size. Without a usable chronological
     estimate, undated geometry and supplied size, discovery, or final acreage can
-    establish that a sparse record reached the inclusion threshold.
+    establish that a sparse record reached the inclusion threshold. The first dated
+    estimate replaces this fallback, even if it is smaller.
 
     Args:
         perimeters: The fire's perimeter observations and stored measurements.

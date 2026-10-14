@@ -1,5 +1,8 @@
 """Run local proof tools with bounded waits and without a command shell.
 
+Cancelling a proof job must also stop the tools it started. Otherwise a nested process
+can keep running or hold an output pipe open after its caller has failed.
+
 Design notes:
 [Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
 """
@@ -56,10 +59,12 @@ async def terminate(
     launch: asyncio.Task[asyncio.subprocess.Process],
     group: int | None,
 ) -> None:
-    """Finish admission before terminating the entire failed proof job.
+    """Wait for the process handle so the whole failed proof job can be terminated.
 
-    A nested tool failure aborts its enclosing pytest job as well as its tools.
-    Only the outer caller survives to propagate its cancellation or timeout.
+    A nested tool shares its enclosing pytest job's process group. Terminating that
+    group stops the job and its tools; only the outer caller survives to propagate the
+    exception that triggered cleanup. A nonzero tool exit status by itself does not
+    trigger termination.
 
     Args:
         launch: A shielded launch that may still be handing back its process handle.

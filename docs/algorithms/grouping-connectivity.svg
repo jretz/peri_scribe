@@ -3,7 +3,7 @@
      viewBox="0 0 840 420" role="img" style="max-width:100%;height:auto"
      aria-labelledby="grouping-connectivity-title grouping-connectivity-description">
   <title id="grouping-connectivity-title">Identity edges create connected components</title>
-  <desc id="grouping-connectivity-description">A and B share an identifier. B and C share a nearby name. All three connect. Same-named distant D stays separate.</desc>
+  <desc id="grouping-connectivity-description">A and B share an identifier. B and C have the same name and are near each other, so all three belong to one connected group even if A is far from C. D has the same name but no shared identifier or nearby match, so it stays separate.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
             markerWidth="7" markerHeight="7" orient="auto-start-reverse">

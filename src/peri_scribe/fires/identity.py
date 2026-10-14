@@ -23,9 +23,10 @@ def identity_key(
 ) -> str:
     """Return the key that identifies a fire for score persistence.
 
-    External identifiers, anonymous source components, and legacy names have separate
-    namespaces. Reserved identifier prefixes are escaped so source text cannot
-    impersonate an internal component or a name.
+    External identifiers, anonymous source components, and legacy names use separate
+    namespaces so equal text cannot make them collide. Escape reserved identifier
+    prefixes to keep a source identifier from being read as an internal component or a
+    name.
 
     Args:
         name: The fire's name.

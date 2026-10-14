@@ -1,4 +1,4 @@
-"""Build inputs for arcgis tests."""
+"""Build inputs for ArcGIS tests."""
 
 from __future__ import annotations
 

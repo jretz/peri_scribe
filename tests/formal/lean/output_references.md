@@ -1,18 +1,25 @@
 # Ranked views and output reference integrity
 
-`RankedViews.lean` and `OutputReferences.lean` cover score-to-fire association, ranked
-selection, observation windows, and resource references. `OracleOutputs.lean` executes
-the same definitions used by the proofs. Build with `mise formal-lean`; compare the
-implementation and saved artifacts with `mise formal-conformance`.
+The score used to rank a fire should be the score shown in its report, and a report or
+map reference should lead to that fire's detail or resource. `RankedViews.lean` and
+`OutputReferences.lean` check these associations, ranked selection, observation windows,
+and resource references. `OracleOutputs.lean` executes the same definitions used by the
+proofs. Build with `mise formal-lean`; compare the implementation and saved artifacts
+with `mise formal-conformance`.
 
 ## Ranked views and score ownership
 
-The reference resolves each score against the complete showable fire collection.
-Identifier matches take priority. Without an identifier match, the last same-name
-fire in input order receives the score, matching the documented fallback contract.
-This ambiguity is explicit: the proof does not establish that a name-only match is
-the correct real-world incident. A score for an excluded identifier can fall back to
-a same-name showable fire.
+The reference covers scores without internal component identity, resolving each against
+the complete showable fire collection. Identifier matches take priority. Without an
+identifier match, the last same-name fire in input order receives the score. This
+ambiguity is explicit: the proof does not establish that a name-only match is the correct
+real-world incident. In this legacy domain, a score for an excluded identifier can fall
+back to a same-name showable fire.
+
+Production scores with a component use exact component matching after identifier
+matching, with no name fallback. The [component identity](component_identity.md) bridge
+separately checks those scores through real publication rounds; this ranking model does
+not include that additional resolution branch.
 
 Scores are ordered by descending score and case-folded name, preserving input order
 on ties. The first row resolving to each owner is retained before applying the output
@@ -52,9 +59,10 @@ Window selection includes both the cutoff and the reference instant, and exclude
 future observations. The latest-selection proof establishes source membership,
 nonfuture time, and maximal time among all eligible measurements. Appending a future
 measurement cannot change the selected value. The growth definition compares the
-latest eligible measurement with the latest measurement at the cutoff; no baseline
-means zero acreage and an undefined percentage. Percentage eligibility requires a
-strictly positive baseline and uses an exact cross-multiplied threshold comparison.
+latest eligible measurement with the latest measurement at the cutoff. If there is no
+measurement at or before the cutoff, the baseline is zero acres, so the entire latest
+area counts as growth and the percentage is undefined. Percentage eligibility requires
+a strictly positive baseline and uses an exact cross-multiplied threshold comparison.
 
 The bridge checks 751 histories with missing history, zero baselines, corrections,
 equal timestamps, reordered input, cutoff boundaries, and future measurements. Both

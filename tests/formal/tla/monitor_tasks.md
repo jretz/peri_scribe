@@ -1,8 +1,10 @@
 # Monitor task ownership
 
-`MonitorTasks.tla` checks the lifetime shared by live refresh, archive loading,
-selected-evidence reads, report reads, status expiration, and session shutdown.
-The design was checked before adding the production owner.
+Cancelling a monitor request doesn't necessarily stop its worker immediately. The worker
+may still need its reader, and shutdown must wait for it before closing that reader.
+`MonitorTasks.tla` checks this shared lifetime for live refresh, archive loading,
+selected-evidence reads, report reads, status expiration, and session shutdown. The
+design was checked before adding the production owner.
 
 ## Contract and implementation
 

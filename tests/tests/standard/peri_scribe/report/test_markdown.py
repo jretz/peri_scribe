@@ -14,10 +14,6 @@ import tests.helpers.factories.peri_scribe.report.markdown
 from measurement_units import units
 
 
-# The summary sections whose location column headings appear when the report holds a
-# located fire in each of them: New, Notable Fires and Top Fires.
-
-
 def test_discovery_cell_formats_discovery_time() -> None:
     entry = tests.helpers.factories.peri_scribe.report.markdown.make_entry(
         "Bug",
@@ -639,8 +635,8 @@ def test_fire_table_section_renders_location_column() -> None:
     assert "+5,000 acres" in fire_row
 
 
-# The summary sections that show the location column when the report holds a located
-# fire in each of them: New, Notable Fires and Top Fires.
+# "New, Notable Fires" and "Top Fires" both contain a fire with a location, so both
+# summary tables must show the location column.
 
 
 def test_markdown_text_shows_location_in_sections_and_details() -> None:

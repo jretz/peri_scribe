@@ -2,13 +2,14 @@
 
 ## Contracts and assessments
 
-These presentation algorithms consume already prepared chronological growth rings.
-They preserve the supplied ring order rather than sorting or reconstructing history.
-Color selection requires finite nonnegative ring areas in compatible area units and
-aware observation timestamps. Tour targets require a unique folder-occurrence ID and
-one placemark for every supplied ring position. Icon inputs are valid RGB colors and
-pixel-valued stroke dimensions. The geographic scope remains nationwide; time labels
-use the project's existing `America/Los_Angeles` display convention.
+These algorithms turn prepared chronological growth rings into colors, playback steps,
+and map icons. They preserve the supplied order, so callers must provide the history in
+the correct sequence. Color selection requires finite nonnegative ring areas in
+compatible area units and aware observation timestamps. Tour targets require a unique
+folder-occurrence ID and one placemark for every supplied ring position. Icon inputs are
+valid RGB colors and pixel-valued stroke dimensions. The geographic scope remains
+nationwide; time labels use the project's existing `America/Los_Angeles` display
+convention.
 
 | Behavior | History/state | Rules | Mathematics | Scale/representation | Failure/concurrency | Tier |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -35,10 +36,10 @@ the enclosing [output writer](output-serialization.md) owns those effects.
 ## The shortest window containing 98% of dated ring area
 
 Discard undated rings for color selection. Let their remaining areas be `a_i`, total
-area A, and threshold `T = 0.98A`. This uses each ring's own `area`, not its independently
-certified incremental union area. The active window is a shortest consecutive run whose
-sum reaches T. It can exclude small rings on either side without letting a long quiet
-tail stretch the time-to-color mapping.
+area A, and threshold `T = 0.98A`. This uses each ring's own `area`, not its
+independently certified incremental union area. The active window is a shortest
+consecutive run whose sum reaches T. Excluding small rings at either end keeps a long
+quiet period from stretching the color scale and making most growth look the same.
 
 For each right endpoint, add its area to a running sum. Move the left endpoint forward
 while at least one ring would remain and removing the old left ring would still meet T.
@@ -76,8 +77,8 @@ Rings before the window use c; rings after it use 1. If t0 equals t1, every in-w
 ring is hot, while preceding rings still use c. No dated rings yields an empty color
 sequence. Nonnegative all-zero areas select the first ring as the active singleton,
 making every dated ring hot. Negative or nonfinite areas violate the sliding-window
-assumptions; an unattainable manually supplied threshold leaves the helper's initial
-whole-span fallback rather than proving that the threshold was satisfied.
+assumptions. If a manually supplied threshold cannot be reached, the helper returns its
+initial whole-span fallback; that result does not mean the threshold was satisfied.
 
 The `[1,100,2]` example uses `c = 8/9`: the excluded early ring and the first active
 ring have the same color; the final active ring is hot. For a three-ring active span

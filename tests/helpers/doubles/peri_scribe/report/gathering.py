@@ -23,9 +23,7 @@ def make_scores_recorder(
     *,
     scores_values: list[peri_scribe.models.FireScores],
 ) -> typing.Callable[..., list[peri_scribe.presentation.fire_data.FireSummary]]:
-    """Create a callback with controlled dependencies.
-
-    Capture report-stage options without constructing fire geometry.
+    """Return a recorder of report options without constructing fire geometry.
 
     Args:
         scores_values: Shared list recording score documents supplied to rendering.
@@ -65,9 +63,7 @@ def make_city_measurement_recorder(
     *,
     measured: list[shapely.Geometry],
 ) -> typing.Callable[..., peri_scribe.report.locations.NearestCity]:
-    """Create a callback with controlled dependencies.
-
-    Observe which geometry is used without consulting a city dataset.
+    """Return a geometry recorder with a fixed city result.
 
     Args:
         measured: Shared list recording geometries used to find the nearest city.

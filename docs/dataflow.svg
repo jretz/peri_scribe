@@ -1,10 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg"
-     width="840" height="3092" viewBox="0 0 840 3092" preserveAspectRatio="xMidYMin" role="graphics-document"
+     width="840" height="3188" viewBox="0 0 840 3188" preserveAspectRatio="xMidYMin" role="graphics-document"
      style="max-width:100%;height:auto"
      aria-labelledby="diagram-title diagram-description">
   <title id="diagram-title">PeriScribe — complete 2026 pipeline dataflow</title>
-  <desc id="diagram-description">United States fire pipeline, source inputs, derived memory, recovery, and the classes of files under data/2026. Detailed network resources are documented in architecture.md.</desc>
+  <desc id="diagram-description">The pipeline follows United States fire observations from source collection through geography, scoring, maps, and reports. Each stage shows the data it computes and the classes of files it saves under data/2026. Shared inputs and recovery state appear below the stages. Detailed network resources are documented in architecture.md.</desc>
   <!-- Fixed page coordinates and semantic IDs keep edits local. Do not optimize or minify. -->
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"/></marker>
@@ -64,7 +64,7 @@
     </style>
   </defs>
   <g id="page-overview" transform="translate(0 -48)">
-    <rect class="page-background" width="840" height="3140"/>
+    <rect class="page-background" width="840" height="3236"/>
     <text class="small" x="24" y="76">Purple: network · gold: stage · green: computed memory · blue: files</text>
     <g id="overview-network" class="node network" transform="translate(24 100)">
       <rect width="792" height="110"/>
@@ -78,8 +78,8 @@
     <g id="overview-fetch" class="node process" transform="translate(24 258)">
       <rect width="792" height="110"/>
       <text class="heading" x="16" y="32">1 / Fetch</text>
-      <text class="body" x="16" y="62">Compare changed/missing/status-flip IDs; stream buildings; conditionally fetch cities; derive</text>
-      <text class="body" x="16" y="86">borders; save changes and check full-fetch / publication gates.</text>
+      <text class="body" x="16" y="62">Find edited, new, and newly inactive rows; stream buildings; fetch cities when needed;</text>
+      <text class="body" x="16" y="86">derive borders, save changes, and check full-fetch and publication requirements.</text>
     </g>
     <g id="fetch-memory" class="node memory" transform="translate(24 416)">
       <rect width="378" height="158"/>
@@ -112,7 +112,7 @@
     <g id="overview-geography" class="node process" transform="translate(24 694)">
       <rect width="792" height="110"/>
       <text class="heading" x="16" y="32">2 / Geography</text>
-      <text class="body" x="16" y="62">Group and classify sources; write fire index; preserve independent incident-report evidence;</text>
+      <text class="body" x="16" y="62">Group and classify sources, write the fire index, and preserve incident-report evidence;</text>
       <text class="body" x="16" y="86">reconcile full perimeters and derive growth rings.</text>
     </g>
     <g id="overview-group" class="node memory" transform="translate(24 852)">
@@ -142,16 +142,16 @@
     <g id="overview-score" class="node process" transform="translate(24 1058)">
       <rect width="792" height="110"/>
       <text class="heading" x="16" y="32">3 / Score</text>
-      <text class="body" x="16" y="62">Use current area, mapped growth, first mapping, nearby buildings, evacuation and complexity; rank</text>
-      <text class="body" x="16" y="86">fires and generate score distribution.</text>
+      <text class="body" x="16" y="62">Rank fires using current area, mapped growth, first mapping, nearby buildings, evacuation,</text>
+      <text class="body" x="16" y="86">and complexity. Show how the scores are distributed.</text>
     </g>
     <g id="overview-signals" class="node memory" transform="translate(24 1216)">
       <rect width="378" height="206"/>
       <text class="heading" x="16" y="32">Area decisions + spatial signals</text>
       <text class="body" x="16" y="62">PreparedHistory / AreaEstimate /</text>
       <text class="body" x="16" y="86">IncidentUpdate</text>
-      <text class="body" x="16" y="110">Latest geometry or point union; one-mile</text>
-      <text class="body" x="16" y="134">buffers</text>
+      <text class="body" x="16" y="110">Latest geometry or point union;</text>
+      <text class="body" x="16" y="134">projected one-mile buffers</text>
       <text class="body" x="16" y="158">Building counts, evacuation intersections,</text>
       <text class="body" x="16" y="182">metrics</text>
     </g>
@@ -175,8 +175,8 @@
     <g id="overview-kmz" class="node process" transform="translate(24 1494)">
       <rect width="792" height="110"/>
       <text class="heading" x="16" y="32">4 / KMZ + update publication</text>
-      <text class="body" x="16" y="62">Assemble maps; commit successful KMZ baseline; append new mapping updates with recovery journal;</text>
-      <text class="body" x="16" y="86">publish 48-hour JSON with current previews and locations; copy viewer.</text>
+      <text class="body" x="16" y="62">Build maps and record the successful KMZ baseline; append updates with a recovery journal;</text>
+      <text class="body" x="16" y="86">publish 48-hour JSON with current previews and locations, and copy the viewer.</text>
     </g>
     <g id="overview-summaries" class="node memory" transform="translate(24 1652)">
       <rect width="378" height="182"/>
@@ -207,8 +207,8 @@
     <g id="overview-reports" class="node process" transform="translate(24 1906)">
       <rect width="792" height="110"/>
       <text class="heading" x="16" y="32">5 / Reports</text>
-      <text class="body" x="16" y="62">Reuse shared presentation facts where available; render selected fires and details as Markdown; use</text>
-      <text class="body" x="16" y="86">Natural Earth places for nearest-place location text.</text>
+      <text class="body" x="16" y="62">Use shared facts where available to write selected fires and their details as Markdown.</text>
+      <text class="body" x="16" y="86">Describe locations using the nearest Natural Earth places.</text>
     </g>
     <g id="overview-report-memory" class="node memory" transform="translate(24 2064)">
       <rect width="378" height="134"/>
@@ -242,7 +242,7 @@
       <text class="body" x="16" y="182">classification</text>
     </g>
     <g id="control-files" class="node disk" transform="translate(438 2302)">
-      <rect width="378" height="254"/>
+      <rect width="378" height="302"/>
       <text class="heading" x="16" y="32">Run + publication state</text>
       <text class="body" x="16" y="62">.run.lock; run_state.json → lock / retry</text>
       <text class="body" x="16" y="86">scheduler</text>
@@ -252,8 +252,10 @@
       <text class="body" x="16" y="182">measurements</text>
       <text class="body" x="16" y="206">publication_state.json → successful KMZ</text>
       <text class="body" x="16" y="230">baseline</text>
+      <text class="body" x="16" y="254">deferred_inputs → unpublished collection</text>
+      <text class="body" x="16" y="278">intent for the retry scheduler</text>
     </g>
-    <g id="update-files" class="node disk" transform="translate(24 2592)">
+    <g id="update-files" class="node disk" transform="translate(24 2640)">
       <rect width="378" height="230"/>
       <text class="heading" x="16" y="32">KMZ acknowledgement + recovery</text>
       <text class="body" x="16" y="62">derived/fire_updates_state.json → next</text>
@@ -264,7 +266,7 @@
       <text class="body" x="16" y="182">Successful KMZ → log/checkpoint →</text>
       <text class="body" x="16" y="206">updates.json</text>
     </g>
-    <g id="shared-cache" class="node disk" transform="translate(438 2592)">
+    <g id="shared-cache" class="node disk" transform="translate(438 2640)">
       <rect width="378" height="182"/>
       <text class="heading" x="16" y="32">Disposable derived products</text>
       <text class="body" x="16" y="62">derived/prepared-products.sqlite</text>
@@ -273,17 +275,19 @@
       <text class="body" x="16" y="134">Invalid products are recomputed from source</text>
       <text class="body" x="16" y="158">evidence</text>
     </g>
-    <g id="monitor-files" class="node disk" transform="translate(24 2858)">
-      <rect width="378" height="206"/>
+    <g id="monitor-files" class="node disk" transform="translate(24 2906)">
+      <rect width="378" height="254"/>
       <text class="heading" x="16" y="32">Diagnostic logs + retained backups</text>
       <text class="body" x="16" y="62">logs/{YYYY-MM}.jsonl[.zst] → terminal</text>
       <text class="body" x="16" y="86">monitor</text>
       <text class="body" x="16" y="110">logs/.rotation.lock → both monthly log</text>
       <text class="body" x="16" y="134">series</text>
-      <text class="body" x="16" y="158">logs/*.bak → retained backups; no normal</text>
-      <text class="body" x="16" y="182">consumer</text>
+      <text class="body" x="16" y="158">logs/*.jsonl.rotation.json → rotation</text>
+      <text class="body" x="16" y="182">recovery + coherent monthly reads</text>
+      <text class="body" x="16" y="206">logs/*.bak → retained backups; no normal</text>
+      <text class="body" x="16" y="230">consumer</text>
     </g>
-    <g id="runtime-memory" class="node memory" transform="translate(438 2858)">
+    <g id="runtime-memory" class="node memory" transform="translate(438 2906)">
       <rect width="378" height="182"/>
       <text class="heading" x="16" y="32">Shared runtime + observer state</text>
       <text class="body" x="16" y="62">execution.Values; GeometryPool; generation</text>
@@ -292,6 +296,6 @@
       <text class="body" x="16" y="134">Browser groups, DOM cache, timers and canvas</text>
       <text class="body" x="16" y="158">icon</text>
     </g>
-    <text class="small" x="24" y="3100">Arrows show preparation and product flow within each stage; dashed arrows show stage order.</text>
+    <text class="small" x="24" y="3196">Arrows show preparation and product flow within each stage; dashed arrows show stage order.</text>
   </g>
 </svg>

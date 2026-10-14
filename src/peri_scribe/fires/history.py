@@ -1,11 +1,12 @@
-"""Building the full point and perimeter history for a year's fires.
+"""Build the full point and perimeter history for a year's fires.
 
-The derived history is written to a GeoPackage with one layer for perimeters and one for
-points. Perimeter history is reconciled across the two perimeter sources, where a fire
-that appears in both keeps the source most likely to be correct at each moment under the
-border-classification rules. Point history comes from the single incident location
-source, so every distinct attribute state is kept while the location itself never
-creates a version.
+The derived GeoPackage stores perimeters and points in separate layers. When both
+perimeter sources map a fire close enough in time to compare, the border-classification
+rules determine which source to prefer.
+
+Point history comes from the single incident location source. Each attribute change
+starts a version, including a return to an earlier state. A location change alone
+updates the current version's geometry without creating another version.
 
 [Reconciliation](../../../docs/algorithms/perimeter-reconciliation.md)
 [Geometry policy](../../../docs/algorithms/perimeter-geometry-policy.md)
@@ -46,9 +47,9 @@ IDENTITY_COLUMNS = [
     "border_classification",
 ]
 
-# The per-fire work mixes geometry calls that release the GIL with Python-side attribute
-# and dictionary work that does not, so more than a handful of workers only adds GIL
-# contention, so cap the pool size.
+# Geometry calls release the GIL, but Python attribute and dictionary work competes for
+# it. Keep the pool small so contention does not erase the benefit of parallel geometry
+# work.
 HISTORY_ROW_WORKER_COUNT = min(4, os.cpu_count() or 1)
 
 

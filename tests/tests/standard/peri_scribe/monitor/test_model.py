@@ -328,7 +328,7 @@ def test_phase_tree_retains_explicit_skip_reason() -> None:
     assert any(omitted.reason == "unchanged" for omitted in tree.omissions)
 
 
-def test_phase_tree_explains_overlapping_invocation_skip() -> None:
+def test_phase_tree_omits_phases_for_overlapping_invocation() -> None:
     run = tests.helpers.factories.peri_scribe.monitor.events.run(
         tests.helpers.factories.peri_scribe.monitor.events.record(
             "Starting command",

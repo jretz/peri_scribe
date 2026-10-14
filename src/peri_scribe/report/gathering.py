@@ -37,12 +37,11 @@ if typing.TYPE_CHECKING:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class FireReportEntry:
-    """One fire's facts as the report renders them.
+    """Keep one fire's shared facts and additional report fields together.
 
-    The fire's description carries the same latest-state facts the fire's KMZ balloon
-    table shows, so the report's details can include every fact the balloon would; the
-    growth over the fast-growth window, the saved score, and the nearest-city location
-    are measures the balloons do not show, so they ride alongside as report-only fields.
+    The description contains the same latest facts as the KMZ balloon, so the report can
+    show all of them. Growth over the fast-growth window, the saved score, and the
+    nearest-city location are kept alongside it for the report's summaries and details.
     """
 
     name: str
@@ -114,13 +113,12 @@ def fire_location(
     fire: peri_scribe.presentation.fire_data.FireSummary,
     cities: geopandas.GeoDataFrame,
 ) -> str | None:
-    """Return *fire*'s nearest-city location phrase, or None when it has none.
+    """Return *fire*'s nearest-city location phrase, or None when unknown.
 
-    The fire's latest perimeter bounds its interior, and the phrase names the city in
-    *cities* closest to that interior, like ``15 mi ESE of Portland, OR``. A fire with
-    no mapped perimeter has only its point location, so the phrase is measured from that
-    point instead. A fire with neither geometry, and a year without cities, leave the
-    location unknown.
+    The phrase names the city in *cities* nearest to the area inside the latest
+    perimeter, for example ``15 mi ESE of Portland, OR``. If no perimeter is available,
+    the fire's point location supplies the measurement instead. A fire without either
+    geometry, or a year without cities, has no known location phrase.
 
     Args:
         fire: The fire to locate.
@@ -149,9 +147,9 @@ def fire_locations(
 ) -> dict[peri_scribe.presentation.selection.AreaKey, str]:
     """Return each located fire's phrase keyed by its report identity.
 
-    A fire without an interior or without a usable city contributes no entry, and a fire
-    that repeats in *fires* keeps its first phrase, so the caller can hand the result to
-    :func:`report_entries` unchanged.
+    A fire needs a usable perimeter or point and a usable city to produce a phrase.
+    Repeated fires keep their first phrase, so :func:`report_entries` can reuse it in
+    every section where the fire appears.
 
     Args:
         fires: The fires to locate.
@@ -181,15 +179,15 @@ def report_entry(
 ) -> FireReportEntry:
     """Return the report facts for one fire.
 
-    The fire's latest-state facts ride along as its description so the report's details
-    can show the same data the fire's KMZ balloon shows; its growth over the fast-growth
-    window is measured from its perimeters. The score is matched by identifier first and
-    then name, mirroring how the KMZ resolves a fire to its saved score.
+    The shared description keeps the report's latest facts consistent with the KMZ
+    balloon. Growth over the fast-growth window comes from the perimeters. Scores match
+    by identifier first, then by component when known or by name otherwise, using the
+    shared lookup rules.
 
     Args:
         fire: The fire to describe.
         scores_by_identifier: Score entries keyed by identifier.
-        scores_by_name: Score entries without identifiers, keyed by name.
+        scores_by_name: Anonymous score entries keyed by component or legacy name.
         reference_time: The wall-clock time the report is gathered.
         location: The fire's nearest-city location phrase, or None when it has none.
 
@@ -241,7 +239,7 @@ def report_entries(
     Args:
         fires: The fires to describe.
         scores_by_identifier: Score entries keyed by identifier.
-        scores_by_name: Score entries without identifiers, keyed by name.
+        scores_by_name: Anonymous score entries keyed by component or legacy name.
         reference_time: The wall-clock time the report is gathered.
         locations_by_identity: Location phrases keyed by report identity, or None when
             no fire has a location.
@@ -284,7 +282,7 @@ def located_entries(
     Args:
         fires: The fires to describe.
         scores_by_identifier: Score entries keyed by identifier.
-        scores_by_name: Score entries without identifiers, keyed by name.
+        scores_by_name: Anonymous score entries keyed by component or legacy name.
         reference_time: The wall-clock time the report is gathered.
         year_directory: The year directory that holds the ``sources`` directory.
 

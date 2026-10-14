@@ -64,10 +64,10 @@ theorem stable_writer_recomputation_has_no_novel_mapping
     (acknowledged_record_membership_exact _ _ _ _).mpr
       (Or.inr (acknowledged datum member)), selfOwned⟩
 
-/- The current fires have unique report identities and disjoint alias groups. A route
-   list is the union of all durable histories reachable through one such group. The
-   feedback executor preserves that group boundary while allowing arbitrary overlap
-   between its historical routes and those of every other fire. -/
+/- Current fires have unique report identities and disjoint alias groups. Each route
+   list contains every durable history reachable through one alias group. Keeping those
+   groups separate does not require their histories to be separate: different fires may
+   reach overlapping historical buckets. -/
 structure Feedback where
   fires : List Fire
   histories : List Nat
@@ -527,8 +527,8 @@ theorem every_alias_route_stabilizes_after_acknowledgement (input : Feedback)
   rw [same]
   simp
 
-/- Finite materialization changes evaluation cost, not the feedback algorithm. It
-   prevents oracle evaluation from repeatedly expanding prior functional checkpoints. -/
+/- Storing the finite results prevents repeated expansion of earlier functional
+   checkpoints. The executor must still agree with the same feedback definitions. -/
 def memoLookup {Value : Type} (fallback : Nat → Value) :
     List (Nat × Value) → Nat → Value
   | [], key => fallback key

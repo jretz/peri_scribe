@@ -101,9 +101,9 @@ def next_serial_number(
     and otherwise is one greater than the largest serial number among *existing*, so the
     first snapshot for a source is numbered 0.
 
-    A full fetch writes a new snapshot even when the observed timestamp is unchanged, so
-    its caller passes *reuse_same_timestamp* as false to keep the new snapshot from
-    overwriting the existing snapshot for the same timestamp.
+    A full fetch can find changed features even when the observed timestamp is
+    unchanged. Its caller passes *reuse_same_timestamp* as false so storing those
+    changes cannot overwrite an existing snapshot for the same timestamp.
 
     Args:
         existing: The source's existing source files.
@@ -137,8 +137,8 @@ def next_serial_number(
 def existing_source_files(directory: pathlib.Path) -> list[SourceFile]:
     """Return the source files in *directory*, sorted by serial number.
 
-    The directory tree is searched recursively, so snapshots stored under
-    ``sources/{feed}/{serial//1_000:03d}___/{serial}.gpkg`` are all found.
+    Search recursively to include snapshots in the feed's serial-number buckets.
+    Filenames supply each snapshot's serial number and last-edit timestamp.
 
     Args:
         directory: The directory to list source files from.
@@ -161,12 +161,10 @@ def existing_source_files(directory: pathlib.Path) -> list[SourceFile]:
 def geo_package_files(directory: pathlib.Path) -> list[pathlib.Path]:
     """Return the fire-source GeoPackage files under *directory*, in sorted order.
 
-    The directory tree is searched recursively, so snapshots stored under
-    ``sources/{feed}/{serial}.gpkg`` are all found. Files whose names do not encode a
-    snapshot serial number and last-edit timestamp (the retrieved external datasets, the
-    computed California border, and each feed's maintained current-state file) are not
-    fire-source snapshots and are skipped. Sorting makes the order deterministic: feed
-    directories by name, then snapshots by serial number.
+    Search recursively so snapshots in each feed's serial-number buckets are found.
+    Filenames must encode a serial number and last-edit timestamp. That excludes
+    external datasets, the computed California border, and each feed's current-state
+    cache. Results are sorted by path for a repeatable read order.
 
     Args:
         directory: The directory tree to search.

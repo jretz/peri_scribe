@@ -1,4 +1,4 @@
-"""Keep evidence reads, publication, and descriptor retirement under one owner.
+"""Wait for active reads and publication before closing their file descriptors.
 
 Algorithm reasoning and contracts:
 [Worker lifetimes](../../../docs/algorithms/worker-lifetimes.md)
@@ -14,7 +14,7 @@ import peri_scribe.concurrency
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Owner:
-    """An admitted operation retains its resources until its result is settled."""
+    """Keep resources available until their operation finishes, even on cancellation."""
 
     lock: asyncio.Lock = dataclasses.field(default_factory=asyncio.Lock)
     stopped: asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
@@ -27,13 +27,16 @@ class Owner:
             collections.abc.Coroutine[typing.Any, typing.Any, Result],
         ],
     ) -> Result | None:
-        """Serialize snapshots through publication, including cancelled callers.
+        """Run one operation through publication before allowing another to start.
+
+        Once the operation starts, cancelling its caller still waits for it to finish.
+        Otherwise a worker could keep using a reader after shutdown has closed it.
 
         Args:
             operation: Work that checks stopped before publishing after an await.
 
         Returns:
-            The operation's result, or None after admission has stopped.
+            The operation's result, or None after new work has been stopped.
         """
         async with self.lock:
             if self.stopped.is_set():
@@ -41,10 +44,10 @@ class Owner:
             return await settle(asyncio.create_task(operation()))
 
     async def close(self, release: collections.abc.Callable[[], None]) -> None:
-        """Stop publication before asynchronously waiting for all descriptor users.
+        """Stop publication, then wait for active work before closing its files.
 
         Args:
-            release: Descriptor cleanup, called once after admitted work finishes.
+            release: File-descriptor cleanup, called once after active work finishes.
         """
         self.stopped.set()
         await settle(asyncio.create_task(self.finish(release)))
@@ -62,7 +65,7 @@ class Owner:
 
 
 async def settle[Result](task: asyncio.Task[Result]) -> Result:
-    """Cancellation reaches the caller only after its admitted work relinquishes use.
+    """Propagate caller cancellation only after the task finishes using its resources.
 
     Args:
         task: An operation whose lifetime includes worker completion and publication.

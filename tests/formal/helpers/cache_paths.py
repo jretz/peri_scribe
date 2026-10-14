@@ -248,7 +248,7 @@ def connections(observer: Observer) -> collections.abc.Generator[None]:
         observer: One continuous checked execution for the target database.
 
     Yields:
-        The real connection factory with only its trace callback extended.
+        None while the scoped factory observes the writer's real SQL.
     """
     original = sqlite3.connect
 

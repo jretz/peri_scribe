@@ -1,5 +1,9 @@
 # Source-change fingerprints
 
+Source fingerprints need to detect content changes without treating row order as new
+content. They also need unambiguous field boundaries: concatenating values alone can
+make different records produce the same bytes before hashing.
+
 `PeriScribe/SourceDigest.lean` checks the structured identities used by
 `sources.digests.dataframe_digest`. Its 21 theorems cover field framing, schema identity,
 and canonical row bags before cryptographic hashing. `oracleSourceDigest` executes those

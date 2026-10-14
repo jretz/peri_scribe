@@ -118,10 +118,10 @@ def geometries_describe_same_shape(
 ) -> bool:
     """Return whether two geometries describe the same shape.
 
-    Shapes are compared topologically rather than byte-for-byte, so a source
-    re-serializing an unchanged geometry (different vertex order, ring orientation, or
-    ring type) still counts as the same shape. None and empty geometries each count as
-    equal to themselves.
+    A source can serialize an unchanged shape with a different vertex order, ring
+    orientation, or ring type. Compare shapes topologically so those changes do not
+    create a false geometry change. None and empty geometries each count as equal to
+    themselves.
 
     Args:
         left: One geometry, or None.
@@ -237,12 +237,14 @@ def fire_name_from(value: object) -> str | None:
 def mission_name_from(value: object) -> peri_scribe.models.MissionName | None:
     """Return the fire-name parts of a mapping mission code, or None.
 
-    A mission code such as ``CA-LNU-RUMSEY-UPDATED-N40Y`` is parsed into the fire name
-    (``rumsey-updated``) and a base name with mapping-revision markers removed
-    (``rumsey``), so an updated re-mapping can still be matched to the original fire.
-    The leading state and unit tokens and a trailing aircraft registration are dropped
-    when present. Feed-specific two-digit, one-letter tail abbreviations also supply
-    the fire-name alias needed to join unnamed perimeters to their incident.
+    For example, ``CA-LNU-RUMSEY-UPDATED-N40Y`` supplies the name ``RUMSEY-UPDATED`` and
+    the base name ``RUMSEY``. Keeping the base name lets a revised mapping still match
+    the original fire.
+
+    Leading state and unit tokens and a trailing aircraft registration are removed when
+    present. Some feeds abbreviate an aircraft tail as two digits and one letter. Those
+    suffixes also need to be recognized so a perimeter without an incident name can
+    still acquire the right fire-name alias.
 
     Args:
         value: A raw mission code value.
@@ -512,13 +514,13 @@ def row_attributes(row: pd.Series, geometry_name: str) -> dict[str, object]:
 
 
 def json_native_value(value: object) -> object:
-    """Return *value* in a JSON-native form, recursing through containers.
+    """Return *value* in a form JSON can store, recursing through containers.
 
     Missing values become None, numpy and pandas scalars become their Python
-    counterparts, dates and times become ISO-8601 text, and containers keep their shape
-    with string keys. A value with no JSON counterpart is returned as text, so every
-    attribute bag serializes. Both the record cache and the derived history store
-    attribute bags, so they normalize them the one way.
+    counterparts, and dates and times become ISO-8601 text. Dictionary keys become
+    strings, and tuples become lists. Values with no JSON counterpart become text so
+    every attribute dictionary can be serialized. The record cache and derived history
+    both use these rules, keeping their stored attributes consistent.
 
     Args:
         value: Any attribute value.

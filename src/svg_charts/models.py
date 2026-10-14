@@ -8,7 +8,7 @@ import enum
 
 
 class StrokeStyle(enum.IntEnum):
-    """Order solid legend entries before dashed entries for a stable presentation."""
+    """Order each series' solid legend entry before its dashed entry."""
 
     SOLID = 0
     DASHED = 1

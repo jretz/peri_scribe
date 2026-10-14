@@ -65,7 +65,7 @@ class State(pydantic.BaseModel):
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Ownership:
-    """Separate durable evidence buckets from the fires currently inheriting them."""
+    """Keep stored histories distinct from the fires that can currently claim them."""
 
     keys: dict[peri_scribe.presentation.selection.AreaKey, str]
     histories: dict[peri_scribe.presentation.selection.AreaKey, frozenset[str]]
@@ -107,7 +107,7 @@ def read_authoritative[Document: pydantic.BaseModel](
     path: pathlib.Path,
     document_type: type[Document],
 ) -> Document | None:
-    """Keep invalid retained intent distinct from an absent initial checkpoint.
+    """Report invalid saved state instead of treating it as a first publication.
 
     Args:
         path: The authoritative update checkpoint or pending journal.
@@ -402,11 +402,12 @@ def history_claims(
         frozenset[str],
     ],
 ) -> dict[peri_scribe.presentation.selection.AreaKey, frozenset[str]]:
-    """Inherit all alias-linked histories while gating name-only continuity.
+    """Find histories linked by aliases and check evidence for name-only matches.
 
-    External and internal component aliases retain every claimable historical route.
-    Legacy name-only histories require a unique mapping or source witness for adoption.
-    Stored lineage remains claimable after ownership transfers.
+    External identifiers and internal component aliases preserve every route to a
+    claimable history. A nonempty legacy history identified only by name needs unique
+    mapping or source evidence before a fire can adopt it. Stored lineage keeps that
+    history claimable even after ownership transfers.
 
     Args:
         fires: Current fires keyed by their report identity.
@@ -534,12 +535,14 @@ def prepare_updates[Fire: peri_scribe.presentation.fire_data.FireSummary](
 ) -> PreparedUpdates:
     """Select new mapped observations against the last completed KMZ's baseline.
 
-    Every mapped fire advances the baseline, so merely becoming interesting does not
-    create an update. Missing state starts with no acknowledged perimeters. The report
-    supplies selection, deduplication, names, and locations; acreage is measured from
-    the latest perimeter even when the report's current area uses incident reporting.
-    Inputs require distinct report identities. Source grouping keeps identifier sets
-    disjoint between current fires.
+    Every mapped fire advances the baseline, including those not selected as
+    interesting. Becoming interesting later therefore does not count as new mapping.
+    Missing state starts with no acknowledged perimeters.
+
+    The report supplies selection, deduplication, names, and locations. Update acreage
+    comes from the latest perimeter even when the report uses a reported incident area,
+    because the update describes what has been mapped. Report identities must be
+    distinct, and source grouping keeps current fires' identifier sets disjoint.
 
     Args:
         year_directory: The year directory containing cities and the saved baseline.

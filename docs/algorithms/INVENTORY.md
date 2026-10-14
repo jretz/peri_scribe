@@ -1,16 +1,17 @@
 # Algorithm coverage inventory
 
 This inventory covers the production Python modules and packaged browser viewer, plus
-algorithms in the verification infrastructure. Each module points to the notes for the
-complete behaviors it owns or adapts. A link does not assign every helper the note's
-highest score. Local adapters can remain straightforward while participating in a
-complex protocol; the protocol's explanation still owns their ordering and assumptions.
+algorithms in the verification infrastructure. Each module links to the notes that
+explain the complete behaviors it owns or adapts. The score applies to that behavior;
+individual helpers may be simpler. For example, a straightforward adapter can take part
+in a complex protocol. The protocol's note explains the ordering and assumptions that
+make the adapter work in that context.
 
 For straightforward entries, scores are **H/R/M/S/F**: history, rule interaction,
 mathematics, scale/representation, and failure/concurrency. Every nonzero contribution
 is explained in its row. Zero-only entries declare data, errors, or exports. Docstrings
 supply these local contracts. The [rubric](../algorithm_design.md) determines the tier;
-[the note index](README.md) groups the human walkthroughs by subject.
+[the note index](README.md) groups the explanations by subject.
 
 ## Production modules
 

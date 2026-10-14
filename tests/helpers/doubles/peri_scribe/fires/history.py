@@ -19,9 +19,7 @@ def make_failing_history_reader(
         tuple[list[dict[str, object]], list[dict[str, object]]],
     ],
 ) -> typing.Callable[..., tuple[list[dict[str, object]], list[dict[str, object]]]]:
-    """Create a callback with controlled dependencies.
-
-    Fail one fire's history computation to exercise worker error propagation.
+    """Return a history reader that fails for one fire to test worker errors.
 
     Args:
         real_history_rows_for_fire: Original history reader used for nonfailing fires.

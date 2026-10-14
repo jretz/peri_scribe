@@ -1,42 +1,34 @@
 ---
 name: create-kmz-in-sandbox
-description: "Generate PeriScribe KMZ files from existing local derived data when multiprocessing or sandbox constraints make the normal CLI unreliable."
+description: >-
+  Generate a PeriScribe KMZ from saved local geography using the project's virtual
+  environment when fetching new data is unnecessary or unavailable.
 ---
 
 # Create PeriScribe KMZ in the Sandbox
 
-Use this skill when the user needs PeriScribe's KMZ output and the normal `run`
-command is unsuitable because it fetches network feeds or because the plotting pool is
-sensitive to interpreter, pickling, and timeout details.
+Use this skill to generate a KMZ from existing derived data without fetching new source
+observations or rebuilding geography. This is useful when checking map output from a
+particular set of saved histories or working without network access.
 
-Run the offline KMZ stage directly from the project root with the project's
-virtual-environment interpreter:
+From the project root, select only the KMZ stage with the command installed in the
+project's virtual environment:
 
-```bash
-.venv/bin/python -c "
-import pathlib
-import peri_scribe.kml.builder as b
-print(b.create_kmz(pathlib.Path('data/2026')))
-"
+```sh
+.venv/bin/peri_scribe run data/2026 --only kmz
 ```
 
-Allow a long command timeout (up to 1800 seconds). The first run may build Matplotlib's
-font cache and start worker processes.
+Replace `data/2026` with the requested year directory. The command uses its saved fire
+index, scores, and full and differential geography histories. The histories must form a
+valid pair; selecting KMZ alone cannot repair missing or incompatible geography. If
+upstream data needs rebuilding, use the
+[offline pipeline skill](../offline-full-pipeline/SKILL.md).
 
-Preserve these multiprocessing invariants:
+The CLI keeps the year's writer lock and records unfinished work for recovery. Using
+the installed command also supplies the project's geospatial dependencies. Charts are
+rendered locally as SVGs, then packaged with the map and icons.
 
-- Use `.venv/bin/python`, not a bare system `python3`, so spawned workers inherit the
-  environment containing geopandas, shapely, pyproj, and matplotlib.
-- Call the module-level `peri_scribe.kml.builder.create_kmz`; do not define pool
-  workers, payloads, lambdas, or local closures in `__main__`. Spawned children must be
-  able to import the worker and its data types from `peri_scribe.*` modules.
-- Do not use `run` for this offline task: it fetches feeds and rebuilds derived data.
-  `create_kmz` consumes the already-derived local data under `data/2026/` and performs
-  plotting and zipping.
-- Sandbox niceness failures are expected and handled by the pool initializer; do not
-  treat a denied `os.nice()` call as the root failure.
-
-If process spawning itself is unavailable, use the test suite's serial fallback: apply
-the `in_process_plot_image_bundles` fixture's monkeypatch from `tests/conftest.py`,
-which replaces `plot_image_bundles` with `serial_plot_image_bundles` from the test
-helpers. Keep this fallback limited to environments where the genuine pool cannot run.
+Allow enough time for the selected season's map to finish. The output is
+`data/<year>/maps/PeriScribe Fires <year>.kmz`; a successful KMZ stage also updates the
+fire-update log and browser viewer files. Report the output path and whether the command
+completed successfully.

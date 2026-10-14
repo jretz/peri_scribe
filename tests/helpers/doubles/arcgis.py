@@ -1,4 +1,4 @@
-"""Replace arcgis dependencies with controlled test doubles."""
+"""Replace ArcGIS dependencies with controlled test doubles."""
 
 from __future__ import annotations
 

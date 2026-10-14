@@ -62,7 +62,7 @@ class City(pydantic.BaseModel):
 
 
 class Metadata(pydantic.BaseModel):
-    """Publish HTTP validators together with the exact data they authenticate."""
+    """Keep HTTP validators and checksums with the source data they describe."""
 
     model_config = pydantic.ConfigDict(frozen=True, extra="forbid", strict=True)
     schema_version: typing.Literal[1]
@@ -76,7 +76,7 @@ class Metadata(pydantic.BaseModel):
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Database:
-    """Keep validated locations and their retrieval evidence in one generation."""
+    """Keep validated locations and their matching download metadata together."""
 
     cities: tuple[City, ...]
     metadata: Metadata
@@ -185,7 +185,7 @@ def read_database(path: pathlib.Path, source_url: str) -> Database | None:
 
 
 def database_digest(year_directory: pathlib.Path) -> str | None:
-    """Expose only authenticated place content to publication change detection.
+    """Detect publication changes using only place data that passes validation.
 
     Args:
         year_directory: The year whose locations are publication inputs.
@@ -386,7 +386,7 @@ def fetch_cities_database(
         year_directory: The year owning the downloaded source.
 
     Returns:
-        The sole usable cities database path.
+        A one-item tuple containing the usable cities database path.
 
     Raises:
         ExternalDataError: If fetching fails without a usable cached generation.

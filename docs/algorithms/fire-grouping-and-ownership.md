@@ -2,16 +2,20 @@
 
 ## Contract and context
 
-Grouping turns retained source rows into connected fire identities. It consumes parsed
-names, identifier aliases, geometry in degree coordinates, and aligned immutable snapshot
-paths. It returns every input position in exactly one group, in first-encounter order.
-Complex resolution then consumes incident declarations and fresh, unassigned grouped
-`Fire` objects. It returns reciprocal current ownership and every historically declared
-aggregate, including aggregates whose current member set has become empty.
+Grouping decides which retained source rows describe the same fire. It uses parsed
+names, identifier aliases, geometry in degree coordinates, and aligned immutable
+snapshot paths. Every input position belongs to exactly one returned group, and groups
+follow the order in which they were first encountered.
+
+Complex resolution then decides which aggregate currently owns each fire. It starts with
+incident declarations and fresh, unassigned grouped `Fire` objects. The result records
+ownership in both directions and retains every aggregate declared for an identified
+grouped fire, including those with no current members.
 
 This operates across the United States. Shared names alone do not merge distant fires.
 Source-issued identifiers, internal source components, and display names have distinct
-roles; none is evidence that a real-world source statement must be true.
+roles. The policy can reconcile those inputs, but it cannot establish that a source's
+claim about a real fire is true.
 
 ## Complexity assessment
 
@@ -33,7 +37,8 @@ shared normalized name, nonempty geometries within `FIRE_PROXIMITY_TOLERANCE` (c
 0.05 degrees) are joined. Byte-identical geometries are first joined as classes; one
 representative per class enters the spatial index. These classes preserve all adjacency:
 a duplicate has the same spatial neighbors as its representative. The final relation is
-transitive connectivity, rather than an all-pairs distance requirement within a group.
+transitive connectivity: A can connect to C through B even when A and C aren't close.
+Every pair in a group need not meet the distance threshold.
 
 ![Identifier and proximity edges establish connectivity](grouping-connectivity.svg)
 

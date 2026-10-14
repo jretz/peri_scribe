@@ -97,11 +97,12 @@ def fitted_scale(coordinates: Coordinates, angle: float) -> float:
 
 
 def best_fit_angle(coordinates: Coordinates) -> float:
-    """Search every orientation before refining the best fit for this fire.
+    """Sample a half-turn of orientations, then refine the largest fitted scale.
 
-    Opposite orientations have the same bounds; ties prefer the rotation nearest north
-    up within ±90 degrees. The initial quarter-degree search covers the whole half-turn,
-    followed by five increasingly fine local searches (to 0.0000025 degrees).
+    Opposite orientations have the same bounds, so the initial quarter-degree grid
+    samples one half-turn. Five local searches refine the best sample down to
+    0.0000025-degree steps. Equal sampled scales keep the first candidate encountered.
+    The final angle is normalized to within ±90 degrees of north up.
 
     Args:
         coordinates: Vertices of the projected footprint's convex hull.
@@ -333,7 +334,7 @@ def transform_for(geometries: collections.abc.Sequence[shapely.Geometry]) -> Tra
         The rotation, uniform fit, and centered placement for this fire.
     """
     coordinates = shapely.get_coordinates(geometries)
-    # A spherical center keeps fires crossing the antimeridian local in Alaska.
+    # A circular longitude mean keeps antimeridian-crossing fires local in Alaska.
     longitude = np.radians(coordinates[:, 0])
     center_longitude = math.degrees(
         math.atan2(
@@ -380,7 +381,7 @@ def polygons(geometry: shapely.Geometry) -> tuple[shapely.Polygon, ...]:
 
 
 def north_dart(angle: float) -> PIL.Image.Image:
-    """Retain the full antialiased outline in a tightly cropped 18-pixel dart.
+    """Retain the full antialiased outline around a tightly cropped north dart.
 
     Args:
         angle: The map rotation in radians.

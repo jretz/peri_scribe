@@ -1,4 +1,4 @@
-"""Replace external sources dependencies with controlled test doubles."""
+"""Control external-source queries and building downloads."""
 
 from __future__ import annotations
 
@@ -78,9 +78,7 @@ def make_named_query_recorder(
     queries: list[tuple[str, dict[str, object]]],
     feature_set: types.SimpleNamespace,
 ) -> typing.Callable[..., object]:
-    """Create a callback with controlled dependencies.
-
-    Capture the feed name and query parameters used for a source snapshot.
+    """Return a recorder for the source snapshot query and its feed name.
 
     Args:
         queries: Shared list recording the intercepted query inputs.
@@ -112,9 +110,7 @@ def make_query_filter_recorder(
     queries: list[dict[str, object]],
     feature_set: types.SimpleNamespace,
 ) -> typing.Callable[..., object]:
-    """Create a callback with controlled dependencies.
-
-    Capture the filter parameters passed to an external-source query.
+    """Return a recorder for external-source query filters.
 
     Args:
         queries: Shared list recording the intercepted query inputs.
@@ -150,9 +146,7 @@ def make_building_responder(
     ...,
     tests.helpers.doubles.peri_scribe.sources.external_source.FakeResponse,
 ]:
-    """Create a callback with controlled dependencies.
-
-    Capture building download URLs and serve the configured content.
+    """Return a URL recorder that serves configured building downloads.
 
     Args:
         urls: Shared list recording requested download URLs.

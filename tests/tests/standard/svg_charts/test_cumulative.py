@@ -99,7 +99,7 @@ def test_layout_time_ticks_avoids_overlapping_labels() -> None:
     )
 
 
-def test_png_preserves_dimensions_background_and_curve_colors() -> None:
+def test_png_preserves_dimensions_background_and_legend_colors() -> None:
     series = (
         svg_charts.cumulative.Series(
             label="All runs",

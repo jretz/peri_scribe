@@ -1,6 +1,7 @@
 # Domain algorithms
 
-The four modules below add 44 explicit theorems. `OracleDomain.lean` evaluates their
+These four modules check fire identity ownership, complete area histories, grouping, and
+spatial tile queries through 44 explicit theorems. `OracleDomain.lean` evaluates their
 executable definitions; `oracleDomain` is a default Lake target. Conformance tests use
 this binary through the same process adapter as the pipeline oracle. The axiom audit
 includes these modules through `PeriScribe.lean`.

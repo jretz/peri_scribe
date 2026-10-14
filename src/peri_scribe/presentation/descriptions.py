@@ -37,19 +37,17 @@ MAXIMUM_PERIMETER_SIGNIFICANT_DIGITS = 3
 # digits and are re-rounded to three.
 PERIMETER_SIGNIFICANT_DIGIT_THRESHOLD = 100.0 * units.miles
 
-# The labels for the facts the report's summary headings name, spelled here because the
-# report and the balloon both show these facts and a shared spelling keeps their tables
-# in step.
+# Reports and balloons share these labels so the same facts have the same wording.
 AREA_LABEL = "Area"
 DISCOVERY_LABEL = "Discovery"
 
 
 def format_number(value: float | None, decimal_places: int = 0) -> str | None:
-    """Format *value* with thousands separators and *decimal_places* decimals.
+    """Format *value* with thousands separators and up to *decimal_places* decimals.
 
     Args:
         value: The number to format, or None.
-        decimal_places: The number of decimal places to keep, or 0 for a whole number.
+        decimal_places: Maximum decimal places. Nonpositive values give whole numbers.
 
     Returns:
         The formatted number, or None when *value* is None.
@@ -66,6 +64,22 @@ def format_number(value: float | None, decimal_places: int = 0) -> str | None:
     if decimal_places <= 0:
         return f"{round(value):,}"
     return f"{value:,.{decimal_places}f}".rstrip("0").rstrip(".")
+
+
+def format_number_with_unit(number: str | None, singular_unit: str) -> str | None:
+    """Match a regular unit's plural to the displayed number after rounding.
+
+    Args:
+        number: The formatted number, or None.
+        singular_unit: A unit whose plural is formed by appending ``s``.
+
+    Returns:
+        The number and unit, singular for ``1`` or ``-1``, or None without a number.
+    """
+    if number is None:
+        return None
+    unit = singular_unit if number in {"1", "-1"} else f"{singular_unit}s"
+    return f"{number} {unit}"
 
 
 def format_area(value: pint.Quantity[float] | None) -> str | None:
@@ -89,7 +103,7 @@ def format_area(value: pint.Quantity[float] | None) -> str | None:
         number = format_number(value.m_as("acres"), 1)
     else:
         number = format_number(value.m_as("acres"), 2)
-    return f"{number} acres"
+    return format_number_with_unit(number, "acre")
 
 
 def format_percent(value: float | None) -> str | None:
@@ -181,22 +195,19 @@ def format_miles(value: pint.Quantity[float] | None) -> str | None:
         >>> format_miles(33.14 * units.miles)
         '33.1 miles'
     """
-    if value is None:
-        return None
-    return f"{format_perimeter_length(value)} miles"
+    return format_number_with_unit(format_perimeter_length(value), "mile")
 
 
 def format_containment(
     percent_contained: float | None,
     exterior_perimeter: pint.Quantity[float] | None,
 ) -> str | None:
-    """Format a containment percentage, annotated with its contained length.
+    """Format a containment percentage with the length it represents.
 
-    When the exterior perimeter length is known the percentage is followed by the length
-    it represents: ``68% (22.5 of 33.1 miles)``, where the last number is the exterior
-    perimeter length and the first number in parentheses is that percentage of it. A
-    fire that is fully contained (100%) shows only the percentage, as does a fire
-    without a perimeter length; without a percentage there is nothing to show.
+    For example, ``68% (22.5 of 33.1 miles)`` shows the estimated contained length and
+    the full exterior perimeter. The contained length is that percentage of the exterior
+    length. Fully contained fires (100%) and fires without a known perimeter length show
+    only the percentage. Without a percentage, there's nothing to show.
 
     Args:
         percent_contained: The containment percentage, or None.
@@ -219,7 +230,7 @@ def format_containment(
     contained = percent_contained / 100.0 * exterior_perimeter
     return (
         f"{percent_text} ({format_perimeter_length(contained)} of "
-        f"{format_perimeter_length(exterior_perimeter)} miles)"
+        f"{format_miles(exterior_perimeter)})"
     )
 
 
@@ -262,8 +273,8 @@ def format_personnel_count(value: float | None) -> str | None:
 def format_pacific_time(value: datetime.datetime | None) -> str | None:
     """Format *value* in America/Los_Angeles time with its PDT or PST marker.
 
-    Every fire in a year's output is observed in the same year, so the year is left off
-    the timestamp.
+    Maps and reports are organized by year, so this compact timestamp leaves the year
+    off. It does not check whether the supplied observation belongs to that year.
 
     Args:
         value: An aware datetime, or None.
@@ -313,11 +324,10 @@ class FireDescription:
 def description_rows(description: FireDescription) -> list[tuple[str, str | None]]:
     """Return the label/value rows shown in *description*'s balloon.
 
-    Every fact the balloon's table shows appears once in its reading order, with None as
-    the value when the fire lacks that fact, so each renderer decides how to show
-    absence: the balloon's HTML shows two hyphens and the reports leave the row out.
-    Because the balloon and the reports both build their tables from these rows, the two
-    keep the same facts, labels, and text.
+    Reports and balloons share these rows so their facts, labels, and wording agree.
+    Each fact appears once in reading order. Missing facts have a value of None, leaving
+    each renderer to choose its presentation: two hyphens in the balloon, or no row in
+    the report.
 
     Args:
         description: The fire's latest state.

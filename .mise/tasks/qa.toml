@@ -1,5 +1,5 @@
 [coverage-report]
-description = "Report and gate Python and combined JavaScript coverage"
+description = "Report coverage and enforce Python and combined JavaScript requirements"
 depends = ["venv", "node-dependencies"]
 run = "node tests/helpers/report_coverage.mjs"
 
@@ -14,7 +14,7 @@ depends = ["venv"]
 run = "uv run ruff format --check --config 'lint.ignore = [\"COM812\"]'"
 
 [lint]
-description = "Check and fix style with ruff"
+description = "Check Markdown and fix Python lint issues"
 depends = ["venv"]
 run = [
     "rumdl check",
@@ -48,7 +48,7 @@ depends = ["node-dependencies"]
 run = "node tests/helpers/run_test_suite.mjs"
 
 [test-checks]
-description = "Ordered checks within the coverage session created by test"
+description = "Run checks in order within the coverage session created by test"
 hide = true
 run = [
     "node tests/helpers/check_coverage_session.mjs",

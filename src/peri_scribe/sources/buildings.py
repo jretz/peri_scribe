@@ -70,7 +70,7 @@ async def stream_one_archive(
     partition_files: spatial_data.point_store.PartitionFiles,
     limit: asyncio.Semaphore,
 ) -> None:
-    """Let conversion demand pace each download inside a bounded worker set.
+    """Read each download as conversion needs it, with a limit on active workers.
 
     Args:
         url: The state archive URL.
@@ -137,8 +137,8 @@ def stream_state_archive(
         The number of features converted.
 
     Raises:
-        ExternalDataError: If the download fails, the stream is not a zip archive, or
-            the archive holds no GeoJSON member with any features.
+        ExternalDataError: If the download fails, the stream cannot be read, or the
+            archive holds no GeoJSON member with convertible polygon features.
     """
     with peri_scribe.sources.network.downloaded_response(
         url,
@@ -177,8 +177,7 @@ def convert_stream_to_partitions(
         The number of features converted.
 
     Raises:
-        ExternalDataError: If the stream is not a zip archive or its GeoJSON cannot be
-            read.
+        ExternalDataError: If the ZIP stream or its GeoJSON cannot be read.
     """
     try:
         return convert_geometry_chunks_to_partitions(
@@ -189,7 +188,7 @@ def convert_stream_to_partitions(
             stopped=stopped,
         )
     except stream_unzip.UnzipError as error:
-        message = f"The streamed archive is not a zip file: {error}"
+        message = f"Failed to read the streamed ZIP archive: {error}"
         raise peri_scribe.exceptions.ExternalDataError(message) from error
     except Exception as error:
         message = f"Failed to read the streamed GeoJSON: {error}"
@@ -202,20 +201,20 @@ def fetch_buildings_database(
 ) -> tuple[pathlib.Path, ...]:
     """Retrieve *source*'s compact buildings database into *year_directory*.
 
-    When a valid database already exists at the output path, nothing is downloaded and
-    its path is returned. Otherwise the repository page is read, every state's archive
-    is streamed into the sixteen partition files, and the partition files are processed
-    into a database written at a temporary path. The temporary database is validated and
-    only then atomically renamed into place, so an existing database (valid or not) is
-    preserved whenever downloading or generation fails and the temporary partition files
-    are removed either way.
+    A valid database is reused without downloading anything. Otherwise every state's
+    archive is streamed into sixteen partition files, using links read from the
+    repository page. Those partitions are then converted into a temporary database.
+
+    The replacement must pass validation before it is atomically renamed into place. If
+    downloading or generation fails, any existing database remains untouched, even if it
+    is invalid. Temporary partition files are removed in either case.
 
     Args:
         source: The compact buildings external source.
         year_directory: The year directory that holds the ``sources`` directory.
 
     Returns:
-        The path of the stored database.
+        A one-item tuple containing the stored database path.
 
     Raises:
         ExternalDataError: If the source's page or any archive cannot be retrieved, or

@@ -1,13 +1,15 @@
 # Readers composed with log rotation
 
-[LogReaders.tla](tla/LogReaders.tla) composes the existing receipt-based
-[LogRotation](tla/LogRotation.tla) protocol with reader acquisition, archive reading,
-plain-tail reading, retained cursors, archive-change reset, and release. Both
-[safety](tla/LogReaders.cfg) and
-[liveness](tla/LogReadersLiveness.cfg) explore **3,050 states**: an optional archived
-prefix, two equal diagnostic occurrences, one equal late append, at most two writer
-interruptions, and two complete reads. Each delivered read contains exactly the ordered
-occurrences present when it acquired the lock, including legitimate equal records.
+While a log is being compressed, the same records can temporarily exist in both the
+plain file and the archive. Readers need to know which copy to use so they neither lose
+records nor deliver them twice. [LogReaders.tla](tla/LogReaders.tla) combines the
+receipt-based [LogRotation](tla/LogRotation.tla) protocol with reader acquisition,
+archive reading, plain-tail reading, retained cursors, archive-change reset, and
+release. Both [safety](tla/LogReaders.cfg) and [liveness](tla/LogReadersLiveness.cfg)
+explore **3,050 states**: an optional archived prefix, two equal diagnostic occurrences,
+one equal late append, at most two writer interruptions, and two complete reads. Each
+delivered read contains exactly the ordered occurrences present when it acquired the
+lock, including legitimate equal records.
 
 The writer lock spans receipt replacement, archive publication, and source retirement;
 a process interruption releases that lock but leaves each already completed mutation.
@@ -38,9 +40,11 @@ materializes all **20 distinct durable reader projections** as real plain files,
 Zstandard archives, and checksummed receipts. Both filename representations yield the
 exact formal observation. The actual monitor preserves the same occurrence order,
 repeated polls do not duplicate records, and all reads preserve file names and bytes.
+
 An additional real concurrent `append_monthly_records` call reaches its exclusive lock
 while a reader is streaming, waits until that reader finishes, rotates, and appends.
 The observations before and after publication match the two corresponding TLC snapshots.
+
 A further **110 pairs of successive observations** are obtained by following actual TLC
 successor edges from one completed read to the next. The same real monitor survives
 both observations while actual files transition between the corresponding durable
@@ -67,16 +71,17 @@ Uncooperative writers and filesystem corruption are outside the modeled transiti
 invalid receipts produce explicit reader errors. Checksum identity relies on SHA-256.
 
 A shared lock remains held throughout iteration, so large reads can delay writers;
-abandoned generators must be closed promptly. Reader callbacks must not acquire the
-same directory's writer lock; current production filters and consumers are pure.
-Multiple readers may share that interval.
-The finite model represents one reader at a time and assumes weak fairness of reader
-and writer progress, finite reads, and eventual cessation of writer failures. It does
-not establish OS lock scheduling fairness or power-loss durability. Incomplete records,
-log filtering, and separately requested historical archive browsing retain their
-existing contracts. Archive change detection uses device, inode, size, and nanosecond
-modification time, assuming cooperating atomic replacements change that signature.
-The model permits conservative replay even when archive contents do not change.
-Continuous monitor cursors also have their own lifecycle models; the extended model
-checks archive reset and incremental drain across successive complete observations.
-The Python bridge exercises finite histories and is not a proof of full refinement.
+abandoned generators must be closed promptly. Reader callbacks must not acquire the same
+directory's writer lock; current production filters and consumers are pure. Multiple
+readers may share that interval.
+
+The finite model represents one reader at a time and assumes weak fairness of reader and
+writer progress, finite reads, and eventual cessation of writer failures. It does not
+establish OS lock scheduling fairness or power-loss durability. Incomplete records, log
+filtering, and separately requested historical archive browsing retain their existing
+contracts. Archive change detection uses device, inode, size, and nanosecond
+modification time, assuming cooperating atomic replacements change that signature. The
+model permits conservative replay even when archive contents do not change. Continuous
+monitor cursors also have their own lifecycle models; the extended model checks archive
+reset and incremental drain across successive complete observations. The Python bridge
+exercises finite histories and is not a proof of full refinement.

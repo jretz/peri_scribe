@@ -1,8 +1,8 @@
-"""Reading the derived history layers back.
+"""Read the derived histories used by scoring, maps, and reports.
 
-The geography stage writes the full and differential history GeoPackages, and the score,
-KMZ, and report stages read them back. This module holds the one description of which
-files and layers those are, so the stages cannot drift apart about them.
+The geography stage writes the full and differential history GeoPackages. Scoring, KMZ,
+and report stages need to agree on which files and layers to read, so their definitions
+live here.
 
 Algorithm reasoning and contracts:
 [Geography generations](../../../docs/algorithms/geography-generations.md)
@@ -63,10 +63,11 @@ def read_derived_layers(
 ) -> DerivedLayers:
     """Return the derived history layers for *year_directory*.
 
-    The KMZ and report stages run only after geography and scoring, so for them a
-    missing derived file is an error worth failing on. Tolerant scoring accepts an
-    entirely absent pair for a fresh year. Existing files must authenticate as one
-    generation, including when an earlier geography writer was interrupted.
+    KMZ and report generation run after geography and scoring, so a missing derived file
+    means a required input is unavailable and the read must fail. Scoring can accept an
+    entirely absent pair when starting a fresh year. When files exist, both must belong
+    to the same authenticated generation. This also catches an earlier geography writer
+    that stopped between publishing the two files.
 
     Args:
         year_directory: The year directory that holds the ``derived`` directory.

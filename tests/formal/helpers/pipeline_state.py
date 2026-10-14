@@ -157,7 +157,7 @@ def mask(stages: tuple[peri_scribe.pipeline_stages.Stage, ...]) -> int:
 
 
 def check_lean(transitions: list[Transition]) -> None:
-    """Bind both specifications to the same complete finite transition relation.
+    """Compare all checked require and derived-stage completion results with Lean.
 
     Args:
         transitions: Events exported by TLC after successful model checking.

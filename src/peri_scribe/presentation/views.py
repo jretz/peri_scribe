@@ -70,10 +70,10 @@ def top_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
 ) -> list[Fire]:
     """Return the highest-scoring fires that are present in *fires*.
 
-    Scores can include fires excluded from the map for lacking qualifying geography, so
-    the result is matched back to the already-filtered geometry list. A score is matched
-    by identifier first, so fires that share a name but not an identity each resolve to
-    their own geometry; a score whose identifier matches no fire falls back to its name.
+    Scores can include fires excluded from the map for lacking a qualifying area
+    estimate, so the result is matched back to the filtered fire list. A score matches
+    by identifier first, then by source component. Only scores without a component can
+    fall back to a name; that keeps anonymous fires with the same name separate.
 
     Args:
         fires: The fires that can be shown in the KMZ.
@@ -93,17 +93,17 @@ def score_maps(
     dict[str, peri_scribe.models.FireScoreEntry],
     dict[str | tuple[str, str], peri_scribe.models.FireScoreEntry],
 ]:
-    """Return the score entries keyed by identifier and by name.
+    """Index score entries by identifier, component, or legacy name.
 
-    An entry with an identifier is keyed by that identifier; an entry without one is
-    keyed by its name. The two maps mirror how a score is matched back to a fire, so a
-    fire resolves to the same entry however it is looked up.
+    The first map holds entries with identifiers. The second holds anonymous entries,
+    using a tagged component key when available and a name otherwise. Separate keys
+    keep anonymous fires with the same name from overwriting each other's scores.
 
     Args:
         scores: The saved score for each fire.
 
     Returns:
-        The entries keyed by identifier and by name.
+        The identifier map and the component-or-name map.
     """
     scores_by_identifier: dict[str, peri_scribe.models.FireScoreEntry] = {}
     scores_by_name: dict[str | tuple[str, str], peri_scribe.models.FireScoreEntry] = {}
@@ -139,14 +139,14 @@ def score_entry_for_fire(
 ) -> peri_scribe.models.FireScoreEntry | None:
     """Return *fire*'s score entry, or None when no entry matches it.
 
-    A fire's identifiers are checked first, so fires that share a name but not an
-    identity each resolve to their own entry; a fire whose identifier matches nothing
-    falls back to its name.
+    Check the fire's identifiers first. If none matches, use its component key when
+    available, or its name otherwise. A known component never falls back to a name,
+    which prevents distinct anonymous fires from acquiring each other's scores.
 
     Args:
         fire: The fire to resolve.
         scores_by_identifier: Score entries keyed by identifier.
-        scores_by_name: Score entries keyed by name.
+        scores_by_name: Score entries keyed by component or legacy name.
 
     Returns:
         The fire's score entry, or None when no entry matches.
@@ -173,7 +173,7 @@ def score_value_for_fire(
     Args:
         fire: The fire to score.
         scores_by_identifier: Score entries keyed by identifier.
-        scores_by_name: Score entries keyed by name.
+        scores_by_name: Score entries keyed by component or legacy name.
 
     Returns:
         The fire's score, or None when no entry matches.
@@ -188,9 +188,9 @@ def notable_score_threshold(
 ) -> int | None:
     """Return the lowest score in the top fraction of active fires.
 
-    The threshold is the score of the last fire in the highest-scoring
-    :data:`NOTABLE_SCORE_FRACTION` of active fires, so a fire at or above it is among
-    that fraction.
+    Take :data:`NOTABLE_SCORE_FRACTION` of the scored active fires, rounding the count
+    up, and use the last score as the cutoff. Equal scores also qualify, so the selected
+    group can exceed that fraction.
 
     Args:
         fires: The fires that can be shown in the KMZ.
@@ -242,14 +242,15 @@ def new_notable_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
     scores: peri_scribe.models.FireScores,
     reference_time: datetime.datetime | None,
 ) -> list[Fire]:
-    """Return the newly discovered fires that are notable.
+    """Return newly discovered fires that meet the notable-fire criteria.
 
-    A fire qualifies when it was discovered within
-    :data:`NEW_NOTABLE_DISCOVERY_LOOKBACK` of *reference_time* and either scores among
-    the top active fires, or presents at least :data:`NEW_NOTABLE_MINIMUM_AREA_ACRES`
-    and clears one of the notable-signal gates: at least
-    :data:`NEW_NOTABLE_SIZE_AREA_ACRES`, an evacuation-zone overlap, or at least
-    :data:`NEW_NOTABLE_MINIMUM_BUILDINGS` within a mile.
+    At least one showable active fire must have a score to establish the cutoff.
+    Discovery must fall within :data:`NEW_NOTABLE_DISCOVERY_LOOKBACK` of
+    *reference_time*. A fire then qualifies either by scoring among the top active fires
+    or by reaching :data:`NEW_NOTABLE_MINIMUM_AREA_ACRES` and meeting another signal: at
+    least :data:`NEW_NOTABLE_SIZE_AREA_ACRES`, overlap with an evacuation zone, or at
+    least :data:`NEW_NOTABLE_MINIMUM_BUILDINGS` building centroids in the fire's
+    projected one-mile buffer.
 
     Args:
         fires: The fires that can be shown in the KMZ.
@@ -284,11 +285,11 @@ def new_notable_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
 def type_one_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
     fires: list[Fire],
 ) -> list[Fire]:
-    """Return the active fires marked as Type 1 Incidents, sorted by name.
+    """Return active fires currently marked as Type 1 Incidents, sorted by name.
 
-    A fire qualifies when it is active and its latest point-history row marks it a Type
-    1 Incident, the concept scoring uses, so a fire downgraded from Type 1 leaves the
-    view. The fires are ordered by their case-folded names, like the top fires by name.
+    The latest point-history designation is the one used by scoring. Using it here also
+    removes a fire from the view when it's downgraded from Type 1. Names are sorted
+    without regard to case, as in the top-fires-by-name view.
 
     Args:
         fires: The fires that can be shown in the KMZ.
@@ -309,13 +310,12 @@ def fire_growth(
     fire: peri_scribe.presentation.fire_data.FireSummary,
     reference_time: datetime.datetime,
 ) -> tuple[pint.Quantity[float] | None, pint.Quantity[float] | None]:
-    """Return *fire*'s growth over the fast-growth window.
+    """Return *fire*'s mapped growth over the fast-growth window.
 
-    The fire's latest area known at the reference time is compared with its area at the
-    start of the window, measured from its perimeters. A fire first observed inside the
-    window has no area at the window's start, so it is treated as having grown from zero
-    acres: its whole latest area counts as growth, and its growth percent is unknown
-    because a zero baseline has no percentage.
+    Growth compares the latest mapped area known at the reference time with the area at
+    the window's start. A fire first observed within the window uses a zero-acre
+    baseline, so its entire latest area counts as growth. Its percentage is unknown
+    because a zero baseline can't support a growth percentage.
 
     Args:
         fire: The fire to measure.

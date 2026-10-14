@@ -30,26 +30,22 @@ FAST_GROWTH_WINDOW = (
     * units.hours
 )
 
-# The smallest growth percentage the report's formatter shows without rounding to 0%, so
-# a fire's details claim it grew only when that growth is visible.
+# The minimum percentage growth included in a fire's details. This threshold keeps
+# displayed growth above values that round to 0%.
 MINIMUM_DISPLAYED_GROWTH_PERCENT = 0.1 * units.percent
 
-# The growth facts' labels, spelled once so the summary tables' column headings and the
-# details tables' row labels stay in step; they reuse the fast-growth window so the
-# hours they name cannot drift from the window the growth is measured over.
+# Shared labels keep the summary headings and detail rows consistent. Deriving their
+# hours from the growth window also keeps the labels aligned with the measurement.
 GROWTH_LABEL = f"{FAST_GROWTH_WINDOW.m_as('hour')}-Hour Growth"
 GROWTH_IN_ACRES_LABEL = f"{GROWTH_LABEL} (acres)"
 GROWTH_IN_PERCENT_LABEL = f"{GROWTH_LABEL} (%)"
 
-# The labels the summary tables' headings borrow from the fire's balloon facts, kept as
-# aliases here so a heading and the same fact's details row cannot drift apart.
+# Reusing balloon labels keeps each fact's wording consistent across maps and reports.
 AREA_LABEL = peri_scribe.presentation.descriptions.AREA_LABEL
 DISCOVERY_LABEL = peri_scribe.presentation.descriptions.DISCOVERY_LABEL
 
-# The label for the fire's nearest-city location, spelled once here so the summary
-# tables' column heading and the details tables' row label stay in step. The location is
-# a fact of the fire's own report rather than of the KMZ balloon, so it is not one of
-# the balloon labels above.
+# Reports add a location field, so its label belongs here. Both summary headings and
+# detail rows use it.
 LOCATION_LABEL = "Location"
 
 NEW_NOTABLE_HEADING = "New, Notable Fires"
@@ -59,11 +55,12 @@ PERCENT_GROWTH_HEADING = "Fastest Growing Fires (%)"
 TOP_FIRES_HEADING = "Top Fires"
 DETAILS_HEADING = "Fire Details"
 
-# A callable that returns one fire's text for one table column, or None when the fire
-# lacks that fact.
+# A cell holds plain text to escape or Markdown already prepared for rendering.
 type Cell = str | document_text.encoding.Markdown
 
 
+# A callable that returns one fire's text for one table column, or None when the fire
+# lacks that fact.
 ColumnTextFor = typing.Callable[
     [peri_scribe.report.gathering.FireReportEntry],
     str | None,
@@ -150,8 +147,8 @@ def fire_heading(entry: peri_scribe.report.gathering.FireReportEntry) -> str:
     """Return *entry*'s details heading text.
 
     The heading carries the fire's name alone; the identifier is shown as the
-    ``Identifier`` row of the fire's details table, keeping the heading short and the
-    anchor it names simple.
+    ``Identifier`` row of the fire's details table. Summary links use a separate
+    explicit anchor so fires with the same name have distinct targets.
 
     Args:
         entry: The fire to describe.
@@ -163,11 +160,10 @@ def fire_heading(entry: peri_scribe.report.gathering.FireReportEntry) -> str:
 
 
 def heading_anchor(heading: str) -> str:
-    """Return the anchor a Markdown renderer assigns to *heading*.
+    """Return a normalized local heading slug.
 
-    GitHub-style anchors keep letters, digits, hyphens, and underscores, replace runs of
-    spaces with hyphens, and lowercase the result, so a summary table's fire name can
-    link to the fire's details heading.
+    Keep word characters, spaces, and hyphens; fold case, replace spaces with hyphens,
+    collapse repeated hyphens, and strip leading or trailing hyphens.
 
     Args:
         heading: The heading text, without its Markdown prefix.
@@ -206,15 +202,15 @@ def markdown_table_lines(
     *,
     right_aligned_columns: tuple[bool, ...] = (),
 ) -> list[str]:
-    """Return *column_headings* and *rows* as a Markdown table's lines.
+    """Return *column_headings* and *rows* as Markdown table lines.
 
-    Each cell is padded with spaces to the width of the widest cell in its column, so
-    the table's bars line up when the text is read in a monospace font. A column that
-    *right_aligned_columns* marks right-aligns its heading and data and fills its dash
-    cell with dashes that end in a colon, so both the plain text and rendered Markdown
-    line the column up at the right edge. The table opens with a heading row, then a row
-    of dashes that span each column and that Markdown renderers read as the boundary
-    before the data rows, each holding one cell text per heading.
+    Padding each cell to its column's widest value keeps the source readable in a
+    monospace font. Columns in *right_aligned_columns* align both headings and values to
+    the right; a trailing colon in the separator tells Markdown renderers to do the
+    same.
+
+    The heading row and dash separator come before the data rows. Each data row supplies
+    one cell per heading.
 
     Args:
         column_headings: The table's column headings.
@@ -286,14 +282,13 @@ def fire_table_section(
     columns: tuple[tuple[str, ColumnTextFor, bool], ...],
     anchors: typing.Mapping[peri_scribe.report.gathering.FireReportEntry, str],
 ) -> list[str]:
-    """Return the Markdown lines for one report section, rendered as a table.
+    """Return one report section as a Markdown table.
 
-    The section's fires become the table's rows, each opening with the fire's name,
-    linked to its details heading through *anchors*; the *columns* that follow hold the
-    facts the section leads with. A fact that is unknown shows as an empty cell rather
-    than a placeholder, so the row stays aligned, and a column whose final flag is set
-    right-aligns its heading and numeric values and marks the table's dash row with an
-    alignment colon. A section without fires shows ``_No fires._`` in place of a table.
+    Each row starts with a fire name linked through *anchors* to its details. The
+    following *columns* contain the facts relevant to that section. Unknown facts leave
+    an empty cell so the table stays aligned. A column's final flag requests right
+    alignment for its heading and values, including the colon required by Markdown. A
+    section without fires shows ``_No fires._`` instead of a table.
 
     Args:
         heading: The section's heading.
@@ -344,15 +339,15 @@ def fire_table_section(
 def fire_detail_rows(
     entry: peri_scribe.report.gathering.FireReportEntry,
 ) -> tuple[tuple[str, str], ...]:
-    """Return the label/value rows *entry*'s details table shows.
+    """Return the label/value rows for *entry*'s details table.
 
-    The location leads the table when the fire has one, because it is the fact that
-    places the fire before the facts of its latest state. The remaining rows are the
-    facts the fire's KMZ balloon table shows, with the same labels and text and in the
-    balloon's order, so the report and the map carry the same data for each fire; a fact
-    the fire lacks is left out rather than shown as a placeholder. Growth over the
-    fast-growth window follows when it is large enough to display a nonzero value, so a
-    fire that merely held steady is not described as having grown.
+    Location comes first, when known, so readers can place the fire before reading its
+    latest facts. The remaining facts use the KMZ balloon's labels, wording, and order.
+    Missing facts are omitted.
+
+    Positive acreage growth over the fast-growth window follows. Percentage growth
+    appears only when it reaches MINIMUM_DISPLAYED_GROWTH_PERCENT, so the percentage
+    doesn't describe growth while displaying zero.
 
     Args:
         entry: The fire to describe.

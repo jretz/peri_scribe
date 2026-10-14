@@ -1,4 +1,4 @@
-"""Format health facts without placing language or display timing in the domain.
+"""Format health findings and update displayed ages without recalculating the evidence.
 
 Algorithm reasoning and contracts:
 [Monitor presentation](../../../docs/algorithms/monitor-presentation.md)
@@ -257,8 +257,8 @@ def coverage_metric(fact: peri_scribe.monitor.status.CoverageMetric) -> Metric:
             text = "No log entries in the last 48 hours"
         case peri_scribe.monitor.status.CoverageState.UNDATED:
             text = (
-                f"History incomplete · {fact.undated} undated records "
-                "excluded from timed metrics"
+                "History incomplete · undated records excluded from timed metrics: "
+                f"{fact.undated}"
             )
         case _:
             text = "48-hour window loaded from available logs"
@@ -308,7 +308,7 @@ def transition_metrics(
         facts: Domain-selected publication, failure, and recovery changes.
 
     Returns:
-        Chronological labels and literal descriptions for the selected changes.
+        Labels and literal descriptions in the supplied transition order.
     """
     names = {
         peri_scribe.monitor.status.TransitionKind.KMZ: "KMZ updated",
@@ -331,7 +331,7 @@ def present(
     assessment: peri_scribe.monitor.status.Assessment,
     now: datetime.datetime,
 ) -> View:
-    """Keep summary precedence and formatting separate from health decisions.
+    """Format the findings and put the most severe current problems in the overview.
 
     Args:
         assessment: Current domain findings and supporting observations.
@@ -381,7 +381,7 @@ def present(
     )
     exceptions = Metric(
         label="Exceptions",
-        text=f"{unresolved} groups without confirmed recovery",
+        text=f"Groups without confirmed recovery: {unresolved}",
         health=max(
             (group.health for group in groups),
             default=peri_scribe.monitor.status.Health.GOOD,

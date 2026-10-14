@@ -1,14 +1,16 @@
 # Latency attribution from retained evidence
 
-Latency reports distinguish a successful KMZ write from completion of its enclosing
-command. A newly available source polygon is attributed to the first KMZ run whose
-geography step could have consumed it, even when publication filtering hid that fire.
+Latency reports measure how long source updates take to reach a completed command. A
+successful KMZ write and completion of the command containing it are separate events. A
+newly available source polygon is attributed to the first KMZ run whose geography step
+could have consumed it, even when publication filtering hid that fire.
 
 ## Contract and assessment
 
-Inputs are retained diagnostic logs, source snapshots, an identity index, and a requested
-time window. Outputs are command durations and per-fire source-to-command latencies
-with units. Missing endpoints do not become guessed successful completions.
+Inputs are retained diagnostic logs, source snapshots, an identity index, and a
+requested time window. Outputs are command durations and per-fire source-to-command
+latencies with units. A missing completion record leaves the duration unknown; the
+analysis doesn't infer a successful finish.
 
 | Dimension | Score | Reason |
 | --- | --- | --- |
@@ -31,8 +33,8 @@ timestamps and rounded elapsed durations.
 
 Extract new polygon publications from retained snapshots and reconcile their fire
 identities. Order successful KMZ writes by write time. For each publication, select the
-first write whose geography began after that snapshot's collection and whose known
-command completion does not precede publication. Group by fire and consuming write,
+first write whose geography began at or after that snapshot's collection and whose
+known command completion does not precede publication. Group by fire and consuming write,
 retaining the earliest new publication for that pair. Emit a duration only when the
 command endpoint is known.
 
@@ -45,17 +47,17 @@ For example:
    polygon to B, yielding 20 minutes from publication to command completion.
 
 Two new polygons for that same fire consumed by the same run yield one duration from the
-earlier publication. Filtering down to logged interesting fires would answer a narrower
-question and omit source observations this diagnostic intends to time.
+earlier publication. Limiting the analysis to logged interesting fires would miss other
+source observations that the run could consume.
 
 ## Costs, limits, and verification
 
 For `P` publications and `W` successful writes, the nested matching loop is worst-case
 `O(PW)` after sorting writes. Reading and decoding logs/snapshots adds work proportional
 to retained evidence. Identity maps and grouped results occupy memory. A missing log
-month or absent completion reduces observable results; retention is not reconstructed.
-Timestamp correctness is an input assumption, and wall-clock differences need not
-represent monotonic elapsed time.
+month or completion record leaves fewer measurements; the command cannot reconstruct
+evidence that was not retained. Timestamp correctness is an input assumption, and
+wall-clock differences need not represent monotonic elapsed time.
 
 - [Run evidence](../../src/peri_scribe/show_latencies/runs.py),
   [source versions](../../src/peri_scribe/show_latencies/sources.py), and

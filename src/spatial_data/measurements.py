@@ -23,8 +23,9 @@ if typing.TYPE_CHECKING:
 def area(geometry: shapely.Geometry) -> pint.Quantity[float]:
     """Return the absolute geodesic area of *geometry*.
 
-    The area is computed geodesically so it is accurate anywhere on Earth. Consistent
-    ring orientation makes disjoint parts add and holes subtract.
+    Measuring on the WGS84 ellipsoid avoids treating longitude and latitude as flat
+    coordinates. Consistent ring orientation makes disjoint parts add and holes
+    subtract.
 
     Args:
         geometry: The geometry to measure, in WGS 84 degrees.
@@ -47,9 +48,9 @@ def exterior_perimeter(
 ) -> pint.Quantity[float] | None:
     """Return *geometry*'s exterior perimeter length, or None.
 
-    The length is the sum of each polygon part's outer ring, measured geodesically so it
-    is accurate anywhere on Earth. Interior rings are excluded. Missing, empty, and
-    non-polygonal geometries have no exterior perimeter.
+    Each polygon's outer ring is measured on the WGS84 ellipsoid, then the lengths are
+    added. Interior rings are excluded. Missing, empty, and non-polygonal geometries
+    have no exterior perimeter.
 
     Args:
         geometry: The perimeter geometry, in WGS 84 degrees.

@@ -41,7 +41,7 @@ def test_overlapping_layer_indices_detects_overlap(tmp_path: pathlib.Path) -> No
     assert indices == {0}
 
 
-def test_overlapping_layer_indices_reprojects_to_layer_crs(
+def test_overlapping_layer_indices_accepts_a_different_layer_crs(
     tmp_path: pathlib.Path,
 ) -> None:
     zones = geopandas.GeoDataFrame(

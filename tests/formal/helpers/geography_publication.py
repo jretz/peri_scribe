@@ -190,7 +190,7 @@ def recover(
     """Retry from retained files, allowing terminal process exit only without mutation.
 
     Args:
-        observer: The same matcher and actual files from before process loss.
+        observer: The same matcher and files from before the simulated interruption.
         forced: The unchanged rebuild policy.
     """
     with (

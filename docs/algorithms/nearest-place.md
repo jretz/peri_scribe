@@ -20,12 +20,12 @@ Distances carry units. A place inside or on the fire has distance zero and no be
 
 Total **6: complex**, because mathematical reasoning scores 3.
 
-## Candidate bound and exact candidate comparison
+## Candidate bound and distance comparison
 
 ![Centroid distance bounds narrow the candidate places](assets/nearest-place-bound.svg)
 
-The centroid is used to prune candidates. Final distance is measured to the fire's
-interior, which can be much closer than its center.
+The centroid helps rule out distant candidates cheaply. The final comparison measures
+distance to the fire's interior, which can be much closer to a place than the center is.
 
 Let `c` be the geometry centroid and `r` a radius containing the geometry in the
 distance metric. If the closest place to `c` has distance `d0`, its distance to the
@@ -35,10 +35,11 @@ cannot beat the centroid-nearest place. This argument assumes `r` really bounds 
 complete geometry in the metric used.
 
 The implementation estimates radius from geodesic distances to boundary vertices and
-adds a 1,000-meter margin. It retains places within `d0 + 2 * (radius + margin)`.
-That concrete vertex approximation and fixed margin are not an unbounded proof for
-arbitrary geographic polygons or projection distortion. The implementation is intended
-for fire-scale mapped geometries; the numerical contract must be revisited if that
+adds a 1,000-meter margin. It retains places within `d0 + 2 * (radius + margin)`. The
+proof above requires a radius that bounds the complete geometry. Approximating that
+radius from vertices and adding a fixed margin doesn't establish the bound for every
+geographic polygon or projection distortion. The implementation is intended for mapped
+geometries at the scale of fires; its numerical contract must be revisited if that
 domain changes.
 
 For each remaining place, project the fire into an azimuthal equidistant CRS centered

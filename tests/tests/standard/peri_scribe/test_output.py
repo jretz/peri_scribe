@@ -1,4 +1,4 @@
-"""Verify serialized documents, GeoPackages, and score distribution plots."""
+"""Verify directory removal, serialized documents, and score distribution plots."""
 
 from __future__ import annotations
 

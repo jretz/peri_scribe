@@ -2,6 +2,10 @@
 
 ## Complete published documents
 
+Readers can open a document while a writer is preparing its replacement. They must see
+either the old complete document, the new complete document, or no document on the first
+publication. Partial output cannot become public just because writing has started.
+
 `DocumentPublication` checks the protocol shared by `output.write_document`,
 `output.write_fire_scores_ccdf`, and `report.markdown.render_markdown_report` through
 `output.publication_path`. It applies independently to fire index JSON, score JSON,
@@ -39,8 +43,10 @@ HTML, and Markdown before the writers adopted the checked staging protocol.
 `pipeline.run_gated_fetch_stage`, `pipeline.fetch_fire_sources`,
 `sources.fetching.fetch_all_feeds`, `collect_feeds`, `collect_one_feed`, and
 `concurrency.run_blocking`. Individual feed snapshot publication is covered separately
-by `SnapshotPublication`; this model composes worker outcomes and their persisted
-effects with collection-level control.
+by `SnapshotPublication`. This model checks how worker outcomes and saved changes affect
+the collection as a whole. That matters when one worker fails after another has already
+published a snapshot: the coordinator still has to preserve the work needed to process
+it.
 
 Three feeds share capacity two. Each may be unchanged, publish a snapshot, report an
 expected source error, fail fatally before publication, or fail fatally after publication.

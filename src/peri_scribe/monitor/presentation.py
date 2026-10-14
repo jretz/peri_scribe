@@ -95,7 +95,7 @@ def run_cells(
         run: A retained command invocation.
 
     Returns:
-        Start time, command name, and its latest outcome.
+        First retained event time, command name, and its latest outcome.
     """
     started = next(
         (

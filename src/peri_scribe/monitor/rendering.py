@@ -101,7 +101,7 @@ def show_activity(app: peri_scribe.monitor.terminal_contract.Host) -> None:
         app.current_run(),
         datetime.datetime.now(datetime.UTC),
     )
-    mode = "FOLLOW" if app.following else f"PAUSED · {pending} new events"
+    mode = "FOLLOW" if app.following else f"PAUSED · new events: {pending}"
     peri_scribe.monitor.widgets.update_content(
         app.query_one("#activity", textual.widgets.Static),
         "LIVE STATUS · select an observation to inspect its Pipeline evidence"

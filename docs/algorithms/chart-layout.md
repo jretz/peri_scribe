@@ -1,8 +1,9 @@
 # Time series and distribution charts
 
-Charts preserve the distinction between observation evidence and selected area, use
-stable visual styles, and choose readable axes. Distribution knees are numerical fit
-results that explain the displayed curve, rather than a fire-selection policy.
+The charts help readers distinguish what a source observed from the area the policy
+selected. Consistent styles and readable axes make those differences easier to follow. A
+distribution chart can also mark knees, where a numerical fit changes slope. Those marks
+describe the displayed curve; they don't determine which fires are selected.
 
 ## Contract and assessment
 
@@ -75,8 +76,11 @@ reconciliation precedes this join and remains governed by the incident-area note
 
 ## Empirical latency CDF and observed quantiles
 
-The latency chart uses a different distribution contract from complementary score share:
-its vertical coordinate is the fraction of samples **at or below** each elapsed time.
+The latency chart answers a practical question: what fraction of the samples took this
+long or less? Its vertical coordinate is the fraction **at or below** each elapsed time.
+That differs from the complementary score share described below, which counts samples
+strictly above a value.
+
 Sort each series in seconds. For sorted sample i, draw horizontally to its time at share
 i/n and vertically to (i + 1)/n; repeated times add adjacent vertical steps at one x
 position. Extend the curve to both horizontal boundaries. An empty series stays at zero.
@@ -122,15 +126,16 @@ the fraction strictly exceeding `x`. Drop zero-share points and transform remain
 shares with `log10` for fitting and logarithmic display.
 
 With enough visible points, enumerate two ordered breakpoint indexes. Each candidate
-splits the curve into three overlapping-at-boundary segments. Fit `y = ax + b` to each
-segment with least squares and sum squared residuals in `(value, log10 share)` space.
-Choose the first candidate with minimum computed error, retaining deterministic loop
-order for equal errors. Fewer than five visible points cannot produce two breakpoints.
+splits the curve into three segments that share their boundary points. Fit `y = ax + b`
+to each segment with least squares and sum squared residuals in `(value, log10 share)`
+space. Choose the first candidate with minimum computed error, retaining deterministic
+loop order for equal errors. Fewer than five visible points cannot produce two
+breakpoints.
 
-This is an exhaustive optimum among the enumerated breakpoint pairs for that objective,
-subject to numerical least-squares behavior. It does not locate a universal physical
-threshold or minimize error in linear-share space. A hand-picked percentile would be
-cheaper but answer a different question.
+The search checks every enumerated breakpoint pair and chooses the one with the lowest
+computed error, subject to numerical least-squares behavior. It does not locate a
+universal physical threshold or minimize error in linear-share space. A hand-picked
+percentile would be cheaper but answer a different question.
 
 ## Costs and limitations
 

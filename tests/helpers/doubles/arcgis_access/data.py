@@ -10,7 +10,7 @@ if typing.TYPE_CHECKING:
 
 
 class QueryStub:
-    """Callable that returns or raises successive outcomes from a list."""
+    """Query stub that returns or raises successive outcomes from a list."""
 
     def __init__(self, outcomes: list[arcgis.features.FeatureSet | Exception]) -> None:
         """Initialize ordered query outcomes for retry tests.

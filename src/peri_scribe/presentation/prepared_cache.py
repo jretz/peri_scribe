@@ -55,10 +55,10 @@ def record_field_names(record_type: type) -> tuple[str, ...]:
 
 
 def record_values(value: object) -> object:
-    """Borrow scalar leaves while synchronous encoding reads caller-owned evidence.
+    """Share scalar values while encoding the caller's completed evidence.
 
-    The codec consumes this temporary tree without retaining or mutating its leaves.
-    Callers must keep the completed evidence unchanged until encoding finishes.
+    The codec reads this temporary tree synchronously and neither retains nor changes
+    its scalar values. Callers must keep the evidence unchanged until encoding finishes.
 
     Args:
         value: A dataclass, supported container, or scalar in completed fire evidence.

@@ -1,14 +1,17 @@
 # Trailing aircraft registration recognition
 
-Mission descriptions can end with a full civil aircraft registration. Recognition
-separates that suffix while preserving the caller's fire-name prefix. It is an offline
-syntax decision; it does not consult a registry or establish that a mark was issued.
+Mission descriptions can end with a full civil aircraft registration. The recognizer
+separates that registration from the fire name so callers can use each independently. It
+checks the text against known formats without consulting a registry. A match means the
+text fits a supported pattern; it doesn't establish that the registration was issued or
+satisfies every national restriction.
 
 ## Contract and assessment
 
-Input is text. Output is a preserved prefix and uppercase registration, or no match.
-The [registration reference](../aircraft_registration.md) owns the sourced national
-formats, dates, exclusions, and application integration rules.
+The input is text. A match returns the preserved prefix and an uppercase registration;
+otherwise, the recognizer reports no match. The [registration
+reference](../aircraft_registration.md) owns the sourced national formats, dates,
+exclusions, and application integration rules.
 
 | Dimension | Score | Reason |
 | --- | --- | --- |
@@ -56,8 +59,8 @@ whether identity and spatial evidence authorize joining observations.
 ## Limits, costs, and verification
 
 There can be `O(L)` candidate boundaries in a string of length `L`; each invokes the
-compiled matcher on a suffix. Total cost depends on the regex alternatives and engine
-behavior, so a blanket linear bound is inappropriate. Inputs are short mission strings.
+compiled matcher on a suffix. Total cost depends on the regular-expression alternatives
+and engine behavior, so it isn't necessarily linear. Inputs are short mission strings.
 The format table is fixed during a run.
 
 A fire name can itself end in a syntactically valid registration. The caller's identity

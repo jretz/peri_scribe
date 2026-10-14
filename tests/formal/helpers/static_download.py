@@ -52,7 +52,7 @@ def replay(states: list[dict[str, str]], directory: pathlib.Path) -> None:
     """Check cancellation at every prefix and then complete a fresh retry.
 
     Args:
-        states: The checked download graph.
+        states: All reachable checked download states.
         directory: Isolated output root.
     """
     for fail_after in range(4):

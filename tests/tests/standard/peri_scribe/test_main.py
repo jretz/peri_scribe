@@ -50,7 +50,7 @@ if typing.TYPE_CHECKING:
 def test_cli_help(runner: click.testing.CliRunner) -> None:
     result = runner.invoke(peri_scribe.main.cli, ["--help"])
     assert result.exit_code == 0
-    assert "systematic gathering and symbolization of fire geography" in result.output
+    assert "Gather fire geography and turn it into maps and reports" in result.output
 
 
 @pytest.mark.parametrize("option", ["--stderr-log-level", "--file-log-level"])
@@ -1836,7 +1836,7 @@ def test_validate_sources_logs_summary_and_keeps_directory_with_problems(
     assert problem_events[0]["mismatched_features"] == 1
     assert problem_events[0]["columns_missing_from_stored"] == ["size"]
     assert any(
-        event["event"] == "Validation found problems in 1 of 1 feeds"
+        event["event"] == "Feeds with validation problems: 1 of 1"
         and event["log_level"] == "error"
         for event in captured
     )

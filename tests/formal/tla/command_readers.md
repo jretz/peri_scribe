@@ -2,6 +2,10 @@
 
 ## Every authoritative command owns the year
 
+Two commands that can change source data need the same exclusion and recovery rules.
+Otherwise, validation could change sources while a pipeline run is using them, or leave
+new source data without a recorded requirement to rebuild derived output.
+
 `SourceWriters` extends the existing run-only exclusion and recovery checks to the
 `validate-sources` command. The public CLI audit covers `main.Commands.list_commands`:
 `run` and `validate-sources` can change authoritative source data. `monitor`,
@@ -41,6 +45,10 @@ outside this contract. The existing run liveness checks cover progress under the
 stated future-invocation and failure bounds.
 
 ## Successful geography reads use one generation
+
+A full geography file and a differential file can each be valid while belonging to
+different generations. The reader must check their relationship before returning layers
+from either file, and prevent a writer from replacing them during the read.
 
 `GeographyReaders` models full-file replacement, full-signature replacement,
 differential-file replacement, and differential-signature replacement as separate

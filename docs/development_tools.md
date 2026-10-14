@@ -3,18 +3,18 @@
 ## System Requirements
 
 Install a recent version of
-[`mise-en-place`](https://mise.jdx.dev/installing-mise.html). `mise` manages isolated,
-project specific versions of the development tools. On Linux, real-browser tests also
-require Chromium
+[`mise-en-place`](https://mise.jdx.dev/installing-mise.html). It keeps the project's
+development tools separate from other installed versions. On Linux, tests that run
+Chromium also need its
 [system dependencies](https://playwright.dev/docs/browsers#install-system-dependencies).
-Provision those libraries when preparing the development machine or runner image.
+Install those libraries when preparing the development machine or runner image.
 
 ## Python
 
-The project uses Python as provided by [`uv`](https://docs.astral.sh/uv/). `uv` also
-manages the virtual environment for the project. `uv` itself is made available by
-`mise`. Python development and deployment tools are provided through this environment.
-Resolved Python dependencies are recorded in `uv.lock`.
+`mise` installs [`uv`](https://docs.astral.sh/uv/), which supplies Python and manages the
+project's virtual environment. Python development and deployment tools run through that
+environment. `uv.lock` records the resolved dependencies so the same environment can be
+reproduced.
 
 ## Forgejo CI
 
@@ -40,10 +40,11 @@ commit with a detached HEAD. The fetch replaces the local deployment tag when CI
 moved it. Checkout runs only after a successful fetch and uses Git's normal protection
 against overwriting uncommitted changes.
 
-The workflow enables Forgejo's failure emails to the user who triggered the run.
-Delivery requires [Forgejo server version 12][forgejo-v12] or newer, a configured
-mailer, and an enabled email notification preference for that user. The runner version
-does not identify the Forgejo server version.
+The workflow enables Forgejo's failure emails. Push failures notify the user who pushed
+the commit; pull-request failures notify the user who opened the pull request. Delivery
+requires [Forgejo server version 12][forgejo-v12] or newer, a configured mailer, and an
+enabled email notification preference for that user. The runner version does not
+identify the Forgejo server version.
 
 CI sets `PERI_SCRIBE_UV_CACHE_ROOT` to `/tool-cache/uv/peri-scribe`. The mise
 configuration appends the GEOS version and a hash of its absolute library path. Shapely
@@ -65,12 +66,13 @@ binaries. Browser directories include the platform, architecture, and resolved
 Playwright version. These are subdirectories of the existing mount; no additional
 mounts are required. Browser profiles and test artifacts are private to each test run.
 
-The browser cache stores executable files, not cookies, local storage, or application
-responses. It therefore saves repeated downloads without reusing browser session state.
-Automatic browser garbage collection is disabled so one job cannot remove another
-job's browser revision. Keep manual cache cleanup outside active jobs. Playwright's
-usual warning about the cost of [restoring a browser cache][playwright-cache] concerns
-copied cache archives; this runner reuses an already-mounted directory.
+The browser cache saves repeated downloads by retaining executable files. Cookies,
+local storage, and application responses stay outside it, so a later run does not
+inherit browser session state. Automatic browser garbage collection is disabled because
+one job could otherwise remove a revision another job needs. Keep manual cache cleanup
+outside active jobs. Playwright's warning about the cost of
+[restoring a browser cache][playwright-cache] concerns copied cache archives; this runner
+reuses an already-mounted directory.
 
 ### Preparing ci-base for browser tests
 
@@ -93,9 +95,10 @@ are supplied through the persistent cache rather than baked into the image.
 
 [playwright-cache]: https://playwright.dev/docs/ci#caching-browsers
 
-These changes configure existing tool, notification, and Git adapters. The tag update
-uses Forgejo's success and event conditions and Git's atomic reference update; there is
-no application policy or persistence protocol for an additional formal model to verify.
+The deployment tag depends on Forgejo's success and event conditions and Git's atomic
+reference update. The tool and notification configuration uses existing adapters. There
+is no additional application policy or persistence protocol here for a formal model to
+verify.
 
 [mise-lock]: https://mise.jdx.dev/dev-tools/mise-lock.html
 [workflow-token]: https://forgejo.org/docs/latest/user/actions/basic-concepts/#automatic-token
@@ -171,13 +174,15 @@ To serve a different year's outputs, pass the directory explicitly:
 mise serve-updates -- --directory data/2025/maps
 ```
 
-Both local testing and production use HTTP loading because browsers restrict adjacent
-JSON requests from pages opened with `file://`. The viewer checks for a new snapshot
-every 30 seconds with an `If-None-Match` GET using the last displayed snapshot's ETag.
-A 304 keeps the current data; a full response updates it automatically. Changes animate
-while preserving the filter, sorting choices, and collapsed groups. ETags are sent
-unchanged and do not expire locally. Without an ETag, every poll downloads the JSON. Its
-age labels, groups, and highlights also update locally while open.
+Serve the viewer over HTTP for both local testing and production. Browsers restrict
+requests for the neighboring JSON when the page is opened with `file://`.
+
+The viewer checks for a new snapshot every 30 seconds. It sends an `If-None-Match` GET
+with the last displayed snapshot's ETag, letting the server return 304 when the data
+hasn't changed. A full response updates the display automatically. Changes animate while
+preserving the filter, sorting choices, and collapsed groups. ETags are sent unchanged
+and do not expire locally; without one, every poll downloads the JSON. Age labels,
+groups, and highlights also update locally while the page is open.
 
 Viewer tests use mise-managed Node and project-local JavaScript packages. Keep package
 versions in `package-lock.json` and reproduce them with `mise node-dependencies`, which

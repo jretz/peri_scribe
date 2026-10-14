@@ -15,9 +15,7 @@ def make_perimeter_measurement_recorder(
     calls: list[shapely.Geometry | None],
     original: typing.Callable[..., pint.Quantity[float] | None],
 ) -> typing.Callable[..., pint.Quantity[float] | None]:
-    """Create a callback with controlled dependencies.
-
-    Count perimeter measurements while preserving their real results.
+    """Return a recorder of perimeter measurements that preserves real results.
 
     Args:
         calls: Shared list recording dependency calls for assertions.

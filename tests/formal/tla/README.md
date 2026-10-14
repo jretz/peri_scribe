@@ -1,10 +1,11 @@
 # System protocol models
 
-These are executable specifications of discrete decisions and persistent publication,
-cache, worker, browser, and monitor protocols. TLC explores every reachable state inside
-each configuration's finite bounds. A passing configuration establishes its properties
-for that model, under the assumptions below; it does not verify Python, the filesystem,
-or geospatial libraries automatically.
+These models describe which decisions and sequences of operations are allowed when
+publishing files, using caches, managing workers, and updating the browser or monitor.
+TLC explores every reachable state within each configuration's finite bounds. A passing
+configuration establishes its properties for that model under the assumptions below.
+Connecting those results to Python, the filesystem, or geospatial libraries requires the
+implementation checks described in each inventory.
 
 Run `mise formal-tla` for the safety and liveness checks. Run `mise
 formal-counterexamples` to reproduce the explicitly unsupported geography-pair
@@ -25,7 +26,7 @@ is a shared operator module, not a separate executable specification.
 
 ## Source mapping and bounds
 
-Additional inventories describe the newer system boundaries:
+The following inventories describe specific parts of the system:
 
 - [Ownership recomputation](../lean/identity_recomputation.md): alias learning,
   allocation, acknowledgement, and stable recomputation from saved checkpoints.
@@ -144,12 +145,12 @@ four combinations of empty/nonempty batches. Each batch independently chooses wh
 fresh publication inputs are available and whether the invocation is gated, producing
 64 initial states and 49,596 reachable states. Those choices remain fixed across a
 batch's retries. The safety properties require acknowledged records to remain in a
-retained log, append each nonempty batch at most once, retain its journal timestamp,
-recover an earlier journal before comparing new inputs, and bring the viewer and mapping
-checkpoint to the same batch after completion. `durable.appends` is history
-instrumentation, not another application file. Plain and compressed copies may both
-exist between archive replacement and unlink; the model does not claim globally unique
-physical copies at every intermediate state.
+retained log. They also require each nonempty batch to be appended at most once, its
+journal timestamp to be retained, and an earlier journal to be recovered before new
+inputs are compared. After completion, the viewer and mapping checkpoint must identify
+the same batch. `durable.appends` is history instrumentation, not another application
+file. Plain and compressed copies may both exist between archive replacement and unlink;
+the model does not claim globally unique physical copies at every intermediate state.
 
 A fresh-input build saves its publication checkpoint before acknowledging mapping
 updates. A build without those inputs can still acknowledge mapping updates. If gated,
@@ -248,8 +249,8 @@ the output, including the states immediately after snapshot and evacuation write
 the unmarked snapshot window. Other invariants check exact restoration, scheduled-full
 forcing, preservation of prior work and its force flag, and skipped no-change runs.
 TLC-exported completion records drive 512 real coordinator executions. A further 128
-exported mutation-boundary records drive actual state persistence, abrupt process loss,
-and truthful unchanged retries for both input families.
+exported mutation-boundary records drive actual state persistence, simulated
+interruptions, and truthful unchanged retries for both input families.
 
 `FetchCrashLiveness.cfg` adds weak fairness of enabled progress and checks eventual
 completion with output matching the stable input targets. The finite interruption budget

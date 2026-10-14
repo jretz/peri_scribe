@@ -1,9 +1,10 @@
 # Algorithm Design
 
-Assess algorithm complexity before implementation so the explanation is sufficient to
-understand its decisions and maintain its correctness. This guide defines the assessment
-and documentation requirements for new algorithms and changes to existing algorithms.
-It complements [Conventions](conventions.md), [Testing](testing.md), and
+Assess an algorithm's complexity before implementing it. The assessment determines how
+much explanation someone will need to understand its decisions and change it without
+breaking its guarantees. This guide sets the assessment and documentation requirements
+for new algorithms and changes to existing ones. It complements
+[Conventions](conventions.md), [Testing](testing.md), and
 [Formal Verification](formal_verification.md).
 
 ## When to assess
@@ -23,11 +24,11 @@ Keep the [algorithm note index](algorithms/README.md) and
 its owning modules. The inventory records existing notes and straightforward assessments;
 it does not replace assessing a changed behavior against the rubric below.
 
-The assessment measures reasoning complexity: the context needed to establish that the
-behavior is correct. Scores are a project convention for choosing documentation depth,
-not an empirical measure of engineering effort. Function length, branch counts, and
-the number of helpers can reveal implementation growth, but do not determine this
-classification. Splitting an algorithm into helpers does not lower its assessment.
+The assessment asks how much context is needed to establish that the behavior is
+correct. The scores set documentation depth; they do not measure engineering effort.
+Longer functions, more branches, or more helpers can suggest that an implementation is
+growing, but they do not determine its classification. Splitting an algorithm into
+helpers leaves the reasoning someone needs to understand it unchanged.
 
 ## Complexity rubric
 
@@ -86,9 +87,9 @@ Add the five scores and apply these rules:
 | Involved | Any assessment that is neither straightforward nor complex. |
 | Complex | Total at least 9, or any dimension scored 3. |
 
-A single severe source of difficulty requires the complex tier even when the other
-dimensions are simple. For example, a recoverable write protocol cannot average down
-its failure complexity because its arithmetic is trivial.
+One severe source of difficulty is enough to require the complex tier. For example, a
+recoverable write protocol still needs a careful explanation of interruption and
+recovery even when its arithmetic is trivial.
 
 ### Straightforward algorithms
 
@@ -130,9 +131,10 @@ the owning module's docstring so maintainers can find the reasoning. Keep detail
 walkthroughs in documentation; prose in code continues to explain why, following the
 conventions. Explain the conceptual algorithm rather than transcribing each code line.
 
-Existing requirements, architecture sections, and formal inventories may supply parts
-of an explanation by reference. Keep one authoritative explanation of each policy or
-guarantee, and make the note understandable without duplicating those sources.
+Link to requirements, architecture sections, or formal inventories when they already
+explain part of the behavior. Keep one authoritative explanation of each policy or
+guarantee, with enough context in the note for readers to understand why the link
+matters.
 
 ## SVG explanations
 
@@ -223,7 +225,9 @@ and relative links from the note. Keep SVG sources readable and editable, with s
 element IDs, scalable layouts, legible labels, and a descriptive title and description.
 When boxes correspond to parameters, fields, or ordered outputs, arrange them in the
 same order. Center arrows on their actual targets: the relevant box boundary for a
-whole-node connection, or the specific parameter or subelement for an individual mapping.
+whole-node connection, or the specific parameter or subelement for an individual
+mapping.
+
 When adding or changing a figure, inspect it in the intended documentation viewer at
 normal reading width in both light and dark modes, and verify the dark fallback with
 media queries disabled or ignored. For animated figures, inspect both the sequence and

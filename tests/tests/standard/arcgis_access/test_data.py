@@ -257,7 +257,7 @@ def test_query_with_retry_exhausts_retries_and_raises(
     assert sleep_calls == [60.0] * maximum_retries
 
 
-def test_query_with_retry_fails_immediately_on_non_429(
+def test_query_with_retry_fails_immediately_on_non_retryable_error(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sleep_calls: list[float] = []
@@ -292,7 +292,7 @@ def test_query_with_retry_retries_on_transient_error(
         typing.cast("arcgis.features.FeatureLayer", layer),
     )
     assert result is feature_set_with_geometry
-    # First transient error on attempt 1 → backoff = 2.0s
+    # The first transient failure uses the configured base delay.
     assert sleep_calls == [arcgis_access.retry.BACKOFF_BASE.m_as("seconds")]
 
 
@@ -344,7 +344,7 @@ def test_query_with_retry_logs_rate_limit_reason(
             typing.cast("arcgis.features.FeatureLayer", layer),
         )
     captured = [entry for entry in captured if "retry_delay" in entry]
-    assert captured[0]["event"] == "Rate-limited; retrying after server-suggested delay"
+    assert captured[0]["event"] == "Rate-limited; waiting before retrying"
     assert captured[0]["attempt"] == 1
     assert captured[0]["retry_delay"] == {
         "value": (

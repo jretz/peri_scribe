@@ -72,7 +72,7 @@ def repeated_geometry_sources(
     tmp_path: pathlib.Path,
     configured_feeds: list[peri_scribe.sources.feed_types.Feed],
 ) -> pathlib.Path:
-    """Provide separate observations retaining the same fire footprint.
+    """Provide separate observations retaining the same point geometry.
 
     Args:
         tmp_path: Isolated directory for this test's files.

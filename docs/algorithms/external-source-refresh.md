@@ -1,8 +1,11 @@
 # External source refresh
 
-External datasets use different refresh contracts. Cities support conditional HTTP
-refresh, evacuations replace a live layer, and static reference sources download when
-missing or unusable. A complete replacement must be ready before its public path changes.
+Different datasets need different refresh rules. Cities support conditional HTTP
+requests, which can confirm that the saved data is still current without downloading it
+again. Evacuations replace a live layer, and static reference sources download when
+missing or unusable. Cities, evacuations, and downloadable reference datasets stage
+completed replacements. Administrative borders are written directly after their geometry
+is computed.
 
 ## Contract and assessment
 
@@ -23,8 +26,9 @@ Total **10: complex**. Building conversion and worker cancellation are explained
 
 ## Conditional cities and live evacuations
 
-An HTTP validator is useful only alongside a validated local generation. A successful
-replacement publishes after conversion and validation, not when the response arrives.
+An HTTP validator describes a particular saved version. It is useful only if that local
+version has also passed validation. A new response must finish conversion and validation
+before it can replace the published file.
 
 1. Read and validate the local city database, including its schema, source identity,
    contents, and saved HTTP validators.
@@ -50,21 +54,25 @@ comparison. The response determines whether stored zones remain:
 | Successful, changed empty content | Write a valid empty layer and replace the previous file, clearing old zones. |
 | Failed request | Keep a stored file when available; raise when none exists. No usable new response arrived, so do not infer that zones disappeared. |
 
-Other configured sources can require nonempty results. Retaining a file after retrieval
-failure does not certify that file's freshness.
+Other configured sources can require nonempty results. A saved file retained after a
+failed retrieval may still be useful, but the failure leaves its freshness unknown.
 
 ## Static sources, alternatives, and limits
 
-Static downloads and administrative borders validate usability before deciding to reuse.
-Conversion finishes at a temporary path before replacement. Archive discovery, download,
-extraction, and chunk conversion are separate adapters; only the completed result is
-eligible for publication. Retaining every temporary download is unnecessary because
-the published dataset is the reusable artifact.
+The building database and administrative borders validate usability before reuse.
+Generic GeoPackage downloads reuse an existing file without validating its contents.
+Download converters finish at a temporary path before replacement. Administrative
+borders instead write directly to their public GeoPackage after geometry construction;
+interruption can leave a partial file. A later run checks whether that file is usable
+before deciding to rebuild it. Archive discovery, download, extraction, and chunk
+conversion are separate adapters. The completed dataset is the reusable artifact, so
+temporary downloads can be removed.
 
 The building archive index is parsed as HTML, not searched as raw text. A completed
-`Download links` (or `Downloads links`) heading opens collection; the next heading or
-GitHub heading wrapper closes it. Only completed anchors with nonempty labels and HTTP
-URLs contribute state-to-archive entries. Text inside the page's embedded-data script
+level-one, level-two, or level-three `Download links` (or `Downloads links`) heading
+opens collection; the next heading at those levels or GitHub heading wrapper closes it.
+Only completed anchors with nonempty labels and `href` values beginning with `http`
+contribute state-to-archive entries. Text inside the page's embedded-data script
 does not become a second table. The catalog then requires every configured state and
 DC before download begins. A raw regular-expression search could accidentally accept
 stale links from the embedded copy or a later section. Parsing is linear in page bytes

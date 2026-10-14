@@ -1,4 +1,4 @@
-"""Isolate fire data tests with explicit fixtures."""
+"""Provide measured perimeters for area-selection tests."""
 
 from __future__ import annotations
 

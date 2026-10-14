@@ -282,7 +282,7 @@ class Scenario:
         )
         displayed = self.viewer_times[viewer.generated_at] if viewer is not None else 0
         if viewer is not None:
-            # Imagery is outside the persistence model; every logged field stays exact.
+            # Ignore preview imagery; compare every other logged field exactly.
             occurrences = tuple(
                 record.model_copy(update={"preview": None}) for record in viewer.updates
             )
@@ -311,7 +311,7 @@ class Scenario:
         self.checks += 1
 
     def event(self, name: str) -> None:
-        """Keep actual crashes, collection generations, and clock changes in the path.
+        """Keep explicit crashes, collection generations, and clock changes in the path.
 
         Args:
             name: The concrete environment event between filesystem observations.

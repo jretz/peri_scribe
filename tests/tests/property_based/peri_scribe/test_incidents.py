@@ -1,4 +1,4 @@
-"""Report identity prevents polygons and republished attributes from moving metrics."""
+"""Reconciliation is unchanged by repetition, input order, or duplicate reports."""
 
 from __future__ import annotations
 

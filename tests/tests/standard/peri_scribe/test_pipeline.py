@@ -1,4 +1,4 @@
-"""Pipeline operations preserve command selection, recovery, and publication."""
+"""Verify pipeline value parsing, external source refresh, and report generation."""
 
 from __future__ import annotations
 

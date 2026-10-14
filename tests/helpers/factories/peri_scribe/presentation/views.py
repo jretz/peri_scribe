@@ -1,4 +1,4 @@
-"""Build inputs for folders tests."""
+"""Build fires and scores for ranked-view tests."""
 
 from __future__ import annotations
 
@@ -92,7 +92,7 @@ def growing_fire(
         name: The fire's name.
         baseline_side: The side length of the baseline square.
         latest_side: The side length of the latest square.
-        reference_time: The time the snapshot is as of.
+        reference_time: The latest perimeter's observation time.
 
     Returns:
         The growing fire.

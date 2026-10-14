@@ -66,8 +66,8 @@ class NamedFire(typing.Protocol):
 def fire_name_key(named: NamedFire) -> str:
     """Return the ordering key that sorts fires by name, ignoring case.
 
-    Folding case keeps the order stable when two names differ only in case, so every
-    view lists the same fires in the same order.
+    Folding case lets each view sort names without treating uppercase and lowercase
+    spellings as different letters. Names that differ only in case have the same key.
 
     Args:
         named: The fire to key.
@@ -81,7 +81,8 @@ def fire_name_key(named: NamedFire) -> str:
 def descending_value_name_key(ranked: tuple[FireSummary, float]) -> tuple[float, str]:
     """Return the ordering key that ranks fires by value, then by name.
 
-    The largest value comes first, and fires whose values tie keep one stable order.
+    The largest value comes first. Ties compare names without regard to case; equal name
+    keys retain their input order when sorted.
 
     Args:
         ranked: A fire and the value it is ranked by.
@@ -389,7 +390,8 @@ def prepare_fire_data(
     """Prepare shared fire facts and history evidence in index order.
 
     A fire's point is its last known location or a representative point of its latest
-    perimeter. Score explanations resolve by identifier, then by name.
+    perimeter. Score explanations resolve by identifier, then by component; only scores
+    without a component can fall back to a name.
 
     Args:
         index: Fire identities and current status.
@@ -546,7 +548,7 @@ def selected_incidents(
         frame: The optional independent incident-history layer.
         index: The row index for that layer, if it is available.
         identifiers: Identifiers and aliases associated with this fire.
-        name: The fire name used when identifiers do not resolve its history.
+        name: The fire name used only when both identifiers and component_id are absent.
         component_id: The exact source component, when recorded in derived history.
 
     Returns:

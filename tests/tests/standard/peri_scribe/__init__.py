@@ -1,1 +1,1 @@
-"""Verify peri scribe behavior with isolated tests."""
+"""Verify PeriScribe behavior with isolated tests."""

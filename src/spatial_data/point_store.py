@@ -1,8 +1,10 @@
-"""Compact WGS84 point storage supports bounded-memory spatial counting.
+"""Store WGS84 points compactly and query one compressed tile at a time.
 
 Coordinates use signed integer pairs at 1e-5 degree resolution, partitioned into 0.5
 degree tiles and compressed per tile. Query envelopes select tiles before exact polygon
 containment, counting duplicate coordinates and excluding polygon boundaries.
+Construction holds one partition's points at a time; queries hold one tile's points.
+Memory therefore depends on the largest partition or requested tile, not a fixed cap.
 
 The on-disk ``building_count`` column is part of the format contract; point payloads
 carry no domain attributes and can represent any collection of WGS84 points.
@@ -32,8 +34,8 @@ COORDINATE_SCALE = 100_000
 
 TILE_SIZE_DEGREES = 0.5
 
-# The encoded coordinate at the grid's origin (-180°, -90°) and the encoded span of one
-# tile, matching the coordinate scale and tile size above.
+# The offsets that move the grid's origin (-180°, -90°) to (0, 0), and the encoded span
+# of one tile, matching the coordinate scale and tile size above.
 LONGITUDE_OFFSET = 18_000_000
 LATITUDE_OFFSET = 9_000_000
 TILE_STEPS = 50_000
@@ -279,10 +281,9 @@ def points_within_box(points: np.ndarray, box: tuple[int, int, int, int]) -> np.
 def compress_tile_points(points: np.ndarray) -> bytes:
     """Return the compressed payload for one tile's *points*.
 
-    The points are sorted by their raw 8-byte representation, so identical coordinate
-    prefixes become adjacent and the payload compresses far better than spatial order
-    would. The sorted records are then zstd-compressed at level 2, which keeps the
-    database build fast while still shrinking the payload substantially.
+    Sorting by each point's raw 8-byte representation puts matching byte prefixes
+    together, giving the compressor repeated sequences to work with. Zstd level 2 limits
+    compression work while keeping the stored payload compact.
 
     Args:
         points: The tile's ``(n, 2)`` int32 encoded coordinate pairs.
@@ -310,12 +311,12 @@ def decode_payload(payload: bytes) -> np.ndarray:
 
 
 class PartitionFiles:
-    """The temporary binary partition files being accumulated.
+    """Temporary files that collect points before they are grouped into tiles.
 
-    Each of the sixteen files holds only concatenated 8-byte records: no headers,
-    delimiters, tile ids, or SQLite row structures. Records are appended across every
-    input stream, so all records of a tile always reach the same partition, and the
-    caller manages the partition directory's lifetime.
+    Each of the sixteen files contains only 8-byte coordinate records, without headers,
+    delimiters, or database overhead. Every input stream uses the same tile-to-partition
+    mapping, so a tile's records stay together even when they arrive from different
+    streams. The caller manages the partition directory's lifetime.
     """
 
     def __init__(self, directory: pathlib.Path) -> None:
@@ -385,14 +386,13 @@ def process_partition(
 ) -> int:
     """Read *partition_path* and write one row per complete tile into *connection*.
 
-    The partition's records are read into NumPy, their tile ids are computed in one
-    vectorized pass, and the records are sorted by tile id so each tile's records become
-    contiguous; each complete tile is then sorted by raw record bytes and written as a
-    single compressed row. Because partition assignment used ``tile_id % 16``, every
-    tile is fully contained in this one partition and is written exactly once.
-    Within-tile record order does not matter (the payload sort reorders it), so the
-    default quicksort is used instead of a stable sort: stable integer sorts use a
-    full-size radix temp, doubling the sort's memory.
+    Sorting the partition's records by tile id groups each tile for compression. The
+    partition mapping uses ``tile_id % 16``, so all of a tile's records are here and the
+    tile can be written exactly once.
+
+    Order within each tile does not need to survive this sort: compression sorts its
+    records by raw bytes next. That lets this step use quicksort and avoid the extra
+    full-size temporary buffer used by a stable integer sort.
 
     Args:
         partition_path: The partition file's path.
@@ -545,11 +545,14 @@ def point_counts_within(
 ) -> list[int]:
     """Return how many points lie within each query geometry.
 
-    Grouping queries by tile avoids repeated reads and decompression for nearby queries.
-    Only one tile's points and one query's candidates need to be retained at a time.
-    Envelope filtering preserves every possible match, and exact containment excludes
-    polygon boundaries while counting duplicate point coordinates separately.
-    Prepared geometry is released after each containment test to bound its memory.
+    Nearby queries often need the same tiles. Grouping them by tile avoids reading and
+    decompressing those points repeatedly, while keeping only one tile's points and one
+    query's candidates at a time.
+
+    Envelope filtering keeps every possible match for the exact containment test. That
+    test excludes points on polygon boundaries and counts duplicate coordinates
+    separately. Prepared geometry is released after each test so it does not accumulate
+    across queries.
 
     Args:
         geometries: The query geometries in WGS84, or None.

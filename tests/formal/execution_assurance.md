@@ -1,8 +1,10 @@
 # Execution paths and abrupt process termination
 
-These checks strengthen the connection between the existing specifications and actual
-executions. They add no production state transitions and do not replace the separately
-documented invariant, liveness, and data-transformation contracts.
+A sequence can visit only allowed states and still take a transition the protocol
+forbids. These checks compare complete observed executions with the specifications, so
+the order matters as well as the individual states. They add no production state
+transitions and retain the separately documented invariant, liveness, and
+data-transformation contracts.
 
 ## Continuous paths through the checked graph
 
@@ -28,7 +30,7 @@ no unfinished operation for its crash action to restart. Model fingerprints reta
 hidden phase, failure allowance, target, and other control state throughout matching;
 identical projections do not merge unrelated graph nodes.
 
-The following bridges now require continuous paths:
+The following conformance adapters require continuous paths through the checked graph:
 
 | Bridge | Checked model | Concrete observations |
 | --- | --- | --- |

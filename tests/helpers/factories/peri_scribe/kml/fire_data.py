@@ -8,7 +8,7 @@ def fallback_rings() -> tuple[peri_scribe.perimeters.progression.Ring, ...]:
     """Return overlapping geometries without trusted stored added areas.
 
     Returns:
-        Two ordered rings whose cumulative areas differ from their individual areas.
+        Two nested square rings whose overlap must be excluded from added area.
     """
     return tuple(
         peri_scribe.perimeters.progression.Ring(

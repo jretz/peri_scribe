@@ -1,5 +1,9 @@
 # Correctable ownership of durable fire histories
 
+Grouping can be corrected after a fire history has already been published. The current
+owner of that history can change while its original records and evidence stay intact.
+These checks cover that separation, including ownership changes that are later reversed.
+
 `PeriScribe/IdentityTransfer.lean` has 56 checked theorem declarations. Its default
 `oracleIdentityTransfer` executable evaluates the same definitions, and the shared axiom
 audit includes the module. The implementation owners are

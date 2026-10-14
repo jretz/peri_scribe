@@ -1,4 +1,4 @@
-"""Replace files dependencies with controlled test doubles."""
+"""Track fire history derivation and reject unnecessary rebuilds."""
 
 from __future__ import annotations
 
@@ -34,9 +34,7 @@ def make_history_recorder(
         tuple[list[dict[str, object]], list[dict[str, object]]],
     ],
 ) -> typing.Callable[..., tuple[list[dict[str, object]], list[dict[str, object]]]]:
-    """Create a callback with controlled dependencies.
-
-    Observe which fires need reconstruction while preserving real derivation.
+    """Return a recorder that preserves real history derivation.
 
     Args:
         calls: Shared list recording dependency calls for assertions.

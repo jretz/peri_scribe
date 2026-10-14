@@ -1,9 +1,10 @@
 # Parsed snapshot cache
 
-`record_cache.db` stores parsed source snapshots. It is independent of the prepared
-product cache. Its correctness condition is that a checksum receipt authenticates every
-fire row and complex membership returned with that receipt. A failed or stale cache read
-must fall back to the authoritative snapshot.
+`record_cache.db` stores parsed source snapshots separately from the prepared product
+cache. Every fire row and complex membership returned from it must belong to the
+snapshot authenticated by the checksum receipt. Checking the receipt and then reading
+rows from a different generation would defeat that check. Missing or stale entries and
+caught read errors fall back to the authoritative snapshot.
 
 | Model | Production owner | Checked guarantee |
 | --- | --- | --- |
@@ -81,4 +82,6 @@ power-loss durability, or SQLite's implementation correctness. Two serials and t
 nonempty payload generations are finite bounds, not a proof for arbitrary inventories.
 The rebuild model assumes that a retained old parse remains valid for its recorded
 checksum; schema-version changes still force a rebuild through the production entry
-point. Invalid serialized values and missing tables use the modeled failed-read outcome.
+point. The modeled failed-read outcome covers missing tables and caught `OSError`,
+`ValueError`, or `sqlite3.Error` failures. Other payload-decoding errors, such as malformed
+WKB raising `GEOSException`, are outside the fallback guarantee.

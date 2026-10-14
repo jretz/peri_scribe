@@ -14,7 +14,7 @@ def test_seek_since_and_complete_lines_match_proved_reference(
     )
 
 
-def test_reader_preserves_checked_ordered_history(
+def test_reader_retains_checked_occurrences_across_log_storage_formats(
     tmp_path: pathlib.Path,
 ) -> None:
     expected_readers = 76

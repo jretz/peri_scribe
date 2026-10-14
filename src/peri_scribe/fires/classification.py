@@ -31,7 +31,7 @@ def classify_fire_group(
     Args:
         group: The record indices of one fire.
         record_groups: The grouped fire records.
-        boundaries: The California polygon and border in California Albers.
+        boundaries: The California box and interstate border in California Albers.
 
     Returns:
         The fire's border classification and evidence.

@@ -1,8 +1,10 @@
 # Durable update validation
 
-`DurableUpdateValidation.tla` distinguishes absent, valid, and invalid fire-update
-checkpoints and journals before recovery, a new completed publication, or viewer output.
-The safety and liveness configurations were checked before changing production code.
+A missing update checkpoint can mean there is nothing to recover. An unreadable one
+doesn't establish that: it may still record work that must be preserved.
+`DurableUpdateValidation.tla` checks that distinction for fire-update checkpoints and
+journals before recovery, a new completed publication, or viewer output. The safety and
+liveness configurations were checked before changing production code.
 
 ## Contract and implementation
 

@@ -1,12 +1,12 @@
-"""Guarantee no tool-disabling comments survive in the source.
+"""Keep tool-disabling comments limited to the declared exceptions.
 
-The conventions forbid disabling lint or type-checking rules on individual lines, so no
-comment that starts a known directive (noqa, ruff: ignore, type: ignore, and so on) may
-appear anywhere in src or tests. Ripgrep, run through mise so the project's pinned
-version is used, searches both trees. Each pragma comment found must match exactly one
-declared exception, and each exception must match one comment, so two identical lines in
-a file need the same exception declared twice. The prohibition is enforced by the test
-suite rather than by review alone.
+Lint and type-checking directives can silently remove checks, so this test checks every
+comment beginning with a known directive, such as noqa, ruff: ignore, or type: ignore.
+Ripgrep searches both src and tests through mise, using the project's recorded version.
+
+Every matching comment must have exactly one declared exception, and every exception
+must match one comment. Two identical lines therefore need two exceptions. Checking both
+directions catches new suppressions as well as exceptions that are no longer needed.
 """
 
 from __future__ import annotations
@@ -79,7 +79,8 @@ def pragma_matches() -> str:
     Returns:
         The ripgrep output for the matches, or an empty string when there are none.
     """
-    rg_path = shutil.which("rg")  # This will pick up the mise managed version
+    # Mise puts the project's recorded ripgrep version on the test environment's path.
+    rg_path = shutil.which("rg")
     if rg_path is None:
         pytest.fail("rg is required to run the pragma check")
     result = subprocess.run(

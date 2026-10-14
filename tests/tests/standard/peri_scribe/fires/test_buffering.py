@@ -1,4 +1,4 @@
-"""Tests for peri_scribe.fires.scores."""
+"""Tests for peri_scribe.fires.buffering."""
 
 from __future__ import annotations
 
@@ -50,7 +50,7 @@ def test_buffered_fire_geometries_buffers_each_geometry() -> None:
     assert buffered[1] is None
 
 
-def test_buffered_fire_geometries_returns_none_for_no_geometry() -> None:
+def test_buffered_fire_geometries_preserves_empty_and_missing_entries() -> None:
     assert peri_scribe.fires.buffering.buffered_fire_geometries([]) == []
     assert peri_scribe.fires.buffering.buffered_fire_geometries([None, None]) == [
         None,

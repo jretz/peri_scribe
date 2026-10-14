@@ -93,7 +93,8 @@ def cases() -> list[History]:
     """Exercise transfers, mergers, cycles, releases, aliases, and ranking boundaries.
 
     Returns:
-        All short histories over representative observations plus longer seeded cases.
+        Every three-observation history over the representative cases, plus selected
+        shorter histories, complete parent assignments, and longer seeded histories.
     """
     options = [
         Evidence(child=0, parent=1),
@@ -251,8 +252,8 @@ def mixed_histories() -> list[History]:
     """Repeated relationships need their own clocks even within one source snapshot.
 
     Returns:
-        Assignments and releases corrected by standalone declarations, across both
-        feeds and explicit incident dates or snapshot-clock fallback.
+        Assignments and releases corrected by standalone declarations, across both feeds
+        and explicit incident dates or snapshot-clock fallback.
     """
     return [
         (

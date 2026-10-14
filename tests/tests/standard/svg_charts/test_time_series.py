@@ -23,7 +23,7 @@ def test_format_tick_uses_one_decimal_for_medium_values() -> None:
     assert svg_charts.time_series.format_tick(33.1) == "33.1"
 
 
-def test_format_tick_uses_two_decimals_for_small_values() -> None:
+def test_format_tick_preserves_fractional_values_below_one() -> None:
     assert svg_charts.time_series.format_tick(0.5) == "0.5"
 
 
@@ -377,7 +377,7 @@ def test_plot_layout_spans_the_x_axis_past_the_last_observation() -> None:
             first_observed_day,
         ).date()
     )
-    # One whole day past the last observation, so the final tick clears the right edge.
+    # Extend the axis by one day so the last observation sits inside the right edge.
     assert layout.day_span == last_observed_day - first_observed_day + 1
     assert (
         layout.x_of(

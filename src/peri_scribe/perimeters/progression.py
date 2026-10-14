@@ -1,9 +1,8 @@
-"""Building the perimeter progression rings that show how a fire grew.
+"""Build perimeter rings that show how a fire grew.
 
-A fire's growth is read from the differential perimeter history, whose rings each show
-the area the fire added at one growth step. Each ring carries its own area and
-observation time, and the KMZ output colors each ring by where its time falls in the
-fire's active growth span.
+Each ring in the differential history represents the ground added at one growth step. It
+carries its own area and observation time. KMZ output places that time within the fire's
+active growth span to choose the ring's color, so the map shows the sequence of growth.
 
 [Growth rings](../../../docs/algorithms/corrected-growth-rings.md)
 """
@@ -37,11 +36,12 @@ SEQUENCE_COLUMN = "ring_sequence_digest"
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Ring:
-    """One growth ring, the time it was observed, and the area it added.
+    """One growth ring with its observation time and area measurements.
 
-    ``area`` is the ring geometry's area, a quantity in square meters, computed once
-    when the ring is built. Synthetic rings that only stand in for another geometry
-    (such as a fire's latest perimeter) leave it at the default 0.
+    ``area`` measures the ring geometry; ``added_area``, when supplied, measures the
+    increase in cumulative covered area. Both use square meters in prepared histories.
+    A fallback ring representing the latest perimeter uses that perimeter's measured
+    area for both values.
     """
 
     geometry: shapely.Geometry

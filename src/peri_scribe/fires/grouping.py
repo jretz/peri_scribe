@@ -24,13 +24,14 @@ if typing.TYPE_CHECKING:
 logger = structlog.get_logger()
 
 
-# Two fire geometries are treated as the same fire when they overlap or the gap between
-# them is within this tolerance. It is expressed in degrees, which is roughly 5.5 km.
+# Same-named records can describe one fire when their geometries overlap or lie within
+# this gap. The tolerance is roughly 5.5 km north-south; east-west distance depends on
+# latitude.
 FIRE_PROXIMITY_TOLERANCE = 0.05 * units.degrees
 
-# A fire whose records are farther apart than this is reported as possibly two fires
-# that were merged. It is far looser than the proximity tolerance so that a point
-# location moving between snapshots does not raise a warning.
+# Widely separated records can indicate that two fires were merged by mistake. This
+# threshold allows much larger gaps than the grouping tolerance so ordinary changes to a
+# reported point location do not trigger a warning.
 FIRE_OUTLIER_TOLERANCE = 1.0 * units.degrees
 
 # A fire whose records span longer than this across observation times is reported as
@@ -52,11 +53,11 @@ def nearby_pairs(
 ) -> typing.Iterator[tuple[int, int]]:
     """Yield the index pairs of *geometries* within *tolerance*.
 
-    A spatial index limits the comparisons to geometries that are actually close, so the
-    number of pairs grows with the number of nearby geometries rather than with the
-    square of the list length. Each geometry is paired with itself, and each distinct
-    pair appears in both directions, so callers can treat the result as the adjacency of
-    a directed graph and skip self-pairs.
+    A spatial index avoids comparing distant geometries. Work still depends on the
+    number of nearby pairs, which can grow quadratically when every geometry is near
+    every other one. Each nonempty geometry is paired with itself, and each distinct
+    pair appears in both directions, so callers can treat the result as a directed
+    graph's adjacency and skip self-pairs.
 
     Args:
         geometries: The geometries to compare.
@@ -121,12 +122,13 @@ def matched_within_outlier_tolerance(
 ) -> set[int]:
     """Return the members with another member within the outlier tolerance.
 
-    Byte-identical geometries are within the tolerance of one another, so every member
-    of a multi-member identical-geometry class has a match and the rest of the
-    comparisons use one representative per class. Each representative is checked against
-    the others until one is found within the tolerance: a fire's own records are almost
-    always all near one another, so the first comparison settles the common case and
-    only an actual outlier requires checking every other representative.
+    Members with byte-identical geometry already have a match when their class has more
+    than one member. The remaining comparisons need only one representative of each
+    class.
+
+    Check representatives until a nearby one is found. A fire's records are usually near
+    one another, so the first comparison often settles the question. An actual outlier
+    requires checking every other representative.
 
     Args:
         members: The group's non-empty geometries, as (index, geometry) pairs.
@@ -165,10 +167,10 @@ def warn_for_inconsistent_fires(
     groups: list[list[int]],
     fires: list[peri_scribe.models.Fire],
 ) -> None:
-    """Log a warning for each fire whose records are spread across space or time.
+    """Log location inconsistencies at info level and long time spans at debug level.
 
     A fire whose member records disagree on location or span a long observation range
-    may be two fires that were merged by name. The warning names the fire so the
+    may be two fires that were merged by name. Each log entry names the fire so the
     grouping can be inspected.
 
     Args:
@@ -269,14 +271,14 @@ def merge_records_by_name(
 ) -> None:
     """Merge records that share a name and are spatially compatible.
 
-    Records sharing a name are grouped by spatial proximity, whether or not they have
-    identifiers. A same-named fire is the same fire wherever it is mapped, even when
-    different rows carry different identifiers (for example a re-mapping that received a
-    new GUID), so any two same-named records whose geometries are compatible are one
-    fire. Fires with the same name in different regions stay separate because their
-    geometries are not compatible. A spatial index limits the compatibility checks to
-    records whose geometries are actually close, so a name shared by many distant fires
-    (e.g. "Canyon" in California vs. Alaska) does not make the grouping quadratic.
+    The same fire can acquire different identifiers, for example when a new mapping
+    receives a new GUID. A shared name and compatible geometries can still connect those
+    records. Fires with the same name in different regions stay separate because their
+    geometries are too far apart.
+
+    A spatial index limits comparisons to nearby geometries. A name shared by distant
+    fires, such as "Canyon" in California and Alaska, therefore does not require
+    comparing every pair.
 
     Args:
         records: The records to merge.
@@ -294,12 +296,10 @@ def merge_records_by_name(
                 members.append((index, geometry))
         if len(members) < MINIMUM_SPATIAL_GEOMETRIES:
             continue
-        # Records with byte-identical geometry are trivially within the tolerance of one
-        # another (a fire mapped repeatedly carries the same perimeter in many
-        # snapshots), so each identical-geometry class is unioned as a unit and the
-        # spatial index compares one representative per class. Uniting the class's
-        # representative with another class's representative connects every member of
-        # both classes through the class unions.
+        # Snapshots often repeat exactly the same perimeter. Those records already lie
+        # within the tolerance of one another, so join them first and compare one
+        # representative per class. Joining two representatives then connects every
+        # record in both classes without repeating the geometry comparisons.
         classes: dict[bytes, list[tuple[int, shapely.Geometry]]] = {}
         for member in members:
             classes.setdefault(member[1].wkb, []).append(member)

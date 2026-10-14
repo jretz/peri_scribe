@@ -101,7 +101,7 @@ def test_clean_perimeter_removes_collinear_points() -> None:
     assert result.area == pytest.approx(polygon.area)
 
 
-def test_clean_perimeter_removes_collinear_points_without_deviation() -> None:
+def test_clean_perimeter_removes_collinear_points_with_zero_deviation_setting() -> None:
     config = peri_scribe.perimeters.cleaning.PerimeterCleaningConfig(
         maximum_deviation=0.0 * units.meters,
     )

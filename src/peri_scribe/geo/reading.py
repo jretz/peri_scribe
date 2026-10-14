@@ -89,14 +89,14 @@ def fetch_snapshot_rows(
 ) -> peri_scribe.geo.package.GeopackageContents | None:
     """Return one authenticated transaction's contents, or None when absent.
 
-    The checksum receipt, rows, and memberships share a read transaction so concurrent
-    cache replacements cannot change the contents after their identity was checked.
-    A savepoint preserves an existing caller transaction when one is already open.
+    Read the checksum receipt, rows, and memberships in one transaction. A concurrent
+    cache replacement then cannot substitute different rows after the checksum check. If
+    the caller already has a transaction open, a savepoint preserves it.
 
     Args:
         conn: The record cache database connection.
         serial: The snapshot's serial number.
-        checksum: Current authoritative snapshot bytes, required before reusing a parse.
+        checksum: SHA-256 checksum of the current authoritative snapshot bytes.
         geometry_pool: The source read's shared snapshot geometries.
 
     Returns:
@@ -129,7 +129,7 @@ def read_snapshot_rows(
     Args:
         db_path: The record cache database path.
         serial: The snapshot's serial number.
-        checksum: Current authoritative snapshot bytes, required before reusing a parse.
+        checksum: SHA-256 checksum of the current authoritative snapshot bytes.
         geometry_pool: The source read's shared snapshot geometries.
 
     Returns:
@@ -192,16 +192,17 @@ def read_geopackage_cached(
 ) -> peri_scribe.geo.package.GeopackageContents:
     """Return the contents of the GeoPackage at *path*, using its record cache.
 
-    Reading and decoding a GeoPackage is far more expensive than loading its parsed
-    contents from a database, and snapshots are immutable once written, so each feed's
-    parsed contents are cached in one SQLite database stored inside the feed's snapshot
-    directory (``sources/{feed}/record_cache.db``). The database records each snapshot's
-    checksum as well as its size and modification time. Every cached read checks the
-    current bytes, so in-place edits and replacements with preserved timestamps cannot
-    reuse stale records. Missing snapshots are dropped during synchronization.
-    A missing, stale, corrupt, or unusable database never fails the read: it is
-    rebuilt from the GeoPackages, and a failed cache update falls back to reading the
-    file directly.
+    Reading and decoding a GeoPackage costs more than loading its parsed rows from
+    SQLite. Each feed therefore caches its immutable snapshots in
+    ``sources/{feed}/record_cache.db``. The cache records a snapshot's checksum, size,
+    and modification time.
+
+    Every cached read checks the current bytes. This catches edits made in place and
+    replacements that preserve timestamps, while synchronization removes missing
+    snapshots. When inventory synchronization runs, missing, stale, corrupt, or unusable
+    caches are rebuilt from the GeoPackages. A failed update or an unauthenticated
+    cached read falls back to the source file directly, preserving access to valid
+    source data.
 
     Args:
         path: The snapshot GeoPackage file to read.

@@ -1,4 +1,4 @@
-"""Area qualification uses the same evidence and history as the displayed estimate."""
+"""Area history groups preserve canonical fire identities."""
 
 from __future__ import annotations
 

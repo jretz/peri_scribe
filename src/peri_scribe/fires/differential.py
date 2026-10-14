@@ -41,9 +41,8 @@ if typing.TYPE_CHECKING:
 DIFFERENTIAL_OUTPUT_FILENAME = "history_of_differential_geography.gpkg"
 logger = structlog.get_logger()
 
-# The per-fire work mixes geometry calls that release the GIL with Python-side attribute
-# work that does not, so more than a handful of workers only adds GIL contention, so cap
-# the pool.
+# Geometry calls release the GIL, but Python attribute work still competes for it. Keep
+# the pool small so contention does not erase the benefit of parallel geometry work.
 DIFFERENTIAL_WORKER_COUNT = min(4, os.cpu_count() or 1)
 
 GROWTH_COLUMNS = [
@@ -167,21 +166,21 @@ def geometry_grows_beyond(
     current: shapely.Geometry | None,
     previous: shapely.Geometry | None,
 ) -> bool:
-    """Return whether *current* has polygonal area outside *previous*.
+    """Check for potential polygonal growth without constructing the difference.
 
-    This is equivalent to ``geometry_difference(current, previous) is not None`` for the
-    overwhelming majority of geometries, but it does not construct the difference, so it
-    is far cheaper when the caller only needs to know whether a perimeter adds area. The
-    two can disagree on numerically degenerate slivers, where the covers predicate
-    reports growth but the constructed difference collapses to nothing;
-    :func:`differential_rows_for_fire` drops those survivors when it builds the rows.
+    Testing coverage avoids constructing a difference when the caller only needs to know
+    whether a perimeter adds area. It usually agrees with ``geometry_difference(current,
+    previous) is not None``. Numerical edge cases can disagree: the coverage test can
+    report growth whose constructed difference collapses to an empty sliver.
+    ``differential_rows_for_fire`` drops those cases when it builds the rows.
 
     Args:
         current: The current geometry, or None.
         previous: The previous geometry, or None.
 
     Returns:
-        True when the difference has polygonal area.
+        True when the coverage test finds possible growth. Constructing the difference
+        can still yield no polygonal area in numerical edge cases.
     """
     if current is None or current.is_empty:
         return False
@@ -254,10 +253,11 @@ def representative_indices(
     survivors: list[int],
     perimeter_count: int,
 ) -> dict[int, int]:
-    """Return the full-perimeter index each survivor represents.
+    """Return the full-perimeter index each surviving growth step represents.
 
-    A survivor followed by perimeters that add no area is corrected by those perimeters,
-    so it keeps the attributes of the last one before the next survivor.
+    Perimeters that add no area still correct the preceding growth step. That step
+    therefore takes the attributes of the last correcting perimeter before the next
+    growth step.
 
     Args:
         survivors: The surviving (growth) perimeter indices, in order.
@@ -386,9 +386,8 @@ def differential_rows_for_fire(
             geometry_difference(cumulative_geometry, previous_geometry),
         )
         if differential_geometry is None:
-            # The cheap covers-based growth check can report growth whose constructed
-            # difference collapses to a numerically empty sliver; such a step adds no
-            # visible area, so it contributes no ring.
+            # A coverage test can report growth that collapses to an empty sliver when
+            # the difference is constructed. With no visible area, it adds no ring.
             continue
         representative = representatives[survivor]
         row = dict(attributes[representative])
@@ -465,10 +464,12 @@ def differential_group_rows(
 
 
 def row_classifications(rows: peri_scribe.fires.reuse.Rows) -> frozenset[str | None]:
-    """Keep recovery of missing classifications from reusing unclassified ring rows.
+    """Return normalized classifications so reuse can detect newly available evidence.
 
-    GDAL and pandas use several scalar null representations for the same missing
-    classification; they must not invalidate otherwise identical history.
+    GDAL and pandas represent a missing classification with several scalar null values.
+    Normalize those values so an equivalent representation does not invalidate an
+    otherwise unchanged history. A newly available classification must still differ
+    from a missing one so the caller knows to recompute unclassified rings.
 
     Args:
         rows: Full or differential rows belonging to one fire.

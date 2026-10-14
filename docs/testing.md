@@ -2,8 +2,7 @@
 
 ## Conventions
 
-[Conventions](conventions.md) — Coding conventions and style guide for the project also
-apply to testing code.
+The project's [coding conventions](conventions.md) also apply to tests and test helpers.
 
 ## Decomposition
 
@@ -24,8 +23,8 @@ apply to testing code.
 
 ## Input/Output
 
-No tests should touch the network in any way. All network access should be mocked out.
-This includes ArcGIS FeatureServer and any other data sources.
+Tests must run without network access. Mock every network interaction, including
+ArcGIS FeatureServer requests and requests to other data sources.
 
 Tests must not write application data to the repository or depend on persistent local
 application state. Code that intentionally reads or writes files should use pytest’s
@@ -87,17 +86,17 @@ coverage requirement. `mise test` runs Python tests, simulated viewer tests, lin
 type checking, formatting checks, browser tests, and finally the coverage report.
 `mise test-all` runs this sequence and then the formal suite.
 
-Coverage identifies the same production script in Node and Chromium, verifies its
-source text, and maps reported gaps to the inline script's lines in `updates.html`.
-The complete script is in scope, including code that neither suite executes. Test
-helpers and HTML/CSS are outside the JavaScript coverage denominator. Browser layout
-and interaction assertions provide assurance that a percentage cannot express.
+The coverage tools verify that Node and Chromium tested the same production script
+and map gaps to its lines in `updates.html`. Coverage includes the complete script,
+even code that neither suite executes. Test helpers and HTML/CSS do not count toward
+that percentage. Browser assertions still need to check layout and interaction: a line
+can execute without producing the right display or response.
 
-Each complete test invocation owns fresh coverage output. The combined gate requires
-successful contributions from both suites in that invocation and rejects missing,
-empty, stale, or source-mismatched results. Standalone test runs collect their own
-results and do not satisfy a different run's coverage requirements. This lets focused
-browser work proceed without unrelated tests or an incomplete-coverage failure.
+Each complete test run collects fresh coverage. Both JavaScript suites must succeed in
+that run; missing, empty, stale, or mismatched results fail the combined check. A
+standalone suite collects its own coverage without satisfying another run's
+requirements. That lets focused browser work proceed without running unrelated tests
+or failing because the other suite hasn't run.
 
 Full runs store results in a new `.coverage/javascript/run-<identifier>` directory;
 `.coverage/latest-run.json` identifies the latest full run for `mise coverage-report`.
@@ -129,17 +128,17 @@ mise exec -- ./node_modules/.bin/playwright show-trace /path/to/trace.zip
 Standalone browser runs use their own session directory and do not replace the latest
 full-run pointer. Use `mise test` for the complete combined gate after focused work.
 
-The existing formal viewer checks remain separate and retain the helpers they need.
-Adding a browser runner and coverage adapters does not change application policies or
-modeled refresh behavior. Run `mise formal` when changing shared helpers to verify the
-existing implementation connections.
+Formal viewer checks run separately and use their own supporting helpers. Browser
+execution and coverage collection do not change application policies or the modeled
+refresh behavior. Run `mise formal` when changing shared helpers to check that the
+implementation still agrees with the formal definitions.
 
 ## What to Test For
 
-Tests should ensure behavior is correct and they should be independent of
-implementation. For example, if code constants change (e.g., the default number of
-retries), tests should still pass. If a function body has most of its code replaced with
-calls to a library, but it behaves in the same way, tests should still pass.
+Test the behavior independently of how the code implements it. Changing a constant,
+such as the default number of retries, should not by itself break a test. Replacing a
+function's internals with library calls should also leave tests passing when the
+behavior stays the same.
 
 When a bug is found because of something other than a standard test, add a regression
 test and confirm that it fails without the fix.
@@ -160,8 +159,8 @@ things that are a good use of property based testing:
 - edge-case and boundary discovery
 - agreement with an independent reference implementation
 
-Good use cases are not limited to the above, but don't force things into Hypothesis
-without identifying the value of doing so.
+Other uses can make sense too. Before adding a Hypothesis test, identify what varying
+the inputs will help check.
 
 Properties should express behavioral guarantees independently of the implementation,
 with appropriate numerical tolerances where needed.

@@ -21,13 +21,13 @@ OPTIONS = ["--publish-threshold", "25 acre", "5m"]
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Scenario:
-    """Only external operations are stubbed; state and the decision remain real.
+    """Exercise real publication decisions with stubbed pipeline stages and sources.
 
     Args:
-        year: The isolated year directory containing test sources and outputs.
+        year: The isolated year directory containing test state and outputs.
         stubs: Pipeline substitutes that record which stages run.
         indexed: The year directories for which deferred indexing was requested.
-        inputs: The downloaded source inventory supplied to the publication gate.
+        inputs: The simulated source inventory supplied to the publication gate.
         output: The local KMZ path used to validate the publication checkpoint.
     """
 

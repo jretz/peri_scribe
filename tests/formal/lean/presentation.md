@@ -1,8 +1,9 @@
 # Identity through presentation and sparse evidence
 
-`IdentityOutput.lean` and `SparseEvidence.lean` cover the composition from grouped
-identity through history selection, area qualification, and shared output facts.
-`OraclePresentation.lean` executes the definitions used by their proofs. Run
+Reports and maps must select history for the intended fire and make consistent use of
+the available area evidence. `IdentityOutput.lean` and `SparseEvidence.lean` follow
+grouped identities through history selection, area qualification, and shared output
+facts. `OraclePresentation.lean` executes the definitions used by their proofs. Run
 `mise formal-lean` and `mise formal-conformance` to build and check them.
 
 ## Identity and output guarantees
@@ -125,4 +126,5 @@ grouped observation membership, chronological drawing, and area eligibility;
 `keyed` evaluates tagged canonical ownership; `matched` evaluates descriptive lookup;
 and `sparse` evaluates current/historical area and threshold visibility. Missing input
 is `n`; the bounded adapter reserves `-99999999` for missing output. Boolean output
-uses `0` or `1`. Malformed vectors fail instead of inventing default evidence.
+uses `0` or `1`. Unparseable numeric fields and incorrect section or argument counts
+fail explicitly.

@@ -31,26 +31,26 @@ class ExternalSourceKind(enum.Enum):
 class ExternalSource:
     """One external dataset and how to retrieve it.
 
-    For an ``arcgis`` source, ``layer_name`` names the GeoPackage layer the features are
-    written to and ``where`` optionally restricts the query. For a ``download`` source,
-    ``url`` points at a zip archive that is downloaded, extracted, and converted to a
-    GeoPackage. When ``states`` is non-empty the URL is a format template containing
-    ``{state}`` and one archive is fetched per state, unless ``state_urls`` is set: then
-    ``url`` names the page whose "Download links" table maps each state to its archive
-    URL, and that page is loaded only when an archive is actually downloaded, so the
-    links are always current. When ``combine`` is true the per-state results are
-    concatenated into a single GeoPackage named for the source, and the per-state files
-    are removed. When ``centroids`` is true the converted GeoPackage holds each
-    feature's centroid point instead of its original geometry, and ``geodata_suffix``
-    names the file (or file geodatabase directory, for a ``.gdb`` archive) inside the
-    extracted archive that holds the vector data. When ``keep_attributes`` is false the
-    converted GeoPackage holds only the geometry, dropping every attribute column.
-    ``cities`` sources use a dedicated conditional downloader and normalized SQLite
-    database of named points. When ``compact_database`` is true the source's output is
-    the compact buildings SQLite database (``sources/{name}.sqlite``), produced and read
-    by the dedicated buildings converter rather than the generic GeoPackage conversion
-    paths; the database holds no named layers, so ``layer_name`` is not required, and
-    the other conversion options do not apply.
+    An ``arcgis`` source writes to the GeoPackage layer named by ``layer_name``. Its
+    optional ``where`` clause restricts which features are queried.
+
+    A ``download`` source supplies a zip archive for conversion to a GeoPackage. With
+    ``states``, one archive is fetched per state. Its URL comes from substituting
+    ``{state}`` in ``url``, unless ``state_urls`` supplies a mapping from a page's
+    "Download links" table. In that case, ``url`` identifies the page, which is read
+    when a download is needed so changed links are picked up.
+
+    ``geodata_suffix`` identifies the vector file inside the archive, or a file
+    geodatabase directory for ``.gdb``. ``combine`` joins state results into one
+    GeoPackage named for the source and removes the state files. ``centroids`` keeps
+    each feature's centroid instead of its original geometry, and ``keep_attributes``
+    controls whether attribute columns are retained. These options let a source keep
+    only the locations needed by the pipeline.
+
+    ``cities`` sources have their own conditional downloader and SQLite database of
+    named points. ``compact_database`` selects the dedicated buildings converter and its
+    SQLite output at ``sources/{name}.sqlite``. That database has no named layers, so
+    ``layer_name`` is optional and the other conversion options do not apply.
     """
 
     name: str
@@ -66,11 +66,10 @@ class ExternalSource:
     # When true, the per-state results are concatenated into a single GeoPackage named
     # for the source and the per-state files are removed.
     combine: bool = False
-    # When true, the source's archive is streamed and converted without ever writing the
-    # archive or its GeoJSON to disk: the archive's bytes feed ``stream_unzip`` while
-    # they arrive and each footprint is reduced to its centroid point. Only meaningful
-    # for a ``download`` source whose archive is a zip holding a GeoJSON member,
-    # combined into one GeoPackage, and reduced to centroids with no attributes.
+    # Streaming feeds incoming archive bytes to ``stream_unzip`` and reduces each
+    # footprint to its centroid, avoiding archive and GeoJSON files on disk. This option
+    # applies only to a ``download`` source with GeoJSON in a zip archive, combined into
+    # one GeoPackage of centroids with no attributes.
     stream: bool = False
     centroids: bool = False
     keep_attributes: bool = True

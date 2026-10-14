@@ -27,13 +27,13 @@ INCIDENT_SIZE_COLUMNS = ("attr_IncidentSize", "attr_FinalAcres")
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class PerimeterSizeFilterConfig:
-    """Thresholds for dropping a perimeter whose geometry collapsed.
+    """Thresholds for identifying a perimeter whose geometry has collapsed.
 
-    A perimeter is dropped when its geometry area is smaller than one of these fractions
-    of the size the source reports for the same row. The computed-area fraction is
-    generous because the polygon's computed area should match its geometry; the
-    incident-size fraction is strict because the incident size legitimately runs ahead
-    of the mapped extent early in a fire.
+    Drop a perimeter when its measured area falls below a configured fraction of the
+    size reported on the same row. The source's computed polygon area should be close to
+    the measured geometry. Incident size can legitimately run ahead of mapping,
+    especially early in a fire, so it takes a much larger discrepancy to reject a
+    perimeter on that evidence.
     """
 
     minimum_computed_area_fraction: float = 0.2
@@ -46,7 +46,7 @@ DEFAULT_SIZE_FILTER_CONFIG = PerimeterSizeFilterConfig()
 def geometry_area(geometry: shapely.Geometry | None) -> pint.Quantity[float] | None:
     """Return *geometry*'s area, or None when it has none.
 
-    The area is computed geodesically so it is accurate anywhere on Earth.
+    Measure on the WGS84 ellipsoid rather than treating degrees as planar distances.
 
     Args:
         geometry: The perimeter geometry, in degree coordinates, or None.
@@ -84,8 +84,9 @@ def computed_area(attributes: dict[str, object]) -> pint.Quantity[float] | None:
 def incident_size(attributes: dict[str, object]) -> pint.Quantity[float] | None:
     """Return the incident's reported size for one row, in acres.
 
-    The incident size is a human report that can outrun the mapped perimeter, so it is
-    only used as a collapse reference with a much stricter threshold.
+    A human report can describe growth that the perimeter has not yet mapped. Allow a
+    much larger discrepancy against this value than against the source's computed
+    polygon area before treating the geometry as collapsed.
 
     Args:
         attributes: The row's attributes.
@@ -107,12 +108,13 @@ def perimeter_is_implausibly_small(
     observation: peri_scribe.perimeters.versions.SourceObservation,
     config: PerimeterSizeFilterConfig = DEFAULT_SIZE_FILTER_CONFIG,
 ) -> bool:
-    """Return whether *observation*'s geometry collapsed below its reported size.
+    """Return whether the measured perimeter is implausibly small for its reported size.
 
-    The geometry is judged against the polygon's computed area and, more strictly,
-    against the incident's reported size. Either reference can reveal a collapse: the
-    computed area when the polygon alone shrank, and the incident size when the polygon
-    and its computed area shrank together.
+    Compare the measured geometry with both the source's computed polygon area and the
+    incident's reported size. The first can reveal a polygon that shrank while its
+    stored area stayed the same. The second can reveal a polygon and stored area that
+    shrank together, but requires a much larger discrepancy because reported growth can
+    legitimately precede mapping.
 
     Args:
         observation: The perimeter observation to judge.
@@ -168,7 +170,7 @@ def drop_implausibly_small_perimeters(
         config: The size-filter thresholds.
 
     Returns:
-        The observations whose geometry matches their reported size, in order.
+        The observations not rejected by the size thresholds, in input order.
     """
     return [
         observation

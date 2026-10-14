@@ -97,7 +97,9 @@ def area_qualified_index(
     """Return *index* with every fire lacking a qualifying area indication removed.
 
     A fire stays when the shared area policy selects an estimate at least the minimum
-    anywhere in its history. Later corrections cannot erase that qualification.
+    anywhere in its retained dated history. Without dated estimates, sparse records use
+    the policy's fallback. The first dated estimate replaces that fallback and can
+    change qualification.
 
     Args:
         index: The fire index to filter.

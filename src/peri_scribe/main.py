@@ -61,7 +61,14 @@ class Commands(click.Group):
         return super().get_command(ctx, cmd_name)
 
 
-@click.group(cls=Commands)
+@click.group(
+    cls=Commands,
+    help=(
+        "Gather fire geography and turn it into maps and reports.\n\n"
+        "Use the collected histories to understand fire behavior and show how fires "
+        "change."
+    ),
+)
 @click.option(
     "--stderr-log-level",
     type=click.Choice(
@@ -83,9 +90,7 @@ class Commands(click.Group):
     help="Minimum logging level for monthly JSON files in YEAR_DIRECTORY/logs.",
 )
 def cli(stderr_log_level: str, file_log_level: str) -> None:
-    """Support systematic gathering and symbolization of fire geography.
-
-    Use the collected geography for fire behavior analysis and presentation.
+    """Configure logging for commands.
 
     Args:
         stderr_log_level: Minimum severity for console logging.
@@ -97,13 +102,12 @@ def cli(stderr_log_level: str, file_log_level: str) -> None:
 def distribution_version() -> str:
     """Return the installed peri_scribe distribution's version.
 
-    ``__package__`` names the package this module belongs to, and the distribution is
-    installed under that same name, so it supplies the metadata lookup name without
-    repeating it in source here. The version comes from the installed distribution's
-    metadata rather than from source, so it cannot drift from the released version.
+    The installed distribution supplies the version, so it can't drift from the release
+    metadata. Its name matches ``__package__``, which avoids maintaining a second copy
+    of the name here.
 
     Returns:
-        The installed distribution's version string.
+        The distribution name and version in the CLI's display format.
 
     Raises:
         RuntimeError: If the module was not imported as part of its package, so the

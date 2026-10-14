@@ -2,6 +2,9 @@
 
 ## Raw snapshot publication
 
+A snapshot becomes authoritative as soon as discovery can find it. Its final filename
+must therefore refer only to a complete GeoPackage that's ready to read.
+
 `SnapshotPublication` models the authoritative feed GeoPackages produced by
 `fetch_feed_snapshot` in `src/peri_scribe/sources/fetching.py`. It covers the metadata
 shortcut, staging an entire snapshot, atomically publishing its filename, then updating
@@ -46,6 +49,9 @@ authoritative file; the separately checked current-state cache rebuilds from sna
 when necessary.
 
 ## Remote mutations during collection
+
+The feed can change between the queries used to collect it. A successful set of queries
+doesn't by itself mean they all saw the same version of the source.
 
 `SnapshotCollection` extends the stable-view assumptions of the Lean incremental
 collection policy with transitions between metadata, changed-ID, all-ID, and

@@ -9,9 +9,9 @@ description: >-
 # Regenerate the pipeline dataflow diagram
 
 Update [docs/dataflow.svg](../../docs/dataflow.svg) and the Network resources section
-in [architecture](../../docs/architecture.md) in place. Regeneration means reconciling
-these documents with the implementation, not running the application or rebuilding
-its datasets. Keep the static SVG in `docs/`.
+in [architecture](../../docs/architecture.md) to match the current implementation. This
+work edits the documentation in place; it does not require running the application or
+rebuilding its datasets. Keep the static SVG in `docs/`.
 
 Read [architecture](../../docs/architecture.md) and the current SVG first. Treat source
 code as authoritative when documentation and implementation disagree. Preserve the
@@ -19,7 +19,7 @@ established presentation below unless the user's current request changes it.
 
 ## README overview
 
-The [README pipeline overview](../../README.md#pipeline) is an ordered Markdown list
+The [README pipeline overview](../../README.md#how-it-works) is an ordered Markdown list
 of the five stages and their main saved outputs, including incident-report histories
 and the browser update viewer. Keep this simple sequence directly in the text. Explain
 the work in plain language, leaving file inventories, memory structures, and recovery
@@ -61,9 +61,9 @@ spatial indexes, metrics, selections, summaries, assembly state, and observer st
 Omit objects that merely hold a complete or partial copy of a disk dataset. A derived
 structure may still matter when it has a disposable cache on disk.
 
-For each changed class or structure, establish its producer and consumers before
-drawing its connections. Distinguish data dependencies from stage order and retry
-control. Do not imply that reports consume KMZ bytes simply because reports run later.
+Before drawing a changed file class or memory structure, identify what produces it and
+what reads it. An arrow should distinguish a data dependency from stage order or retry
+control. For example, reports run after KMZ generation, but do not consume its bytes.
 The project covers the United States; California-specific inputs do not narrow that
 scope.
 

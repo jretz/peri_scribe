@@ -1,9 +1,12 @@
 # Coordinate-reference selection
 
-`PeriScribe/CoordinateReference.lean` covers the numerical filtering and candidate
-selection in `arcgis_access.spatial_reference`. Its executable definitions are used by
-`oracleCoordinateReference`; `conformance/test_coordinate_reference.py` calls the actual
-Python selectors with real CRS metadata.
+Coordinate values only have geographic meaning under a coordinate reference system
+(CRS). When a source reports several possible references, the selector uses coordinate
+and area bounds to decide whether one candidate is supported or the result is ambiguous.
+`PeriScribe/CoordinateReference.lean` checks that filtering and selection policy in
+`arcgis_access.spatial_reference`. `oracleCoordinateReference` executes its definitions;
+`conformance/test_coordinate_reference.py` calls the actual Python selectors with real
+CRS metadata.
 
 ## Guarantees
 

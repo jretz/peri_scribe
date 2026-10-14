@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="840" height="426" viewBox="0 0 840 426" role="img" aria-labelledby="title description" style="max-width:100%;height:auto">
-  <title id="title">Incremental candidates cover different omissions</title>
-  <desc id="description">Three independent ID queries feed a union before exact feature comparison. The inputs follow the sorted result order, and each arrow points to the ID its query contributes.</desc>
+  <title id="title">Each query catches changes the others can miss</title>
+  <desc id="description">Three queries catch different changes: an active row becomes inactive, a known row gets a newer edit time, or a new ID appears with an old timestamp. Their IDs are combined before the actual features are compared. Inputs follow the sorted result order, and each arrow points to the ID contributed by that query.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
   <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"/>
@@ -20,7 +20,7 @@
     </style>
   </defs>
   <rect width="840" height="426" fill="var(--bg)"/>
-  <text x="28" y="36" class="title" text-anchor="start">Incremental candidates cover different omissions</text>
+  <text x="28" y="36" class="title" text-anchor="start">Each query catches changes the others can miss</text>
   <g id="status-flips">
 <rect x="28" y="70" width="244" height="128" fill="var(--gold)" class="card "/>
 <text x="46" y="99" class="heading" text-anchor="start">Status flips</text>
@@ -47,5 +47,5 @@
 <text x="206" y="283" class="heading" text-anchor="start">Sorted candidate union: {<tspan id="status-id">1</tspan>, <tspan id="changed-id">2</tspan>, <tspan id="missing-id">3</tspan>}</text>
 <text x="206" y="311" class="" text-anchor="start">Fetch features, then compare actual rows.</text>
 </g>
-  <text x="28" y="397" class="muted" text-anchor="start">No one query supplies a transactionally complete provider snapshot.</text>
+  <text x="28" y="397" class="muted" text-anchor="start">The provider can change between queries, so the combined result may still miss edits.</text>
 </svg>

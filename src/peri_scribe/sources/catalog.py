@@ -19,10 +19,9 @@ BUILDINGS_STATES = tuple(state.name for state in (*us.states.STATES, us.states.D
 def buildings_state_urls() -> dict[str, str]:
     """Return the state-to-archive-URL mapping from the repo's page.
 
-    The per-state archive links live in the "Download links" table of the repository
-    page named by ``BUILDINGS_SOURCE.url``; the page is loaded only when the archives
-    are about to be downloaded, so a change in the link scheme is picked up
-    automatically.
+    The archive links come from the "Download links" table on ``BUILDINGS_SOURCE.url``.
+    Reading that page when a download is needed picks up changed links without a
+    configuration update.
 
     Returns:
         The mapping from state name to archive URL.

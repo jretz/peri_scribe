@@ -1,4 +1,4 @@
-"""Computing polygon centroids from raw geometry bytes.
+"""Compute polygon centroids from coordinate arrays.
 
 [Building centroid reasoning](../../docs/algorithms/building-centroids.md)
 explains the contract and correctness argument.
@@ -31,11 +31,11 @@ TO_WGS84 = pyproj.Transformer.from_crs(
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class SegmentIndexes:
-    """Per-ring segment index arrays for one chunk.
+    """Indexes connecting each ring to its line segments.
 
-    ``ring_segment_starts`` holds the index of each ring's first segment in the
-    concatenated segment arrays; ``segment_indices`` holds the absolute coordinate index
-    of each segment's start; ``ring_of_segment`` holds the ring of each segment.
+    ``ring_segment_starts`` locates each ring's first segment in the combined segment
+    arrays. ``segment_indices`` locates each segment's starting coordinate, and
+    ``ring_of_segment`` identifies the ring it belongs to.
     """
 
     ring_segment_starts: np.ndarray
@@ -45,14 +45,16 @@ class SegmentIndexes:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class RingCentroidSums:
-    """Per-ring shoelace quantities for centroid aggregation.
+    """Per-ring sums needed to combine centroids by area.
 
-    ``absolute_double_areas`` holds each ring's absolute signed double area;
-    ``signed_numerators`` holds each ring's signed centroid numerator as an ``(R, 2)``
-    array (translated coordinates); ``area_weighted_offsets`` holds each ring's double
-    area times its translation offset, so the original-coordinate centroid is
-    ``(signed_numerators + 3 * area_weighted_offsets) / (3 * absolute_double_areas)``
-    combined by part and feature.
+    ``absolute_double_areas`` holds twice each ring's area. ``signed_numerators`` holds
+    its centroid numerator as an ``(R, 2)`` array after translation and orientation
+    adjustment. ``area_weighted_offsets`` holds twice the area times the translation
+    offset, so the offset can be restored when combining rings.
+
+    The centroid in the original coordinates uses
+    ``(signed_numerators + 3 * area_weighted_offsets) / (3 * absolute_double_areas)``,
+    with the sums combined by polygon and feature.
     """
 
     absolute_double_areas: np.ndarray
@@ -63,8 +65,10 @@ class RingCentroidSums:
 def segment_indexes(ring_bounds: np.ndarray) -> SegmentIndexes:
     """Return per-ring segment index arrays for *ring_bounds*.
 
-    The segment index arrays are capped by the vertex budget, so int32 is safe and
-    halves their footprint versus int64.
+    Using int32 halves the index arrays' footprint compared with int64. This assumes
+    each chunk's coordinate and segment counts fit in signed 32-bit integers. The
+    streaming vertex threshold keeps ordinary chunks well below that limit, but does not
+    split an unusually large individual feature.
 
     Args:
         ring_bounds: Each ring's ``[start, end)`` into the concatenated coordinates.
@@ -137,8 +141,9 @@ def ring_centroid_sums(
 ) -> RingCentroidSums:
     """Return per-ring shoelace quantities for *coordinates*.
 
-    Each ring is translated so its first point is the origin before the shoelace sums,
-    then the offset is returned area-weighted so the caller can add it back.
+    Moving each ring's first point to the origin reduces cancellation when large
+    coordinates describe a small polygon. The returned area-weighted offset lets the
+    caller restore the original position after combining rings.
 
     Args:
         coordinates: The concatenated ring coordinates.

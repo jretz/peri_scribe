@@ -2,13 +2,14 @@
 
 ## Contract and context
 
-Two related geometry boundaries determine which perimeter is retained and what is drawn.
-Border classification combines source-specific projected geometry, contemporary source
-extents, and identifier evidence to choose a geographic class used by
+Geometry policy determines which perimeter to retain and what to draw. Border
+classification uses geometry projected from each source and compares source extents from
+similar observation times. Identifier evidence is retained alongside the result but does
+not change the class. The geographic class guides
 [reconciliation](perimeter-reconciliation.md). After reconciliation, size validation and
 cleaning remove collapsed mappings and rendering artifacts from derived geometry while
-leaving source files intact. These are nationwide operations; the California boundary
-exists because one available feed has a regional coverage preference.
+leaving source files intact. These operations apply nationwide. The California boundary
+is relevant because one available feed has a regional coverage preference.
 
 ## Complexity assessment
 
@@ -55,8 +56,9 @@ find a compatible pair.
 Classification precedence is crossing, then near (geometric near or extent conflict),
 then inside/outside. An out-of-state unit, mission, or origin only records an evidence
 flag and does not change the class alone. This prevents weaker administrative evidence
-from asserting a physical crossing. The one-sided collection shortcut preserves the
-same scalar geometry signal as true union, rather than merely the same final label.
+from asserting a physical crossing. The one-sided collection shortcut preserves the same
+scalar geometry signal as a full union. Preserving only the final label would be
+insufficient, because callers also use the underlying measurements.
 
 ## Size filtering and cleaning
 
@@ -68,8 +70,8 @@ incident threshold allows genuine reporting to run ahead of mapping.
 
 Cleaning uses degree coordinates and configurable defaults: part/hole area floor
 10⁻⁶ degrees², collinear epsilon 10⁻⁷ degrees, and nominal deviation 22 meters. Retain
-polygon parts and holes strictly larger than the area floor. If all polygon parts fall
-below it, keep the original entire geometry: a wholly tiny fire must not disappear as
+polygon parts and holes strictly larger than the area floor. If no polygon part exceeds
+the floor, keep the original entire geometry: a wholly tiny fire must not disappear as
 noise. Empty, missing, and wholly nonpolygonal inputs also pass through unchanged.
 
 ![Rendering cleanup and the whole-fire fallback](perimeter-cleaning.svg)
@@ -105,7 +107,8 @@ Two overlapping outside parts of 400 square meters each with a 200-square-meter 
 have outside area 600, not 800. Summing part areas breaks the absolute signal, even though
 the extreme outside fraction remains one. For size rejection, measured 20 acres versus
 computed 100 acres passes at equality; measured 19 acres fails. Measured 50 acres versus
-incident size 1,000 acres stays eligible under the stricter incident-size collapse check.
+incident size 1,000 acres is 5% of the reported size, so it passes the looser 1%
+incident-size check.
 
 Cleaning each adjacent polygon independently can change their relationship; assembly
 before simplification preserves the intended topology contract. Conversely, retaining all

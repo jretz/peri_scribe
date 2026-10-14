@@ -1,5 +1,9 @@
 # Complete identity allocation and persistent history
 
+Assigning a fire to an existing history is only part of identity management. Every
+unresolved fire still needs a distinct key, and later publications must retain the
+evidence already acknowledged for that history.
+
 `IdentityLifecycle.lean` extends `Identity.lean` through all allocation phases and
 successive acknowledgements. Its 27 theorems and `OracleOwnership.lean` share the
 definitions executed by `oracleOwnership`. The Python owners are

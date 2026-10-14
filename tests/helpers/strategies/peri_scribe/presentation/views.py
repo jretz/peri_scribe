@@ -1,4 +1,4 @@
-"""Generate folders examples with constrained domains."""
+"""Generate fire histories for ranked-view tests."""
 
 from __future__ import annotations
 

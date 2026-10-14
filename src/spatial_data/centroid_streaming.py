@@ -1,18 +1,16 @@
-"""Converting streamed polygon archives without retaining whole archives in memory.
+"""Convert polygon archives without keeping a whole archive in memory.
 
-GeoJSON polygon archives can exceed memory when decompressed. Streaming keeps archive
-bytes incremental: ``stream_unzip`` decompresses each member as the
-bytes arrive, and the parsed geometry feeds the centroid conversion directly. Neither
-the archive nor the GeoJSON is ever written to disk. Feature boundaries preserve whole
-polygons, so one large feature can exceed the vertex threshold for a conversion chunk.
+Decompressed GeoJSON archives can exceed available memory. ``stream_unzip`` decompresses
+each member as bytes arrive, and parsed geometries go directly into centroid conversion.
+Neither the archive nor its GeoJSON is written to disk. Chunks end between features to
+keep polygons intact, so one large feature can exceed the vertex threshold.
 
-The centroid of each footprint is the polygon's area-weighted centroid, computed in
-EPSG:3857 so the result matches a projection-aware centroid. Each ring is translated to
-its own first point before the shoelace sums: EPSG:3857 coordinates are on the order of
-10^7 meters while a small polygon's double area can be 10^3, so the naive sums
-lose precision to catastrophic cancellation (the area itself can come out wrong by
-meters). Centroid is translation-invariant, so each ring's offset is added back,
-area-weighted.
+Centroids are computed in EPSG:3857 and then converted back to WGS84. Large projected
+coordinates can lose precision in the shoelace sums: coordinates may be around 10^7
+meters while a small polygon's double area is only around 10^3 square meters.
+Subtracting nearly equal large products can then distort the result. Moving each ring's
+first point to the origin reduces that cancellation. Its area-weighted offset restores
+the position when the rings are combined.
 
 [Building centroid reasoning](../../docs/algorithms/building-centroids.md)
 explains the contract and correctness argument.
@@ -53,19 +51,21 @@ def collect_geometry_chunk(
     chunk_size: int,
     maximum_vertices: int,
 ) -> spatial_data.centroid_data.GeometryChunk | None:
-    """Return one bounded chunk of ring geometry from *features_iter*, or None.
+    """Return the next chunk of ring geometry from *features_iter*, or None.
 
-    *features_iter* yields GeoJSON geometry dicts (``features.item.geometry`` from
-    ijson) and is created once by the caller, because ijson's backends cannot start a
-    fresh generator over a partially consumed stream. Collection stops at the feature
-    limit or the vertex limit, whichever comes first. Coordinates accumulate into a C
-    ``array.array('d')`` and are returned as a zero-copy numpy view, so the collection
-    holds 8 bytes per value rather than the ~32 bytes of a Python float list.
+    The caller creates one ijson iterator over ``features.item.geometry`` and keeps
+    using it: ijson's backends cannot start a new generator partway through the same
+    stream. Collection stops after the feature that reaches either the feature limit or
+    the vertex threshold, so a complete feature can take the chunk over that threshold.
+
+    Coordinates accumulate in ``array.array('d')`` and become a NumPy view without
+    copying. Each value occupies 8 bytes there; a list of Python floats would also need
+    space for the individual float objects and their references.
 
     Args:
         features_iter: The ijson geometry iterator.
         chunk_size: The maximum number of features per chunk.
-        maximum_vertices: The maximum number of ring vertices per chunk.
+        maximum_vertices: The vertex threshold checked after each complete feature.
 
     Returns:
         The chunk's ring geometry, or None at the end of the stream.
@@ -153,13 +153,18 @@ def convert_geometry_chunks(
 def centroid_chunks(
     features: typing.Iterator[typing.Any],
 ) -> typing.Iterator[np.ndarray]:
-    """Keep both feature and vertex limits while sharing vectorized conversion.
+    """Convert geometries in chunks, keeping each feature intact.
+
+    The feature limit and vertex threshold keep ordinary chunks small. A single large
+    feature can exceed the vertex threshold because splitting a polygon would change its
+    centroid.
 
     Args:
         features: A single-pass stream of GeoJSON geometries.
 
     Yields:
-        Centroid arrays in source order, bounded by the geometry chunk limits.
+        Centroid arrays in source order, with one point per polygon or multipolygon
+        feature in each chunk. Other geometry types are skipped.
     """
     while (
         chunk := collect_geometry_chunk(
@@ -215,8 +220,8 @@ def convert_zip_stream(
         The number of features converted.
 
     Raises:
-        GeometryStreamError: If the stream is not a ZIP archive or holds no GeoJSON
-            member with any features.
+        GeometryStreamError: If the stream cannot be read or holds no GeoJSON member
+            with convertible polygon features.
     """
     try:
         feature_count = convert_geometry_chunks(
@@ -226,7 +231,7 @@ def convert_zip_stream(
             first=first,
         )
     except stream_unzip.UnzipError as error:
-        message = f"The streamed archive is not a zip file: {error}"
+        message = f"Failed to read the streamed ZIP archive: {error}"
         raise spatial_data.exceptions.GeometryStreamError(message) from error
     except Exception as error:
         message = f"Failed to read the streamed GeoJSON: {error}"

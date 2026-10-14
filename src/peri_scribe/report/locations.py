@@ -5,9 +5,8 @@ fire's mapped area: the nearest city names the location, and the location phrase
 the distance and direction from that city to the fire, like ``15 mi ESE of Portland,
 OR``. A fire with a mapped perimeter is measured to its interior — the area bounded by
 its latest perimeter — rather than to its point, so a fire that reaches a city reads as
-0 miles from that city, and a large fire reads from where it actually starts rather than
-from its mapped center. A fire with only a point location is measured from that point
-instead.
+0 miles from that city. Distances from cities outside the mapped area are measured to
+its nearest edge. A fire with only a point location is measured from that point instead.
 
 Each candidate city is measured in an azimuthal equidistant projection centered on that
 city. Radial distances use the geodesic metric; projected polygon segments and candidate
@@ -65,25 +64,22 @@ COMPASS_POINT_NAMES: tuple[str, ...] = (
 # The width of one 16-wind compass point in degrees.
 COMPASS_POINT_SPAN = 360.0 * units.degrees / len(COMPASS_POINT_NAMES)
 
-# How far past the mapped area's measured extent a nearest city may lie. The candidate
-# search keeps every city whose distance from the area's centroid is within twice this
-# radius of the closest city's, and the radius is measured to the area's boundary
-# vertices plus this margin, so the margin absorbs the small distance by which an edge's
-# midpoint can reach beyond its vertices and the numerical noise of the measurements.
-# The margin is far smaller than the spacing between cities, so it adds only cities that
-# were plausible candidates anyway.
+# Add this allowance to the greatest boundary-vertex distance from the centroid before
+# screening candidate cities. Edges can extend farther than their vertices, and distance
+# calculations have numerical error. This fixed margin allows for those effects but is
+# not a proven bound for arbitrary geometry; the design note explains that limitation.
 CENTROID_DISTANCE_MARGIN = 1_000.0 * units.meters
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class NearestCity:
-    """The city nearest to a fire's mapped area and the facts the location phrase needs.
+    """Keep the nearest city's name, distance, and direction together.
 
-    The mapped area is the fire's interior, or its point location when the fire has no
-    interior. The distance is from the city's point to that area: zero when the city
-    lies on or inside it. The bearing points from the city toward the nearest part of
-    the area, measured in degrees clockwise from north; a city on or inside the area has
-    no one nearest part, so its bearing is None.
+    Distance is measured from the city's point to the fire's mapped interior, or to its
+    point when no interior is available. A city on or inside the mapped area has
+    distance zero. The bearing points toward the nearest part of the fire, in degrees
+    clockwise from north. It's None for a city on or inside the area because there's no
+    single direction toward the fire.
     """
 
     name: str
@@ -125,12 +121,12 @@ def compass_point(bearing: pint.Quantity[float]) -> str:
 
 
 def location_text(city: NearestCity) -> str:
-    """Return the location phrase naming *city*, like ``15 mi ESE of Portland, OR``.
+    """Return a location phrase such as ``15 mi ESE of Portland, OR``.
 
-    The distance is rounded to the nearest whole mile and leads the phrase, followed by
-    the compass direction from the city to the fire and the city's name and state. A
-    city on or inside the fire's mapped area is at zero distance and has no one
-    direction, so its phrase names the city alone at zero miles.
+    Distance is rounded to the nearest whole mile and paired with a compass direction,
+    so readers can place the fire relative to the named city and state. A city on or
+    inside the mapped area has no single direction toward the fire, so the phrase shows
+    zero miles and the city name without a direction.
 
     Args:
         city: The nearest city and its distance and direction facts.
@@ -154,11 +150,11 @@ def location_text(city: NearestCity) -> str:
         ...         name="Portland", state_abbreviation="OR", distance=0 * units.miles
         ...     )
         ... )
-        '0 mi of Portland, OR'
+        '0 mi from Portland, OR'
     """
     place = f"{city.name}, {city.state_abbreviation}"
     if city.bearing is None:
-        return f"0 mi of {place}"
+        return f"0 mi from {place}"
     miles = round(city.distance.m_as("miles"))
     return f"{miles} mi {compass_point(city.bearing)} of {place}"
 
@@ -192,7 +188,7 @@ def distance_and_bearing_from_point(
     longitude: float,
     latitude: float,
 ) -> tuple[pint.Quantity[float], pint.Quantity[float] | None]:
-    """Return the geometry's geodesic distance and bearing from one point.
+    """Estimate distance and bearing from one point to the geometry.
 
     The distance is measured to the geometry itself — a fire's interior or its point
     location — so a point inside or on the geometry is at distance zero and has no one
@@ -304,7 +300,7 @@ def nearest_city(
 
     Each row of *cities* names one city with ``NAME`` and ``STATE_ABBR`` columns and a
     point geometry in WGS 84 degrees. Rows missing any of those or carrying empty
-    geometries are ignored. Exact distances are measured only for plausible candidates
+    geometries are ignored. Distances are measured only for plausible candidates
     (see :func:`plausible_city_indices`). When several cities tie for nearest, the first
     alphabetically by name and state wins, so the choice is stable.
 

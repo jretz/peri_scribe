@@ -75,8 +75,7 @@ def located_fire(
         identifier: The fire's identifier.
 
     Returns:
-        A fire whose latest perimeter is a non-empty polygon, so its location can be
-        measured from an interior.
+        A fire with a nonempty polygon for nearest-city location measurements.
     """
     return peri_scribe.presentation.fire_data.FireSummary(
         name=name,

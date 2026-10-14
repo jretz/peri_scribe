@@ -1,8 +1,9 @@
 # Verification evidence and execution
 
-The verification tools must preserve the meaning of checked histories while sharing
-expensive work. Process ownership, temporary evidence sessions, prefix replay, and
-coverage receipts prevent incomplete or unrelated results from counting as success.
+The verification tools share expensive work, but each result must still describe the
+complete history that was checked. Process ownership keeps cleanup attached to the work
+that created it. Temporary evidence sessions, replay of shared history prefixes, and
+coverage receipts keep incomplete or unrelated results from counting as success.
 
 ## Contract and assessment
 
@@ -64,10 +65,11 @@ can create and visit the branches in turn. The loop reset is a visual replay.*
 Each branch starts from its own copy of the shared prefix's durable state. Siblings
 never share mutable durable files, so work on one continuation cannot affect another.
 
-Conformance observes complete transitions, retaining all compatible full model states
-and allowed internal/stuttering paths. Individually reachable states are insufficient:
-their observed order must correspond to a permitted execution. Typed graph projection
-retains exact node identities and successor order.
+Conformance checks the transitions in a complete execution. It retains every compatible
+full model state, including paths with internal steps or stuttering steps that leave the
+observed state unchanged. A state can be reachable on its own even when the observed
+order is impossible, so checking states independently is insufficient. Typed graph
+projection retains exact node identities and successor order.
 
 Build a prefix tree from complete invocation histories. Identical complete prefixes
 execute once; each continuation receives a private timestamp-preserving copy of the
@@ -113,7 +115,8 @@ workers own independent resources, so higher concurrency increases aggregate mem
 Shared-prefix equivalence assumes deterministic execution for the chosen inputs and an
 exact copy of relevant durable state. The proof states these assumptions; concrete
 regressions check copying and fresh replays. Finite model checking does not establish
-unbounded correctness. Coverage measures executed structure, not semantic correctness.
+unbounded correctness. Coverage shows which code executed; it doesn't establish that the
+code produced the right result.
 
 - [TLC runner](../../tests/formal/check.py),
   [process adapter](../../tests/formal/helpers/process.py),

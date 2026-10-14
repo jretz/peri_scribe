@@ -51,8 +51,8 @@ TICK_LABEL_GAP = 7.0
 GRID_COLOR = "#cccccc"
 LINE_WIDTH = 1.6
 
-# The legend is one centred row above the plot area: a colour swatch and a label per
-# series, with this much space between consecutive entries.
+# The legend is one centred row above the plot area: a colour swatch and a label for
+# each visible style in each series, with this much space between consecutive entries.
 LEGEND_BASELINE_Y = 16.0
 LEGEND_SWATCH_WIDTH = 22.0
 LEGEND_SWATCH_GAP = 6.0
@@ -127,11 +127,10 @@ def x_axis_ticks(
 ) -> tuple[datetime.datetime, ...]:
     """Return the midnight times at which to place x-axis ticks.
 
-    Ticks sit on a uniform grid of midnights across the observations: each tick is one
-    interval after the last, where the interval thins the grid to at most
-    ``MAXIMUM_X_AXIS_TICKS`` ticks. No tick is forced onto the first or last observation
-    day; the axis itself extends to cover them, so the line is never cut off and the
-    reader can read any endpoint off the nearest tick.
+    Ticks follow a uniform grid of midnights, spaced far enough apart to stay within
+    ``MAXIMUM_X_AXIS_TICKS``. The axis still covers the first and last observation days
+    even when the last day has no tick. That keeps the line visible without squeezing
+    extra labels onto the ends.
 
     Args:
         series_list: The lines drawn in the plot.
@@ -277,10 +276,10 @@ def line_element(x1: float, y1: float, x2: float, y2: float) -> str:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class PlotLayout:
-    """Where every part of one plot is drawn.
+    """Shared positions and coordinate mappings for one plot.
 
-    The layout is computed once from the data and then read by each element builder, so
-    the coordinate mapping and the axis margins are decided in exactly one place.
+    Computing the layout once lets every element use the same coordinate mapping and
+    margins.
     """
 
     width: int
@@ -348,10 +347,10 @@ def plot_layout(
 ) -> PlotLayout:
     """Return where every part of *series_list*'s plot is drawn.
 
-    The y-axis is counted up from zero. The x-axis covers complete UTC days, including
-    the last observation's day, so intraday measurements fit between midnight ticks. The
-    left margin clears the rotated axis label, and the right margin keeps half of the
-    outermost x label inside the canvas so it is never clipped.
+    The y-axis starts at zero. The x-axis covers complete UTC days, including the last
+    observation's day, so intraday measurements fit between midnight ticks. The left
+    margin leaves room for the rotated axis label; the right margin keeps the outermost
+    x label inside the canvas.
 
     Args:
         series_list: The lines drawn in the plot.
@@ -401,10 +400,10 @@ def plot_layout(
 
 
 def gridline_elements(layout: PlotLayout) -> list[str]:
-    """Return the horizontal gridlines, which sit beneath everything else.
+    """Return the horizontal gridlines, drawn beneath the other elements.
 
-    The group is axis-aligned and one pixel wide, so it asks the renderer to skip
-    antialiasing rather than blur each line across two half-intensity pixel rows.
+    Each line is horizontal and one pixel wide. Disabling antialiasing keeps it sharp
+    instead of spreading it across two partly shaded rows.
 
     Args:
         layout: The plot's layout.
@@ -555,8 +554,8 @@ def line_segments(
 def label_elements(layout: PlotLayout, y_axis_label: str) -> list[str]:
     """Return the tick labels and the rotated y-axis label.
 
-    Y tick labels are right-aligned against the axis so they need no measurement; x tick
-    labels are centred on their ticks.
+    Y tick labels are right-aligned against the axis; their measured widths determine
+    the left margin. X tick labels are centred on their ticks.
 
     Args:
         layout: The plot's layout.
@@ -620,7 +619,8 @@ def legend_entries(
         series_list: Plot series whose visible segments determine the legend.
 
     Returns:
-        One entry per visible style, with solid lines before dashed lines.
+        One entry per series and visible style, with solid before dashed within each
+        series.
     """
     entries: list[LegendEntry] = []
     for series in series_list:

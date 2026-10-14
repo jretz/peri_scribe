@@ -3,7 +3,7 @@
      viewBox="0 0 840 480" role="img" style="max-width:100%;height:auto"
      aria-labelledby="border-closure-title border-closure-description">
   <title id="border-closure-title">Close the interstate path beyond the coast and southern edge</title>
-  <desc id="border-closure-description">The path runs westmost Pacific/Oregon endpoint through interstate borders to the Mexico/Arizona endpoint. Dashed closure runs south to latitude 31, west to longitude minus 126, then north and east.</desc>
+  <desc id="border-closure-description">The path starts at the westernmost endpoint, where the Pacific coast meets Oregon, and follows the interstate borders to the Mexico/Arizona endpoint. Dashed edges close the box by going south to latitude 31, west to longitude minus 126, then north and east. This closure includes ocean and land south of California so the classification follows the interstate border.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
             markerWidth="7" markerHeight="7" orient="auto-start-reverse">

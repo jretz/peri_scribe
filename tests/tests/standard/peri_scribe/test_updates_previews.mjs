@@ -16,7 +16,10 @@ test("startPage leads each update with its native-size accessible preview", asyn
   assert.equal(image.width, 128);
   assert.equal(image.height, 72);
   assert.equal(image.hidden, false);
-  assert.match(image.alt, /Timber perimeter preview.*white, yellow, then red.*north/);
+  assert.match(
+    image.alt,
+    /Timber perimeter preview.*newest to oldest: red, yellow, then white.*north/,
+  );
 });
 
 test("startPage replaces only the preview without restarting a retained row", async () => {

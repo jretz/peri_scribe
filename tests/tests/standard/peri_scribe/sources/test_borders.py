@@ -447,7 +447,7 @@ def test_california_box_polygon_excludes_neighboring_states() -> None:
     assert not box.contains(shapely.geometry.Point(-120.0, 43.0))
 
 
-def test_california_box_polygon_absorbs_maritime_and_mexico() -> None:
+def test_california_box_polygon_respects_southern_and_western_bounds() -> None:
     box = peri_scribe.sources.borders.california_box_polygon(
         tests.helpers.factories.peri_scribe.sources.administrative_boundaries.california_like_border(),
     )

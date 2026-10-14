@@ -29,7 +29,7 @@ class Outcome:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Interrupted:
-    """A durable source mutation precedes process loss and an unchanged retry."""
+    """A durable source mutation precedes simulated interruption and unchanged retry."""
 
     previous: peri_scribe.pipeline_state.PendingRun
     pending: peri_scribe.pipeline_state.PendingRun
@@ -38,7 +38,7 @@ class Interrupted:
 
 
 def outcomes(directory: pathlib.Path) -> tuple[Outcome, ...]:
-    """Keep expectations tied to TLC's complete reachable state graph.
+    """Keep expectations tied to TLC's complete set of reachable states.
 
     Args:
         directory: An isolated destination for checked model states.
@@ -142,7 +142,7 @@ def replay_outcome(outcome: Outcome, directory: pathlib.Path) -> None:
 
 
 def replay_interruption(interrupted: Interrupted, directory: pathlib.Path) -> None:
-    """Unchanged retries retain requirements surviving abrupt process loss.
+    """Unchanged retries retain requirements after a simulated interruption.
 
     Args:
         interrupted: Checked durable mutation boundary and expected recovery marker.

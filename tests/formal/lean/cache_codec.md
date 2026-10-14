@@ -1,10 +1,11 @@
 # Typed cache representation
 
-`CacheCodec.lean` proves an ordered tagged-tree codec over arbitrary finite trees.
-Scalar leaves carry a type tag and an exact sequence of natural-number byte values.
-Empty containers and nonempty ordered containers have distinct constructors. Prefix
-encoding retains both children of every branch and tags every constructor, so neither
-container boundaries nor scalar fields can be confused.
+Saving a value in the cache must preserve the distinctions needed to reconstruct it: its
+type, exact scalar contents, container boundaries, and child order. `CacheCodec.lean`
+proves this for an ordered tagged-tree codec over arbitrary finite trees. Scalar leaves
+carry a type tag and exact natural-number byte values. Empty and nonempty ordered
+containers have distinct constructors. Prefix encoding tags every constructor and
+retains both children of each branch, keeping boundaries unambiguous.
 
 The 14 theorems establish decoding with an arbitrary suffix, round trips, injectivity,
 equivalence of encoding equality and value equality, distinct scalar types and payloads,

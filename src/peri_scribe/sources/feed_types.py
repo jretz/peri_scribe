@@ -23,9 +23,9 @@ USER_AGENT = f"peri_scribe-watcher/{PERI_SCRIBE_VERSION}"
 class Feed(typing.Protocol):
     """Minimal interface for a feed that provides layer data.
 
-    Concrete feed classes satisfy this protocol and are validated from the JSON
-    configuration at runtime. All members are read-only, since a feed's configuration
-    does not change after it is loaded.
+    The configured ArcGIS feeds satisfy this protocol and validate their fields when
+    constructed. The protocol exposes read-only properties so consumers do not change a
+    feed's configuration.
     """
 
     @property
@@ -138,10 +138,10 @@ class Feed(typing.Protocol):
 
     @property
     def change_columns(self) -> tuple[str, ...]:
-        """The timestamp columns that change when a feature is edited.
+        """The timestamp columns used to look for feature edits.
 
         Returns:
-            The timestamp columns that change when a feature is edited.
+            The timestamp columns used to look for feature edits.
         """
         ...
 

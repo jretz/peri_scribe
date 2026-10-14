@@ -77,9 +77,10 @@ def fire_sources_document(
 ) -> dict[str, object]:
     """Return a JSON-serializable document for *source*.
 
-    The document has all of the fire's attributes plus the paths of the GeoPackage files
-    that mention it, relative to *sources_directory* and sorted by path, and the fire's
-    border classification when one is known.
+    The document includes the fire's attributes and its border classification when
+    known. It also lists the GeoPackage files that mention the fire. Those paths are
+    relative to *sources_directory* and sorted, so the file list does not depend on the
+    data directory's absolute location or the order in which files were read.
 
     Args:
         source: The fire and its source files.
@@ -173,7 +174,7 @@ def classifications_for_prepared_sources(
     year_directory: pathlib.Path,
     prepared: peri_scribe.fires.sources.PreparedSources,
 ) -> dict[int, peri_scribe.models.FireClassification]:
-    """Reclassify only fires whose complete source evidence or dependencies changed.
+    """Reuse cached classifications whose source evidence and dependencies match.
 
     Args:
         year_directory: The year holding the administrative boundary dependency.
@@ -232,7 +233,7 @@ def classifications_for_prepared_sources(
 def index_fire_sources(year_directory: pathlib.Path) -> None:
     """Build the fire source index for *year_directory*.
 
-    The index lists every distinct fire in the GeoPackage files under
+    The index lists each fire, excluding parent complexes, from the GeoPackages under
     ``{year_directory}/sources``, along with the GeoPackage files that mention each fire
     and each fire's border classification when the administrative boundary data is
     available. It is written to ``{year_directory}/sources/fires.json``.

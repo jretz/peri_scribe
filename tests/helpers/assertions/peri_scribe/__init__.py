@@ -1,1 +1,1 @@
-"""Share peri scribe test helpers."""
+"""Share PeriScribe test helpers."""

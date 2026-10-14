@@ -1,4 +1,4 @@
-"""Cancellation cannot outlive the thread while releasing its shared resource."""
+"""Cancellation keeps shared resources owned until the blocking worker exits."""
 
 import asyncio
 import json

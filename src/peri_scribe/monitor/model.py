@@ -1,4 +1,7 @@
-"""Immutable run and phase projections shared by terminal and future web consumers.
+"""Build immutable run and phase summaries from the recorded log evidence.
+
+The terminal and other consumers can share these summaries without changing each other's
+view of a command or inferring that a process is still running from an unfinished log.
 
 Algorithm reasoning and contracts:
 [Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
@@ -65,7 +68,7 @@ class Run:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class State:
-    """A bounded stream can be replaced atomically by any presentation adapter."""
+    """Replace the bounded stream as a whole to keep each consumer's view consistent."""
 
     runs: tuple[Run, ...] = ()
     sequence: int = 0
@@ -122,7 +125,7 @@ def reduce_record(
     fields: dict[str, object],
     sequence: int,
 ) -> None:
-    """Keep each record's phase context local to its owning batch accumulator.
+    """Apply each record to its command's working copy of the current batch.
 
     Args:
         pending: Private unpublished work for the record's run.
@@ -155,7 +158,7 @@ def append_records(
     *,
     bounded: bool = True,
 ) -> State:
-    """Correlate a batch without mutating the state retained by another consumer.
+    """Group a batch's records by command without changing an existing consumer's state.
 
     Args:
         state: The previously published stream state.
@@ -163,7 +166,8 @@ def append_records(
         bounded: Whether to apply the diagnostic event retention limits.
 
     Returns:
-        Updated bounded run history with stable event sequence numbers.
+        Updated run history with stable event sequence numbers and optional retention
+        limits.
     """
     runs = {run.identifier: run for run in state.runs}
     pending: dict[str, PendingRun] = {}

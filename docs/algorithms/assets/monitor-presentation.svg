@@ -1,6 +1,6 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 370" role="img" aria-labelledby="title desc">
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="370" viewBox="0 0 1000 370" role="img" aria-labelledby="title desc" style="max-width:100%;height:auto">
   <title id="title">Independent domain and presentation lifetimes</title>
-  <desc id="desc">A domain lane publishes health before preparing other resources. A presentation lane paints Status, then starts background preparation. Two overlapping row generations show how the older result is discarded. Shutdown detaches the presentation while admitted workers settle.</desc>
+  <desc id="desc">The domain publishes health before preparing other resources. The terminal displays Status, then starts background preparation. A changed selection creates generation B while generation A is still running; only B's rows are displayed. Shutdown detaches the presentation while workers that already started finish their work.</desc>
   <style>
     :root { color-scheme: light dark; }
     text { font: 15px system-ui, sans-serif; fill: #e4edf5; }

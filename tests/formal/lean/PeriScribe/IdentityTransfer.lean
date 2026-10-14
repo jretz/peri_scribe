@@ -2,9 +2,9 @@ import Std
 
 namespace PeriScribe.IdentityTransfer
 
-/- Durable history keys do not change when a correction changes their current owner.
-   Claim ordering, alias resolution, and selection of claimed history keys are inputs.
-   An evidence pair names its durable bucket explicitly; ownership never moves it. -/
+/- A correction can change a history's current owner without changing its durable key.
+   Each evidence pair names that original bucket, so ownership changes cannot move its
+   evidence. Claim ordering, alias resolution, and claimed history keys are inputs. -/
 abbrev Owners := Nat → Option Nat
 abbrev Evidence := Nat → Nat → Bool
 
@@ -209,9 +209,9 @@ theorem every_publication_record_retained (state : State) (sequence : List Publi
   exact fresh_records_retained _ _ _ _
     (List.mem_flatMap.mpr ⟨publication, present, recorded⟩)
 
-/- Current report identities and durable writer keys are separate tokens. Additional
-   histories carry direct-key fallback, adoption, or fresh allocation supplied by the
-   existing allocator; choosing these histories is not repeated in this policy. -/
+/- A current report identity and its durable writer key have separate meanings.
+   Additional histories come from direct-key fallback, adoption, or fresh allocation by
+   the existing allocator. This policy accepts those choices as inputs. -/
 abbrev Lineage := Nat → List Nat
 
 structure Fire where

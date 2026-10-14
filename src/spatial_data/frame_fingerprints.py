@@ -1,4 +1,4 @@
-"""Ordered row fingerprints let per-fire caches skip materializing unchanged slices.
+"""Use row fingerprints to reuse fire data without rebuilding unchanged slices.
 
 [Evidence and cache reasoning](../../docs/algorithms/product-caching.md)
 explains the contract and correctness argument.

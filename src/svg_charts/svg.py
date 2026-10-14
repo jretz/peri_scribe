@@ -14,9 +14,9 @@ import math
 FONT_STACK = "Helvetica, Arial, sans-serif"
 
 # Helvetica advance widths in 1/1000 em, from the font's AFM metrics. The table covers
-# printable ASCII; anything else falls back to DEFAULT_ADVANCE. Every entry matches the
-# advances the system Helvetica reports for the same character, so a viewer that renders
-# the declared font lays the chart out at the width this module measured.
+# printable ASCII; other characters use DEFAULT_ADVANCE. These widths let layout measure
+# labels without loading a font. Kerning and substituted fonts can make a viewer's
+# rendered widths differ from these sums of character advances.
 HELVETICA_ADVANCES: dict[str, int] = {
     " ": 278,
     "!": 278,
@@ -138,14 +138,14 @@ def escape_text(value: str) -> str:
 
 
 def text_width(text: str, font_size: float) -> float:
-    """Return the width *text* occupies when drawn at *font_size* pixels.
+    """Estimate text width from Helvetica metrics at *font_size* pixels.
 
     Args:
         text: The text to measure.
         font_size: The font size the text is drawn at, in pixels.
 
     Returns:
-        The width in pixels.
+        The estimated width in pixels, using DEFAULT_ADVANCE for unsupported characters.
 
     Examples:
         >>> round(text_width("Miles", 14), 3)

@@ -97,7 +97,7 @@ for (const [description, snapshot, response] of [
     ["invalid JSON", viewer.snapshot(), { jsonError: new SyntaxError("Invalid JSON") }],
     ["an invalid snapshot", null, {}],
 ]) {
-    test(`createResponseMonitor records GET headers with ${description}`, async () => {
+    test(`createResponseMonitor records response time for ${description}`, async () => {
         const page = await viewer.page(snapshot, {}, response);
         page.setRequestError(new TypeError("Connection unavailable"));
 
@@ -129,7 +129,7 @@ test("createResponseMonitor warns while a request is still pending", async () =>
     assert.equal(page.responseStatus.hidden, true);
 });
 
-test("createResponseMonitor ignores request timeouts", async () => {
+test("createResponseMonitor does not count request timeouts as responses", async () => {
     const page = await viewer.page(viewer.snapshot(), { ETag: '"unchanged"' });
     const first = page.holdNextRequest({ respectTimeout: true });
     await page.advance(page.interval, { waitForRequests: false });

@@ -24,10 +24,10 @@ FIRE_SCORES_VERSION = "2026-09-04"
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class SignalTier(abc.ABC):
-    """A scoring tier: the threshold a signal must meet and its tier points.
+    """The threshold a signal must meet and the points it earns.
 
-    Concrete tier kinds inherit and add a description that phrases the threshold in
-    English.
+    Each concrete tier also describes its threshold in words, so the score explanation
+    can use the same policy as the calculation.
     """
 
     threshold: float
@@ -54,7 +54,7 @@ class SizeTier(SignalTier):
         Returns:
             The tier's contribution phrased for a score explanation.
         """
-        return f"over {self.threshold:,.0f} acres"
+        return f"at least {self.threshold:,.0f} acres"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -68,7 +68,7 @@ class GrowthTier(SignalTier):
         Returns:
             The tier's contribution phrased for a score explanation.
         """
-        return f"a single growth step over {self.threshold:,.0f} acres"
+        return f"a single growth step of at least {self.threshold:,.0f} acres"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -82,12 +82,12 @@ class FirstMappingTier(SignalTier):
         Returns:
             The tier's contribution phrased for a score explanation.
         """
-        return f"already over {self.threshold:,.0f} acres when first mapped"
+        return f"at least {self.threshold:,.0f} acres when first mapped"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class BuildingCountTier(SignalTier):
-    """A tier on the structures within a mile of a fire."""
+    """A tier on building centroids inside the fire's projected one-mile buffer."""
 
     @property
     def description(self) -> str:
@@ -96,7 +96,10 @@ class BuildingCountTier(SignalTier):
         Returns:
             The tier's contribution phrased for a score explanation.
         """
-        return f"over {self.threshold:,.0f} structures within a mile"
+        return (
+            f"at least {self.threshold:,.0f} building centroids "
+            "in the fire's projected one-mile buffer"
+        )
 
 
 SIZE_TIERS = (
@@ -292,9 +295,9 @@ def acre_magnitude(value: pint.Quantity[float] | None) -> float | None:
 def fire_importance_points(points: geopandas.GeoDataFrame) -> int:
     """Return the official-importance points for a fire's latest observation.
 
-    The fire's importance follows its most recent point-history row, so a fire
-    downgraded below an earlier level stops earning that level's points, and an
-    observation that does not state a level resets the importance to zero.
+    Only the most recent point-history row determines importance. A downgrade therefore
+    removes the earlier level's points, and a row with no stated level resets importance
+    to zero.
 
     Args:
         points: The fire's point-history rows, oldest first.
@@ -310,11 +313,10 @@ def fire_importance_points(points: geopandas.GeoDataFrame) -> int:
 def fire_is_type_one_incident(points: geopandas.GeoDataFrame) -> bool:
     """Return whether *points*' fire is currently marked a Type 1 Incident.
 
-    The fire is a Type 1 Incident when its latest point-history row carries the Type 1
-    complexity level, the highest level the scoring model recognizes, so a fire
-    downgraded from Type 1 stops counting as one. A frame without the preserved
-    source-attributes column has no complexity level to read, so it is not a Type 1
-    Incident.
+    Type 1 is the highest complexity level the scoring model recognizes. Only the latest
+    point-history row determines whether the fire has that designation, so a downgrade
+    removes it. Without a preserved source-attributes column, there is no complexity
+    evidence and this returns False.
 
     Args:
         points: The fire's point-history rows, oldest first.
@@ -381,7 +383,7 @@ def fire_score_for(
     Args:
         record: The fire's identity and history rows.
         metrics: The fire's size and growth measurements.
-        building_count: The number of buildings within a mile of the fire.
+        building_count: The number of building centroids in the fire's projected buffer.
         evacuation_overlap: Whether the fire overlaps an evacuation zone.
 
     Returns:
@@ -435,7 +437,10 @@ def score_explanation(fire_score: FireScore) -> str:
     ]
     present = [phrase for phrase in phrases if phrase is not None]
     if not present:
-        return "No notable size, growth, threat, or official-importance signals."
+        return (
+            "No points from size, growth, nearby buildings, evacuation zones, "
+            "or incident complexity."
+        )
     if len(present) == 1:
         sentence = present[0]
     else:
@@ -453,15 +458,15 @@ def score_entry(
 ) -> peri_scribe.models.FireScoreEntry:
     """Return the persisted score entry for a fire.
 
-    The fire's presented area, the buildings within a mile, and whether it overlaps an
-    evacuation zone are recorded alongside the score, so the new-and-notable view can
-    gate on the same signals the score was built from.
+    Store the fire's presented area, nearby building count, and evacuation overlap
+    alongside the score. The new-and-notable view can then use the same evidence when
+    deciding which fires to include.
 
     Args:
         fire_score: The fire's current score.
         component_id: The source component of a fire without an external identifier.
         area: The fire's presented area, or None when unknown.
-        building_count: The buildings within a mile, or None when unknown.
+        building_count: The centroids in the projected buffer, or None when unknown.
         evacuation_overlap: Whether the fire overlaps an evacuation zone.
 
     Returns:

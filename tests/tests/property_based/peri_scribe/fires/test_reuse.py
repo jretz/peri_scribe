@@ -1,4 +1,4 @@
-"""Cache identity includes every dependency and output publication is recoverable."""
+"""Cached history rows preserve their layer and fire partitions."""
 
 from __future__ import annotations
 

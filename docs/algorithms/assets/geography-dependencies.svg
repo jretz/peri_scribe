@@ -3,7 +3,7 @@
      viewBox="0 0 840 560" role="img" aria-labelledby="figure-title figure-description"
      style="max-width:100%;height:auto">
   <title id="figure-title">Reuse depends on complete evidence and environment</title>
-  <desc id="figure-description">Ordered source bytes and derivation context determine a whole generation. All raw rows for each fire and the same context determine its per-fire key. Output signatures authenticate actual bytes and complete layers.</desc>
+  <desc id="figure-description">A whole generation depends on the ordered source bytes and the code, runtime, settings, and boundaries used to derive its output. Each fire's key includes all its raw rows, including discarded observations, and that same context. Output signatures then authenticate the actual bytes and complete layers: matching inputs alone cannot show that publication finished.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8"
             markerHeight="8" orient="auto-start-reverse">

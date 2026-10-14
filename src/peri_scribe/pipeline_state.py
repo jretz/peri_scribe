@@ -79,7 +79,10 @@ def deferred_inputs_path(year_directory: pathlib.Path) -> pathlib.Path:
 
 
 def defer_inputs(year_directory: pathlib.Path) -> None:
-    """Protect collection before the publication gate can postpone its outputs.
+    """Record saved inputs before publication can be deferred.
+
+    The marker keeps those inputs visible to later runs even if the publication policy
+    changes before they produce outputs.
 
     Args:
         year_directory: The year whose collection may introduce unpublished inputs.
@@ -90,7 +93,7 @@ def defer_inputs(year_directory: pathlib.Path) -> None:
 
 
 def clear_deferred_inputs(year_directory: pathlib.Path) -> None:
-    """Retire intent only after a checkpoint or pending stages protect the inputs.
+    """Clear the marker once a checkpoint or pending stages account for saved inputs.
 
     Args:
         year_directory: The year whose deferred inputs have durable coverage.

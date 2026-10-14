@@ -1,26 +1,25 @@
-"""Scoring fires to surface the ones people are most interested in.
+"""Score fires to help readers find those they may want to follow.
 
-Each fire's score is a weighted sum of points awarded across independent signals: its
-size, its largest single growth step, its size when first mapped, the buildings within a
-mile of it, whether it overlaps an evacuation zone, and its official incident complexity
-level. The score is a pure function of the current data. It does not depend on the
-contents of the scores file, so regenerating it from unchanged inputs produces the same
-scores.
+A fire earns points for its size, its largest single growth step, its size when first
+mapped, building centroids in its projected one-mile buffer, overlap with an evacuation
+zone, and its official incident complexity level. Each signal has a weight. Their
+weighted sum depends only on the current inputs, so regenerating scores from unchanged
+inputs produces the same result.
 
-Current size follows the shared mapping-freshness and incident-report policy used by
-charts and descriptions. Growth and first-mapping size describe measured geometry, so
-reported current size can advance while mapped growth awaits another survey.
+Current size follows the same mapping-freshness and incident-report policy as charts and
+descriptions. Growth and first-mapping size describe measured geometry. A newer report
+can therefore increase the current size while mapped growth waits for another survey.
 
-The score uses differential history for growth and first-mapping size, full perimeter
-and incident histories for current size, and point history for the official complexity
-level. Fire geometries are joined spatially against the retrieved external datasets:
-building centroids and evacuation zones. Building counts come from the compact buildings
-database, whose tiles are selected by each fire's envelope and whose payloads are
-filtered in NumPy; the evacuation GeoPackage is queried through its R-Tree index. Either
-way, only the features near a fire are ever read.
+Differential history supplies growth and first-mapping size. Full perimeter and incident
+histories supply current size, and point history supplies the official complexity level.
+Spatial queries add building counts and evacuation overlaps. The compact buildings
+database reads tiles intersecting each buffered fire's envelope, then filters their
+points for containment. The evacuation GeoPackage uses its R-Tree index. These queries
+avoid reading the complete external datasets.
 
-The results are written to ``{year}/derived/fire_scores.json``, along with a
-``{year}/derived/fire_scores_ccdf.html`` complementary CDF of the scores.
+Results go to ``{year}/derived/fire_scores.json``. The accompanying
+``{year}/derived/fire_scores_ccdf.html`` chart shows the fraction of fires above each
+score.
 
 [Scoring](../../../docs/algorithms/fire-scoring.md)
 """
@@ -197,9 +196,9 @@ def perimeter_metrics_for(
 ) -> peri_scribe.fires.scoring.PerimeterMetrics:
     """Return the perimeter metrics for a fire.
 
-    The presented area comes from the fire's latest perimeter or point row, so the size
-    signal matches the area the fire displays; growth and first-mapping size still come
-    from the differential perimeter history.
+    Use the caller's selected current area so the size signal matches the displayed
+    area. Growth and first-mapping size come from the differential perimeter history;
+    they continue to describe mapped growth when current size follows a newer report.
 
     Args:
         key: The fire's identity key.
@@ -657,14 +656,16 @@ def scoring_input(year_directory: pathlib.Path) -> ScoringInput:
 def score_fires(year_directory: pathlib.Path) -> pathlib.Path:
     """Score every fire and write the results to the derived directory.
 
-    The score is computed from the differential history and the retrieved external
-    datasets. It does not depend on the contents of the scores file, so regenerating it
-    from unchanged inputs produces the same scores. The fire metrics are aggregated in a
-    single groupby pass, the fire geometry comes from the cumulative full history;
-    perimeter records are not re-unioned during scoring. The external datasets are
-    queried through their R-Tree indexes, so neither the history nor the external layers
-    are ever processed one feature at a time. The results are written to
-    ``{year_directory}/derived/fire_scores.json``, along with a complementary CDF to
+    Scores use the fire histories and retrieved external datasets. The existing scores
+    file has no influence, so unchanged inputs produce the same scores. A grouped pass
+    computes fire metrics, and the cumulative full history supplies geometry without
+    unioning perimeters again.
+
+    Building queries select tiles from the compact database; evacuation queries use the
+    GeoPackage's R-Tree index. Both limit work to features near each fire.
+
+    Write scores to ``{year_directory}/derived/fire_scores.json`` and a chart showing
+    the fraction of fires above each score to
     ``{year_directory}/derived/fire_scores_ccdf.html``.
 
     Args:

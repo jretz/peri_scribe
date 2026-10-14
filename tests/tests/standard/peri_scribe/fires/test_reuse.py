@@ -130,7 +130,7 @@ def test_read_rows_preserves_empty_layers_alongside_populated_history(
     "damage",
     ["missing", "signature", "checksum", "schema", "layer", "unconditional"],
 )
-def test_read_rows_recomputes_unusable_results(
+def test_read_rows_treats_unusable_results_as_cache_misses(
     tmp_path: pathlib.Path,
     cached_layers: list[spatial_data.layers.LayerData],
     damage: str,

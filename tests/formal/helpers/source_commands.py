@@ -33,7 +33,7 @@ def terminal_states(
     """Require validation's successful result to be independent of interleaving.
 
     Args:
-        states: Complete TLC writer state graph.
+        states: All reachable checked TLC writer states.
 
     Returns:
         Pending/forcing outcomes keyed by previous pending/forcing and source changes.
@@ -61,7 +61,7 @@ def replay(states: list[dict[str, str]], directory: pathlib.Path) -> None:
     """Exercise every real pending-stage subset, forcing bit, outcome, and retry.
 
     Args:
-        states: Checked source-writer state graph.
+        states: All reachable checked source-writer states.
         directory: Isolated application roots for each command execution.
     """
     outcomes = terminal_states(states)

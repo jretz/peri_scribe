@@ -1,4 +1,7 @@
-"""Own observable monitoring data independently of any presentation framework.
+"""Collect monitoring data and share complete snapshots with its consumers.
+
+The session owns the file readers and runs one request at a time. Consumers receive
+immutable snapshots, so rendering a view cannot change the evidence another view uses.
 
 Algorithm reasoning and contracts:
 [Monitor sessions](../../../docs/algorithms/monitor-sessions.md)
@@ -77,7 +80,7 @@ type Request = (
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Snapshot:
-    """Each version is a consistent immutable result of one admitted domain request."""
+    """Each version holds the complete, immutable result of one accepted request."""
 
     version: int = 0
     health: peri_scribe.monitor.projection.Snapshot | None = None
@@ -164,7 +167,7 @@ class MonitorSession:
     """Own readers and asynchronous observation while publishing immutable data."""
 
     def __init__(self, year_directory: pathlib.Path, report_path: pathlib.Path) -> None:
-        """Keep resource mutation at the filesystem and asynchronous ownership boundary.
+        """Keep the file readers and their queued work together under one owner.
 
         Args:
             year_directory: The observed year's data directory.
@@ -209,7 +212,7 @@ class MonitorSession:
         return snapshot
 
     def subscribe(self) -> Subscription:
-        """Start with the current version and retain bounded pending delivery.
+        """Deliver the current snapshot and retain only the latest pending update.
 
         Returns:
             A subscription that can be closed independently of the session.
@@ -228,17 +231,21 @@ class MonitorSession:
         *,
         priority: Priority = Priority.NORMAL,
     ) -> Snapshot:
-        """Serialize admitted work through publication and caller cancellation.
+        """Queue one request and keep started work alive through caller cancellation.
+
+        A cancelled caller can remove a request that is still waiting. Once the request
+        starts, cancellation waits for its result so readers and publication complete
+        before their resources can be released.
 
         Args:
             request: The domain evidence required by a consumer.
-            priority: Admission precedence among requests waiting for ownership.
+            priority: Which request runs next among those still waiting.
 
         Returns:
             The resulting snapshot, or the final snapshot after shutdown begins.
 
         Raises:
-            asyncio.CancelledError: After admitted work settles on cancellation.
+            asyncio.CancelledError: After any started work finishes on cancellation.
         """
         if self.owner.stopped.is_set():
             return self.snapshot
@@ -285,7 +292,7 @@ class MonitorSession:
 
         Args:
             request: The identical request object retained by its original caller.
-            priority: The requested stronger admission precedence.
+            priority: The higher priority requested for this waiting work.
 
         Returns:
             Whether a waiting request acquired stronger precedence.
@@ -302,7 +309,7 @@ class MonitorSession:
         return False
 
     async def close(self) -> None:
-        """Stop admission and publication before settling workers and readers."""
+        """Stop accepting requests and publishing results, then wait for active work."""
         self.owner.stopped.set()
         self.watching_stopped.set()
         self.history_reader.stopped.set()
@@ -359,7 +366,7 @@ async def result_of(pending: Pending) -> Snapshot:
 
 
 async def dispatch(session: MonitorSession) -> None:
-    """Keep one request active while honoring priority at each admission boundary.
+    """Run one request at a time, choosing the highest-priority waiting request next.
 
     Args:
         session: The owner of the request queue and evidence readers.
@@ -416,13 +423,13 @@ async def execute(session: MonitorSession, request: Request) -> Snapshot:
 
 
 async def refresh_health(session: MonitorSession) -> Snapshot:
-    """Publish full recent history and artifact observations as one health result.
+    """Combine available recent history and artifact observations in one health result.
 
     Args:
         session: The session holding exclusive evidence ownership.
 
     Returns:
-        A candidate snapshot whose health evidence is complete.
+        A candidate snapshot with available health evidence and coverage diagnostics.
     """
     now = datetime.datetime.now(datetime.UTC)
     history = await asyncio.to_thread(session.history_reader.catch_up, now)
@@ -516,7 +523,7 @@ async def load_older(session: MonitorSession) -> Snapshot:
 
 
 async def load_run(session: MonitorSession, identifier: str) -> Snapshot:
-    """Preserve the original event identities for a requested command's evidence.
+    """Recover the recorded fields for a requested command's evidence.
 
     Args:
         session: The session holding exclusive evidence ownership.
@@ -600,7 +607,7 @@ async def clock(session: MonitorSession) -> None:
 
 
 def release(session: MonitorSession) -> None:
-    """Retire every descriptor only after admitted work has relinquished ownership.
+    """Close file descriptors only after all work using them has finished.
 
     Args:
         session: The session whose readers can no longer be accessed.
@@ -610,7 +617,7 @@ def release(session: MonitorSession) -> None:
 
 
 async def finish(session: MonitorSession) -> None:
-    """Retain cleanup through repeated cancellation and terminate every subscription.
+    """Finish cleanup despite repeated cancellation, then close every subscription.
 
     Args:
         session: The stopped session awaiting its final resource retirement.

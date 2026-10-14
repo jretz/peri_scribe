@@ -15,9 +15,7 @@ def make_tile_read_recorder(
     identifiers: list[int],
     read_tile_points: typing.Callable[..., np.ndarray | None],
 ) -> typing.Callable[..., np.ndarray | None]:
-    """Create a callback with controlled dependencies.
-
-    Count tile reads while preserving real point coordinates.
+    """Return a recorder of tile reads that preserves real point coordinates.
 
     Args:
         identifiers: Shared list recording point tiles read from storage.

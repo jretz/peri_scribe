@@ -54,18 +54,20 @@ def geodesic_quad(
     length: float,
     width_in_miles: float,
 ) -> shapely.Geometry:
-    """Return a quad whose nearest corner sits at a known geodesic distance and bearing.
+    """Build a nearby quadrilateral from geodesic distance and bearing inputs.
 
-    The quad's first corner lies exactly *distance* miles from the point at *bearing*,
-    and the quad extends away along that bearing and perpendicular to it, so the corner
-    is the point of the quad nearest to the given point.
+    The first corner lies *distance* miles from the point at *bearing*. The remaining
+    corners extend away from it. Tests choose a local footprint for which that corner is
+    nearest, so it supplies the expected distance and bearing. The corner positions come
+    from geodesic calculations; Shapely joins them with straight longitude/latitude
+    segments.
 
     Args:
         longitude: The point's longitude, in degrees.
         latitude: The point's latitude, in degrees.
-        bearing: The bearing toward the quad's nearest corner.
-        distance: The distance to the quad's nearest corner.
-        length: How far the quad extends along the bearing.
+        bearing: The bearing toward the quad's first corner, in degrees.
+        distance: The distance to the quad's first corner, in miles.
+        length: How far the quad extends along the bearing, in miles.
         width_in_miles: How far the quad extends to the right of the bearing.
 
     Returns:

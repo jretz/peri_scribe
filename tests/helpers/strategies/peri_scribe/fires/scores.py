@@ -1,4 +1,4 @@
-"""Generate scores examples with constrained domains."""
+"""Generate interleaved fire measurements with varied source evidence."""
 
 from __future__ import annotations
 

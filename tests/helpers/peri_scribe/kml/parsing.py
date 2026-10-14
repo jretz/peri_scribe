@@ -343,16 +343,16 @@ def top_level_folder(document: ET.Element) -> ET.Element:
         document: The parsed KML document.
 
     Returns:
-        The folder named after the document.
+        The folder named ``PeriScribe Fires 2026``.
     """
     return folder_named(document, "PeriScribe Fires 2026")
 
 
 def png_pixel_rows(content: bytes) -> list[list[tuple[int, int, int, int]]]:
-    """Return each row's RGBA pixels of the PNG *content*.
+    """Return RGBA rows from an unfiltered, noninterlaced 8-bit PNG.
 
     Args:
-        content: The PNG bytes.
+        content: Unfiltered, noninterlaced 8-bit RGBA PNG bytes from the icon writer.
 
     Returns:
         One list of (red, green, blue, alpha) tuples per row, top row first.

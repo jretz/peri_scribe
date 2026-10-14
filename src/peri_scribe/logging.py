@@ -138,7 +138,7 @@ def batch_identifier(line: bytes) -> str | None:
 
 
 class RotationReceipt(pydantic.BaseModel):
-    """Authenticate source retirement while preserving diagnostic occurrences."""
+    """Record checksums showing when rotation allows the plain log to be removed."""
 
     model_config = pydantic.ConfigDict(frozen=True, extra="forbid")
 
@@ -149,7 +149,7 @@ class RotationReceipt(pydantic.BaseModel):
 
 
 def rotation_receipt_path(path: pathlib.Path) -> pathlib.Path:
-    """Keep rotation intent discoverable after its source name has been removed.
+    """Keep the rotation receipt available after its plain source log is removed.
 
     Args:
         path: The plain monthly log.
@@ -161,7 +161,7 @@ def rotation_receipt_path(path: pathlib.Path) -> pathlib.Path:
 
 
 def file_checksum(path: pathlib.Path) -> str | None:
-    """Authenticate exact stored bytes without loading a complete log into memory.
+    """Checksum the stored bytes without loading the complete log into memory.
 
     Args:
         path: A plain log or compressed archive.
@@ -189,7 +189,10 @@ def required_file_checksum(path: pathlib.Path) -> str:
 
 
 def rotation_committed(path: pathlib.Path) -> bool:
-    """Authenticate the retained representation without changing persistent state.
+    """Check whether the archive contains the source recorded in the rotation receipt.
+
+    The checksums must match before the source can be removed. This check only reads the
+    retained files; it does not finish an interrupted rotation.
 
     Args:
         path: The monthly source protected by the directory's shared or writer lock.
@@ -221,7 +224,7 @@ def rotation_committed(path: pathlib.Path) -> bool:
 
 
 def recover_rotation(path: pathlib.Path) -> bool:
-    """Retire a source only when the committed archive authenticates its receipt.
+    """Remove a source log only when the archive checksum confirms its rotation.
 
     Args:
         path: The monthly source protected by the directory's writer lock.
@@ -337,7 +340,7 @@ def compression_month(timestamp: datetime.datetime) -> str:
 
 
 def contains_batch(path: pathlib.Path, batch_id: str) -> bool:
-    """Recognize an acknowledged append even when its checkpoint was interrupted.
+    """Find an already appended batch even if saving its checkpoint was interrupted.
 
     Args:
         path: The destination monthly log, possibly already archived.
@@ -623,7 +626,7 @@ def skip_phases(
     identifiers: tuple[peri_scribe.phases.Identifier, ...],
     reason: str,
 ) -> None:
-    """Preserve the reason unentered branches disappear from the planned hierarchy.
+    """Record why planned branches were skipped so the monitor can explain omissions.
 
     Args:
         identifiers: Sibling phases that will not run in the enclosing context.

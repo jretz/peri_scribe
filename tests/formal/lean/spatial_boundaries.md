@@ -1,8 +1,10 @@
 # Spatial query and differential-row boundaries
 
-These modules close three boundaries left outside the earlier geography, spatial-index,
-and point-store proofs. `OracleSpatial.lean` evaluates the same definitions used in
-these proofs. Run `mise formal-lean` and `mise formal-conformance` together.
+These modules check three questions left outside the geography, spatial-index, and
+point-store proofs: whether an indexed overlap query finds every real match, whether
+growth rings retain their source evidence, and whether coordinate rounding preserves the
+required query coverage. `OracleSpatial.lean` evaluates the definitions used in these
+proofs. Run `mise formal-lean` and `mise formal-conformance` together.
 
 ## Evacuation overlap queries
 
@@ -47,8 +49,8 @@ while subsequent non-growth observations update its representative. A whole-bloc
 establishes that an arbitrary block of non-growth observations selects exactly its last
 observation's metadata and preserves the candidate ring. Every final representative has
 an original source witness. Candidate boundaries put representatives inside their own
-block. Sparse deltas subtract the first present prior candidate measurement, distinguish
-missing values from zero, and preserve negative corrections. Complete present
+block. Sparse deltas subtract the most recent prior candidate measurement that is present,
+distinguish missing values from zero, and preserve negative corrections. Complete present
 measurement changes telescope to the latest value, even with missing measurements
 between them.
 

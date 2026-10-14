@@ -17,9 +17,7 @@ def make_complete_snapshot_reader(
     read_calls: list[tuple[pathlib.Path, peri_scribe.sources.feed_types.Feed]],
     complete_frames: dict[str, geopandas.GeoDataFrame],
 ) -> typing.Callable[..., geopandas.GeoDataFrame]:
-    """Create a callback with controlled dependencies.
-
-    Capture complete-snapshot reads and serve the matching feed dataframe.
+    """Return a recorder that serves the selected complete snapshot.
 
     Args:
         read_calls: Shared list recording complete-snapshot paths and feed
@@ -54,9 +52,7 @@ def make_stored_features_reader(
     year_directory: pathlib.Path,
     stored_frames: dict[str, geopandas.GeoDataFrame],
 ) -> typing.Callable[..., geopandas.GeoDataFrame]:
-    """Create a callback with controlled dependencies.
-
-    Validate the source directory and serve the stored feed dataframe.
+    """Return a reader that checks the source directory and serves stored rows.
 
     Args:
         year_directory: Year directory against which source paths are checked.

@@ -37,10 +37,10 @@ Trace definitions to the code that owns the behavior and, where useful, its test
 - `src/spatial_data/`, `kml_io/`, `svg_charts/`, and `measurement_units/`: spatial,
   format, chart, and unit concepts when the affected definitions need them.
 
-When documentation and code disagree, describe the implemented behavior and identify
-the discrepancy. Do not describe a future requirement as an existing capability.
-Resolve numerical thresholds, filenames, and policy details from current code instead
-of treating values in the glossary or this skill as permanent.
+When documentation and code disagree, explain what the implementation does and point
+out the discrepancy. Keep future requirements distinct from existing capabilities.
+Check numerical thresholds, filenames, and policy details in the current code; those
+values can change even if the glossary or this skill has not yet caught up.
 
 ## Revise the definitions
 

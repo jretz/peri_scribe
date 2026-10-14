@@ -1,4 +1,4 @@
-"""Generate locations examples with constrained domains."""
+"""Generate cities and fire footprints for nearest-location tests."""
 
 from __future__ import annotations
 

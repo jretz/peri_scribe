@@ -1,4 +1,4 @@
-"""Inspect folders behavior with shared test utilities."""
+"""Inspect rendered KML balloons with shared test utilities."""
 
 from __future__ import annotations
 

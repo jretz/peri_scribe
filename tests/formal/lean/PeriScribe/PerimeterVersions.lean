@@ -243,7 +243,8 @@ theorem revision_fold_conserves_provenance (observations : List Observation)
     rw [List.foldl_cons, induction, revision_step_conserves_provenance]
     simp [covered, or_assoc]
 
-/-- Capture metadata is credible only within two days of its publication. -/
+/-- Capture metadata is credible only at or before effective observation time, by at
+    most two days. -/
 def credible (observation : Observation) : Option Nat :=
   observation.capture.filter (fun captured => observation.captureSameYear &&
     decide (captured ≤ observation.time ∧ observation.time ≤ captured + 172800))

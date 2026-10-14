@@ -2,10 +2,11 @@
 
 ## Contract and complexity
 
-The terminal consumes complete immutable snapshots from a domain
-[session](monitor-sessions.md). The session has no knowledge of tabs, controls, colors,
-or the first frame. Presentation owns those choices and requests domain resources using
-`RefreshHealth`, `RefreshRecords`, `RefreshReport`, `LoadOlder`, and `LoadRun`.
+The terminal displays complete immutable snapshots from a domain
+[session](monitor-sessions.md). The session supplies the data; the presentation layer
+decides which tabs, controls, and colors to use and when the first frame is ready. It
+requests domain resources using `RefreshHealth`, `RefreshRecords`, `RefreshReport`,
+`LoadOlder`, and `LoadRun`.
 
 | Dimension | Score | Reason |
 | --- | --- | --- |
@@ -38,11 +39,12 @@ already in flight. A queued background request can be promoted without interrupt
 admitted operation or opening a second reader. Once the initial resources are requested,
 the session refreshes them on filesystem changes and periodic reconciliation.
 
-This separates useful initial latency from total preparation cost. Preparing all content
-before the first frame couples Status to Markdown parsing and diagnostic table creation.
-Loading solely on selection postpones that cost until the user navigates. Background
-preparation after the first complete frame avoids both dependencies, subject to available
-CPU and I/O. There is no guarantee that very early navigation finds preparation finished.
+This lets readers see a complete Status assessment while other content is still being
+prepared. Preparing everything first would make Status wait for Markdown parsing and
+diagnostic table creation. Waiting to prepare each view until it is selected would move
+that delay to navigation. Background preparation starts after the first complete frame,
+subject to available CPU and I/O. Very early navigation can still reach a view before
+preparation finishes.
 
 ## Version and selection consistency
 
@@ -61,6 +63,7 @@ mutating widgets. On completion, the controller compares generations. Obsolete r
 are discarded and preparation repeats with current inputs. Applying long tables yields
 periodically and checks generation and attachment again, allowing input and shutdown to
 make progress. Completion is recorded only for the generation actually applied.
+
 Each table retains its own mapping from generation-qualified row keys to evidence until
 that table is replaced. A click in the other table during a batch yield still resolves
 its original event; a queued click from a replaced generation cannot resolve to a new

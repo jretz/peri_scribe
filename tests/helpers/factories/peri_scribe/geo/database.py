@@ -12,7 +12,7 @@ import peri_scribe.sources.snapshots
 
 
 def contents(revision: int) -> peri_scribe.geo.package.GeopackageContents:
-    """Keep every persisted field distinguishable across revisions.
+    """Make fire rows and complex memberships distinguishable across revisions.
 
     Args:
         revision: A positive symbolic snapshot revision.

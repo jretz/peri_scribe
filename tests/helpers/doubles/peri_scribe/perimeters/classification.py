@@ -14,9 +14,7 @@ def make_union_recorder(
     union_inputs: list[list[shapely.Geometry]],
     original_union_all: typing.Callable[..., shapely.Geometry],
 ) -> typing.Callable[..., shapely.Geometry]:
-    """Create a callback with controlled dependencies.
-
-    Capture union inputs to verify observation deduplication.
+    """Return a recorder of union inputs for observation deduplication checks.
 
     Args:
         union_inputs: Shared list recording the geometries supplied to each union.
@@ -46,13 +44,10 @@ def make_reproject_recorder(
     reprojected: list[tuple[int, bytes]],
     original: typing.Callable[..., shapely.Geometry],
 ) -> typing.Callable[..., shapely.Geometry]:
-    """Create a callback with controlled dependencies.
-
-    Capture reprojection inputs to verify source-specific geometry handling.
+    """Return a recorder of projection inputs for source-specific geometry checks.
 
     Args:
-        reprojected: Shared list recording destination references and input geometry
-            bytes.
+        reprojected: Shared list recording source references and input geometry bytes.
         original: Original operation whose results the callback preserves.
 
     Returns:
@@ -64,10 +59,10 @@ def make_reproject_recorder(
 
         Args:
             geometry: Geometry supplied for the selected spatial case.
-            wkid: Identifier of the requested destination coordinate system.
+            wkid: Identifier of the geometry's source coordinate system.
 
         Returns:
-            The geometry projected into the requested coordinate system.
+            The geometry projected into California Albers.
         """
         reprojected.append((wkid, geometry.wkb))
         return original(geometry, wkid)

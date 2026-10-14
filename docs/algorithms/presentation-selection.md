@@ -1,8 +1,10 @@
 # Shared fire selection and ranking
 
-Maps, reports, and update previews must select the same fire evidence. Identity-aware
-row indexes, historical area qualification, and one shared score association prevent
-namesakes or aliases from acquiring each other's facts or occupying duplicate ranks.
+Maps, reports, and update previews must agree about which evidence belongs to each fire.
+Shared selection rules keep unrelated fires with the same name from acquiring each
+other's facts. They also keep multiple aliases for one fire from taking multiple places
+in a ranking. Row indexes preserve identity, historical area determines qualification,
+and one shared association connects scores to current fires.
 
 ## Contract and assessment
 
@@ -13,7 +15,7 @@ Derived history must preserve source order and component identities.
 
 | Dimension | Score | Reason |
 | --- | --- | --- |
-| History and state | 2 | Earlier qualifying area survives later downward corrections. |
+| History and state | 2 | Earlier qualifying dated estimates survive later downward corrections. |
 | Rule interaction | 3 | Aliases, components, legacy names, and ranked views must resolve one owner. |
 | Mathematical reasoning | 1 | Indexed selection, sorting, and quantile cutoffs are established operations. |
 | Scale and representation | 2 | Row-position indexes and prepared facts avoid repeated frame scans. |
@@ -32,7 +34,7 @@ fire selects its name. Positions retain source order and raw key types. Do not c
 an integer identifier into a string match.
 
 Prepare incident and area history once per identity, then test historical selected area
-against the inclusion threshold. An estimate that previously reached 25 acres remains
+against the inclusion threshold. A dated estimate that reached 25 acres remains
 qualifying after a later measured correction to 20 acres. A conflicting large incident
 report does not bypass the area's freshness policy. Undated fallback evidence follows
 the same shared policy rather than a presentation-specific maximum.
@@ -45,7 +47,7 @@ independently select a different current area.
 
 ## Score association and views
 
-Aliases collapse to their current owner before selecting ranked places. Two saved score
+Resolve aliases to their current owner before selecting ranked places. Two saved score
 rows for the same current fire cannot consume two places in the view.
 
 Resolve scores against the complete showable collection. Sort score rows by descending
@@ -95,10 +97,11 @@ names match. A display name alone is not evidence that identified fires should m
 ## The mapped growth window
 
 Fast-growth ranking uses measured full-perimeter geometry rather than selected reported
-current area. Sort dated perimeters no later than the reference time. The latest supplies
-current mapped area; the last observation at or before `reference − 48 hours` supplies
-the baseline. Exact-cutoff observations belong to the baseline, and future observations
-cannot supply either endpoint. No interpolation creates a perimeter at the cutoff.
+current area. Sort dated perimeters whose dates are no later than the reference time.
+The latest supplies current mapped area; the last observation at or before `reference −
+48 hours` supplies the baseline. Exact-cutoff observations belong to the baseline, and
+future observations cannot supply either endpoint. No interpolation creates a perimeter
+at the cutoff.
 
 At reference time T, the cutoff is T−48 hours. The same current mapped area has
 different meaning depending on the available baseline:
@@ -111,9 +114,8 @@ different meaning depending on the available baseline:
 Fire B's whole mapped area counts as absolute growth, but no percentage can be inferred.
 Dividing by a fabricated positive baseline would invent a ranking; treating the absent
 baseline as zero for percentage would divide by zero. Reports do not substitute for
-mapped geometry.
-An explicit zero-area baseline also yields unknown percentage. Downward mapping corrections
-can make growth negative and therefore fail the positive view thresholds.
+mapped geometry. An explicit zero-area baseline also yields unknown percentage. Downward
+mapping corrections can make growth negative and therefore fail the positive view thresholds.
 
 This window selection is involved (history 2, rules 2, mathematics 1, representation 1,
 failure 0; total 6), within the complete presentation algorithm's complex assessment.

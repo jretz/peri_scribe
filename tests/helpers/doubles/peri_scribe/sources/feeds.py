@@ -1,4 +1,4 @@
-"""Replace feeds dependencies with controlled test doubles."""
+"""Replace configured feeds for isolated tests."""
 
 from __future__ import annotations
 

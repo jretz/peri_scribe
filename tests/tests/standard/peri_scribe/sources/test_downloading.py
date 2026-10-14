@@ -1,4 +1,4 @@
-"""Tests for peri_scribe.sources.external_sources."""
+"""Tests for peri_scribe.sources.downloading."""
 
 from __future__ import annotations
 
@@ -86,7 +86,7 @@ def test_download_source_raises_when_not_a_zip(
     )
     with pytest.raises(
         peri_scribe.exceptions.ExternalDataError,
-        match="is not a zip file",
+        match="Failed to extract ZIP archive",
     ):
         peri_scribe.sources.external_sources.fetch_external_source(source, tmp_path)
 
@@ -258,7 +258,7 @@ def test_stream_download_and_convert_preserves_application_error_contract(
     monkeypatch.setattr(requests, "get", lambda _url, **_kwargs: response)
     with pytest.raises(
         peri_scribe.exceptions.ExternalDataError,
-        match="The streamed archive is not a zip file",
+        match="Failed to read the streamed ZIP archive",
     ):
         peri_scribe.sources.downloading.stream_download_and_convert(
             "https://example.com/polygons.zip",

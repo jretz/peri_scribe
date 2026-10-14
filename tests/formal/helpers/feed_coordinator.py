@@ -71,7 +71,7 @@ def cases(states: list[dict[str, str]]) -> dict[Case, set[Outcome]]:
     """Retain every legal final outcome for each checked input configuration.
 
     Args:
-        states: Complete checked graph.
+        states: All reachable checked TLC states.
 
     Returns:
         Inputs mapped to the set of permitted concurrent results.
@@ -314,7 +314,7 @@ def replay(states: list[dict[str, str]], directory: pathlib.Path) -> int:
     """Run every checked input combination against the actual collection coordinator.
 
     Args:
-        states: Entire checked state graph.
+        states: All reachable checked TLC states.
         directory: Isolated tree for persistent pipeline state.
 
     Returns:
@@ -413,7 +413,7 @@ def replay_cancellation(states: list[dict[str, str]], directory: pathlib.Path) -
     """Require actual late sibling writes to remain within checked final outcomes.
 
     Args:
-        states: Complete checked graph.
+        states: All reachable checked TLC states.
         directory: Isolated run trees.
 
     Returns:

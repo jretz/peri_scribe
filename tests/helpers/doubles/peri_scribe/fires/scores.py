@@ -1,4 +1,4 @@
-"""Replace scores dependencies with controlled test doubles."""
+"""Isolate external-source paths and record scoring outputs."""
 
 from __future__ import annotations
 

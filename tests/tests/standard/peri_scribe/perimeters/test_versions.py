@@ -66,8 +66,8 @@ def test_effective_time_prefers_observation_time() -> None:
 
 def test_effective_time_prefers_as_of_date_over_capture_date() -> None:
     # The WFIGS perimeter feed reads poly_DateCurrent (the as-of date) as its
-    # observation column; the capture date (poly_PolygonDateTime) describes the record's
-    # original mapping and must not shadow the per-version as-of date.
+    # observation column. The field collection date (poly_PolygonDateTime) can be older
+    # and must not shadow the per-version as-of date.
     as_of = tests.helpers.factories.time.utc(2026, 8, 16, 22, 26)
     observed = tests.helpers.factories.peri_scribe.perimeters.versions.observation(
         observation_time=as_of,
@@ -78,8 +78,8 @@ def test_effective_time_prefers_as_of_date_over_capture_date() -> None:
     assert peri_scribe.perimeters.versions.effective_time(observed) == as_of
 
 
-def test_effective_time_falls_back_to_snapshot_when_current_date_is_stale() -> None:
-    # A dateless row uses the snapshot timestamp after the observation column is read.
+def test_effective_time_uses_snapshot_without_decoded_or_modified_time() -> None:
+    # With no decoded observation or modified time, the snapshot timestamp is used.
     snapshot_time = tests.helpers.factories.time.utc(2026, 8, 17, 1, 42)
     observed = tests.helpers.factories.peri_scribe.perimeters.versions.observation(
         snapshot_time=snapshot_time,
@@ -90,7 +90,7 @@ def test_effective_time_falls_back_to_snapshot_when_current_date_is_stale() -> N
     assert peri_scribe.perimeters.versions.effective_time(observed) == snapshot_time
 
 
-def test_effective_time_prefers_modified_time_over_stale_current_date() -> None:
+def test_effective_time_uses_modified_time_without_decoded_observation() -> None:
     modified_time = tests.helpers.factories.time.utc(2026, 8, 17, 23, 18)
     observed = tests.helpers.factories.peri_scribe.perimeters.versions.observation(
         attributes={

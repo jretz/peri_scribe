@@ -1,4 +1,4 @@
-"""Generate incidents examples with constrained domains."""
+"""Generate partial incident reports with varied confirmation evidence."""
 
 from __future__ import annotations
 

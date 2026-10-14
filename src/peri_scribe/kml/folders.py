@@ -53,11 +53,10 @@ def fire_balloon(
 ) -> document_text.encoding.CData | None:
     """Return the KML balloon text for *fire*'s placemarks.
 
-    Every placemark showing the fire as a whole carries the same balloon describing the
-    fire's latest state, so a reader sees the same facts whether they click the point,
-    an outline, or a ring. With *added_area*, the text instead opens that balloon's
-    table with the area a growth ring added to the fire, so the ring's own growth reads
-    above the fire's shared state. A fire without a description has no balloon.
+    Readers should see the same latest facts whether they click a point, outline, or
+    ring. Every placemark therefore shares the fire's description. When *added_area* is
+    supplied, the ring's added area appears first, above those shared facts. A fire
+    without a description has no balloon.
 
     Args:
         fire: The fire to describe.
@@ -106,7 +105,7 @@ def outline_placemarks(
     Args:
         writer: The writer to append to.
         fire: The fire whose outlines to draw.
-        style_urls: The style URL for each template placemark name.
+        style_urls: The style URL for each named placemark role.
         outline_count: The number of outlines to draw.
         ring_count: The number of interior rings drawn beneath the outlines.
         visible: Whether each outline is visible.
@@ -136,24 +135,22 @@ def fire_folder(
     *,
     visible: bool = True,
 ) -> None:
-    """Append the folder symbolizing *fire* to *writer*.
+    """Append the folder displaying *fire* to *writer*.
 
-    The folder leads with the fire's point location, then a "Progression" tour, then its
-    latest, penultimate, and antepenultimate perimeter outlines, each shown when the
-    fire's history has one, and finally an ``Interior`` folder holding its growth rings
-    styled by the color for the day each was observed. A fire with more than one
-    perimeter holds its outline perimeters in a ``Perimeters`` folder; a fire with a
-    single perimeter shows it directly. A fire with no dated rings falls back to its
-    complete latest perimeter, styled with the hottest color, so every fire with
-    perimeters appears with an interior. The interior lists its rings newest first while
-    the tour replays them oldest first. Each interior ring's balloon opens with the area
-    that ring added to the fire, so the ring's own growth reads above the fire's shared
-    balloon.
+    The folder starts with the fire's point location and its "Progression" tour. Up to
+    three perimeter outlines follow, newest first, then an ``Interior`` folder of growth
+    rings colored by observation time. Multiple outlines go in a ``Perimeters`` folder;
+    a single outline appears directly.
+
+    A fire with no dated rings uses its complete latest perimeter in the hottest color,
+    so every fire with a perimeter still has an interior. The interior lists rings
+    newest first for inspection, while the tour replays them oldest first to show
+    growth. Each ring's balloon puts its added area above the fire's shared facts.
 
     Args:
         writer: The writer to append to.
         fire: The fire to symbolize.
-        style_urls: The style URL for each template placemark name.
+        style_urls: The style URL for each named placemark role.
         ring_style_urls: The style URL for each progression ring color, keyed by its
             ``#RRGGBB`` color.
         visible: Whether the folder and its features are visible.
@@ -266,23 +263,19 @@ def status_folder(
 ) -> None:
     """Append the top-level folder for fires of *status* to *writer*.
 
-    The folder holds each fire's folder directly, and each fire loads checked or
-    unchecked on its own.
+    The folder holds each fire's folder directly. Its initial visibility is applied to
+    every child so an unchecked folder has no visible descendants that could make Google
+    Earth select its radio button. Callers can override the status default.
 
     Args:
         writer: The writer to append to.
         fires: Every fire.
         status: The status whose fires belong in the folder.
-        style_urls: The style URL for each template placemark name.
+        style_urls: The style URL for each named placemark role.
         ring_style_urls: The style URL for each progression ring color, keyed by its
             ``#RRGGBB`` color.
         visible: Whether the folder loads checked, or None for the status default
             (active fires load checked, inactive fires load unchecked).
-
-    The inactive fires folder loads unchecked, along with everything beneath it, so
-    inactive fires stay hidden until the folder is enabled. A status folder that loads
-    unchecked keeps its whole tree hidden, so it carries no visible content and its
-    radio button in Google Earth loads off instead of being selected.
     """
     status_fires = [fire for fire in fires if fire.status is status]
     inactive = status is peri_scribe.models.FireStatus.INACTIVE
@@ -304,19 +297,18 @@ def top_fires_folder(
 ) -> None:
     """Append a top-fires folder holding each fire's symbolized geometry.
 
-    The folder holds the fires directly, and each fire loads checked or unchecked on its
-    own.
+    The folder holds the fires directly and applies its initial visibility to each fire.
+    An unchecked folder has no visible descendants, so Google Earth does not select its
+    radio button.
 
     Args:
         writer: The writer to append to.
         fires: The fires to place in the folder.
         name: The folder's name.
-        style_urls: The style URL for each template placemark name.
+        style_urls: The style URL for each named placemark role.
         ring_style_urls: The style URL for each progression ring color, keyed by its
             ``#RRGGBB`` color.
-        visible: Whether the folder and its features load visible. A folder that loads
-            unchecked keeps its whole tree hidden, so it carries no visible content and
-            its radio button in Google Earth loads off instead of being selected.
+        visible: Whether the folder and all its features load visible.
     """
     with writer.folder(name, visible=visible):
         for fire in fires:

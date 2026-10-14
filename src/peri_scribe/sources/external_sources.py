@@ -1,47 +1,38 @@
-"""Retrieving external (non-fire) datasets into a year's sources directory.
+"""Retrieve the datasets that explain a fire's surroundings and what it threatens.
 
-The fire feeds describe the fires themselves; the datasets here describe what those
-fires threaten or what the conditions are around them. A source that produces a single
-GeoPackage stores it directly under ``data/{year}/sources/``, named for the source; a
-per-state source stores one GeoPackage per state under its own directory. Either way the
-datasets sit in the same tree as the fire-feed snapshots, so everything a report needs
-is in one place. The datasets cover the whole United States, not just California.
+These datasets provide national and regional context and sit beside the fire-feed
+snapshots under ``data/{year}/sources/``, so a report's inputs are kept together. A
+source that produces one GeoPackage uses a file named for the source. Sources with
+separate state files keep them in their own directory. The fire-source reader skips
+these files when finding fire snapshots.
 
-Three retrieval kinds are supported:
+Each retrieval kind has a different reason to refresh or reuse its stored data:
 
-- ``arcgis``: an ArcGIS FeatureServer layer is queried and stored as a GeoPackage
-  holding the layer's latest version. The layers are live (the evacuation zones refresh
-  every few minutes), so each fetch replaces the stored GeoPackage when the layer's
-  features changed; only the latest version is kept. A fetch that cannot reach the layer
-  logs a warning and keeps the stored version so the rest of the pipeline can proceed.
-- ``download``: a file (typically a zip archive) is downloaded, extracted, and converted
-  to a GeoPackage holding the same data. These datasets are static, so a source whose
-  GeoPackage already exists is left alone.
-- ``cities``: Natural Earth's populated places are conditionally requested on every
-  fetch and normalized to SQLite. Only a complete validated replacement is published;
-  retrieval failures retain an existing usable generation.
+- ``arcgis`` sources are live FeatureServer layers. Evacuation zones, for example,
+  refresh every few minutes. Each fetch replaces the stored GeoPackage only when the
+  features change, and keeps only the latest version. If retrieval fails, a warning is
+  logged and an existing version is kept so the pipeline can proceed. Without a stored
+  version, the failure is raised.
+- ``download`` sources are static archives, usually zip files. Their GeoPackages are
+  reused once they exist because downloading and converting the same large archive again
+  would add work without new data.
+- ``cities`` sources check Natural Earth's populated places on every fetch, using HTTP
+  validators to avoid downloading unchanged data. A complete, validated SQLite database
+  replaces the stored copy. Retrieval failures keep an existing usable copy.
 
-A download source covers the whole country as one archive per state (the building
-footprints). A combined source concatenates the per-state results into a single
-GeoPackage and keeps no other files; a source may reduce each footprint polygon to a
-centroid point and keep no attributes, since only the buildings' locations are wanted.
-Any download is converted in bounded chunks — a GeoJSON archive is parsed one feature at
-a time with ``ijson`` and any other vector data is read in chunks — so a source of any
-size is converted without loading the whole file into memory. The original archives are
-not kept once converted. The building footprints' per-state archive links are not
-constructed from a URL pattern; they are read from the "Download links" table on the
-dataset's repository page whenever the archives are downloaded, so a change in the link
-scheme is picked up automatically.
+Download sources can supply one archive per state. The generic converter can combine the
+state results into one GeoPackage, replace polygons with centroid points, and drop
+attributes when only locations are needed. It reads GeoJSON features with ``ijson`` and
+other vector data in bounded chunks, so conversion does not require the entire source in
+memory. Original archives are removed after conversion. When state results are combined,
+their intermediate GeoPackages are removed too.
 
-The buildings source stores its data as the compact buildings SQLite database instead of
-a GeoPackage: a dedicated converter (``peri_scribe.sources.buildings``) streams every
-state's archive directly into the database, so the archives and their GeoJSON are never
-written to disk, and the stored file holds only quantized centroid records in compressed
-0.5° tiles with no attributes. The database is regenerated only when it is missing or no
-longer matches the expected format.
-
-The fire-source reader skips these files, so their GeoPackages are never mistaken for
-fire snapshots.
+Buildings use a dedicated converter in ``peri_scribe.sources.buildings``. It reads each
+state's archive links from the repository page's "Download links" table when a download
+is needed, so changed links are picked up automatically. It streams the archives into a
+compact SQLite database without writing the archives or their GeoJSON to disk. The
+database keeps quantized centroid records in compressed 0.5° tiles and drops attributes.
+It is rebuilt only when missing or incompatible with the expected format.
 
 Design notes:
 [External source refresh](../../../docs/algorithms/external-source-refresh.md).
@@ -83,14 +74,11 @@ def fetch_external_source(
 ) -> tuple[pathlib.Path, ...]:
     """Retrieve *source* into *year_directory*'s sources directory.
 
-    A compact source's database is built by the dedicated buildings converter. A live
-    ArcGIS source is queried and stored as a single GeoPackage holding the layer's
-    latest version, writing nothing when its features are unchanged since the stored
-    version; a fetch that cannot retrieve the layer logs a warning and keeps the stored
-    version so the caller can proceed. A download source's archive is downloaded,
-    extracted, and converted to a GeoPackage, with the per-state results combined into
-    one file when the source combines them. Cities use conditional HTTP requests and
-    retain only named points and matching download metadata in SQLite.
+    Each source uses the storage and refresh policy suited to its data. Buildings use
+    the dedicated compact-database converter. ArcGIS layers replace one GeoPackage when
+    features change and keep a stored copy if retrieval fails. Downloads are converted
+    to GeoPackages, combining state files when configured. Cities use conditional HTTP
+    requests and keep named points with their download metadata in SQLite.
 
     Args:
         source: The external source to retrieve.

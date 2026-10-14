@@ -1,10 +1,15 @@
 # Perimeter and publication evidence
 
-`PerimeterVersions.lean` adds 20 explicit theorems and
-`PublicationCandidates.lean` adds 27. The default `oracleEvidence` target evaluates the
-same definitions used by those proofs. The shared axiom audit includes both modules.
-The eight conformance tests in `test_perimeter_evidence.py` and
-`test_publication_evidence.py` compare oracle outputs with production functions.
+Republishing a perimeter doesn't necessarily mean it was surveyed again, and an older
+mapping shouldn't trigger publication merely because its area is unknown. These checks
+follow the evidence used to retain perimeter versions, judge survey freshness, and
+choose publication candidates.
+
+`PerimeterVersions.lean` has 20 explicit theorems and `PublicationCandidates.lean` has
+27. The default `oracleEvidence` target evaluates the same definitions used by those
+proofs. The shared axiom audit includes both modules. The eight conformance tests in
+`test_perimeter_evidence.py` and `test_publication_evidence.py` compare oracle outputs
+with production functions.
 
 ## Retained perimeter versions
 
@@ -144,9 +149,10 @@ The separate [numerical policy model](numerical_policy.md) covers finite rounded
 comparisons, fractional areas, unit conversion order, and the relative tolerance.
 
 For displayed source rows, the executable raw-source selector requires exactly one match
-on both source file and object identifier. Its theorem supplies that matching raw witness
-and excludes all other matches. Duplicate source keys cannot supply a baseline. A valid
-source for a fire excluded from the output yields no displayed area baseline.
+on both source file and object identifier. Its theorem supplies that matching raw
+witness and excludes all other matches. Duplicate source keys cannot supply a baseline.
+A valid source for a fire excluded from the output yields no displayed area baseline.
+
 Conformance exercises 680 real `published_fires` joins over exhaustive inventories of
 zero to three raw rows on four possible source keys. It checks missing and duplicate
 matches, distinct raw measurements, numeric object-ID parsing, inclusion through an

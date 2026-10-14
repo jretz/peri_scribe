@@ -146,11 +146,12 @@ def update_from_row(row: pd.Series, *, perimeter: bool) -> IncidentUpdate | None
 def simultaneous_updates(
     updates: typing.Iterable[IncidentUpdate],
 ) -> tuple[IncidentUpdate, ...]:
-    """Keep each winning measurement attached to the report that supports it.
+    """Keep each selected measurement attached to the report that supports it.
 
-    Direct incident fields win conflicting values. Identical values can retain the
-    newest formal confirmation from either feed. Measurements with different evidence
-    remain separate updates at the same instant so storage preserves their provenance.
+    When values conflict, direct incident fields take precedence. When values agree,
+    either feed can supply the newest formal confirmation. Measurements backed by
+    different evidence remain separate updates at the same instant so storage preserves
+    where each value came from.
 
     Args:
         updates: Simultaneous updates ordered from lowest to highest feed priority.
@@ -198,17 +199,19 @@ def reconcile_updates(
 ) -> tuple[IncidentUpdate, ...]:
     """Resolve duplicate reports and stale edits without discarding newer evidence.
 
-    Direct incident fields win simultaneous feed conflicts, with missing fields filled
-    from the other update. An unconfirmed edit citing an unchanged or older formal
-    report cannot undo confirmed values. Newly reported acreage growth remains eligible
-    between formal reports, and newer reporting evidence can make corrections.
+    Direct incident fields take precedence when feeds report conflicting values at the
+    same time; missing fields can come from the other update. An unconfirmed edit that
+    cites an unchanged or older formal report cannot undo a confirmed value. Acreage
+    growth reported between formal reports remains eligible, and newer reporting
+    evidence can support corrections.
 
     Args:
         updates: Incident updates from any supported feed, in any order.
 
     Returns:
-        Chronological updates with each measurement's source and confirmation retained.
-        Separate supporting reports can share an observation time.
+        Chronological updates with reconciled measurements and each update's report
+        metadata. A rejected stale decrease retains an earlier accepted value; separate
+        supporting reports can share an observation time.
     """
     # Both feeds can carry the same IRWIN report; direct incident fields win ties.
     ordered = sorted(

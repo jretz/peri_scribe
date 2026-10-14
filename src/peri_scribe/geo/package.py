@@ -1,8 +1,8 @@
-"""Reading fire records and complex memberships from GeoPackage files.
+"""Read fire records and complex memberships from GeoPackage files.
 
-Interprets each configured feed's layer into fire records, full source rows, and complex
-memberships, and provides the attribute-value helpers the rest of the project uses to
-read those rows.
+Each configured feed supplies identifying fire fields, full source attributes, and
+complex memberships. Keeping those results together lets callers use the fire identity
+without losing the evidence carried by its original row.
 
 Design notes:
 [Authenticated parsed source cache](../../../docs/algorithms/parsed-source-cache.md).
@@ -59,10 +59,11 @@ def layers_by_feed(
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class FireRowRecord:
-    """One fire source row with its identifying record and full attributes.
+    """One source row with its fire identity and full attributes.
 
-    The record carries the fire's identifying fields; the attributes carry every
-    non-geometry column so downstream consumers can bring the row's own fields along.
+    The record holds the fire's identifying fields. The attributes retain every
+    non-geometry column so later stages can use evidence beyond those identifying
+    fields.
     """
 
     record: peri_scribe.models.FireRecord
@@ -162,9 +163,9 @@ class GeopackageContents:
 def read_geopackage(path: pathlib.Path) -> GeopackageContents:
     """Read the fire rows and complex memberships of the GeoPackage at *path*.
 
-    Each layer is read once and each of its rows is walked once, so a row that both
-    names a fire and records a complex membership contributes to both results. The file
-    is only read, never written.
+    Read each layer once and visit each row once. A row can contribute both a fire and a
+    complex membership, so collecting them together preserves that relationship without
+    a second pass. Reading does not modify the file.
 
     Args:
         path: The GeoPackage file to read.

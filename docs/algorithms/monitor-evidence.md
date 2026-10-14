@@ -2,11 +2,12 @@
 
 ## Contract and context
 
-The monitor projects observed log evidence into command/phase history and health metrics.
-It does not infer operating-system process liveness from an unfinished command. Interactive
-browsing and compact health history have separate retention policies so trimming verbose
-rows cannot hide a recent exception or fabricate healthy coverage. No monitor reader writes
-to watched application data.
+The monitor uses observed logs to reconstruct command and phase history and assess
+health. An unfinished command tells it that no finish was observed; that alone cannot
+establish whether the process is still running. Interactive browsing and compact health
+history have separate retention policies. Trimming verbose rows can therefore leave a
+smaller display without hiding a recent exception or making incomplete history look
+healthy. No monitor reader writes to watched application data.
 
 Inputs are complete structured log records, file/report snapshots, pending-work metadata,
 and an aware observation time. Malformed or undated evidence remains diagnostic. Health
@@ -24,8 +25,7 @@ much shorter. File following uses binary offsets and inode identities; archive r
 | Scale and representation | 3 | Compact health evidence, bounded display history and streamed archives preserve different views of large logs. |
 | Failure and concurrency | 3 | Retained descriptors, partial records and archive replacement interact with asynchronous shutdown. |
 
-**Total 12: complex.** The final dimension's ownership protocol is explained separately
-in
+**Total 12: complex.** The ownership protocol behind the final dimension is explained in
 [worker lifetimes](worker-lifetimes.md).
 
 ## Approach and invariants
@@ -59,8 +59,10 @@ is absent from that month, use the streamed forward context pass and continue in
 months. Archived or mixed archive/plain months use that same streamed path, retaining
 receipt-based occurrence identity and avoiding backward decompression. Both searches run
 under the same shared rotation lock as catch-up; shutdown is checked between reverse
-blocks and records. Let B be bytes examined before the last required start, C selected
-context bytes, and L the longest record. Backward scanning costs O(B) time and O(C + L +
+blocks and records.
+
+Let B be bytes examined before the last required start, C selected context bytes, and L
+the longest record. Backward scanning costs O(B) time and O(C + L +
 64 KiB) memory; fragments of a large record are joined once. A missing start can require
 one reverse pass plus the linear fallback. No index or persistent cache is written.
 
@@ -68,11 +70,13 @@ Run IDs keep concurrent commands separate. Logging assigns command IDs, records 
 phase instances through context variables, validates catalogue parentage, and measures
 duration with a monotonic performance clock. Readers prefer explicit instance segments,
 then dotted paths with compatible parent branches, then legacy phase nesting. Phase
-reconstruction starts with the recorded plan, marks observed prefixes active, and accepts
-completed/failed status only from a finish record. A still-active phase becomes unfinished
-when its command ends. Explicit skips outrank inferred absence; unseen descendants of an
-omitted branch are hidden together. Missing starts alone never prove successful execution.
-Recorded durations are converted to seconds; unusable metadata contributes zero.
+reconstruction starts with the recorded plan, marks observed prefixes active, and
+accepts completed/failed status only from a finish record. A still-active phase becomes
+unfinished when its command ends. Explicit skips outrank inferred absence; unseen
+descendants of an omitted branch are hidden together. Missing starts alone never prove
+successful execution. Recorded durations are converted to seconds; unusable metadata
+contributes zero.
+
 Legacy records without IDs get observation-local grouping. Interactive state bounds runs
 and event rows; compact health state instead keeps structural messages, exceptions and
 each run's last event. Shared immutable strings and encoded phase paths reduce repeated
@@ -80,10 +84,11 @@ metadata without sharing mutable decoded containers between callers.
 
 ### Batched reconstruction and bounded reuse
 
-The representation changes retain the evidence contract above. Their separate complexity
+Batching and reuse retain the evidence contract above. Their separate complexity
 assessment is **2/2/1/2/0 = 7 (involved)**: phase ancestry depends on record order,
 retention and terminal outcomes interact, coverage uses interval union, and immutable
-batching avoids repeated reconstruction. They add no external effects or ownership policy.
+batching avoids repeated reconstruction. They add no external effects or ownership
+policy.
 
 Decode ordinary JSON in the native decoder, falling back to the standard decoder for
 valid syntax outside that decoder's accepted domain. Retained values, integer precision,
@@ -136,14 +141,14 @@ comparisons retain the alignment, merge, and gap with reduced motion or no anima
 Coverage expires one microsecond after hour 72; the animation does not depict time at
 microsecond resolution.*
 
-The status projection caches evidence facts separately from presentation. Reuse the
-whole snapshot only with unchanged immutable state, equal metadata/files, forward time,
-and no reached deadline. Reuse evidence tables until a future observation becomes current
-or an exception leaves its inclusive window. Recompute health at the strict six-hour
-freshness boundary and coverage start/expiry. Presentation separately updates age text at
-age-unit boundaries. Backward clocks force
-re-evaluation. Successful nonfuture completion can acknowledge a source check; a failed
-attempt cannot be treated as a successful refresh.
+The status projection caches facts about the evidence separately from their
+presentation. Reuse the whole snapshot only with unchanged immutable state, equal
+metadata/files, forward time, and no reached deadline. Reuse evidence tables until a
+future observation becomes current or an exception leaves its inclusive window.
+Recompute health at the strict six-hour freshness boundary and coverage start/expiry.
+Presentation separately updates age text at age-unit boundaries. Moving the clock
+backward forces re-evaluation. A successful completion that isn't in the future can
+acknowledge a source check; a failed attempt cannot be treated as a successful refresh.
 
 ### Expanding the planned phase tree
 
@@ -225,8 +230,8 @@ An exception at `fetch/feed A/read` followed by successful `fetch/feed B` has no
 recovery; successful enclosing `fetch` does supply recovery evidence. Repeated propagation
 of that same exception through the enclosing failed-phase and command-finish records
 must not count as three independent attempts. At exactly 48 hours an exception is still
-in the window; its table deadline is one
-microsecond later. Refreshing only on file changes would leave stale health visible.
+in the window; its table deadline is one microsecond later. Refreshing only on file
+changes would leave stale health visible.
 
 A partial UTF-8 JSON record split between polls remains buffered. If its file is replaced,
 its old open inode is drained before retirement. Size-based truncation detection cannot
@@ -238,14 +243,13 @@ source assumption, not exactly-once delivery for arbitrary file mutation.
 For N incoming records and K existing coverage intervals, coverage insertion sorts
 O((N + K) log(N + K)) intervals; compact retention sorts runs by evidence time. Cached
 snapshot reuse avoids these status calculations between relevant boundaries, but new
-evidence can require sorting/grouping all retained events. Exception recovery currently
-scans later observations
-for each origin, so E retained exceptions among N observations can cost O(EN), with
-O(N + groups) evidence/summary memory. File polling is bounded per
-cursor, while startup, changed-archive replay and context recovery can scan substantial
-history. Archive decode is streaming; an individual oversized record and retained
-exceptions/structural events can still be large. Interactive row limits do not bound
-all progress evidence or all 48-hour exception history.
+evidence can require sorting and grouping all retained events. Exception recovery
+currently scans later observations for each origin, so E retained exceptions among N
+observations can cost O(EN), with O(N + groups) evidence/summary memory. File polling is
+bounded per cursor, while startup, changed-archive replay and context recovery can scan
+substantial history. Archive decode is streaming; an individual oversized record and
+retained exceptions/structural events can still be large. Interactive row limits do not
+bound all progress evidence or all 48-hour exception history.
 
 Stable report reads compare metadata before/after reading one open file; a changed file
 retains the prior snapshot. Directory notifications are hints, with periodic reconciliation

@@ -214,7 +214,7 @@ def test_seed_fails_open_for_unserializable_normalized_values(
         assert spatial_data.row_index.read(path, "points", "file") is None
 
 
-def test_seed_reuses_identical_row_payloads_across_file_generations(
+def test_seed_prunes_row_payloads_absent_from_new_file_generation(
     tmp_path: pathlib.Path,
     cached_layers: list[spatial_data.layers.LayerData],
 ) -> None:

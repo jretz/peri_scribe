@@ -29,9 +29,9 @@ QUERY_CHUNK_SIZE = 100_000
 def gpkg_geometry_header_size(flags: int) -> int:
     """Return a GeoPackage geometry blob's header size for its flags byte.
 
-    A point's envelope is trivial, so points store no envelope and use the 8-byte
-    header. Other geometries store an XY envelope (40-byte header) or, when they carry a
-    Z, an XYZ envelope (56-byte header).
+    The supported forms are no envelope (8 bytes), an XY envelope (40 bytes), and an XYZ
+    envelope (56 bytes). The flags identify the stored envelope; the geometry's type
+    alone does not determine the header size.
 
     Args:
         flags: The geometry blob's flags byte.
@@ -131,7 +131,7 @@ def fetch_layer_geometries(
     layer_name: str,
     fids: typing.Iterable[int],
 ) -> np.ndarray:
-    """Return the geometries of *fids* from *layer_name*, in fid order.
+    """Return the geometries of the distinct *fids* from *layer_name*.
 
     The features are read straight from the GeoPackage's SQLite storage via a temporary
     table left-joined to the layer, so each candidate is an indexed ``fid`` lookup and
@@ -143,7 +143,8 @@ def fetch_layer_geometries(
         fids: The feature ids to fetch.
 
     Returns:
-        The geometries as a numpy array of shapely geometries.
+        The geometries as a numpy array of shapely geometries. Callers must not depend
+        on their order because the SQL query does not specify one.
     """
     sorted_fids = sorted(fids)
     connection = sqlite3.connect(path)

@@ -1,8 +1,9 @@
 """Supply folder and perimeter icons embedded in the KMZ output.
 
-Each folder in the output carries a small square icon colored to match the geometry it
-holds. All icons are generated in memory on every KMZ build. Perimeter icons use
-four-pixel diagonal lines, one-pixel black outlines, and transparent backgrounds.
+The Interior and Perimeters folders carry small square icons colored to match the
+geometry they hold. All icons are generated in memory on every KMZ build. Perimeter
+icons use four-pixel diagonal lines, one-pixel black outlines, and transparent
+backgrounds.
 
 [Progression presentation](../../../docs/algorithms/progression-presentation.md)
 """
@@ -176,10 +177,10 @@ def png_from_rows(rows: list[bytes], side_in_pixels: int) -> bytes:
 def interior_progression_icon() -> bytes:
     """Return the "Interior" folder icon as a PNG.
 
-    The icon is a vertical Turbo gradient: sixteen horizontal one-pixel lines, the top
-    line in Turbo's last (hottest) color and the bottom line in Turbo's first (coolest)
-    color, with the lines in between linearly interpolated across the trimmed ramp. The
-    icon is generated in memory on every KMZ build.
+    The vertical gradient previews the progression colors: sixteen horizontal one-pixel
+    lines, hottest at the top and coolest at the bottom. Intermediate colors are
+    interpolated across the trimmed Turbo ramp. The icon is generated in memory for each
+    KMZ build.
 
     Returns:
         The icon's PNG bytes.

@@ -153,7 +153,7 @@ def test_convert_zip_stream_converts_geojson_member(tmp_path: pathlib.Path) -> N
 def test_convert_zip_stream_raises_when_not_a_zip(tmp_path: pathlib.Path) -> None:
     with pytest.raises(
         spatial_data.exceptions.GeometryStreamError,
-        match="not a zip file",
+        match="Failed to read the streamed ZIP archive",
     ):
         spatial_data.centroid_streaming.convert_zip_stream(
             [b"not a zip"],

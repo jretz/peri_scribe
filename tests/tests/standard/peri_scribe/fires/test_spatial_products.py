@@ -221,7 +221,7 @@ def test_building_counts_missing_database_does_not_hide_new_dataset(
 
 
 @pytest.mark.parametrize("mode", ["inactive", "wal", "unconditional"])
-def test_building_counts_bypasses_cache_when_dataset_is_not_a_closed_snapshot(
+def test_building_counts_queries_when_cache_is_inactive_unconditional_or_wal_present(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
     mode: str,

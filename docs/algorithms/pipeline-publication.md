@@ -2,10 +2,11 @@
 
 ## Contract and context
 
-The pipeline executes a selected contiguous range of fetch, geography, score, KMZ and
-reports while preserving all outstanding rebuild requirements. A publication gate may
-collect inputs now and defer their derived outputs. These are distinct states: downloaded,
-required for rebuilding, and acknowledged by a completed KMZ.
+The pipeline can execute a selected contiguous range of fetch, geography, score, KMZ and
+reports. It must still remember any rebuild work left outside that range. A publication
+gate can also collect inputs now and defer rebuilding their outputs. Downloading an
+input, recording that it requires a rebuild, and acknowledging it in a completed KMZ are
+therefore three separate steps.
 
 Inputs are a year directory, selected range, optional force/full-fetch policy, and optional
 publication thresholds (area quantities and elapsed duration). Publication comparison
@@ -29,11 +30,12 @@ precedence must stay explicit even if a future refactor reduces implementation s
 
 ## Approach and invariants
 
-Pending stages are the canonical ordered union of old and newly required stages. The
-unconditional flag is sticky while any pending work remains. Only successful completion
-of the first pending stage removes it; running a later selected stage cannot acknowledge
-an omitted prerequisite. Invalid run-state markers conservatively require a full forced
-rebuild. A lock loser changes no shared pipeline state.
+Pending stages combine old and newly required work in the canonical stage order. Once
+set, the unconditional flag stays set while any pending work remains. A stage is removed
+only when it is first in the pending list and completes successfully. Running a later
+selected stage cannot acknowledge an omitted prerequisite. Invalid run-state markers
+conservatively require a full forced rebuild. A command that fails to acquire the lock
+changes no shared pipeline state.
 
 ![Recovery intent precedes mutation and survives partial execution](assets/pipeline-intent.svg)
 

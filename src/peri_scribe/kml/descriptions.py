@@ -37,20 +37,17 @@ def description_html(
     image_filenames: tuple[str, ...] = (),
     leading_rows: tuple[tuple[str, str | None], ...] = (),
 ) -> document_text.encoding.CData:
-    """Return *description* as the HTML KML balloon text.
+    """Return *description* as HTML for a KML balloon.
 
-    The text is wrapped in a CDATA section so the HTML tags it contains survive as
-    markup rather than being read as KML text. Each of *image_filenames* is shown below
-    the table as an image whose source is a file stored beside the KML in the KMZ
-    archive. Each row in *leading_rows* opens the table above *description*'s own rows,
-    so a growth ring's balloon can lead with the area that ring added to the fire before
-    the fire's shared facts; a row whose value is missing shows two hyphens, like the
-    fire's own rows.
+    CDATA keeps the HTML markup intact inside KML. Images listed in *image_filenames*
+    appear below the table and refer to files stored beside the KML document in the KMZ
+    archive. The optional *leading_rows* let a growth ring show its added area before
+    the fire's shared facts. Missing values appear as two hyphens throughout the table.
 
-    The balloon is cached by its inputs: the same fire's balloon is embedded in every
-    placemark that draws the fire and is rebuilt for each folder view that shows it, and
-    a fire's description, image filenames, and added-area rows are identical across
-    those placemarks and views.
+    Whole-fire placemarks share a balloon. Each growth ring adds its own area row, and
+    that ring's balloon is reused across folder views. Caching by all of these inputs
+    avoids rebuilding identical balloons while keeping different rings' added areas
+    separate.
 
     Args:
         description: The fire's latest state.

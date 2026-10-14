@@ -4,7 +4,7 @@ import requests
 
 
 def raise_disconnected_query() -> None:
-    """Simulate a disconnected query after retries are exhausted.
+    """Simulate a disconnected query that exhausts the retry policy.
 
     Raises:
         requests.exceptions.ConnectionError: Always, to exercise serializable failure

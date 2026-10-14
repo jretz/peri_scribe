@@ -14,7 +14,7 @@ import tests.helpers.doubles.peri_scribe.sources.external_source
 import tests.helpers.factories.peri_scribe.sources.external_source
 
 
-def test_buildings_source_covers_every_us_state() -> None:
+def test_buildings_source_has_expected_count_and_includes_california_and_dc() -> None:
     states = peri_scribe.sources.catalog.BUILDINGS_SOURCE.states
     assert len(states) == len(us.states.STATES) + 1
     assert "California" in states
@@ -28,7 +28,7 @@ def test_every_external_source_has_a_retrieval_url() -> None:
             assert source.layer_name
 
 
-def test_buildings_state_urls_reads_repo_page_every_fetch(
+def test_buildings_state_urls_reads_repository_page(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     links = {

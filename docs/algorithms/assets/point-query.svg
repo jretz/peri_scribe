@@ -1,6 +1,6 @@
 <?xml version='1.0' encoding='utf-8'?>
 <svg xmlns="http://www.w3.org/2000/svg" width="840" height="420" viewBox="0 0 840 420" role="img" aria-labelledby="point-query-title point-query-description" style="max-width:100%;height:auto">
-  <title id="point-query-title">Broad candidate filters precede strict containment</title>
+  <title id="point-query-title">Narrow the candidates, then check strict containment</title>
   <desc id="point-query-description">Requested tiles contain duplicate points inside an irregular fire perimeter, a point on its boundary, and a point in an unburned hole. Only the duplicate interior points count.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
@@ -30,7 +30,7 @@
 </style>
   </defs>
   <rect width="840" height="420" fill="var(--background)" />
-  <text x="24" y="34" class="heading">Broad candidate filters precede strict containment</text>
+  <text x="24" y="34" class="heading">Narrow the candidates, then check strict containment</text>
   <g id="tile-select">
     <rect class="box blue" x="24" y="66" width="234" height="108" />
     <text x="40" y="95" class="label">1. Select tiles</text>
@@ -61,5 +61,5 @@
   <text x="356" y="248" class="label">Interior A appears twice → count 2</text>
   <text x="356" y="283" class="">Point on exterior boundary → count 0</text>
   <text x="356" y="318" class="">Point inside polygon hole → count 0</text>
-  <text x="356" y="353" class="muted">Result concerns quantized stored points.</text>
+  <text x="356" y="353" class="muted">Counts use the stored, rounded coordinates.</text>
 </svg>

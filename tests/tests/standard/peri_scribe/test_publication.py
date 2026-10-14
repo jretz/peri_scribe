@@ -140,7 +140,7 @@ def test_late_old_mapping_does_not_displace_newer_published_map() -> None:
     "baseline",
     [None, tests.helpers.factories.peri_scribe.publication.mapping(100)],
 )
-def test_new_unmapped_fire_compares_with_zero(
+def test_mapping_decision_proceeds_for_new_unpublished_fire(
     baseline: peri_scribe.publication.Mapping | None,
 ) -> None:
     candidates = peri_scribe.publication.candidate_fires(

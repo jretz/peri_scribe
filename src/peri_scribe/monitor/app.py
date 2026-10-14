@@ -221,7 +221,7 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
 
     @textual.on(textual.widgets.Tree.NodeSelected, "#phase-tree")
     def select_phase(self, event: textual.widgets.Tree.NodeSelected) -> None:
-        """Only started phases may become a filter; waiting nodes remain inert.
+        """Observed phases may become a filter; waiting nodes remain inert.
 
         Args:
             event: The selected tree node.

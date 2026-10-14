@@ -152,8 +152,9 @@ def prepared_sources(
 ) -> peri_scribe.fires.sources.PreparedSources:
     """Use actual grouping, then select one component as classification does on misses.
 
-    The second component remains in the complete source read so changing aggregate
-    membership exercises a transitive key dependency without adding a second lookup.
+    The complete source read retains a second component. Changing its aggregate
+    membership can affect the selected component's cache key, exposing a missing
+    dependency without adding a second lookup.
 
     Args:
         year: The source-root owner for relative provenance.

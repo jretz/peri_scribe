@@ -2,11 +2,13 @@
 
 ## Contract and context
 
-Scoring ranks each fire from current area, largest mapped growth step, first-mapping size,
-nearby building count, evacuation overlap, and the latest official complexity level.
-The current score is recomputed from current evidence, independent of earlier score files.
-Results contain each weighted contribution and an explanation, sorted by descending score
-then name. Missing spatial datasets contribute zero rather than inventing observations.
+Scoring ranks each fire from current area, largest mapped growth step, first-mapping
+size, nearby building count, evacuation overlap, and the latest official complexity
+level. The score is recomputed from current evidence, so an earlier score file cannot
+keep an outdated contribution alive. Results contain each weighted contribution and an
+explanation, sorted by descending score then name. Missing spatial datasets contribute
+zero; that means there was no usable evidence for a contribution, not that there are no
+buildings or evacuations nearby.
 
 Inputs are authenticated full/differential/incident histories where available, plus the
 current building-centroid and evacuation datasets. Geometry uses WGS84 for queries;
@@ -61,16 +63,16 @@ that boundary is excluded. Evacuation overlap tests the unbuffered fire geometry
 a boundary touch. Shapes are schematic, not a scale drawing.*
 
 Building queries count stored centroids, including duplicates, with strict containment.
-Evacuations use geometric intersection. Buffering in Web Mercator uses projected distance;
-its real ground distance varies with latitude, so “within a mile” is the current display
-label and configured projected buffer, not a guarantee of a geodesic one-mile offset.
+Evacuations use geometric intersection. Buffering in Web Mercator uses a projected
+one-mile distance; its real ground distance varies with latitude, so this is not a
+geodesic one-mile offset.
 Projection limits and antimeridian geometry retain the underlying geometry assumptions.
 
 ## Tier policy and worked example
 
 For each descending threshold list, take the first threshold the input meets using `>=`.
-Unknown or below-minimum values earn zero. Thresholds are inclusive even when generated
-English explanations say “over.” These are policy points, not probabilities or calibrated
+Unknown or below-minimum values earn zero. Generated explanations say “at least” to
+match the inclusive thresholds. These are policy points, not probabilities or calibrated
 predictions of losses.
 
 | Signal | Thresholds, descending | Tier points | Weight |
@@ -88,9 +90,11 @@ Exactly 10,000 acres qualifies for size tier 2. Removing the latest complexity v
 importance to zero; carrying Type 2 forward from an older row would be wrong.
 
 The maximum under the current nonnegative tiers is 135 + 60 + 33 + 16 + 33 + 360 = 637.
-Each independent signal is monotone at fixed other inputs, but real scores need not be:
-new surveys can reduce area, official complexity can decrease, and external datasets can
-change. A reported current area can raise size points while mapped growth remains fixed.
+With other inputs fixed, increasing size, mapped growth, first-mapping size, or building
+count cannot lower the score. Adding evacuation overlap or increasing official
+complexity points cannot lower it either. Actual scores can still fall: new surveys can
+reduce area, official complexity can decrease, and external datasets can change. A
+reported current area can raise size points while mapped growth remains fixed.
 
 Summing all reached tier awards would overcount. Reusing area by canonical name alone
 could combine namesakes or aliases differently from scoring's identity groups. Reusing

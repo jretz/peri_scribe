@@ -2,11 +2,13 @@
 
 ## Contract and assessment
 
-Quantization accepts an RGBA image and returns RGBA pixels drawn from at most 256 working
-palette entries. The palette always reserves transparent black, opaque red, yellow,
-white, and black. Transparent pixels stay transparent, opaque interiors stay opaque,
-and partially transparent edge pixels stay partial. Required exact opaque colors remain
-available without spending dynamic palette entries. There is no dithering.
+Palette reduction makes previews easier to compress while preserving essential colors
+and transparency. Quantization accepts an RGBA image and returns RGBA pixels drawn from
+at most 256 working palette entries. The palette always reserves transparent black,
+opaque red, yellow, white, and black. Transparent pixels stay transparent, opaque
+interiors stay opaque, and partially transparent edge pixels stay partial. Required
+exact opaque colors remain available without spending dynamic palette entries. There is
+no dithering.
 
 | Dimension | Score | Reason |
 | --- | --- | --- |
@@ -32,8 +34,9 @@ is `u - 255δ(1,1,1)`. Averaging those squared norms gives
 
 ![The same translucent edge is evaluated on light and dark backgrounds](assets/palette-alpha.svg)
 
-The figure shows why straight RGB distance misses visible opacity errors. The background
-pair explains the metric; no motion is needed to compare simultaneous samples.
+Two pixels with similar RGB values can look different when their opacity differs.
+Showing them against both backgrounds makes that error visible and explains why opacity
+belongs in the distance metric.
 
 ## Palette construction and correctness argument
 
@@ -66,9 +69,9 @@ not a proof of a globally optimal palette or monotonically improving error at ev
 
 An image with transparent pixels, opaque red, and a half-alpha red fringe retains exact
 opaque red and maps the fringe only to partial-alpha candidates. Mapping that fringe to
-transparent black could save an entry but violate visible-support preservation. Combining
-the fringe with opaque red in one unconstrained cluster could change the opacity of the
-fire interior. The separate groups rule out both outcomes.
+transparent black could save an entry but erase a visible edge. Combining the fringe
+with opaque red in one unconstrained cluster could change the opacity of the fire
+interior. The separate groups rule out both outcomes.
 
 Occurrence weights matter: a color used by 5,000 interior pixels contributes 5,000 times
 as much squared error as one fringe pixel at the same distance. Principal-axis splitting

@@ -1,8 +1,7 @@
 """Reconciling perimeter and point observations into versioned history.
 
-Turns each source row into a labeled observation, collapses and merges observations that
-describe the same moment, and drops perimeters whose geometry collapsed below the size
-the source reports.
+Turns source rows into labeled observations, reconciles competing perimeter mappings,
+and retains point versions when their attributes change.
 
 [Reconciliation](../../../docs/algorithms/perimeter-reconciliation.md)
 """
@@ -127,14 +126,13 @@ def source_observation_from_row(
 def effective_time(observation: SourceObservation) -> datetime.datetime | None:
     """Return the observation's as-of time, falling back to its own edit time.
 
-    The as-of time is the feed's observation column: for both perimeter feeds that is
-    ``poly_DateCurrent``, the date the perimeter version is current for, so each version
-    of an in-place-edited perimeter carries the date its shape became current. A row
-    whose observation column is empty falls back to its modified-time column
-    (``EditDate`` for FIRIS, ``attr_ModifiedOnDateTime_dt`` for WFIGS) and then to the
-    snapshot's last-edit timestamp as the last resort: that timestamp describes when the
-    layer changed, not when the row was current, and dating a dateless perimeter by it
-    can make a stale re-published row look like the newest mapping.
+    Both perimeter feeds use ``poly_DateCurrent`` for the date a version became current.
+    This lets an edited perimeter retain the date that applies to its shape.
+
+    When that field is empty, use the row's modification time: ``EditDate`` for FIRIS or
+    ``attr_ModifiedOnDateTime_dt`` for WFIGS. The snapshot's last-edit time is the final
+    fallback. It dates a change to the whole layer, so using it for an undated row can
+    make a republished old perimeter look like the newest mapping.
 
     Args:
         observation: The observation to time.
@@ -191,14 +189,16 @@ def collapse_identical_consecutive_perimeters(
 ) -> list[SourceObservation]:
     """Collapse consecutive observations that share a geometry.
 
-    A run of observations with equal geometry becomes one version carrying the newest
-    observation's attributes and the source lineage linking prior publications.
+    A run of observations with equal geometry and no new capture evidence becomes one
+    version carrying the newest observation's attributes and the source lineage linking
+    prior publications. A later survey with new capture evidence remains a separate
+    version even when its geometry is unchanged.
 
     Args:
         observations: The perimeter observations for one source and fire.
 
     Returns:
-        One observation per geometry change, in observation order.
+        One observation per geometry change or new capture, in observation order.
     """
     ordered = sorted(observations, key=perimeter_sort_key)
     versions: list[SourceObservation] = []
@@ -274,7 +274,8 @@ def preferred_pair(
         preferred: The preferred source kind.
 
     Returns:
-        The preferred and non-preferred observations, in that order.
+        The left observation first when its source is preferred; otherwise the right
+        observation first.
     """
     if left.source_kind is preferred:
         return left, right
@@ -336,7 +337,8 @@ def merge_identical_observations(
         preferred: The preferred source kind.
 
     Returns:
-        The observations with equal-geometry pairs merged, in time order.
+        The observations with equal-geometry pairs merged at their first matching
+        positions.
     """
     versions: list[SourceObservation] = []
     for observation in observations:
@@ -519,10 +521,11 @@ def attributes_are_equal(left: dict[str, object], right: dict[str, object]) -> b
 
 
 def point_versions(observations: list[SourceObservation]) -> list[SourceObservation]:
-    """Return one point version per distinct attribute state.
+    """Collapse consecutive point observations with the same attributes.
 
     The location is never part of version identity, so a location move alone folds the
-    newest geometry into the current version instead of creating a new one.
+    newest geometry into the current version instead of creating a new one. A return to
+    an earlier attribute state creates a new version because it records another change.
 
     Args:
         observations: The incident location observations for one fire.
@@ -626,8 +629,9 @@ def collapse_mapping_revisions(
     """Keep a mapping's latest publication without chaining separate surveys together.
 
     Each revision must agree with both the group's first observation and its retained
-    version. This bounds the revision window even when successive edits are close.
-    Superseded source references keep the choice traceable.
+    version. Checking the first observation prevents a series of closely spaced edits
+    from extending the revision window indefinitely. References to the superseded
+    sources preserve the evidence behind the choice.
 
     Args:
         observations: Candidate mappings in chronological observation order.

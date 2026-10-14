@@ -12,7 +12,7 @@ if typing.TYPE_CHECKING:
 
 
 def assert_tree_invisible(container: ET.Element) -> None:
-    """Assert *container* and every feature beneath it is unchecked.
+    """Assert that *container* and every feature beneath it are unchecked.
 
     Args:
         container: The folder whose whole tree must be invisible.
@@ -24,9 +24,8 @@ def assert_tree_invisible(container: ET.Element) -> None:
             tests.helpers.peri_scribe.kml.parsing.gx_tag("Tour"),
         }:
             continue
-        # Tour update instructions reuse Placemark and Folder tags but carry a targetId
-        # rather than being real features, so they are not part of the tree whose
-        # visibility is asserted here.
+        # Tour instructions use Placemark and Folder tags with a targetId to update
+        # existing features. Excluding them limits this check to the feature tree.
         if feature.get("targetId") is not None:
             continue
         assert tests.helpers.peri_scribe.kml.parsing.visibility(feature) == 0, (
@@ -35,7 +34,7 @@ def assert_tree_invisible(container: ET.Element) -> None:
 
 
 def assert_tree_visible(container: ET.Element) -> None:
-    """Assert *container* and every feature beneath it is checked.
+    """Assert that *container* and every feature beneath it are checked.
 
     Args:
         container: The folder whose whole tree must be visible.
@@ -47,9 +46,8 @@ def assert_tree_visible(container: ET.Element) -> None:
             tests.helpers.peri_scribe.kml.parsing.gx_tag("Tour"),
         }:
             continue
-        # Tour update instructions reuse Placemark and Folder tags but carry a targetId
-        # rather than being real features, so they are not part of the tree whose
-        # visibility is asserted here.
+        # Tour instructions use Placemark and Folder tags with a targetId to update
+        # existing features. Excluding them limits this check to the feature tree.
         if feature.get("targetId") is not None:
             continue
         assert tests.helpers.peri_scribe.kml.parsing.visibility(feature) is None, (

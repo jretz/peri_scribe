@@ -1,9 +1,9 @@
 # Glossary
 
-Concepts used in PeriScribe's data, pipeline, code, and outputs. The project's area of
-interest is the entire United States; some source feeds and reference datasets are
-specific to California. Paths below are relative to a year directory such as
-`data/2026/`, unless they link to project files.
+This glossary explains the concepts used in PeriScribe's data, pipeline, code, and
+outputs. PeriScribe covers the entire United States, though some feeds and reference
+datasets cover California specifically. Paths below are relative to a year directory
+such as `data/2026/`, unless they link to project files.
 
 ## Fires and identity
 
@@ -16,13 +16,14 @@ specific to California. Paths below are relative to a year directory such as
   precedence over other identifiers. A fire may have no identifier yet.
 - **Alias** — Any normalized identifier associated with a fire, including its canonical
   identifier. Aliases keep observations connected when feeds use different identifiers.
-- **Component identity** — An internal key anchored to an immutable source-row
-  occurrence in a grouped fire. It keeps anonymous namesakes separate through histories,
-  qualification, reports, and updates. Component aliases retain source anchors through
-  grouping changes; they are separate from externally supplied fire identifiers.
+- **Component identity** — An internal key tied to an immutable occurrence of a source
+  row in a grouped fire. It keeps fires with the same name and no identifiers separate
+  in histories, qualification, reports, and updates. Component aliases preserve those
+  ties when grouping changes; they are separate from identifiers supplied by feeds.
 - **Normalized name** — A name prepared for comparison by ignoring case, collapsing
   whitespace, and treating hyphens, underscores, and slashes as spaces. Name-based
-  grouping also considers geometry and time so unrelated namesakes remain separate.
+  grouping requires nearby geometry. A large spread in observation times produces a
+  warning; it does not split the group.
 - **Fire complex** — A source-identified group of related fires. A member retains its
   individual identity and at most one current parent. Dated declarations can transfer
   membership; a complex merger carries its children to the resulting parent. Explicit
@@ -60,9 +61,9 @@ precedence and handling of ambiguous or cyclic relationships.
 - **Observation time** — When a source says a perimeter or incident observation applies.
   It is distinct from the time PeriScribe downloads the record. Source timestamps are
   normalized to UTC.
-- **Typed fallback** — Selection of the first usable field for a requested numeric,
-  text, or datetime value. Blank or invalid fields permit later fallback; numeric zero
-  remains usable and nonfinite numbers do not.
+- **Typed fallback** — Choosing the first usable field for a numeric, text, or datetime
+  value. A blank or invalid field does not hide a usable value in a later field. Numeric
+  zero is usable; nonfinite numbers are not.
 - **Provenance** — Evidence connecting a derived value or geometry to its source,
   including snapshot paths, source object identifiers, and observation times. Retained
   provenance also links corrected mapping to its previous update history.
@@ -76,9 +77,10 @@ precedence and handling of ambiguous or cyclic relationships.
   postal state or territory code, and geometry coordinates. The nearest reference place
   supplies distance and direction in report and update locations, without ranking or
   population weighting.
-- **Source content fingerprint** — A comparison identity for an external dataset's
+- **Source content fingerprint** — A value used to compare external datasets by
   attribute names, normalized values, coordinate reference, and geometry. Field
-  boundaries remain unambiguous; row order is ignored while duplicate rows are retained.
+  boundaries are encoded so they cannot be confused with content. Changing row order
+  does not change the fingerprint, but adding a duplicate row does.
 - **Source coverage validation** — A check that every complete-snapshot feature has a
   matching stored feature and that the stored schema includes every required attribute.
   Both snapshots must have unique object IDs and the same known coordinate reference
@@ -115,9 +117,9 @@ See [configured feeds](../src/peri_scribe/sources/feeds.py),
   perimeter history, with its observation time. Progression maps color these rings to
   show the sequence of mapped growth. A ring need not be circular or contiguous.
 - **Ring area** — The measured area of an individual ring geometry.
-- **Displayed added area** — The increase in cumulative covered area when a ring joins
-  a particular ordered display sequence. Overlap is counted only once, so this value
-  depends on the preceding rings as well as the current ring.
+- **Displayed added area** — The newly covered ground when a ring is added to an
+  ordered display sequence. Ground already covered by earlier rings is counted only
+  once, so the value depends on those rings as well as the current one.
 - **Exterior perimeter length** — The combined lengths of the outer boundaries of a
   geometry's polygon parts, excluding the boundaries of interior holes.
 - **Coordinate reference system (CRS)** — The definition that gives coordinates their
@@ -155,15 +157,17 @@ See [differential history](../src/peri_scribe/fires/differential.py),
   than the supporting observation because a policy deadline must first pass. Charts use
   effective time; source attribution uses observation time.
 - **Qualifying area** — The historical selected area used to decide whether a fire can
-  appear in maps and reports. The current minimum is 25 acres; a later downward
-  correction does not disqualify a fire that previously met it. Sparse records can use
-  the policy's undated or supplied-acreage fallbacks.
+  appear in maps and reports. The current minimum is 25 acres; later downward corrections
+  do not erase an earlier qualifying dated estimate. Without dated estimates, sparse
+  records can use undated or supplied-acreage fallbacks. A first dated estimate replaces
+  that fallback, so it can change whether the fire qualifies.
 - **Fire score** — A weighted sum of signals used to rank fires: current size, largest
   single growth step, first-mapping size, nearby buildings, evacuation-zone overlap, and
   incident complexity. The saved score includes an explanation of its contributions.
 - **Score association** — Matching saved score rows to showable fires by identifier,
-  with name fallback when an identifier has no match. Each fire retains its highest
-  ranked matching row, so list position, displayed score, and explanation agree.
+  then component identity. Only scores without a component can fall back to a name.
+  Each fire retains its highest-ranked matching row, so list position, displayed score,
+  and explanation agree.
 - **First mapping** — The first retained growth step used for the first-mapping size
   signal. It describes mapped size when first observed, rather than the fire's ignition
   size or discovery time.
@@ -197,9 +201,9 @@ See [area selection](architecture.md#incident-evidence-and-area-selection),
 - **Ring sequence digest** — A fingerprint identifying the exact ordered ring geometries
   used to calculate displayed added areas. Stored measurements can be reused only when
   the consumer's sequence matches.
-- **Prepared products** — Disposable cached computations in
-  `derived/prepared-products.sqlite`, such as classifications, measurements, building
-  counts, and rendered fragments. Deleting this cache loses acceleration; authoritative
+- **Prepared products** — Cached computations in `derived/prepared-products.sqlite`,
+  such as classifications, measurements, building counts, and rendered fragments.
+  Deleting this disposable cache makes later runs recompute the products. Authoritative
   source and history files remain separate.
 - **Unconditional rebuild** — A run with `--unconditional` that executes the selected
   stages regardless of input changes. When geography is selected, it bypasses prior
@@ -222,7 +226,7 @@ See [area selection](architecture.md#incident-evidence-and-area-selection),
   Readers use the same receipt to distinguish an archived source copy from a new plain
   tail, preserving all occurrences while sharing the writer's lock.
 
-See [pipeline usage](../README.md#pipeline),
+See [pipeline usage](../README.md#how-it-works),
 [log rotation](../src/peri_scribe/logging.py),
 [publication reuse](architecture.md#publication-reuse-and-performance), and
 [recovery and scheduling](architecture.md#recovery-and-scheduling).

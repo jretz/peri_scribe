@@ -63,7 +63,8 @@ class Entry:
         """Keep real geodesic measurements within an ordinary United States footprint.
 
         Returns:
-            A geographic rectangle preserving the model's exact overlap ratios.
+            A rectangle preserving the model's overlap ratios in longitude/latitude
+            coordinates; geodesic areas are measured separately.
         """
         observation = self.observation
         return shapely.box(
@@ -312,7 +313,7 @@ def retained(
         entries: Actual full reconciliation output.
 
     Returns:
-        Flat eight-field records in production order.
+        Flat fourteen-field records in production order.
     """
     values: list[int] = []
     for entry in entries:

@@ -1,9 +1,10 @@
 # Journal recovery against actual files
 
-`JournalReplay.tla` extends `UpdateJournal.tla` with observer variables retaining a
-reachable interrupted journal and its uninterrupted recovery result. Its checked
-input/output relation drives `conformance/test_journal_recovery.py`; Python does not
-reimplement the transition rules to manufacture expected results.
+Recovery has to preserve the original update records and timestamps even when it runs
+again. `JournalReplay.tla` extends `UpdateJournal.tla` with observer variables that
+retain a reachable interrupted journal and the result of recovering it without another
+interruption. `conformance/test_journal_recovery.py` uses those checked input/output
+pairs as its expected results.
 
 The configuration has two successive batches, at most two interruptions, all four
 empty/nonempty batch combinations, and both fresh/partial and gated/ungated publication
@@ -34,37 +35,36 @@ injects process loss immediately before and after these durable boundaries:
 - Archive replacement and removal of the plain log after compression.
 
 The expanded model also separates receipt publication and retirement from archive and
-source changes. This bridge projects receipts away and retains the batch-level durable
-fields above. The [rotation bridge](../log_rotation_seeking.md) additionally observes
-real receipt contents and both sides of receipt publication and retirement, including
-byte-identical diagnostic occurrences that have no batch ID.
+source changes. This bridge retains receipt presence alongside the batch-level durable
+fields above. The [rotation bridge](../log_rotation_seeking.md) also checks real receipt
+contents and both sides of receipt publication and retirement, including byte-identical
+diagnostic occurrences that have no batch ID.
 
 The 50 scenarios cover fresh publication inputs and standalone/partial inputs, both
 without a publication checkpoint and with one retained from an earlier KMZ. A retained
-older checkpoint must fail actual KMZ-identity validation. The
-rotation cases first interrupt journal publication, then interrupt recovery after the
-clock crosses into a later month. Every actual replacement and deletion is observed;
-its projected durable state must belong to TLC's checked state space for that exact
-pair of fresh-input modes. Fresh builds cannot borrow prefixes permitted only for
-partial builds. Successful
-retries and a further unchanged build must retain exactly two complete batches, their
-original timestamps, and a valid viewer. KMZ files are real ZIP archives and their
-documents are read back after publication.
+older checkpoint must fail actual KMZ-identity validation. The rotation cases first
+interrupt journal publication, then interrupt recovery after the clock crosses into a
+later month. Every actual replacement and deletion is observed. The resulting sequence
+of projected durable states must follow one continuous path through TLC's checked graph
+for that exact pair of fresh-input modes. Fresh builds cannot borrow prefixes permitted
+only for partial builds. Successful retries and a further unchanged build must retain
+exactly two complete batches, their original timestamps, and a valid viewer. KMZ files
+are real ZIP archives and their documents are read back after publication.
 
 The builder adapter supplies prepared geometry, report selection, publication inventory,
 and a tiny XML renderer. It retains actual builder control flow, update preparation and
 identity resolution, KMZ writing, publication commit, journal serialization and
 recovery, monthly append/compression, checkpoint replacement, and viewer writing.
-Rendering,
-geocoding, geography derivation, and candidate selection belong to other tests.
+Rendering, geocoding, geography derivation, and candidate selection belong to other
+tests.
 
 ## Limits
 
 Recovery checks compare every distinct relation in the stated finite model. Builder
-checks compare selected execution prefixes with the model's reachable projections;
-they are not a proof that every Python trace refines every TLA+ transition. Gated
-coordinator modes and changing stage selections are covered separately by the
-[composition checks](composition.md).
+checks require selected execution prefixes to follow continuous paths through the
+model's checked graph; they are not a proof that every Python trace refines every TLA+
+transition. Gated coordinator modes and changing stage selections are covered separately
+by the [composition checks](composition.md).
 
 The filesystem premise is atomic replacement by a cooperating single writer with valid
 input journals and archives. These checks simulate abrupt process loss at durable

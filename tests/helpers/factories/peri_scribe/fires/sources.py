@@ -20,14 +20,14 @@ ROWE_CREEK_COMPLEX_ID = "b8431c26-6a9b-4ef0-88d8-f7ea9a3f56c3"
 def listed_fires(
     directory: pathlib.Path = pathlib.Path("sources"),
 ) -> list[peri_scribe.models.Fire]:
-    """Return the fires indexed from the GeoPackage files under *directory*.
+    """Return the non-complex fires indexed from snapshots under *directory*.
 
     Args:
         directory: The directory tree holding GeoPackage files with fire data. Defaults
             to the canonical ``sources`` directory.
 
     Returns:
-        The fires, in the order first encountered.
+        The non-complex fires in source group order.
     """
     record_groups = peri_scribe.fires.sources.fire_record_groups(directory)
     return [
@@ -45,7 +45,7 @@ def complex_parent_and_child_fires(
         stub_fire_reader: The fixture installing in-memory fire reads.
 
     Returns:
-        The parent and child fires, with the child linked to its complex.
+        The child fire, linked to its complex; the parent is excluded.
     """
     stub_fire_reader(
         {

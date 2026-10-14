@@ -23,10 +23,9 @@ if typing.TYPE_CHECKING:
 def buildings_page_html(links: dict[str, str]) -> str:
     """Render a GitHub-style page whose "Download links" table holds *links*.
 
-    The page mirrors the README rendering GitHub serves for the repository page: a
-    "Download links" heading followed by a table whose rows link each state to its
-    archive, bracketed by other headings and a link so the parser must select the right
-    table.
+    The table follows a "Download links" heading and links each state to its archive,
+    matching GitHub's rendered README. Other headings and a link surround it so the
+    parser has to identify the correct table.
 
     Args:
         links: The state-to-archive-URL pairs the table should hold.

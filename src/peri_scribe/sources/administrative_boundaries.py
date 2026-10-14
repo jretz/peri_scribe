@@ -62,7 +62,8 @@ def is_usable(path: pathlib.Path) -> bool:
 
     The file must exist, open as a GeoPackage, and contain the expected layer with the
     expected number of features, columns, non-empty geometry, and spatial reference, so
-    a missing, stale, or truncated file is rebuilt instead of reused.
+    a missing or structurally incompatible file is rebuilt instead of reused. These
+    checks do not establish whether the source boundaries have changed.
 
     Args:
         path: The GeoPackage path to inspect.
@@ -103,11 +104,9 @@ def ensure_administrative_boundaries(
 ) -> pathlib.Path:
     """Ensure the California border GeoPackage exists and is usable.
 
-    When the GeoPackage is present and appears to be in good shape it is reused as is.
-    Otherwise the border is rebuilt: California and its neighboring states are fetched
-    together from the generalized states layer, the shared border portions are computed,
-    and the result is written to ``sources/administrative_boundaries/`` under
-    *year_directory*.
+    Reuse a GeoPackage that passes the format and geometry checks. Otherwise fetch
+    California and its neighboring states together, compute their shared borders, and
+    write ``sources/CA_border_with_AZ_NV_and_OR.gpkg`` under *year_directory*.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.

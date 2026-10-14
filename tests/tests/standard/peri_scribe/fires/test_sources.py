@@ -103,7 +103,7 @@ def test_prepare_fire_sources_reconstructs_standalone_inputs(
     assert second.read == first.read
 
 
-def test_fire_sources_from_groups_keeps_distant_unnamed_identifiers_separate(
+def test_fire_sources_from_groups_keeps_distant_identifierless_fires_separate(
     stub_fire_reader: tests.helpers.doubles.peri_scribe.fires.sources.StubFireReader,
 ) -> None:
     stub_fire_reader({
@@ -127,7 +127,7 @@ def test_fire_sources_from_groups_keeps_distant_unnamed_identifiers_separate(
 def test_fire_sources_from_groups_does_not_merge_same_named_fires_across_regions(
     stub_fire_reader: tests.helpers.doubles.peri_scribe.fires.sources.StubFireReader,
 ) -> None:
-    # The CA "RIVER" perimeter and a distant WFIGS "River" location are distinct fires.
+    # The two point records share a normalized name but describe distant fires.
     stub_fire_reader({
         pathlib.Path("one.gpkg"): [
             tests.helpers.factories.peri_scribe.models.fire_record(
@@ -438,11 +438,11 @@ def test_fire_sources_from_groups_merges_identifier_aliases(
     ]
 
 
-def test_fire_sources_from_groups_keeps_distinct_identifiers_separate(
+def test_fire_sources_from_groups_keeps_distant_distinct_identifiers_separate(
     stub_fire_reader: tests.helpers.doubles.peri_scribe.fires.sources.StubFireReader,
 ) -> None:
-    # The same name in different regions is a different fire, even when both are
-    # identified, so the spatial gate keeps them apart.
+    # The two records share a name but describe fires in different regions, so the
+    # spatial gate keeps them apart even though both have identifiers.
     stub_fire_reader({
         pathlib.Path("one.gpkg"): [
             tests.helpers.factories.peri_scribe.models.fire_record(
@@ -482,8 +482,8 @@ def test_fire_sources_from_groups_keeps_distinct_identifiers_separate(
 def test_fire_sources_from_groups_merges_ufi_and_guid_through_a_shared_record(
     stub_fire_reader: tests.helpers.doubles.peri_scribe.fires.sources.StubFireReader,
 ) -> None:
-    # The CA layer's FIRIS records carry the unique fire identifier; the WFIGS records
-    # carry both the GUID and the unique fire identifier, linking them all.
+    # One record carries both identifiers, linking the identifier-bearing records; the
+    # unidentified record joins them through its matching name and location.
     location = shapely.geometry.Point(0, 0)
     unique_id = "2026-nvccd-030683"
     guid = "286b7f1d-8945-4a5d-9d81-5235c18af1fe"
@@ -593,11 +593,11 @@ def test_fire_sources_from_groups_merges_same_named_fires_at_the_same_location(
     ]
 
 
-def test_fire_sources_from_groups_merges_mission_name_variants(
+def test_fire_sources_from_groups_merges_explicit_name_aliases_at_same_location(
     stub_fire_reader: tests.helpers.doubles.peri_scribe.fires.sources.StubFireReader,
 ) -> None:
-    # "RUMSEY" and the unidentified "RUMSEY-UPDATED" record share the base name from the
-    # mission code, so they are one fire.
+    # The unidentified "RUMSEY-UPDATED" record has an explicit "rumsey" name key and the
+    # same location as "RUMSEY", so the records group as one fire.
     location = shapely.geometry.Point(0, 0)
     stub_fire_reader({
         pathlib.Path("one.gpkg"): [

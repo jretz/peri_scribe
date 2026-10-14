@@ -64,7 +64,7 @@ def mapping_decision_cases(
 def mapping_snapshots(
     draw: hypothesis.strategies.DrawFn,
 ) -> dict[str, tuple[peri_scribe.publication.Mapping, ...]]:
-    """Exercise alias chains without conflating different geometries or unnamed fires.
+    """Generate alias chains, distinct geometries, and fires without identifiers.
 
     Args:
         draw: The current example's strategy sampler.

@@ -1,4 +1,4 @@
-"""Replace administrative boundaries dependencies with controlled test doubles."""
+"""Control queries and file reads for administrative boundaries."""
 
 from __future__ import annotations
 
@@ -150,9 +150,7 @@ def make_layer_factory(
     *,
     state_set: arcgis.features.FeatureSet,
 ) -> typing.Callable[..., FeatureLayerStub]:
-    """Create a callback with controlled dependencies.
-
-    Provide controlled state boundaries for the requested layer.
+    """Return a layer factory that serves the selected state boundaries.
 
     Args:
         state_set: Controlled state boundaries returned for the configured layer URL.

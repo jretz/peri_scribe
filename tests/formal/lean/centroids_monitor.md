@@ -1,9 +1,11 @@
 # Building centroids and monitor reconstruction
 
-`BuildingCentroids.lean` and `MonitorReconstruction.lean` use the standard Lean library.
-Their executable definitions are exposed by `OracleObservers.lean` as `oracleObservers`.
-The normal axiom audit includes both modules. The Python bridge exercises the actual
-array calculations, archive conversion, reducer and phase projection.
+These checks cover two separate calculations: finding building centroids while streaming
+geometry, and reconstructing monitor runs and phases from log records.
+`BuildingCentroids.lean` and `MonitorReconstruction.lean` use the standard Lean library;
+`OracleObservers.lean` exposes their executable definitions as `oracleObservers`. Both
+modules participate in the normal axiom audit. The Python conformance adapter exercises
+the actual array calculations, archive conversion, reducer, and phase projection.
 
 ## Building centroid calculation and streaming
 

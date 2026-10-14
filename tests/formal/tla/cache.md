@@ -1,8 +1,9 @@
 # Persistent product caches
 
-`CacheDefinitions.tla`, `CacheRead.tla`, and `ProductCache.tla` correspond to
-`spatial_data.product_cache` and `spatial_data.row_index`. They extend the geography
-publication model into the disposable SQLite cache that accompanies the published files.
+A cache miss can cost time, but a cache hit must return the right published data.
+`CacheDefinitions.tla`, `CacheRead.tla`, and `ProductCache.tla` check that distinction
+for `spatial_data.product_cache` and `spatial_data.row_index`. They extend the geography
+publication model to the disposable SQLite cache that accompanies the published files.
 
 ## Read correspondence
 

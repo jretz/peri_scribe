@@ -24,8 +24,8 @@ Total **10: complex**.
 
 ## Synchronize and read
 
-Replacing a snapshot's cached rows and its checksum receipt in one transaction prevents
-an authenticated receipt from naming incomplete contents.
+Replace a snapshot's cached rows and its checksum receipt in one transaction. Otherwise,
+a reader could accept the receipt while some of the rows it describes are still missing.
 
 Synchronization proceeds in this order:
 
@@ -61,11 +61,12 @@ old rows with new memberships. The shared read transaction observes one generati
 
 The key invariant is that a returned cached parse has a matching authoritative checksum
 and internally consistent receipt/rows/memberships under the cooperating-writer
-contract. Detected failures remove an acceleration opportunity. This checksum identifies
-the source snapshot; it does not independently authenticate every cached row payload.
-Malformed cached WKB can raise a Shapely `GEOSException` outside the caught error set.
-Source I/O errors also remain possible: direct parsing can fail when authoritative data
-is unavailable. The formal cache protocol does not establish arbitrary-corruption recovery.
+contract. Failed authentication and the caught lookup errors above send the caller back
+to the source. The checksum identifies the source snapshot; it does not independently
+authenticate every cached row payload. Malformed cached WKB can raise a Shapely
+`GEOSException` outside the caught error set. Source I/O errors also remain possible:
+direct parsing can fail when authoritative data is unavailable. The formal cache
+protocol does not establish arbitrary-corruption recovery.
 
 ## Costs, limitations, and verification
 

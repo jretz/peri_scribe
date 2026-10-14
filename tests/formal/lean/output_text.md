@@ -1,5 +1,9 @@
 # Source text and document structure
 
+A source name can contain punctuation that also means something in Markdown, HTML, or
+XML. Saving that name must preserve its literal content without letting it change the
+surrounding document structure.
+
 `PeriScribe/OutputText.lean` contains 28 theorems about normalization, text encoding,
 generated markup, table framing, and CDATA envelopes. `OracleOutputText.lean` executes
 the proved definitions. The implementation bridge compares both exact encodings and

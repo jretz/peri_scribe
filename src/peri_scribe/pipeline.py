@@ -69,8 +69,9 @@ class Duration(click.ParamType):
     ) -> datetime.timedelta:
         """Return *value* converted to a ``datetime.timedelta``.
 
-        An already-converted ``datetime.timedelta`` passes through unchanged, so the
-        type works with timedelta defaults. Anything else is rejected.
+        Strings use the duration syntax described above. An already-converted
+        ``datetime.timedelta`` passes through unchanged, so the type also works with
+        timedelta defaults.
 
         Args:
             value: The option value to convert.
@@ -186,7 +187,18 @@ def fetch_external_source(
         logger.info("Fetched external source", source=source.name, paths=paths)
 
 
-@click.command()
+@click.command(
+    help=textwrap.dedent(
+        """\
+        Preview the progression-ring colors in a truecolor terminal.
+
+        The strip shows all 256 Turbo colors. Labels on the left identify every 16th
+        color, and a marker on the right shows the range used for progression rings,
+        with labels at both endpoints. This lets you compare the chosen range with the
+        excluded colors. Use --trim-start and --trim-end to preview different endpoints.
+        """,
+    ),
+)
 @click.option(
     "--trim-start",
     type=int,
@@ -202,14 +214,7 @@ def fetch_external_source(
     help="Colors to exclude from the end of the used range.",
 )
 def show_colormap(*, trim_start: int, trim_end: int) -> None:
-    """Print a Turbo colormap strip to the terminal as ANSI truecolor.
-
-    The strip is one colored cell per color of the full 256-color colormap. A tick label
-    left of the color bar names the original Turbo index every 16 colors, and a label
-    right of the marker line names the first and last color the progression rings use;
-    the marker itself is drawn beside every color in that range. The marked range
-    defaults to the ramp the rings sample, so --trim-start and --trim-end preview a ramp
-    with different endpoints.
+    """Preview the progression-ring colors in a truecolor terminal.
 
     Args:
         trim_start: Number of colors excluded from the cool end of the Turbo ramp.
@@ -353,9 +358,10 @@ def run_fetch_stage(
 ) -> bool:
     """Run required output work when the publication policy permits it.
 
-    Ungated collection records recovery requirements before input mutation. Only a
-    successful unchanged incremental fetch without deferred inputs can restore the prior
-    requirements.
+    Ungated collection records the work needed for recovery before changing source data.
+    A later fetch failure can therefore leave that work pending. The prior requirements
+    can be restored only after a successful, unchanged incremental fetch with no
+    deferred inputs.
 
     Args:
         year_directory: The directory holding the year's sources and outputs.
@@ -772,32 +778,35 @@ def selected_stage_range(
         f"""\
         Run the PeriScribe pipeline.
 
-        The pipeline is fetch, geography, score, kmz, reports, run in order. By default
-        the full pipeline runs. The fetch stage fetches every configured fire feed, the
-        external sources (buildings, evacuations, and Natural Earth places), and the
-        administrative-boundary GeoPackage, which is downloaded only when it is missing
-        or unusable. When the fetch wrote a new fire snapshot or replaced the stored
-        evacuations or city locations, the remaining stages run; otherwise the pipeline
-        ends after fetch.
-        --full-fetch-interval schedules a full fetch of every fire feed (storing only
-        new or changed features), catching source edits the incremental fetch would
-        miss: the first run with the option fetches in full, and a later run fetches in
-        full whenever the last successful full fetch is at least that long ago. Without
-        the option every fire-feed fetch is incremental. A scheduled full fetch forces a
-        complete derived rebuild even when no features changed. Failed builds resume on
-        subsequent runs. --unconditional rebuilds the selected stages without reusing
-        prior geography; static feeds such as buildings are downloaded only when
-        missing, whether or not --unconditional is given.
+        A full run goes through fetch, geography, score, kmz, and reports in that order.
+        Fetch collects every configured fire feed and checks the external sources:
+        buildings, evacuations, and Natural Earth places. It fetches the state boundary
+        GeoPackage only when the stored file is missing or unusable. New fire snapshots
+        or changed evacuations or place locations require the later stages to rebuild.
+        An unchanged fetch can finish without rebuilding when no other work is pending.
 
-        Select a single stage with --only, a range with --from and --to, or list the
-        stages with --list-stages. An error in any step stops the pipeline.
-        --publish-threshold AREA TIME_DELTA saves fire geometry and checks evacuations
-        and city locations before deciding whether to build outputs. A mapped-area
-        increase or decrease of at least AREA since the last published mapping triggers
-        a build. Otherwise, unpublished changes wait until TIME_DELTA since the last
-        completed local KMZ. Evacuation or city changes, scheduled full fetches, failed
-        builds, and --unconditional bypass the gate. For example:
-        --publish-threshold "25 acre" 5m.
+        Incremental fetching uses the feeds' change information. Use
+        --full-fetch-interval to also catch source edits that this can miss. The first
+        invocation with the option fetches every fire feed in full, storing only new or
+        changed features. Later invocations do so when the requested interval has passed
+        since the last successful full fetch. Every scheduled full fetch requires a
+        complete derived rebuild, even if no features changed. Without this option,
+        every fire-feed fetch is incremental.
+
+        Use --only for one stage, --from and --to for a range, or --list-stages to see
+        the choices. --unconditional rebuilds the selected stages even without changed
+        inputs and bypasses prior geography when that stage is selected. Static feeds
+        such as buildings are still downloaded only when missing or unusable. An error
+        stops the pipeline; later runs resume unfinished builds.
+
+        --publish-threshold AREA TIME_DELTA lets runs collect small updates without
+        rebuilding outputs each time. It saves fire geometry and checks evacuations and
+        place locations before deciding whether to build. A mapped-area increase or
+        decrease of at least AREA since the last published mapping triggers a build.
+        Smaller unpublished changes wait until TIME_DELTA has passed since the last
+        completed local KMZ. For example, --publish-threshold "25 acre" 5m uses a change
+        of 25 acres or a five-minute interval. Evacuation or place-location changes,
+        scheduled full fetches, unfinished builds, and --unconditional bypass this wait.
         {peri_scribe.cli_options.year_directory_default_help()}
         """,
     ),
@@ -1073,7 +1082,7 @@ def validate_locked_sources(year_directory: pathlib.Path) -> None:
             coordinate_reference_mismatch=result.coordinate_reference_mismatch,
         )
     logger.error(
-        "Validation found problems in %d of %d feeds",
+        "Feeds with validation problems: %d of %d",
         len(problem_results),
         len(results),
     )

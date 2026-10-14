@@ -17,7 +17,7 @@ if typing.TYPE_CHECKING:
     import tests.helpers.fixtures.peri_scribe.monitor.screenshots
 
 
-def test_snapshot_app_get_system_commands_replaces_svg_with_ansi_screenshot(
+def test_snapshot_app_get_system_commands_replaces_builtin_screenshot_command(
     snapshot_session: tests.helpers.fixtures.peri_scribe.monitor.screenshots.Session,
 ) -> None:
     app = snapshot_session.app

@@ -1,9 +1,10 @@
 # Incremental collection and buildings construction
 
-These specifications extend the [ingestion recovery contracts](tla/ingestion.md).
-They separate content selection, encoded point preservation, and the lifetime of the
-workers and files used to build a database. The existing `FetchCrash`, `FeedCache`, and
-`WorkerLifetime` models retain ownership of their recovery and cancellation contracts.
+These checks cover three related questions: which source records need to be fetched,
+whether encoded points survive database construction, and when workers can release the
+files they use. The specifications extend the
+[ingestion recovery contracts](tla/ingestion.md). The existing `FetchCrash`, `FeedCache`,
+and `WorkerLifetime` models still cover their recovery and cancellation contracts.
 
 ## Incremental collection completeness
 
@@ -46,11 +47,12 @@ The proofs assume a stable source view across the separate ID and content querie
 unique object IDs, and a stable compared attribute schema. Lean rows represent already
 normalized attributes and geometry equivalence classes; Lean does not verify timestamp
 parsing, floating-point geometry, Shapely, pandas, or ArcGIS/SQLite SQL equivalence.
-The conformance cases exercise real point geometry and date handling. Source deletion
-is not collected: snapshots preserve historical observations. An old-timestamp edit
-outside all selection routes can be missed; an active-to-inactive change with a newly
-introduced raw status spelling is not covered by the known-literal query. Full collection
-is required to discover such edits. Metadata skipping additionally assumes that a
+
+The conformance cases exercise real point geometry and date handling. Source deletion is
+not collected: snapshots preserve historical observations. An old-timestamp edit outside
+all selection routes can be missed; an active-to-inactive change with a newly introduced
+raw status spelling is not covered by the known-literal query. Full collection is
+required to discover such edits. Metadata skipping additionally assumes that a
 provider's last-edit marker changes whenever relevant content changes. The tests do not
 claim that an unchanged marker proves unchanged content or that racing queries form a
 transaction. These are explicit limits, not new verified guarantees.

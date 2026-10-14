@@ -61,6 +61,6 @@
 </g>
 <g id="prerequisite">
 <rect x="24" y="484" width="792" height="72" class="node network"/>
-<text x="40" y="513" class="heading">A later-stage success cannot clear an earlier pending prerequisite.</text>
+<text x="40" y="513" class="heading">Completing a later stage does not clear unfinished earlier work.</text>
 </g>
 </svg>

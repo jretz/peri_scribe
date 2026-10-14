@@ -92,9 +92,9 @@ def run_stubs(
         tmp_path: The isolated directory for recovery state and the run lock.
 
     Returns:
-        A callable taking whether the fetch changed something, whether the evacuations
-        were replaced, and the stored full-fetch state, and returning the installed
-        fetch outcome and the lists recording each step's calls.
+        A callable that configures fire, evacuation, and city changes and the stored
+        full-fetch checkpoint. It returns the fetch outcome and lists recording each
+        step's calls.
     """
 
     def install(

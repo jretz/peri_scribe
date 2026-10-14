@@ -117,7 +117,10 @@ def is_globally_unique_identifier(value: str) -> bool:
 
 
 def is_unique_fire_identifier(value: str) -> bool:
-    """Return True when *value* is a ``YYYY-UNIT-######`` fire identifier.
+    """Return True for a year/unit/number identifier accepted by the source parser.
+
+    The year starts with 20, the unit is alphanumeric, and the final numeric component
+    can have any positive length.
 
     Args:
         value: A normalized identifier to classify.
@@ -140,9 +143,9 @@ def is_unique_fire_identifier(value: str) -> bool:
 def canonical_fire_identifier(identifiers: typing.Iterable[str]) -> str | None:
     """Return the most canonical identifier among *identifiers*.
 
-    A unique fire identifier (``YYYY-UNIT-######``) is preferred over a GUID, which is
-    preferred over any other identifier. Ties within a kind are broken by sorting, so
-    the result is stable.
+    A year/unit/number identifier accepted by :func:`is_unique_fire_identifier` is
+    preferred over a GUID, which is preferred over any other identifier. Ties within a
+    kind are broken by sorting, so the result is stable.
 
     Args:
         identifiers: The normalized identifiers known for a fire.
@@ -211,8 +214,9 @@ class FireRecord:
     """One fire as observed in a single source row.
 
     A record carries every identifier the row provides, every name spelling the row is
-    known by (normalized), and the row's geometry and observation time. Geometry and
-    time gate name-based grouping so distinct fires that share a name are not merged.
+    known by (normalized), and the row's geometry and observation time. Name-based
+    grouping requires nearby geometry; a shared name alone cannot join distant fires.
+    Observation times support history ordering and diagnostics, but do not gate merges.
     """
 
     name: str
@@ -230,12 +234,14 @@ class FireRecord:
 class Fire:
     """A fire, identified by name, a canonical identifier, and every alias.
 
-    ``identifier`` is the canonical identifier: the preferred unique fire identifier
-    (``YYYY-UNIT-######``) when one is known, else a GUID. ``aliases`` holds every
-    normalized identifier the fire is known by, including the canonical one. When the
-    fire is part of a complex, ``complex`` points at the FireComplex that owns it.
-    ``component_id`` and ``component_aliases`` retain internal source-row anchors; they
-    distinguish anonymous namesakes and never become external identifier aliases.
+    ``identifier`` is the canonical identifier: a year/unit/number identifier accepted
+    by :func:`is_unique_fire_identifier` when one is known, then a GUID, then any other
+    supplied identifier. It is None when none is known. ``aliases`` holds every
+    normalized identifier the fire is known by, including the canonical one when
+    present. When the fire is part of a complex, ``complex`` points at the FireComplex
+    that owns it. ``component_id`` and ``component_aliases`` retain internal source-row
+    anchors; they distinguish anonymous namesakes and never become external identifier
+    aliases.
     """
 
     name: str
@@ -324,7 +330,7 @@ class FireIndexEntry(pydantic.BaseModel):
 
 
 class FireIndex(pydantic.BaseModel):
-    """The fire source index: every fire and the files that mention it."""
+    """Fire source entries, excluding parent complexes, with their source files."""
 
     version: str
     fires: list[FireIndexEntry]

@@ -1,4 +1,4 @@
-"""Tests for peri_scribe.sources.external_sources."""
+"""Tests for peri_scribe.sources.conversion."""
 
 from __future__ import annotations
 

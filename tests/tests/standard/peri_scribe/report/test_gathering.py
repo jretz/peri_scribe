@@ -287,7 +287,7 @@ def test_report_details_keeps_same_name_fires_distinct() -> None:
     assert details == (first, second)
 
 
-def test_report_details_identifies_unnamed_fire_by_name() -> None:
+def test_report_details_uses_name_when_identifier_is_missing() -> None:
     bug = tests.helpers.factories.peri_scribe.report.gathering.make_entry("Bug")
 
     details = peri_scribe.report.gathering.report_details((bug, bug))
@@ -541,7 +541,7 @@ def test_fire_location_measures_point_to_nearest_city() -> None:
 
     location = peri_scribe.report.gathering.fire_location(fire, cities)
 
-    assert location == "0 mi of Portland, OR"
+    assert location == "0 mi from Portland, OR"
 
 
 def test_fire_locations_maps_each_located_fire_once(

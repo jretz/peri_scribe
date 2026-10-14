@@ -137,7 +137,7 @@ theorem outside_both_tolerance_bounds_rejected (change threshold tolerance : Int
     show ¬magnitude (subtract (magnitude change) threshold) ≤
       magnitude (multiply tolerance (magnitude change)) by omega]
 
-/-- Rounding cannot admit a change outside the tolerance plus half-spacing margin. -/
+/-- Below-threshold changes beyond the tolerance and rounding margin are rejected. -/
 theorem beyond_rounding_margin_rejected (change threshold tolerance bound : Int)
     (below : magnitude change < threshold)
     (bounds : magnitude (multiply tolerance threshold) ≤ bound ∧

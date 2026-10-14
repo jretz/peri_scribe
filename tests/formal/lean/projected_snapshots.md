@@ -1,8 +1,11 @@
 # Current ownership composed with chronological snapshots
 
-`PeriScribe/UpdateViewer.lean` adds 14 theorem declarations for complete snapshots under
-current ownership. `oraclePresentationFlow` exposes the same definitions through
-`projected-snapshot`. The implementation owner is `updates.snapshot_from_entries`.
+When histories acquire a common owner, the most recent earlier observation across those
+histories supplies the next update's acreage baseline. The original records still keep
+their own identities and contents. `PeriScribe/UpdateViewer.lean` has 14 theorem
+declarations for complete snapshots under current ownership. `oraclePresentationFlow`
+exposes the same definitions through `projected-snapshot`. The implementation owner is
+`updates.snapshot_from_entries`.
 
 ## Proved composition
 

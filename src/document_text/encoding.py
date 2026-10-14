@@ -15,11 +15,12 @@ XML_RANGES = ((0x20, 0xD7FF), (0xE000, 0xFFFD), (0x10000, 0x10FFFF))
 
 
 def normalized(value: str) -> str:
-    """Keep source text representable in both Markdown HTML and XML 1.0.
+    """Keep source text representable in Markdown, HTML, and XML 1.0.
 
-    CRLF, CR, and NEXT LINE line endings become LF. Unsupported XML controls, surrogate
-    code points, and the two excluded BMP noncharacters become the visible replacement
-    character. Supported Unicode text keeps its order and multiplicity.
+    CRLF, CR, and NEXT LINE line endings become LF. Characters XML cannot represent
+    become the visible replacement character: unsupported controls, surrogate code
+    points, and U+FFFE and U+FFFF. Supported Unicode text stays in its original order,
+    including repeated characters.
 
     Args:
         value: Source-provided text before document encoding.
@@ -42,10 +43,11 @@ def normalized(value: str) -> str:
 
 
 def encoded(value: str, reserved: frozenset[str]) -> str:
-    """Use character references without letting source text acquire markup syntax.
+    """Encode source text so it cannot become document markup.
 
-    Boundary whitespace also use references so Markdown's cell trimming cannot discard
-    them. Interior spaces remain readable in the source document.
+    Whitespace at either end also uses character references, which prevents Markdown's
+    table-cell trimming from discarding it. Interior spaces stay readable in the source
+    document.
 
     Args:
         value: Source text to normalize and encode.

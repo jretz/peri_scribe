@@ -233,8 +233,8 @@ def test_write_updates_page_refreshes_locations_without_rewriting_history(
         (tmp_path / "maps" / "updates.json").read_bytes(),
     )
     original = peri_scribe.updates.snapshot_from_entries(entries, now)
-    assert result.updates[0].location == "0 mi of Current city, CA"
-    assert result.updates[1].location == "0 mi of Current city, CA"
+    assert result.updates[0].location == "0 mi from Current city, CA"
+    assert result.updates[1].location == "0 mi from Current city, CA"
     assert result.updates[2] == original.updates[2]
     for recorded, decorated in zip(original.updates, result.updates, strict=True):
         assert decorated.model_dump(exclude={"preview", "location"}) == (

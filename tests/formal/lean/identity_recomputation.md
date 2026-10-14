@@ -1,10 +1,13 @@
 # Recomputing history ownership after acknowledgement
 
-`PeriScribe/IdentityRecomputation.lean` proves the complete ownership feedback fixed
-point for arbitrary finite numbers of current fires and historical buckets. Its 43
-checked theorems reuse `IdentityTransfer.latest` and `chooseWriter`; an explicit
-refinement theorem equates its aggregated claimant executor with
-`IdentityTransfer.claimant` over the same complete route sets.
+Acknowledging a publication teaches the checkpoint new alias routes and ownership
+preferences. Repeating the same input after that learning must keep the selected writers
+and owners, rather than make already reported mapping appear new.
+`PeriScribe/IdentityRecomputation.lean` proves that stability, or fixed point, for
+arbitrary finite numbers of current fires and historical buckets. Its 43 checked
+theorems reuse `IdentityTransfer.latest` and `chooseWriter`; an explicit refinement
+theorem equates its aggregated claimant executor with `IdentityTransfer.claimant` over
+the same complete route sets.
 
 The argument derives stability rather than assuming it. Writer allocation is injective
 because each selected existing bucket has one winning claimant, and fresh keys are

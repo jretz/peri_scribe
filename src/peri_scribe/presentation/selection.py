@@ -28,9 +28,9 @@ if typing.TYPE_CHECKING:
     import shapely
 
 
-# The smallest computed or reported area that keeps a fire in the KMZ output. Fires
-# whose every area indication is missing or below this are the season's long tail of
-# tiny incidents, which clutter Google Earth without adding information.
+# The smallest selected area that keeps a fire in the KMZ output. Omitting fires that
+# never reach this size makes larger fires easier to find among the season's many small
+# incidents. The shared area policy decides which measurements qualify.
 
 
 MINIMUM_FIRE_AREA = 25.0 * units.acres
@@ -183,7 +183,7 @@ def persistent_histories(
     fingerprints: tuple[spatial_data.frame_fingerprints.FrameRows, ...],
     aliases: typing.Mapping[str, str],
 ) -> dict[AreaKey, peri_scribe.areas.PreparedHistory]:
-    """Reconcile only histories whose complete ordered evidence has changed.
+    """Reuse valid cached histories when their complete ordered evidence is unchanged.
 
     Args:
         frames: Full perimeter, point, and incident history layers.
@@ -240,8 +240,10 @@ def fires_with_qualifying_area(
 ) -> frozenset[AreaKey]:
     """Include fires whose selected area reached the minimum anywhere in history.
 
-    Fresh mapping, report takeovers, and sparse-record fallbacks follow the shared area
-    policy. A later downward correction does not erase historical qualification.
+    Fresh mapping and report takeovers follow the shared area policy. Qualification
+    uses the largest retained dated estimate. Sparse records use a fallback only while
+    no dated estimate is available; the first dated estimate can replace a larger
+    fallback.
 
     Args:
         perimeters: The perimeter history layer.
@@ -468,11 +470,10 @@ def first_identifier_match[Value](
     fire_identifiers: frozenset[str],
     by_identifier: typing.Mapping[str, Value],
 ) -> Value | None:
-    """Return the value *by_identifier* holds for the fire's first matching identifier.
+    """Return the value for the fire's first matching identifier in *by_identifier*.
 
-    A fire may carry several identifiers, so they are scanned in sorted order: the value
-    a fire resolves to is then the same on every run, rather than depending on the order
-    a set happens to iterate in.
+    A fire can have several identifiers. Sorting them makes the choice repeatable
+    instead of depending on set iteration order.
 
     Args:
         fire_identifiers: The fire's identifiers.

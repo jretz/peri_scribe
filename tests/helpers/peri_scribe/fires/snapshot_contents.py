@@ -1,4 +1,4 @@
-"""Edit real point snapshots while preserving the obsolete freshness signals."""
+"""Edit real point snapshots without changing file or directory modification times."""
 
 import contextlib
 import os

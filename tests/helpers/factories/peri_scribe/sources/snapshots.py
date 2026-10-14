@@ -11,8 +11,8 @@ import tests.helpers.factories.peri_scribe.sources.feed_types
 SAMPLE_LAST_EDIT_TIMESTAMP = 2
 
 
-# The base directory fetch resolves from ``pathlib.Path.cwd()``, which is mocked to this
-# value so snapshots never touch the real filesystem.
+# The current_year fixture returns this path from Path.cwd(). Storage doubles keep
+# snapshot contents in memory; staging directories still use isolated temporary storage.
 BASE_DIRECTORY = pathlib.Path("/fetch")
 
 

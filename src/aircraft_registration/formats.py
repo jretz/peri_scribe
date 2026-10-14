@@ -1,8 +1,9 @@
-"""Sourced recognition rules; allocation and display eligibility stay with registries.
+"""Recognize aircraft registration formats without deciding whether a mark was issued.
 
-The notified-mark inventory comes from the 1 June 2025 supplement to ICAO Annex 7.
-The accompanying source catalog in ``docs/aircraft_registration.md`` records national
-rules and their scope. No network access is needed to import or use these rules.
+The notified-mark inventory comes from the 1 June 2025 supplement to ICAO Annex 7. The
+source catalog in ``docs/aircraft_registration.md`` explains the national rules and
+where they apply. These rules are stored locally, so recognition needs no network
+access.
 
 Design notes:
 [Aircraft recognition](../../docs/algorithms/aircraft-recognition.md).

@@ -21,7 +21,10 @@ IDENTITY = pydantic.TypeAdapter(HistoryIdentity)
 
 
 def canonical_identity(value: str) -> str:
-    """Prevent equivalent encoded keys from assigning conflicting history owners.
+    """Require one JSON spelling for each history identity.
+
+    Equivalent identities with different encoded strings would become different keys,
+    allowing the same history to be assigned to conflicting owners.
 
     Args:
         value: A persisted identity key or target in a durable checkpoint.
@@ -46,7 +49,7 @@ type EncodedIdentity = typing.Annotated[
 
 
 class Acreage(pydantic.BaseModel):
-    """Validate the shared quantity representation before journal acknowledgment."""
+    """Require finite, nonnegative acres before a journal update can be acknowledged."""
 
     model_config = pydantic.ConfigDict(
         frozen=True,
@@ -66,7 +69,7 @@ class Acreage(pydantic.BaseModel):
 
 
 class Record(pydantic.BaseModel):
-    """Every journal payload must also be readable as a published log occurrence."""
+    """Use the same validated fields for pending journal entries and published logs."""
 
     model_config = pydantic.ConfigDict(
         frozen=True,
@@ -83,7 +86,7 @@ class Record(pydantic.BaseModel):
 def validated_records(
     records: tuple[dict[str, object], ...],
 ) -> tuple[dict[str, object], ...]:
-    """Validate an entire batch before any occurrence can reach its append boundary.
+    """Validate every record before any part of the batch can be appended to the log.
 
     Args:
         records: Raw journal payloads without the journal's shared completion metadata.

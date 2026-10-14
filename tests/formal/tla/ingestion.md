@@ -1,7 +1,8 @@
 # Ingestion and worker contracts
 
-These models cover source recovery and cancellation outside derived pipeline stages.
-Their configurations participate in the ordinary formal task, including liveness.
+These models check what remains usable when source collection or a worker is
+interrupted, and what has to finish before resources can be released. Their safety and
+liveness configurations run as part of the ordinary formal task.
 
 ## FeedCache
 
@@ -29,8 +30,8 @@ The snapshots are immutable within a cooperating writer's update and contain no 
 records. Cache prefixes initially describe previously completed writes. Silent arbitrary
 corruption of a readable cache, mutation or reuse of snapshot serials, unrelated
 writers, and old cache files that were already incorrectly labeled current are outside
-this contract. Removing a derived cache causes reconstruction from snapshots. Last-
-write-wins is checked over this finite domain, not proved for unbounded histories.
+this contract. Removing a derived cache causes reconstruction from snapshots.
+Last-write-wins is checked over this finite domain, not proved for unbounded histories.
 
 ## StaticDownload
 

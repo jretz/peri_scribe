@@ -25,9 +25,7 @@ def make_failing_archive_responder(
     ...,
     tests.helpers.doubles.peri_scribe.sources.external_source.FakeResponse,
 ]:
-    """Create a callback with controlled dependencies.
-
-    Serve the buildings index and fail the subsequent archive download.
+    """Return an HTTP stub that serves the index, then fails the archive request.
 
     Args:
         page: Buildings index HTML served before archive requests.
@@ -50,8 +48,7 @@ def make_failing_archive_responder(
             The buildings index response.
 
         Raises:
-            requests.exceptions.RequestException: If the
-                request targets an archive.
+            requests.exceptions.RequestException: If the request targets an archive.
         """
         if url == peri_scribe.sources.catalog.BUILDINGS_SOURCE.url:
             return (

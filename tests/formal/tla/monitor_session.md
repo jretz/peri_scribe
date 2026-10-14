@@ -1,10 +1,12 @@
 # Observable monitor session
 
-`MonitorSession.tla` checks versioned immutable publication, bounded subscription
-mailboxes, request priority and promotion, and session stop/close boundaries. The design
-was checked before implementing `monitor.session` and rechecked before adding promotion.
-The [algorithm note](../../../docs/algorithms/monitor-sessions.md) records the contract,
-costs, assumptions, worked examples, and composition with reader ownership.
+Subscribers can receive monitor updates at different speeds. `MonitorSession.tla` checks
+which version each subscriber can receive, how bounded mailboxes combine pending
+notifications, which request runs next, and what happens when the session stops or
+closes. Published snapshots are immutable. The design was checked before implementing
+`monitor.session` and rechecked before adding promotion. The [algorithm
+note](../../../docs/algorithms/monitor-sessions.md) records the contract, costs,
+assumptions, worked examples, and composition with reader ownership.
 
 `MonitorSession.cfg` explores **19,166 states** with three distinct requests, one initial
 urgent request, two independently delayed subscribers, request success/failure, queued

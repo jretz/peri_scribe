@@ -1,4 +1,4 @@
-"""Tests for peri_scribe.presentation.folders."""
+"""Tests for peri_scribe.presentation.views."""
 
 from __future__ import annotations
 

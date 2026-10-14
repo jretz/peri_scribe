@@ -1,9 +1,11 @@
 # Anonymous source components
 
-`ComponentIdentity.lean` has 24 theorems covering the source-component boundary that
-supplies distinct report identities to history transfer. `OracleComponentIdentity.lean`
-executes the proved definitions through `oracleComponentIdentity`. Run `mise
-formal-lean` and `mise formal-conformance` to build and check them.
+Two fires without external identifiers can have the same name. Each source component
+therefore needs its own report identity so their histories don't collapse into one.
+`ComponentIdentity.lean` has 24 theorems covering that identity boundary.
+`OracleComponentIdentity.lean` executes the proved definitions through
+`oracleComponentIdentity`. Run `mise formal-lean` and `mise formal-conformance` to build
+and check them.
 
 ## Guarantees
 

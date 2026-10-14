@@ -9,7 +9,7 @@ from measurement_units import units
 
 
 def full_description() -> peri_scribe.presentation.descriptions.FireDescription:
-    """Return a fire description with every field populated.
+    """Return a fire description with every field except area_basis populated.
 
     Returns:
         The description.
@@ -40,5 +40,5 @@ def full_description() -> peri_scribe.presentation.descriptions.FireDescription:
         fuel_model="Timber (Litter and Understory); Brush (2 feet); GS1; Grass",
         fire_behavior="Active; Creeping; Smoldering",
         landowner_category="Federal",
-        of_note="Over 100,000 acres, and a Type 1 Incident.",
+        of_note="At least 100,000 acres, and a Type 1 Incident.",
     )

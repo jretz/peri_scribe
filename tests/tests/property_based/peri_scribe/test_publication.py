@@ -1,4 +1,4 @@
-"""Publication decisions must survive skipped downloads and failed output writes."""
+"""Publication decisions and capture times agree with independent reference results."""
 
 from __future__ import annotations
 

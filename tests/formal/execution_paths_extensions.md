@@ -1,10 +1,12 @@
 # Continuous pipeline, cache, and geography execution paths
 
-These bridges extend the whole-prefix matcher described in [execution
-assurance](execution_assurance.md). They use initial nodes and directed edges from the
-same successful TLC graph export. No restart or invocation may reset the matcher at an
-arbitrary reachable node. Explicit events include both their action and resulting
-observed value; terminal process-exit stutters require that value to remain unchanged.
+These conformance adapters check pipeline, cache, and geography executions with the
+matcher described in [execution assurance](execution_assurance.md). The matcher follows
+each execution from an initial state through directed edges exported by a successful TLC
+run. Restarting a process or beginning another invocation cannot reset it to an
+arbitrary reachable state: the retained files still have to follow from what happened
+before. Explicit events include both their action and resulting observed value. A
+process exit treated as a terminal stutter must leave that value unchanged.
 
 | Area | Models | Concrete histories |
 | --- | --- | ---: |
@@ -57,12 +59,11 @@ may be invisible to the observer, but they cannot publish partial committed reco
 
 Schema resets expose separately committed table drops and creates. A real interruption
 and connection close are followed by an explicit `CrashAndRestart`, then actual
-`ensure_database_current` repair. The model now allows interruption before the first DDL
-statement as well as after it. This adds two checked states, for 64 total. `ParsedCache`
-adds a restart edge back to its existing write state; its 234-state bound is unchanged.
-Neither change adds a production transition. All 288 prior pinned-reader schedules and
-fallback assertions remain, but this extension does not claim whole-prefix matching for
-that separate reader-scheduling model.
+`ensure_database_current` repair. The recovery model allows interruption before the
+first DDL statement as well as after it and explores 64 states. `ParsedCache` includes a
+restart edge back to its write state and explores 234 states. The separate
+reader-scheduling checks cover 288 pinned-reader schedules and their fallback results;
+they do not claim whole-prefix matching.
 
 ## Geography publication and readers
 
@@ -106,7 +107,7 @@ assumed.
 
 ## Adversarial checks and limits
 
-The shared matcher tests now require an explicit action to agree with its observed
+The shared matcher tests require an explicit action to agree with its observed
 mutation and prohibit changed projections from using a terminal-stutter exception. A
 publication-specific negative control attempts to publish a new signature before its
 bytes. That entire projection is individually reachable in the model, but the matcher

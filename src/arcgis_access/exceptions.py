@@ -2,7 +2,7 @@
 
 
 class NoFeaturesError(ValueError):
-    """Raised when a layer returns no features."""
+    """Raised when a layer response lacks expected features or object-ID data."""
 
 
 class NoSpatialReferenceError(ValueError):

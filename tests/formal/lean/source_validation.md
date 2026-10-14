@@ -1,10 +1,14 @@
 # Sound validation of complete source coverage
 
+Finding the same object ID in two snapshots isn't enough to establish that the stored
+snapshot covers the source. The attributes, geometry, and coordinate reference must
+agree, and duplicate IDs must not hide conflicting rows.
+
 `PeriScribe/SourceValidation.lean` contains 16 checked theorem declarations, and
 `oracleSourceValidation` evaluates their definitions. The implementation owners are
 `sources.validation.{validate_feed,feature_contents,feature_contents_equal,
-duplicate_object_ids,FeedValidationResult.has_problems}`. The pipeline logs the new
-duplicate-ID and coordinate-reference diagnostics alongside missing content.
+duplicate_object_ids,FeedValidationResult.has_problems}`. The pipeline logs duplicate-ID
+and coordinate-reference diagnostics alongside missing content.
 
 ## Contract and proofs
 

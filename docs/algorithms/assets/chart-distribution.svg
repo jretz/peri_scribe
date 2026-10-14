@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="840" height="424" viewBox="0 0 840 424" role="img" aria-labelledby="title description" style="max-width:100%;height:auto">
-  <title id="title">A CCDF retains duplicate sample weight</title>
-  <desc id="description">The maximum-value zero share is excluded before logarithmic fitting.</desc>
+  <title id="title">The distribution counts repeated samples</title>
+  <desc id="description">The curve shows the share of samples strictly above each value. For samples 1, 2, 2, and 4, three quarters exceed 1 and one quarter exceeds 2; both copies of 2 count. No samples exceed 4, so that zero-share endpoint is omitted because it cannot appear on a logarithmic axis.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
   <path d="M 0 0 L 10 5 L 0 10 z" fill="var(--edge)"/>
@@ -20,7 +20,7 @@
     </style>
   </defs>
   <rect width="840" height="424" fill="var(--bg)"/>
-  <text x="28" y="36" class="title" text-anchor="start">A CCDF retains duplicate sample weight</text>
+  <text x="28" y="36" class="title" text-anchor="start">The distribution counts repeated samples</text>
   <path d="M 90 310 H 550 M 90 310 V 72" class="axis"/>
   <path d="M 160 119 L 295 234" class="accent"/>
   <circle cx="160" cy="119" r="6" fill="var(--accent)"/>
@@ -36,5 +36,6 @@
 <text x="602" y="169" class="" text-anchor="start">At 2: 1/4 exceed.</text>
 <text x="602" y="192" class="" text-anchor="start">At 4: 0/4; omit.</text>
 </g>
-  <text x="28" y="393" class="muted" text-anchor="start">Knees fit three lines to (value, log10 share), over enumerated breakpoints.</text>
+  <text x="28" y="368" class="muted" text-anchor="start">With at least five visible points, try breakpoint pairs and fit three lines.</text>
+  <text x="28" y="393" class="muted" text-anchor="start">Use (value, log10 share); the two points here only illustrate duplicate counts.</text>
 </svg>

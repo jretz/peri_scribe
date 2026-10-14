@@ -26,13 +26,16 @@ Total **10: complex**. Source correctness also determines all downstream histori
 
 ![Three sources of incremental candidates](assets/source-candidates.svg)
 
-The candidate union covers three different ways a row can become newly relevant. The
-queries share an ID namespace but do not share a provider transaction.
+Candidate selection combines three reasons to fetch a row: its change timestamp is
+recent or missing, its ID is newly present, or its status changed from active to
+inactive. The queries use the same IDs, but they run separately, so the provider's data
+can change between them.
 
 1. With no stored snapshots, query the complete layer. An explicit full fetch also
    queries the complete layer, then removes rows already stored identically.
 2. Incremental collection derives a cutoff from usable stored edit times with an
-   overlap allowance, then queries recently changed IDs.
+   overlap allowance. It queries IDs with a change timestamp at or after that cutoff,
+   or with a missing change timestamp.
 3. Query all live IDs and subtract stored IDs. This finds newly published rows carrying
    old timestamps.
 4. Query stored-active IDs for known inactive status literals. This catches supported
@@ -61,7 +64,7 @@ a new observation, the worker publishes it before advancing the disposable cache
 
 An abandoned staging file never earns a final snapshot name. A discoverable path
 therefore denotes a completed write under the process-failure and cooperating-writer
-assumptions. A stale cache loses acceleration; the completed observation remains
+assumptions. A stale cache may force more work, but the completed observation remains
 authoritative.
 
 The current-state cache keeps the last row per object ID. Reads accept it only when its
@@ -95,10 +98,10 @@ the stored rows and their geometry/attribute decoding. Candidate set operations 
 cost. Warm current-state reads reduce snapshot I/O, but full live-ID queries remain.
 Network request counts and provider pagination belong to the ArcGIS adapter.
 
-This protocol cannot guarantee a transactional snapshot of a changing remote service.
-A settled provider and later successful full fetch are recovery assumptions. Timestamp
+This protocol cannot guarantee a transactional snapshot of a changing remote service. A
+settled provider and later successful full fetch are recovery assumptions. Timestamp
 skipping cannot detect every provider edit that leaves layer metadata unchanged. The
-protocol preserves history rather than implementing remote deletion mirroring.
+protocol preserves historical observations even when the provider later removes a row.
 
 ## Implementation and verification
 

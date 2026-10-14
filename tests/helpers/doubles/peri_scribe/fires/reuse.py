@@ -33,9 +33,7 @@ def make_interrupted_replacement(
     path: pathlib.Path,
     replace: typing.Callable[..., pathlib.Path],
 ) -> typing.Callable[..., pathlib.Path]:
-    """Create a callback with controlled dependencies.
-
-    Interrupt metadata publication after the data file has been replaced.
+    """Return a replacer that fails on metadata after publishing the data file.
 
     Args:
         path: Snapshot or output path selected for the controlled failure.

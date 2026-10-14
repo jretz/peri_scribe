@@ -1,13 +1,15 @@
 # Deliberate defect checks
 
-`conformance/test_defect_checks.py` checks that established conformance tests detect
-twenty specific production defects. One pristine interpreter executes every unique
-selected target against private copied source packages. Workers share the complete
-successful baseline through the current run's atomic corpus. Each case copies the
-source packages into its own temporary directory, requires every source and resource
-digest to match that baseline, changes one expression inside one named production
-function, and reruns its established check in a fresh interpreter. Repository source
-files and Lean/TLA+ specifications are not changed.
+Passing against the current implementation doesn't show that a test would catch a bug.
+`conformance/test_defect_checks.py` checks that the established conformance tests reject
+twenty specific production defects after passing against unchanged source.
+
+One interpreter runs every unique selected test against private copies of the source
+packages. Workers share that complete successful baseline through the current run's
+atomically published corpus. Each defect case makes its own temporary source copy,
+requires every source and resource digest to match the baseline, and changes one
+expression in one named production function. It then reruns the established check in a
+fresh interpreter. Repository source files and Lean/TLA+ specifications stay unchanged.
 
 | Deliberate defect | Existing check required to fail |
 | --- | --- |

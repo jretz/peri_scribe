@@ -220,7 +220,7 @@ class Resolution:
 
 
 def batch_cases() -> tuple[Resolution, ...]:
-    """Existing continuity cases now pass through both phases and fresh allocation.
+    """Exercise both adoption phases and fresh allocation with varied continuity cases.
 
     Returns:
         Complete resolvers with varied identified/name-only claimants and known owners.
@@ -449,7 +449,7 @@ def checkpoint_expectations(
     ownership: dict[AreaKey, str],
     actual: peri_scribe.fire_updates.PreparedUpdates,
 ) -> None:
-    """Every checkpoint field is compared with the executable acknowledgement policy.
+    """Compare perimeter, source, name, and alias evidence with the executable policy.
 
     Args:
         case: Current and previous evidence before preparation.

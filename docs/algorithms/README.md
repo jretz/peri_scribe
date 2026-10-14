@@ -1,18 +1,21 @@
 # Algorithm notes
 
-These notes explain the reasoning behind existing algorithms, including contracts,
-scored complexity, invariants, worked examples, resource limits and verification. SVGs
-show the difficult decisions alongside the text. The
-[corrected growth animation](corrected-growth-passes.svg) shows where working copies
-come from and how intersection and difference change their geometry. It is the reference
-example in the [SVG guidance](../algorithm_design.md#svg-explanations); labeled static
-states preserve the intermediate steps without motion. Linear sequences and lists belong
-directly in Markdown; figures show relationships that benefit from a visual explanation.
+These notes explain why the algorithms make the decisions they do, what they guarantee,
+and where those guarantees stop. Each note includes a complexity assessment, worked
+examples, resource limits, and links to the implementation and its checks. SVGs help
+explain the difficult decisions alongside the text. The [corrected growth
+animation](corrected-growth-passes.svg) shows where working copies come from and how
+intersection and difference change their geometry. It is the reference example in the
+[SVG guidance](../algorithm_design.md#svg-explanations); labeled static states preserve
+the intermediate steps without motion. Linear sequences and lists belong directly in
+Markdown; figures show relationships that benefit from a visual explanation.
 
-Use the [coverage inventory](INVENTORY.md) to find the owner of any production module
-or a straightforward assessment. Use [Algorithm Design](../algorithm_design.md) when
-adding or changing behavior, and [Architecture](../architecture.md) for system context.
-Scores measure reasoning burden, not runtime complexity or the importance of a policy.
+Use the [coverage inventory](INVENTORY.md) to find the note that covers a production
+module, or its assessment if the behavior is straightforward. Use [Algorithm
+Design](../algorithm_design.md) when adding or changing behavior, and
+[Architecture](../architecture.md) for system context. Scores describe how much context
+is needed to reason about correctness. Runtime costs and the importance of a policy are
+separate questions.
 
 ## Animated explanations
 

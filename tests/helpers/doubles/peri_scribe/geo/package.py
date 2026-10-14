@@ -1,4 +1,4 @@
-"""Replace package dependencies with controlled test doubles."""
+"""Control GeoPackage reads and simulate cache and file access failures."""
 
 from __future__ import annotations
 
@@ -36,9 +36,7 @@ def make_source_directory_stat_failure(
     source_directory: pathlib.Path,
     original_stat: typing.Callable[..., object],
 ) -> typing.Callable[..., object]:
-    """Create a callback with controlled dependencies.
-
-    Simulate an unreadable source directory during cache validation.
+    """Return a metadata reader that fails for the selected source directory.
 
     Args:
         source_directory: Source directory whose metadata lookup should fail.
@@ -70,9 +68,7 @@ def make_bucket_directory_stat_failure(
     bucket_directory: pathlib.Path,
     original_stat: typing.Callable[..., object],
 ) -> typing.Callable[..., object]:
-    """Create a callback with controlled dependencies.
-
-    Simulate an unreadable snapshot bucket during cache validation.
+    """Return a metadata reader that fails for the selected snapshot bucket.
 
     Args:
         bucket_directory: Snapshot bucket whose metadata lookup should fail.
@@ -118,9 +114,7 @@ def make_snapshot_stat_failure(
     path: pathlib.Path,
     original_stat: typing.Callable[..., object],
 ) -> typing.Callable[..., object]:
-    """Create a callback with controlled dependencies.
-
-    Simulate unavailable file metadata for the requested snapshot.
+    """Return a metadata reader that fails for the selected snapshot.
 
     Args:
         path: Snapshot or output path selected for the controlled failure.
@@ -165,9 +159,7 @@ def make_phantom_snapshot_listing(
     *,
     original: typing.Callable[..., list[peri_scribe.sources.snapshots.SourceFile]],
 ) -> typing.Callable[..., list[peri_scribe.sources.snapshots.SourceFile]]:
-    """Create a callback with controlled dependencies.
-
-    Include a missing snapshot to exercise stale directory-entry handling.
+    """Return a directory reader that includes a nonexistent snapshot.
 
     Args:
         original: Original operation whose results the callback preserves.

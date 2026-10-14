@@ -1,4 +1,4 @@
-"""Verify coordinate-reference selection against metadata and geometry."""
+"""Geometry bounds match the minimum and maximum coordinates."""
 
 import operator
 

@@ -1,6 +1,6 @@
 """Tests for spatial_data.point_store.
 
-The tests use synthetic in-memory archives and temporary databases; they never touch the
+The tests use generated point data and temporary databases; they do not access the
 network or an external point dataset."""
 
 from __future__ import annotations

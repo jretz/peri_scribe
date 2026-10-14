@@ -1,5 +1,12 @@
 # Formal checks
 
+These checks ask two related questions: do the specified rules have the intended
+properties, and does the implementation follow those rules in the executions tested?
+TLA+ explores bounded sequences of operations and failures. Lean proves properties of
+the stated data models. Conformance tests then compare real Python and JavaScript
+executions with those checked definitions. The assumptions and limits matter: a proof
+about a model doesn't by itself prove that the application implements it correctly.
+
 Run `mise formal` from the repository root. The dedicated tasks are independent of `mise
 test` and use tool versions recorded in `.mise/mise.lock`.
 
@@ -32,46 +39,46 @@ phases remain sequential.
 - `mise formal-counterexamples` reproduces documented limits of the current protocols; a
   confirmed counterexample is not a proved guarantee.
 
-The extended checks cover [journal files and builder recovery](tla/journal_replay.md),
-[combined pipeline invocations](tla/composition.md),
-[perimeter evidence and publication candidates](lean/evidence.md), and
-[incremental collection and building database construction](ingestion_extensions.md).
-Additional checks cover [raw snapshots and changing remote feeds](tla/snapshots.md),
-[parsed snapshot cache transactions](tla/parsed_cache.md),
-[complete incident reconciliation and storage](lean/incident_histories.md), and
-[identity through presentation and sparse evidence](lean/presentation.md).
-Further checks cover [document publication and concurrent feed coordination](tla/collection_publication.md),
-[complete perimeter reconciliation and border classification](lean/perimeter_composition.md),
-[typed cache encoding](lean/cache_codec.md), and
-[building centroids, streaming, and monitor reconstruction](lean/centroids_monitor.md).
-Further boundaries include [source-change fingerprints](lean/source_digest.md),
-[log rotation and seeking](log_rotation_seeking.md),
-[spatial indexes, differential rows, and coordinate conversion](lean/spatial_boundaries.md),
-and [geometry sharing and viewer row semantics](lean/geometry_updates.md).
+The detailed inventories explain the assumptions, cases, and implementation checks for
+each area:
 
-The identity and recovery checks also cover
-[anonymous source components](lean/component_identity.md),
-[source-validation soundness](lean/source_validation.md),
-[ordered timestamp log queries](log_rotation_seeking.md),
-[ownership composed with chronological snapshots](lean/projected_snapshots.md),
-[ownership recomputation after acknowledgement](lean/identity_recomputation.md), and
-[validation of durable update intent](tla/durable_update_validation.md).
-Additional composition checks cover [readers during log rotation](reader_rotation.md)
-and [complete execution paths and abrupt process termination](execution_assurance.md).
-Update-history reading is composed through actual files, rotation receipts, current
-ownership, and saved snapshots in [update log chronology](update_log_chronology.md).
-The [numerical policy inventory](lean/numerical_policy.md) covers fractional measurements,
-binary64 rounding, unit conversion order, and relative publication tolerances.
-The [output text inventory](lean/output_text.md) covers literal source text through
-Markdown, HTML, XML, and saved KMZ artifacts.
-Domain extensions cover [coordinate-reference selection](lean/coordinate_reference.md),
-[identity ownership across publications](lean/identity_lifecycle.md), and
-[notable selection and chart evidence](lean/policy_details.md).
-Further checks cover [raw feed decoding](lean/raw_decoding.md),
-[correctable history ownership](lean/identity_transfer.md),
-[complete publication baselines](lean/publication_baseline.md), and
-[monitor task coordination and shutdown](tla/monitor_tasks.md), and
-[observable monitor sessions](tla/monitor_session.md).
+- **Source collection:** [raw snapshots and changing remote feeds](tla/snapshots.md),
+  [incremental collection and building database construction](ingestion_extensions.md),
+  [raw feed decoding](lean/raw_decoding.md),
+  [source-validation soundness](lean/source_validation.md),
+  [source-change fingerprints](lean/source_digest.md), and
+  [coordinate-reference selection](lean/coordinate_reference.md).
+- **Stored data and geometry:** [parsed snapshot cache transactions](tla/parsed_cache.md),
+  [typed cache encoding](lean/cache_codec.md),
+  [complete incident reconciliation and storage](lean/incident_histories.md),
+  [complete perimeter reconciliation and border classification](lean/perimeter_composition.md),
+  [spatial indexes, differential rows, and coordinate conversion](lean/spatial_boundaries.md),
+  and [building centroids, streaming, and monitor reconstruction](lean/centroids_monitor.md).
+- **Identity and presentation:** [anonymous source components](lean/component_identity.md),
+  [identity through presentation and sparse evidence](lean/presentation.md),
+  [identity ownership across publications](lean/identity_lifecycle.md),
+  [correctable history ownership](lean/identity_transfer.md),
+  [ownership recomputation after acknowledgement](lean/identity_recomputation.md), and
+  [notable selection and chart evidence](lean/policy_details.md).
+- **Publication and recovery:** [journal files and builder recovery](tla/journal_replay.md),
+  [combined pipeline invocations](tla/composition.md),
+  [perimeter evidence and publication candidates](lean/evidence.md),
+  [complete publication baselines](lean/publication_baseline.md),
+  [document publication and concurrent feed coordination](tla/collection_publication.md),
+  and [validation of durable update intent](tla/durable_update_validation.md).
+- **Logs and updates:** [log rotation and ordered timestamp queries](log_rotation_seeking.md),
+  [readers during log rotation](reader_rotation.md),
+  [ownership composed with chronological snapshots](lean/projected_snapshots.md),
+  [update log chronology through actual files and receipts](update_log_chronology.md),
+  and [geometry sharing and viewer row semantics](lean/geometry_updates.md).
+- **Monitor lifetimes:** [task coordination and shutdown](tla/monitor_tasks.md) and
+  [observable sessions](tla/monitor_session.md).
+- **Arithmetic and output:** [numerical policy](lean/numerical_policy.md) covers
+  fractional measurements, binary64 rounding, unit conversion order, and relative
+  publication tolerances. [Output text](lean/output_text.md) covers literal source text
+  through Markdown, HTML, XML, and saved KMZ artifacts.
+- **Execution sequences:** [complete execution paths and abrupt process termination](execution_assurance.md)
+  connect the protocol states to the order of real operations and failures.
 
 See the [formal verification guide](../../docs/formal_verification.md) for commands,
 maintenance rules, assumptions, and implementation-conformance requirements.

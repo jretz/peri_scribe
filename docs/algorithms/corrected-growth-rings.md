@@ -2,15 +2,17 @@
 
 ## Contract and context
 
-Full perimeters arrive per fire in chronological order with aligned source attributes.
-The differential history removes later-retracted ground from earlier mappings and emits
-only added polygonal area. Points are copied unchanged by the publication layer. Ring
-geometry is in the common history CRS; measurements use geodesic square meters/acres.
-Fires must occupy consecutive row blocks under the full identity columns.
+Later maps can withdraw ground that earlier maps included. The differential history
+applies those corrections to the earlier mappings, then emits only the polygonal area
+added at each step. Full perimeters arrive per fire in chronological order with aligned
+source attributes. Points are copied unchanged by the publication layer. Ring geometry
+is in the common history CRS; measurements use geodesic square meters/acres. Fires must
+occupy consecutive row blocks under the full identity columns.
 
-The desired result is a retrospectively corrected visualization of growth. It is not the
-union of everything ever reported, and disappearance from later mapping is interpreted
-as a correction rather than observed contraction of burned ground.
+The result shows growth as understood after the later corrections. Ground that
+disappears from later mapping is treated as a correction to the earlier map, rather than
+evidence that burned ground contracted. Keeping the union of everything ever reported
+would preserve that withdrawn ground and answer a different question.
 
 ## Complexity assessment
 
@@ -72,10 +74,9 @@ same retained footprint. Choosing the first growth row's metadata would miss the
 
 ![Candidate blocks choose their final observation](corrected-growth-attribution.svg)
 
-*The first surviving footprint comes from candidate 0, but its attributes come from row
-1.
-Row 2 starts the next growth block. Geometry ownership and metadata ownership are related
-without being identical.*
+*Candidate 0 supplies the first surviving footprint; row 1 supplies its attributes.
+Row 2 starts the next growth block. The footprint and its metadata can therefore come from
+different observations.*
 
 For acreage, containment, and cost fields, subtract the most recent earlier candidate
 representative with a present numeric value; use zero if none exists. Missing current
@@ -83,9 +84,10 @@ values yield a missing delta, zero stays present, and negative corrections remai
 These are source-field changes, distinct from positive geometric added area.
 
 Attribution is assigned before sliver removal. A candidate that emits no geometry can
-still supply a numeric baseline to a later candidate. Thus complete present changes
-can telescope across candidates, but no telescoping claim is made across only the rings
-finally displayed. For example values 10, missing, 7 produce changes 10, missing, −3.
+still supply a numeric baseline to a later candidate. Across the complete candidate
+sequence, present changes can telescope: intermediate values cancel when the changes are
+summed. That doesn't necessarily hold for just the rings finally displayed. For example,
+values 10, missing, 7 produce changes 10, missing, −3.
 
 Visible progression uses emitted rows with a valid observation time and area strictly
 greater than one square meter. Measure newly covered ground by cumulative union:

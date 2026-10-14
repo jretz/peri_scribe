@@ -14,6 +14,6 @@ run = [
 ]
 
 [sync-kmz]
-description = "Ensure the latest KMZ is available for public download"
+description = "Sync maps and viewer files to public download storage"
 raw_args = true
 run = 'rclone sync "data/$(date +%Y)/maps/" PeriScribe:peri-scribe'

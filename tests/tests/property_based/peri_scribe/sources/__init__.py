@@ -1,1 +1,1 @@
-"""Verify sources behavior with isolated tests."""
+"""Verify source handling with isolated tests."""

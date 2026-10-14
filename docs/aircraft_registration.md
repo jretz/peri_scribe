@@ -21,11 +21,14 @@ prefix characters, including their case and leading whitespace, are preserved. A
 registration returns an empty prefix. Registrations are matched using ASCII letters
 and digits, case-insensitively, and returned in uppercase.
 
-This is offline syntactic recognition. A match does not establish issuance, current
-registration, airworthiness, aircraft category, or eligibility for a display exemption.
-Military serials, abbreviated callsigns, and painted national emblems are outside the
-API's scope. A fire name that itself ends with a syntactically valid registration can
-be ambiguous; fire grouping still requires matching identifiers or compatible geography
+The recognizer checks the text's form without contacting a registry. A match cannot
+establish whether a registration was issued, is current, or belongs to an airworthy
+aircraft. It also cannot establish aircraft category or eligibility for a display
+exemption. Military serials, abbreviated callsigns, and painted national emblems are
+outside the API's scope.
+
+A fire name can itself end with text that looks like a registration. Because that is
+ambiguous, grouping fires still requires matching identifiers or compatible geography
 along with the normalized name.
 
 ## Worldwide baseline
@@ -40,8 +43,8 @@ registration letter; the remaining registration characters follow that allocatio
 For marks without a national override, recognition uses Annex 7 sections 3.2 and 3.5:
 one or more ASCII letters or digits follow the nationality/common mark, and a hyphen is
 required when the registration begins with a letter. Numeric registrations may have a
-hyphen. This baseline imposes no national length or allocation restrictions. In
-particular, recognition under this baseline is broader than verified national syntax.
+hyphen. This baseline has no national length or allocation restrictions, so it can
+accept text that a particular country's registration rules would reject.
 
 Section 3.6's explicitly identified three-letter Q combinations and the signals `SOS`,
 `XXX`, `PAN`, and `TTT` are excluded as complete registration marks. Other restrictions
@@ -81,14 +84,16 @@ three-letter suffix an identifiable registration in this API.
 
 ## Application integration and maintenance
 
-Mission-name parsing owns the state/unit prefix, mapping-revision words, and the feed's
-two-digit, one-letter aircraft abbreviations. It passes the remaining mission text to
-this library first, then recognizes abbreviated suffixes such as `50X` and `40Y` when
-no complete registration matches. Thus `CA-RRU-VISTA-50X` supplies the `VISTA` name needed
-to join unnamed perimeters to their incident. The standalone registration API continues
-to require a complete registration. A source incident name continues to take precedence
-over a mission-derived display name. Both names remain available for matching, and
-geographical grouping rules are unchanged.
+Mission-name parsing handles the state/unit prefix, mapping-revision words, and the
+feed's two-digit, one-letter aircraft abbreviations. It passes the remaining mission
+text to this library first. If no complete registration matches, it checks abbreviated
+suffixes such as `50X` and `40Y`. For example, `CA-RRU-VISTA-50X` supplies the `VISTA`
+name needed to join unnamed perimeters to their incident. The standalone registration
+API requires a complete registration.
+
+A source incident name takes precedence over a name derived from mission text for
+display. Both names remain available for matching, and the same geographical grouping
+rules apply.
 
 The parsed-record cache version must be incremented when recognition rules change,
 because it stores already-normalized names. The library's Python files participate in

@@ -1,4 +1,4 @@
-"""Persisted measurements and standalone geometry produce the same values."""
+"""Use stored measurements when available and otherwise measure the geometry."""
 
 import pytest
 import shapely

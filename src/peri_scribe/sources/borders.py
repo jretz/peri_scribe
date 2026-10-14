@@ -165,7 +165,7 @@ def layer_dataframe(
 ) -> geopandas.GeoDataFrame:
     """Query *layer* and return its features as a GeoDataFrame in WGS84.
 
-    The query requests the features re-projected to WGS 84 so the two sources can be
+    The query requests the features re-projected to WGS 84 so the state polygons can be
     intersected in one spatial reference. A layer that returns no features is an error,
     since no border can be computed from it.
 
@@ -401,9 +401,9 @@ def california_box_polygon(border: shapely.Geometry) -> shapely.Polygon:
     The box traces the interstate border from its Pacific/Oregon end to its
     Mexico/Arizona end and closes with straight lines that run due south into Mexico,
     due west into the Pacific Ocean, straight north, and straight east back to the
-    Pacific/Oregon end. The landward edges of the box follow the interstate border
-    exactly, while the southern and western edges sit beyond every point of California,
-    so the box contains all of California and nothing on the far side of the border.
+    Pacific/Oregon end. The landward edge follows the supplied interstate border, with
+    small adjustments where segment endpoints are joined. The southern and western
+    edges close the classification area offshore and south of California.
 
     Args:
         border: The California border lines in WGS84.

@@ -130,7 +130,7 @@ def request(history: collections.abc.Iterable[Entry]) -> str:
 
 
 def compare_histories(histories: collections.abc.Iterable[tuple[Entry, ...]]) -> int:
-    """Check every resulting node, old snapshot, and repeated object identity.
+    """Check resulting nodes, selected old snapshots, and repeated object identity.
 
     Args:
         histories: Insertion sequences including collisions and repeated inputs.

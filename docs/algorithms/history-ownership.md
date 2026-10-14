@@ -3,11 +3,13 @@
 ## Contract and context
 
 A fire update compares current mapped evidence with previously acknowledged evidence.
-Corrections can move an identifier between current fires. The algorithm assigns durable
-history buckets to current writers while retaining the evidence and alias routes needed
-for a later correction. A bucket is a stable log identity; it is not necessarily the
-current external identifier. This policy spans `resolved_ownership`, `history_claims`,
-`acknowledged_state`, and `prepare_updates` in [fire_updates.py](../../src/peri_scribe/fire_updates.py).
+Corrections can move an identifier between current fires, so saved history needs an
+identity that can survive that move. The algorithm assigns durable history buckets to
+current writers while retaining the evidence and alias routes needed for a later
+correction. A bucket is a stable log identity; it need not be the current external
+identifier. This policy spans `resolved_ownership`, `history_claims`,
+`acknowledged_state`, and `prepare_updates` in
+[fire_updates.py](../../src/peri_scribe/fire_updates.py).
 
 Inputs are current fire summaries with distinct report identities, disjoint current
 identifier/component alias groups, mapped signatures, and exact source references, plus
@@ -66,9 +68,10 @@ route would prevent a corrected fire from reclaiming its own earlier history.
 For unchanged inputs, a current writer wins its own bucket on recomputation. Learning
 adds histories already owned by that writer while retaining its old winning claims;
 saving the writer as the preference therefore chooses it again. Evidence unions are
-idempotent, so acknowledgement reaches a fixed point: resolving again gives the same
-writers and owners, with no novel mapping. Old owner chains or cycles are retained as
-data but are not recursively chased as the current assignment.
+idempotent: adding the same evidence again has no effect. Acknowledgement therefore
+reaches a fixed point. Resolving again gives the same writers and owners, with no new
+mapping. Old owner chains or cycles are retained as data but are not recursively chased
+as the current assignment.
 
 ## Worked examples and boundaries
 

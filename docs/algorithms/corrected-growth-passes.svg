@@ -3,16 +3,14 @@
      viewBox="0 0 840 1110" role="img" style="max-width:100%;height:auto"
      aria-labelledby="growth-title growth-description">
   <title id="growth-title">Correct fire perimeters backward, then reveal new growth forward</title>
-  <desc id="growth-description">Three irregular fire perimeters remain visible across
-    the top. Blue copies slide down into the backward row before the backward pass begins.
-    A translucent copy of the latest perimeter then slides onto the middle one.
-    Ground outside that copy turns rose and dissolves. The corrected
-    middle footprint then slides onto the earliest one and trims it in the same way.
-    Copies of all three corrected footprints slide down into the forward row, changing
-    from blue to gold. Then copies slide diagonally from the complete corrected footprints
-    above onto the next footprint and dissolve already counted ground. Three disjoint amber
-    growth regions remain. Static and reduced-motion views show original, corrected and
-    difference geometry together; hatching identifies the retracted original ground.</desc>
+  <desc id="growth-description">Later observations correct earlier fire perimeters. The
+    backward pass intersects each perimeter with the corrected next one, removing ground
+    that later observations retract. The forward pass subtracts each full corrected
+    predecessor, leaving three disjoint growth regions that together cover the latest
+    perimeter. Three original perimeters stay visible above both derived rows. Moving
+    copies show which observations are compared: blue for correction, gold for growth,
+    and rose for removed ground. Hatching marks the retracted original ground. Static
+    and reduced-motion views show original, corrected, and difference geometry together.</desc>
   <defs>
     <style>
       :root { color-scheme: light dark;

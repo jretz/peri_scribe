@@ -2,11 +2,12 @@
 
 ## Contract and assessment
 
-The renderer fits all supplied drawable WGS84 growth rings and complete perimeters into
-a transparent 128×72 pixel image with uniform scale and a two-pixel map margin. A north
-dart remains anchored to the top/right edges. The selected map angle is in `[-90°,90°)`;
-the objective balances linear map size with obstruction of the dart's buffered pixel hull.
-Inputs must contain nonempty finite drawable geometry.
+The preview has little room: a transparent 128×72 pixel image, a two-pixel map margin,
+and a north dart anchored to the top/right edges. The renderer fits all supplied
+drawable WGS84 growth rings and complete perimeters at one uniform scale. It chooses a
+map angle in `[-90°,90°)` to balance map size against overlap with the dart's buffered
+pixel hull, the shape enclosing its rendered pixels and clearance. Inputs must contain
+nonempty finite drawable geometry.
 
 | Dimension | Score | Reason |
 | --- | --- | --- |
@@ -65,9 +66,9 @@ domain; they do not wrap around to another corner arrangement.
 
 ![Global sampling supplies separated starts before local refinement](assets/preview-search.svg)
 
-Coarse sampling supplies distinct starts before local refinement, because one local
-optimum cannot stand for the whole search. The sketched objective has illustrative jumps
-because pixel support can change abruptly.
+Coarse sampling supplies separate starting points for local refinement. A good result
+near one starting point doesn't rule out a better result elsewhere. The sketched
+objective has jumps because the pixels touched by the dart can change abruptly.
 
 Finally recompute `s_max` over every sampled candidate and select with weight 0.75.
 Scores within `10^-11` of the maximum tie by distance to the size-only reference, then

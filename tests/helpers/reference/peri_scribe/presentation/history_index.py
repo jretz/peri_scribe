@@ -14,7 +14,10 @@ def select(
     fire_identifiers: frozenset[str],
     name: str,
 ) -> geopandas.GeoDataFrame:
-    """Return the rows the old boolean filters would select.
+    """Select matching rows directly, without using the history index.
+
+    Comparing these filters with the indexed lookup checks both row membership and order
+    independently of the index's grouping logic.
 
     Args:
         frame: The history layer to search.

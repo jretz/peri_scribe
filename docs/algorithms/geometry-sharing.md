@@ -2,10 +2,11 @@
 
 ## Contract and assessment
 
-A source read owns one `GeometryPool`. Requests with identical canonical WKB, including
-dimensions and SRID, reuse the same immutable Shapely geometry. Distinct WKB must remain
-distinct even if SHA-256 digests collide. Updates replace an immutable root and share
-unchanged branches, so an earlier snapshot continues to describe its original entries.
+A source read owns one `GeometryPool` so repeated geometry can share one immutable
+Shapely object. Sharing requires identical canonical WKB, including dimensions and SRID.
+Distinct WKB must remain distinct even if SHA-256 digests collide. Updates replace an
+immutable root and share unchanged branches, so an earlier snapshot still describes its
+original entries.
 
 | Dimension | Score | Reason |
 | --- | --- | --- |
@@ -21,10 +22,11 @@ reference is the required correctness property.
 ## Compressed trie and insertion argument
 
 Each leaf stores one digest and a tuple of candidate geometries. A branch stores a
-representative digest, the highest bit at which its children differ, and two child roots.
-Common digest prefixes do not occupy separate nodes. Bit ranks strictly decrease from
-root to leaf. A new digest that differs above the current split creates a new parent;
-otherwise its bit at the current split selects the recursive child.
+representative digest, the highest bit at which its children differ, and two child
+roots. Common digest prefixes do not need separate nodes. Along a path from root to
+leaf, each branch splits on a lower-ranked bit than the preceding branch. A new digest
+that differs above the current split creates a new parent; otherwise its bit at the
+current split selects the recursive child.
 
 ![Insertion publishes a new root while preserving the saved subtree](assets/geometry-trie.svg)
 
@@ -57,9 +59,9 @@ For a deliberately colliding digest, requests under the pool lock behave as foll
    `to_wkb(..., include_srid=True)`, add a second bucket member, and preserve A.
 3. Request A's exact WKB again: return A's existing object and leave the root unchanged.
 
-Comparing digest alone would silently substitute the wrong geometry.
-Geometrically equal polygons with different canonical vertex order also remain distinct:
-the contract is representation identity, not topological equality.
+Comparing digest alone would silently substitute the wrong geometry. Geometrically equal
+polygons with different canonical vertex order also remain distinct. Sharing requires
+the same encoded representation, even when two encodings describe the same shape.
 
 `from_wkb` computes the digest before acquiring the pool lock, then performs lookup,
 decode, and root replacement while holding it. Two simultaneous requests for the same

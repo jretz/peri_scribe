@@ -41,7 +41,7 @@ def polygon_feature_set(
     Args:
         polygons: Boundary polygons expressed in WGS84.
         names: Administrative names aligned with the polygon sequence.
-        abbreviations: Optional state abbreviations aligned with the polygons.
+        abbreviations: State abbreviations aligned with the polygons.
 
     Returns:
         A FeatureSet whose features carry the named polygons in WGS84.

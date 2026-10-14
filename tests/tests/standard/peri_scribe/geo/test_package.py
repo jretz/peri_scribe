@@ -276,7 +276,7 @@ def test_read_geopackage_reads_no_memberships_without_complex_columns(
     assert contents.memberships == ()
 
 
-def test_read_geopackage_skips_rows_not_marked_as_complex_children(
+def test_read_geopackage_preserves_explicit_complex_release(
     configured_feeds_with_identifiers: list[peri_scribe.sources.feed_types.Feed],
     stub_geo_package: typing.Callable[[pd.DataFrame, dict[str, pd.DataFrame]], None],
 ) -> None:

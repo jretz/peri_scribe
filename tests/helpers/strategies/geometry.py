@@ -161,7 +161,7 @@ def disjoint_coverage_sequences(
     """Make area conservation independent of overlay-induced geodesic edge changes.
 
     Disjoint components retain their original edges after union. Repeated observations
-    still exercise winding changes and the distinction between area and added area.
+    exercise the distinction between total area and newly added area.
 
     Args:
         draw: The current example's strategy sampler.

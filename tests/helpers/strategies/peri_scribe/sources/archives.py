@@ -1,4 +1,4 @@
-"""Generate archives examples with constrained domains."""
+"""Generate download pages with varied section structure and link text."""
 
 from __future__ import annotations
 

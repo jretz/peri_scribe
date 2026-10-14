@@ -30,7 +30,7 @@ def make_fetch_recorder(
             directory: Directory supplied to the intercepted storage operation.
 
         Returns:
-            The synthetic output path returned by the fetch stub.
+            A tuple containing the synthetic output path returned by the fetch stub.
         """
         fetched.append((source_arg, directory))
         return (pathlib.Path("/out.gpkg"),)

@@ -119,8 +119,7 @@ def incremental_cutoff(
     """Return the cutoff for an incremental fetch.
 
     The cutoff is the latest stored change timestamp minus ``OVERLAP``. When no stored
-    timestamp can be found, the Unix epoch is used so the query returns every feature
-    for deduplication to filter.
+    timestamp can be found, the Unix epoch is used as the fallback cutoff.
 
     Args:
         existing: The latest stored feature per OBJECTID, or None.
@@ -136,11 +135,11 @@ def incremental_cutoff(
 
 
 def normalized_attribute_value(value: object) -> object:
-    """Return *value* with missing and sub-second timestamps normalized.
+    """Normalize missing values and clear datetime microseconds for comparison.
 
-    Pandas missing values are mapped to None so equal rows compare equal, and datetimes
-    are truncated to whole seconds so the server's inconsistent fractional-second
-    serialization does not make identical rows look different.
+    Pandas missing values are mapped to None so equal rows compare equal. Clearing
+    microseconds suppresses differences in the server's fractional-second serialization.
+    Any additional nanosecond component in a Pandas Timestamp is retained.
 
     Args:
         value: An attribute value from a feature row.

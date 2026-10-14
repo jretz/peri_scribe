@@ -1,5 +1,8 @@
 """Share only complete checked model data within one formal invocation.
 
+Workers need the same successfully checked graph. Partial output or evidence from an
+earlier run cannot establish what the current specifications allow.
+
 Design notes:
 [Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
 """

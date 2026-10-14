@@ -1,4 +1,4 @@
-"""Replace buildings dependencies with controlled test doubles."""
+"""Control building downloads and coordinate concurrent archive workers."""
 
 from __future__ import annotations
 
@@ -58,9 +58,7 @@ def make_state_archive_responder(
     ...,
     tests.helpers.doubles.peri_scribe.sources.external_source.FakeResponse,
 ]:
-    """Create a callback with controlled dependencies.
-
-    Serve the buildings index or matching state archive without HTTP access.
+    """Return an HTTP stub serving the buildings index and state archives.
 
     Args:
         urls: Shared list recording requested download URLs.

@@ -13,7 +13,7 @@ def assert_same_rows(
     actual: geopandas.GeoDataFrame,
     expected: geopandas.GeoDataFrame,
 ) -> None:
-    """Assert that two frames hold the same rows in the same order.
+    """Assert matching identifiers, names, and geometries in the same row order.
 
     Args:
         actual: The rows the index selected.

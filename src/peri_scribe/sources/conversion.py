@@ -31,9 +31,9 @@ def geodata_chunks(
 ) -> typing.Iterator[geopandas.GeoDataFrame]:
     """Yield the vector data at *geodata_path* as bounded GeoDataFrames.
 
-    A GeoJSON file is parsed with ``ijson`` so only one feature is in memory at a time;
-    any other vector data (a shapefile or file geodatabase) is read in bounded chunks.
-    Every yielded frame holds at most *chunk_size* features.
+    GeoJSON is parsed incrementally with ``ijson``; other vector formats use chunked
+    layer reads. Each yielded frame holds at most *chunk_size* features. That limits the
+    feature count in memory, but not the size of an individual geometry.
 
     Args:
         geodata_path: The vector data file or directory to read.
@@ -58,10 +58,10 @@ def geojson_feature_chunks(
 ) -> typing.Iterator[geopandas.GeoDataFrame]:
     """Yield the features of the GeoJSON at *geodata_path* as bounded GeoDataFrames.
 
-    The file is parsed with ``ijson`` so only one feature is in memory at a time; each
-    yielded frame holds at most *chunk_size* features. A feature without a geometry
-    keeps None as its geometry. GeoJSON has no coordinate reference system of its own,
-    so every frame is WGS84, matching how GeoPandas would read the file.
+    ``ijson`` parses features one at a time, and their geometry and attributes
+    accumulate until the chunk reaches *chunk_size*. Each completed chunk becomes one
+    frame, so the whole file never needs to be loaded at once. Missing geometry stays
+    None. Coordinates are interpreted as WGS84, the coordinate system GeoJSON uses.
 
     Args:
         geodata_path: The GeoJSON FeatureCollection to read.
@@ -123,10 +123,10 @@ def convert_to_geopackage(
 ) -> None:
     """Convert *geodata_path* into a GeoPackage at *output*.
 
-    The source is read and written in bounded chunks, so a source of any size is
-    converted without loading the whole file into memory. When *centroids* is true each
-    feature's geometry is replaced by its centroid point. When *keep_attributes* is
-    false every attribute column is dropped, leaving only the geometry.
+    Reading and writing one chunk at a time avoids loading the whole source into memory.
+    Each chunk is limited by feature count, so unusually large geometries can still
+    require substantial memory. When *centroids* is true, each geometry becomes its
+    centroid point. When *keep_attributes* is false, only geometry is retained.
 
     Args:
         geodata_path: The vector data file to convert.
@@ -189,8 +189,8 @@ def converted_chunk(
         keep_attributes: Keep the source's attribute columns.
 
     Returns:
-        The chunk's features, reduced to centroids and to geometry alone when attributes
-        are not kept.
+        The converted chunk, using centroid points when requested and keeping only
+        geometry when *keep_attributes* is false.
     """
     dataframe = centroid_dataframe(chunk) if centroids else chunk
     if not keep_attributes:
@@ -201,8 +201,9 @@ def converted_chunk(
 def centroid_dataframe(dataframe: geopandas.GeoDataFrame) -> geopandas.GeoDataFrame:
     """Return *dataframe* with each geometry replaced by its centroid.
 
-    A geographic CRS is projected before the centroid is computed, so the result is
-    correct and the geometry is returned in the original CRS.
+    Longitude and latitude are projected before calculating a centroid, so the
+    calculation uses planar coordinates rather than treating degrees as distances. The
+    resulting point is then returned in the original coordinate reference system.
 
     Args:
         dataframe: The GeoDataFrame whose geometries are replaced.

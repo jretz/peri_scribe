@@ -68,7 +68,7 @@ def test_location_text_without_bearing_names_zero_distance_city() -> None:
         distance=0.0 * units.miles,
     )
 
-    assert peri_scribe.report.locations.location_text(city) == "0 mi of Portland, OR"
+    assert peri_scribe.report.locations.location_text(city) == "0 mi from Portland, OR"
 
 
 def test_azimuthal_equidistant_projection_centers_on_point() -> None:
@@ -200,7 +200,9 @@ def test_nearest_city_names_city_inside_the_interior() -> None:
     assert nearest.name == "Portland"
     assert nearest.distance.m_as("meters") == pytest.approx(0.0, abs=1e-9)
     assert nearest.bearing is None
-    assert peri_scribe.report.locations.location_text(nearest) == "0 mi of Portland, OR"
+    assert (
+        peri_scribe.report.locations.location_text(nearest) == "0 mi from Portland, OR"
+    )
 
 
 def test_nearest_city_ties_go_to_first_city_alphabetically() -> None:

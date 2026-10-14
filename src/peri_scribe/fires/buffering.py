@@ -1,4 +1,4 @@
-"""Buffering fire geometries for building-count distance.
+"""Expand fire geometries to define where nearby buildings are counted.
 
 [Scoring](../../../docs/algorithms/fire-scoring.md)
 """
@@ -15,7 +15,8 @@ import spatial_data.reference
 from measurement_units import units
 
 
-# The distance around each fire geometry within which nearby buildings are counted.
+# The Web Mercator distance used to buffer fire geometry for building-centroid counts.
+# One projected mile is 1,609.344 meters; its ground distance varies with latitude.
 BUILDING_BUFFER = 1.0 * units.miles
 
 
@@ -45,9 +46,10 @@ def buffered_fire_geometries(
 ) -> list[shapely.Geometry | None]:
     """Return each fire geometry buffered by the building-count distance, or None.
 
-    The geometries are reprojected to web mercator in one vectorized pass, buffered in
-    parallel across a small thread pool (the GEOS buffer releases the GIL), and
-    reprojected back in one vectorized pass.
+    Each projection pass handles all the geometries together. Between those passes, a
+    small thread pool buffers them in Web Mercator. The GEOS buffer operation releases
+    Python's GIL, so those calls can run in parallel. Results return in WGS84 and retain
+    the input order.
 
     Args:
         geometries: The fire geometries, in WGS84.

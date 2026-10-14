@@ -47,16 +47,14 @@ def read_layer_chunks(
 ) -> typing.Iterator[geopandas.GeoDataFrame]:
     """Yield *layer_name* from *path* in chunks of at most *chunk_size* rows.
 
-    Each chunk is a bounded read of at most *chunk_size* features, so a layer of any
-    size can be processed without loading the whole layer into memory. The final chunk
-    may be smaller; a layer with no features yields nothing. When *layer_name* is None
-    the file's default layer is read, which is how a single-layer file such as a
-    shapefile or file geodatabase is read. The file is only read, never written.
+    Limiting each read lets callers process a layer without loading it all into memory.
+    The last chunk may be smaller, and an empty layer yields nothing. With *layer_name*
+    set to None, the reader uses the file's default layer.
 
-    GeoPackage layers are paginated by their ``fid`` primary key rather than with
-    ``skip_features``, because skip-based pagination rescans the layer from the start
-    for every chunk and becomes quadratic over the whole read. Other file kinds fall
-    back to skip-based pagination.
+    A named GeoPackage layer is read by its ``fid`` primary key. Each chunk can then
+    start where the previous one ended. Other reads use ``skip_features``, which can
+    rescan earlier rows and make the whole read quadratic when the driver cannot seek
+    directly.
 
     Args:
         path: The vector data file to read.
@@ -77,7 +75,7 @@ def read_skip_layer_chunks(
     layer_name: str | None,
     chunk_size: int,
 ) -> typing.Iterator[geopandas.GeoDataFrame]:
-    """Yield chunks using ``skip_features``, which rescans from the start each time.
+    """Yield chunks using ``skip_features``, which can rescan earlier rows.
 
     Args:
         path: The vector data file to read.

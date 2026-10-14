@@ -35,9 +35,9 @@ def make_interrupted_locked_run(
     *,
     tmp_path: pathlib.Path,
 ) -> typing.Callable[..., None]:
-    """Create a callback with controlled dependencies.
+    """Return a failing callback that checks writer exclusion before raising.
 
-    Interrupt a locked run to exercise lock release during failure.
+    The caller can then check whether the failed run released its lock.
 
     Args:
         tmp_path: Isolated directory used by the callback.

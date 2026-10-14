@@ -1,1 +1,1 @@
-"""Tests and helpers for shared fire presentation."""
+"""Tests for shared fire presentation."""

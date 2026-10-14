@@ -1,4 +1,4 @@
-"""Inspect plot histories behavior with shared test utilities."""
+"""Measure exterior perimeter lengths for plot-history assertions."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ if typing.TYPE_CHECKING:
 
 
 def exterior_length(geometry: shapely.Geometry) -> float:
-    """Return *geometry*'s exterior perimeter length, which is always known.
+    """Return the exterior length, asserting that the fixture geometry has one.
 
     Args:
         geometry: A non-empty polygon.

@@ -18,8 +18,8 @@ import requests
 import peri_scribe.exceptions
 
 
-# How long a request may wait for a response before it is abandoned. Archive downloads
-# transfer many megabytes, so this is generous enough to cover them as well.
+# Timeout for connecting and for a pause between received bytes. A streaming download
+# can take longer overall as long as data keeps arriving within this interval.
 REQUEST_TIMEOUT_SECONDS = 60
 
 

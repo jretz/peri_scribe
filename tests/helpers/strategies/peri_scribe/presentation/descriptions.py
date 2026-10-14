@@ -1,4 +1,4 @@
-"""Generate descriptions examples with constrained domains."""
+"""Generate source text that exercises markup escaping."""
 
 from __future__ import annotations
 

@@ -1,7 +1,7 @@
 """The Turbo colormap and the fire-progression colors built from it.
 
-Progression-map ring colors come from Google Research's Turbo colormap instead of the
-KML template. Turbo is Google Research's improved rainbow colormap for visualization:
+Progression-map ring colors come from Google Research's Turbo colormap. Its design and
+color choices are described here:
 
 https://research.google/blog/turbo-an-improved-rainbow-colormap-for-visualization/
 
@@ -307,8 +307,9 @@ TURBO_RAMP = turbo_colormap_256[
 # total area; rings before or after it clamp to the cool or hot end.
 ACTIVE_GROWTH_FRACTION = 0.98
 
-# A fire whose active span holds this many rings spans the whole ramp. A shorter span
-# anchors its coolest color closer to the hot end, so a short fire reads as short.
+# A fire whose active span holds this many rings spans the whole ramp. Fewer active
+# rings anchor the coolest color closer to the hot end, distinguishing sparse
+# progressions.
 FULL_RAMP_RING_COUNT = 10
 
 # How many colors apart the strip's tick labels are.
@@ -360,18 +361,16 @@ def turbo_colormap_ansi(
 ) -> str:
     """Return the full Turbo colormap as ANSI truecolor with the used range marked.
 
-    Rows run top to bottom, one per color in the full 256-color table. To the left of
-    the color bar, a tick label names the original Turbo index every
-    :data:`COLORMAP_TICK_INTERVAL` colors, and to the right of
-    :data:`USED_RANGE_MARKER`, a label names the first and last color of the range the
-    progression rings sample; the marker itself is drawn beside every color in that
-    range, so the whole map and the range in use read together. That range defaults to
-    the one :data:`TURBO_RAMP` covers; *trim_start* and *trim_end* move it to preview a
-    ramp with different endpoints. The text is built in memory, ready to print to a
-    terminal.
+    Showing the full 256-color table makes it possible to compare the progression colors
+    with the excluded ends. Rows run from top to bottom. Tick labels on the left
+    identify every :data:`COLORMAP_TICK_INTERVAL` color; :data:`USED_RANGE_MARKER` on
+    the right marks every color used by the progression rings. Labels identify the first
+    and last colors in that range.
 
-    A terminal that cannot show truecolor renders the rows in whatever approximation it
-    has, so the strip degrades but the labels and the marker stay readable.
+    The marked range defaults to :data:`TURBO_RAMP`. Changing *trim_start* and
+    *trim_end* previews different endpoints. The result is built in memory for printing
+    to a terminal. Terminals without truecolor approximate the colors, but the labels
+    and range markers remain readable.
 
     Args:
         trim_start: The number of colors to exclude from the start of the used range.
@@ -444,8 +443,8 @@ def turbo_at(position: float) -> tuple[float, float, float]:
 def sample_turbo(count: int) -> tuple[tuple[float, float, float], ...]:
     """Return *count* colors evenly spaced across the continuous Turbo ramp.
 
-    The first color is the ramp's first and the last is its last; the rest are linearly
-    interpolated between them.
+    With at least two colors, the first and last match the ramp's endpoints and the rest
+    are linearly interpolated between them. A single color uses the first endpoint.
 
     Args:
         count: The number of colors to sample.
@@ -469,19 +468,20 @@ def active_ring_window(
     areas: typing.Sequence[pint.Quantity[float]],
     threshold: pint.Quantity[float],
 ) -> tuple[int, int]:
-    """Return the start and end ring indices of the shortest run covering *threshold*.
+    """Select the shortest qualifying run of nonnegative ring areas.
 
     The chosen run is the fewest consecutive rings whose areas sum to at least
-    *threshold*. When two runs of the same length both qualify, the one keeping the
-    larger boundary ring wins, so a trivial ring never anchors the span when a larger
-    one sits beside it.
+    *threshold*. On equal lengths, a later run replaces the saved run when its last ring
+    is larger than the saved run's first ring. This is a tie-breaking heuristic, not a
+    guarantee that the chosen endpoints are the largest available.
 
     Args:
-        areas: Each ring's area in chronological order.
+        areas: Each ring's nonnegative area in chronological order.
         threshold: The minimum area the run must cover.
 
     Returns:
-        The (first, last) ring indices of the chosen run, inclusive.
+        The inclusive (first, last) indices, or the whole span when no run qualifies.
+        Empty input returns (0, -1).
     """
     best = (0, len(areas) - 1)
     left = 0
@@ -522,16 +522,18 @@ def progression_ring_colors(
     tuple[peri_scribe.perimeters.progression.Ring, tuple[float, float, float]],
     ...,
 ]:
-    """Return each dated ring and the color for where its time falls.
+    """Return each dated ring with a color based on its observation time.
 
-    The fire's active span is the shortest run of rings covering
-    :data:`ACTIVE_GROWTH_FRACTION` of its total area; rings before the run clamp to its
-    coolest color and rings after it clamp to the hottest, while the run's rings
-    interpolate across the span by timestamp. A shorter run anchors its coolest color
-    closer to the hot end, so the map reads how much of the fire's growth each ring
-    carried and how brief the fire's real growth was. When every ring in the run shares
-    one timestamp, there is no time span to interpolate across, so the run's rings all
-    take the hottest color.
+    Small early or late rings shouldn't compress most of a fire's growth into one color.
+    The active span is therefore the shortest run of rings covering
+    :data:`ACTIVE_GROWTH_FRACTION` of its total area. Earlier rings use that span's
+    coolest color, later rings use the hottest color, and rings within it are colored by
+    timestamp.
+
+    An active span with fewer rings starts closer to the hot end of the ramp. This
+    depends on the number of observations, not the duration of the main growth period.
+    If every ring in the span has the same timestamp, there's no interval to interpolate
+    across; all of those rings use the hottest color.
 
     Args:
         rings: The fire's growth rings in chronological order.

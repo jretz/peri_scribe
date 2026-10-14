@@ -4,9 +4,9 @@
 
 `monitor.session.MonitorSession` owns diagnostic readers, recent health history,
 artifact metadata, the report reader, filesystem notifications, and the reconciliation
-clock. Consumers request domain data and observe immutable versioned snapshots. The
-session imports no terminal framework and makes no decisions about when a consumer
-should prepare or present its data.
+clock. Consumers request data and receive immutable snapshots with version numbers, so
+they can tell which snapshot is newer. The session imports no terminal framework and
+leaves the timing of preparation and display to each consumer.
 
 Startup obtains complete recent health before starting ongoing observation. Diagnostic
 records and the report have independent requests and are subsequently reconciled once
@@ -57,11 +57,11 @@ owns the readers.
 | Stop | Closes admission and publication before waiting for any worker. |
 | Descriptor retirement | Follows completion of every admitted reader operation. |
 
-Mailboxes coalesce versions because these are complete snapshots, not incremental
-changes. A consumer that received version 4 and next receives version 8 loses no data
-needed to interpret version 8. Consumers that require every individual log event use
-the retained evidence within snapshots and its existing retention policy; subscriptions
-do not promise an unbounded event journal. Closing a subscription releases its pending
+Mailboxes keep only the newest pending version. This works because every snapshot is
+complete: a consumer that received version 4 and next receives version 8 loses no data
+needed to interpret version 8. Consumers that require every individual log event use the
+retained evidence within snapshots and its existing retention policy; subscriptions do
+not promise an unbounded event journal. Closing a subscription releases its pending
 snapshot and wakes its waiter. Closing the session terminates every subscription after
 the owned resources settle.
 
@@ -99,10 +99,10 @@ only one outstanding sequence; independently submitted requests remain caller-bo
 
 An admitted blocking operation is not preemptible. Progress assumes its filesystem and
 cooperating writer eventually allow it to finish. Continuous urgent arrivals may delay
-lower-priority work; the protocol does not claim starvation freedom. Subscriber delivery
-is single-consumer per subscription and all session coordination occurs on one event
-loop. The session does not promise hard real-time deadlines or persist snapshot versions
-across process restarts.
+lower-priority work indefinitely; the protocol does not guarantee it a turn. Subscriber
+delivery is single-consumer per subscription and all session coordination occurs on one
+event loop. The session does not promise hard real-time deadlines or persist snapshot
+versions across process restarts.
 
 ## Implementation and verification
 

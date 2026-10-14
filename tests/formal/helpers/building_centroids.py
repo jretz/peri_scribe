@@ -138,7 +138,7 @@ def exact_centroids(features: list[Feature]) -> np.ndarray:
 
 
 def replay_math() -> None:
-    """Compare every vectorized ring/part/feature result with the Lean expression."""
+    """Compare final vectorized feature centroids with the Lean expression."""
     features = cases()
     expected = exact_centroids(features)
     iterator = iter(geometry(feature) for feature in features)

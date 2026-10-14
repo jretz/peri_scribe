@@ -44,9 +44,7 @@ def make_version_lookup_recorder(
     *,
     looked_up_distributions: list[str],
 ) -> typing.Callable[..., str]:
-    """Create a callback with controlled dependencies.
-
-    Capture the distribution name used to retrieve the CLI version.
+    """Return a recorder for the distribution queried by the version command.
 
     Args:
         looked_up_distributions: Shared list recording distribution names used for

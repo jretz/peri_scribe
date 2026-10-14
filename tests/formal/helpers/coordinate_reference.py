@@ -117,7 +117,7 @@ def selection_cases(
         bounds: One independently checked extent from the geographic coverage matrix.
 
     Returns:
-        Every candidate subset paired with the selected extent.
+        Every candidate subset of at most three references, paired with the extent.
     """
     candidates = (4326, 4269, 4267, 3857, 3310, 3338, 5703, 999999)
     return [

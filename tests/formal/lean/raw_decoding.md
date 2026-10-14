@@ -1,7 +1,10 @@
 # Raw feed decoding
 
-`PeriScribe/RawDecoding.lean` contains 21 checked theorems. `OracleRawDecoding.lean`
-executes those same definitions; `oracleRawDecoding` is the conformance reference.
+A present field isn't necessarily usable. A blank, malformed, or nonfinite value must
+not hide a valid fallback, while a valid zero must remain distinguishable from missing
+data. `PeriScribe/RawDecoding.lean` contains 21 checked theorems about typed fallback
+and timestamp normalization. `OracleRawDecoding.lean` executes those same definitions;
+`oracleRawDecoding` is the conformance reference.
 
 ## Contract and implementation owners
 
@@ -16,8 +19,8 @@ executes those same definitions; `oracleRawDecoding` is the conformance referenc
   datetime_attribute}` selects the first usable typed value in declared column order.
   Blank or malformed candidates cannot mask a valid fallback. The separate raw
   `attribute_value` helper deliberately retains its first-present contract.
-- `perimeters/versions.py::effective_time` binds typed date fallback to the actual
-  perimeter chronology: a valid row edit date precedes the snapshot date.
+- `perimeters/versions.py::effective_time` uses the perimeter's as-of date when available.
+  Otherwise, a valid row edit date takes priority over the snapshot date.
 
 ## Unbounded guarantees
 

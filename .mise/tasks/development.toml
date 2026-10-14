@@ -1,17 +1,17 @@
 [peri_scribe]
-description = "Run the main module"
+description = "Run the PeriScribe command-line interface"
 depends = ["venv"]
 raw_args = true
 run = "uv run --locked peri_scribe"
 
 [run-offline]
-description = "Run the main module's offline run command steps"
+description = "Build histories, scores, maps, and reports from local sources"
 depends = ["venv"]
 raw_args = true
 run = "uv run --locked peri_scribe run --from geography"
 
 [run-online]
-description = "Run the main module's run command steps"
+description = "Fetch source data and build histories, scores, maps, and reports"
 depends = ["venv"]
 raw_args = true
 run = "uv run --locked peri_scribe run"

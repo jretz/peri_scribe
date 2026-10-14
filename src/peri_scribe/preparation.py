@@ -1,4 +1,7 @@
-"""Bind disposable preparation to the publication's code and native runtime.
+"""Reuse prepared products only when their code and runtime still match.
+
+Code changes and different native library builds can change calculated results. The
+runtime fingerprint makes those differences invalidate otherwise reusable products.
 
 Design notes:
 [Product caching](../../docs/algorithms/product-caching.md).

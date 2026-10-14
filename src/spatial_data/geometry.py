@@ -1,8 +1,8 @@
-"""Shapely geometry helpers shared across the package.
+"""Share geometry operations across packages without adding I/O dependencies.
 
-These are the operations more than one package area needs and no single one owns. They
-work on shapely geometries alone, so nothing that measures or cleans a geometry has to
-depend on the area that happens to use it first.
+These helpers work directly on Shapely geometries. A caller that needs to measure or
+clean a geometry therefore does not have to depend on whichever application feature
+first needed the operation.
 
 See [Geometry contracts] for the contract and correctness argument.
 

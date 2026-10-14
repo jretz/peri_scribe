@@ -1,1 +1,1 @@
-"""Verify fires behavior with isolated tests."""
+"""Verify fire processing with isolated tests."""

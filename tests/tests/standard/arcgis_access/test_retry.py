@@ -252,7 +252,7 @@ def test_retry_reason_describes_rate_limit() -> None:
     )
     assert (
         arcgis_access.retry.retry_reason(error)
-        == "Rate-limited; retrying after server-suggested delay"
+        == "Rate-limited; waiting before retrying"
     )
 
 

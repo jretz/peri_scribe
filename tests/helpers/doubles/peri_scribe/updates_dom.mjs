@@ -205,7 +205,7 @@ class Element {
   }
 }
 
-/** Record canvas images so favicon tests can inspect visible pixels and timing. */
+/** Record canvas drawing commands so favicon tests can inspect shapes and timing. */
 class Canvas extends Element {
   /** Keep drawing state local to each independently created image surface. */
   constructor(document) {
@@ -437,7 +437,7 @@ export async function page(records, options = {}) {
     ResizeObserver: class {
       /** Keep resize measurements connected to the same observer as the browser. */
       constructor(callback) { resizeCallbacks.push(callback); }
-      /** Observation is recorded by the constructor's callback for manual resize. */
+      /** Manual resize calls stored callbacks without tracking individual targets. */
       observe() {}
     },
     getComputedStyle: node => document.computedStyle(node),

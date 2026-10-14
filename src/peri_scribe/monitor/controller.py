@@ -1,4 +1,7 @@
-"""Translate observable domain snapshots into independently prepared terminal content.
+"""Prepare terminal content from the session's completed snapshots.
+
+Preparing tables and reports can take time. Keeping that work separate from observation
+lets the session collect new evidence while the terminal responds to user input.
 
 Algorithm reasoning and contracts:
 [Monitor presentation](../../../docs/algorithms/monitor-presentation.md)
@@ -29,7 +32,7 @@ type ContentRequest = (
 
 @dataclasses.dataclass(kw_only=True)
 class ContentWork:
-    """Share content admission between background preparation and user navigation."""
+    """Let background preparation and navigation wait for the same content request."""
 
     request: ContentRequest
     priority: peri_scribe.monitor.session.Priority
@@ -37,7 +40,7 @@ class ContentWork:
 
 
 class Controller:
-    """Own presentation scheduling without making the domain depend on its consumer."""
+    """Schedule terminal updates while the session remains independent of the UI."""
 
     def __init__(self, app: peri_scribe.monitor.terminal_contract.Host) -> None:
         """Keep rendering lifetimes separate from the session's reader ownership.
@@ -74,7 +77,7 @@ class Controller:
         self.app.call_after_refresh(self.begin_background)
 
     async def listen(self) -> None:
-        """Consume coalesced snapshots on the terminal's event loop."""
+        """Apply the newest delivered snapshot on the terminal's event loop."""
         async for snapshot in self.subscription:
             await self.accept(snapshot)
 
@@ -168,7 +171,7 @@ class Controller:
             self.background = asyncio.create_task(self.prepare_remaining())
 
     async def prepare_remaining(self) -> None:
-        """Warm diagnostic records and the report without delaying the initial frame."""
+        """Prepare records and the report after the initial status has been shown."""
         snapshot = await self.prepare_content(
             peri_scribe.monitor.session.RefreshRecords(),
             priority=peri_scribe.monitor.session.Priority.BACKGROUND,
@@ -190,11 +193,14 @@ class Controller:
         priority: peri_scribe.monitor.session.Priority,
         refresh: bool = False,
     ) -> peri_scribe.monitor.session.Snapshot:
-        """Join content already requested and promote work still waiting for admission.
+        """Reuse an existing content request and raise its priority when needed.
+
+        Navigation can request content that background preparation already queued. Both
+        callers wait for the same task, so opening a view does not duplicate its reads.
 
         Args:
             request: The independently prepared content required by this caller.
-            priority: The caller's admission precedence.
+            priority: The caller's priority among requests waiting to run.
             refresh: Whether completed content must be read again.
 
         Returns:
@@ -212,7 +218,7 @@ class Controller:
         return self.session.snapshot
 
     def schedule_display(self, *, requested: bool = False) -> None:
-        """Coalesce preparations while preserving the most recent user controls.
+        """Combine pending display work and use the latest filter and selection values.
 
         Args:
             requested: Whether explicit navigation requires content before first paint.
@@ -372,7 +378,7 @@ class Controller:
             await self.finish()
 
     async def finish(self) -> None:
-        """Settle presentation tasks even when domain shutdown reports a failure."""
+        """Wait for presentation tasks even if shutting down the session fails."""
         tasks = tuple(
             task
             for task in (

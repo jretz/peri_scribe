@@ -1,4 +1,4 @@
-"""Build inputs for markdown tests."""
+"""Build inputs for Markdown tests."""
 
 from __future__ import annotations
 
@@ -34,9 +34,8 @@ def make_entry(
 ) -> peri_scribe.report.gathering.FireReportEntry:
     """Return a report entry carrying only the requested facts.
 
-    When no *description* is given one is built from the requested facts, mirroring how
-    the gathering step pairs an entry with the fire's balloon description, so the
-    details rows read from the same source the balloon reads.
+    When *description* is omitted, the requested facts supply it. This keeps the test
+    entry's details and balloon based on the same description, as in production.
 
     Args:
         name: The fire's name.

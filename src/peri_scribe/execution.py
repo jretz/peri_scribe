@@ -1,4 +1,7 @@
-"""Share completed work only while one publication owns its inputs.
+"""Reuse completed work within one publication and release it when that run ends.
+
+The same inputs can serve several preparation steps. Keeping their results in a bounded
+execution scope saves repeated work without carrying stale results into another run.
 
 Algorithm reasoning and contracts:
 [Geography generations](../../docs/algorithms/geography-generations.md)
@@ -35,7 +38,7 @@ def sharing() -> collections.abc.Generator[None]:
     """Keep a failed or partial publication from leaking results into another run.
 
     Yields:
-        A fresh execution scope whose references are released when it exits.
+        None; cached values remain shared until the context exits.
     """
     token = CURRENT.set({})
     try:

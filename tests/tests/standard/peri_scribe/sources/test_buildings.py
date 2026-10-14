@@ -213,7 +213,7 @@ def test_fetch_buildings_database_raises_when_archive_is_not_a_zip(
     )
     with pytest.raises(
         peri_scribe.exceptions.ExternalDataError,
-        match="is not a zip file",
+        match="Failed to read the streamed ZIP archive",
     ):
         peri_scribe.sources.external_sources.fetch_external_source(source, tmp_path)
     assert not (tmp_path / "sources" / "buildings.sqlite").exists()

@@ -25,8 +25,7 @@ if typing.TYPE_CHECKING:
 
 # A tour advances through fire time at one second of playback per day, and holds the
 # final frame for one second. Fires spanning more than the base-rate span play faster
-# so the whole progression takes about MAXIMUM_TOUR_PLAYBACK instead of one second per
-# day.
+# so the ring reveals take MAXIMUM_TOUR_PLAYBACK, followed by the final-frame hold.
 TOUR_PLAYBACK_RATE = 1.0
 MAXIMUM_TOUR_PLAYBACK = 5.0 * units.seconds
 FINAL_TOUR_WAIT = 1.0 * units.seconds
@@ -65,7 +64,7 @@ def interior_placemark_name(observation_time: datetime.datetime | None) -> str:
     """Return the filled-interior placemark name for *observation_time*.
 
     Args:
-        observation_time: The observation time of the latest perimeter, or None.
+        observation_time: The ring's observation time, or None.
 
     Returns:
         The placemark name, ``<date> Interior`` when the time is known and ``Interior``
@@ -100,9 +99,8 @@ def mapping_placemark_name(observation_time: datetime.datetime | None) -> str:
 def interior_ring_id(folder_id: str, index: int) -> str:
     """Return the placemark id for the ring at *index* in *folder_id*.
 
-    The tour's animated updates target these ids, so each one must be unique across the
-    document; the folder's own unique id keeps one fire's ring ids apart from every
-    other fire's.
+    Tour updates target placemark ids, so those ids must be unique across the document.
+    Including the folder's unique id keeps different fires' rings apart.
 
     Args:
         folder_id: The unique id of the folder that holds the ring.
@@ -119,12 +117,12 @@ def interior_ring_id(folder_id: str, index: int) -> str:
 
 
 def tour_playback_rate(ring_times: typing.Sequence[datetime.datetime | None]) -> float:
-    """Return the tour's playback rate, in seconds per day of fire time.
+    """Return the playback rate in seconds per day of fire time.
 
-    Fires spanning at most the base-rate span play at TOUR_PLAYBACK_RATE so every day
-    stays visible; longer fires play proportionally faster so the whole progression
-    takes about MAXIMUM_TOUR_PLAYBACK. The rate is a plain number because pint reduces a
-    seconds-per-day ratio to dimensionless.
+    Short fires play at TOUR_PLAYBACK_RATE so each day remains visible. Beyond the
+    base-rate span, playback speeds up proportionally to keep the inter-ring waits
+    within MAXIMUM_TOUR_PLAYBACK, before the separate final-frame hold. The result is a
+    plain number because pint treats a seconds-per-day ratio as dimensionless.
 
     Args:
         ring_times: Each interior ring's observation time, oldest first.
@@ -182,13 +180,14 @@ def progression_tour(
 ) -> None:
     """Append the "Progression" tour to *writer*.
 
-    The tour shows the innermost ring alone, then waits for the fire time between
-    observations at the tour's playback rate before revealing each next ring, and holds
-    the final frame for one second. The playback rate is one second per day for fires
-    spanning at most the base-rate span, and faster for longer fires so the whole
-    progression takes about MAXIMUM_TOUR_PLAYBACK. Callers place it where they want it
-    in the folder; it targets the rings by their placemark ids, so the rings' listing
-    order does not affect it.
+    The tour starts with the earliest ring and reveals each later ring after a wait
+    proportional to the time between observations. It holds the completed fire for one
+    second. Fires within the base-rate span play at one second per day; longer fires
+    play faster so the inter-ring waits total MAXIMUM_TOUR_PLAYBACK before that final
+    hold.
+
+    Callers can place the tour anywhere in the folder. It targets rings by placemark id,
+    so their listing order doesn't affect playback.
 
     Args:
         writer: The writer to append to.

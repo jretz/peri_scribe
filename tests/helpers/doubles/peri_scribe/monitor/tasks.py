@@ -57,11 +57,11 @@ class Scenario:
         )
 
     async def operation(self, identifier: int, *, fails: bool = False) -> None:
-        """Take a snapshot before a blocking operation and publish only while mounted.
+        """Take a snapshot before blocking and publish only before its owner stops.
 
         Args:
             identifier: Distinct evidence contributed by this operation.
-            fails: Whether the first admitted worker raises after being released.
+            fails: Whether this operation's worker raises after being released.
         """
         self.active.add(identifier)
         self.remember()

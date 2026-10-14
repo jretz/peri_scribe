@@ -41,7 +41,7 @@ def cases(states: list[dict[str, str]]) -> dict[ReaderCase, str]:
     """Retain the checked decision for every input pair and signature combination.
 
     Args:
-        states: Entire checked reader/writer graph.
+        states: All reachable checked reader/writer states.
 
     Returns:
         Authentication outcomes keyed by input files and metadata.
@@ -164,7 +164,7 @@ def replay(graph: tests.formal.helpers.tlc.Graph, directory: pathlib.Path) -> No
 
 
 def publish_prefix(directory: pathlib.Path, prefix: int) -> None:
-    """An incomplete writer prefix must end with the selected real process loss.
+    """An incomplete writer prefix must end with the selected simulated interruption.
 
     Args:
         directory: The isolated production year.
@@ -274,7 +274,7 @@ def stop_publication_after(
     Args:
         patch: The isolated fault scope.
         files: Actual production destinations.
-        prefix: Number of independently published bytes/signatures before process loss.
+        prefix: Number of independently published bytes/signatures before interruption.
     """
     original = pathlib.Path.replace
     destinations = tuple(

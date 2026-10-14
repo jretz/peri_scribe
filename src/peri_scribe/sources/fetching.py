@@ -60,14 +60,14 @@ def fetch_feed_dataframe(
 ) -> geopandas.GeoDataFrame | None:
     """Fetch a feed's new or changed features, or None when there are none.
 
-    When *full* is true the whole layer is fetched and features already stored
-    identically are dropped, so the fetch stores only new or changed features and writes
-    nothing when the stored snapshots already cover the layer. Otherwise, when
-    *existing_source_files* is empty the whole layer is fetched in full; when the store
-    holds data, features modified since the stored data, minus a small overlap, are
-    fetched, plus features that are present in the layer but never stored, plus
-    stored-active features whose status flipped to inactive, and features already stored
-    identically are dropped.
+    A full fetch reads the entire layer, as does an initial fetch with no stored
+    snapshots. An incremental fetch reads changes since the latest stored timestamp,
+    with a small overlap to catch updates near that boundary. It also checks for IDs
+    never stored and active features that have become inactive, since those changes can
+    occur without an updated timestamp.
+
+    Rows already stored with identical content are dropped in either case. A full
+    download therefore produces no new snapshot when the stored history covers it.
 
     Args:
         feed: The feed to fetch.
@@ -427,8 +427,8 @@ def fetch_feed_snapshot(
                     geodataframe,
                 )
         except (OSError, RuntimeError, ValueError) as error:
-            # The current-state file is only a derived cache; a failed update
-            # leaves snapshots authoritative so the next fetch rebuilds it.
+            # The current-state file is only a derived cache. If its update fails, the
+            # snapshots still hold the source data and the next fetch can rebuild it.
             logger.warning(
                 "Failed to update current state",
                 feed=feed.name,
@@ -452,15 +452,16 @@ def fetch_all_feeds(
     writes nothing when the stored snapshots already cover the layer. This catches
     source edits that change features without moving their modified timestamps, which
     the incremental fetch would miss, and never modifies existing snapshots. Otherwise a
-    feed that already has snapshots is fetched incrementally: only new or changed
-    features are downloaded and written to a new snapshot. When a snapshot for the
-    observed last-edit timestamp already exists, the feed is skipped entirely because
-    the data is already present; a full fetch bypasses that skip.
+    feed that already has snapshots is fetched incrementally: candidate additions and
+    edits are retrieved, and only new or changed features are written to a new snapshot.
+    When a snapshot for the observed last-edit timestamp already exists, the feed is
+    skipped entirely. That shortcut assumes the timestamp advances for relevant edits;
+    a full fetch bypasses it.
 
-    A feed that fails does not stop the other feeds from being fetched. When at least
-    one feed writes a new snapshot, the fire source index is rebuilt so that it reflects
-    the newly written snapshots. When any feed fails, all of the failures are reported
-    together after the remaining feeds and the re-index have been attempted.
+    A feed that fails does not stop the other feeds from being fetched. When
+    *build_index* is true, the fire source index is rebuilt after a full fetch or when
+    any feed writes a new snapshot. Failures are reported together after the remaining
+    feeds and any requested index rebuild have been attempted.
 
     Args:
         base_dir: Directory under which the ``data`` directory tree is created. Defaults

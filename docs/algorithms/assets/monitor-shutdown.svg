@@ -2,8 +2,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="840" height="510"
      viewBox="0 0 840 510" role="img" aria-labelledby="figure-title figure-description"
      style="max-width:100%;height:auto">
-  <title id="figure-title">Stop publication before waiting for descriptor users</title>
-  <desc id="figure-description">Unmount first stops admission and publication, then signals reader stop and waits asynchronously for admitted work. Descriptors close only after the active operation settles. Late work cannot publish a new result.</desc>
+  <title id="figure-title">Stop new work, then wait before closing readers</title>
+  <desc id="figure-description">Unmount first stops new work and publication, then signals the reader to stop and waits asynchronously for work already accepted. Descriptors stay open until the active operation finishes because that operation may still use them. A late result cannot publish a new snapshot.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8"
             markerHeight="8" orient="auto-start-reverse">
@@ -33,24 +33,24 @@
     </style>
   </defs>
   <rect width="840" height="510" fill="var(--background)"/>
-  <text x="24" y="38" class="title">Stop publication before waiting for descriptor users</text>
+  <text x="24" y="38" class="title">Stop new work, then wait before closing readers</text>
   <g id="admitted">
 <rect x="24" y="76" width="372" height="118" class="node process"/>
-<text x="40" y="105" class="heading">Admitted operation</text>
+<text x="40" y="105" class="heading">Accepted operation</text>
 <text x="40" y="134" class="">Snapshot → worker → publication</text>
 <text x="40" y="160" class="">Owns the monitor operation lock</text>
 </g>
 <g id="stop">
 <rect x="444" y="76" width="372" height="118" class="node network"/>
 <text x="460" y="105" class="heading">Unmount begins</text>
-<text x="460" y="134" class="">Set stop barrier immediately</text>
-<text x="460" y="160" class="">Signal health reader stop event</text>
+<text x="460" y="134" class="">Stop new work and publication</text>
+<text x="460" y="160" class="">Signal the health reader to stop</text>
 </g>
 <path id="stop-wait" class="edge " d="M630 194 V256"/>
 <g id="wait">
 <rect x="444" y="256" width="372" height="118" class="node process"/>
 <text x="460" y="285" class="heading">Wait asynchronously</text>
-<text x="460" y="314" class="">Admitted operation settles</text>
+<text x="460" y="314" class="">Accepted operation finishes</text>
 <text x="460" y="340" class="">Late result cannot publish</text>
 </g>
 <path id="active-settles" class="edge " d="M210 194 V314 H444"/>

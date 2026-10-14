@@ -89,7 +89,7 @@ def stored_geopackage_digest(path: pathlib.Path, layer_name: str) -> str | None:
 
 
 def framed_value(value: bytes) -> bytes:
-    """Keep embedded source bytes from masquerading as attribute boundaries.
+    """Escape field contents so their bytes cannot be mistaken for a field boundary.
 
     Args:
         value: One normalized attribute, schema field, or geometry payload.
@@ -101,7 +101,7 @@ def framed_value(value: bytes) -> bytes:
 
 
 def digest_fields(values: collections.abc.Iterable[bytes]) -> bytes:
-    """Preserve field positions and boundaries within a structured content identity.
+    """Include field order and boundaries when computing a content digest.
 
     Args:
         values: The ordered, normalized fields being fingerprinted.
@@ -118,10 +118,10 @@ def digest_fields(values: collections.abc.Iterable[bytes]) -> bytes:
 def dataframe_digest(dataframe: geopandas.GeoDataFrame) -> str:
     """Return an order-independent content digest for *dataframe*.
 
-    Schema identity retains attribute names and coordinate reference meaning, including
-    for empty frames. Row order and column order do not matter; repeated rows retain
-    their multiplicity. Missing values (None, pandas NA or NaT, NaN) digest alike so
-    storage normalization does not count as a source change.
+    Attribute names and the coordinate reference system count even when there are no
+    rows. Row and column order do not matter, but duplicate rows still count. Missing
+    values (None, pandas NA or NaT, NaN) share a digest so storing a missing value in a
+    different form does not make the source appear to have changed.
 
     Args:
         dataframe: The GeoDataFrame to digest.

@@ -101,8 +101,8 @@ def configured_feeds_with_mission(
         monkeypatch: Replace dependencies and restore them after the test.
 
     Returns:
-        The feed, configured with name, status, identifier, mission, and observation
-        time columns.
+        A one-item list containing the feed configured with name, status, identifier,
+        mission, and observation time columns.
     """
     return tests.helpers.doubles.peri_scribe.sources.feeds.configure_feeds(
         monkeypatch,
@@ -129,8 +129,8 @@ def configured_feeds_with_point_of_origin(
         monkeypatch: Replace dependencies and restore them after the test.
 
     Returns:
-        The feed, configured with name, status, identifier, mission, and point of origin
-        columns.
+        A one-item list containing the feed configured with name, status, identifier,
+        mission, and point of origin columns.
     """
     return tests.helpers.doubles.peri_scribe.sources.feeds.configure_feeds(
         monkeypatch,

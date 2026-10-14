@@ -1,16 +1,18 @@
-"""Classify fires relative to the California state boundary.
+"""Classify fires relative to the California interstate boundary.
 
-A fire is classified as INSIDE_CALIFORNIA, INSIDE_CALIFORNIA_NEAR_BORDER,
-CROSSES_CALIFORNIA_BORDER, OUTSIDE_CALIFORNIA_NEAR_BORDER, or OUTSIDE_CALIFORNIA by
-combining three signals. The primary signal compares the fire's geometry with a
-"California box" that traces the border California shares with its neighboring US states
-(Arizona, Nevada, and Oregon) and closes well out into the Pacific Ocean and Mexico, so
-maritime and international borders are absorbed into the box. The secondary signal
-compares contemporaneous FIRIS and WFIGS perimeters, where a WFIGS perimeter that is
-substantially larger suggests the fire extends beyond what FIRIS mapped. The tertiary
-signal flags out-of-state fire units and points of origin. CROSSES_CALIFORNIA_BORDER
-requires the geometry to span the California border; the weaker signals only ever
-support the near-border classifications.
+The classification determines whether a fire is inside California, outside it, or
+crossing its border, with near-border variants for fires on either side. These
+distinctions help choose between FIRIS and WFIGS mapping.
+
+The main evidence comes from geometry. A "California box" follows the borders with
+Arizona, Nevada, and Oregon, then closes well into the Pacific Ocean and Mexico. This
+keeps maritime and international boundaries from counting as interstate crossings.
+
+A second signal compares FIRIS and WFIGS perimeters mapped at similar times. A
+substantially larger WFIGS perimeter suggests FIRIS may not have mapped the full fire.
+That disagreement can support a near-border classification, but crossing requires
+geometry on both sides. Out-of-state units and points of origin are retained as
+additional evidence; they do not change the classification.
 
 [Geometry policy](../../../docs/algorithms/perimeter-geometry-policy.md)
 """
@@ -110,19 +112,20 @@ def unioned_observation_geometry(
 ) -> shapely.Geometry | None:
     """Return a geometry describing the observations in California Albers.
 
-    Observations of the same fire frequently repeat the same mapped geometry, so
-    byte-identical (source, geometry) pairs are collapsed before re-projection: the
-    re-projection is deterministic, and the union of the distinct geometries is the same
-    shape as the union of all of them. A single distinct geometry is returned as itself,
-    since the union of one geometry is the geometry.
+    Snapshots often repeat the same mapped shape. Collapse byte-identical (source,
+    geometry) pairs before projection: projecting the same pair twice gives the same
+    result, and duplicates add nothing to a union. A single distinct geometry can be
+    returned directly.
 
-    When every distinct geometry lies entirely on one side of the California box, the
-    parts are returned unmerged as a collection instead of being unioned. The
-    classification's geometry signal recognizes such a one-sided collection and reads
-    the exact signal values from the parts: a one-sided fire's area fractions are 0 or
-    1, its border distance is the minimum over the parts, and it cannot cross the
-    border. Only a fire whose geometry straddles the box needs the true union, since
-    overlapping parts on both sides change the area fractions.
+    When all the distinct geometries lie entirely on the same side of the California
+    box, return them as a collection. The geometry signal can obtain their border
+    distance from the nearest part and their inside and outside fractions from their
+    shared side. A positive-area collection has fractions of 0 and 1; a collection with
+    no area has fractions of 0. Neither can cross the border.
+
+    Geometry on both sides needs a union, because overlaps affect the area fractions.
+    The geometry signal also unions an outside collection when measuring its absolute
+    area, so overlapping parts are counted once.
 
     Args:
         observations: The fire's observations.
@@ -244,7 +247,7 @@ def classify_fire(
     Args:
         records: The fire's records, aligned with *record_paths*.
         record_paths: The GeoPackage file each record came from.
-        boundaries: The California polygon and border in California Albers.
+        boundaries: The California box and interstate border in California Albers.
         config: The classification thresholds. Defaults to the standard thresholds.
 
     Returns:

@@ -1,4 +1,4 @@
-"""Generate versions examples with constrained domains."""
+"""Generate repeated incident states and reversions."""
 
 from __future__ import annotations
 

@@ -111,13 +111,12 @@ def stream_combined_source(
 ) -> pathlib.Path:
     """Stream every state of *source* into one combined GeoPackage.
 
-    Each state's archive is downloaded and converted as one stream: the archive is
-    decompressed as its bytes arrive and each footprint is reduced to its centroid
-    point, appended into a temporary GeoPackage and published after every state
-    finishes. Only the combined GeoPackage is written to disk, so the archive, its
-    GeoJSON, and the per-state files never exist. When the combined GeoPackage already
-    exists, the download is skipped entirely, since the archives are large and rarely
-    change, and the page of per-state links is not read.
+    Each state's archive is decompressed as its bytes arrive. Each footprint becomes a
+    centroid point in a temporary GeoPackage, which is published only after all states
+    finish. The archives, GeoJSON, and per-state GeoPackages are never written to disk.
+
+    An existing combined GeoPackage is reused because the archives are large and rarely
+    change. In that case, even the page of per-state download links is skipped.
 
     Args:
         source: The combined streaming download-backed external source.

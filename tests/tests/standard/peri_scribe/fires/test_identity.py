@@ -1,4 +1,4 @@
-"""Tests for peri_scribe.fires.scores."""
+"""Tests for peri_scribe.fires.identity."""
 
 from __future__ import annotations
 

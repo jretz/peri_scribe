@@ -1,6 +1,6 @@
 [env]
 _.python.venv = { path = ".venv" }
-# Keep Shapely's build and runtime linked to the GEOS overlay fix documented above.
+# Keep Shapely's build and runtime linked to the GEOS fix documented in tasks/setup.toml.
 GEOS_VERSION = "3.15.0"
 GEOS_PREFIX = "{{config_root}}/.cache/geos/{{env.GEOS_VERSION}}"
 GEOS_INCLUDE_PATH = "{{env.GEOS_PREFIX}}/include"

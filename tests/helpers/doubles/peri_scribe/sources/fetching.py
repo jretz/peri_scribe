@@ -304,9 +304,7 @@ def make_missing_date_filter_recorder(
     *,
     captured: list[str],
 ) -> typing.Callable[..., list[int]]:
-    """Create a callback with controlled dependencies.
-
-    Capture the filter used to query rows with missing modification dates.
+    """Return a recorder for the query selecting rows with missing dates.
 
     Args:
         captured: Shared list recording filters for rows with missing modification
@@ -336,9 +334,7 @@ def make_active_object_id_query(
     *,
     wheres: list[str],
 ) -> typing.Callable[..., list[int]]:
-    """Create a callback with controlled dependencies.
-
-    Serve object identifiers for full and active-row queries.
+    """Return a query stub serving IDs for complete and active-row requests.
 
     Args:
         wheres: Shared list recording filters for complete and active-row ID queries.
@@ -372,9 +368,7 @@ def make_complete_feed_reader(
     *,
     frames: dict[str, object],
 ) -> typing.Callable[..., object]:
-    """Create a callback with controlled dependencies.
-
-    Validate complete-fetch inputs and serve the requested feed's dataframe.
+    """Return a reader that checks fetch inputs and serves the selected feed.
 
     Args:
         frames: Controlled complete-fetch outcomes keyed by feed name.
@@ -456,9 +450,7 @@ def make_failing_feed_layer_factory(
     failing: FeedStub,
     feature_set_with_geometry: arcgis.features.FeatureSet,
 ) -> typing.Callable[..., tests.helpers.doubles.arcgis.FeatureLayerStub]:
-    """Create a callback with controlled dependencies.
-
-    Make one feed fail while allowing the other to produce observations.
+    """Return a layer factory that makes only the selected feed fail.
 
     Args:
         failing: Feed whose layer should raise a query error.

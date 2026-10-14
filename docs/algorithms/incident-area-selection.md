@@ -2,11 +2,13 @@
 
 ## Contract and context
 
-Consumers need one dated area history for descriptions, charts, inclusion, and scoring.
-Incident reports have their own modification and formal-report clocks, independent of
-polygon capture. Preserve them from original source records before perimeter selection
-can remove unchanged or losing polygons. A populated independent incident layer is
-preferred; attached perimeter and point fields are the compatibility fallback.
+Descriptions, charts, inclusion decisions, and scores need to agree about a fire's area
+at a given time. Incident reports and mapped perimeters can disagree, and their dates
+mean different things. Reports have modification and formal-report times that are
+independent of polygon capture. Preserve those reports from the original source records
+before perimeter selection removes unchanged or losing polygons. Prefer a populated
+independent incident layer; use attached perimeter and point fields as the compatibility
+fallback.
 
 Reports carry acres, dollars, personnel counts, and containment percentages, plus their
 source and confirmation metadata. Area estimates use Pint area quantities: mapping
@@ -80,19 +82,23 @@ an already mapped selection, but does not displace an established reported selec
 | Route from mapping to reports | Conditions in addition to usable accepted acreage |
 | --- | --- |
 | Ordinary growth | Latest report is later than the survey and exceeds its report baseline; gain ≥10 acres; survey age ≥3 days; report ≥1.25 × mapped area. |
-| Rapid growth | Same later-report, baseline, and absolute-gain rules; age ≥1 day; report ≥2 × mapped area; at least two distinct confirmed formal report times since the survey each reached that ratio. |
+| Rapid growth | Same later-report, baseline, and absolute-gain rules; age ≥1 day; report ≥2 × mapped area; eligible confirmed reports since the survey reached that ratio at two or more distinct report-time values. Missing report times count as one value. |
 | No survey | Select the latest accepted report without mapping-age or growth requirements. |
 
 Once reports take over, accepted reports continue until a fresh survey restores mapping.
+Confirmed reports with the same report time count only once. All missing report times
+also count as one value. Thus an unknown report time paired with one known time can
+satisfy the default count of two.
+
 Synthetic deadlines advance eligibility without inventing evidence: the output's
 `time` can be day three while `observation_time` remains day two. No deadline is added
 beyond the observed horizon, and the selector never consults wall-clock time.
 
-This order prevents a simultaneous survey/report from being mistaken for subsequent
+This order prevents a simultaneous survey and report from being mistaken for subsequent
 growth: the new survey takes the same-time report as its baseline, and takeover requires
 a strictly later report. Keeping the last actual survey separate from publications
 prevents stale geometry from regaining freshness merely through republishing. Selected
-acreage can legitimately decrease; monotonicity is not an invariant.
+acreage can legitimately decrease when the evidence is corrected.
 
 ## Worked examples and counterexamples
 
@@ -110,11 +116,12 @@ history ends on day two, there is no day-three result. If a 150-acre report was 
 known when the 100-acre survey was made, a subsequent 140-acre report cannot claim new
 growth beyond that baseline.
 
-Two edits repeating one formal report time count as one rapid confirmation. Two distinct
-formal reports of at least 200 acres, with the latest report satisfying all gates, can
-replace that 100-acre mapping after one day. Selecting by last download time or counting
-snapshot rows would give false corroboration. An unconfirmed 200→100-acre correction is
-rejected; a confirmed one remains eligible and can reduce a currently reported selection.
+Two edits repeating one formal report time count as one rapid confirmation. Two eligible
+confirmations of at least 200 acres with different report-time values, and with the
+latest report satisfying all gates, can replace that 100-acre mapping after one day.
+Selecting by last download time or counting snapshot rows would give false corroboration.
+An unconfirmed 200→100-acre correction is rejected; a confirmed one remains eligible and
+can reduce a currently reported selection.
 
 If dated evidence produces no estimates, current area prefers the latest usable geometry,
 then the last point's incident size, then the last perimeter's supplied acreage.

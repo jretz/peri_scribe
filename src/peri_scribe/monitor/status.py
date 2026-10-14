@@ -201,7 +201,7 @@ class Files:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class ExceptionSummary:
-    """Counts describe occurrences, not repeated logging by enclosing phases."""
+    """Count each exception once when enclosing phases log the same failure again."""
 
     description: str
     path: peri_scribe.phases.Path

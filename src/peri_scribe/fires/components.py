@@ -55,13 +55,15 @@ def anchors(
     rows: typing.Sequence[peri_scribe.geo.package.FireRowRecord],
     paths: typing.Sequence[pathlib.Path],
 ) -> tuple[Anchor, ...]:
-    """Distinguish occurrences while keeping snapshot identity portable across roots.
+    """Identify source row occurrences without depending on the data directory's path.
 
-    Feed names and immutable snapshot filenames scope object IDs, which are unique
-    within a validated feed snapshot. Numeric serials preserve chronology regardless of
-    filename padding. Exact duplicate rows without geometry can remain separate
-    components; their occurrence numbers
-    preserve the set of keys, without assigning meaning to indistinguishable copies.
+    An object ID is unique within a validated feed snapshot, so the feed name and
+    immutable snapshot filename establish where it belongs. Serial numbers are compared
+    numerically to preserve chronology regardless of filename padding.
+
+    Exact duplicate rows without geometry can remain separate components. Occurrence
+    numbers keep their keys distinct and preserve the set of keys, without assigning
+    meaning to otherwise indistinguishable copies.
 
     Args:
         rows: Source rows aligned with their retained snapshot files.
@@ -86,12 +88,12 @@ def anchors(
 
 
 def component_id(rows: typing.Iterable[Anchor]) -> str:
-    """Keep a component's canonical retained source occurrence as its internal key.
+    """Use a component's least source anchor to determine its internal key.
 
-    A merge retains the least anchor, and a split retains that key only in the part
-    containing the anchor. New snapshots in the same source sort after earlier serials.
-    Acquiring an earlier source anchor can change this key; durable history inheritance
-    uses the separately retained identifier and mapping evidence.
+    A merge retains the least anchor. After a split, only the part containing that
+    anchor keeps the key. New snapshots in the same source sort after earlier serials,
+    but acquiring an earlier source anchor can change the key. For that reason, durable
+    history inheritance relies on separately retained identifiers and mapping evidence.
 
     Args:
         rows: The nonempty component's immutable source-row occurrences.

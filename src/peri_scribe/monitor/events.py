@@ -1,4 +1,4 @@
-"""Normalize structured records without coupling their consumers to a presentation.
+"""Normalize log records while keeping their original fields available for inspection.
 
 Algorithm reasoning and contracts:
 [Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
@@ -76,7 +76,7 @@ def timestamp_text(value: str) -> datetime.datetime | None:
 
 
 def timestamp(value: object) -> datetime.datetime | None:
-    """Bound cached text while preserving arbitrary damaged timestamp fields.
+    """Cache short timestamp strings and return None for values that cannot be parsed.
 
     Args:
         value: A possibly absent or damaged timestamp field.
@@ -93,7 +93,7 @@ def event_path(
     fields: collections.abc.Mapping[str, object],
     parent: peri_scribe.phases.Path,
 ) -> peri_scribe.phases.Path:
-    """Prefer explicit instances and otherwise retain the observed nesting context.
+    """Use the recorded phase path, falling back to the surrounding execution context.
 
     Args:
         fields: The incoming record's structured fields.

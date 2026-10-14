@@ -1,4 +1,4 @@
-"""Replace sources dependencies with controlled test doubles."""
+"""Provide controlled fire-source reads and failures."""
 
 from __future__ import annotations
 

@@ -2,17 +2,18 @@
 
 ## Project: PeriScribe
 
-PeriScribe gathers fire geography from configured ArcGIS feeds, preserves source
-snapshots, derives cleaned fire histories, calculates fire scores, and produces a
-symbolized KMZ for Google Earth. The current implementation stores data below
-`data/<year>/` in the working directory.
+PeriScribe turns fire observations from configured ArcGIS feeds into histories, scores,
+and styled maps for Google Earth. It preserves the source snapshots so cleaned histories
+can be rebuilt when observations are corrected. The current implementation stores data
+under `data/<year>/` in the working directory.
 
 ## Implemented behavior
 
 The configured fire feeds are:
 
 - CAL FIRE/NIFC perimeters, which retain historical updates.
-- WFIGS current perimeters, which retain the latest perimeter for active fires.
+- WFIGS current perimeters, which supply available shapes under NIFC's recency and
+  source preference rules.
 - WFIGS current incident locations, which provide fire points.
 
 The pipeline also retrieves California evacuation zones and a nationwide building
@@ -36,10 +37,9 @@ they raise an exception and stop the run.
 
 `run` performs the following operations:
 
-1. Fetch fire feeds incrementally, the external sources (buildings, evacuations, and
-   Natural Earth places), and the administrative-boundary GeoPackage at
-   `sources/CA_border_with_AZ_NV_and_OR.gpkg`, which is downloaded only when missing or
-   unusable.
+1. Fetch fire feeds incrementally and the external sources (buildings, evacuations, and
+   Natural Earth places). When `sources/CA_border_with_AZ_NV_and_OR.gpkg` is missing or
+   unusable, fetch the state polygons and compute the administrative-boundary GeoPackage.
 2. Write `derived/history_of_full_geography.gpkg` with `perimeter_history`,
    `point_history`, and `incident_history` layers.
 3. Write `derived/history_of_differential_geography.gpkg` containing growth rings.
@@ -47,18 +47,20 @@ they raise an exception and stop the run.
 5. Write `maps/PeriScribe Fires <year>.kmz`.
 6. Write `reports/PeriScribe Fires <year>.md`.
 
-These operations form the stages fetch, geography, score, kmz, and reports. Without
-publication gating, later stages run after fetch when fire, evacuation, or city data changed,
-a full fetch requires a rebuild, unfinished or deferred work remains, or `--unconditional`
-is provided. Publication gating can defer changed inputs until its policy permits a
-build. A single stage or a range can be selected with `--only`, `--from`, and `--to`.
-A failed step stops the pipeline and leaves required work pending for a later invocation.
+These operations form the stages fetch, geography, score, kmz, and reports. After
+fetching, the pipeline normally builds outputs when fire, evacuation, or city data
+changed, a full fetch requires a rebuild, unfinished or deferred work remains, or
+`--unconditional` was provided. Publication gating can postpone a build until its
+policy permits one, allowing several source changes to accumulate first.
 
-Fire index JSON, score JSON, score-distribution HTML, and Markdown reports publish by
-replacing a fully written staged file. An interrupted write preserves the previous
-complete document, or leaves the public path absent when no document existed. This
-guarantee applies separately to each file; it does not make different outputs one atomic
-generation or establish durability across power loss.
+Use `--only`, `--from`, and `--to` to select a single stage or a range. A failed step
+stops the pipeline and leaves the required work pending so a later invocation can retry.
+
+Fire index JSON, score JSON, score-distribution HTML, and Markdown reports are written
+to staging files before replacing their public paths. If writing is interrupted, readers
+still have the previous complete document, or no file when none existed before. This
+guarantee applies separately to each file. It does not make all outputs one atomic
+generation or guarantee that writes survive power loss.
 
 Source names and descriptive text must retain their normalized content in reports and
 maps without introducing extra table cells, rows, links, or XML elements. Generated
@@ -68,54 +70,67 @@ After successful KMZ generation, `logs/YYYY-MM-fire-updates.jsonl` records each
 interesting fire with a new mapped perimeter since the last successful KMZ. Interesting
 fires are the distinct fires in any report section before Fire Details. Each JSON line
 contains the timestamp, identifier, stable log identity, name, the report's location
-text, and measured area in acres as a numeric value with units. Identifier enrichment
-and later name changes preserve a fire's acreage history, including normalized spelling
-changes when the identifier first arrives. Unrelated fires reusing a historical name
-retain separate acreage histories. Mapping corrections linked by retained source
-provenance preserve the previous acreage even when the original perimeter is replaced.
-Distinct grouped fires without external identifiers also retain separate internal
-component identities, even when they have the same name. Their histories, qualification,
-scores, report entries, and logged mapping must stay separate regardless of input order.
-When corrected identifiers join multiple saved histories, the fire inherits all of
-them. Competing current fires claim history by their latest dated mapped observation;
-undated mapping ranks below dated mapping, with canonical report identity breaking
-equal-time ties deterministically. Later corrections can transfer ownership back.
-History records retain their original identities and provenance. Saved alias lineage
-remains available after a transfer; merging histories does not infer a later split of
-their records. The viewer compares records across the current owner's inherited
-histories, without adding their acreage together.
-Fires without mapped perimeters are omitted.
-Changes to incident reports or rankings alone do not produce entries. The first
-generation without a saved baseline logs all interesting mapped fires. All log series
-rotate at the local month boundary. Closed months remain uncompressed for seven days,
-then compress to `.jsonl.zst` on the next write to that series. Retrying interrupted
-compression must preserve every diagnostic record exactly once while retaining legitimate
-identical records and later arrivals for an archived month. Fire-update logs also
-compress eligible months after successful generation with no new fire updates.
+text, and measured area in acres as a numeric value with units.
+
+Adding identifiers or changing a fire's name preserves its acreage history. This also
+applies when its normalized spelling changes as the first identifier arrives. Unrelated
+fires reusing a historical name retain separate acreage histories. Mapping corrections
+linked by retained source provenance preserve the previous acreage even when the
+original perimeter is replaced. Distinct grouped fires without external identifiers also
+retain separate internal component identities, even when they have the same name. Their
+histories, qualification, scores, report entries, and logged mapping must stay separate
+regardless of input order.
+
+When corrected identifiers join multiple saved histories, the fire inherits all of them.
+Competing current fires claim history by their latest dated mapped observation; undated
+mapping ranks below dated mapping, with canonical report identity breaking equal-time
+ties deterministically. Later corrections can transfer ownership back. History records
+retain their original identities and provenance. Saved alias lineage remains available
+after a transfer; merging histories does not infer a later split of their records. The
+viewer compares records across the current owner's inherited histories, without adding
+their acreage together.
+
+Fires without mapped perimeters are omitted. Changes to incident reports or rankings
+alone do not produce entries. The first generation without a saved baseline logs all
+interesting mapped fires.
+
+All log series rotate at the local month boundary. Closed months remain uncompressed for
+seven days, then compress to `.jsonl.zst` on the next write to that series. Retrying
+interrupted compression must preserve every diagnostic record exactly once while
+retaining legitimate identical records and later arrivals for an archived month.
+Fire-update logs also compress eligible months after successful generation with no new
+fire updates.
+
 Diagnostic readers combine archived records with later plain records for the same month
 and use committed rotation receipts to avoid replaying retired records. Reads share the
 writer lock so rotation cannot change the selected components mid-read. A running
-monitor must catch up when new records are appended and compressed between polls.
-Update snapshots use the same archived-prefix and later-tail ordering, including equal
+monitor must catch up when new records are appended and compressed between polls. Update
+snapshots use the same archived-prefix and later-tail ordering, including equal
 timestamps, so rotation cannot change a fire's previous-acreage baseline.
-Diagnostic timestamp queries assume nondecreasing recorded timestamps within each monthly
-log's occurrence order, including its archived prefix and later plain tail. Equal
-timestamps remain distinct occurrences. Readers may use binary search under this ordering
-contract; logs whose recorded timestamps move backward are outside that query guarantee.
+
+Diagnostic timestamp queries assume nondecreasing recorded timestamps within each
+monthly log's occurrence order, including its archived prefix and later plain tail.
+Equal timestamps remain distinct occurrences. Readers may use binary search under this
+ordering contract; logs whose recorded timestamps move backward are outside that query
+guarantee.
+
 Undated diagnostics and unfinished final records must retain their documented handling.
 This storage assumption does not make the observation clock monotonic: monitor ages,
 retention, and health must still respond correctly when that clock moves backward.
+
 The monitor's domain session owns evidence loading, filesystem observation, refresh
 scheduling, and resource cleanup independently of its presentation. It publishes
 immutable, versioned snapshots to subscribers; a slow subscriber may receive the newest
 complete snapshot without receiving every intermediate version. Domain concepts and APIs
 must not depend on terminal widgets, tabs, display formatting, or navigation choices.
+
 The terminal initially shows a complete Status assessment. After that first frame is
 displayed, it proactively prepares the remaining content in the background. Selecting
 content while preparation is pending reuses that work and gives queued requests priority;
 it does not restart an admitted read. Browsing paused evidence remains stable while the
 session continues collecting live data. Cosmetic age updates belong to presentation;
 health expiry and evidence retention belong to the domain session.
+
 The startup target is 1–2 seconds from launching `mise monitor` to the first complete
 Status frame on the current benchmark machine with `data/2026`. Report fresh-process
 measurements and filesystem-cache conditions separately from later background completion.
@@ -128,12 +143,14 @@ Immediately after logging, the KMZ stage writes `maps/updates.html` and
 the generation time and all nonzero acreage changes from the preceding 48 hours,
 including each update's previous mapped acreage from retained logs and compressed
 archives. Missing logs across month boundaries are treated as absent history. Missing
-previous acreage means an initial change equal to current acreage.
-Repeated updates for the same fire remain separate; decreases are included.
+previous acreage means an initial change equal to current acreage. Repeated updates for
+the same fire remain separate; decreases are included.
+
 Visible locations are recalculated from the current fire geometry and current city
 database, using the same fire association as previews. Rows without a matched current
 fire or usable geometry retain their logged locations. Refreshing the city dataset
 rebuilds reports and updates without creating new fire-update events or rewriting logs.
+
 Malformed fire-update checkpoints or pending journals must stop publication before
 mutating durable evidence. Invalid pending intent remains available for repair.
 
@@ -143,48 +160,57 @@ from -90° inclusive to +90° exclusive of north up. The score balances the fire
 size against overlap with the north dart: fitted scale divided by the maximum fitted
 scale, minus 0.75 times the overlap fraction. The overlap fraction is the area shared by
 the map's convex hull and the dart's convex hull with two pixels of breathing room,
-divided by the entire buffered dart hull's area. All growth rings use their opaque KMZ
-fill colors beneath the latest three complete perimeter outlines: white, yellow, and
-red from oldest to newest.
-With fewer observations, the newest outline is red and the preceding one is yellow.
-The background and polygon holes are transparent; all drawing is antialiased. An
-18-pixel black/white navigation dart points north, has a hairline contrasting outline,
-and places its complete rotated bounding box against the top and right image edges.
-The image uses at most 256 dynamically chosen RGBA colors, with transparent, red,
-yellow, white, and black reserved. Lossless WebP uses maximum compression effort and
-is embedded as a base64 data URL in the JSON. Transport compression is the server's
-responsibility. On phones, the same image fits a 72×56 box without changing proportions.
-On narrow phones, acreage spans the row beneath the preview and heading.
-Updates without available geometry retain their text layout.
+divided by the entire buffered dart hull's area.
 
-The viewer fetches the neighboring JSON immediately on load over HTTP or HTTPS. Every
-30 seconds, it sends a GET with `If-None-Match` using the last displayed snapshot's ETag
+All growth rings use their opaque KMZ fill colors beneath the latest three complete
+perimeter outlines: white, yellow, and red from oldest to newest. With fewer
+observations, the newest outline is red and the preceding one is yellow. The background
+and polygon holes are transparent; all drawing is antialiased. An 18-pixel black/white
+navigation dart points north, has a hairline contrasting outline, and places its
+complete rotated bounding box against the top and right image edges.
+
+The image uses at most 256 RGBA colors: up to 251 dynamically chosen colors plus
+reserved transparent, red, yellow, white, and black. Lossless WebP uses maximum
+compression effort and is embedded as a base64 data URL in the JSON. Transport
+compression is the server's responsibility. On phones, the same image fits a 72×56 box
+without changing proportions. On narrow phones, acreage spans the row beneath the
+preview and heading. Updates without available geometry retain their text layout.
+
+The viewer fetches the neighboring JSON immediately on load over HTTP or HTTPS. Every 30
+seconds, it sends a GET with `If-None-Match` using the last displayed snapshot's ETag
 and keeps that snapshot on a 304 response. Changed snapshots load without reloading the
 page. ETags are sent unchanged and do not expire locally; without an ETag, each poll
-downloads the JSON.
-Failed or invalid refreshes preserve the displayed snapshot for later retry.
-After two polling intervals (60 seconds) without any HTTP response, a sticky amber notice
-shows when the server last responded, in Pacific time. A response of any HTTP status
-clears the notice and restarts that deadline, independently of snapshot validation.
-Rejected or timed-out requests do not restart it. Before the first response, the notice
-identifies the page-opening time instead. Delayed browser timers may delay the notice.
-It groups updates into 0–60 minutes, 60 minutes–4 hours, 4–12 hours, 12–24 hours, and
-24–48 hours.
-The browser clock updates first-hour minute labels, moves entries between groups, removes
-expired entries, and controls the fading highlight for updates less than 15 minutes old.
-Group counts show distinct fires, with independently toggled time/name sorting. The
-count/sort control omits "ordered " only when that keeps it beside the time heading;
+downloads the JSON. Failed or invalid refreshes preserve the displayed snapshot for
+later retry.
+
+After two polling intervals (60 seconds) without any HTTP response, a sticky amber
+notice shows when the server last responded, in Pacific time. A response of any HTTP
+status clears the notice and restarts that deadline, independently of snapshot
+validation. Rejected or timed-out requests do not restart it. Before the first response,
+the notice identifies the page-opening time instead. Delayed browser timers may delay
+the notice.
+
+The viewer groups updates into 0–60 minutes, 60 minutes–4 hours, 4–12 hours, 12–24
+hours, and 24–48 hours. The browser clock updates first-hour minute labels, moves
+entries between groups, removes expired entries, and controls the fading highlight for
+updates less than 15 minutes old. Group counts show distinct fires, with independently
+toggled time/name sorting.
+
+The count/sort control omits "ordered " only when that keeps it beside the time heading;
 otherwise it uses the full label, aligned left when it wraps onto the next line. The
 fire count remains in every label. A case-insensitive name filter preserves that
-sorting. Every time group remains visible when filtering; empty groups show "No matching
-updates in this time range." Without a filter, empty groups show "No updates in this
-time range." Each entry shows its name, location, update time, previous acreage, change,
-and current acreage. When the complete fire name and update time do not fit on one
-line, the time moves beneath the name, with both beside the preview. Names that exceed
-that column's width wrap in full. Locations independently shorten to state abbreviations
-and then disappear when space is insufficient. All acreage headings and values align
-right. The page uses neutral colors except for deltas, recent-update highlights, and
-the connection notice, and shows only its generation time below the groups.
+sorting. Every time group remains visible when filtering; empty groups show "No
+matching updates in this time range." Without a filter, empty groups show "No updates
+in this time range."
+
+Each entry shows its name, location, update time, previous acreage, change, and current
+acreage. When the complete fire name and update time do not fit on one line, the time
+moves beneath the name, with both beside the preview. Names that exceed that column's
+width wrap in full. Locations independently shorten to state abbreviations and then
+disappear when space is insufficient. All acreage headings and values align right. The
+page uses neutral colors except for deltas, recent-update highlights, and the connection
+notice, and shows only its generation time below the groups.
+
 Additions, moves, and removals animate while respecting reduced-motion preferences.
 Each time group can be collapsed independently. Moving updates animate to or from the
 closed header when only one of the source and destination groups is collapsed. Moves
@@ -220,10 +246,11 @@ growth meets the freshness and corroboration thresholds. The area basis identifi
 supporting observation and its date, even when a policy deadline makes it effective
 later. Growth remains a geometry measurement, so it can lag reported current size.
 
-KMZ and report inclusion require a selected historical area of at least 25 acres. A
-later downward correction does not remove a fire that qualified earlier. Fires without a
+KMZ and report inclusion require a selected historical area of at least 25 acres. Later
+downward corrections do not erase an earlier qualifying dated estimate. Fires without a
 usable dated estimate can qualify from undated geometry or supplied incident, discovery,
-or final acreage. Fresh mapping takes precedence over conflicting reports.
+or final acreage. The first dated estimate replaces that fallback and may change
+qualification. Fresh mapping takes precedence over conflicting reports.
 
 Incident history preserves reported size, costs, personnel, and containment
 independently of polygon dates and reconciliation. Simultaneous feed conflicts prefer
@@ -247,15 +274,22 @@ Run `peri_scribe --help` for the available commands:
 - `run` runs the end-to-end pipeline; `--list-stages` prints each stage and its
   description without running anything.
 - `validate-sources` compares incremental snapshots with complete fresh downloads.
-- `show-colormap` previews or writes the colormap used for progression rings.
+- `show-colormap` previews the progression-ring colormap in a truecolor terminal.
+- `show-latencies` charts completed run durations and estimates the delay from source
+  perimeter publication to the end of a run that writes a KMZ. See
+  [Latency Charts](latency_charts.md) for the evidence and measurement limits.
+- `monitor` opens an interactive terminal view of live logs, pipeline phases, run
+  history, and the current report.
+- `version` prints the installed PeriScribe version.
 
 The `run` command accepts an optional year-directory argument; when omitted it defaults
 to `data/<current year>`.
 
 - `--full-fetch-interval` fetches fire feeds in full on the first invocation and
-  whenever the last successful full fetch is at least six hours old. A full fetch
-  refreshes the fire index and requires an unconditional derived rebuild, even when no
-  new snapshot is written. Without an interval, fire-feed fetching is incremental.
+  whenever the requested interval has passed since the last successful full fetch. A
+  full fetch refreshes the fire index and requires an unconditional derived rebuild,
+  even when no new snapshot is written. Without an interval, fire-feed fetching is
+  incremental.
 - `--unconditional` rebuilds the selected stages regardless of input changes and
   bypasses reuse of prior full and differential histories when geography is selected. It
   respects stage selection and retains the download policy for static sources.

@@ -351,13 +351,13 @@ def test_point_counts_within_finds_points_quantized_onto_geographic_edges(
     assert spatial_data.point_store.point_counts_within(queries, path) == [1, 1]
 
 
-def test_point_counts_within_includes_points_on_upper_boundary(
+def test_point_counts_within_distinguishes_tile_and_query_boundaries(
     tmp_path: pathlib.Path,
 ) -> None:
     points = np.asarray([[0.5, 0.5]], dtype=float)
     path = tmp_path / "points.sqlite"
     tests.helpers.factories.spatial_data.point_store.write_database(points, path)
-    # The box filter and tile selection include a point exactly on the tile boundary,
+    # The box filter and tile selection include a point exactly on the tile boundary.
     # Exact containment excludes a point on the query geometry's boundary; a box
     # strictly containing the point counts it.
     counts = spatial_data.point_store.point_counts_within(

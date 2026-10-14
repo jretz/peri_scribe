@@ -3,7 +3,7 @@
      viewBox="0 0 840 428" role="img" style="max-width:100%;height:auto"
      aria-labelledby="corrected-growth-attribution-title corrected-growth-attribution-description">
   <title id="corrected-growth-attribution-title">A growth block keeps its last observation’s attributes</title>
-  <desc id="corrected-growth-attribution-description">Candidate zero and non-growth row one share corrected footprint [0,3]. Candidate zero takes row one metadata. Candidate two carries its own metadata and the (3,5] growth ring.</desc>
+  <desc id="corrected-growth-attribution-description">Candidate zero and row one share the corrected footprint [0,3], so row one adds no ground. Candidate zero keeps row one's metadata because it is the last observation of that growth block. Candidate two adds the growth ring (3,5] and keeps its own metadata.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
             markerWidth="7" markerHeight="7" orient="auto-start-reverse">

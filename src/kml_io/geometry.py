@@ -1,7 +1,9 @@
 """Stream geometry into KML while sharing serialization work across views.
 
-The writer caches serialized rings so geometry appearing in several folders is formatted
-only once. Callers own the destination stream and choose the document's presentation.
+The writer caches serialized rings so geometry appearing in several folders can reuse
+its coordinate text. A fixed memory limit bounds retained fragments; a persistent cache
+can supply fragments no longer in memory. Missing fragments are formatted again when
+needed. Callers own the destination stream and choose the document's presentation.
 
 Design notes:
 [Output serialization](../../docs/algorithms/output-serialization.md).
@@ -26,10 +28,10 @@ if typing.TYPE_CHECKING:
 KML_NAMESPACE = "http://www.opengis.net/kml/2.2"
 GX_NAMESPACE = "http://www.google.com/kml/ext/2.2"
 
-# Decimal places kept on every coordinate written to KML. Five places are about 1.1
-# meters, below the detail these ground-level maps display. Rounding shrinks repeated
-# coordinate text. The altitude component is omitted entirely: KML coordinates default
-# it to zero, and every geometry here draws clampToGround, which ignores it.
+# Five decimal places put latitude coordinates about 1.1 meters apart; longitude spacing
+# is smaller away from the equator. That is enough detail for these ground-level maps,
+# and rounding reduces repeated coordinate text. Altitude is omitted because every
+# geometry uses clampToGround, which ignores it.
 COORDINATE_DECIMALS = 5
 logger = structlog.get_logger()
 
@@ -138,7 +140,7 @@ class KmlWriter:
         Args:
             name: The document's display name.
             styles: Serialized styles referenced by the document's features.
-            description: Optional description text, permitting HTML inside CDATA.
+            description: Optional literal text or generated HTML wrapped in CData.
 
         Yields:
             Control while the caller writes document features.
@@ -181,8 +183,8 @@ class KmlWriter:
 
         Args:
             name: The folder's name.
-            visible: Whether the folder and its children are visible. Hidden folders and
-                every feature beneath them carry a zero visibility.
+            visible: Whether the folder loads visible. Callers set visibility on its
+                children separately.
             list_item_type: The folder's list item type, or None for none.
             item_icon: The folder's list item icon href, or None for none.
 
@@ -213,8 +215,8 @@ class KmlWriter:
 
         A polygon carries its draw order directly; a multi-geometry carries none of its
         own, so the order is applied to each polygon it contains, matching how Google
-        Earth reads the tag. Each unique geometry's boundaries are serialized once and
-        cached.
+        Earth reads the tag. Boundary text is reused from the writer's bounded memory
+        cache or its persistent product cache when available.
 
         Args:
             geometry: The shapely polygon or multi-polygon to serialize.
@@ -324,8 +326,7 @@ def point_placemark(
         name: The name to show for the point.
         style_url: The style URL to apply.
         point: The point geometry.
-        draw_order: The order in which the point draws; it draws last, above the
-            perimeters.
+        draw_order: The draw order written on the point geometry.
         description: The balloon description, or None for none.
         visible: Whether the placemark is visible.
     """

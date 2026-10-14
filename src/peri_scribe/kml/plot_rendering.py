@@ -1,8 +1,8 @@
-"""Rendering every fire's plots.
+"""Render each fire's plots as SVG images.
 
 A fire's plot is skipped when none of its lines span enough observation times. Rendering
-is pure string assembly, so the plots are drawn inline: the whole season renders in well
-under a second.
+assembles SVG text directly, so each plot is drawn in the current process without a
+plotting backend or worker pool.
 
 Design notes:
 [Time series and distribution charts](../../../docs/algorithms/chart-layout.md).
@@ -179,8 +179,8 @@ def plot_image_bundles(
     """Render every fire's plots.
 
     A fire's plot is skipped when none of its lines span enough observation times. When
-    *before_rendering* is given the caller's work runs before the plots are drawn, so a
-    caller can prepare data the folders will need.
+    *before_rendering* is given and at least one plot remains, the caller's work runs
+    before the plots are drawn so it can prepare data the folders will need.
 
     Args:
         fire_bundles: Each fire's filename prefix and its plots, in fire order.

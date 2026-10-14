@@ -1,9 +1,13 @@
 # Physical update logs composed with current snapshots
 
-`PeriScribe/UpdateLogChronology.lean` connects the existing `LogReaders` coherent-selection
+The order of saved update records determines which acreage becomes a fire's previous
+measurement. Reading a plain tail before its older archive can therefore reverse the
+meaning of a later update, even if every record is present.
+
+`PeriScribe/UpdateLogChronology.lean` connects the `LogReaders` coherent-selection
 contract to the complete projected snapshot reference. Its ten theorems and the
 3,050-state `LogReaders` safety configuration were checked before changing the update
-reader. No new temporal transitions or executable oracle are required.
+reader. This connection requires no new temporal transitions or executable oracle.
 
 ## Contract and implementation
 
@@ -40,7 +44,7 @@ as the previous acreage. Reversing those old occurrences instead produces baseli
 
 ## Executable connection
 
-`helpers/update_log_chronology.py` obtains every **20 distinct physical reader projection**
+`helpers/update_log_chronology.py` obtains all **20 distinct physical reader projections**
 from the actual checked TLC states. It uses the shared rotation fixture to materialize
 plain JSONL, Zstandard archives, and receipts with actual checksums. The expected logical
 occurrence sequence comes directly from TLC, without calling a production selector.
@@ -83,10 +87,10 @@ lock. An inactive copied directory without that lock remains readable; concurren
 turning it into an active directory is excluded. External file edits, parser and compression
 implementation correctness, SHA-256 collisions, and power-loss durability retain the
 existing assumptions. Current ownership checkpoints are protected by the caller's year
-writer ownership when the pipeline publishes a snapshot; this change does not establish
+writer ownership when the pipeline publishes a snapshot. This does not establish
 an independent cross-file checkpoint/log transaction for unlocked external callers.
 
-Reading all retained update history was already required for correct previous acreage.
-The new shared lock covers that whole read, so large histories can delay cooperating
-appenders and rotation until validation finishes. No latency bound is claimed. Timestamp
-values, ownership projection rules, and the visible time window are unchanged.
+The shared lock covers reading and validating all retained update history. Records older
+than the visible window still matter because they can supply the previous acreage.
+Large histories can therefore delay cooperating appenders and rotation until validation
+finishes. No latency bound is claimed.

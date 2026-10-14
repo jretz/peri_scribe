@@ -133,7 +133,7 @@ def test_snapshot_serial_number_parses_leading_serial() -> None:
     )
 
 
-def test_load_boundaries_builds_box_and_reprojects(
+def test_load_boundaries_returns_polygon_box_and_line_border(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(

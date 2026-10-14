@@ -75,7 +75,7 @@ def outline_draw_order(outline_count: int, newest_first_index: int) -> int:
 
 
 def point_draw_order(outline_count: int) -> int:
-    """Return the draw order that draws the point location above every outline.
+    """Return the point's draw-order value, one above every outline's.
 
     Args:
         outline_count: The number of outlines drawn for the fire.
@@ -87,7 +87,7 @@ def point_draw_order(outline_count: int) -> int:
 
 
 def point_style() -> kml_io.styles.Style:
-    """Return the style for the fictional point location.
+    """Return the style for the fire's representative point location.
 
     Returns:
         The style, holding the point's icon.

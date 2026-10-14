@@ -1,13 +1,14 @@
 # Update snapshots and browser reconciliation
 
-The update viewer combines retained acreage history with a live browser presentation.
-Server generation preserves each chronological acreage predecessor; browser refresh
-preserves controls and row identity while records age into different time groups.
+The update viewer shows how each fire's mapped acreage changed. The snapshot builder
+compares each observation with its chronological predecessor, including one that is too
+old to display. The browser then refreshes that history while preserving controls and
+row identity as records move into older time groups.
 
 ## Contract and assessment
 
 Inputs are validated retained log records, current history ownership, fire summaries,
-and generation time. The server writes a versioned JSON snapshot and a packaged HTML
+and generation time. The pipeline writes a versioned JSON snapshot and a packaged HTML
 viewer. The browser accepts validated snapshots and ages their entries using its clock.
 
 | Dimension | Score | Reason |
@@ -24,7 +25,7 @@ Total **11: complex**. Durable update identity and journaling are explained in
 ## Compare before filtering
 
 The previous acreage can come from outside the visible 48-hour window. Filtering first
-would manufacture an initial increase.
+would make the first visible observation look like growth from zero.
 
 Read retained logs using their archive-prefix/plain-tail ordering and stable-sort by
 timestamp. Project each original log bucket to its current owner. For every nonfuture
@@ -45,7 +46,8 @@ the next entry's predecessor. Missing months simply supply no evidence.
 
 Previews and locations are associated through current ownership and source identities.
 Repeated updates share one current fire preview. Display refresh does not rewrite
-durable log records or create mapping events. Unmatched geometry retains logged text.
+durable log records or create mapping events. Rows without a matched fire or usable
+location evidence retain their logged locations.
 
 ## Refresh and response clocks
 
@@ -55,10 +57,12 @@ A 304 with an existing validator preserves the display. A full successful respon
 validated and rendered before saving its ETag. Invalid data, failed requests, and
 unexpected 304 responses preserve the previous snapshot.
 
-Separately, every HTTP response restarts a 60-second watchdog. A 500 response establishes
-connectivity even though it cannot replace data; a rejected or timed-out request does
-not. Expiry shows the last response time, or page-open time before the first response.
-Browser timer delays can postpone the notice; this is not a network availability proof.
+Separately, every HTTP response restarts a 60-second watchdog. A 500 response
+establishes connectivity even though it cannot replace data; a rejected or timed-out
+request does not. Expiry shows the last response time, or page-open time before the
+first response. Browser timer delays can postpone the notice. The watchdog describes
+observed responses; it doesn't prove network availability or the exact time a connection
+was lost.
 
 ## Row reconciliation and animation
 
@@ -92,7 +96,7 @@ not. Subsequent qualifying additions restart the notification interval.
 
 ## Costs, limits, and verification
 
-Server sorting costs `O(N log N)` for retained entries and holds `O(N)` records. Browser
+Snapshot sorting costs `O(N log N)` for retained entries and holds `O(N)` records. Browser
 replacement uses signature maps and queues; repeated array shifts can be quadratic
 within a large duplicate group. Rendering sorts matching entries and performs DOM
 measurement, so its cost includes browser layout. Current browser time controls aging;

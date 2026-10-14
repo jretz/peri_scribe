@@ -6,7 +6,7 @@ import test from "node:test";
 import * as coverage from "../../../helpers/javascript_coverage.mjs";
 import * as samples from "../../../helpers/javascript_coverage_samples.mjs";
 
-test("coverageMap combines a branch exercised only by the browser", async () => {
+test("coverageMap combines complementary branch executions", async () => {
   const node = await samples.collect(samples.script, "choose(false)");
   const browser = await samples.collect(samples.script, "choose(true)");
   const combined = await coverage.coverageMap(
@@ -16,7 +16,7 @@ test("coverageMap combines a branch exercised only by the browser", async () => 
   assert.equal(summary.functions.pct, 100);
 });
 
-test("checkCoverage rejects omission of the browser's branch", async () => {
+test("checkCoverage rejects an unexercised branch", async () => {
   const entries = await samples.collect(samples.script, "choose(false)");
   const incomplete = await coverage.coverageMap(entries, samples.descriptor);
   assert.throws(() => coverage.checkCoverage(incomplete), /must be 100%/);
@@ -36,7 +36,7 @@ test("checkCoverage rejects an uncovered branch on an otherwise covered line",
       [...node, ...browser], sourceDescriptor));
   });
 
-test("coverageMap maps uncovered source locations into the production HTML",
+test("coverageMap applies containing HTML line offsets to uncovered locations",
   async () => {
     const entries = await samples.collect(samples.script, "choose(false)");
     const incomplete = await coverage.coverageMap(entries, samples.descriptor);

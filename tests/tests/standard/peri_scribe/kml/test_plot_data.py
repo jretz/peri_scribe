@@ -187,7 +187,7 @@ def test_contained_perimeter_points_multiplies_by_percent() -> None:
     )
 
 
-def test_contained_perimeter_points_skips_missing_percent_or_time() -> None:
+def test_contained_perimeter_points_reuses_percent_and_skips_missing_time() -> None:
     frame = (
         tests.helpers.factories.peri_scribe.kml.plot_histories
     ).perimeter_frame_from_observations([

@@ -2,8 +2,9 @@ import Std
 
 namespace PeriScribe.AreaPolicy
 
-/-- Exact integer acres and seconds isolate the default policy from numerical geometry.
-    Confirmations count distinct eligible report times, after source reconciliation. -/
+/-- Integer acres and seconds let the proof check the default policy independently of
+    rounding and geometry calculations. Confirmations count distinct eligible report
+    times after source reconciliation. -/
 structure Evidence where
   mapped : Nat
   reported : Nat

@@ -1,4 +1,4 @@
-"""Generate models examples with constrained domains."""
+"""Generate identifiers and observations around clock changes."""
 
 from __future__ import annotations
 

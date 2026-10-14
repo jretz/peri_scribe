@@ -7,7 +7,7 @@ MAXIMUM_COLOR_CHANNEL_ERROR = 6
 
 
 def expected_rgb(rgb: tuple[float, float, float]) -> tuple[int, int, int]:
-    """Return *rgb* on a 0 to 1 scale rounded to 8-bit components.
+    """Convert color components from the 0-1 range to rounded 8-bit values.
 
     Args:
         rgb: The color as (red, green, blue) components from 0 to 1.

@@ -163,7 +163,7 @@ def graph(module: str, config: str, directory: pathlib.Path) -> Graph:
 
 
 def decode_graph(dump: str, output: str) -> Graph:
-    """Reject missing states or edges before a graph becomes reusable evidence.
+    """Check state counts, edge endpoints, and reachability before sharing a graph.
 
     Args:
         dump: Complete TLC graph export.

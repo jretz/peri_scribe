@@ -1,4 +1,4 @@
-"""Report navigation distinguishes document anchors from external URLs."""
+"""Verify event-table following, report navigation, and pane resizing."""
 
 import unittest.mock
 

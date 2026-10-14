@@ -199,10 +199,10 @@ def retry_reason(error: BaseException) -> str:
 
     Examples:
         >>> retry_reason(ValueError({"error": {"code": 429}}))
-        'Rate-limited; retrying after server-suggested delay'
+        'Rate-limited; waiting before retrying'
     """
     if rate_limit_retry(error) is not None:
-        return "Rate-limited; retrying after server-suggested delay"
+        return "Rate-limited; waiting before retrying"
     return "Transient network error; retrying after backoff"
 
 

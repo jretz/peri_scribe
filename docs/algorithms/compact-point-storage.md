@@ -2,11 +2,12 @@
 
 ## Contract and assessment
 
-The database represents a **bag** of finite, valid WGS84 points: repeated coordinates
-remain separate records. Longitude and latitude become signed little-endian int32 pairs
-at `10^-5` degree resolution. Queries return one count per input geometry, using strict
-containment of decoded stored points; points on polygon boundaries are excluded. Missing
-or empty query geometry, or an absent database, yields zero for that slot.
+The database stores finite, valid WGS84 points and preserves duplicates. In mathematical
+terms, it represents a **bag**: two records at the same coordinates still count as two
+points. Longitude and latitude become signed little-endian int32 pairs at `10^-5` degree
+resolution. Queries return one count per input geometry, using strict containment of
+decoded stored points; points on polygon boundaries are excluded. Missing or empty query
+geometry, or an absent database, yields zero for that slot.
 
 | Dimension | Score | Reason |
 | --- | --- | --- |
@@ -21,16 +22,17 @@ the distinction between raw and quantized coordinates are part of the policy con
 
 ## Construction and publication
 
-[Centroid conversion](building-centroids.md) supplies chunks. Each point is rounded to
-nearest integer with even ties. Tile columns and rows span 0.5 degrees from `(-180,-90)`;
-the easternmost column and northernmost row also include the upper world endpoints.
-For encoded `(x,y)`, the tile is `720 × row + column`, and the temporary partition is
+[Centroid conversion](building-centroids.md) supplies chunks. Each longitude and latitude
+is multiplied by 100,000, then rounded to the nearest integer; halfway values round to
+the even integer. Tile columns and rows span 0.5 degrees from `(-180,-90)`; the
+easternmost column and northernmost row also include the upper world endpoints. For
+encoded `(x,y)`, the tile is `720 × row + column`, and the temporary partition is
 `tile mod 16`. All records of one tile necessarily land in the same partition.
 
 ![Chunks become whole-tile compressed records through modulo partitions](assets/point-partitions.svg)
 
-The same tile from separate archive chunks reaches one partition. Sorting records
-cannot deduplicate them; the example retains both copies of point A.
+Records for the same tile reach one partition even when they arrive in separate archive
+chunks. Sorting must preserve duplicates; the example retains both copies of point A.
 
 Construction reads one whole partition into NumPy, sorts by tile ID, and writes one
 SQLite row per occupied tile. Within a tile, raw eight-byte records are sorted for
@@ -62,11 +64,12 @@ ticks, a stored integer point inside the real query envelope survives rounded bo
 The broad filter may retain extra points; only strict geometry containment decides the
 count. Prepared geometry is destroyed after each containment call.
 
-For example, two records at `(-122.50000,37.75000)` inside a polygon contribute two.
-A third record exactly on its exterior contributes zero. A raw point at longitude
+For example, two records at `(-122.50000,37.75000)` inside a polygon contribute two. A
+third record exactly on its exterior contributes zero. A raw point at longitude
 `-122.500004` rounds to `-122.50000`; membership can change if a boundary falls between
-those coordinates. The contract concerns the stored bag, so precision loss is explicit.
-Using the tile's total count as a polygon count would be incorrect near holes or edges.
+those coordinates. Counts describe the stored points after rounding, which is why this
+precision loss matters at polygon boundaries. Using the tile's total count as a polygon
+count would be incorrect near holes or edges.
 
 ## Costs, alternatives, and verification
 
@@ -89,7 +92,8 @@ and [generated cases](../../tests/tests/property_based/spatial_data/test_point_s
 exercise encoding, tiles, multiplicity, and queries. Formal connections include
 [PointConstruction](../../tests/formal/lean/PeriScribe/PointConstruction.lean),
 [CoordinateQuantization](../../tests/formal/lean/spatial_boundaries.md),
-[BuildingsConstruction and WorkerLifetime](../../tests/formal/tla/ingestion.md), and
+[BuildingsConstruction](../../tests/formal/ingestion_extensions.md#buildings-database-construction-lifecycle),
+[WorkerLifetime](../../tests/formal/tla/ingestion.md#workerlifetime), and
 conformance for [partition bags](../../tests/formal/conformance/test_point_construction.py),
 [quantization](../../tests/formal/conformance/test_coordinate_quantization.py), and
 [construction lifecycle](../../tests/formal/conformance/test_buildings_construction.py).

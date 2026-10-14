@@ -119,8 +119,8 @@ ROOT_DOCUMENT_ATTRIBUTION = document_text.encoding.CData(f"""
         </a>.
     </p>
     <p>
-        PeriScribe transforms source data, including geometry cleaning, derived
-        perimeter histories, and conversion of building footprints to centroids.
+        PeriScribe cleans source geometry, builds perimeter histories, and converts
+        building footprints to center points (centroids).
     </p>
     <p>
         This data is provided with no warranty. It is intended for educational purposes
@@ -137,18 +137,18 @@ def fire_view_folders(
     style_urls: typing.Mapping[str, str],
     ring_style_urls: typing.Mapping[str, str],
 ) -> None:
-    """Append every top-level fire view folder that holds fires, given scores.
+    """Append each nonempty fire view in its display order.
 
-    The newly discovered, Type 1, fast-growing, and most-personnel views come first,
-    each loading unchecked with its whole tree hidden; the top-fire views follow, with
-    the top fires by name loading checked. The status folders load checked only when
-    there are no top fires, so a folder is always checked as long as any fire exists.
+    The new, Type 1, fast-growing, and most-personnel views start unchecked, with their
+    contents hidden. The top-fire views follow, with top fires by name checked. If there
+    are no top fires, a status folder is checked instead. This gives Google Earth a
+    visible selection whenever any fires are available.
 
     Args:
         writer: The writer to append to.
         fires: Every fire.
         scores: The saved score for each fire.
-        style_urls: The style URL for each template placemark name.
+        style_urls: The style URL for each named placemark role.
         ring_style_urls: The style URL for each progression ring color, keyed by its
             ``#RRGGBB`` color.
     """
@@ -266,7 +266,7 @@ def fire_status_folders(
     Args:
         writer: The writer to append to.
         fires: Every fire.
-        style_urls: The style URL for each template placemark name.
+        style_urls: The style URL for each named placemark role.
         ring_style_urls: The style URL for each progression ring color, keyed by its
             ``#RRGGBB`` color.
         top_fires_present: Whether the checked top fires by name view was written.
@@ -342,7 +342,7 @@ def write_fire_kml(
             extension.
         scores: The saved score for each fire, or None.
         ring_style_urls: The style URL for each progression ring color, keyed by its
-            ``#RRGGBB`` color, or None for none.
+            ``#RRGGBB`` color, or None to derive the styles from the fires.
     """
     if ring_style_urls is None:
         ring_style_urls = ring_style_urls_for(fires)
@@ -357,10 +357,9 @@ def write_fire_kml(
             for color in ring_style_urls
         ),
     )
-    # The top-level folder holds the fire views as radio options, each created only when
-    # it holds fires. Google Earth checks the last radio option that has any visible
-    # content, so exactly one folder loads checked: the top fires by name when scores
-    # are present, else the active fires, else the inactive fires.
+    # Google Earth checks the last radio option with visible content. When any fires
+    # are available, only one view starts checked: top fires by name if it has fires,
+    # otherwise active fires, otherwise inactive fires. Empty views are omitted.
     with (
         writer.document(
             name,
@@ -409,11 +408,11 @@ def write_kmz_document(
 def ring_style_urls_for(
     fires: list[peri_scribe.kml.fire_data.FireGeometry],
 ) -> dict[str, str]:
-    """Return the style URL for each progression ring color *fires* use.
+    """Return the style URL for each progression ring color used by *fires*.
 
-    The hottest color is always included because a fire with no dated rings falls back
-    to its latest perimeter in that color. Colors are keyed by their ``#RRGGBB`` form,
-    so every fire whose rings share a color shares one style.
+    A fire without dated rings uses its latest perimeter in the hottest color, so that
+    color must always have a style. The ``#RRGGBB`` key lets fires with the same ring
+    color share a style.
 
     Args:
         fires: The fires to symbolize.
@@ -447,11 +446,12 @@ def create_kmz(
 
     The full history GeoPackage is read for geometry, the differential history supplies
     each fire's growth rings, the fire index supplies each fire's name and status, and
-    the code-defined styles and placemark style URLs supply the symbolization. Fires
-    whose every computed or reported area is missing or under the area minimum are
-    excluded from the output. Each fire's plot images and the folder icons are written
-    into the archive beside the KML document. The output is written under the year's
-    ``maps`` directory.
+    the code-defined styles and placemark style URLs supply the symbolization. A fire
+    qualifies when the shared area policy selects a historical estimate at least the
+    area minimum, with sparse-record fallbacks when no dated estimate exists. Fires
+    without a qualifying estimate are excluded. Each fire's plot images and the folder
+    icons are written into the archive beside the KML document. The output is written
+    under the year's ``maps`` directory.
 
     Args:
         year_directory: The year directory that holds the ``derived`` directory.

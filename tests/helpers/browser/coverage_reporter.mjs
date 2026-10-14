@@ -7,7 +7,7 @@ import { recordCoverage } from "../javascript_coverage.mjs";
 export default class CoverageReporter {
   entries = [];
 
-  /** Retain each isolated page's measurements before Playwright removes its context. */
+  /** Retain each page's measurements from its completed test's attachments. */
   async onTestEnd(test, result) {
     for (const attachment of result.attachments) {
       if (attachment.name !== "viewer-v8-coverage") continue;

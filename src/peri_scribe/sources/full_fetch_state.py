@@ -62,7 +62,7 @@ def full_fetch_is_due(
     elapsed time in UTC so skipped and repeated local hours cannot change the cadence.
 
     Args:
-        interval: The full fetch interval, a whole number of hours or days.
+        interval: The minimum elapsed time between successful full fetches.
         current_time: The current time.
         last_full_fetch: The completion time of the last full fetch, or None when none
             is recorded.

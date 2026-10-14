@@ -21,14 +21,14 @@ def fail_after_write(monkeypatch: pytest.MonkeyPatch) -> None:
     original = spatial_data.layers.write_geopackage
 
     def write(path: pathlib.Path, layers: list[spatial_data.layers.LayerData]) -> None:
-        """Expose the completed write boundary to a simulated interruption.
+        """Expose a readable partial cache before a simulated interruption.
 
         Args:
             path: Destination selected by production cache persistence.
             layers: Cache rows selected by production reconciliation.
 
         Raises:
-            RuntimeError: After the serializer has written the cache.
+            RuntimeError: After the serializer has written the first row of each layer.
         """
         original(
             path,

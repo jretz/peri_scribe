@@ -108,8 +108,8 @@ def test_fire_folder_includes_point_perimeters_and_interior(
         )
         == "#ring-fill-ac1701"
     )
-    # The interior ring draws at the bottom, the outline perimeters stack above it
-    # oldest to newest, and the point draws last so its icon is never covered.
+    # The serialized draw-order values put the interior first, the outlines oldest to
+    # newest, and the point last.
     assert {
         name: tests.helpers.peri_scribe.kml.parsing.draw_order(
             tests.helpers.peri_scribe.kml.parsing.placemark_named(container, name),
@@ -244,9 +244,8 @@ def test_fire_folder_draws_interior_from_difference_rings(
         interior_folder,
         "08/07 13:00 Interior",
     )
-    # The rings are styled by their day's color rather than a single fill; with no area
-    # on any ring the active span is the first ring alone, so both clamp to the hottest
-    # color.
+    # Each ring uses its observation day's color. With no area on any ring, the active
+    # span contains only the first ring, so both use the hottest color.
     assert (
         tests.helpers.peri_scribe.kml.parsing.placemark_style_url(first_interior)
         == "#ring-fill-ac1701"
@@ -264,7 +263,8 @@ def test_fire_folder_draws_interior_from_difference_rings(
         )
         for name in ("08/05 13:00 Interior", "08/07 13:00 Interior")
     } == {"08/05 13:00 Interior": 0, "08/07 13:00 Interior": 1}
-    # The outlines stack above the interior rings, and the point draws above both.
+    # The serialized draw-order values put the outlines after the rings and the point
+    # last.
     assert {
         name: tests.helpers.peri_scribe.kml.parsing.draw_order(
             tests.helpers.peri_scribe.kml.parsing.placemark_named(container, name),
@@ -825,9 +825,8 @@ def test_fire_folder_lists_point_tour_and_rings_in_order(
         bug_folder,
         "Interior",
     )
-    # All three rings live in the single Interior folder, listed newest first; the tour
-    # still reveals them in the same chronological order the progression rings are
-    # listed.
+    # The Interior folder lists all three rings newest first; the tour reveals them
+    # oldest first.
     interior = [
         tests.helpers.peri_scribe.kml.parsing.placemark_named(interior_folder, name)
         for name in (
@@ -1297,8 +1296,8 @@ def test_fire_folder_fallback_ring_balloon_leads_with_its_area(
             "Interior",
         ),
     )
-    # The fallback ring is the fire's whole latest perimeter, so it added that entire
-    # area at its observation rather than a slice.
+    # The fallback ring uses the whole latest perimeter, so its balloon reports the full
+    # measured area as added area.
     added_area = spatial_data.measurements.area(
         tests.helpers.factories.geometry.square(1.0),
     )

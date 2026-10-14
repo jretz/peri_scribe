@@ -1,10 +1,9 @@
-"""Cleaning fire perimeter polygons for Google Earth rendering.
+"""Clean fire perimeter polygons so Google Earth can render them.
 
-WFIGS/IRWIN perimeters are produced by rapid mapping at scale and carry below-resolution
-artifacts — zero-area parts and holes, and doubled-back "hairline" slits — that Google
-Earth's tessellator cannot render. These functions remove those artifacts from
-perimeters read from the sources directory before they are written to the derived
-directory, without changing the source files.
+Rapid mapping in WFIGS/IRWIN can leave details below the source resolution: zero-area
+parts and holes, and narrow slits where a boundary doubles back on itself. Google
+Earth's polygon renderer cannot handle these artifacts reliably. Remove them while
+preparing derived perimeters, keeping the source files intact.
 
 [Geometry policy](../../../docs/algorithms/perimeter-geometry-policy.md)
 """
@@ -29,8 +28,9 @@ if typing.TYPE_CHECKING:
 class PerimeterCleaningConfig:
     """Thresholds for cleaning a fire perimeter polygon.
 
-    The thresholds are measured from the source data's artifact population, so they are
-    the smallest settings that remove the artifacts rather than aesthetic choices.
+    The area floor removes tiny parts and holes before simplification. The nominal
+    deviation controls how much detail simplification removes; its conversion to degrees
+    depends on latitude. These are rendering choices, not measures of source accuracy.
     """
 
     minimum_part_area: pint.Quantity[float] = 1e-6 * units.Unit("degrees ** 2")
@@ -65,8 +65,8 @@ def simplify_tolerance(
 ) -> pint.Quantity[float]:
     """Return the ring simplification tolerance for *geometry*.
 
-    The maximum deviation is converted to degrees at the geometry's latitude, then
-    floored at the collinear epsilon so redundant collinear points are always removed.
+    Convert the nominal deviation to degrees at the geometry's latitude. The collinear
+    epsilon sets a lower bound when that conversion produces a smaller tolerance.
 
     Args:
         geometry: The geometry being cleaned, in degree coordinates.
@@ -85,16 +85,17 @@ def without_degenerate_holes(
     part: shapely.Polygon,
     config: PerimeterCleaningConfig,
 ) -> shapely.Polygon:
-    """Return *part* without its degenerate holes.
+    """Return *part* with holes above the configured area floor.
 
-    A zero-area hole is not a real unburned island, so it is dropped.
+    Drop holes at or below the floor, including zero-area rings. This removes tiny
+    rendering details; it does not establish whether a hole is an unburned island.
 
     Args:
         part: The polygon part to filter.
         config: The cleaning thresholds.
 
     Returns:
-        The part with only its real holes.
+        The part with holes whose angular area exceeds the configured floor.
     """
     return shapely.Polygon(
         part.exterior,
@@ -111,23 +112,24 @@ def clean_perimeter(
     geometry: shapely.Geometry | None,
     config: PerimeterCleaningConfig = DEFAULT_CLEANING_CONFIG,
 ) -> shapely.Geometry | None:
-    """Return *geometry* cleaned for rendering, or None when nothing remains.
+    """Return *geometry* cleaned for rendering.
 
-    Parts smaller than the area floor are rejected, degenerate holes are dropped, and
-    the surviving geometry is simplified as a whole within the configured maximum
-    deviation (which also removes collinear points) and repaired if the result is
-    invalid. When every part is below the floor, the original geometry is kept, since a
-    whole fire is not below-resolution noise. Simplifying the assembled geometry rather
-    than each part keeps the parts from drifting into each other, so the result is
-    valid. The geometry is only changed in memory; the source is never modified.
+    Remove parts and holes at or below the area floor, then simplify the surviving
+    geometry with the latitude-adjusted angular tolerance. Simplify the assembled
+    geometry together so its parts do not drift into one another, and repair an invalid
+    result.
+
+    When no part exceeds the floor, keep the original geometry: the threshold should not
+    erase an entire fire. All changes happen in memory, leaving the source file intact.
 
     Args:
         geometry: The perimeter geometry, in degree coordinates.
         config: The cleaning thresholds.
 
     Returns:
-        The cleaned polygon or multi-polygon, or the original geometry unchanged when it
-        is empty, non-polygonal, or every part is below the area floor.
+        The cleaned geometry, which may be a geometry collection after validity repair.
+        The original geometry stays unchanged when it has no polygon part above the
+        area floor, including empty and non-polygonal inputs. None stays None.
     """
     if geometry is None or geometry.is_empty:
         return geometry

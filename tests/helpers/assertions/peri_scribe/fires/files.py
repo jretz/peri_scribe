@@ -1,4 +1,4 @@
-"""Compare files behavior through reusable assertions."""
+"""Compare derived fire histories through reusable assertions."""
 
 from __future__ import annotations
 

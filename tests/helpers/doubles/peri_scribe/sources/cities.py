@@ -52,7 +52,7 @@ class Responder:
         headers: dict[str, str],
         timeout: float,
     ) -> requests.Response:
-        """Return the next prescribed outcome and preserve the outgoing validators.
+        """Record the request, then return the next response or raise its exception.
 
         Args:
             url: The source URL requested by the fetcher.
@@ -61,7 +61,6 @@ class Responder:
 
         Returns:
             The next controlled response.
-
         """
         self.calls.append((url, headers, timeout))
         outcome = self.outcomes.pop(0)
@@ -78,7 +77,7 @@ def install(
 
     Args:
         monkeypatch: The per-test dependency replacement owner.
-        outcomes: Responses or exceptions returned by successive requests.
+        outcomes: Responses to return or exceptions to raise on successive requests.
 
     Returns:
         The callable recorder for assertions about request headers and frequency.

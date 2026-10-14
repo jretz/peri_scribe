@@ -149,14 +149,15 @@ def snapshot_directories_signature(
 ) -> tuple[tuple[str, int], ...] | None:
     """Detect snapshot inventory changes made by the application's atomic writer.
 
-    Snapshot files live in bucket subdirectories named for the serial number's
-    thousands. Publication creates or atomically replaces a snapshot file, so adding,
-    removing, or rewriting a snapshot changes a bucket directory's modification time,
-    and adding or removing a bucket changes the set of buckets. Directory metadata
-    cannot detect external in-place edits or restored timestamps, so readers also
-    authenticate each cached snapshot against its content checksum. The feed directory's
-    own modification time is excluded because it also holds the record cache and
-    current-state files, whose writes should not force the snapshot cache to re-sync.
+    Snapshots live in bucket subdirectories named for the serial number's thousands.
+    Creating, removing, or atomically replacing a snapshot changes its bucket's
+    modification time. Adding or removing a bucket changes the set of buckets. Those two
+    observations identify changes made by the application.
+
+    External edits made in place or with restored timestamps can escape this check.
+    Readers therefore also compare each snapshot's contents with its cached checksum.
+    The feed directory's own modification time is excluded: writes to the cache and
+    current-state files there should not force snapshot synchronization.
 
     Args:
         source_directory: The feed's snapshot directory.
@@ -195,9 +196,9 @@ def snapshot_checksum(path: pathlib.Path) -> str:
 def sync_database(conn: sqlite3.Connection, source_directory: pathlib.Path) -> None:
     """Bring *conn*'s snapshot rows in line with *source_directory*'s files.
 
-    Source bytes authenticate stored parses even when a replacement preserves the file
-    size and modification time. Missing snapshots are dropped; unchanged contents keep
-    their parsed records.
+    Check the source bytes even when a replacement preserves the file's size and
+    modification time. Remove records for missing snapshots and keep parsed records
+    whose contents have not changed.
 
     Args:
         conn: The record cache database connection.

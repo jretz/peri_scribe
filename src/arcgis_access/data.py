@@ -1,7 +1,8 @@
-"""Constructing GeoDataFrames from ArcGIS FeatureSet query results.
+"""Turn ArcGIS query results into GeoDataFrames and retry failed queries.
 
-Converts ArcGIS FeatureSet query results into GeoDataFrames in the layer's native
-spatial reference and provides retry-aware querying for ArcGIS feature layers.
+Conversion supports both native spatial references and queries that request WGS 84.
+Transient network failures and rate limits use the shared retry policy, so callers do
+not each have to decide which failures justify another attempt.
 
 Design notes:
 [Source interpretation and validation](../../docs/algorithms/source-validation.md).
@@ -99,17 +100,16 @@ def geo_data_frame_from(
 def wgs84_query_parameters(where: str) -> dict[str, typing.Any]:
     """Return the standard query parameters for a layer stored in WGS 84.
 
-    The query asks for WGS 84 so every stored layer shares one spatial reference.
-    Ordering by the object id sends the ArcGIS client's paging down a single-threaded
-    path: its concurrent paging races on the shared SSL context and, although the
-    connection is verified, reports it unverified, spamming a misleading
-    InsecureRequestWarning per page.
+    Requesting WGS 84 lets every stored layer use the same spatial reference. Ordering
+    by object id also makes the ArcGIS client fetch pages on one thread. Its concurrent
+    paging can race on the shared SSL context and report verified connections as
+    unverified, producing a misleading InsecureRequestWarning for each page.
 
     Args:
         where: The SQL where clause selecting the features.
 
     Returns:
-        The keyword arguments to pass to :func:`query_with_retry`.
+        The dictionary to pass as ``parameters`` to :func:`query_with_retry`.
     """
     return {
         "where": where,
@@ -235,8 +235,9 @@ def query_object_ids_with_retry(
 ) -> list[int]:
     """Return the OBJECTIDs of the features in *layer* matching *where*.
 
-    The query requests only identifiers, so the response is a few bytes for most layers.
-    An empty list means no features matched.
+    Requesting only identifiers avoids transferring geometry and other attributes when
+    the caller only needs to know which features match. An empty list means none
+    matched.
 
     Args:
         feed_name: Human-readable feed identifier for log messages.

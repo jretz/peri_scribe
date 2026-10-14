@@ -3,6 +3,10 @@
 ## Project Docs
 
 - [Requirements](docs/requirements.md) — Requirements for the project.
+- [Writing Style](docs/writing_style.md) — Read and follow when writing or editing
+  project-authored text for people to read, including documentation, comments,
+  docstrings, help text, and generated explanations. Apply it where the text has room
+  to explain something; short labels need to stay short.
 
 ## Implementation Docs
 
@@ -41,16 +45,16 @@ shell commands so that they can be formatted correctly for that shell from the s
 
 ### Python Virtual Environment
 
-`mise` and `uv` can be difficult in a sandbox because their cache directories are not
-accessible. To run Python commands in a sandbox, use `python` on the path (which will
-get the one in .venv). For example, `.venv/bin/python my_script.py my_args`. There is
-also a skill called `run-tests` for running tests in the sandbox.
+A sandbox may block access to the cache directories used by `mise` and `uv`. Use the
+Python interpreter already in `.venv` to run Python commands there, for example,
+`.venv/bin/python my_script.py my_args`. The `python` on the project's path also uses
+that environment. The `run-tests` skill explains how to run the required checks in a
+sandbox.
 
 ### Skills
 
-There are a number of skills available for use in this project. They help get around the
-limitations of the sandbox and provide a more structured way to perform tasks. Use them
-when appropriate.
+Project skills describe repeatable workflows and ways to work within sandbox limits.
+Use them when they fit the task.
 
 - [Regenerate dataflow](skills/regenerate-dataflow/SKILL.md) — Update the pipeline SVG
   from the current implementation while preserving its layout and readable diffs.
@@ -59,6 +63,6 @@ when appropriate.
 
 ## Geographic Area of Interest
 
-This project is about the entire United States. It might appear to be about California
-because that state has rich data sources that are being used. But the project is about
-the entire country.
+PeriScribe covers the entire United States. California appears frequently because it
+has rich data sources used by the project; those sources do not limit its geographic
+scope.

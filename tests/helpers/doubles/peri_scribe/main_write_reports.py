@@ -1,4 +1,4 @@
-"""Replace main write reports dependencies with controlled test doubles."""
+"""Record report gathering and rendering calls from the CLI."""
 
 from __future__ import annotations
 

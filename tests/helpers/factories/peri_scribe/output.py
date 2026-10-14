@@ -20,8 +20,8 @@ def fire_scores_document(scores: list[int]) -> peri_scribe.models.FireScores:
             {
                 "name": f"Fire {index}",
                 "score": score,
-                "explanation": "No notable size, growth, threat, or "
-                "official-importance signals.",
+                "explanation": "No points from size, growth, nearby buildings, "
+                "evacuation zones, or incident complexity.",
             }
             for index, score in enumerate(scores)
         ],

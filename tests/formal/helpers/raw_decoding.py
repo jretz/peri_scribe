@@ -254,7 +254,7 @@ def result(value: object) -> tuple[int, ...]:
         value: An actual parser or typed-selector result.
 
     Returns:
-        Presence and the exact value encoded consumed by the oracle protocol.
+        Presence and the exact value encoding used by the oracle protocol.
     """
     if value is None:
         return (0,)

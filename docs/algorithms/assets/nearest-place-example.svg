@@ -177,6 +177,6 @@
     <text x="446" y="650">B is nearest to the fire</text>
   </g>
   <text x="24" y="710" class="muted">Solid lines change what is measured; dashed lines retain the centroid reference.</text>
-  <text x="24" y="738" class="muted">Interpolation explains the operands, not the nearest-point library’s search steps.</text>
+  <text x="24" y="738" class="muted">The motion changes what is measured; it does not show the library’s search steps.</text>
   <text x="24" y="764" class="small muted">Planar schematic; actual candidates use separate place-centered projections.</text>
 </svg>

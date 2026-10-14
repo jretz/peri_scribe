@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <svg xmlns="http://www.w3.org/2000/svg" width="840" height="420" viewBox="0 0 840 420" role="img" aria-labelledby="cache-evidence-title cache-evidence-description" style="max-width:100%;height:auto">
-  <title id="cache-evidence-title">Ordered, typed evidence determines reuse</title>
-  <desc id="cache-evidence-description">Schema and each typed row are hashed independently. Selected row order and caller identity are combined into a product key, inside the runtime context.</desc>
+  <title id="cache-evidence-title">Cache reuse depends on row order and value types</title>
+  <desc id="cache-evidence-description">The cache hashes the schema and each typed row independently, then combines the selected row order and caller identity into a product key within the runtime context. This distinguishes inputs that contain the same rows in a different order, or the same values with different types or units.</desc>
   <defs>
     <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0 0 L10 5 L0 10 Z" fill="var(--edge)" />
@@ -30,7 +30,7 @@
 </style>
   </defs>
   <rect width="840" height="420" fill="var(--background)" />
-  <text x="24" y="34" class="heading">Ordered, typed evidence determines reuse</text>
+  <text x="24" y="34" class="heading">Cache reuse depends on row order and value types</text>
   <g id="identity">
     <rect class="box blue" x="24" y="67" width="234" height="130" />
     <text x="40" y="96" class="label">Caller identity</text>
@@ -56,7 +56,7 @@
     <rect class="box amber" x="158" y="264" width="524" height="108" />
     <text x="174" y="293" class="label">Key = hash(<tspan id="identity-parameter">identity</tspan>, <tspan id="schema-parameter">schema</tspan>, <tspan id="rows-parameter">ordered row hashes</tspan>)</text>
     <text x="174" y="323" class="">Select [A, B] ≠ select [B, A].</text>
-    <text x="174" y="348" class="">Runtime context and namespace also gate the hit.</text>
+    <text x="174" y="348" class="">Runtime context and namespace must also match.</text>
   </g>
   <path id="identity-key" class="edge" d="M141 197 V230 H293.1 V259" />
   <path id="schema-key" class="edge" d="M417.5 197 V230 H360.38 V259" />

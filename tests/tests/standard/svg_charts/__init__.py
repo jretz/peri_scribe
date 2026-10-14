@@ -1,1 +1,1 @@
-"""Tests and support for application-neutral SVG charts."""
+"""Tests for application-neutral SVG charts."""

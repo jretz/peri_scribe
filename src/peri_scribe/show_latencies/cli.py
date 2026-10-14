@@ -33,7 +33,7 @@ class RelativeTime(click.ParamType):
         param: click.Parameter | None,
         ctx: click.Context | None,
     ) -> datetime.timedelta:
-        """Accept one negative number and a fixed-length unit suffix.
+        """Accept one minus-prefixed number and a fixed-length unit suffix.
 
         Args:
             value: A user-supplied relative duration.
@@ -63,7 +63,8 @@ def inline_image(png: bytes, dimensions: tuple[str, str] | None = None) -> str:
 
     Args:
         png: The complete rendered image.
-        dimensions: Terminal width and height controls, or the PNG dimensions.
+        dimensions: Terminal width and height controls; None uses the CDF chart
+            dimensions.
 
     Returns:
         One terminal escape sequence, without diagnostic text.
@@ -129,7 +130,10 @@ def render(
 @click.command(
     "show-latencies",
     help=(
-        "Display run-time and source-to-KMZ CDFs inline in compatible terminals. "
+        "Chart how long pipeline runs take and the estimated delay from source "
+        "perimeter publication to the end of a run that produces a KMZ. Each curve "
+        "shows the fraction of measurements within a given duration. The chart "
+        "appears inline in a compatible image-capable terminal. "
         + peri_scribe.cli_options.year_directory_default_help()
     ),
 )
@@ -144,14 +148,16 @@ def render(
     type=RelativeTime(),
     default="-7d",
     show_default=True,
-    help="Inclusive start relative to now; one number and ms/s/m/h/d/w.",
+    help="Start of the included time window, relative to now; for example -3h or -7d. "
+    "Use one number with ms, s, m, h, d, or w.",
 )
 @click.option(
     "--end",
     type=RelativeTime(),
     default="-0d",
     show_default=True,
-    help="Inclusive end relative to the same clock reading.",
+    help="End of the included time window, relative to the same clock reading as "
+    "--start; for example -1h.",
 )
 def show_latencies(
     year_directory: pathlib.Path,

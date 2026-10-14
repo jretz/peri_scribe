@@ -1,21 +1,19 @@
 # Conventions
 
-The code exists for the purpose of being easily read and understood by humans. This
-means that the code should be clear, concise, and consistent.
+The code needs to be easy for people to read and understand. Clear, concise, consistent
+code makes it easier to check the reasoning and change it without missing a consequence.
 
 ## Overall Style
 
-Prefer small, module level functions for everything. Where classes make sense, frozen,
-kw-only dataclasses are preferred. Where values have meanings, use enums instead of
-strings or integers. Type hints should be used for all function arguments and return
-values.
+Prefer small functions at module level. When a class makes sense, prefer a frozen,
+keyword-only dataclass. Use enums for values with distinct meanings instead of strings
+or integers. Add type hints to every function argument and return value.
 
-Linting and typechecking run as a part of the test suite. Never make changes to `ruff`
-or `ty` rules in pyproject.toml. Work hard to avoid disabling them on a given line of
-code. That is only acceptable where third party libraries are not compatible with type
-hints. When a rule is disabled on a line, only disable the specific rule, not type
-checking altogether. Do not dismiss linting or type checking errors, even if you think
-they are not important (e.g., only cosmetic).
+Linting and type checking run as part of the test suite. Never change the `ruff` or
+`ty` rules in `pyproject.toml`. Avoid disabling rules on individual lines; that is
+acceptable only when a third-party library is incompatible with type hints. In that
+case, disable only the specific rule, keeping the other checks active. Resolve linting
+and type checking errors even when they appear cosmetic.
 
 Do not leave dead code in the codebase.
 
@@ -29,9 +27,9 @@ should have "Args", "Returns", "Yields", and "Raises" sections. The exception is
 tests (named test_*, and appearing in test_*.py files). They should not have docstrings,
 and their name should make clear exactly what is being tested.
 
-All English prose in code, whether in comments or docstrings, should be about "why", not
-"how". The code is the truth about how. Such prose should be about the current code, and
-should not contrast the current code with past code.
+Comments and docstrings should explain why the code makes its choices. The code itself
+shows how the work happens. Describe the current behavior and its reasons without
+contrasting it with earlier implementations.
 
 All English prose in code, whether in comments or docstrings, should be wrapped to fit
 in 88 columns. If the first word on the next line (with any adjacent punctuation) will
@@ -67,11 +65,11 @@ latitude, minimum, and maximum are written out in full, rather than abbreviated 
 
 ## Real World Units
 
-When the value for a variable or parameter, or the return value for a function has
-real-world units, it should be a `pint` quantity so that it is unit agnostic. Everything
-should used the shared unit registry. When a DataFrame or numpy array is loaded from a
-data source, it's fine to work with it in it's native form. But when deriving in-memory
-DataFrames or arrays, they should use `pint` units as well.
+Use a `pint` quantity whenever a variable, parameter, or return value has real-world
+units. This keeps callers from having to assume a particular unit. Everything should
+use the shared unit registry. A DataFrame or NumPy array loaded from a source can stay
+in its native form, but derived in-memory DataFrames and arrays should use `pint` units
+as well.
 
 An exception to the ban on `from <module> import <name>` is the units registry. Use
 `from measurement_units import units` everywhere.
@@ -84,26 +82,23 @@ happens to be the result of a dynamic expression).
 
 ## Runtime State
 
-Almost all functions are pure functions, meaning they do not have side effects and do
-not depend on any external state. State should almost always be in frozen dataclasses.
-Modifications to data should involve passing in a frozen dataclass, and returning a new
-frozen dataclass with the modifications applied. This makes it easier to reason about
-the code, and makes it easier to test.
+Almost all functions should be pure: they have no side effects and do not depend on
+external state. Keep state in frozen dataclasses in almost all cases. To change data,
+pass in the existing dataclass and return a new one with the changes applied. Explicit
+inputs and outputs make the code easier to reason about and test.
 
 ## Persistent State
 
-Functions that interact with external data sources and generated state (cached data,
-output, etc.) should be as small as possible. They should do nothing beyond the actual
-read or write operation. This makes it easier to create mocks for testing, and makes it
-easier to change the underlying data source or output format in the future.
+Keep functions that read or write external data, caches, and outputs as small as
+possible. They should do only the read or write. Keeping other decisions outside those
+functions makes it easier to mock the I/O in tests and change a source or output format.
 
 ## Public vs. Private
 
-Treat all functions, methods, variables, classes, etc. as public. Do not use leading
-underscores to indicate otherwise. When there is a concern about exposing something
-publicly, make all access to it go through a method/property/etc. Ensure that accessor
-does not expose the underlying object so directly that there is no point to have the
-accessor.
+Treat functions, methods, variables, and classes as public. Do not use leading
+underscores to mark them private. When direct access could cause a problem, require
+access through a method or property. That accessor needs to provide a meaningful
+boundary; simply returning the underlying object may leave the same problem in place.
 
 ## Migration
 
@@ -117,9 +112,10 @@ code.
 
 ## Reuse
 
-Do not copy/paste code, even if changing constants or a small minority of behavior.
-Extract and abstract. After extracting, use existing tests to ensure origin site has no
-behavioral changes before making further test changes.
+Do not copy and paste code, even when the copy would change a few constants or a small
+part of the behavior. Extract the shared work and make the differences explicit. After
+extracting it, run the existing tests to check that the original caller's behavior is
+unchanged before making further test changes.
 
 ## Logging
 

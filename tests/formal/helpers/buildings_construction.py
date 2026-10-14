@@ -226,7 +226,7 @@ def install_boundaries(
         return count
 
     def validate(path: pathlib.Path) -> bool:
-        """Keep the initial cache check real and fault staged validation.
+        """Keep the initial cache check real while simulating failed staging validation.
 
         Args:
             path: Existing or staged database.

@@ -1,8 +1,9 @@
 # Observer contracts
 
-These checks cover the browser and terminal monitor. They make no writes to production
-data. The conformance suite exports TLC's complete state relations on every run; no saved
-handwritten expected-state fixtures stand in for the specifications.
+The browser and terminal monitor need to show what the available evidence supports,
+including when refreshes fail or logs change while they're being read. These checks
+cover those observation rules without writing production data. Each conformance run
+exports TLC's complete state relations and uses them as the expected results.
 
 ## Browser refresh
 
@@ -16,14 +17,15 @@ or a `W/` prefix.
 The invariants establish at most one refresh and one GET per refresh, agreement between
 committed validators and displayed data, and preservation of the snapshot and validator
 after failure or HTTP 304. HTTP 304 replies never read a body and are errors when the
-request did not send a validator. Missing ETags require unconditional GETs. The liveness
-configuration checks that a healthy retry eventually displays the stable server
-generation, assuming requests and polling progress. The first round may fail; the second
-round is healthy. This is a bounded recovery claim, not a guarantee against an indefinitely
-failing server. Healthy responses must change the validator when the cached content is no
-longer semantically equivalent. A server that reuses an ETag for substantive changes and
-keeps returning HTTP 304 is outside the recovery guarantee; the viewer cannot detect that
-server error through conditional GETs alone.
+request did not send a validator. Missing ETags require unconditional GETs.
+
+The liveness configuration checks that a healthy retry eventually displays the stable
+server generation, assuming requests and polling progress. The first round may fail; the
+second round is healthy. This is a bounded recovery claim, not a guarantee against an
+indefinitely failing server. Healthy responses must change the validator when the cached
+content is no longer semantically equivalent. A server that reuses an ETag for
+substantive changes and keeps returning HTTP 304 is outside the recovery guarantee; the
+viewer cannot detect that server error through conditional GETs alone.
 
 Both configurations explore 161 states from 18 initial combinations. Conformance replays
 all 36 completed first-round outcomes, with and without overlapping polling, against the

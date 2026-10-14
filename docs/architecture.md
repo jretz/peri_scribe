@@ -2,16 +2,17 @@
 
 ## Form
 
-PeriScribe is a command-line application. `src/peri_scribe/main.py` defines the CLI and
-coordinates the pipeline; domain logic is divided among source retrieval, geography
-processing, fire scoring, and KML modules.
+PeriScribe is a command-line application. `src/peri_scribe/main.py` defines the command
+group and loads command implementations on demand. `pipeline.py` coordinates the stages;
+source retrieval, geography processing, fire scoring, and KML generation have their own
+modules.
 
 [Algorithm Design](algorithm_design.md) defines complexity assessment and documentation
 requirements for new and changed algorithms. The [algorithm note index](algorithms/README.md)
 and [coverage inventory](algorithms/INVENTORY.md) link existing explanations and local
 assessments. Owning sections and module docstrings also link the relevant reasoning.
 
-The top-level packages express reusable responsibilities. They ship together in the
+Each top-level package owns a reusable part of the work. They ship together in the
 same distribution, with one dependency set and release cycle:
 
 - `peri_scribe` owns feeds, fire schemas, reconciliation, scoring, download and refresh
@@ -48,18 +49,17 @@ Algorithm notes explain [streamed centroids](algorithms/building-centroids.md),
 [indexed overlaps and measurements](algorithms/spatial-queries-and-measurements.md), and
 [immutable geometry sharing](algorithms/geometry-sharing.md).
 
-Geospatial primitives and spatial streaming/storage share one `spatial_data` package.
-The storage paths already depend directly on coordinate-system construction, geometry
-conversion, and projection-aware centroid math. The pure foundation is small, and a
-second package would add another API boundary without separating an independent
-workflow. Individual modules keep pure geometry and measurements apart from layer I/O,
-stream parsing, and point storage; a caller can use the former without importing the
-latter.
+Geometry, measurements, and spatial storage share the `spatial_data` package because
+storage depends directly on coordinate systems, geometry conversion, and centroid math
+that accounts for projection. The pure geometry code is small. Putting it in a second
+package would add an API boundary without separating an independent workflow. Within
+the package, callers can use geometry and measurements without importing layer I/O,
+stream parsing, or point storage.
 
-The trade-off is a broader spatial package whose I/O modules require heavier libraries.
-The distribution still installs the complete application's dependencies; this extraction
-does not create separately installable products or optional dependency sets. A future
-consumer that needs only geometry could justify splitting the pure modules then.
+That choice gives the spatial package a broader scope, and its I/O modules need heavier
+libraries. The distribution installs the complete application's dependencies; these
+packages are not separately installable products or optional dependency sets. A future
+consumer that needs only geometry could give a reason to split the pure modules.
 
 Point storage accepts WGS84 points and retains its existing coordinate quantization,
 tile layout, metadata, compression, and database schema. Building dataset URLs,
@@ -82,10 +82,11 @@ ranking, row selection, and descriptive text shared by reports and maps. Its
 `FireSummary` contains facts without rendered images. Both output paths use this layer;
 reports do not import KML modules or chart rendering through it.
 
-Saved scores resolve against the complete showable fire collection. Identifier matches
-take priority over name fallback, and each identity retains its highest-ranked score
-row. Top views, report scores, and description explanations use this same association;
-duplicate aliases cannot consume additional places in a ranked view.
+Saved scores are matched against all fires eligible for display, first by identifier,
+then by component identity. Only scores without a component can fall back to a name.
+Each identity keeps its highest-ranked score row. Top views, report scores, and
+explanations use this same match. A fire therefore keeps a consistent score across
+outputs, and duplicate aliases cannot take additional places in a ranked view.
 
 `peri_scribe/kml/` supplies map folders, balloon HTML, colors, progression timing, and
 fire-specific chart preparation. It adds images to shared summaries and passes neutral
@@ -99,14 +100,14 @@ Only explicitly wrapped generated markup can carry document syntax. Portable lin
 and unsupported XML characters follow the shared normalization policy; supported Unicode
 content and boundary whitespace remain present in the parsed output.
 
-Index and score JSON, score-distribution HTML, and Markdown reports share staged
-document publication. Their writers close a complete temporary file beside the
-destination before replacing the public name. An interrupted write preserves the prior
-complete document; this is a per-file process-interruption guarantee, not a transaction
-across outputs or a power-loss durability guarantee.
+Index and score JSON, score-distribution HTML, and Markdown reports are each written
+to a temporary file beside the destination. The writer closes that complete file before
+replacing the public name. If writing is interrupted, the previous complete document
+remains available. This guarantee applies to each file separately. It does not make
+several outputs one transaction or guarantee that writes survive power loss.
 
 The primary workflow runs fetch, geography, score, kmz, and reports in order. The
-[README pipeline overview](../README.md#pipeline) describes each stage and its main outputs.
+[README pipeline overview](../README.md#how-it-works) describes each stage and its main outputs.
 
 After fetch, it skips derived outputs only when no fire, evacuation, or city data changed
 and no rebuild is required. A scheduled full fetch requires an unconditional derived
@@ -163,13 +164,14 @@ building locations are in `sources/buildings.sqlite`. The buildings converter st
 the Microsoft USBuildingFootprints state archives into quantized centroid tiles and does
 not retain the downloaded archives. The administrative-boundary GeoPackage at
 `sources/CA_border_with_AZ_NV_and_OR.gpkg` holds the California border with Arizona,
-Nevada, and Oregon; the fetch stage ensures it exists, downloading and computing it only
-when it is missing or unusable.
+Nevada, and Oregon; the fetch stage ensures it exists, fetching state polygons and
+computing the border file only when it is missing or unusable.
 
-Live external-source comparison fingerprints normalized attributes, geometry, attribute
-names, and coordinate reference meaning. Field framing distinguishes embedded bytes
-from field boundaries. Row and column order do not affect comparison; repeated rows
-retain their multiplicity, and missing-value representations normalize together.
+To decide whether an external source changed, the pipeline fingerprints its normalized
+attributes, geometry, attribute names, and coordinate reference meaning. Field boundaries
+are encoded separately, so bytes inside a value cannot be mistaken for a boundary. Row
+and column order do not affect the comparison. Repeated rows still count as separate
+occurrences, while different representations of a missing value compare as equal.
 
 Natural Earth's U.S. populated places, including territories, are stored in
 `sources/cities.sqlite`. Its four operational columns are name, two-letter state or
@@ -193,57 +195,69 @@ Derived data is written below `data/<year>/derived/`:
 The KMZ is written to `data/<year>/maps/PeriScribe Fires <year>.kmz` and the fire
 reports to `data/<year>/reports/PeriScribe Fires <year>.md`.
 
-`fire_updates.py` prepares fire-update records from the same in-memory summaries used
-by the KMZ, reusing report selection and location descriptions. After successful KMZ
+### Fire-update history
+
+`fire_updates.py` prepares fire-update records from the same in-memory summaries used by
+the KMZ, reusing report selection and location descriptions. After successful KMZ
 generation it appends to `logs/YYYY-MM-fire-updates.jsonl` and saves
 `derived/fire_updates_state.json`. This baseline includes all eligible fires, including
 those outside the report's interesting sections. Normalized geometry and observation
 time identify new perimeters; pending updates survive unsuccessful KMZ generation.
-Known identifier aliases retain links to their saved history buckets, so adding
-a preferred identifier preserves the mapping baseline and acreage history. A first
-identifier joins a name-only history only when shared mapping evidence identifies a
-unique current fire and that history is not already claimed. Name matching uses the
-same normalization as source grouping. Unrelated namesakes receive deterministic
-`local` identities. The checkpoint
-retains historical name associations even when a later fire reuses a name. Each record
-preserves its identity in `log_identity`, independently of its current display name.
+
+Known identifier aliases keep links to their saved groups of history records, called
+history buckets. Adding a preferred identifier therefore preserves the mapping baseline
+and acreage history. A first identifier joins a name-only history only when shared
+mapping evidence identifies a unique current fire and that history is not already
+claimed. Name matching uses the same normalization as source grouping. Unrelated
+namesakes receive deterministic `local` identities. The checkpoint retains historical
+name associations even when a later fire reuses a name. Each record preserves its
+identity in `log_identity`, independently of its current display name.
+
 The checkpoint also retains exact source snapshot and object-ID references, including
 superseded rows preserved by reconciliation. These references link corrected perimeters
 to their acknowledged history when the original geometry has been replaced. Missing
 provenance supplies no identity evidence; older checkpoints acquire it during an
 unchanged publication. Provenance-only changes update the checkpoint without logging
 another mapping update.
+
 Grouped fires also carry internal component identities anchored to immutable source-row
 occurrences. These identities travel through the fire index, derived histories, shared
 presentation, scores, and reports. Identifierless namesakes consequently keep separate
-evidence and output entries. Component aliases retain earlier anchors through merges
-and identifier enrichment, allowing publication to claim their saved history buckets
-under the same correction policy as external aliases. Legacy rows without component
-identity retain their name fallback.
+evidence and output entries. Component aliases retain earlier anchors through merges and
+identifier enrichment, allowing publication to claim their saved history buckets under
+the same correction policy as external aliases. Legacy rows without component identity
+retain their name fallback.
+
 The checkpoint separates durable alias `lineage` from current history `owners`.
 Identifier corrections claim every bucket reached through their aliases. The latest
-mapped observation wins competing claims, with missing dates first and canonical
-report identity breaking equal-time ties. A winning fire uses its preferred history
-key when available, otherwise another won key; a fire without a won history receives
-an unused key. Old evidence stays in its original buckets, and novelty is measured
-against the union of the fire's inherited histories. Alias lineage accumulates even
-when a claimant loses, allowing a later correction to reclaim history. Jointly inherited
-histories remain claimable together; the system does not reconstruct earlier partitions.
+mapped observation wins competing claims. Dated observations outrank undated ones, and
+canonical report identity breaks equal-time ties. A winning fire uses its preferred
+history key when available, otherwise another won key; a fire without a won history
+receives an unused key. Old evidence stays in its original buckets, and novelty is
+measured against the union of the fire's inherited histories. Alias lineage accumulates
+even when a claimant loses, allowing a later correction to reclaim history. Jointly
+inherited histories remain claimable together; the system does not reconstruct earlier
+partitions.
 
 Snapshot acreage comparisons and viewer fire counts use the current owner's key,
 published separately as `history_identity`, while retaining the original `log_identity`.
 Ownership is a direct bucket-to-group assignment, not a chain of redirects. Records
 without an ownership assignment use their stable logged key, or their logged identifier
-or name when that key is absent. A recovery journal at
-`derived/fire_updates_pending.json` retains the completed batch and original timestamp
-until its log and checkpoint are both saved. Each batch has a `batch_id` and is appended
-atomically; retries recognize it in plain or compressed logs before advancing the
-checkpoint. Recovery runs before comparing the next build's inputs.
+or name when that key is absent.
+
+A recovery journal at `derived/fire_updates_pending.json` retains the completed batch
+and original timestamp until its log and checkpoint are both saved. Each batch has a
+`batch_id` and is appended atomically; retries recognize it in plain or compressed logs
+before advancing the checkpoint. Recovery runs before comparing the next build's inputs.
+
 Recovery distinguishes absent files from invalid durable state. Every identity and
 record in a pending batch is validated before any append, checkpoint replacement, or
 journal retirement. Invalid authoritative checkpoints and journals stop publication
 without being overwritten; disposable publication caches retain their separate rebuild
 policy.
+
+### Logs and rotation
+
 The monthly log writer shares locking, timestamps, and Zstandard compression across
 diagnostic and fire-update logs while rotating each series independently. Closed months
 remain uncompressed until seven local calendar days after the next month starts; the
@@ -254,27 +268,33 @@ rotations before new appends, including late arrivals for an archived month; leg
 identical diagnostic records remain distinct. Diagnostic readers share the writer lock
 while streaming a month. They join an archived prefix with a distinct plain tail, or
 select the archive alone when its authenticated receipt already includes that source.
-The update viewer holds the same shared lock across discovery and reading. Its input
-preserves the archived prefix before a later plain tail, including equal timestamps and
-legitimate repeated rows. Stable chronological sorting consequently preserves the correct
-acreage predecessor when histories are projected into their current owners.
-Reading does not recover or modify the log files. The monitor reads the diagnostic series.
-Timestamp queries assume nondecreasing recorded timestamps within each monthly occurrence
-stream, preserving distinct equal-time records. Plain-log startup binary-searches for the
-first eligible timestamp; retained monitor readers continue incrementally from their
-saved byte offset. Compressed components are streamed through decompression. Missing
-command starts use backward block reads in a plain month, falling back to streamed
-context recovery for archived or mixed months and incomplete backward results.
-It tracks archive generations and replays bounded recent history with run-context
-restoration when an already consumed month changes. This catches records appended and
-compressed between polls without retaining duplicate visible events.
+
+The reader for fire-update logs holds the same shared lock across discovery and reading.
+It reads archived records before later plain records, preserving that order for equal
+timestamps and legitimate repeated rows. Stable chronological sorting then keeps the
+correct previous acreage when histories are assigned to their current owners. Reading
+does not recover or modify the log files.
+
+### Monitor
+
+The monitor reads the diagnostic series. Timestamp queries assume nondecreasing recorded
+timestamps within each monthly occurrence stream, preserving distinct equal-time
+records. Plain-log startup binary-searches for the first eligible timestamp; retained
+monitor readers continue incrementally from their saved byte offset. Compressed
+components are streamed through decompression. Missing command starts use backward block
+reads in a plain month, falling back to streamed context recovery for archived or mixed
+months and incomplete backward results. It tracks archive generations and replays
+bounded recent history with run-context restoration when an already consumed month
+changes. This catches records appended and compressed between polls without retaining
+duplicate visible events.
+
 `monitor.session` owns the asynchronous task owner, readers, notification consumer,
 reconciliation clock, and immutable versioned snapshots. It serializes health refresh,
 diagnostic record ingestion, historical selection, retention, and report loading without
-importing the terminal framework. Latest-value subscriptions coalesce undelivered complete
-snapshots. Domain health projection contains structured facts and policy deadlines;
-human labels, age text, and their cosmetic refresh deadlines belong to
-`monitor.health_presentation`.
+importing the terminal framework. When a subscriber falls behind, it receives the latest
+complete snapshot rather than every intermediate version. The domain's health assessment
+contains structured facts and policy deadlines. Human labels, age text, and the
+deadlines for refreshing their display belong to `monitor.health_presentation`.
 
 `monitor.controller` consumes snapshots and translates user intent into domain requests.
 It first prepares a complete Status frame, then starts background preparation after the
@@ -293,6 +313,8 @@ readers to stop, and asynchronously waits for admitted work before closing descr
 A read already waiting for the cooperating writer lock finishes after that writer
 releases it; the event loop remains available while shutdown waits.
 
+### Update viewer
+
 `updates.py` reads the fire-update series, validates its records, and compares each
 record with its chronological predecessor before selecting the last 48 hours. It writes
 `maps/updates.json` atomically with explicit previous acreage, including history older
@@ -310,23 +332,24 @@ across repeated updates. Optional `preview` fields contain WebP data URLs and ad
 fields to durable logs or checkpoints. The same association refreshes each visible
 row's location from the current fire geometry and city database. Unmatched rows and
 fires without usable location evidence retain the logged location. These display
-changes do not create update events or alter acreage history. The presentation preview
-modules draw all
-KMZ-colored growth rings and the latest three complete outlines using a local azimuthal
-equidistant projection.
-Each candidate rotation uniformly fits and centers the map's convex hull within a
-two-pixel drawing margin. Its score is fitted scale divided by maximum fitted scale,
-minus 0.75 times the hull overlap fraction. The dart hull includes the full pixel squares
-of every nontransparent pixel, including its antialiased outline, at its rendered
-position, buffered outward by two pixels. The fraction divides its intersection with
-the fitted map hull by the entire buffered dart hull's area. The penalty is linear in
-overlap and rewards breathing room while allowing a modest reduction in linear size.
+changes do not create update events or alter acreage history.
+
+The presentation preview modules draw all KMZ-colored growth rings and the latest three
+complete outlines using a local azimuthal equidistant projection. Each candidate
+rotation uniformly fits and centers the map's convex hull within a two-pixel drawing
+margin. Its score is fitted scale divided by maximum fitted scale, minus 0.75 times the
+hull overlap fraction. The dart hull includes the full pixel squares of every
+nontransparent pixel, including its antialiased outline, at its rendered position,
+buffered outward by two pixels. The fraction divides its intersection with the fitted
+map hull by the entire buffered dart hull's area. The penalty is linear in overlap and
+rewards breathing room while allowing a modest reduction in linear size.
+
 A 0.025-degree search covers -90° inclusive to +90° exclusive, followed by four local
 refinements around six separated leading candidates and the maximum-fit orientation,
 down to 0.0000025 degrees. Refinement explores weights 0, 0.5, 0.75, and 1 to expose
 narrow optima where the dart's rendered pixel support changes; final selection always
-uses 0.75. Equal scores prefer the maximum-fit orientation, then the closest rotation
-to it. A spherical longitude center supports fires crossing the antimeridian. An
+uses 0.75. Equal scores prefer the maximum-fit orientation, then the closest rotation to
+it. A spherical longitude center supports fires crossing the antimeridian. An
 independently antialiased 18-pixel north dart is cropped to its alpha bounds and
 composited flush to the top and right edges.
 
@@ -334,19 +357,20 @@ Alpha-aware weighted clustering allocates up to 251 dynamic RGBA colors in addit
 five reserved colors. Separate opaque and partial-alpha clusters preserve solid fills
 and antialiased transparency. Pillow encodes exact quantized pixels with lossless WebP,
 quality 100 and method 6, without metadata or transport compression. The existing
-disposable product store reuses previews by ordered geometry/color fingerprints and
-the application/runtime context, including Pillow and the renderer's source bytes.
-Renderer changes invalidate reused images on the next completed KMZ build, which
-regenerates the viewer snapshot. The viewer uses native 128×72 boxes on desktop and
-72×56 boxes on phones with `object-fit: contain`; image-only refreshes update retained
-rows without restarting highlight transitions or favicon notifications.
+disposable product store reuses previews by ordered geometry/color fingerprints and the
+application/runtime context, including Pillow and the renderer's source bytes. Renderer
+changes invalidate reused images on the next completed KMZ build, which regenerates the
+viewer snapshot. The viewer uses native 128×72 boxes on desktop and 72×56 boxes on
+phones with `object-fit: contain`; image-only refreshes update retained rows without
+restarting highlight transitions or favicon notifications.
+
 At widths up to 480 pixels, acreage spans both grid columns beneath the preview and
 heading. Departing copies share the grid and responsive rules, including text-only rows.
 Each row measures its complete fire name and current time label before fitting its
 optional location. Used CSS widths retain fractional pixels and exclude animation
 transforms; the name is measured without flex shrinking. If the name and time cannot
-share a line, the heading stacks the time beneath the name within the column beside
-the preview; long names wrap. Content, font loading, and viewport changes recheck the
+share a line, the heading stacks the time beneath the name within the column beside the
+preview; long names wrap. Content, font loading, and viewport changes recheck the
 available space.
 
 This rendering and its orientation score are presentation-only: they change no domain
@@ -356,14 +380,14 @@ formal model would not establish the correctness of projections, antialiasing, o
 third-party image codecs. Existing snapshot and row-retention formal contracts remain
 applicable.
 
-The packaged `updates.html` is copied beside the JSON only when its content changes.
-It fetches the JSON immediately and sends one GET every 30 seconds. Each poll includes
-`If-None-Match` with the unchanged ETag from the last successfully displayed response.
-ETags do not expire locally. A 304 keeps the displayed snapshot and its validator.
-Without an ETag, each poll downloads the JSON. Successful full responses are validated
-and displayed before their ETag is saved. Failed requests, invalid snapshots, and
-unexpected 304 responses to unconditional requests preserve the displayed data for later
-retry.
+The packaged `updates.html` is copied beside the JSON only when its content changes. It
+fetches the JSON immediately and polls every 30 seconds without overlapping requests.
+Each poll includes `If-None-Match` with the unchanged ETag from the last successfully
+displayed response. ETags do not expire locally. A 304 keeps the displayed snapshot and
+its validator. Without an ETag, each poll downloads the JSON. Successful full responses
+are validated and displayed before their ETag is saved. Failed requests, invalid
+snapshots, and unexpected 304 responses to unconditional requests preserve the displayed
+data for later retry.
 
 The viewer monitors server responsiveness independently of snapshot validation. Each HTTP
 response, including 304 and unsuccessful HTTP statuses, resets a 60-second watchdog and
@@ -399,7 +423,8 @@ Source coordinate reference systems are interpreted from feed metadata, with che
 coordinate scale where feeds are inconsistent. Derived processing classifies sources
 against the California border, reconciles competing perimeter records, removes
 implausibly small perimeter updates, and cleans geometry for KML. Differential history
-subtracts later perimeters so shrinkage does not appear as fire growth.
+first intersects each footprint with later footprints to carry corrections backward,
+then subtracts the preceding corrected footprint to isolate each growth ring.
 
 The original source snapshots are not modified by these cleansing steps. The output KMZ
 excludes fires without a qualifying area indication and includes latest-perimeter and
@@ -430,8 +455,10 @@ scoring, KMZ qualification, plots, and descriptions. Survey metadata or a footpr
 change of at least both 1% and one acre renews mapping freshness. Ordinary reported
 growth can take over after three days when it reaches both 1.25 times mapped area and an
 additional ten acres, and exceeds the report known at the survey. Rapid growth can take
-over after one day with two distinct formal confirmations at twice mapped area, subject
-to the same absolute increase and subsequent-growth requirements.
+over after one day with two confirmations at twice mapped area, subject to the same
+absolute increase and subsequent-growth requirements. Confirmations count separately
+when their formal report times differ. All unknown report times count as one value,
+which can contribute once toward the required two confirmations.
 
 Fresh surveys restore measured area, including legitimate decreases. Estimates retain
 separate effective and observation times because an eligibility deadline can occur after
@@ -456,9 +483,10 @@ at scope exit, including failures. Standalone stages use the same lifecycle.
 classifications, histories, descriptions, spatial measurements, buffers, building
 counts, SVGs, and KML boundaries. Keys cover exact relevant inputs, policies, code, and
 runtime dependencies. Invalid or unavailable products fall back to computation.
-Deleting the database only loses acceleration. SQLite's page cache is 8 MiB and the
-KML fragment cache retains at most 16 MiB of accounted values; neither bounds total RAM.
-Old runtime contexts remain on disk.
+Deleting the database makes later runs recompute those products. SQLite's page cache
+is 8 MiB and the KML fragment cache retains at most 16 MiB of accounted values. Other
+objects also use memory, so neither limit bounds total RAM. Old runtime contexts remain
+on disk.
 
 Prepared histories let presentation and chart consumers skip raw row selections whose
 only purpose is reconstructing that history. Fingerprints iterate ordered column values

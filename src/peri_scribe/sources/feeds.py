@@ -9,8 +9,7 @@ from __future__ import annotations
 import peri_scribe.sources.feed_types
 
 
-# The CAL FIRE perimeter layer, which retains every update for the season, unlike the
-# WFIGS layers that keep only the most recent perimeter for each active fire.
+# The CAL FIRE perimeter layer carries successive mapping updates for the season.
 CA_PERIMETERS_FEED = peri_scribe.sources.feed_types.ArcGISFeed(
     url=(
         "https://services1.arcgis.com/jUJYIo9tSA7EHvfZ/ArcGIS/rest/services/"
@@ -20,16 +19,16 @@ CA_PERIMETERS_FEED = peri_scribe.sources.feed_types.ArcGISFeed(
     status_column="displayStatus",
     # incident_number is the primary identifier, but rows mapped before an incident
     # number is assigned carry only their record GUID, which is a stable per-feature
-    # identifier in its own right. Reading the GUID keeps such rows from becoming
-    # unidentified fires that downstream consumers can only distinguish by name.
+    # identifier in its own right. Reading the GUID preserves a source-issued identity
+    # before an incident number is available.
     fire_identifier_columns=("incident_number", "GlobalID"),
     mission_column="mission",
     observation_time_column="poly_DateCurrent",
     change_columns=("EditDate",),
 )
 
-# The WFIGS perimeter layer, which keeps only the most recent perimeter for each active
-# fire.
+# The current WFIGS perimeter layer selects available shapes under NIFC's recency and
+# source-priority rules. Some active incidents have no perimeter in this service.
 WFIGS_PERIMETERS_FEED = peri_scribe.sources.feed_types.ArcGISFeed(
     url=(
         "https://services3.arcgis.com/T4QMspbfLg3qTGWY/ArcGIS/rest/services/"
@@ -43,11 +42,10 @@ WFIGS_PERIMETERS_FEED = peri_scribe.sources.feed_types.ArcGISFeed(
     is_complex_child_column="attr_IsCpxChild",
     point_of_origin_state_column="attr_POOState",
     point_of_origin_fips_column="attr_POOFips",
-    # The polygon record is edited in place as a fire grows, so its capture date
-    # (poly_PolygonDateTime) stays at the original mapping and misdates every later
-    # version. poly_DateCurrent is the perimeter's as-of date (the date the version is
-    # current for; the date the source polygon record was last edited in WFIGS), which
-    # advances with each version and is the accurate per-version date.
+    # The polygon record is edited in place as a fire grows, but its capture date
+    # (poly_PolygonDateTime) can remain at the original survey. poly_DateCurrent dates
+    # the published version, so it supplies the observation time. Reconciliation checks
+    # capture evidence separately when deciding whether the survey is fresh.
     observation_time_column="poly_DateCurrent",
     # The polygon table updates (geometry, poly_DateCurrent, poly_CreateDate) without
     # moving attr_ModifiedOnDateTime_dt, so all three columns must count as a change

@@ -26,7 +26,7 @@ function checkRecord(node, record) {
     difference > 0 ? "increase" : "decrease");
 }
 
-/** Apply full snapshot changes and real user events to one live viewer instance. */
+/** Apply full snapshot changes and simulated user events to one viewer instance. */
 async function replay(steps) {
   const page = await viewer.page(steps[0].records, { reducedMotion: true });
   let priorNodes = [];

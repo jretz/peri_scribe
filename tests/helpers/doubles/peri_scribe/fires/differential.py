@@ -13,9 +13,7 @@ def make_collapsing_difference(
     *,
     real_difference: typing.Callable[..., shapely.geometry.base.BaseGeometry | None],
 ) -> typing.Callable[..., shapely.geometry.base.BaseGeometry | None]:
-    """Create a callback with controlled dependencies.
-
-    Simulate growth whose constructed difference collapses to no geometry.
+    """Return a difference callback that simulates a collapsed growth sliver.
 
     Args:
         real_difference: Original geometry-difference operation used outside the

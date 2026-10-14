@@ -1,4 +1,4 @@
-"""Reading and writing each feeds stored current feature state.
+"""Read and write each feed's latest stored version of every feature.
 
 Design notes:
 [Incremental source collection](../../../docs/algorithms/source-collection.md).
@@ -131,13 +131,13 @@ def read_current_features(
 ) -> geopandas.GeoDataFrame | None:
     """Return the latest stored feature per OBJECTID, from the state file when fresh.
 
-    The feed's maintained current-state file holds the latest feature per OBJECTID
-    across the snapshots it covers, so reading it costs one file read instead of a read
-    of every snapshot ever stored. The state file is used only when it covers the newest
-    snapshot; otherwise the snapshots are read directly, which is also how a missing or
-    unreadable state file is handled. A state file is fresh only when its covered serial
-    equals the newest snapshot serial, so a state file that outlives a snapshot rollback
-    is rebuilt rather than trusted.
+    The current-state file keeps the latest feature per OBJECTID, avoiding a read of
+    every stored snapshot. It is usable only when its covered serial number equals the
+    newest snapshot's serial number. Equality matters here: a cache left behind after a
+    snapshot rollback can be ahead of the stored history and still be wrong.
+
+    When the cache is missing, unreadable, or covers a different serial number, the
+    snapshots supply the current features directly.
 
     Args:
         directory: The directory holding the source's GeoPackage files.
@@ -339,9 +339,9 @@ def stored_status_literals(
     """Return SQL literals for the feed's stored raw values of *status*.
 
     The literals are the distinct raw status values already stored that classify as
-    *status*, formatted for a SQL ``IN`` clause. An empty tuple means the store has
-    never recorded the status, so callers should skip status-flip queries built from
-    these literals.
+    *status*, formatted for a SQL ``IN`` clause. An empty tuple means the latest stored
+    rows provide no matching status value, so callers should skip status-flip queries
+    built from these literals.
 
     Args:
         existing: The latest stored feature per OBJECTID, or None.

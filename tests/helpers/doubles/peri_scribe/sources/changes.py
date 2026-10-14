@@ -1,4 +1,4 @@
-"""Replace changes dependencies with controlled test doubles."""
+"""Simulate source-state files disappearing during cleanup."""
 
 from __future__ import annotations
 

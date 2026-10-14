@@ -1,12 +1,13 @@
 # Cache dependency completeness
 
-`PeriScribe/CacheDependencies.lean` models a key's structured preimage as an ordered
-projection of named input fields. It proves that a key preserves every declared
-semantic dependency **if and only if** every required field is included. Omitting one
-admits a constructive false hit: two inputs with equal keys and different required
-values. Complete keys preserve any deterministic function of those dependencies;
-combining complete dependency sets covers their union. Wrapper fields can change while
-content is reused, provided the current wrapper is reattached.
+A cache key must include every input that can affect the cached result. Leave one out,
+and two inputs can have the same key despite needing different results.
+`PeriScribe/CacheDependencies.lean` models the fields before hashing as an ordered
+selection of named inputs. It proves that a key preserves every declared semantic
+dependency **if and only if** every required field is included, and constructs a false
+hit when one is omitted. Complete keys preserve any deterministic function of those
+dependencies; combining complete dependency sets covers their union. Wrapper fields can
+change while content is reused, provided the current wrapper is reattached.
 
 These theorems quantify over arbitrary field lists and natural-number input values.
 Field numbers abstract exact serialized values; they do not abstract a numerical

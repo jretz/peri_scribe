@@ -10,9 +10,7 @@ def make_digest_recorder(
     *,
     digests: list[tuple[pathlib.Path, str]],
 ) -> typing.Callable[..., str | None]:
-    """Create a callback with controlled dependencies.
-
-    Capture which stored layer contributes the evacuation digest.
+    """Return a recorder for the layer supplying the evacuation digest.
 
     Args:
         digests: Shared list recording GeoPackage paths and layers used for digests.

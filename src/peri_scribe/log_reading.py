@@ -1,4 +1,7 @@
-"""Shared, bounded readers preserve ordered diagnostic occurrences through rotation.
+"""Read log records in order across plain files and compressed monthly archives.
+
+Readers share the writer's lock while choosing and reading files. This keeps rotation
+from making a record disappear or appear twice during one read.
 
 Algorithm reasoning and contracts:
 [Log retention](../../docs/algorithms/log-retention.md)
@@ -197,12 +200,13 @@ def complete_lines(
 
     Args:
         path: A representative plain or compressed monthly log.
-        since: Inclusive lower bound; undated lines remain available to diagnostics.
+        since: Inclusive lower bound; an uncompressed file may skip its older prefix.
         until: Inclusive upper bound applied independently to each dated occurrence.
         include: Optional inexpensive filter before timestamp extraction.
 
     Yields:
-        Complete, nonempty lines inside the requested bounds and undated lines.
+        Complete, nonempty lines that pass the filter and bounds, including undated
+        lines retained after any lower-bound seek.
     """
     with read_lock(path.parent):
         for component in log_components(path):
@@ -221,16 +225,17 @@ def component_lines(
     until: datetime.datetime | None = None,
     include: typing.Callable[[bytes], bool] | None = None,
 ) -> typing.Generator[bytes]:
-    """Stream one selected representation without materializing its complete archive.
+    """Stream the selected log or archive without loading its entire contents.
 
     Args:
         path: A component selected while the log directory's shared lock is held.
-        since: Inclusive lower bound; undated lines remain available to diagnostics.
+        since: Inclusive lower bound; an uncompressed file may skip its older prefix.
         until: Inclusive upper bound applied independently to each dated occurrence.
         include: Optional inexpensive filter before timestamp extraction.
 
     Yields:
-        Complete, nonempty lines inside the requested bounds and undated lines.
+        Complete, nonempty lines that pass the filter and bounds, including undated
+        lines retained after any lower-bound seek.
     """
     compressed = path.suffix == ".zst"
     with compression.zstd.open(path, "rb") if compressed else path.open("rb") as stream:

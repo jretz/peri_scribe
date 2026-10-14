@@ -1,4 +1,4 @@
-"""Area qualification uses the same evidence and history as the displayed estimate."""
+"""Generated filename requests receive distinct, safe prefixes."""
 
 from __future__ import annotations
 

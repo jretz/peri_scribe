@@ -1,4 +1,4 @@
-"""Replace snapshots dependencies with controlled test doubles."""
+"""Control snapshot discovery and directory access failures."""
 
 from __future__ import annotations
 

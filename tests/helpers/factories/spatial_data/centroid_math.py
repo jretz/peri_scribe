@@ -21,7 +21,7 @@ def centroids(
     Args:
         geometries: Footprints to pass through the GeoJSON stream.
         chunk_size: The maximum feature count per chunk.
-        maximum_vertices: The chunk's vertex budget.
+        maximum_vertices: The vertex threshold checked after each complete feature.
 
     Returns:
         The centroid coordinate pairs in feature order.

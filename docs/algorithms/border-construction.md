@@ -2,16 +2,18 @@
 
 ## Contract and assessment
 
-The classification boundary is derived from California and its three neighboring U.S.
-state polygons in WGS84 degree coordinates. Output includes one shared interstate border
-per neighbor with geodesic length, and an ordered border path closed offshore and south
-of California into a classification polygon. This regional boundary supports a feed
-preference within nationwide fire processing; it is not a national inclusion boundary.
+This boundary helps decide which feed to prefer for a fire near California. Fire
+processing still covers the entire United States. The construction starts with
+California and its three neighboring U.S. state polygons in WGS84 degree coordinates. It
+produces one shared interstate border per neighbor, with its geodesic length. It also
+joins those borders into an ordered path and closes that path offshore and south of
+California to form the classification polygon.
 
 The input state layer must contain exactly California, Arizona, Nevada, and Oregon,
 with nonmissing geometry. Construction raises `AdministrativeBoundariesError` when the
 expected states or a single usable border path cannot be established. Source retrieval
-and atomic file publication are described in [external refresh](external-source-refresh.md).
+and the limits of direct border-file publication are described in
+[external refresh](external-source-refresh.md).
 
 | Dimension | Score | Concrete reason |
 | --- | --- | --- |
@@ -47,8 +49,8 @@ For example, these original endpoints share a rounded adjacency key:
 | A, end of one segment | `(−120.00003°, 39.00002°)` | `(−120.0000°, 39.0000°)` |
 | B, start of the next segment | `(−120.00002°, 39.00003°)` | `(−120.0000°, 39.0000°)` |
 
-Their incident segments therefore meet at one degree-two graph vertex even though the
-original coordinates differ.
+The two segments therefore meet at one graph vertex even though their original
+coordinates differ. That vertex has degree two: one segment enters and one leaves.
 
 Create undirected adjacency lists and require exactly two odd-degree vertices and no
 vertex of degree greater than two. Choose the westernmost odd endpoint and walk forward,
@@ -68,8 +70,8 @@ hide these malformed topologies by inventing connections.
 ![The ordered border closes outside California's southern and western extent](assets/border-closure.svg)
 
 *The retained path runs from the Pacific/Oregon end to the Mexico/Arizona end. The added
-southern and offshore edges close a classification box that deliberately absorbs ocean
-and Mexico-side area. The schematic is not a legal state-boundary map or to scale.*
+southern and offshore edges close a classification box that deliberately includes some
+ocean and land in Mexico. The schematic is not a legal state-boundary map or to scale.*
 
 Append points from the southeast endpoint due south to latitude 31°, due west to
 longitude −126°, due north to the northwest endpoint's latitude, then back to that
@@ -84,9 +86,9 @@ constants lie beyond the intended state extent, and the path is geometrically us
 Graph acceptance alone proves none of these geographic facts or polygon validity.
 Crossing lines without a shared vertex, inaccurate source polygons, excessive rounding
 collisions, or closure that intersects the path remain geometry/source limitations.
-Rounding can join very close points on opposite sides of a rounding boundary differently;
-there is no universal meter tolerance at every latitude. The approximate join can replace
-a tiny gap with the transition between retained original coordinates.
+Very close points can remain separate if they fall on opposite sides of a rounding
+boundary; there is no universal meter tolerance at every latitude. The approximate join
+can replace a tiny gap with the transition between retained original coordinates.
 
 ## Costs and verification
 

@@ -76,7 +76,7 @@ def row_observation(
     row: peri_scribe.geo.package.FireRowRecord,
     path: pathlib.Path,
 ) -> MembershipObservation | None:
-    """Retain explicit negative declarations without inferring release from absence.
+    """Read explicit assignments and releases without treating absence as a release.
 
     Args:
         row: Parsed source evidence whose full raw attributes survive cache storage.
@@ -203,7 +203,11 @@ def current_parent(
     ambiguous: set[peri_scribe.models.Fire],
     fires_by_identifier: typing.Mapping[str, peri_scribe.models.Fire],
 ) -> str | None:
-    """Follow aggregate mergers while refusing ambiguous or cyclic ownership.
+    """Follow complex mergers to find one current owner.
+
+    Equally ranked contradictory declarations and cycles leave ownership unresolved.
+    Choosing a parent in those cases would claim more than the source evidence
+    establishes.
 
     Args:
         fire: The component whose ultimate current parent is requested.
@@ -236,15 +240,20 @@ def resolve(
     declarations: list[MembershipObservation],
     fires_by_identifier: dict[str, peri_scribe.models.Fire],
 ) -> list[peri_scribe.models.FireComplex]:
-    """Keep one reciprocal current owner while retaining historical aggregate identity.
+    """Assign each fire at most one complex, with links in both directions.
+
+    Keep every complex declared by an identified fire, including one left empty after
+    its members transfer or it merges into another complex. That preserves the
+    complex's observed identity independently of its current membership.
 
     Args:
         declarations: Dated assignments and explicit releases across source snapshots.
         fires_by_identifier: Identified grouped fires, indexed by every alias.
 
     Returns:
-        Every declared aggregate, including aggregates emptied by a transfer or merger.
-        Labels retain their first observed spelling; ownership is independent of order.
+        Every aggregate declared by an identified fire, including aggregates emptied by
+        a transfer or merger. Labels retain their first observed spelling; ownership is
+        independent of order.
 
     Raises:
         ValueError: Input fires already belong to an ownership graph. Regroup fresh fire

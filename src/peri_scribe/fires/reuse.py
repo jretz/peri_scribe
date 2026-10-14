@@ -45,7 +45,11 @@ type CachedRows = dict[str, dict[str, Rows]]
 
 
 class Signature(pydantic.BaseModel):
-    """A completed output's checksum prevents partial or edited files being reused."""
+    """A checksum marking a completed output as safe to reuse.
+
+    The checksum must match the current file before its rows can be reused. A partial or
+    edited file cannot inherit the completed output's validation.
+    """
 
     version: int
     checksum: str

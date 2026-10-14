@@ -3,10 +3,10 @@
 ## Contract and context
 
 Cancelling an asynchronous coordinator does not stop its Python worker thread. Resources
-used by that thread must stay alive until work settles. The generic blocking-worker
-adapter preserves cancellation as the caller's outcome while waiting for worker cleanup.
-The monitor adds exclusive ownership spanning snapshot, worker execution and publication,
-plus a stop barrier before descriptor shutdown.
+used by that thread must stay alive until the work finishes. The generic blocking-worker
+adapter waits for worker cleanup, then reports the caller's cancellation. The monitor
+also keeps one owner across the initial snapshot, worker execution, and publication.
+Shutdown stops new work and publication before it closes descriptors.
 
 Inputs are an operation, its optional cooperative thread-stop event, and monitor lifecycle
 requests. Outputs are either its completed result/error or cancellation after settlement.
@@ -56,12 +56,12 @@ without that evidence reaching a committed snapshot.
 *Shutdown first closes admission/publication, then waits for the admitted operation, then
 closes descriptors. The worker can finish after stop but cannot publish a new snapshot.*
 
-Session shutdown sets the owner stop flag and the health reader's cooperative stop event.
-Its publication guard rejects a new snapshot after stop. `Owner.close` asynchronously
-waits for the same lock, calls reader cleanup in a thread, and marks closed only after
-success. Repeated/concurrent close requests
-therefore close descriptors once; failed cleanup can be retried without reopening admission.
-An already-started Markdown rendering call may finish, but its completion cannot advance
+Session shutdown sets the owner stop flag and the health reader's cooperative stop
+event. Its publication guard rejects a new snapshot after stop. `Owner.close`
+asynchronously waits for the same lock, calls reader cleanup in a thread, and marks
+closed only after success. Repeated or concurrent close requests therefore close
+descriptors once; failed cleanup can be retried without reopening admission. An
+already-started Markdown rendering call may finish, but its completion cannot advance
 the app's rendered-report checkpoint after shutdown.
 
 ## Worked examples and boundaries

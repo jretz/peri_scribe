@@ -1,10 +1,14 @@
 # Composed pipeline invocations
 
+Recovery requirements have to survive across runs, including runs that select only part
+of the pipeline or change the publication policy. A run that skips geography cannot
+erase the need to process source data collected by an earlier run.
+
 `PipelineComposition.tla` models `pipeline.run_selected_stages`,
 `pipeline.run_pipeline_stage`, the two fetch coordinators, the pending marker in
 `pipeline_state.py`, and the publication checkpoint associated with the current KMZ. It
-composes the stage-order, fetch, and publication contracts across policy changes and
-partial invocations. The model uses the actual `PipelineState` operators.
+checks the stage-order, fetch, and publication contracts together across policy changes
+and partial invocations. The model uses the actual `PipelineState` operators.
 
 ## Checked guarantees
 

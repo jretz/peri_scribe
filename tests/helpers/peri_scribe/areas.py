@@ -1,4 +1,4 @@
-"""Inspect areas behavior with shared test utilities."""
+"""Convert selected area quantities to acres for assertions."""
 
 from __future__ import annotations
 

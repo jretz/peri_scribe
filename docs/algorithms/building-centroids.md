@@ -2,12 +2,13 @@
 
 ## Contract and assessment
 
-Building archives contain WGS84 longitude/latitude Polygon or MultiPolygon features.
-The converter preserves every accepted feature in source order, including duplicates,
-and emits one WGS84 point per feature. Unsupported geometry types are skipped. Rings
-must be complete and closed, with the exterior first and holes afterward in each part.
-The centroid is an area-weighted **Web Mercator** centroid transformed back to WGS84;
-it is neither a geodesic centroid nor a guarantee that the point lies inside its footprint.
+Building archives contain WGS84 longitude/latitude Polygon or MultiPolygon features. The
+converter preserves every accepted feature in source order, including duplicates, and
+emits one WGS84 point per feature. Unsupported geometry types are skipped. Rings must be
+complete and closed, with the exterior first and holes afterward in each part. The
+calculation finds an area-weighted centroid in **Web Mercator**, then transforms that
+point back to WGS84. This choice matters when interpreting the result: it isn't a
+geodesic centroid, and the point can lie outside its footprint.
 
 | Dimension | Score | Reason |
 | --- | --- | --- |
@@ -17,9 +18,9 @@ it is neither a geodesic centroid nor a guarantee that the point lies inside its
 | Scale and representation | 3 | Incremental ZIP/JSON consumption and packed coordinate arrays avoid whole-archive materialization. |
 | Failure and concurrency | 1 | Conversion reports stream failures; the enclosing download owner handles worker lifetime and publication. |
 
-**Complex: 10.** Count fidelity matters to building-based fire scores. Concurrent archive
-construction and its publication contract are documented in
-[Compact point storage](compact-point-storage.md).
+**Complex: 10.** Preserving the building count matters because fire scores use it.
+Concurrent archive construction and its publication contract are documented in [Compact
+point storage](compact-point-storage.md).
 
 ## Streaming without splitting a feature
 
@@ -28,7 +29,8 @@ stream would lose its parsing state. Every ZIP member is exhausted before advanc
 including ignored members. Geometry collection stops after accepting a complete feature
 when either the 100,000-feature limit or 2,000,000-vertex threshold is reached. The
 threshold is checked **after** the feature: a single giant footprint can exceed it.
-Coordinates accumulate as packed doubles with ring boundaries and part ownership arrays.
+Coordinates accumulate as packed doubles. Separate arrays retain ring boundaries and
+record which part owns each ring, so batching doesn't lose the geometry's structure.
 
 For example, these three accepted features produce two chunks:
 
@@ -63,12 +65,12 @@ can lie in the courtyard.*
 The off-center hole removes mass on the right, moving the centroid left. Winding alone
 cannot identify a hole: positional ring ownership determines its negative contribution.
 
-Large EPSG:3857 coordinates are roughly ten million meters; multiplying them directly
-and subtracting nearby products can erase the area of a small building. Translation
-shrinks the products while preserving the exact mathematical result. The alternative
-of constructing a GEOS object for every footprint is simpler but adds object and
-serialization costs to the national stream. The vectorized path keeps ring ownership
-explicit and batches projection and reductions.
+Large EPSG:3857 coordinates are roughly ten million meters. Multiplying them directly
+and then subtracting nearly equal products can lose enough precision to erase a small
+building's calculated area. Translation shrinks the products while preserving the exact
+mathematical result. The alternative of constructing a GEOS object for every footprint
+is simpler but adds object and serialization costs to the national stream. The
+vectorized path keeps ring ownership explicit and batches projection and reductions.
 
 ## Worked example and boundaries
 

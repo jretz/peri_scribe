@@ -65,7 +65,7 @@ def replay(states: list[dict[str, str]], directory: pathlib.Path) -> None:
     """Exercise skips, append-only full fetches, every interrupted prefix, and retry.
 
     Args:
-        states: Complete TLC graph for three staged chunks and up to one prior file.
+        states: All checked states for three staged chunks and up to one prior file.
         directory: Isolated storage root for the implementation executions.
     """
     scenarios = {
@@ -105,7 +105,7 @@ def replay_case(
     """Match one initialization and interruption boundary against production.
 
     Args:
-        checked: The graph restricted to this initialization.
+        checked: The checked states restricted to this initialization.
         base: Isolated application root.
         prior: Number of existing snapshots.
         matching: Whether the original timestamp equals the service marker.

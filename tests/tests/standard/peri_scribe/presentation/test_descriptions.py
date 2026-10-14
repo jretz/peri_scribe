@@ -58,6 +58,27 @@ def test_format_area_uses_two_decimals_for_fractional_acres() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("acres", "expected"),
+    [
+        (1.0, "1 acre"),
+        (1.04, "1 acre"),
+        (0.999, "1 acre"),
+        (-1.0, "-1 acre"),
+        (-1.04, "-1 acre"),
+        (-0.999, "-1 acre"),
+    ],
+)
+def test_format_area_uses_singular_unit_when_rounded_magnitude_is_one(
+    acres: float,
+    expected: str,
+) -> None:
+    assert (
+        peri_scribe.presentation.descriptions.format_area(acres * units.acres)
+        == expected
+    )
+
+
 def test_format_percent_returns_none_for_none() -> None:
     assert peri_scribe.presentation.descriptions.format_percent(None) is None
 
@@ -85,6 +106,27 @@ def test_format_miles_drops_trailing_zero() -> None:
     assert (
         peri_scribe.presentation.descriptions.format_miles(33.0 * units.miles)
         == "33 miles"
+    )
+
+
+@pytest.mark.parametrize(
+    ("miles", "expected"),
+    [
+        (1.0, "1 mile"),
+        (1.04, "1 mile"),
+        (0.96, "1 mile"),
+        (-1.0, "-1 mile"),
+        (-1.04, "-1 mile"),
+        (-0.96, "-1 mile"),
+    ],
+)
+def test_format_miles_uses_singular_unit_when_rounded_magnitude_is_one(
+    miles: float,
+    expected: str,
+) -> None:
+    assert (
+        peri_scribe.presentation.descriptions.format_miles(miles * units.miles)
+        == expected
     )
 
 
@@ -182,6 +224,16 @@ def test_format_containment_annotates_contained_length() -> None:
     )
 
 
+def test_format_containment_uses_singular_unit_when_perimeter_rounds_to_one() -> None:
+    assert (
+        peri_scribe.presentation.descriptions.format_containment(
+            68.0,
+            1.04 * units.miles,
+        )
+        == "68% (0.7 of 1 mile)"
+    )
+
+
 def test_format_containment_drops_annotation_at_full_containment() -> None:
     assert (
         peri_scribe.presentation.descriptions.format_containment(
@@ -255,7 +307,7 @@ def test_description_rows_includes_every_present_value() -> None:
         ("Fuel model", "Timber (Litter and Understory); Brush (2 feet); GS1; Grass"),
         ("Fire behavior", "Active; Creeping; Smoldering"),
         ("Landowner category", "Federal"),
-        ("Of note", "Over 100,000 acres, and a Type 1 Incident."),
+        ("Of note", "At least 100,000 acres, and a Type 1 Incident."),
     ]
 
 

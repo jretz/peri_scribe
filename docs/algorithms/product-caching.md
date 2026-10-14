@@ -2,11 +2,12 @@
 
 ## Contract and assessment
 
-These disposable caches may miss at any time. A hit must reproduce a completed
-deterministic product for the current dependency context, namespace, and ordered inputs.
-The row index additionally binds normalized groups to the authenticated checksum of the
-authoritative published artifact. Callers supply complete dependencies and complete
-post-GDAL groups; the cache cannot infer an omitted policy input or verify source truth.
+The caller must be able to recompute a result whenever these disposable caches miss. A
+hit has a stronger obligation: it must reproduce a completed deterministic product for
+the current dependency context, namespace, and ordered inputs. The row index
+additionally binds normalized groups to the authenticated checksum of the authoritative
+published artifact. Callers supply complete dependencies and complete post-GDAL groups;
+the cache cannot infer an omitted policy input or verify source truth.
 
 | Dimension | Score | Reason |
 | --- | --- | --- |
@@ -35,8 +36,9 @@ codec's preservation of exact values.
 
 ![Ordered evidence becomes a complete structured cache key](assets/cache-evidence.svg)
 
-Rows `[A,B]` and `[B,A]` have the same members but different evidence. Changing a column
-type, CRS, original unit, or canonical fire identity also changes the relevant key input.
+Rows `[A,B]` and `[B,A]` contain the same members, but their order can change the
+result. The cache key preserves that distinction. Changing a column type, CRS, original
+unit, or canonical fire identity also changes the relevant key input.
 
 For example, replacing `1 acre` with its equivalent quantity in square meters changes
 the representation and invalidates the row key even if a particular displayed value is
@@ -65,16 +67,19 @@ The publication transaction makes the complete generation visible together:
 4. Commit the SQLite transaction on successful scope exit.
 
 A reader authenticates the requested generation before treating any selected history
-as reusable. Reads require a valid manifest with the caller's artifact checksum. Requested
-groups must exist, match their content digest, decode canonically, preserve exact column
-order, and contain the promised derivation key in every row. Otherwise the result is
-`None` and the caller falls back to the artifact. An authenticated empty selection is
-`{}`; a miss must not be confused with an empty fire history. Corruption in an unrequested
-group does not prevent reuse of valid requested groups.
+as reusable. Reads require a valid manifest with the caller's artifact checksum. Each
+selected manifest group's payload must exist, match its content digest, decode
+canonically, preserve exact column order, and contain the promised derivation key in
+every row. A damaged selected group yields `None`, and the caller falls back to the
+artifact. Requested keys absent from the manifest are omitted from the result. An
+authenticated selection with no matching groups returns `{}`; a miss must not be
+confused with that empty result. Corruption in an unrequested group does not prevent
+reuse of valid requested groups.
 
-An adaptive read chooses bulk decoding when all groups are requested, or when at least
-128 groups are requested and they cover at least half the available groups. That is a
-performance decision; it changes neither artifact ownership nor the valid-result contract.
+An adaptive read of a nonempty manifest chooses bulk decoding when the caller requests
+the entire layer with `requested_keys=None`, or when at least 128 requested keys are
+present in the manifest and cover at least half its groups. That is a performance
+decision; it changes neither artifact ownership nor the valid-result contract.
 
 ## Costs, alternatives, and verification
 
@@ -87,10 +92,11 @@ size, with additional sorting for frozen sets. Returned mutable containers are f
 decoded. SQLite's page-cache setting does not bound all process memory or result size.
 
 An in-memory object cache would be simpler but retain large inputs and outputs. A
-whole-frame disk cache would lose selective reuse; this design pays per-row hashing and
-manifest costs to avoid unrelated materialization. No cache is an authoritative backup.
-Digest authentication detects inconsistency under trusted storage assumptions; it is
-not a signature defending against an attacker who can replace data and every checksum.
+whole-frame disk cache would lose selective reuse. This design pays the cost of hashing
+each row and reading a manifest so callers can avoid decoding unrelated histories. No
+cache is an authoritative backup. Digest authentication detects inconsistency under
+trusted storage assumptions; it is not a signature defending against an attacker who can
+replace data and every checksum.
 
 Implementation: [cache_values.py](../../src/spatial_data/cache_values.py),
 [frame_fingerprints.py](../../src/spatial_data/frame_fingerprints.py),

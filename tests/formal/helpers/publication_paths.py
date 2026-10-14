@@ -147,7 +147,7 @@ class Observer:
             self.execution = self.execution.observe(value)
 
     def interrupt(self, position: int, *, after: bool) -> None:
-        """Inject process loss before or after one selected real durable replacement.
+        """Simulate an interruption before or after one selected durable replacement.
 
         Args:
             position: Full bytes, full metadata, growth bytes, growth metadata, or ack.
@@ -164,7 +164,7 @@ class Observer:
         """Wrap the real replacement primitive without replacing publication logic.
 
         Args:
-            patch: Isolated observer and process-loss scope.
+            patch: Isolated observer and interruption scope.
         """
         full, differential = self.files.paths
         destinations = (

@@ -1,4 +1,7 @@
-"""Compact evidence keeps health independent of the interactive log retention window.
+"""Keep health evidence after verbose log rows leave the interactive view.
+
+The monitor can discard ordinary rows to bound memory without losing recent failures,
+recoveries, and coverage intervals needed to assess health.
 
 Algorithm reasoning and contracts:
 [Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
@@ -248,7 +251,7 @@ def compact_run(
         run: Newly reconstructed or previously compacted evidence.
 
     Returns:
-        Chronological structural evidence and its most recent ordinary event.
+        Chronological health evidence and the run's most recent event.
     """
     reference = NORMALIZED_RUNS.get(id(run))
     if reference is not None and reference() is run:
@@ -449,10 +452,11 @@ def backward_context(
     cutoffs: collections.abc.Mapping[str, datetime.datetime],
     stopped: threading.Event,
 ) -> tuple[dict[str, object], ...] | None:
-    """Use local command starts only when the whole selected context is available.
+    """Use nearby command starts only when they explain all selected records.
 
-    A command ID starts with its unique start record. Collecting before publication
-    permits a streamed fallback when a start belongs to another month or archive.
+    A command ID begins with its unique start record. Gather the context before yielding
+    it, so a missing start can trigger a streamed search of other months or archives
+    without first delivering incomplete context.
 
     Args:
         path: A monthly representative selected under the reader's shared lock.
@@ -546,7 +550,7 @@ class Reader:
             return self.history
 
     def poll_locked(self, now: datetime.datetime) -> History:
-        """Hand archived prefixes to the follower within one coherent read interval.
+        """Keep archive discovery and follower reads inside the same locked interval.
 
         Args:
             now: The observation time for the rolling window.

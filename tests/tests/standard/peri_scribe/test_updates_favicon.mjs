@@ -165,7 +165,7 @@ test("startPage restarts the thirty-second notification for another qualifying u
     assert.equal(page.faviconFrames.length, frameCount);
   });
 
-test("startPage ignores new old records while an unchanged recent update is displayed",
+test("startPage keeps the notification deadline when added records are too old",
   async () => {
     const timber = viewer.update("Timber", 1);
     const page = await viewer.page([timber]);

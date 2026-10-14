@@ -2,11 +2,12 @@
 
 ## Contract and assessment
 
-Overlap queries accept WGS84 geometries and return their **original input positions**
-when they intersect any layer feature. Boundary touch counts as intersection. Missing
-and empty queries never match. The layer's CRS is authoritative; absent metadata defaults
-to WGS84. The caller supplies a stable valid layer with a complete, consistent R-tree
-when one is present.
+An overlap query answers whether each supplied WGS84 geometry intersects any feature in
+a layer. It returns the **original input positions** of the matches, so callers can
+associate results with their own records. Boundary touch counts as intersection. Missing
+and empty queries never match. The layer's CRS is authoritative; absent metadata
+defaults to WGS84. The caller supplies a stable valid layer with a complete, consistent
+R-tree when one is present.
 
 | Dimension | Score | Reason |
 | --- | --- | --- |
@@ -50,9 +51,9 @@ features. Layer-writing helpers are direct I/O adapters; callers own staging and
 
 ![Exterior orientation adds area while holes subtract and do not add exterior perimeter](assets/geodesic-rings.svg)
 
-Consistent winding makes multipart area additive and hole area subtractive. Exterior
-perimeter deliberately traces only outer rings. Animation adds no information to these
-simultaneously visible contributions.
+Consistent ring winding lets the calculation add the areas of separate parts and
+subtract holes. Exterior perimeter deliberately traces only the outer rings, so a hole
+reduces area without adding to the reported exterior length.
 
 `area` orients polygon rings, asks WGS84 `Geod.geometry_area_perimeter` for signed area,
 and returns its absolute value in square meters using the shared Pint registry.

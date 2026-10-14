@@ -1,4 +1,4 @@
-"""Retain disposable deterministic products without retaining their inputs in RAM.
+"""Cache reproducible products without keeping their inputs in memory.
 
 [Product cache reasoning](../../docs/algorithms/product-caching.md)
 explains the contract and correctness argument.
@@ -81,10 +81,11 @@ def scope(
     *,
     unconditional: bool = False,
 ) -> collections.abc.Generator[None]:
-    """Commit complete preparations together and discard interrupted transactions.
+    """Commit completed preparations together and discard interrupted transactions.
 
-    Nested consumers borrow the active store only when all cache semantics agree.
-    Unavailable caches disable reuse while allowing the publication to proceed.
+    A nested consumer of the same database shares its transaction while using its own
+    dependency fingerprint. If either scope disables cache reads, the nested scope does
+    too. When the cache is unavailable, publication can still compute the products.
 
     Args:
         path: The disposable product database.
@@ -92,7 +93,7 @@ def scope(
         unconditional: Whether reads must miss while completed results refresh storage.
 
     Yields:
-        Control to the publication, with no persistent connection surviving this scope.
+        None; the scope that opened the shared connection closes it on exit.
     """
     resolved = path.resolve()
     existing = CURRENT.get()
@@ -143,7 +144,7 @@ def scope(
 
 
 def get(namespace: str, key: str) -> bytes | None:
-    """Authenticate one result without materializing unrelated fire products.
+    """Read and check one cached result without loading unrelated products.
 
     Args:
         namespace: The caller's product type and serialization schema version.

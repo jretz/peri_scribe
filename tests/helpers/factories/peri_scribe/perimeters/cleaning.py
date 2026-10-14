@@ -6,9 +6,8 @@ import shapely.geometry
 def noisy_top_edge_polygon() -> shapely.geometry.Polygon:
     """Return a square whose top edge carries many small wiggles.
 
-    The wiggles are far smaller than the cleaning deviation but far larger than the
-    collinear epsilon, so they exercise the slit-killing simplification rather than the
-    collinear removal alone.
+    The wiggles exceed the collinear epsilon but fit within the default simplification
+    tolerance. Removing them exercises the latitude-adjusted cleaning deviation.
 
     Returns:
         The noisy square.

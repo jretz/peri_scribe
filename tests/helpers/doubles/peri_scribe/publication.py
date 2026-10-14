@@ -17,9 +17,7 @@ def make_snapshot_measurement_recorder(
     *,
     reads: list[pathlib.Path],
 ) -> typing.Callable[..., tuple[peri_scribe.publication.Mapping, ...]]:
-    """Create a callback with controlled dependencies.
-
-    Record expensive reads while exercising real inventory and cache I/O.
+    """Return a recorder of snapshot reads that keeps inventory and cache I/O real.
 
     Args:
         reads: Shared list recording expensive snapshot measurements.
@@ -41,7 +39,7 @@ def make_snapshot_measurement_recorder(
             captured: The actual capture time supplied by collection.
 
         Returns:
-            A source observation with the actual collection timestamp.
+            A tuple containing one source observation with the collection timestamp.
         """
         reads.append(path)
         return (

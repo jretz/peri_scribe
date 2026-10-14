@@ -81,7 +81,7 @@ def read_buffer(key: str) -> shapely.Geometry | None:
 def buffered_geometries(
     geometries: list[shapely.Geometry | None],
 ) -> list[shapely.Geometry | None]:
-    """Run the original vectorized buffer calculation only for missing exact products.
+    """Compute buffers only when their exact geometry and policy are not cached.
 
     Args:
         geometries: Current WGS84 fire geometries in their scoring order.

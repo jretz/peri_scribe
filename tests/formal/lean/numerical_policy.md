@@ -1,8 +1,10 @@
 # Fractional measurements and rounded policy boundaries
 
-`NumericalPolicy.lean` adds 18 theorems and the executable `oracleNumericalPolicy`.
-It extends the integer-area policies with an explicit finite binary64 arithmetic model.
-No production policy was changed for these checks.
+Rounding and unit conversion can change a decision when a measurement is very close to a
+threshold. `NumericalPolicy.lean` extends the integer-area policies with an explicit
+model of finite binary64 arithmetic, the floating-point format used for these
+calculations. Its 18 theorems and executable `oracleNumericalPolicy` check the declared
+operation order and decision boundaries without changing production policy.
 
 ## Arithmetic and guarantees
 
@@ -18,9 +20,10 @@ For arbitrary positive denominators, the new proofs bound rounding error by half
 selected spacing, preserve nonnegative magnitudes, and establish sign symmetry.
 Publication accepts equal positive thresholds, treats growth and shrinkage equally,
 and does not invent a signal from zero change. Below-threshold admission requires an
-actual witness within a rounded relative-tolerance bound. A change beyond both bounds
-plus the half-spacing error margin cannot be accepted. Relative comparisons include
-the rounded subtraction and both rounded tolerance products used by `math.isclose`.
+actual witness within a rounded relative-tolerance bound. If a change's magnitude is
+below the threshold, it is rejected when the gap exceeds both rounded tolerance bounds
+plus the half-spacing error margin. Relative comparisons include the rounded subtraction
+and both rounded tolerance products used by `math.isclose`.
 
 The report-takeover model retains subsequent-observation and baseline requirements,
 minimum absolute growth, the one-day/two-confirmation rapid route, and the three-day

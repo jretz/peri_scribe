@@ -16,14 +16,16 @@ if typing.TYPE_CHECKING:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class GeometryChunk:
-    """One bounded collection of ring geometry from a GeoJSON stream.
+    """Ring coordinates and polygon boundaries for one chunk of a GeoJSON stream.
 
-    ``coordinates`` holds every ring's coordinates concatenated as an ``(M, 2)`` float64
-    array; ``ring_bounds`` holds each ring's ``[start, end)`` into it as an ``(R, 2)``
-    int64 array (rings are closed, so the first and last points coincide);
-    ``ring_parts`` holds the part id of each ring, where a part is one polygon of a
-    multipolygon and a part's first ring is its exterior; ``part_counts`` holds the
-    number of parts per feature.
+    ``coordinates`` joins every ring's coordinates in an ``(M, 2)`` float64 array.
+    ``ring_bounds`` gives each ring's ``[start, end)`` slice as an ``(R, 2)`` int64
+    array. Rings are closed, so their first and last points coincide.
+
+    ``ring_parts`` identifies the polygon each ring belongs to. A polygon's first ring
+    is its exterior; any others are holes. ``part_counts`` records how many polygons
+    belong to each feature, so the same representation handles polygons and
+    multipolygons.
     """
 
     coordinates: np.ndarray

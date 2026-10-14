@@ -46,9 +46,7 @@ def make_added_area_recorder(
     calls: list[tuple[shapely.geometry.base.BaseGeometry, ...]],
     original: typing.Callable[..., tuple[object, ...]],
 ) -> typing.Callable[..., tuple[object, ...]]:
-    """Create a callback with controlled dependencies.
-
-    Observe added-area calculations while preserving real measurements.
+    """Return a recorder of added area that preserves real measurements.
 
     Args:
         calls: Shared list recording dependency calls for assertions.

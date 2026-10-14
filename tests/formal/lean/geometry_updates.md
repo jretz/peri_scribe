@@ -1,5 +1,9 @@
 # Immutable geometry sharing and displayed update history
 
+These checks cover two forms of reuse: sharing identical immutable geometry and
+retaining update history while the browser replaces its displayed rows. In both cases,
+reuse must preserve the identity and contents that callers rely on.
+
 `GeometrySharing.lean` and `UpdateViewer.lean` use the standard Lean library. Their
 executable definitions are exposed by `OraclePresentationFlow.lean` through
 `oraclePresentationFlow`; both modules participate in the normal axiom audit. The
@@ -51,8 +55,9 @@ immutability, Python locks and the runtime's memory model are trusted boundaries
 finite implementation evidence. The pool's lock supplies the serialization assumed by
 the insertion model; the proofs do not enumerate every OS thread schedule. Re-encoding
 noncanonical WKB, such as another byte order, can produce different bytes and is outside
-the canonical-byte reuse guarantee. Allocation failures, malformed WKB and eventual
-reclamation are covered by ordinary tests rather than these proofs.
+the canonical-byte reuse guarantee. Allocation failures, malformed WKB, and eventual
+reclamation remain outside these proofs. An ordinary regression checks that geometry
+objects can be collected after the pool and its callers release them.
 
 ## Retained history through visible browser rows
 
@@ -117,14 +122,17 @@ implementation boundaries. The browser oracle uses integer milliseconds and expl
 name-order ranks; ASCII filtering and numeric name collation are checked on the fixture
 catalogue. It does not prove arbitrary locale collation, Unicode case folding,
 submillisecond timestamp rounding, visual layout, animations or browser
-interoperability. Equal timestamps retain input order in the modeled stable sort and
-checked implementation; no permutation invariance is claimed for differently ordered
+interoperability.
+
+Equal timestamps retain input order in the modeled stable sort and checked
+implementation; no permutation invariance is claimed for differently ordered
 simultaneous changes. Record signatures include every displayed data field and stable
-identity; unrendered batch IDs are omitted. Optional perimeter-preview imagery is
-updated in place on retained rows and is outside the modeled text/identity signature.
-Projection, rasterization, palette selection, image encoding, and image layout are
-checked by ordinary tests. Existing `BrowserRefresh.tla` covers the
-separate HTTP refresh protocol.
+identity; unrendered batch IDs are omitted.
+
+Optional perimeter-preview imagery is updated in place on retained rows and is outside
+the modeled text/identity signature. Projection, rasterization, palette selection, image
+encoding, and image layout are checked by ordinary tests. Existing `BrowserRefresh.tla`
+covers the separate HTTP refresh protocol.
 
 The builder crash adapter excludes the optional preview when comparing the complete
 logged occurrences against its persistence oracle. All identity, acreage, timestamp,

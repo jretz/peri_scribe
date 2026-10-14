@@ -28,12 +28,13 @@ if typing.TYPE_CHECKING:
 class FeedValidationResult:
     """The outcome of validating one feed's stored snapshots.
 
-    The stored snapshots are expected to cover the complete snapshot: every feature in
-    the complete snapshot should be present in the stored snapshots with matching
-    attributes and geometry, and the stored snapshots should carry every attribute
-    column the complete snapshot carries. Stored snapshots may hold additional features
-    and columns without being flagged. Both snapshots need unique OBJECTIDs and the
-    same known coordinate reference system before they can establish coverage.
+    Every feature and attribute column in the complete snapshot must also be present in
+    the stored snapshots, with matching values and geometry. Additional stored
+    features and columns are allowed because the store preserves source history.
+
+    Both sides need unique OBJECTIDs and the same known coordinate reference system.
+    Without those, matching rows cannot establish that the stored history covers the
+    complete snapshot.
     """
 
     feed_name: str

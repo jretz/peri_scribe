@@ -1,9 +1,8 @@
-"""Indexing a history layer's rows by fire so lookups avoid full scans.
+"""Index a history layer's rows by fire so lookups avoid full scans.
 
-Each history layer is scanned many times while KML geometry is built, once per fire, to
-find the rows belonging to that fire. This module builds one compact index of row
-positions up front, so each fire is answered with dictionary lookups and a small slice
-instead of a boolean filter over the whole frame.
+Building KML requires the history rows for each fire. One pass through the layer builds
+a compact index of row positions, so later requests use dictionary lookups and a small
+slice without scanning unrelated rows again.
 
 [Algorithm note](../../../docs/algorithms/presentation-selection.md)
 """
@@ -23,15 +22,15 @@ if typing.TYPE_CHECKING:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class HistoryRowIndex:
-    """Row positions of one history layer, keyed by fire identifier and by name.
+    """Index one history layer's rows by fire identifier, name, and component.
 
-    Stored component identity takes priority and selects exactly one source group.
-    Legacy histories retain identifier and name lookup: identified fires match their
-    aliases, while anonymous entries match every row sharing their name.
+    A stored component identity selects exactly one source group. Legacy histories use
+    identifiers and names: identified fires match their aliases, while anonymous fires
+    match all rows with the same name.
 
-    Keys are the raw column values, never string-coerced, so a lookup behaves the same
-    as the original ``isin`` and equality filters (a non-string identifier never matches
-    a string identifier, and a non-string name never matches a string name).
+    Keys retain their original types so lookup agrees with ``isin`` and equality
+    filters. Converting them to strings could make a numeric identifier or name match a
+    string with the same spelling.
 
     Attributes:
         positions_by_identifier: Row positions keyed by their identifier value.
@@ -56,7 +55,7 @@ class HistoryRowIndex:
             frame: The history layer to index.
 
         Returns:
-            The row positions keyed by identifier and by name.
+            The row positions keyed by identifier, name, and source component.
         """
         by_identifier: dict[object, list[int]] = {}
         by_name: dict[object, list[int]] = {}

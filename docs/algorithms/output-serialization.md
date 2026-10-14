@@ -1,8 +1,10 @@
 # Literal text and streamed output publication
 
-Source text must remain literal in reports and maps, while generated structure remains
-explicit. Streaming KML and staging complete output files keep large documents practical
-and prevent an interrupted writer from exposing a partial public document.
+Source text must appear as text in reports and maps, even when it contains characters
+that Markdown or XML would normally treat as formatting. The writer adds document
+structure explicitly. Streaming KML keeps large documents practical, and preparing each
+complete output in a temporary file prevents an interrupted writer from exposing a
+partial public document.
 
 ## Contract and assessment
 
@@ -49,7 +51,8 @@ Boundary fragments are keyed by exact geometry bytes and coordinate precision.
 Persistent fragments must decode canonically, match expected component count, and pass
 the boundary grammar before entering XML. A writer-local least-recently-used cache
 tracks retained bytes and evicts entries to its budget. The budget covers accounted
-retained entries, not total Python memory or the temporary largest fragment.
+retained entries. It doesn't bound total Python memory or the largest fragment created
+temporarily while writing.
 
 Publication follows three steps:
 

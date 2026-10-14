@@ -3,10 +3,11 @@
 ## Contract and context
 
 After a complete KMZ is published, its interesting mapping updates must survive an
-interruption between log append and checkpoint acknowledgement. A pending journal freezes
-the batch records, checkpoint, aware completion timestamp, and unique batch ID. Recovery
-finishes that intent before comparing any later inputs. An absent checkpoint is a fresh
-start; an invalid authoritative checkpoint or journal is an error whose bytes are retained.
+interruption between log append and checkpoint acknowledgement. A pending journal saves
+the exact batch records, checkpoint, aware completion timestamp, and unique batch ID
+that recovery must use. Recovery finishes that saved work before comparing later inputs.
+An absent checkpoint means a fresh start. An invalid authoritative checkpoint or journal
+is an error, and its bytes are retained so the failure can be investigated.
 
 The contract spans [fire_updates.py](../../src/peri_scribe/fire_updates.py),
 [fire_update_records.py](../../src/peri_scribe/fire_update_records.py), journal-aware
@@ -65,8 +66,8 @@ The surviving journal identifies the recovery action at each interruption point:
 | Journal and complete retained batch, old mapping checkpoint | Skip append, replace the checkpoint, then remove the journal. |
 | Journal, complete retained batch, current mapping checkpoint | Skip append, rewrite the same checkpoint idempotently, then remove the journal. |
 
-Keeping the journal until acknowledgement closes both the append and checkpoint
-interruption windows.
+Keeping the journal until acknowledgement lets recovery finish whether the interruption
+happened before or after the append, or before or after the checkpoint replacement.
 
 ## Worked examples and boundaries
 

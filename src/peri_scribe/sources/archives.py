@@ -31,18 +31,19 @@ def fetch_page_text(url: str) -> str:
 
 
 class DownloadLinksParser(html.parser.HTMLParser):
-    """Extract the state-to-URL pairs from a page's "Download links" table.
+    """Extract the state-to-URL pairs from a page's "Download links" section.
 
     GitHub renders the repository's README into the page: each heading is a ``<div
     class="markdown-heading">`` holding the heading element and a permalink anchor, and
-    the tables that follow hold the links. The links are collected from the table after
-    the "Download links" heading until the next heading starts. The README's copy inside
-    the page's embedded-data script is script content, which the parser never treats as
-    markup.
+    the tables that follow hold the links. The parser collects links whose ``href``
+    begins with lowercase ``http`` after the "Download links" heading until an ``h1``,
+    ``h2``, ``h3``, or ``div.markdown-heading`` starts; it does not require a table.
+    This prefix check does not validate the URL. The README's copy inside the page's
+    embedded-data script is script content, which the parser never treats as markup.
     """
 
     def __init__(self) -> None:
-        """Initialize the parser to collect download links under state headings."""
+        """Initialize the parser to collect links from the download section."""
         super().__init__()
         self.links: dict[str, str] = {}
         self.heading_level: str | None = None
@@ -71,7 +72,7 @@ class DownloadLinksParser(html.parser.HTMLParser):
             tag == "div"
             and "markdown-heading" in (attribute_map.get("class") or "").split()
         ):
-            # A new README heading ends the previous section's link table.
+            # A new README heading ends the previous section's links.
             self.collecting = False
 
     def handle_data(self, data: str) -> None:
@@ -108,13 +109,13 @@ class DownloadLinksParser(html.parser.HTMLParser):
 
 
 def download_links(html_text: str) -> dict[str, str]:
-    """Return the state-to-URL pairs from a page's "Download links" table.
+    """Return the state-to-URL pairs from a page's "Download links" section.
 
     Args:
         html_text: The page's HTML.
 
     Returns:
-        The mapping from state name to archive URL, in table order.
+        The mapping from state name to archive URL, in document order.
 
     Examples:
         >>> download_links(
@@ -159,13 +160,14 @@ def extract_archive(
         extraction_directory: The directory to extract into.
 
     Raises:
-        ExternalDataError: If the archive is not a zip file.
+        ExternalDataError: If ZIP validation fails while opening or extracting the
+            archive.
     """
     try:
         with zipfile.ZipFile(archive_path) as archive:
             archive.extractall(extraction_directory)
     except zipfile.BadZipFile as error:
-        message = f"{archive_path} is not a zip file: {error}"
+        message = f"Failed to extract ZIP archive {archive_path}: {error}"
         raise peri_scribe.exceptions.ExternalDataError(message) from error
 
 
