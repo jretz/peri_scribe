@@ -10,6 +10,7 @@ import v8ToIstanbul from "v8-to-istanbul";
 import * as viewer from "./peri_scribe/updates_script.mjs";
 
 export const contributors = ["node", "browser"];
+export const coverageDirectory = path.resolve(".cache/coverage");
 let standaloneDirectory;
 
 /** Source identity prevents separate collectors from reporting different builds. */
@@ -60,7 +61,7 @@ async function collectionDirectory() {
   }
   if (!standaloneDirectory) {
     standaloneDirectory = path.resolve(
-      ".coverage/javascript", `standalone-${crypto.randomUUID()}`);
+      coverageDirectory, "javascript", `standalone-${crypto.randomUUID()}`);
     await createCoverageSession(standaloneDirectory);
   }
   return standaloneDirectory;

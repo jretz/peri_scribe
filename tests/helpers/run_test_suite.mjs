@@ -5,12 +5,13 @@ import path from "node:path";
 
 import * as coverage from "./javascript_coverage.mjs";
 
-await fs.mkdir(".coverage/javascript", { recursive: true });
-const directory = await fs.mkdtemp(path.resolve(".coverage/javascript/run-"));
+const javascriptDirectory = path.join(coverage.coverageDirectory, "javascript");
+await fs.mkdir(javascriptDirectory, { recursive: true });
+const directory = await fs.mkdtemp(path.join(javascriptDirectory, "run-"));
 const session = await coverage.createCoverageSession(directory);
-const temporary = path.resolve(".coverage", `latest-${session.runId}.tmp`);
+const temporary = path.join(coverage.coverageDirectory, `latest-${session.runId}.tmp`);
 await fs.writeFile(temporary, JSON.stringify({ directory, runId: session.runId }));
-await fs.rename(temporary, ".coverage/latest-run.json");
+await fs.rename(temporary, path.join(coverage.coverageDirectory, "latest-run.json"));
 const result = childProcess.spawnSync("mise", ["run", "test-checks"], {
   stdio: "inherit",
   env: {

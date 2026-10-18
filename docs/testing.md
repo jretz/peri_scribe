@@ -98,13 +98,14 @@ standalone suite collects its own coverage without satisfying another run's
 requirements. That lets focused browser work proceed without running unrelated tests
 or failing because the other suite hasn't run.
 
-Full runs store results in a new `.coverage/javascript/run-<identifier>` directory;
-`.coverage/latest-run.json` identifies the latest full run for `mise coverage-report`.
-That command reports an existing run; it does not collect missing contributions.
-JavaScript reports live under the session's `report/` directory, with HTML, JSON, and
-LCOV formats. Python stores `python-data` and `python-coverage.json` in the same session.
-Preserve the session directory when investigating a failure. These generated files are
-ignored by Git.
+Full runs store results in a new `.cache/coverage/javascript/run-<identifier>` directory;
+`.cache/coverage/latest-run.json` identifies the latest full run for `mise
+coverage-report`. That command reports an existing run; it does not collect missing
+contributions. JavaScript reports live under the session's `report/` directory, with
+HTML, JSON, and LCOV formats. Python stores `python-data` and `python-coverage.json` in
+the same session. Direct Python runs use `.cache/coverage/data`. These paths allow an
+existing `.coverage` file to remain in the checkout. Preserve the session directory when
+investigating a failure. These generated files are ignored by Git.
 
 ### Focused browser work and debugging
 

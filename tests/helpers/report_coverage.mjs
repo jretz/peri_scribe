@@ -8,7 +8,8 @@ import * as coverage from "./javascript_coverage.mjs";
 
 let directory = process.env.PERI_SCRIBE_COVERAGE_DIRECTORY;
 if (!directory) {
-  const latest = JSON.parse(await fs.readFile(".coverage/latest-run.json", "utf8"));
+  const latest = JSON.parse(await fs.readFile(
+    path.join(coverage.coverageDirectory, "latest-run.json"), "utf8"));
   directory = latest.directory;
   const session = await coverage.readSession(directory);
   assert.equal(session.runId, latest.runId, "Coverage pointer belongs to another run");
