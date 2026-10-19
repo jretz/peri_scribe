@@ -27,11 +27,25 @@ class SignalTier(abc.ABC):
     """The threshold a signal must meet and the points it earns.
 
     Each concrete tier also describes its threshold in words, so the score explanation
-    can use the same policy as the calculation.
+    can use the same policy as the calculation. The lower threshold is inclusive; an
+    upper threshold describes the next tier's exclusive boundary for presentation.
     """
 
     threshold: float
     score: int
+    upper_threshold: float | None = None
+
+    @property
+    def threshold_description(self) -> str:
+        """Describe the tier's range, leaving the highest tier open-ended.
+
+        Returns:
+            The inclusive lower and exclusive upper bounds, or just the lower bound
+            when the tier has no upper threshold.
+        """
+        if self.upper_threshold is None:
+            return f"at least {self.threshold:,.0f}"
+        return f"between {self.threshold:,.0f} and {self.upper_threshold:,.0f}"
 
     @property
     @abc.abstractmethod
@@ -54,7 +68,7 @@ class SizeTier(SignalTier):
         Returns:
             The tier's contribution phrased for a score explanation.
         """
-        return f"at least {self.threshold:,.0f} acres"
+        return f"{self.threshold_description} acres"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -68,7 +82,8 @@ class GrowthTier(SignalTier):
         Returns:
             The tier's contribution phrased for a score explanation.
         """
-        return f"a single growth step of at least {self.threshold:,.0f} acres"
+        preposition = " of" if self.upper_threshold is None else ""
+        return f"a single growth step{preposition} {self.threshold_description} acres"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -82,7 +97,7 @@ class FirstMappingTier(SignalTier):
         Returns:
             The tier's contribution phrased for a score explanation.
         """
-        return f"at least {self.threshold:,.0f} acres when first mapped"
+        return f"{self.threshold_description} acres when first mapped"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -96,41 +111,38 @@ class BuildingCountTier(SignalTier):
         Returns:
             The tier's contribution phrased for a score explanation.
         """
-        return (
-            f"at least {self.threshold:,.0f} building centroids "
-            "in the fire's projected one-mile buffer"
-        )
+        return f"{self.threshold_description} buildings within a mile"
 
 
 SIZE_TIERS = (
     SizeTier(threshold=100_000.0, score=5),
-    SizeTier(threshold=50_000.0, score=4),
-    SizeTier(threshold=25_000.0, score=3),
-    SizeTier(threshold=10_000.0, score=2),
-    SizeTier(threshold=1_000.0, score=1),
+    SizeTier(threshold=50_000.0, score=4, upper_threshold=100_000.0),
+    SizeTier(threshold=25_000.0, score=3, upper_threshold=50_000.0),
+    SizeTier(threshold=10_000.0, score=2, upper_threshold=25_000.0),
+    SizeTier(threshold=1_000.0, score=1, upper_threshold=10_000.0),
 )
 
 
 GROWTH_TIERS = (
     GrowthTier(threshold=50_000.0, score=4),
-    GrowthTier(threshold=25_000.0, score=3),
-    GrowthTier(threshold=10_000.0, score=2),
-    GrowthTier(threshold=5_000.0, score=1),
+    GrowthTier(threshold=25_000.0, score=3, upper_threshold=50_000.0),
+    GrowthTier(threshold=10_000.0, score=2, upper_threshold=25_000.0),
+    GrowthTier(threshold=5_000.0, score=1, upper_threshold=10_000.0),
 )
 
 
 FIRST_MAPPING_TIERS = (
     FirstMappingTier(threshold=5_000.0, score=3),
-    FirstMappingTier(threshold=1_000.0, score=2),
-    FirstMappingTier(threshold=100.0, score=1),
+    FirstMappingTier(threshold=1_000.0, score=2, upper_threshold=5_000.0),
+    FirstMappingTier(threshold=100.0, score=1, upper_threshold=1_000.0),
 )
 
 
 BUILDING_COUNT_TIERS = (
     BuildingCountTier(threshold=1_000.0, score=4),
-    BuildingCountTier(threshold=250.0, score=3),
-    BuildingCountTier(threshold=50.0, score=2),
-    BuildingCountTier(threshold=5.0, score=1),
+    BuildingCountTier(threshold=250.0, score=3, upper_threshold=1_000.0),
+    BuildingCountTier(threshold=50.0, score=2, upper_threshold=250.0),
+    BuildingCountTier(threshold=5.0, score=1, upper_threshold=50.0),
 )
 
 
@@ -432,7 +444,7 @@ def score_explanation(fire_score: FireScore) -> str:
             BUILDINGS_WEIGHT,
             BUILDING_COUNT_TIERS,
         ),
-        "overlap with an evacuation zone" if fire_score.evacuation_points else None,
+        "overlaps an evacuation zone" if fire_score.evacuation_points else None,
         importance_description(fire_score.importance_points),
     ]
     present = [phrase for phrase in phrases if phrase is not None]

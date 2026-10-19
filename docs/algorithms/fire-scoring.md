@@ -30,6 +30,13 @@ keys and chronological order. Full histories supply current size through the sha
 The detailed note is required by the composed algorithm and also records the simple score
 contract because its thresholds determine which fires readers see first.
 
+Explanation formatting is straightforward, total 2: history and state 0, rule
+interaction 1, mathematical reasoning 0, scale and representation 1, and failure and
+concurrency 0. Independent range-formatting rules describe a fixed set of tiers and join
+up to six phrases. This presentation introduces no new scoring policy or state
+transitions, so ordinary tests cover its wording and boundaries without a new formal
+model.
+
 ## Evidence selection and invariants
 
 Group rows by external identifier, anonymous component, then legacy name fallback, using
@@ -71,9 +78,13 @@ Projection limits and antimeridian geometry retain the underlying geometry assum
 ## Tier policy and worked example
 
 For each descending threshold list, take the first threshold the input meets using `>=`.
-Unknown or below-minimum values earn zero. Generated explanations say “at least” to
-match the inclusive thresholds. These are policy points, not probabilities or calibrated
-predictions of losses.
+Unknown or below-minimum values earn zero. Generated explanations say “between” the
+qualifying threshold and the next higher threshold, with the lower bound included and
+the upper bound excluded. The highest tier says “at least” its threshold. For example,
+10,000 acres is described as “between 10,000 and 25,000 acres”; exactly 25,000 acres
+belongs to the next tier. Building phrases say “buildings within a mile” and refer to
+the projected-buffer centroid counts described above. These are policy points, not
+probabilities or calibrated predictions of losses.
 
 | Signal | Thresholds, descending | Tier points | Weight |
 | --- | --- | --- | --- |

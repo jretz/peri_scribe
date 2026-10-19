@@ -372,9 +372,9 @@ def test_score_entry_maps_total() -> None:
     assert entry.score == pytest.approx(389)
     assert entry.explanation == (
         "At least 100,000 acres, a single growth step of at least "
-        "50,000 acres, at least 5,000 acres when first mapped, at least "
-        "50 building centroids in the fire's projected one-mile buffer, "
-        "overlap with an evacuation zone, and a Type 3 Incident."
+        "50,000 acres, at least 5,000 acres when first mapped, between "
+        "50 and 250 buildings within a mile, overlaps an evacuation zone, "
+        "and a Type 3 Incident."
     )
 
 
@@ -412,8 +412,58 @@ def test_score_explanation_describes_each_contributing_signal() -> None:
         importance_points=0,
     )
     assert peri_scribe.fires.scoring.score_explanation(fire_score) == (
-        "At least 1,000 acres, a single growth step of at least "
-        "5,000 acres, and at least 100 acres when first mapped."
+        "Between 1,000 and 10,000 acres, a single growth step between "
+        "5,000 and 10,000 acres, and between 100 and 1,000 acres when first mapped."
+    )
+
+
+@pytest.mark.parametrize(
+    ("fire_score", "expected_description"),
+    [
+        (
+            peri_scribe.fires.scoring.FireScore(
+                name="Bug",
+                identifier="2026-a",
+                size_points=54,
+                growth_points=15,
+                first_mapping_points=22,
+                building_points=8,
+                evacuation_points=33,
+                importance_points=240,
+            ),
+            (
+                "Between 10,000 and 25,000 acres, a single growth step between "
+                "5,000 and 10,000 acres, between 1,000 and 5,000 acres when first "
+                "mapped, between 50 and 250 buildings within a mile, overlaps an "
+                "evacuation zone, and a Type 2 Incident."
+            ),
+        ),
+        (
+            peri_scribe.fires.scoring.FireScore(
+                name="Bug",
+                identifier="2026-a",
+                size_points=135,
+                growth_points=60,
+                first_mapping_points=33,
+                building_points=16,
+                evacuation_points=33,
+                importance_points=360,
+            ),
+            (
+                "At least 100,000 acres, a single growth step of at least 50,000 "
+                "acres, at least 5,000 acres when first mapped, at least 1,000 "
+                "buildings within a mile, overlaps an evacuation zone, and a Type 1 "
+                "Incident."
+            ),
+        ),
+    ],
+)
+def test_score_explanation_combines_all_signal_descriptions(
+    fire_score: peri_scribe.fires.scoring.FireScore,
+    expected_description: str,
+) -> None:
+    assert (
+        peri_scribe.fires.scoring.score_explanation(fire_score) == expected_description
     )
 
 
@@ -429,7 +479,7 @@ def test_score_explanation_mentions_evacuation_and_importance() -> None:
         importance_points=360,
     )
     assert peri_scribe.fires.scoring.score_explanation(fire_score) == (
-        "Overlap with an evacuation zone, and a Type 1 Incident."
+        "Overlaps an evacuation zone, and a Type 1 Incident."
     )
 
 
@@ -468,7 +518,7 @@ def test_signal_description_names_the_tier() -> None:
             peri_scribe.fires.scoring.BUILDINGS_WEIGHT,
             peri_scribe.fires.scoring.BUILDING_COUNT_TIERS,
         )
-        == "at least 1,000 building centroids in the fire's projected one-mile buffer"
+        == "at least 1,000 buildings within a mile"
     )
 
 
@@ -483,28 +533,121 @@ def test_signal_description_returns_none_for_unknown_tier() -> None:
     )
 
 
-def test_tier_description_phrases_the_threshold() -> None:
+@pytest.mark.parametrize(
+    ("tiers", "lower_value", "higher_value", "expected_description"),
+    [
+        (
+            peri_scribe.fires.scoring.SIZE_TIERS,
+            1_000.0,
+            9_999.5,
+            "between 1,000 and 10,000 acres",
+        ),
+        (
+            peri_scribe.fires.scoring.SIZE_TIERS,
+            10_000.0,
+            24_999.5,
+            "between 10,000 and 25,000 acres",
+        ),
+        (
+            peri_scribe.fires.scoring.SIZE_TIERS,
+            25_000.0,
+            49_999.5,
+            "between 25,000 and 50,000 acres",
+        ),
+        (
+            peri_scribe.fires.scoring.SIZE_TIERS,
+            50_000.0,
+            99_999.5,
+            "between 50,000 and 100,000 acres",
+        ),
+        (
+            peri_scribe.fires.scoring.SIZE_TIERS,
+            100_000.0,
+            200_000.0,
+            "at least 100,000 acres",
+        ),
+        (
+            peri_scribe.fires.scoring.GROWTH_TIERS,
+            5_000.0,
+            9_999.5,
+            "a single growth step between 5,000 and 10,000 acres",
+        ),
+        (
+            peri_scribe.fires.scoring.GROWTH_TIERS,
+            10_000.0,
+            24_999.5,
+            "a single growth step between 10,000 and 25,000 acres",
+        ),
+        (
+            peri_scribe.fires.scoring.GROWTH_TIERS,
+            25_000.0,
+            49_999.5,
+            "a single growth step between 25,000 and 50,000 acres",
+        ),
+        (
+            peri_scribe.fires.scoring.GROWTH_TIERS,
+            50_000.0,
+            100_000.0,
+            "a single growth step of at least 50,000 acres",
+        ),
+        (
+            peri_scribe.fires.scoring.FIRST_MAPPING_TIERS,
+            100.0,
+            999.5,
+            "between 100 and 1,000 acres when first mapped",
+        ),
+        (
+            peri_scribe.fires.scoring.FIRST_MAPPING_TIERS,
+            1_000.0,
+            4_999.5,
+            "between 1,000 and 5,000 acres when first mapped",
+        ),
+        (
+            peri_scribe.fires.scoring.FIRST_MAPPING_TIERS,
+            5_000.0,
+            10_000.0,
+            "at least 5,000 acres when first mapped",
+        ),
+        (
+            peri_scribe.fires.scoring.BUILDING_COUNT_TIERS,
+            5.0,
+            49.0,
+            "between 5 and 50 buildings within a mile",
+        ),
+        (
+            peri_scribe.fires.scoring.BUILDING_COUNT_TIERS,
+            50.0,
+            249.0,
+            "between 50 and 250 buildings within a mile",
+        ),
+        (
+            peri_scribe.fires.scoring.BUILDING_COUNT_TIERS,
+            250.0,
+            999.0,
+            "between 250 and 1,000 buildings within a mile",
+        ),
+        (
+            peri_scribe.fires.scoring.BUILDING_COUNT_TIERS,
+            1_000.0,
+            2_000.0,
+            "at least 1,000 buildings within a mile",
+        ),
+    ],
+)
+@pytest.mark.parametrize("use_higher_value", [False, True])
+def test_signal_description_describes_the_selected_range(
+    tiers: tuple[peri_scribe.fires.scoring.SignalTier, ...],
+    lower_value: float,
+    higher_value: float,
+    expected_description: str,
+    *,
+    use_higher_value: bool,
+) -> None:
+    value = higher_value if use_higher_value else lower_value
+    points = peri_scribe.fires.scoring.tiered_points(value, tiers)
     assert (
-        peri_scribe.fires.scoring.SizeTier(threshold=100_000.0, score=5).description
-        == "at least 100,000 acres"
-    )
-    assert (
-        peri_scribe.fires.scoring.GrowthTier(threshold=50_000.0, score=4).description
-        == "a single growth step of at least 50,000 acres"
-    )
-    assert (
-        peri_scribe.fires.scoring.FirstMappingTier(
-            threshold=5_000.0,
-            score=3,
-        ).description
-        == "at least 5,000 acres when first mapped"
-    )
-    assert (
-        peri_scribe.fires.scoring.BuildingCountTier(
-            threshold=1_000.0,
-            score=4,
-        ).description
-        == "at least 1,000 building centroids in the fire's projected one-mile buffer"
+        peri_scribe.fires.scoring.signal_description(points, 1, tiers)
+        == expected_description
     )
 
 
