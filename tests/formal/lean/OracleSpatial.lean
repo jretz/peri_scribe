@@ -1,5 +1,6 @@
 import PeriScribe.SpatialOverlap
 import PeriScribe.DifferentialRows
+import PeriScribe.GrowthMeasurement
 import PeriScribe.CoordinateQuantization
 
 namespace PeriScribe.SpatialOracle
@@ -57,6 +58,19 @@ def rowText (visible : List Nat) (row : DifferentialRows.Row) : List String :=
     (List.range 4).flatMap (fun key =>
       optionText (row.group.source.values key) ++ optionText (row.differences key))
 
+def geometryToken (stack : List GrowthMeasurement.Geometry) (token : String) :
+    Except String (List GrowthMeasurement.Geometry) := do
+  match token.splitOn ",", stack with
+  | ["p", value], _ => return .polygon (← natural value) :: stack
+  | ["n", value], _ => return .nonpolygon (← integer value) :: stack
+  | ["c"], right :: left :: rest => return .collection left right :: rest
+  | _, _ => throw "Expected a polygon, nonpolygon, or binary collection"
+
+def geometry (tokens : List String) : Except String GrowthMeasurement.Geometry := do
+  match ← tokens.foldlM geometryToken [] with
+  | [geometry] => return geometry
+  | _ => throw "Expected exactly one complete geometry"
+
 def respond (words : List String) : Except String String := do
   match words with
   | ["overlap", queries, features] =>
@@ -68,6 +82,15 @@ def respond (words : List String) : Except String String := do
     let denominator ← integer denominator
     if denominator ≤ 0 then throw "Expected positive denominator"
     return toString (CoordinateQuantization.nearest (← integer numerator) denominator)
+  | "growth-filter" :: tokens =>
+    return toString (GrowthMeasurement.polygonArea (← geometry tokens))
+  | "growth-areas" :: weights :: footprints =>
+    let weights ← (weights.splitOn ",").mapM natural
+    let footprints ← footprints.mapM natural
+    let areas := GrowthMeasurement.addedAreas (List.range weights.length)
+      (fun cell => (weights[cell]?).getD 0) (fun _ => false)
+      (footprints.map (fun mask cell => mask / 2 ^ cell % 2 == 1))
+    return String.intercalate " " (areas.map toString)
   | "rows" :: omitted :: areas :: entries =>
     let omitted ← if omitted = "n" then pure []
       else (omitted.splitOn ",").mapM natural

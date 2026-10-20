@@ -34,7 +34,7 @@ if typing.TYPE_CHECKING:
     import geopandas
 
 
-RING_AREA_NAMESPACE = "displayed-ring-areas-v1"
+RING_AREA_NAMESPACE = "displayed-ring-surface-areas-v2"
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -171,13 +171,16 @@ def interior_ring_colors(
         )
     if perimeters:
         latest_perimeter = perimeters[-1]
+        surface_area = peri_scribe.perimeters.progression.covered_area(
+            latest_perimeter.geometry,
+        )
         return (
             (
                 peri_scribe.perimeters.progression.Ring(
                     geometry=latest_perimeter.geometry,
                     observation_time=latest_perimeter.observation_time,
-                    area=latest_perimeter.measured_area,
-                    added_area=latest_perimeter.measured_area,
+                    area=surface_area,
+                    added_area=surface_area,
                     sequence_digest=peri_scribe.perimeters.progression.sequence_digest(
                         (latest_perimeter.geometry,),
                     ),

@@ -122,6 +122,7 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 | [data.py](../../src/peri_scribe/geo/data.py) | [source validation](source-validation.md) |
 | [database.py](../../src/peri_scribe/geo/database.py) | [parsed source cache](parsed-source-cache.md) |
 | [measurements.py](../../src/peri_scribe/geo/measurements.py) | [source validation](source-validation.md) |
+| [growth_geometry.py](../../src/peri_scribe/geo/growth_geometry.py) | [growth geometry and area](growth-geometry-and-area.md) |
 | [package.py](../../src/peri_scribe/geo/package.py) | [parsed source cache](parsed-source-cache.md) |
 | [parsing.py](../../src/peri_scribe/geo/parsing.py) | [source validation](source-validation.md); [aircraft recognition](aircraft-recognition.md); [fire grouping and ownership](fire-grouping-and-ownership.md) |
 | [reading.py](../../src/peri_scribe/geo/reading.py) | [parsed source cache](parsed-source-cache.md) |
@@ -266,6 +267,7 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 | [geometry_pool.py](../../src/spatial_data/geometry_pool.py) | [geometry sharing](geometry-sharing.md) |
 | [layers.py](../../src/spatial_data/layers.py) | [spatial queries and measurements](spatial-queries-and-measurements.md) |
 | [measurements.py](../../src/spatial_data/measurements.py) | [spatial queries and measurements](spatial-queries-and-measurements.md) |
+| [surface_measurements.py](../../src/spatial_data/surface_measurements.py) | [growth geometry and area](growth-geometry-and-area.md) |
 | [overlaps.py](../../src/spatial_data/overlaps.py) | [spatial queries and measurements](spatial-queries-and-measurements.md) |
 | [point_store.py](../../src/spatial_data/point_store.py) | [compact point storage](compact-point-storage.md) |
 | [product_cache.py](../../src/spatial_data/product_cache.py) | [product caching](product-caching.md) |

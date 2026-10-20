@@ -14,6 +14,7 @@ import peri_scribe.models
 import peri_scribe.perimeters.progression
 import peri_scribe.presentation.fire_data
 import spatial_data.measurements
+import spatial_data.surface_measurements
 import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.kml.fire_data
 import tests.helpers.doubles.peri_scribe.presentation.fire_data
@@ -192,15 +193,15 @@ def test_ring_added_areas_measure_disjoint_rings_own_areas() -> None:
     ))
     magnitudes = [area.m_as("meters ** 2") for area in added_areas_in_acres]
     assert magnitudes == pytest.approx([
-        spatial_data.measurements.area(first_geometry).m_as("meters ** 2"),
-        spatial_data.measurements.area(second_geometry).m_as("meters ** 2"),
+        spatial_data.surface_measurements.area(first_geometry).m_as("meters ** 2"),
+        spatial_data.surface_measurements.area(second_geometry).m_as("meters ** 2"),
     ])
 
 
 def test_ring_added_areas_measure_net_of_earlier_fire_when_overlapping() -> None:
     inner_geometry = tests.helpers.factories.geometry.square(1.0)
     outer_geometry = tests.helpers.factories.geometry.square(2.0)
-    inner_area = spatial_data.measurements.area(inner_geometry)
+    inner_area = spatial_data.surface_measurements.area(inner_geometry)
     added_areas_in_acres = peri_scribe.kml.fire_data.ring_added_areas((
         peri_scribe.perimeters.progression.Ring(
             geometry=inner_geometry,
@@ -216,7 +217,7 @@ def test_ring_added_areas_measure_net_of_earlier_fire_when_overlapping() -> None
     magnitudes = [area.m_as("meters ** 2") for area in added_areas_in_acres]
     assert magnitudes == pytest.approx([
         inner_area.m_as("meters ** 2"),
-        (spatial_data.measurements.area(outer_geometry) - inner_area).m_as(
+        (spatial_data.surface_measurements.area(outer_geometry) - inner_area).m_as(
             "meters ** 2",
         ),
     ])
@@ -240,7 +241,7 @@ def test_ring_added_areas_measure_zero_for_ground_already_claimed() -> None:
     ))
     magnitudes = [area.m_as("meters ** 2") for area in added_areas_in_acres]
     assert magnitudes == pytest.approx(
-        [spatial_data.measurements.area(geometry).m_as("meters ** 2"), 0.0],
+        [spatial_data.surface_measurements.area(geometry).m_as("meters ** 2"), 0.0],
         abs=1e-6,
     )
 
@@ -390,7 +391,7 @@ def test_precompute_interior_added_areas_warms_latest_perimeter_fallback(
         pending[0].perimeters,
     )
     assert peri_scribe.kml.fire_data.ring_added_areas((ring,)) == (
-        pending[0].perimeters[0].measured_area,
+        spatial_data.surface_measurements.area(pending[0].perimeters[0].geometry),
     )
 
 

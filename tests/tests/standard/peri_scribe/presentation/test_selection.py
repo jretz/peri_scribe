@@ -462,5 +462,6 @@ def test_perimeter_groups_carries_shared_measurements() -> None:
     assert perimeter.measured_area == expected_area
     ring = peri_scribe.presentation.fire_data.progression_ring(perimeter)
     assert ring is not None
+    assert ring.area == expected_area
     assert ring.added_area == expected_area
     assert ring.sequence_digest == digest

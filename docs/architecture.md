@@ -432,6 +432,11 @@ implausibly small perimeter updates, and cleans geometry for KML. Differential h
 first intersects each footprint with later footprints to carry corrections backward,
 then subtracts the preceding corrected footprint to isolate each growth ring.
 
+[Growth geometry and area](algorithms/growth-geometry-and-area.md) defines a common
+binary precision grid for those overlays. Growth fields measure the WGS84 surface
+enclosed by the same straight longitude/latitude edges, with zero area for lines and
+points. Full-history current acreage and scoring retain their geodesic-edge measure.
+
 The original source snapshots are not modified by these cleansing steps. The output KMZ
 excludes fires without a qualifying area indication and includes latest-perimeter and
 progression-map views.

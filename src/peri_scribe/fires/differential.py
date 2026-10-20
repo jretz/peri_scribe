@@ -23,6 +23,7 @@ import structlog
 import peri_scribe.fires.files
 import peri_scribe.fires.history
 import peri_scribe.fires.reuse
+import peri_scribe.geo.growth_geometry
 import peri_scribe.geo.measurements
 import peri_scribe.geo.parsing
 import peri_scribe.logging
@@ -30,7 +31,7 @@ import peri_scribe.perimeters.progression
 import peri_scribe.phases
 import peri_scribe.preparation
 import spatial_data.layers
-import spatial_data.measurements
+import spatial_data.surface_measurements
 
 
 if typing.TYPE_CHECKING:
@@ -51,8 +52,6 @@ GROWTH_COLUMNS = [
     "estimated_cost_to_date",
     "estimated_final_cost",
 ]
-
-POLYGONAL_GEOMETRY_TYPES = frozenset({"Polygon", "MultiPolygon"})
 
 ATTRIBUTE_COLUMNS = [
     column
@@ -123,23 +122,7 @@ def polygonal_area(geometry: shapely.Geometry | None) -> shapely.Geometry | None
         The polygon or multi-polygon area, or None when the geometry is empty or has no
         polygonal parts.
     """
-    if geometry is None or geometry.is_empty:
-        return None
-    geometry_type = geometry.geom_type
-    if geometry_type in POLYGONAL_GEOMETRY_TYPES:
-        return geometry
-    if geometry_type != "GeometryCollection":
-        return None
-    parts = [
-        part
-        for part in geometry.geoms
-        if part.geom_type in POLYGONAL_GEOMETRY_TYPES and not part.is_empty
-    ]
-    if not parts:
-        return None
-    if len(parts) == 1:
-        return parts[0]
-    return shapely.union_all(parts)
+    return peri_scribe.geo.growth_geometry.polygonal(geometry)
 
 
 def geometry_difference(
@@ -155,11 +138,7 @@ def geometry_difference(
     Returns:
         The difference as a polygon or multi-polygon, or None when it is empty.
     """
-    if current is None or current.is_empty:
-        return None
-    if previous is None or previous.is_empty:
-        return polygonal_area(current)
-    return polygonal_area(current.difference(previous))
+    return peri_scribe.geo.growth_geometry.difference(current, previous)
 
 
 def geometry_grows_beyond(
@@ -202,9 +181,7 @@ def geometry_intersection(
     Returns:
         The intersection as a polygon or multi-polygon, or None when it is empty.
     """
-    if current is None or later is None or current.is_empty or later.is_empty:
-        return None
-    return polygonal_area(current.intersection(later))
+    return peri_scribe.geo.growth_geometry.intersection(current, later)
 
 
 def corrected_geometries(
@@ -222,7 +199,7 @@ def corrected_geometries(
     corrected: list[shapely.Geometry | None] = [None] * len(geometries)
     if not geometries:
         return corrected
-    corrected[-1] = polygonal_area(geometries[-1])
+    corrected[-1] = peri_scribe.geo.growth_geometry.normalize(geometries[-1])
     for index in range(len(geometries) - 2, -1, -1):
         corrected[index] = geometry_intersection(
             geometries[index],
@@ -361,6 +338,28 @@ def group_records(
     return attributes, geometries
 
 
+def serializable_growth_geometry(
+    geometry: shapely.Geometry,
+) -> shapely.MultiPolygon:
+    """Match the multipart geometry representation restored from GeoPackage.
+
+    A fresh multipart wrapper also clears transient GEOS precision metadata. Measuring
+    that representation binds prepared values to the same input a reader will use.
+
+    Args:
+        geometry: A nonempty polygonal growth result on the common precision grid.
+
+    Returns:
+        A fresh multipart geometry with identical coordinates and no precision metadata.
+    """
+    parts = (
+        [geometry]
+        if isinstance(geometry, shapely.Polygon)
+        else list(typing.cast("shapely.MultiPolygon", geometry).geoms)
+    )
+    return shapely.MultiPolygon(parts)
+
+
 def differential_rows_for_fire(
     attributes: list[dict[str, object]],
     geometries: list[shapely.Geometry | None],
@@ -389,6 +388,7 @@ def differential_rows_for_fire(
             # A coverage test can report growth that collapses to an empty sliver when
             # the difference is constructed. With no visible area, it adds no ring.
             continue
+        differential_geometry = serializable_growth_geometry(differential_geometry)
         representative = representatives[survivor]
         row = dict(attributes[representative])
         row["geometry"] = differential_geometry
@@ -402,10 +402,10 @@ def differential_rows_for_fire(
                     for earlier in reversed(survivors[:position])
                 ],
             )
-        row["area_acres_from_geometry"] = spatial_data.measurements.area(
+        row["area_acres_from_geometry"] = spatial_data.surface_measurements.area(
             cumulative_geometry,
         ).m_as("acres")
-        ring_area = spatial_data.measurements.area(differential_geometry)
+        ring_area = spatial_data.surface_measurements.area(differential_geometry)
         row["area_acres_from_geometry_differential"] = ring_area.m_as("acres")
         row[peri_scribe.geo.measurements.AREA_COLUMN] = ring_area.m_as("meters ** 2")
         rows.append(row)

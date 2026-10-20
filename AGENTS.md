@@ -51,6 +51,12 @@ Python interpreter already in `.venv` to run Python commands there, for example,
 that environment. The `run-tests` skill explains how to run the required checks in a
 sandbox.
 
+### Profiling Artifacts
+
+Store profiling reports, measurements, scratch scripts, and copied benchmark datasets
+under `.cache/profiling/`. The `data/` directory is frequently replaced with production
+data, so it must not hold profiling evidence that needs to survive those replacements.
+
 ### Skills
 
 Project skills describe repeatable workflows and ways to work within sandbox limits.

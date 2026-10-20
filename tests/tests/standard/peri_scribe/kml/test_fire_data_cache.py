@@ -2,10 +2,12 @@
 
 import dataclasses
 import gc
+import hashlib
 import pathlib
 import weakref
 
 import pytest
+import shapely
 
 import peri_scribe.execution
 import peri_scribe.kml.fire_data
@@ -79,6 +81,26 @@ def test_added_areas_for_rings_trusted_values_override_every_fallback_cache(
         original = peri_scribe.kml.fire_data.added_areas_for_rings(rings)
         assert original != stored
         assert peri_scribe.kml.fire_data.added_areas_for_rings(changed) == stored
+
+
+def test_added_areas_for_rings_rejects_values_from_the_geometry_only_policy() -> None:
+    rings = tests.helpers.factories.peri_scribe.kml.fire_data.fallback_rings()
+    unversioned = hashlib.sha256()
+    for ring in rings:
+        content = shapely.to_wkb(ring.geometry, include_srid=True)
+        unversioned.update(len(content).to_bytes(8))
+        unversioned.update(content)
+    stale = tuple(
+        dataclasses.replace(
+            ring,
+            added_area=999 * units.acres,
+            sequence_digest=unversioned.hexdigest(),
+        )
+        for ring in rings
+    )
+    assert peri_scribe.kml.fire_data.added_areas_for_rings(stale) == (
+        peri_scribe.perimeters.progression.added_areas(ring.geometry for ring in rings)
+    )
 
 
 @pytest.mark.parametrize(

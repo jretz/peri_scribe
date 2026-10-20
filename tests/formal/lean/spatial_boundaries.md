@@ -1,10 +1,11 @@
-# Spatial query and differential-row boundaries
+# Spatial query, growth measurement, and differential-row boundaries
 
-These modules check three questions left outside the geography, spatial-index, and
-point-store proofs: whether an indexed overlap query finds every real match, whether
-growth rings retain their source evidence, and whether coordinate rounding preserves the
-required query coverage. `OracleSpatial.lean` evaluates the definitions used in these
-proofs. Run `mise formal-lean` and `mise formal-conformance` together.
+These modules check questions left outside the geography, spatial-index, and point-store
+proofs: whether an indexed overlap query finds every real match, whether growth rings
+retain their source evidence, whether surface measurements count only polygonal ground,
+and whether coordinate rounding preserves the required query coverage.
+`OracleSpatial.lean` evaluates the definitions used in these proofs. Run `mise
+formal-lean` and `mise formal-conformance` together.
 
 ## Evacuation overlap queries
 
@@ -71,7 +72,7 @@ Every returned row is checked against the oracle for representative identity, or
 source file/object ID/time, all four cumulative fields and deltas, exact footprint,
 cumulative geometry acreage, and differential geometry acreage/area.
 
-Real geodesic areas are explicit inputs to the visibility abstraction, conservatively
+Real surface areas are explicit inputs to the visibility abstraction, conservatively
 encoded upward to integer millionths of a square meter for the one-square-meter strict
 threshold. Large and submeter cell unions exercise both sides. For the oracle-selected
 visible sequence, conformance independently hashes the returned ordered WKB records,
@@ -85,12 +86,62 @@ selected candidates. Actual correction, candidate selection, metadata, deltas, r
 GEOS differences, and presentation stay in use. These traces verify the documented rare
 sliver branch; they do not claim to produce naturally occurring floating-point slivers.
 
-The proofs use finite sets of exact cells, exact integer source measurements, and an
-explicit area function. They do not prove geometry kernels, geodesic measurements,
+The cells use binary-coordinate boundaries preserved by the growth precision grid. The
+proofs use finite sets of exact cells, exact integer source measurements, and an
+explicit area function. They do not prove geometry kernels, surface integration,
 floating-point subtraction, timestamp parsing, or SHA-256 collision resistance. The
 oracle uses four-cell fixtures, but the Lean algorithms and theorems are not bounded to
 four cells or nine observations. Source/geometry sequences are aligned and already in
 history order, as supplied by the production caller.
+
+## Polygonal surface measurement and cumulative growth
+
+`PeriScribe/GrowthMeasurement.lean` has seven theorems covering the polygon-only policy
+in `spatial_data.surface_measurements.area` and the ordered coverage fold in
+`peri_scribe.perimeters.progression.added_areas`. The model was compiled before the
+production numerical adapters were implemented.
+
+A geometry tree contains polygon surfaces, nonpolygon coordinate contributions, and
+nested binary collections. Polygon contributions are nonnegative integer inputs to this
+abstraction. The proofs establish that filtering retains every polygon contribution and
+that arbitrarily changing every nonpolygon coordinate contribution cannot change area.
+Binary collections preserve the nesting of arbitrary collection sizes. This models the
+surface policy; it does not establish equality of every floating-point addition order.
+
+A separate exact model represents footprints by Boolean membership in finite cells and
+surface area by nonnegative integer cell weights. Cumulative union cannot reduce area.
+Revisiting covered ground adds zero. The successive added areas telescope from an
+explicit initial footprint to the final union; an empty initial footprint counts final
+coverage once. The theorem holds for arbitrary cell weights and history lengths. It
+depends on an additive measure and exact union, rather than assuming the geodesic area
+of a vertex representation is an additive planar measure.
+
+`conformance/test_growth_measurement.py` compares the real polygon-only adapter with the
+executable collection definition on polygons, holes, reversed winding, empty shapes,
+points, open and closed lines, multipart geometry, and nested collections. It compares
+the real progression measurement with the executable weighted-cell definition on 639
+histories. Short histories exhaust all eight masks over three cells through length
+three; longer fixed and seeded histories use four cells, duplicate ground, partial
+overlap, decreasing source footprints, and empty inputs. The cells have binary-coordinate
+boundaries at four United States latitudes, so the declared growth grid preserves these
+fixture boundaries exactly.
+
+Measured individual polygon areas are explicit inputs to the exact model, rounded to
+integer millionths of a square meter. Comparisons allow 0.0001 square meters for input
+quantization and binary64 arithmetic. These conformance checks establish collection
+filtering and cumulative policy on the sampled geometries; they do not independently
+establish the accuracy of the WGS84 surface integral. Ordinary numerical regressions
+exercise its rectangle references, edge splitting, winding, holes, latitude range, and
+raw longitude/latitude edge interpretation.
+
+The numerical growth backend applies fixed-precision overlay. Even segments with lattice
+endpoints can intersect off the lattice, and snapping the intersection can change their
+point sets. The existing `Geography` and `DifferentialRows` proofs remain ideal set-policy
+guarantees. Neither those proofs nor this weighted-cell model prove arbitrary GEOS
+overlays, snap-rounding refinement, a universal boundary error, quadrature accuracy, or
+floating-point monotonicity. Real-library regressions retain the confirmed hole-filling
+and line-contribution failures. A valid GEOS result alone does not establish its
+agreement with the intended operands.
 
 ## Coordinate quantization and query envelope conversion
 

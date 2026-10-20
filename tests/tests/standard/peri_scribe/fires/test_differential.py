@@ -1,5 +1,6 @@
 """Tests for peri_scribe.fires.differential."""
 
+import datetime
 import pathlib
 
 import geopandas
@@ -12,6 +13,8 @@ import peri_scribe.fires.differential
 import peri_scribe.fires.files
 import peri_scribe.fires.reuse
 import peri_scribe.fires.sources
+import peri_scribe.geo.growth_geometry
+import peri_scribe.perimeters.progression
 import peri_scribe.preparation
 import spatial_data.layers
 import tests.helpers.doubles.errors
@@ -25,6 +28,42 @@ def test_differential_geopackage_path_names_output() -> None:
     assert peri_scribe.fires.differential.differential_geopackage_path(
         pathlib.Path("data/2026"),
     ) == pathlib.Path("data/2026/derived/history_of_differential_geography.gpkg")
+
+
+def test_differential_perimeter_dataframe_preserves_measurements_through_geopackage(
+    tmp_path: pathlib.Path,
+) -> None:
+    observed = datetime.datetime(2026, 9, 1, tzinfo=datetime.UTC)
+    frame = tests.helpers.factories.peri_scribe.fires.differential.full_perimeter_frame(
+        [
+            {"fire_identifier": "one", "observation_time": observed},
+            {"fire_identifier": "two", "observation_time": observed},
+        ],
+        [
+            shapely.box(-100, 40, -99, 41),
+            shapely.MultiPolygon([
+                shapely.box(-95, 40, -94, 41),
+                shapely.box(-93, 40, -92, 41),
+            ]),
+        ],
+    )
+    output = peri_scribe.fires.differential.differential_perimeter_dataframe(frame)
+    path = tmp_path / "growth.gpkg"
+    output.to_file(path, layer="perimeter_history", driver="GPKG")
+    restored = geopandas.read_file(path, layer="perimeter_history")
+    assert output.geometry.geom_type.tolist() == ["MultiPolygon", "MultiPolygon"]
+    assert list(shapely.to_wkb(output.geometry)) == list(
+        shapely.to_wkb(restored.geometry),
+    )
+    for _identity, group in restored.groupby("fire_identifier"):
+        geometries = list(group.geometry)
+        assert group.ring_sequence_digest.tolist() == [
+            peri_scribe.perimeters.progression.sequence_digest(geometries),
+        ]
+        assert group.added_area_square_meters.tolist() == [
+            value.m_as("meters ** 2")
+            for value in peri_scribe.perimeters.progression.added_areas(geometries)
+        ]
 
 
 def test_write_history_of_differential_geography_skips_unchanged_layer_reads(
@@ -218,6 +257,48 @@ def test_geometry_difference_subtracts_overlap() -> None:
             tests.helpers.factories.geometry.square(1.0),
         ),
     )
+
+
+def test_geometry_difference_discards_growth_that_collapses_on_common_grid() -> None:
+    grid = peri_scribe.geo.growth_geometry.GRID_SIZE.m_as("degrees")
+
+    assert (
+        peri_scribe.fires.differential.geometry_difference(
+            shapely.geometry.box(0, 0, 1 + grid / 4, 1),
+            shapely.geometry.box(0, 0, 1, 1),
+        )
+        is None
+    )
+
+
+def test_differential_rows_for_fire_area_fields_ignore_collinear_subdivision() -> None:
+    original = shapely.geometry.box(-100, 40, -99, 41)
+    segmented = shapely.geometry.Polygon([
+        (-100, 40),
+        (-99.5, 40),
+        (-99, 40),
+        (-99, 41),
+        (-99.5, 41),
+        (-100, 41),
+    ])
+    original_row, segmented_row = [
+        peri_scribe.fires.differential.differential_rows_for_fire(
+            [{"observation_time": None}],
+            [geometry],
+        )[0]
+        for geometry in (original, segmented)
+    ]
+
+    for column in (
+        "area_acres_from_geometry",
+        "area_acres_from_geometry_differential",
+        "geometry_area_square_meters",
+    ):
+        assert original_row[column] == pytest.approx(
+            segmented_row[column],
+            rel=0,
+            abs=1e-5,
+        )
 
 
 def test_geometry_intersection_returns_none_for_missing() -> None:

@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="900" height="330" viewBox="0 0 900 330" role="img" aria-labelledby="title desc">
+  <title id="title">Coordinate-plane edges and geodesic edges</title>
+  <desc id="desc">An irregular perimeter has a long horizontal edge. Its coordinate midpoint lies on the straight latitude line but off the geodesic bow. Subdividing the geodesic at that midpoint changes the path, while subdividing the straight edge preserves it. The drawing exaggerates curvature and is schematic.</desc>
+  <style>
+    :root { color-scheme: light dark; }
+    text { font: 15px system-ui, sans-serif; fill: #e7eff7; }
+    .background { fill: #111820; }
+    .perimeter { fill: #173b49; stroke: #7ec6d5; stroke-width: 2; }
+    .coordinate { fill: none; stroke: #7ec6d5; stroke-width: 3; }
+    .geodesic { fill: none; stroke: #f0b878; stroke-width: 3; stroke-dasharray: 7 5; }
+    .point { fill: #e7eff7; }
+    .leader { fill: none; stroke: #8fa4b7; stroke-width: 1.5; }
+    .small { font-size: 13px; }
+    .heading { font-weight: 600; }
+    @media (prefers-color-scheme: light) {
+      text { fill: #172d40; }
+      .background { fill: #f8fafc; }
+      .perimeter { fill: #d9eff5; stroke: #287a8f; }
+      .coordinate { stroke: #287a8f; }
+      .geodesic { stroke: #a65d16; }
+      .point { fill: #172d40; }
+      .leader { stroke: #607b8a; }
+    }
+  </style>
+  <rect width="900" height="330" rx="12" class="background"/>
+  <text x="24" y="32" class="heading">The overlay's edges define the growth surface</text>
+  <g id="mapped-boundary">
+    <path d="M65 126 L365 126 L391 181 L345 222 L312 208 L278 267 L198 249 L162 273 L111 221 L77 207 Z" class="perimeter"/>
+    <path d="M65 126 Q215 55 365 126" class="geodesic"/>
+    <circle cx="65" cy="126" r="4" class="point"/>
+    <circle cx="215" cy="126" r="5" class="point"/>
+    <circle cx="365" cy="126" r="4" class="point"/>
+    <text x="82" y="69" class="small">Geodesic between endpoints</text>
+    <path d="M229 146 L215 131" class="leader"/>
+    <text x="229" y="165" class="small">Coordinate midpoint</text>
+    <text x="70" y="303" class="small">Irregular mapped perimeter, schematic</text>
+  </g>
+  <g id="subdivision">
+    <text x="470" y="76" class="heading">Insert the same midpoint</text>
+    <path d="M478 126 H824" class="coordinate"/>
+    <circle cx="478" cy="126" r="4" class="point"/>
+    <circle cx="651" cy="126" r="5" class="point"/>
+    <circle cx="824" cy="126" r="4" class="point"/>
+    <text x="478" y="160">Straight edge: the same path and surface</text>
+    <path d="M478 244 Q651 167 824 244" class="geodesic"/>
+    <path d="M478 244 Q565 205 651 244 Q737 205 824 244" class="coordinate"/>
+    <circle cx="478" cy="244" r="4" class="point"/>
+    <circle cx="651" cy="244" r="5" class="point"/>
+    <circle cx="824" cy="244" r="4" class="point"/>
+    <text x="478" y="281">Geodesic edges: subdivision changes the path</text>
+    <text x="478" y="305" class="small">Curvature is exaggerated to show the distinction.</text>
+  </g>
+</svg>

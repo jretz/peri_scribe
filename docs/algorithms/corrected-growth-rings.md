@@ -6,8 +6,11 @@ Later maps can withdraw ground that earlier maps included. The differential hist
 applies those corrections to the earlier mappings, then emits only the polygonal area
 added at each step. Full perimeters arrive per fire in chronological order with aligned
 source attributes. Points are copied unchanged by the publication layer. Ring geometry
-is in the common history CRS; measurements use geodesic square meters/acres. Fires must
-occupy consecutive row blocks under the full identity columns.
+is in the common history CRS; growth measurements use WGS84 surface square meters/acres
+with straight coordinate-plane edges. The
+[growth numerical policy](growth-geometry-and-area.md) defines the fixed binary grid,
+polygon-only overlays, surface integral and limits. Fires must occupy consecutive row
+blocks under the full identity columns.
 
 The result shows growth as understood after the later corrections. Ground that
 disappears from later mapping is treated as a correction to the earlier map, rather than
@@ -92,9 +95,10 @@ values 10, missing, 7 produce changes 10, missing, −3.
 Visible progression uses emitted rows with a valid observation time and area strictly
 greater than one square meter. Measure newly covered ground by cumulative union:
 `added[i] = max(0, area(union through i) − previous union area)`. This also avoids double
-counting overlapping caller-provided rings. Store a SHA-256 digest over length-prefixed
-WKB including SRID in displayed order. That binds reused added-area measurements to the
-same shapes and ordering; it is not merely a set of geometry hashes.
+counting overlapping caller-provided rings. Store a SHA-256 digest over the measurement
+policy identity and length-prefixed WKB including SRID in displayed order. That binds
+reused added-area measurements to the same policy, shapes and ordering; it is not merely
+a set of geometry hashes.
 
 ## Worked boundaries and alternatives
 
@@ -102,7 +106,7 @@ A final empty footprint retracts every earlier footprint under the chosen correc
 contract. Equal corrected footprints form one growth block even when dates or attributes
 change. A disconnected new island becomes a new ring. A zero-area or undated emitted
 shape does not enter the visible sequence. The strict one-square-meter comparison rejects
-exact equality; the underlying geometry engine and geodesic measurement still determine
+exact equality; the underlying geometry engine and surface measurement still determine
 real numerical boundaries.
 
 A monotone forward union would preserve withdrawn ground forever and therefore expresses
@@ -124,8 +128,10 @@ Across fires, at most four workers process ordered results, with a queue buffer 
 the worker count; independent fires cannot exchange geometry or metadata. Full input and
 final output frames are still materialized. Cache/publication correctness belongs to
 [geography generations](geography-generations.md). Invalid input geometry, arbitrary
-GEOS robustness, area roundoff, source chronology truth, and hash collisions are outside
-the set-theoretic guarantee.
+GEOS robustness, snap rounding, area roundoff, source chronology truth, and hash collisions
+are outside the set-theoretic guarantee. The fixed precision model approximates the
+original coordinates; it does not prove exact nesting or partition for arbitrary
+snap-rounded edges.
 
 ## Implementation and verification
 
@@ -143,5 +149,5 @@ cover representative blocks, sparse deltas, and the visible ordered sequence.
 [Conformance](../../tests/formal/conformance/test_differential_rows.py) compares complete
 rows, geometry, provenance, and measurements with the executable cell-set policy, including
 explicitly injected numerical-empty outcomes. These abstractions do not prove GEOS,
-geodesic measurement, or every floating-point sliver; their stated assumptions and sampled
+surface measurement, or every floating-point sliver; their stated assumptions and sampled
 real-library checks are part of the guarantee.

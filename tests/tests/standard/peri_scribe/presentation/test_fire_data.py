@@ -11,10 +11,13 @@ import shapely.geometry
 
 import peri_scribe.areas
 import peri_scribe.execution
+import peri_scribe.geo.growth_geometry
 import peri_scribe.models
 import peri_scribe.presentation.fire_data
+import peri_scribe.presentation.perimeters
 import peri_scribe.presentation.selection
 import spatial_data.measurements
+import spatial_data.surface_measurements
 import tests.helpers.doubles.peri_scribe.presentation.fire_data
 import tests.helpers.factories.geometry
 import tests.helpers.factories.peri_scribe.component_identity
@@ -589,8 +592,26 @@ def test_fire_summaries_includes_progression_rings() -> None:
         (tests.helpers.factories.geometry.square(2.0), second_time),
     ]
     assert [ring.area for ring in fire.progression_rings] == [
-        spatial_data.measurements.area(ring.geometry) for ring in fire.progression_rings
+        spatial_data.surface_measurements.area(ring.geometry)
+        for ring in fire.progression_rings
     ]
+
+
+@pytest.mark.parametrize("sequence_digest", [None, "old-policy-digest"])
+def test_progression_ring_remeasures_unversioned_stored_area(
+    sequence_digest: str | None,
+) -> None:
+    grid = peri_scribe.geo.growth_geometry.GRID_SIZE.m_as("degrees")
+    geometry = shapely.box(-120, 40, -120 + grid / 4, 41)
+    legacy_area = spatial_data.measurements.area(geometry)
+    assert legacy_area.m_as("meters ** 2") > 1
+    perimeter = peri_scribe.presentation.perimeters.Perimeter(
+        geometry=geometry,
+        observation_time=None,
+        area=legacy_area,
+        sequence_digest=sequence_digest,
+    )
+    assert peri_scribe.presentation.fire_data.progression_ring(perimeter) is None
 
 
 def test_fire_summaries_drops_tiny_rings() -> None:

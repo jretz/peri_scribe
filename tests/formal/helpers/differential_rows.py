@@ -20,7 +20,7 @@ import peri_scribe.kml.colormap
 import peri_scribe.perimeters.progression
 import peri_scribe.presentation.fire_data
 import peri_scribe.presentation.perimeters
-import spatial_data.measurements
+import spatial_data.surface_measurements
 from measurement_units import units
 
 
@@ -79,7 +79,7 @@ class Source:
 
 
 def footprint(mask: int, *, small: bool) -> shapely.Geometry:
-    """Disjoint cells give exact set membership while retaining real geodesic areas.
+    """Binary-coordinate cells retain exact set membership and real surface areas.
 
     Args:
         mask: A four-cell footprint.
@@ -88,9 +88,9 @@ def footprint(mask: int, *, small: bool) -> shapely.Geometry:
     Returns:
         A real WGS84 polygon union, including an empty geometry for no cells.
     """
-    widths = (0.000002, 0.00001, 0.00002, 0.000003) if small else (0.001,) * 4
+    widths = (2**-19, 2**-17, 2**-16, 2**-18) if small else (2**-10,) * 4
     return shapely.union_all([
-        shapely.box(-120 + cell * 0.01, 35, -120 + cell * 0.01 + width, 35 + width)
+        shapely.box(-120 + cell / 128, 35, -120 + cell / 128 + width, 35 + width)
         for cell, width in enumerate(widths)
         if mask & (1 << cell)
     ])
@@ -141,7 +141,7 @@ def command(
     small: bool,
     omitted: tuple[int, ...] = (),
 ) -> str:
-    """Geodesic measurements are explicit inputs to the ideal visibility policy.
+    """Surface measurements are explicit inputs to the ideal visibility policy.
 
     Args:
         sources: Complete observations, including those that will not emit a ring.
@@ -153,7 +153,7 @@ def command(
     """
     areas = [
         math.ceil(
-            spatial_data.measurements.area(footprint(mask, small=small)).m_as(
+            spatial_data.surface_measurements.area(footprint(mask, small=small)).m_as(
                 "meters ** 2",
             )
             * 1_000_000,
@@ -277,7 +277,7 @@ def assert_rows(
             difference = result[offset + 3] if result[offset + 2] else None
             assert peri_scribe.geo.parsing.numeric_value(row[key]) == value
             assert row[f"{key}_differential"] == difference
-        area = spatial_data.measurements.area(footprint(result[3], small=small))
+        area = spatial_data.surface_measurements.area(footprint(result[3], small=small))
         assert row[peri_scribe.geo.measurements.AREA_COLUMN] == pytest.approx(
             area.m_as("meters ** 2"),
         )
@@ -285,7 +285,7 @@ def assert_rows(
             area.m_as("acres"),
         )
         assert row["area_acres_from_geometry"] == pytest.approx(
-            spatial_data.measurements.area(
+            spatial_data.surface_measurements.area(
                 footprint(
                     cumulative_shapes[result[0]],
                     small=small,
@@ -306,7 +306,8 @@ def assert_visible_sequence(
         actual: Production rows in the same progression order.
     """
     selected = [row for row, result in zip(actual, expected, strict=True) if result[5]]
-    digest = hashlib.sha256()
+    policy = "wgs84-straight-polygon-surface-grid-2^-30-v1"
+    digest = hashlib.sha256(policy.encode() + b"\0")
     previous_area = 0.0
     shapes: list[shapely.Geometry] = []
     for row in selected:
@@ -315,7 +316,7 @@ def assert_visible_sequence(
         digest.update(len(content).to_bytes(8))
         digest.update(content)
         shapes.append(geometry)
-        area = spatial_data.measurements.area(shapely.union_all(shapes)).m_as(
+        area = spatial_data.surface_measurements.area(shapely.union_all(shapes)).m_as(
             "meters ** 2",
         )
         assert row[
@@ -332,7 +333,7 @@ def assert_visible_sequence(
         if result[5]:
             assert (
                 row[peri_scribe.perimeters.progression.SEQUENCE_COLUMN]
-                == digest.hexdigest()
+                == f"{policy}:{digest.hexdigest()}"
             )
         perimeter = peri_scribe.presentation.perimeters.Perimeter(
             geometry=typing.cast("shapely.Geometry", row["geometry"]),
@@ -341,6 +342,10 @@ def assert_visible_sequence(
             ),
             area=typing.cast("float", row[peri_scribe.geo.measurements.AREA_COLUMN])
             * units.Unit("meters ** 2"),
+            sequence_digest=typing.cast(
+                "str | None",
+                row.get(peri_scribe.perimeters.progression.SEQUENCE_COLUMN),
+            ),
         )
         ring = peri_scribe.presentation.fire_data.progression_ring(perimeter)
         if ring is not None:

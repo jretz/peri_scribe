@@ -102,9 +102,8 @@ def progression_ring(
 ) -> peri_scribe.perimeters.progression.Ring | None:
     """Return *perimeter* as a growth ring, or None when it is too small.
 
-    The ring's area is measured geodesically from its geometry so the growth-window and
-    color logic later work in true map area rather than whatever acreage the source
-    reported.
+    The ring's polygon surface area controls the growth window and colors. Prepared
+    measurements and standalone geometry use the same straight-edge surface policy.
 
     Args:
         perimeter: The differential perimeter to turn into a ring.
@@ -112,7 +111,13 @@ def progression_ring(
     Returns:
         The ring, or None when its area is at most one square meter.
     """
-    area = perimeter.measured_area
+    policy_prefix = f"{peri_scribe.perimeters.progression.MEASUREMENT_POLICY}:"
+    area = (
+        perimeter.area
+        if perimeter.area is not None
+        and (perimeter.sequence_digest or "").startswith(policy_prefix)
+        else peri_scribe.perimeters.progression.covered_area(perimeter.geometry)
+    )
     if area <= MINIMUM_RING_AREA:
         return None
     return peri_scribe.perimeters.progression.Ring(

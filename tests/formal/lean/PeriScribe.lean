@@ -28,6 +28,7 @@ import PeriScribe.SourceDigest
 import PeriScribe.SourceValidation
 import PeriScribe.SpatialOverlap
 import PeriScribe.DifferentialRows
+import PeriScribe.GrowthMeasurement
 import PeriScribe.CoordinateQuantization
 import PeriScribe.LogSeeking
 import PeriScribe.GeometrySharing

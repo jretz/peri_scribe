@@ -7,8 +7,9 @@ import pytest
 import shapely
 import shapely.affinity
 
+import peri_scribe.geo.growth_geometry
 import peri_scribe.perimeters.progression
-import spatial_data.measurements
+import spatial_data.surface_measurements
 import tests.helpers.strategies.geometry
 
 
@@ -20,7 +21,12 @@ def test_added_areas_count_each_disjoint_component_once(
 ) -> None:
     additions = peri_scribe.perimeters.progression.added_areas(geometries)
     expected = sum(
-        spatial_data.measurements.area(geometry).m_as("meters**2")
+        spatial_data.surface_measurements.area(
+            shapely.set_precision(
+                geometry,
+                peri_scribe.geo.growth_geometry.GRID_SIZE.m_as("degrees"),
+            ),
+        ).m_as("meters**2")
         for geometry in set(geometries)
     )
     assert sum(area.m_as("meters**2") for area in additions) == pytest.approx(

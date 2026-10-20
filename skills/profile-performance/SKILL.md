@@ -12,6 +12,10 @@ to justify an optimization by itself.
 
 ## Scope and setup
 
+Store reports, measurements, scratch scripts, and copied benchmark datasets under
+`.cache/profiling/`. The `data/` directory is frequently replaced with production data,
+which can erase profiling evidence stored there.
+
 1. Establish the exact command or public function being profiled, the year/data
    directory, expected output, and a reproducible input size. Prefer a local copy or
    fixture data when the workflow writes derived outputs; never profile by downloading

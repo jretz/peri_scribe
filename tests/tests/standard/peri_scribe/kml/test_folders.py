@@ -14,7 +14,7 @@ import peri_scribe.kml.plot_rendering
 import peri_scribe.models
 import peri_scribe.perimeters.progression
 import peri_scribe.presentation.descriptions
-import spatial_data.measurements
+import spatial_data.surface_measurements
 import tests.helpers.assertions.peri_scribe.kml.parsing
 import tests.helpers.factories.geometry
 import tests.helpers.factories.kml_io.geometry
@@ -1221,8 +1221,10 @@ def test_fire_folder_interior_ring_balloons_lead_with_added_area(
     ]
     # The second ring redraws the whole fire, so it adds only the ground beyond the
     # first ring rather than its entire geometry.
-    first_added_area = spatial_data.measurements.area(first_ring)
-    second_added_area = spatial_data.measurements.area(second_ring) - first_added_area
+    first_added_area = spatial_data.surface_measurements.area(first_ring)
+    second_added_area = (
+        spatial_data.surface_measurements.area(second_ring) - first_added_area
+    )
     expected_balloons = {
         "08/05 13:00 Interior": tests.helpers.peri_scribe.kml.folders.balloon_text(
             description,
@@ -1298,7 +1300,7 @@ def test_fire_folder_fallback_ring_balloon_leads_with_its_area(
     )
     # The fallback ring uses the whole latest perimeter, so its balloon reports the full
     # measured area as added area.
-    added_area = spatial_data.measurements.area(
+    added_area = spatial_data.surface_measurements.area(
         tests.helpers.factories.geometry.square(1.0),
     )
     assert balloon == tests.helpers.peri_scribe.kml.folders.balloon_text(

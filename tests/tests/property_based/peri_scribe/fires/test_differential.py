@@ -2,10 +2,10 @@
 
 import hypothesis
 import hypothesis.strategies
-import pytest
 import shapely.geometry
 
 import peri_scribe.fires.differential
+import peri_scribe.geo.growth_geometry
 import tests.helpers.strategies.geometry
 
 
@@ -21,13 +21,18 @@ def test_corrected_geometries_match_all_later_intersections(
 ) -> None:
     actual = peri_scribe.fires.differential.corrected_geometries(geometries)
     assert len(actual) == len(geometries)
+    grid = peri_scribe.geo.growth_geometry.GRID_SIZE.m_as("degrees")
+    bounds = [
+        tuple(round(value / grid) * grid for value in geometry.bounds)
+        for geometry in geometries
+    ]
     for index, corrected in enumerate(actual):
-        expected = shapely.intersection_all(geometries[index:])
-        if expected.area == 0:
+        left = max(bound[0] for bound in bounds[index:])
+        bottom = max(bound[1] for bound in bounds[index:])
+        right = min(bound[2] for bound in bounds[index:])
+        top = min(bound[3] for bound in bounds[index:])
+        if left >= right or bottom >= top:
             assert corrected is None
         else:
             assert corrected is not None
-            assert corrected.symmetric_difference(expected).area == pytest.approx(
-                0,
-                abs=1e-12,
-            )
+            assert corrected.equals(shapely.box(left, bottom, right, top))

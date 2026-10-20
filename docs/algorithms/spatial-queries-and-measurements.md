@@ -49,6 +49,10 @@ features. Layer-writing helpers are direct I/O adapters; callers own staging and
 
 ## Geodesic measurement and geometry helpers
 
+Growth uses a separate [straight-edge surface measure](growth-geometry-and-area.md)
+that matches its planar overlay geometry. The shared geodesic adapter described here
+retains its own contract for full-history/current acreage and other callers.
+
 ![Exterior orientation adds area while holes subtract and do not add exterior perimeter](assets/geodesic-rings.svg)
 
 Consistent ring winding lets the calculation add the areas of separate parts and
