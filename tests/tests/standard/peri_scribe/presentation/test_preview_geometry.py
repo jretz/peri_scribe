@@ -1,5 +1,6 @@
 """Check proportions, per-fire orientation, holes, outlines, and north darts."""
 
+import functools
 import math
 
 import numpy as np
@@ -7,6 +8,7 @@ import pytest
 import shapely
 
 import peri_scribe.presentation.preview_geometry
+import tests.helpers.doubles.peri_scribe.presentation.preview_geometry
 import tests.helpers.factories.peri_scribe.presentation.preview_geometry
 import tests.helpers.reference.peri_scribe.presentation.preview_geometry
 
@@ -262,6 +264,60 @@ def test_north_dart_hull_includes_rendered_pixel_squares_and_two_pixel_clearance
     assert hull.symmetric_difference(expected).area == pytest.approx(0, abs=1e-9)
     assert hull.bounds[1] == pytest.approx(-2)
     assert hull.bounds[2] == pytest.approx(130)
+
+
+def test_north_dart_hull_reuses_identical_rasters_at_distinct_angles() -> None:
+    geometry = peri_scribe.presentation.preview_geometry
+    doubles = tests.helpers.doubles.peri_scribe.presentation.preview_geometry
+    angle = math.radians(33.3)
+    adjacent = math.nextafter(angle, math.inf)
+    with doubles.isolated_dart_caches():
+        first = geometry.north_dart_hull(angle)
+        second = geometry.north_dart_hull(adjacent)
+        assert first is second
+        assert geometry.dart_hull_from_state.cache_info().misses == 1
+        assert geometry.dart_hull_from_state.cache_info().hits == 1
+
+
+def test_north_dart_hull_keeps_different_raster_states_separate() -> None:
+    geometry = peri_scribe.presentation.preview_geometry
+    doubles = tests.helpers.doubles.peri_scribe.presentation.preview_geometry
+    with doubles.isolated_dart_caches():
+        first = geometry.north_dart_hull(0)
+        second = geometry.north_dart_hull(0.37)
+        assert first is not second
+        assert not first.equals(second)
+        assert geometry.dart_hull_from_state.cache_info().hits == 0
+
+
+def test_dart_hull_from_state_reconstructs_identically_after_eviction(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    geometry = peri_scribe.presentation.preview_geometry
+    doubles = tests.helpers.doubles.peri_scribe.presentation.preview_geometry
+    with doubles.isolated_dart_caches():
+        entry_limit = 2
+        bounded = functools.lru_cache(maxsize=entry_limit)(
+            geometry.dart_hull_from_state.__wrapped__,
+        )
+        monkeypatch.setattr(geometry, "dart_hull_from_state", bounded)
+        first = geometry.north_dart_hull.__wrapped__(0)
+        geometry.north_dart_hull.__wrapped__(0.37)
+        geometry.north_dart_hull.__wrapped__(-0.8)
+        reconstructed = geometry.north_dart_hull.__wrapped__(0)
+        assert first is not reconstructed
+        assert shapely.to_wkb(first) == shapely.to_wkb(reconstructed)
+        assert bounded.cache_info().currsize == entry_limit
+
+
+def test_dart_hull_from_state_bounds_retained_keys_to_64_mebibytes() -> None:
+    geometry = peri_scribe.presentation.preview_geometry
+    high = geometry.supersampled_dart(0, alpha_only=True)
+    key_bytes = len(np.packbits(np.asarray(high)).tobytes())
+    entry_limit = geometry.dart_hull_from_state.cache_parameters()["maxsize"]
+    budget = 64 * 1024**2
+    assert entry_limit is not None
+    assert entry_limit * key_bytes <= budget
 
 
 def test_draw_map_preserves_holes_solid_fill_outline_colors_and_flush_dart() -> None:

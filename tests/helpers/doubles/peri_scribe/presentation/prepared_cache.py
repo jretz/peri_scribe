@@ -5,10 +5,10 @@ from __future__ import annotations
 import typing
 
 import peri_scribe.areas
+import peri_scribe.history_columns
 
 
 if typing.TYPE_CHECKING:
-    import pandas as pd
     import pytest
 
 
@@ -25,9 +25,9 @@ def record_preparations(monkeypatch: pytest.MonkeyPatch) -> list[frozenset[str]]
     calls: list[frozenset[str]] = []
 
     def prepare(
-        perimeters: pd.DataFrame,
-        points: pd.DataFrame,
-        incidents: pd.DataFrame | None = None,
+        perimeters: peri_scribe.history_columns.Frame,
+        points: peri_scribe.history_columns.Frame,
+        incidents: peri_scribe.history_columns.Frame | None = None,
     ) -> peri_scribe.areas.PreparedHistory:
         """Keep the ordinary calculation while exposing invalidation decisions.
 

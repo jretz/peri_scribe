@@ -12,9 +12,63 @@ import shapely
 
 import peri_scribe.areas
 import peri_scribe.incidents
+import peri_scribe.presentation.prepared_cache
 import tests.helpers.factories.peri_scribe.areas
+import tests.helpers.factories.peri_scribe.history_columns
 import tests.helpers.peri_scribe.areas
 from measurement_units import units
+
+
+@pytest.mark.parametrize("dated", [False, True])
+@pytest.mark.parametrize("independent", [False, True])
+def test_prepare_history_column_views_preserve_serialized_evidence(
+    *,
+    dated: bool,
+    independent: bool,
+) -> None:
+    perimeters = tests.helpers.factories.peri_scribe.areas.mappings([
+        (5, 80),
+        (0, 100),
+        (5, 90),
+    ])
+    points = tests.helpers.factories.peri_scribe.areas.reports(
+        [(0, 100), (1, 250), (4, 300)],
+        confirmed=True,
+    )
+    incidents = pd.DataFrame({
+        "observation_time": [
+            tests.helpers.factories.peri_scribe.areas.time(day) for day in (4, 0, 1)
+        ],
+        "report_time": [
+            tests.helpers.factories.peri_scribe.areas.time(day) for day in (4, 0, 1)
+        ],
+        "incident_size": pd.array([300, None, 250], dtype="Int64"),
+        "report_confirmed": [True, False, True],
+        "source_serial": pd.array([2**53 + 1, 2**53, 0], dtype="Int64"),
+        "source_file": ["latest", "first", "middle"],
+        "personnel": [0.0, 5.5, float("nan")],
+    })
+    if not dated:
+        for frame in (perimeters, points, incidents):
+            frame["observation_time"] = None
+        perimeters["geometry"] = [None, shapely.Polygon(), None]
+        perimeters["area_acres"] = [150.0, 0.0, float("nan")]
+        incidents["final_acres"] = [None, 400.0, None]
+    source = (perimeters, points, incidents if independent else pd.DataFrame())
+    expected = peri_scribe.areas.prepare_history(*source)
+    columns = tuple(
+        tests.helpers.factories.peri_scribe.history_columns.representation(
+            frame,
+            columnar=True,
+        )
+        for frame in source
+    )
+    actual = peri_scribe.areas.prepare_history(*columns)
+    assert peri_scribe.presentation.prepared_cache.history_bytes(
+        actual,
+    ) == peri_scribe.presentation.prepared_cache.history_bytes(expected)
+    assert peri_scribe.areas.latest_area(*columns) == expected.latest_area
+    assert peri_scribe.areas.historical_area(*columns) == expected.historical_area
 
 
 def test_area_history_does_not_emit_estimates_before_the_first_observation() -> None:

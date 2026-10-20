@@ -6,14 +6,18 @@ import tests.formal.helpers.areas
 import tests.formal.helpers.oracle
 
 
-def test_area_history_matches_lean_complete_selection_fold() -> None:
+@pytest.mark.parametrize("columnar", [False, True])
+def test_area_history_matches_lean_complete_selection_fold(*, columnar: bool) -> None:
     cases = tests.formal.helpers.area_history.cases()
     expected = tests.formal.helpers.oracle.evaluate(
         [case.command() for case in cases],
         executable="oracleDomain",
     )
     for case, result in zip(cases, expected, strict=True):
-        estimates = tests.formal.helpers.area_history.implementation(case)
+        estimates = tests.formal.helpers.area_history.implementation(
+            case,
+            columnar=columnar,
+        )
         assert len(result) == len(estimates) * 5, case
         for estimate, fields in zip(
             estimates,

@@ -12,10 +12,7 @@ import json
 import typing
 
 import peri_scribe.geo.parsing
-
-
-if typing.TYPE_CHECKING:
-    import pandas as pd
+import peri_scribe.history_columns
 
 
 LAYER_NAME = "incident_history"
@@ -81,7 +78,11 @@ def attributes_dictionary(value: object) -> dict[str, object]:
     return {}
 
 
-def update_from_row(row: pd.Series, *, perimeter: bool) -> IncidentUpdate | None:
+def update_from_row(
+    row: peri_scribe.history_columns.Row,
+    *,
+    perimeter: bool,
+) -> IncidentUpdate | None:
     """Keep incident measurements on their own clock when supplied beside a polygon.
 
     Perimeter attributes need an incident modification time; a polygon's observation
@@ -100,7 +101,7 @@ def update_from_row(row: pd.Series, *, perimeter: bool) -> IncidentUpdate | None
     """
     attributes = attributes_dictionary(row.get("source_attributes"))
     prefix = "attr_" if perimeter else ""
-    normalized = "report_confirmed" in row.index
+    normalized = peri_scribe.history_columns.has_field(row, "report_confirmed")
     time = peri_scribe.geo.parsing.observation_time_from(
         row.get("observation_time")
         if normalized or not perimeter
@@ -123,7 +124,7 @@ def update_from_row(row: pd.Series, *, perimeter: bool) -> IncidentUpdate | None
         if number is not None and number >= 0:
             values[column] = number
     confirmed = (
-        bool(row["report_confirmed"])
+        bool(row.get("report_confirmed"))
         if normalized
         else str(attributes.get(prefix + "ModifiedBySystem", "")).casefold() == "ics209"
         and report_time is not None
@@ -258,9 +259,9 @@ def reconcile_updates(
 
 
 def history(
-    perimeters: pd.DataFrame,
-    points: pd.DataFrame,
-    incident_rows: pd.DataFrame | None = None,
+    perimeters: peri_scribe.history_columns.Frame,
+    points: peri_scribe.history_columns.Frame,
+    incident_rows: peri_scribe.history_columns.Frame | None = None,
 ) -> tuple[IncidentUpdate, ...]:
     """Prefer independent reporting history so polygon selection cannot erase reports.
 
@@ -283,7 +284,7 @@ def history(
     return reconcile_updates(
         update
         for frame, perimeter in frames
-        for _, row in frame.iterrows()
+        for row in peri_scribe.history_columns.rows(frame)
         if (update := update_from_row(row, perimeter=perimeter)) is not None
     )
 

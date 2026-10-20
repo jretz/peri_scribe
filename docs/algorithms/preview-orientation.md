@@ -11,10 +11,10 @@ nonempty finite drawable geometry.
 
 | Dimension | Score | Reason |
 | --- | --- | --- |
-| History and state | 1 | A candidate table retains measurements during refinement; rendering preserves supplied chronology. |
+| History and state | 1 | Candidate measurements and bounded dart-support caches are local memoization; rendering preserves supplied chronology. |
 | Rule interaction | 2 | Fit, corner placement, obstruction, tie tolerance, and north-direction bounds interact. |
 | Mathematical reasoning | 3 | A custom sampled search handles discontinuous changes in rendered dart support. |
-| Scale and representation | 2 | Projected hulls and antialiased pixel support connect geographic and raster geometry. |
+| Scale and representation | 2 | Projected hulls, exact binary raster keys, and antialiased support connect geographic and raster geometry. |
 | Failure and concurrency | 0 | The search owns no external effects or concurrent lifecycle. |
 
 **Complex: 8 because mathematical reasoning is 3.** This is a presentation heuristic;
@@ -53,6 +53,43 @@ illustrative objective inputs, not measurements of the schematic polygons.
 Using the geometric dart triangle alone would miss antialiased outline pixels. Rotating
 the entire drawing afterward would move the dart away from its required corner. Hull
 overlap is conservative: gaps and holes in the actual fire still occupy the scoring hull.
+
+## Reusing exact dart support
+
+The scoring hull depends on the dart's alpha channel. The search draws the same opaque
+polygons and strokes into a grayscale image, then measures their resampled support.
+The final colored dart uses the same drawing primitives in RGBA. Alpha equivalence
+depends on Pillow's drawing and resampling behavior, so tests compare actual alpha
+bytes with the colored renderer instead of assuming equivalence from appearance.
+
+Nearby angles often draw exactly the same high-resolution alpha image. Each image has
+512×512 pixels containing only 0 or 255, so packing its pixels into bits retains every
+occupied position in 32 KiB. The complete packed image is the cache key. Equal keys
+reconstruct equal images and therefore give equal resampling, crop, pixel-square hull,
+corner placement, and clearance. Python checks complete byte equality after hashing;
+a hash collision cannot substitute a different raster.
+
+Image dimensions, supersampling, corner placement, clearance, resampling, and hull
+construction remain fixed for the process lifetime. Tests that replace any of those
+dependencies must clear the raster, angle, and coarse-grid caches together.
+
+For example, two distinct angles that touch exactly the same high-resolution pixels
+share one hull. If even one occupied pixel changes, their keys differ. Rounding the
+four geometric vertices would not establish this property: curved line joins also
+depend on the original floating-point coordinates. Caching the final alpha mask would
+still require repeating the more expensive resampling step.
+
+The state cache retains at most 2,048 immutable hulls and 64 MiB of packed keys. The
+angle and fixed coarse-grid caches retain references to those hulls. Eviction only
+requires reconstructing a deterministic hull; it changes no search result. The caches
+live in the process and do not alter persistent preview keys or their invalidation
+rules. Introducing partially transparent primitives would require changing the binary
+key representation, because packing treats every nonzero value as one.
+
+This cache is presentation-only memoization with no domain policy, external effects,
+or durable state transitions. Formal verification adds no useful coverage of the
+Pillow alpha/resampling boundary. Exact raster comparisons, independent rendered-pixel
+hull checks, and cache-reuse/eviction regressions exercise that boundary.
 
 ## Search, ties, and limitations
 
@@ -98,14 +135,27 @@ For V source vertices, H hull vertices, and A sampled angles, projection/hull co
 is conventionally O(V log V), and each fit scans O(H) coordinates plus geometry-intersection
 cost. The coarse grid has about 7,200 angles; refinements add a bounded number of probes
 under these constants. Candidate memory is O(A), while the dart-hull LRU retains at most
-4,096 fine-search entries and a separate cache retains the fixed coarse grid. Rendering
-uses a fixed 1024×576 canvas plus geometry coordinate/mask allocations.
+4,096 fine-search entries and a separate cache retains the fixed coarse grid. The
+additional raster cache has at most 2,048 entries: its keys use at most 64 MiB, plus
+bounded Python and hull storage. Its values contain no retained image arrays. The
+fixed 64×64 output bounds hull size, and the angle/coarse caches may retain hull
+references after a raster key is evicted.
+
+For P high-resolution dart pixels and U distinct raster states, drawing and packing
+take O(P) work per angle-cache miss. A raster-state hit avoids resampling and hull
+construction; a miss also reconstructs P pixels. Packed key storage is
+O(min(U,2048) P/8). These caches reduce repeated work without changing the search's
+worst-case candidate count. Final map rendering uses a fixed 1024×576 canvas plus
+geometry coordinate/mask allocations.
 
 Implementation: [preview_geometry.py](../../src/peri_scribe/presentation/preview_geometry.py)
 and [previews.py](../../src/peri_scribe/previews.py).
 [Geometry tests](../../tests/tests/standard/peri_scribe/presentation/test_preview_geometry.py)
 cover sampled fit, overlap tradeoffs, the narrow Brushy Canyon case, transform invariance,
-antimeridian placement, pixel support, holes, and outline order.
+antimeridian placement, pixel support, exact state reuse, eviction, the cache bound,
+holes, and outline order.
+[Generated angle checks](../../tests/tests/property_based/peri_scribe/presentation/test_preview_geometry.py)
+compare binary alpha, resampled alpha, and placed support with the colored renderer.
 [Preview tests](../../tests/tests/standard/peri_scribe/test_previews.py) cover image/cache
 transport. Formal verification is omitted for this presentation-only sampled search:
 it introduces no domain policy or durable protocol, and a smooth analytical optimum

@@ -71,6 +71,7 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 | [execution.py](../../src/peri_scribe/execution.py) | [geography generations](geography-generations.md) |
 | [fire_update_records.py](../../src/peri_scribe/fire_update_records.py) | [update journal](update-journal.md) |
 | [fire_updates.py](../../src/peri_scribe/fire_updates.py) | [history ownership](history-ownership.md); [update journal](update-journal.md) |
+| [history_columns.py](../../src/peri_scribe/history_columns.py) | [presentation selection](presentation-selection.md) |
 | [incidents.py](../../src/peri_scribe/incidents.py) | [incident area selection](incident-area-selection.md) |
 | [log_reading.py](../../src/peri_scribe/log_reading.py) | [log retention](log-retention.md) |
 | [logging.py](../../src/peri_scribe/logging.py) | [log retention](log-retention.md); [update journal](update-journal.md); [monitor evidence](monitor-evidence.md) |

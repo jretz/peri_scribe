@@ -5,6 +5,7 @@ from __future__ import annotations
 import pathlib
 
 import pandas as pd
+import pytest
 
 import peri_scribe.fires.derived_layers
 import peri_scribe.fires.history
@@ -14,6 +15,7 @@ import peri_scribe.incidents
 import spatial_data.layers
 import tests.formal.helpers.incident_histories
 import tests.formal.helpers.oracle
+import tests.helpers.factories.peri_scribe.history_columns
 
 
 def test_reconcile_updates_matches_lean_complete_sparse_histories() -> None:
@@ -53,8 +55,11 @@ def test_latest_value_matches_lean_complete_field_histories() -> None:
             assert peri_scribe.incidents.latest_value(actual, column) == expected_value
 
 
+@pytest.mark.parametrize("columnar", [False, True])
 def test_incident_layer_rows_matches_lean_through_storage_and_polygon_removal(
     tmp_path: pathlib.Path,
+    *,
+    columnar: bool,
 ) -> None:
     cases = tests.formal.helpers.incident_histories.cases()[1001::15]
     prepared = [
@@ -93,7 +98,11 @@ def test_incident_layer_rows_matches_lean_through_storage_and_polygon_removal(
             ],
         )
         frame = peri_scribe.fires.derived_layers.read_incident_layer(path)
-        actual = peri_scribe.incidents.history(pd.DataFrame(), pd.DataFrame(), frame)
+        evidence = tests.helpers.factories.peri_scribe.history_columns.representation(
+            frame,
+            columnar=columnar,
+        )
+        actual = peri_scribe.incidents.history(pd.DataFrame(), pd.DataFrame(), evidence)
         tests.formal.helpers.incident_histories.assert_provenance(normalized, actual)
         assert tests.formal.helpers.incident_histories.projection(actual) == result
         conflicting_fallback = pd.DataFrame([
@@ -106,7 +115,7 @@ def test_incident_layer_rows_matches_lean_through_storage_and_polygon_removal(
             peri_scribe.incidents.history(
                 conflicting_fallback,
                 conflicting_fallback,
-                frame,
+                evidence,
             )
             == actual
         )

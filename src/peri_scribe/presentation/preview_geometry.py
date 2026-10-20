@@ -29,6 +29,7 @@ SUPERSAMPLING = 8
 MARGIN = 2
 OUTLINE_COLORS = ("#ffffff", "#ffff00", "#ff0000")
 DART_VERTICES = ((0, -9), (5, 9), (0, 6), (-5, 9))
+DART_SIZE = 64
 DART_CLEARANCE = 2
 OVERLAP_WEIGHT = 0.75
 ANGLE_STEP = 0.025
@@ -380,6 +381,44 @@ def polygons(geometry: shapely.Geometry) -> tuple[shapely.Polygon, ...]:
     return ()
 
 
+def supersampled_dart(angle: float, *, alpha_only: bool = False) -> PIL.Image.Image:
+    """Use the same opaque drawing primitives for colored and alpha-only darts.
+
+    Args:
+        angle: The map rotation in radians.
+        alpha_only: Whether to retain just the occupied high-resolution pixels.
+
+    Returns:
+        The padded binary alpha or colored image before resampling.
+    """
+    high = PIL.Image.new(
+        "L" if alpha_only else "RGBA",
+        (DART_SIZE * SUPERSAMPLING, DART_SIZE * SUPERSAMPLING),
+    )
+    cosine, sine = math.cos(angle), math.sin(angle)
+    points = [
+        (
+            (DART_SIZE / 2 + cosine * x + sine * y) * SUPERSAMPLING,
+            (DART_SIZE / 2 - sine * x + cosine * y) * SUPERSAMPLING,
+        )
+        for x, y in DART_VERTICES
+    ]
+    tip, right, notch, left = points
+    drawing = PIL.ImageDraw.Draw(high)
+    light, dark = (255, 255) if alpha_only else ("white", "black")
+    drawing.polygon((tip, notch, left), fill=light)
+    drawing.polygon((tip, right, notch), fill=dark)
+    outline = [*points, tip]
+    drawing.line(outline, fill=light, width=round(1.4 * SUPERSAMPLING), joint="curve")
+    drawing.line(
+        outline,
+        fill=dark,
+        width=round(0.65 * SUPERSAMPLING),
+        joint="curve",
+    )
+    return high
+
+
 def north_dart(angle: float) -> PIL.Image.Image:
     """Retain the full antialiased outline around a tightly cropped north dart.
 
@@ -389,47 +428,33 @@ def north_dart(angle: float) -> PIL.Image.Image:
     Returns:
         A north-pointing black/white dart, ready for top/right edge placement.
     """
-    padded_size = 64
-    high = PIL.Image.new(
-        "RGBA",
-        (padded_size * SUPERSAMPLING, padded_size * SUPERSAMPLING),
-    )
-    cosine, sine = math.cos(angle), math.sin(angle)
-    points = [
-        (
-            (padded_size / 2 + cosine * x + sine * y) * SUPERSAMPLING,
-            (padded_size / 2 - sine * x + cosine * y) * SUPERSAMPLING,
-        )
-        for x, y in DART_VERTICES
-    ]
-    tip, right, notch, left = points
-    drawing = PIL.ImageDraw.Draw(high)
-    drawing.polygon((tip, notch, left), fill="white")
-    drawing.polygon((tip, right, notch), fill="black")
-    outline = [*points, tip]
-    drawing.line(outline, fill="white", width=round(1.4 * SUPERSAMPLING), joint="curve")
-    drawing.line(
-        outline,
-        fill="black",
-        width=round(0.65 * SUPERSAMPLING),
-        joint="curve",
-    )
-    padded = high.resize((padded_size, padded_size), PIL.Image.Resampling.LANCZOS)
+    high = supersampled_dart(angle)
+    padded = high.resize((DART_SIZE, DART_SIZE), PIL.Image.Resampling.LANCZOS)
     return padded.crop(padded.getchannel("A").getbbox())
 
 
-@functools.lru_cache(maxsize=4096)
-def north_dart_hull(angle: float) -> shapely.Polygon:
-    """Give even antialiased dart pixels two pixels of breathing room.
+@functools.lru_cache(maxsize=2048)
+def dart_hull_from_state(state: bytes) -> shapely.Polygon:
+    """Reuse exact binary rasters before resampling and constructing their hulls.
 
     Args:
-        angle: Map rotation in radians.
+        state: Every packed bit of the fixed-size supersampled alpha image.
 
     Returns:
-        The placed alpha-support hull, buffered without clipping to the canvas.
+        The immutable placed support hull, with two pixels of clearance.
     """
-    dart = north_dart(angle)
-    rows, columns = np.nonzero(np.asarray(dart.getchannel("A")))
+    high_size = DART_SIZE * SUPERSAMPLING
+    pixels = (
+        np.unpackbits(np.frombuffer(state, dtype=np.uint8)).reshape((
+            high_size,
+            high_size,
+        ))
+        * 255
+    )
+    high = PIL.Image.fromarray(pixels)
+    padded = high.resize((DART_SIZE, DART_SIZE), PIL.Image.Resampling.LANCZOS)
+    dart = padded.crop(padded.getbbox())
+    rows, columns = np.nonzero(np.asarray(dart))
     centers = np.column_stack((columns + SIZE[0] - dart.width + 0.5, rows + 0.5))
     boundary = shapely.get_coordinates(shapely.MultiPoint(centers).convex_hull)
     squares = np.concatenate([
@@ -437,6 +462,20 @@ def north_dart_hull(angle: float) -> shapely.Polygon:
         for corner in ((-0.5, -0.5), (-0.5, 0.5), (0.5, -0.5), (0.5, 0.5))
     ])
     return shapely.MultiPoint(squares).convex_hull.buffer(DART_CLEARANCE)
+
+
+@functools.lru_cache(maxsize=4096)
+def north_dart_hull(angle: float) -> shapely.Polygon:
+    """Share rendered support between angles with identical complete alpha rasters.
+
+    Args:
+        angle: Map rotation in radians.
+
+    Returns:
+        The placed alpha-support hull, buffered without clipping to the canvas.
+    """
+    high = supersampled_dart(angle, alpha_only=True)
+    return dart_hull_from_state(np.packbits(np.asarray(high)).tobytes())
 
 
 @functools.cache

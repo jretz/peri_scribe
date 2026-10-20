@@ -353,6 +353,12 @@ it. A spherical longitude center supports fires crossing the antimeridian. An
 independently antialiased 18-pixel north dart is cropped to its alpha bounds and
 composited flush to the top and right edges.
 
+Scoring draws the dart's opaque support into one alpha channel. Identical complete
+supersampled binary rasters share their resized support hull through a process-local
+cache. Packed raster bytes establish exact equality without approximating angles. The
+cache retains at most 2,048 hulls and 64 MiB of raw raster keys; other drawing and geometry
+objects also use memory. Final colored darts use the same shared drawing primitives.
+
 Alpha-aware weighted clustering allocates up to 251 dynamic RGBA colors in addition to
 five reserved colors. Separate opaque and partial-alpha clusters preserve solid fills
 and antialiased transparency. Pillow encodes exact quantized pixels with lossless WebP,
@@ -487,6 +493,13 @@ Deleting the database makes later runs recompute those products. SQLite's page c
 is 8 MiB and the KML fragment cache retains at most 16 MiB of accounted values. Other
 objects also use memory, so neither limit bounds total RAM. Old runtime contexts remain
 on disk.
+
+History preparation shares immutable column tuples and selects each fire through its
+original row positions. The grouping and fingerprint inputs remain the authenticated
+frames, so the adapter preserves evidence order, scalar types, missing values, and
+cache identities. Columns are materialized only when a history needs computation;
+an invocation served entirely by cached histories avoids that work. Callers retain
+ownership of borrowed scalar objects and must not mutate them during preparation.
 
 Prepared histories let presentation and chart consumers skip raw row selections whose
 only purpose is reconstructing that history. Fingerprints iterate ordered column values

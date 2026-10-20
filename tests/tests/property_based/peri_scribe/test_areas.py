@@ -6,8 +6,39 @@ import hypothesis
 import hypothesis.strategies
 
 import peri_scribe.areas
+import peri_scribe.presentation.prepared_cache
 import tests.helpers.factories.peri_scribe.areas
+import tests.helpers.factories.peri_scribe.history_columns
 import tests.helpers.strategies.peri_scribe.areas
+
+
+@hypothesis.given(
+    mapping_entries=tests.helpers.strategies.peri_scribe.areas.history_entries(),
+    report_entries=tests.helpers.strategies.peri_scribe.areas.history_entries(),
+)
+def test_prepare_history_columns_preserve_exact_serialized_policy_results(
+    mapping_entries: list[tuple[float, float]],
+    report_entries: list[tuple[float, float]],
+) -> None:
+    frames = (
+        tests.helpers.factories.peri_scribe.areas.mappings(mapping_entries),
+        tests.helpers.factories.peri_scribe.areas.reports(
+            report_entries,
+            confirmed=True,
+        ),
+    )
+    columns = tuple(
+        tests.helpers.factories.peri_scribe.history_columns.representation(
+            frame,
+            columnar=True,
+        )
+        for frame in frames
+    )
+    expected = peri_scribe.areas.prepare_history(*frames)
+    actual = peri_scribe.areas.prepare_history(*columns)
+    assert peri_scribe.presentation.prepared_cache.history_bytes(
+        actual,
+    ) == peri_scribe.presentation.prepared_cache.history_bytes(expected)
 
 
 @hypothesis.given(

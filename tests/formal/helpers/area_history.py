@@ -13,6 +13,7 @@ import peri_scribe.geo.measurements
 import peri_scribe.incidents
 import tests.formal.helpers.areas
 import tests.formal.helpers.generation
+import tests.helpers.factories.peri_scribe.history_columns
 from measurement_units import units
 
 
@@ -135,11 +136,16 @@ def cases() -> list[History]:
     return result
 
 
-def implementation(history: History) -> tuple[peri_scribe.areas.AreaEstimate, ...]:
+def implementation(
+    history: History,
+    *,
+    columnar: bool = False,
+) -> tuple[peri_scribe.areas.AreaEstimate, ...]:
     """Exercise mapping preparation and report acceptance in the production selector.
 
     Args:
         history: Exact chronological observations with integral acreage.
+        columnar: Whether to read evidence through the shared source columns.
 
     Returns:
         The production selector's complete source-attributed history.
@@ -174,4 +180,14 @@ def implementation(history: History) -> tuple[peri_scribe.areas.AreaEstimate, ..
         )
         for index, item in enumerate(history.reports)
     )
-    return peri_scribe.areas.area_history(perimeters, pd.DataFrame(), updates=updates)
+    return peri_scribe.areas.area_history(
+        tests.helpers.factories.peri_scribe.history_columns.representation(
+            perimeters,
+            columnar=columnar,
+        ),
+        tests.helpers.factories.peri_scribe.history_columns.representation(
+            pd.DataFrame(),
+            columnar=columnar,
+        ),
+        updates=updates,
+    )

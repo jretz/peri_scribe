@@ -8,6 +8,7 @@ import pathlib
 import pytest
 
 import peri_scribe.areas
+import peri_scribe.history_columns
 import peri_scribe.presentation.prepared_cache
 import peri_scribe.presentation.selection
 import spatial_data.product_cache
@@ -30,6 +31,11 @@ def test_prepare_histories_reuses_persisted_evidence_in_a_new_run(
         peri_scribe.areas,
         "prepare_history",
         lambda *_args: pytest.fail("Unchanged evidence was prepared again"),
+    )
+    monkeypatch.setattr(
+        peri_scribe.history_columns,
+        "prepare_source",
+        lambda *_args: pytest.fail("Cached evidence was materialized again"),
     )
     with spatial_data.product_cache.scope(tmp_path / "products.sqlite", "test"):
         actual = peri_scribe.presentation.selection.prepare_histories(
@@ -157,6 +163,42 @@ def test_prepare_histories_keeps_working_with_unsupported_source_values(
     with spatial_data.product_cache.scope(tmp_path / "products.sqlite", "test"):
         actual = peri_scribe.presentation.selection.prepare_histories(empty, points)
     assert actual == expected
+
+
+@pytest.mark.parametrize("cached", [False, True])
+@pytest.mark.parametrize("column_name", [0, "unused"])
+def test_prepare_histories_preserves_unusual_unused_column_schemas(
+    tmp_path: pathlib.Path,
+    *,
+    cached: bool,
+    column_name: object,
+) -> None:
+    empty = tests.helpers.factories.geography.empty_frame()
+    points = tests.helpers.factories.peri_scribe.fires.scores.reported_frame([
+        ("example", "Example", 100),
+    ])
+    expected = peri_scribe.presentation.selection.prepare_histories(empty, points)
+    points.insert(len(points.columns), column_name, [1], allow_duplicates=True)
+    if column_name == "unused":
+        points.insert(len(points.columns), column_name, [2], allow_duplicates=True)
+    if cached:
+        with spatial_data.product_cache.scope(tmp_path / "products.sqlite", "test"):
+            actual = peri_scribe.presentation.selection.prepare_histories(empty, points)
+    else:
+        actual = peri_scribe.presentation.selection.prepare_histories(empty, points)
+    assert actual == expected
+
+
+def test_prepare_histories_does_not_materialize_empty_evidence(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        peri_scribe.history_columns,
+        "prepare_source",
+        lambda *_args: pytest.fail("Empty evidence was materialized"),
+    )
+    empty = tests.helpers.factories.geography.empty_frame()
+    assert peri_scribe.presentation.selection.prepare_histories(empty, empty) == {}
 
 
 def test_prepare_histories_keeps_working_with_unserializable_prepared_values(

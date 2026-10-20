@@ -13,6 +13,7 @@ import typing
 import peri_scribe.areas
 import peri_scribe.geo.measurements
 import peri_scribe.geo.parsing
+import peri_scribe.history_columns
 import peri_scribe.models
 import peri_scribe.perimeters.progression
 import peri_scribe.presentation.perimeters
@@ -166,12 +167,20 @@ def prepare_histories(
             fingerprints = None
         if fingerprints is not None:
             return persistent_histories(frames, fingerprints, aliases or {})
-    groups = tuple(area_groups(frame, aliases or {}) for frame in frames)
+    groups = tuple(area_positions(frame, aliases or {}) for frame in frames)
+    if not any(groups):
+        return {}
+    columns = tuple(
+        peri_scribe.history_columns.prepare_source(frame) for frame in frames
+    )
     return {
         key: peri_scribe.areas.prepare_history(
             *(
-                group.get(key, frame.iloc[0:0])
-                for group, frame in zip(groups, frames, strict=True)
+                peri_scribe.history_columns.select_rows(
+                    column,
+                    tuple(group.get(key, ())),
+                )
+                for group, column in zip(groups, columns, strict=True)
             ),
         )
         for key in set().union(*groups)
@@ -195,6 +204,7 @@ def persistent_histories(
     """
     groups = tuple(area_positions(frame, aliases) for frame in frames)
     histories: dict[AreaKey, peri_scribe.areas.PreparedHistory] = {}
+    columns: tuple[peri_scribe.history_columns.Source, ...] | None = None
     for identity in set().union(*groups):
         positions = tuple(tuple(group.get(identity, ())) for group in groups)
         key = spatial_data.frame_fingerprints.selected_key(
@@ -214,10 +224,16 @@ def persistent_histories(
                 pass
             else:
                 continue
+        if columns is None:
+            columns = tuple(
+                peri_scribe.history_columns.prepare_source(frame) for frame in frames
+            )
         history = peri_scribe.areas.prepare_history(
-            *(
-                frame.iloc[list(rows)]
-                for frame, rows in zip(frames, positions, strict=True)
+            *map(
+                peri_scribe.history_columns.select_rows,
+                columns,
+                positions,
+                strict=True,
             ),
         )
         histories[identity] = history

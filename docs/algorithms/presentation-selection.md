@@ -45,6 +45,46 @@ digest. The [growth-ring note](corrected-growth-rings.md) explains this order de
 Descriptions, geometry views, and charts consume these prepared facts; they do not
 independently select a different current area.
 
+## Sharing columns during history preparation
+
+Every fire reads a small selection from the same source layers. Materialize each source
+column as a tuple once, then give the area and incident policy a view containing only
+that fire's ordered row positions. A row reads its fields from those shared tuples.
+For example, positions `(7, 2, 7)` retain that order and repeated evidence even when the
+source frame has duplicate index labels. The view never sorts or deduplicates evidence.
+
+This adapter is involved: history 1, rules 1, mathematics 1, representation 2, effects 0;
+total 5. Its invariant is that each selected field comes from the same source column
+and positional row. Missing fields remain distinct from present fields containing
+`None`, `NaN`, `NaT`, or a pandas nullable scalar. Geometry and source-attribute objects
+are borrowed; consumers must not mutate them during preparation. The tuple structure
+and its field mapping are immutable, but the adapter does not recursively freeze source
+objects. Source columns with duplicate or non-string names retain pandas selection.
+
+The cache fingerprints the original frames, including their schemas, row order, CRS,
+and field values. Keys and serialized `PreparedHistory` records use the same codecs and
+dependencies for both representations. Only a cache miss materializes shared columns;
+an all-hit run reads its prepared histories without that cost. Empty input also requires
+no column materialization. The first miss pays for all source layers, even when only one
+fire changed, so a sparse miss can cost more than selecting that fire directly.
+
+For `N` rows and `C` fields, materialization takes `O(NC)` time and references. It copies
+column structure and boxes source scalars where required by pandas, while borrowing
+geometry and attribute objects. A selection holds `O(K)` positions for its `K` rows.
+Reading one field is `O(1)`; reading a selected column takes `O(K)` time and references.
+Area sorting, geometry measurements, reconciliation, and serialized cache I/O retain
+their own costs. The gain depends on how much time those operations leave for pandas
+slicing and row construction.
+
+This is a data-access adapter with no new policy or persistence protocol. The
+[AreaHistory](../../tests/formal/lean/domain.md) and
+[incident reconciliation](../../tests/formal/lean/incident_histories.md) definitions remain
+the policy references. Their existing executable-reference tests run the complete area
+fold and stored normalized incident histories through both representations. Ordinary
+and generated tests compare complete serialized histories, including sparse fallbacks
+and source provenance. These checks connect the representations to the existing
+definitions; they do not prove arbitrary pandas or geometry-library behavior.
+
 ## Score association and views
 
 Resolve aliases to their current owner before selecting ranked places. Two saved score
@@ -137,6 +177,7 @@ is inherently weaker evidence than explicit identifiers or components.
 ## Implementation and verification
 
 - [History index](../../src/peri_scribe/presentation/history_index.py),
+  [column views](../../src/peri_scribe/history_columns.py),
   [selection](../../src/peri_scribe/presentation/selection.py),
   [shared summaries](../../src/peri_scribe/presentation/fire_data.py),
   [score association](../../src/peri_scribe/presentation/score_association.py), and
@@ -149,6 +190,9 @@ is inherently weaker evidence than explicit identifiers or components.
   [notable-view conformance](../../tests/formal/conformance/test_notable_views.py), and
   [identity output conformance](../../tests/formal/conformance/test_identity_output.py).
   These specifications separate finite checks and ideal policy from numerical geometry.
+- [Area-history conformance](../../tests/formal/conformance/test_area_history.py) and
+  [stored incident-history conformance](../../tests/formal/conformance/test_incident_histories.py)
+  exercise pandas and column views against the same compiled Lean definitions.
 - [View regressions](../../tests/tests/standard/peri_scribe/presentation/test_views.py)
   check growth-window endpoints, missing/zero baselines, personnel freshness, and view
   eligibility. These ordinary checks do not establish external source truth.

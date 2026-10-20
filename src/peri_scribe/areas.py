@@ -13,13 +13,13 @@ import typing
 
 import peri_scribe.geo.measurements
 import peri_scribe.geo.parsing
+import peri_scribe.history_columns
 import peri_scribe.incidents
 import spatial_data.measurements
 from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
-    import pandas as pd
     import pint
     import shapely
 
@@ -128,9 +128,9 @@ class PreparedHistory:
 
 
 def prepare_history(
-    perimeters: pd.DataFrame,
-    points: pd.DataFrame,
-    incident_rows: pd.DataFrame | None = None,
+    perimeters: peri_scribe.history_columns.Frame,
+    points: peri_scribe.history_columns.Frame,
+    incident_rows: peri_scribe.history_columns.Frame | None = None,
 ) -> PreparedHistory:
     """Reconcile each fire once so qualification, charts, and text share its evidence.
 
@@ -157,7 +157,7 @@ def prepare_history(
     )
 
 
-def row_area(row: pd.Series) -> pint.Quantity[float] | None:
+def row_area(row: peri_scribe.history_columns.Row) -> pint.Quantity[float] | None:
     """Require usable geometry before treating a row as a mapped area.
 
     Args:
@@ -167,7 +167,7 @@ def row_area(row: pd.Series) -> pint.Quantity[float] | None:
         The positive measured area, using the stored geometry measurement when
         available, or None for missing, empty, or zero-area geometry.
     """
-    geometry = row.get("geometry")
+    geometry = typing.cast("shapely.Geometry | None", row.get("geometry"))
     if geometry is None or geometry.is_empty:
         return None
     measured = peri_scribe.geo.measurements.area(
@@ -177,7 +177,10 @@ def row_area(row: pd.Series) -> pint.Quantity[float] | None:
     return measured if measured > 0 * units.acres else None
 
 
-def new_survey(row: pd.Series, previous_time: datetime.datetime | None) -> bool:
+def new_survey(
+    row: peri_scribe.history_columns.Row,
+    previous_time: datetime.datetime | None,
+) -> bool:
     """Recognize survey evidence that can renew an unchanged footprint's freshness.
 
     Flight observations establish survey activity directly. Other sources need a
@@ -210,7 +213,7 @@ def new_survey(row: pd.Series, previous_time: datetime.datetime | None) -> bool:
 
 
 def mapping_history(
-    perimeters: pd.DataFrame,
+    perimeters: peri_scribe.history_columns.Frame,
     policy: AreaPolicy,
 ) -> tuple[Mapping, ...]:
     """Separate useful mapping observations from evidence of a fresh survey.
@@ -230,7 +233,7 @@ def mapping_history(
     rows = sorted(
         (
             (time, row)
-            for _, row in perimeters.iterrows()
+            for row in peri_scribe.history_columns.rows(perimeters)
             if (
                 time := peri_scribe.geo.parsing.observation_time_from(
                     row.get("observation_time"),
@@ -246,7 +249,7 @@ def mapping_history(
         area = row_area(row)
         if area is None:
             continue
-        geometry = row.geometry
+        geometry = typing.cast("shapely.Geometry", row.get("geometry"))
         surveyed = previous is None or new_survey(row, previous.time)
         if not surveyed and previous is not None:
             difference = spatial_data.measurements.area(
@@ -356,9 +359,9 @@ def accepted_reports(
 
 
 def area_history(
-    perimeters: pd.DataFrame,
-    points: pd.DataFrame,
-    incident_rows: pd.DataFrame | None = None,
+    perimeters: peri_scribe.history_columns.Frame,
+    points: peri_scribe.history_columns.Frame,
+    incident_rows: peri_scribe.history_columns.Frame | None = None,
     *,
     policy: AreaPolicy = DEFAULT_POLICY,
     updates: tuple[peri_scribe.incidents.IncidentUpdate, ...] | None = None,
@@ -457,9 +460,9 @@ def area_history(
 
 
 def latest_area(
-    perimeters: pd.DataFrame,
-    points: pd.DataFrame,
-    incident_rows: pd.DataFrame | None = None,
+    perimeters: peri_scribe.history_columns.Frame,
+    points: peri_scribe.history_columns.Frame,
+    incident_rows: peri_scribe.history_columns.Frame | None = None,
     *,
     history: tuple[AreaEstimate, ...] | None = None,
 ) -> pint.Quantity[float] | None:
@@ -482,18 +485,18 @@ def latest_area(
         history = area_history(perimeters, points, incident_rows)
     if history:
         return history[-1].area
-    for _, row in perimeters.iloc[::-1].iterrows():
+    for row in peri_scribe.history_columns.rows(perimeters, reverse=True):
         if (area := row_area(row)) is not None:
             return area
     if not points.empty:
         value = peri_scribe.geo.parsing.numeric_value(
-            points.iloc[-1].get("incident_size"),
+            peri_scribe.history_columns.last_row(points).get("incident_size"),
         )
         if value is not None:
             return value * units.acres
     if not perimeters.empty:
         value = peri_scribe.geo.parsing.numeric_value(
-            perimeters.iloc[-1].get("area_acres"),
+            peri_scribe.history_columns.last_row(perimeters).get("area_acres"),
         )
         if value is not None:
             return value * units.acres
@@ -501,9 +504,9 @@ def latest_area(
 
 
 def historical_area(
-    perimeters: pd.DataFrame,
-    points: pd.DataFrame,
-    incident_rows: pd.DataFrame | None = None,
+    perimeters: peri_scribe.history_columns.Frame,
+    points: peri_scribe.history_columns.Frame,
+    incident_rows: peri_scribe.history_columns.Frame | None = None,
     *,
     history: tuple[AreaEstimate, ...] | None = None,
 ) -> pint.Quantity[float] | None:
@@ -529,7 +532,7 @@ def historical_area(
     if history:
         return max(estimate.area for estimate in history)
     values = []
-    for _, row in perimeters.iterrows():
+    for row in peri_scribe.history_columns.rows(perimeters):
         measured = row_area(row)
         reported = peri_scribe.geo.parsing.numeric_value(row.get("area_acres"))
         if measured is not None:
