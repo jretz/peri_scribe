@@ -5,9 +5,9 @@ alone doesn't show that the complete sequence retains the right source evidence.
 checks follow that evidence through reconciliation and separately check the border
 classification used to choose a preferred source.
 
-`PerimeterComposition.lean` has 27 theorems and `BorderClassification.lean` has 18. The
+`PerimeterComposition.lean` has 27 theorems and `BorderClassification.lean` has 20. The
 `oraclePerimeters` executable evaluates the definitions appearing in those proofs. The
-six conformance tests compare complete production results with that executable and
+seven conformance tests compare complete production results with that executable and
 exercise actual geometry, unit conversion, timestamps, and source-specific projection.
 
 ## Reconciliation through every pass
@@ -81,6 +81,21 @@ exterior optimization's classification decisions equal the general geometry deci
 These statements combine a set-union specification with decision-policy proofs; they do
 not prove GEOS operations or the complete NumPy/PROJ implementation.
 
+`Evidence` retains the geometry decisions, both exact fractions, and boundary distance.
+`FullSignal` additionally contains absolute outside area. `classifyEvidence` reuses the
+classification and evidence definitions and returns every `FireClassification` field,
+including the supplied extent ratio. Two generic projection theorems prove that changing
+absolute outside area or retained distance cannot change that complete result. Fractions
+and ratios remain arbitrary exact values, so the theorem requires their preservation
+rather than rounding or recomputing them.
+
+This boundary maps to `classification_data.GeometryEvidence` and `GeometrySignal`,
+`signals.classification_geometry_signal` and `geometry_signal`, and
+`border_classification.classify`. The classification summary can omit the union's
+absolute outside area for an exterior collection. Callers of the full signal still
+receive its exact union area. The proof does not establish that GEOS always computes
+the same union or distance, nor does it allow a placeholder area in the full API.
+
 The extent reference chooses existing maximal evidence by observation clock then snapshot
 serial, preserving the first input on exact ties. Missing clocks precede dated clocks;
 two undated observations can be contemporaneous. Extent disagreement requires both feeds,
@@ -92,14 +107,21 @@ Conformance covers:
 
 - All 32 combinations of crossing, near, inside, extent, and identifier signals, including
   contradictory input flags to verify priority and the resulting preferred source.
+- 864 complete classification results combine those flags with independent outside and
+  inside fractions in zero, one-quarter, and one, and absent, one, or two extent ratios.
+  Inputs are actual `GeometryEvidence` objects with no absolute-area field. Every output
+  field equals `classifyEvidence` through the executable reference; the binary fractions
+  are exact in the concrete representation.
 - All 343 triples of seven exact cell rectangles, with overlapping, duplicated, wholly
-  inside/outside, and crossing parts. Eighteen threshold combinations give 6,174 geometry
-  decisions. The actual optimized signal equals the independently constructed GEOS union
-  in every scalar field, and its decisions equal Lean's reference. The empty footprint's
+  inside/outside, and crossing parts. Eighteen threshold combinations give 6,174
+  geometry decisions. The full optimized signal equals the independently constructed
+  GEOS union in every scalar field, and the classification summary retains every
+  evidence field exactly. Its decisions equal Lean's reference. The empty footprint's
   union is also checked. Twenty-one additional point, line, and collection cases check
   nonempty zero-area geometry, including the configured zero inside threshold: fraction
-  zero then meets that threshold. Empty geometry's separate infinite-distance sentinel
-  remains an ordinary implementation-test boundary.
+  zero then meets that threshold. Both summary and full signals agree in these cases.
+  Empty geometry's separate infinite-distance sentinel remains an ordinary
+  implementation-test boundary.
 - 122 complete extent histories, including missing feeds, missing clocks, serial ties,
   stale alternatives, and both sides of the 24-hour deadline. Original FIRIS and WFIGS
   coordinates pass through the production source-specific reprojection. Ideal projected
@@ -120,7 +142,8 @@ The field is internal to `GeometrySignal`, not persisted in `FireClassification`
 
 `OraclePerimeters.lean` accepts complete entry vectors for `reconciled` and `compose`;
 `classify` checks signal priority and preferred feed; `geometry` evaluates exact numeric
-thresholds; `union` returns unique cell membership; and `extent` evaluates the complete
+thresholds; `classification` returns the full evidence-preserving classification;
+`union` returns unique cell membership; and `extent` evaluates the complete
 freshest-source policy with supplied shape measurements. Malformed vectors fail. Numeric
 attribute absence and missing clocks use `-1`; lineage masks transport bounded test
 identities, while the proofs quantify over arbitrary finite histories and natural keys.

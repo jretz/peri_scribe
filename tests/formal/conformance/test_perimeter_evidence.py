@@ -60,6 +60,44 @@ def test_new_capture_requires_fresh_metadata() -> None:
         ) == result, (previous, current)
 
 
+def test_identical_observation_index_keeps_first_match_at_time_boundaries() -> None:
+    profiles = [
+        tests.formal.helpers.perimeter_evidence.Observation(
+            identity=index,
+            time=time,
+            start=shape,
+            width=1,
+        )
+        for index, (time, shape) in enumerate(
+            itertools.product((0, 14_399, 14_400, 14_401), (0, 2)),
+        )
+    ]
+    histories = [
+        values
+        for length in range(4)
+        for values in itertools.product(range(len(profiles)), repeat=length)
+    ]
+    cases = list(itertools.product(range(len(profiles)), histories))
+    expected = tests.formal.helpers.oracle.evaluate(
+        [
+            " ".join([
+                "identical",
+                profiles[current].command(),
+                *(profiles[index].command() for index in values),
+            ])
+            for current, values in cases
+        ],
+        executable="oracleEvidence",
+    )
+    observations = [profile.production() for profile in profiles]
+    for (current, values), result in zip(cases, expected, strict=True):
+        actual = peri_scribe.perimeters.versions.identical_observation_index(
+            [observations[index] for index in values],
+            observations[current],
+        )
+        assert (actual if actual is not None else -1,) == result, (current, values)
+
+
 def test_drop_losing_source_versions_retains_preferred_source_and_lineage() -> None:
     cases = tests.formal.helpers.perimeter_evidence.supersession_cases()
     expected = tests.formal.helpers.oracle.evaluate(

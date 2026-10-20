@@ -86,6 +86,16 @@ def respond (words : List String) : Except String String := do
     return numbers [classification,
       bits (BorderClassification.evidence geometry extent identifier),
       if BorderClassification.preferWfigs classification then 1 else 0]
+  | ["classification", crosses, near, inside, extent, identifier,
+      outsideFraction, insideFraction, ratio] =>
+    let signal : BorderClassification.Evidence Nat Nat :=
+      ⟨⟨← boolean crosses, ← boolean near, ← boolean inside⟩,
+        ← natural outsideFraction, ← natural insideFraction, 0⟩
+    let result := BorderClassification.classifyEvidence signal (← boolean extent)
+      (← boolean identifier) (← optional ratio)
+    return String.intercalate " " [toString result.category,
+      toString (bits result.signals), toString result.outsideFraction,
+      toString result.insideFraction, (result.extentRatio.map toString).getD "-1"]
   | ["geometry", total, inside, distance, buffer, fraction, absolute, majority] =>
     let geometry := BorderClassification.geometry (← natural total) (← natural inside)
       (← natural distance) (← natural buffer) (← natural fraction) (← natural absolute)

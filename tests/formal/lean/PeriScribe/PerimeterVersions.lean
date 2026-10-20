@@ -259,6 +259,37 @@ def superseded (observation preferred : Observation) : Bool :=
 def contemporaneous (first second : Observation) : Bool :=
   decide (first.time ≤ second.time + 14400 ∧ second.time ≤ first.time + 14400)
 
+/-- Search preserves input order even when several observations satisfy both tests. -/
+def firstIndex {Value : Type} (predicate : Value → Bool) : List Value → Option Nat
+  | [] => none
+  | value :: rest =>
+    if predicate value then some 0 else (firstIndex predicate rest).map Nat.succ
+
+theorem predicate_order_preserves_first_index
+    {Value : Type} (geometry time : Value → Bool) (values : List Value) :
+    firstIndex (fun value => geometry value && time value) values =
+      firstIndex (fun value => time value && geometry value) values := by
+  have same : (fun value => geometry value && time value) =
+      (fun value => time value && geometry value) := by
+    funext value
+    exact Bool.and_comm _ _
+  rw [same]
+
+def identicalIndex (values : List Observation) (current : Observation) : Option Nat :=
+  firstIndex (fun value => sameShape value current && contemporaneous value current)
+    values
+
+def timeFirstIndex (values : List Observation) (current : Observation) : Option Nat :=
+  firstIndex (fun value => contemporaneous value current && sameShape value current)
+    values
+
+theorem time_first_preserves_identical_observation_index
+    (values : List Observation) (current : Observation) :
+    timeFirstIndex values current = identicalIndex values current := by
+  exact (predicate_order_preserves_first_index
+    (fun value => sameShape value current)
+    (fun value => contemporaneous value current) values).symm
+
 def canReplace (observation preferred : Observation) : Bool :=
   contemporaneous observation preferred || superseded observation preferred
 

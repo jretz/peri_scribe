@@ -32,7 +32,10 @@ into the ocean and Mexico. Therefore its area predicate concerns this box, not a
 state boundaries. Collapse byte-identical `(source, geometry)` pairs before projection.
 Use the union of distinct shapes, except that wholly one-sided collections can retain
 parts: the area fractions are exactly 0 or 1 and the minimum part distance is the union
-distance. Outside absolute area still needs a union so overlapping parts count once.
+distance. Classification consumes the fractions and flags, so a wholly outside
+collection can supply this evidence without computing absolute area. The full geometry
+signal additionally measures outside absolute area with a union so overlapping parts
+count once.
 
 For a positive-area union, let I be inside area, A total area, and O = max(0, A − I).
 Crossing requires I/A > 0 and either O/A > 0.01 or O > 500 acres. Noncrossing geometry is
@@ -56,9 +59,19 @@ find a compatible pair.
 Classification precedence is crossing, then near (geometric near or extent conflict),
 then inside/outside. An out-of-state unit, mission, or origin only records an evidence
 flag and does not change the class alone. This prevents weaker administrative evidence
-from asserting a physical crossing. The one-sided collection shortcut preserves the same
-scalar geometry signal as a full union. Preserving only the final label would be
-insufficient, because callers also use the underlying measurements.
+from asserting a physical crossing. The classification geometry evidence retains exact
+distance, fractions, and flags; its consumer returns the same class, ordered signals,
+fractions, and extent ratio as the full signal. The full signal remains available to
+callers needing absolute outside area. Preserving only the final label would be
+insufficient, because published classifications include the underlying fractions.
+
+The shared one-sided calculation requires a nonempty collection whose parts are all
+contained by, or all disjoint from, the box. Positive-area parts establish the occupied
+side's fraction as one. Collections of only points and lines have zero fractions on both
+sides. The inside flag still compares that fraction with the configured threshold, so
+even a zero threshold follows the same policy. Empty geometry uses the general empty
+signal, with all flags false. Collections touching the box or spanning both sides use
+the full calculation, including absolute area for the crossing threshold.
 
 ## Size filtering and cleaning
 
@@ -105,7 +118,9 @@ footprint supplies an identifier flag, while geometry still selects inside.
 
 Two overlapping outside parts of 400 square meters each with a 200-square-meter overlap
 have outside area 600, not 800. Summing part areas breaks the absolute signal, even though
-the extreme outside fraction remains one. For size rejection, measured 20 acres versus
+the extreme outside fraction remains one. Classification records that outside fraction,
+zero inside fraction, and no crossing without requesting the 600-square-meter union.
+The full signal still reports 600. For size rejection, measured 20 acres versus
 computed 100 acres passes at equality; measured 19 acres fails. Measured 50 acres versus
 incident size 1,000 acres is 5% of the reported size, so it passes the looser 1%
 incident-size check.
@@ -121,8 +136,12 @@ keys. Projection is linear in coordinates. Union, intersection, symmetric differ
 and repair depend on vertex and intersection counts and can dominate runtime; no constant
 bound per polygon is assumed. Freshest-source scans are O(N). Size measurement scans
 rings. Cleaning visits every part/hole and invokes GEOS simplification/repair, with memory
-proportional to input and generated geometry. The same-sided shortcut avoids union only
-when its scalar result is exact; outside area still requires union.
+proportional to input and generated geometry. One-sided classification scans the parts
+and computes their nearest border distance, retaining O(P) part references for P parts.
+It constructs no absolute-area union. The full signal still pays the geometry-dependent
+union cost for outside area. Both paths share the fraction, flag, and distance formulas.
+This narrower representation retains the border policy's involved assessment above;
+no threshold, geometry assumption, or published evidence field changes.
 
 ## Implementation and verification
 
@@ -133,6 +152,7 @@ Owners: [border classification](../../src/peri_scribe/perimeters/border_classifi
 [cleaning](../../src/peri_scribe/perimeters/cleaning.py).
 Ordinary checks include [classification](../../tests/tests/standard/peri_scribe/perimeters/test_border_classification.py),
 [signals](../../tests/tests/standard/peri_scribe/perimeters/test_signals.py),
+[classification evidence](../../tests/tests/standard/peri_scribe/perimeters/test_signals_classification.py),
 [cleaning](../../tests/tests/standard/peri_scribe/perimeters/test_cleaning.py),
 [size filtering](../../tests/tests/standard/peri_scribe/perimeters/test_size_filtering.py),
 and [cleaning properties](../../tests/tests/property_based/peri_scribe/perimeters/test_cleaning.py).

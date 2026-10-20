@@ -149,6 +149,27 @@ def signal_values(
     )
 
 
+def evidence_values(
+    signal: peri_scribe.perimeters.classification_data.GeometryEvidence,
+) -> tuple[float, ...]:
+    """Compare every retained summary field, including its exact proximity distance.
+
+    Args:
+        signal: The full signal or the classification summary.
+
+    Returns:
+        Its retained distance, fractions, and classification decisions.
+    """
+    return (
+        signal.distance_to_boundary.m_as("meters"),
+        signal.outside_area_fraction,
+        signal.inside_area_fraction,
+        float(signal.crosses),
+        float(signal.near),
+        float(signal.inside),
+    )
+
+
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Extent:
     """Source recency can disagree with insertion order and snapshot order."""

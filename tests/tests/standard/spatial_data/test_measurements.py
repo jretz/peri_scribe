@@ -1,10 +1,60 @@
 """Tests for spatial_data.measurements."""
 
+import pyproj
 import pytest
 import shapely.geometry
 
 import spatial_data.measurements
 import tests.helpers.factories.geometry
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "POLYGON EMPTY",
+        "MULTIPOLYGON EMPTY",
+        "GEOMETRYCOLLECTION EMPTY",
+        "POINT EMPTY",
+        "POINT (-100 40)",
+        "MULTIPOINT ((-100 40), (-99 41))",
+        "LINESTRING EMPTY",
+        "LINESTRING (-100 40, -99 41, -98 40)",
+        "LINEARRING (-100 40, -99 41, -98 40, -100 40)",
+        "MULTILINESTRING ((-100 40, -99 41, -98 40), (0 0, 1 1, 2 0))",
+        "POLYGON ((179.9 52, -179.9 52, -179.9 53, 179.9 53, 179.9 52))",
+        "POLYGON ((-100 88.9, -99.9 88.9, -99.9 89, -100 89, -100 88.9))",
+        "POLYGON ((-100 -89, -99.9 -89, -99.9 -88.9, -100 -88.9, -100 -89))",
+        "POLYGON ((-100 40, -99.9999999999 40, -100 40.0000000001, -100 40))",
+        "POLYGON Z ((-100 40 1, -99 40 2, -99 41 3, -100 41 4, -100 40 1))",
+        (
+            "POLYGON ((-100 40, -100 41, -99 41, -99 40, -100 40),"
+            "(-99.9 40.1, -99.9 40.2, -99.8 40.2, -99.8 40.1, -99.9 40.1),"
+            "(-99.7 40.1, -99.6 40.1, -99.6 40.2, -99.7 40.2, -99.7 40.1))"
+        ),
+        (
+            "MULTIPOLYGON (((-100 40, -99 40, -99 41, -100 40)),"
+            "((-99 40, -99 41, -98 41, -99 40)))"
+        ),
+        (
+            "GEOMETRYCOLLECTION (POLYGON EMPTY, POINT (-100 40),"
+            "GEOMETRYCOLLECTION (LINESTRING (-100 40, -99 41, -98 40),"
+            "POLYGON ((-100 40, -99.9999999999 40, -100 40.0000000001, -100 40))),"
+            "POLYGON ((-100 40, -99 40, -99 41, -100 40)))"
+        ),
+        (
+            "GEOMETRYCOLLECTION (POLYGON ((-99 40, -99 41, -100 41, -100 40, -99 40)),"
+            "GEOMETRYCOLLECTION (POLYGON ((-99 40, -99 41, -100 41, -100 40, -99 40)),"
+            "POLYGON ((-99.999 40, -99.999 40.001, -100 40.001, -100 40, -99.999 40))))"
+        ),
+    ],
+)
+def test_area_matches_geodesic_calculator_exactly(text: str) -> None:
+    geometry = shapely.from_wkt(text)
+    measured_area, _perimeter = pyproj.Geod(ellps="WGS84").geometry_area_perimeter(
+        shapely.orient_polygons(geometry),
+    )
+    actual = spatial_data.measurements.area(geometry).m_as("meters**2")
+    assert float(actual).hex() == float(abs(measured_area)).hex()
 
 
 def test_area_sums_parts_with_opposite_orientations() -> None:

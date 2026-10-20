@@ -308,20 +308,33 @@ def identical_observation_index(
     versions: list[SourceObservation],
     observation: SourceObservation,
 ) -> int | None:
-    """Return the index of a version matching *observation*, or None.
+    """Return the first contemporaneous version with equal geometry, or None.
+
+    Time eligibility is inexpensive and rules out geometry comparisons between distant
+    publications. The scan retains input order, including when several versions match.
+    Incompatible clocks still require geometry agreement before their TypeError matters.
 
     Args:
         versions: The versions collected so far.
         observation: The observation to match.
 
     Returns:
-        The index of a contemporaneous version with equal geometry, or None.
+        The first matching index in input order, or None.
+
+    Raises:
+        TypeError: Equal geometries carry incompatible naive and aware clocks.
     """
     for index, existing in enumerate(versions):
-        if geometries_are_equal(
+        try:
+            contemporaneous = observations_are_contemporaneous(existing, observation)
+        except TypeError:
+            if geometries_are_equal(existing.geometry, observation.geometry):
+                raise
+            continue
+        if contemporaneous and geometries_are_equal(
             existing.geometry,
             observation.geometry,
-        ) and observations_are_contemporaneous(existing, observation):
+        ):
             return index
     return None
 

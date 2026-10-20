@@ -55,8 +55,16 @@ Consistent ring winding lets the calculation add the areas of separate parts and
 subtract holes. Exterior perimeter deliberately traces only the outer rings, so a hole
 reduces area without adding to the reported exterior length.
 
-`area` orients polygon rings, asks WGS84 `Geod.geometry_area_perimeter` for signed area,
-and returns its absolute value in square meters using the shared Pint registry.
+`area` orients polygon rings, passes each ring's longitude and latitude coordinate arrays
+to WGS84 `Geod.polygon_area_perimeter`, and returns the absolute signed area in square
+meters using the shared Pint registry. A fresh calculator serves each measurement.
+Within each polygon, the exterior starts the sum and the interior rings follow in their
+stored order. Collections recursively add their parts in stored order, starting from
+zero. Preserving that grouping and order retains the binary64 results of
+`Geod.geometry_area_perimeter`; flattening nested collections or combining all holes
+before the exterior can change rounding. Nonpolygon leaves retain that geometry
+adapter's behavior, including the signed area enclosed by a line's coordinates.
+
 `exterior_perimeter` recursively extracts nonempty polygon parts, sums only their outer
 ring geodesic lengths in meters, and returns `None` for missing, empty, or nonpolygonal
 input. Coordinate transformation preserves Z when present, but these area/perimeter
@@ -70,6 +78,18 @@ establish correctness for invalid self-intersecting polygons, arbitrary globe-sp
 surfaces, or every antimeridian convention; the underlying geodesic library's domain
 still applies.
 
+The coordinate-array adapter has an **involved assessment of 6**: history 1 for recursive
+sum sequencing, rules 1 for polygon/collection/leaf dispatch, mathematics 2 for ring
+orientation and binary64 addition order, representation 2 for coordinate-array transfer,
+and failure/concurrency 0. For a polygon with two holes, the signed result is
+`(exterior + first_hole) + second_hole`; a nested collection measures that whole polygon
+before adding the next part. Ring orientation supplies the holes' negative signs. Z
+coordinates do not enter the WGS84 surface calculation, and empty rings contribute
+zero. The adapter adds no measurement policy or state transition, so a formal model of
+the wrapper would not establish geodesic library correctness. Exact numerical agreement
+with the library's geometry adapter is checked for varied boundaries and generated
+polygons through ordinary tests.
+
 ## Costs and verification
 
 Let Q be query count, N layer features, C the union of selected candidate features, and
@@ -79,7 +99,9 @@ usually reduce C and K but can degenerate to all N×Q pairs. Indexed memory incl
 C geometries and K pairs; fallback memory includes one feature-count-bounded chunk and
 its pairs. No bound on vertices per geometry follows from a feature-count bound.
 Geodesic measurements and recursive polygon extraction scale with visited vertices and
-parts; recursive nesting also consumes stack depth.
+parts; recursive nesting also consumes stack depth. Area measurement allocates coordinate
+arrays for one ring at a time, using O(V) temporary space for the largest ring's V
+vertices in addition to the oriented geometry.
 
 Implementation: [overlaps.py](../../src/spatial_data/overlaps.py),
 [layers.py](../../src/spatial_data/layers.py),
@@ -95,4 +117,4 @@ equivalence for finite unions of closed integer rectangles.
 indexed/unindexed GeoPackages, CRS conversion, holes, nulls, sparse IDs, and boundary
 touches. The proofs assume index completeness and do not establish GEOS/PROJ/GDAL
 correctness. Measurements are thin geodesic adapters with ordinary numerical tests;
-this documentation change adds no new measurement policy requiring a new formal model.
+the coordinate-array adapter adds no measurement policy requiring a new formal model.

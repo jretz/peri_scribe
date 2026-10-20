@@ -177,7 +177,7 @@ def unioned_observation_geometry(
 
 def classify(
     *,
-    geometry: peri_scribe.perimeters.classification_data.GeometrySignal,
+    geometry: peri_scribe.perimeters.classification_data.GeometryEvidence,
     extent: peri_scribe.perimeters.classification_data.ExtentSignal,
     identifier: bool,
 ) -> peri_scribe.models.FireClassification:
@@ -271,7 +271,7 @@ def classify_fire(
         for record, path in zip(records, record_paths, strict=True)
     ]
     return classify(
-        geometry=peri_scribe.perimeters.signals.geometry_signal(
+        geometry=peri_scribe.perimeters.signals.classification_geometry_signal(
             unioned_observation_geometry(observations, boundaries),
             boundaries,
             config,

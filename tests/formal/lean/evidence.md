@@ -5,9 +5,9 @@ mapping shouldn't trigger publication merely because its area is unknown. These 
 follow the evidence used to retain perimeter versions, judge survey freshness, and
 choose publication candidates.
 
-`PerimeterVersions.lean` has 20 explicit theorems and `PublicationCandidates.lean` has
+`PerimeterVersions.lean` has 22 explicit theorems and `PublicationCandidates.lean` has
 27. The default `oracleEvidence` target evaluates the same definitions used by those
-proofs. The shared axiom audit includes both modules. The eight conformance tests in
+proofs. The shared axiom audit includes both modules. The nine conformance tests in
 `test_perimeter_evidence.py` and `test_publication_evidence.py` compare oracle outputs
 with production functions.
 
@@ -32,6 +32,11 @@ with production functions.
   source lineage remains represented by the resulting observations. The eligibility
   definition includes the four-hour contemporaneous window, same-year capture evidence
   at most two days old, delayed-copy timing, and the 95% footprint overlap threshold.
+- `identical_observation_index`: testing temporal eligibility before shape equality
+  preserves the first matching index in the supplied order. The generic theorem covers
+  all finite lists and arbitrary pure, total Boolean predicates; its domain instance
+  uses the existing shape and four-hour contemporaneous definitions. The executable
+  reference selects that same first position, including when matches repeat.
 
 Conformance checks complete winners, effective times, and lineage sets for 981 histories
 through both collapse functions, plus 2,128 consecutive pairs through `new_capture`.
@@ -42,6 +47,21 @@ inputs to exercise its own sorting. The revision fold receives chronological inp
 matching its caller contract. Another 392 cases call `drop_losing_source_versions` with
 one losing observation and two preferred alternatives, checking both no-replacement and
 replacement outcomes around temporal and overlap boundaries.
+
+The first-index adapter compares 4,680 searches with the actual `timeFirstIndex`
+definition. Every ordered list through length three over eight observation profiles is
+searched for each of those profiles. The profiles cross two shapes with time zero and
+one second before, at, and after four hours. Thus unsorted histories, repeated matches,
+empty lists, and nonmatches retain their exact positions without requiring chronological
+input. Ordinary tests separately cover topologically equivalent coordinate order,
+missing clock fallback, subsecond deadlines, and the incompatible-clock exception
+fallback.
+
+The predicate-order theorem concerns returned values for total predicates. It does not
+prove equivalence of exceptions or geometry-library failure behavior for invalid inputs.
+The Python implementation's mixed naive/aware clock fallback retains geometry-first
+short-circuit behavior on `TypeError`; ordinary tests check that adapter rather than
+modeling Python exception semantics as a Boolean policy.
 
 The footprint domain is exact positive-width, unit-height rectangles with integer
 coordinates. Intersection-over-union thresholds use rational cross multiplication.
@@ -173,6 +193,7 @@ Time and measurement fields are natural numbers, with `-1` for optional values.
 | --- | --- |
 | `capture PREVIOUS CURRENT` | Fresh capture classification. |
 | `collapse OBSERVATION ...` | Retained source identity, effective time, and lineage mask. |
+| `identical CURRENT OBSERVATION ...` | First matching index in supplied order, or `-1`. |
 | `revisions OBSERVATION ...` | Anchored revision winners and their time/provenance. |
 | `absorb LOSER PREFERRED ...` | Updated preferred observations, or `-1` without a witness. |
 | `survey DIFFERENCE_MATRIX SURVEY ...` | Survey flags from the complete baseline fold. |

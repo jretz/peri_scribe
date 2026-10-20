@@ -28,6 +28,43 @@ CALIFORNIA_FIPS_PREFIX = typing.cast("str", us.states.CA.fips)
 STATE_CODE_LENGTH = 2
 
 
+def one_sided_collection_evidence(
+    parts: list[shapely.Geometry],
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
+    config: peri_scribe.perimeters.classification_data.BorderClassificationConfig,
+    *,
+    inside_box: bool,
+) -> peri_scribe.perimeters.classification_data.GeometryEvidence:
+    """Measure evidence for a nonempty collection wholly on one side of the box.
+
+    Fractions depend only on whether any part has area. Overlapping parts therefore need
+    no union until a caller requests the absolute outside area.
+
+    Args:
+        parts: Nonempty parts all contained by, or disjoint from, the box.
+        boundaries: The California box and interstate border in California Albers.
+        config: The classification thresholds.
+        inside_box: Whether every part is contained by the box.
+
+    Returns:
+        Exact one-sided distance, fractions, and classification flags.
+    """
+    distance_to_boundary = (
+        min(part.distance(boundaries.border) for part in parts) * units.meters
+    )
+    has_area = any(part.area > 0 for part in parts)
+    inside_area_fraction = 1.0 if inside_box and has_area else 0.0
+    outside_area_fraction = 1.0 if not inside_box and has_area else 0.0
+    return peri_scribe.perimeters.classification_data.GeometryEvidence(
+        distance_to_boundary=distance_to_boundary,
+        outside_area_fraction=outside_area_fraction,
+        inside_area_fraction=inside_area_fraction,
+        crosses=False,
+        near=distance_to_boundary <= config.near_border_buffer,
+        inside=inside_area_fraction >= config.inside_area_fraction_threshold,
+    )
+
+
 def geometry_signal(
     union: shapely.Geometry | None,
     boundaries: peri_scribe.perimeters.classification_data.Boundaries,
@@ -60,7 +97,7 @@ def geometry_signal(
             near=False,
             inside=False,
         )
-    box, border = boundaries.box, boundaries.border
+    box = boundaries.box
     # If all parts lie on the same side, their side and nearest border distance can be
     # read directly. There is no need to intersect them with the box, and they cannot
     # cross the border. Measuring outside area still needs a union so overlapping parts
@@ -70,32 +107,25 @@ def geometry_signal(
         or all(not box.intersects(part) for part in union.geoms)
     ):
         parts = list(union.geoms)
-        distance_to_boundary = (
-            min(part.distance(border) for part in parts) * units.meters
+        inside_box = all(box.contains(part) for part in parts)
+        evidence = one_sided_collection_evidence(
+            parts,
+            boundaries,
+            config,
+            inside_box=inside_box,
         )
-        # A collection on one side has all its area on that side. Its fraction is 1
-        # there and 0 on the other side. Points and lines contribute no area, so a
-        # collection containing only those has fractions of 0 on both sides.
-        has_area = any(part.area > 0 for part in parts)
-        if all(box.contains(part) for part in parts):
-            inside_area_fraction = 1.0 if has_area else 0.0
-            outside_area_fraction = 0.0
+        if inside_box:
             outside_area = 0.0 * units.Unit("meters ** 2")
         else:
-            inside_area_fraction = 0.0
-            outside_area_fraction = 1.0 if has_area else 0.0
             outside_area = shapely.union_all(parts).area * units.Unit("meters ** 2")
-        crosses = False
-        near = distance_to_boundary <= config.near_border_buffer
-        inside = inside_area_fraction >= config.inside_area_fraction_threshold
         return peri_scribe.perimeters.classification_data.GeometrySignal(
-            distance_to_boundary=distance_to_boundary,
-            outside_area_fraction=outside_area_fraction,
+            distance_to_boundary=evidence.distance_to_boundary,
+            outside_area_fraction=evidence.outside_area_fraction,
             outside_area=outside_area,
-            inside_area_fraction=inside_area_fraction,
-            crosses=crosses,
-            near=near,
-            inside=inside,
+            inside_area_fraction=evidence.inside_area_fraction,
+            crosses=evidence.crosses,
+            near=evidence.near,
+            inside=evidence.inside,
         )
     inside_area = union.intersection(box).area * units.Unit("meters ** 2")
     total_area = union.area * units.Unit("meters ** 2")
@@ -122,6 +152,41 @@ def geometry_signal(
         near=near,
         inside=inside,
     )
+
+
+def classification_geometry_signal(
+    union: shapely.Geometry | None,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
+    config: peri_scribe.perimeters.classification_data.BorderClassificationConfig,
+) -> peri_scribe.perimeters.classification_data.GeometryEvidence:
+    """Compute the geometry evidence consumed by the classification policy.
+
+    A wholly outside collection has known fractions and cannot cross the border. Its
+    absolute union area is unnecessary for classification. Other geometry keeps the full
+    signal calculation so crossing thresholds use the exact outside area.
+
+    Args:
+        union: The fire's union geometry in California Albers, or None.
+        boundaries: The California box and interstate border in California Albers.
+        config: The classification thresholds.
+
+    Returns:
+        Exact fractions, flags, and distance for the classification decision.
+    """
+    if (
+        union is not None
+        and not union.is_empty
+        and isinstance(union, shapely.GeometryCollection)
+    ):
+        parts = list(union.geoms)
+        if all(not boundaries.box.intersects(part) for part in parts):
+            return one_sided_collection_evidence(
+                parts,
+                boundaries,
+                config,
+                inside_box=False,
+            )
+    return geometry_signal(union, boundaries, config)
 
 
 def freshest_observation(

@@ -57,6 +57,27 @@ The default preferred feed is FIRIS, including inside-near-border fires. Crossin
 outside classifications prefer WFIGS because its mapping is intended to cover the full
 extent. The classification is a feed-selection policy within nationwide processing.
 
+Equal-observation matching scans retained versions in input order and returns the first
+version whose effective time and shape both match. The time test runs first because
+publications more than four hours apart cannot merge, whatever their shape. For example,
+with a candidate at 12:00 and retained equal shapes at 06:00, 16:00, and 08:00, the first
+eligible version is 16:00. Exactly four hours qualifies; four hours plus one microsecond
+does not. Two completely undated observations qualify for shape comparison, while one
+dated and one undated observation cannot match.
+
+Source parsing, cached row decoding, and modification-date fallback normalize clocks to
+UTC; snapshot clocks also use UTC. Direct helper inputs with incompatible naive and aware
+clocks retain a narrow exception boundary: unequal shapes do not match, while equal
+shapes raise TypeError. Geometry comparison is assumed to terminate successfully for
+supported inputs; skipping an ineligible pair does not preserve arbitrary GEOS failures.
+
+The local search assessment is straightforward, total 4: history 1 for the first matching
+position, rules 1 for two eligibility predicates, mathematics 1 for Boolean conjunction,
+representation 1 for an ordered in-memory list, and failure 0 in the compatible-clock,
+successful-geometry domain. The incompatible-clock fallback preserves the helper's
+existing shape-dependent failure boundary. This local resource change retains the
+complete reconciliation assessment above.
+
 A delayed capture is credible only when it is in the publication year and between zero
 and two days old. It is superseded when a preferred observation is no later than that
 publication, the candidate capture is no later than the preferred capture (or effective
@@ -113,8 +134,10 @@ Independent incident reporting is extracted before perimeter removal; see
 For N observations, sorting is O(N log N). Equal-observation search and preferred-witness
 search may each examine O(N²) pairs. Equality, overlay, and geodesic measurement costs
 also depend on vertex counts and intersection complexity; they are not constant-time
-operations. Retained rows are O(N), while repeatedly copying growing lineage can require
-quadratic work and transient storage. Source attribute byte size is another input bound.
+operations. Time eligibility leaves the pair bound unchanged but limits equal-observation
+geometry work to temporally eligible pairs. The search itself needs O(1) extra space.
+Retained rows are O(N), while repeatedly copying growing lineage can require quadratic
+work and transient storage. Source attribute byte size is another input bound.
 
 The fixed tolerances express the chosen policy. Satisfying them doesn't establish that
 the selected source is scientifically best, that its capture time is true, or that
@@ -128,6 +151,7 @@ Owners: [history composition](../../src/peri_scribe/perimeters/history.py),
 [versions](../../src/peri_scribe/perimeters/versions.py), and
 [full-history rows](../../src/peri_scribe/fires/history.py).
 Tests: [version regressions](../../tests/tests/standard/peri_scribe/perimeters/test_versions.py),
+[ordered matching](../../tests/tests/standard/peri_scribe/perimeters/test_versions_matching.py),
 [version properties](../../tests/tests/property_based/peri_scribe/perimeters/test_versions.py),
 and [size filtering](../../tests/tests/standard/peri_scribe/perimeters/test_size_filtering.py).
 

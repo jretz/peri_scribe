@@ -11,6 +11,7 @@ import peri_scribe.perimeters.signals
 import peri_scribe.perimeters.versions
 import tests.formal.helpers.border_classification
 import tests.formal.helpers.oracle
+from measurement_units import units
 
 
 def test_classify_preserves_signal_priority_and_source_preference() -> None:
@@ -41,6 +42,61 @@ def test_classify_preserves_signal_priority_and_source_preference() -> None:
                 is peri_scribe.perimeters.versions.WFIGS_PERIMETER,
             ),
         ) == result
+
+
+def test_classify_preserves_complete_summary_evidence() -> None:
+    cases = list(
+        itertools.product(
+            tests.formal.helpers.border_classification.classifications(),
+            (0, 1, 4),
+            (0, 1, 4),
+            (-1, 4, 8),
+        ),
+    )
+    expected = tests.formal.helpers.oracle.evaluate(
+        [
+            "classification "
+            + " ".join(str(int(flag)) for flag in flags)
+            + f" {outside} {inside} {ratio}"
+            for flags, outside, inside, ratio in cases
+        ],
+        executable="oraclePerimeters",
+    )
+    for (flags, outside, inside, ratio), result in zip(cases, expected, strict=True):
+        evidence = peri_scribe.perimeters.classification_data.GeometryEvidence(
+            distance_to_boundary=7 * units.meters,
+            outside_area_fraction=outside / 4,
+            inside_area_fraction=inside / 4,
+            crosses=flags[0],
+            near=flags[1],
+            inside=flags[2],
+        )
+        actual = peri_scribe.perimeters.border_classification.classify(
+            geometry=evidence,
+            extent=peri_scribe.perimeters.classification_data.ExtentSignal(
+                wfigs_to_firis_area_ratio=None if ratio < 0 else ratio / 4,
+                disagrees=flags[3],
+            ),
+            identifier=flags[4],
+        )
+        assert (
+            tests.formal.helpers.border_classification.CLASSIFICATIONS.index(
+                actual.classification,
+            ),
+            sum(
+                1 << tests.formal.helpers.border_classification.SIGNALS.index(signal)
+                for signal in actual.signals
+            ),
+            actual.outside_area_fraction,
+            actual.inside_area_fraction,
+            actual.wfigs_to_firis_area_ratio,
+        ) == (
+            result[0],
+            result[1],
+            result[2] / 4,
+            result[3] / 4,
+            None if result[4] < 0 else result[4] / 4,
+        )
 
 
 def test_geometry_signal_matches_exact_union_and_thresholds() -> None:
@@ -90,9 +146,17 @@ def test_geometry_signal_matches_exact_union_and_thresholds() -> None:
                 boundaries,
                 config,
             )
+            summary = peri_scribe.perimeters.signals.classification_geometry_signal(
+                optimized,
+                boundaries,
+                config,
+            )
             assert tests.formal.helpers.border_classification.signal_values(
                 actual,
             ) == tests.formal.helpers.border_classification.signal_values(baseline)
+            assert tests.formal.helpers.border_classification.evidence_values(
+                summary,
+            ) == tests.formal.helpers.border_classification.evidence_values(baseline)
             inside = sum(
                 cell < tests.formal.helpers.border_classification.BORDER_CELL
                 for cell in cells
@@ -193,11 +257,24 @@ def test_geometry_signal_zero_area_obeys_configured_inside_threshold() -> None:
     commands = []
     actual = []
     for geometry, majority in itertools.product(shapes, (0, 50, 75)):
-        signal = peri_scribe.perimeters.signals.geometry_signal(
+        config = tests.formal.helpers.border_classification.planar_config(
+            1,
+            3,
+            majority,
+        )
+        signal = peri_scribe.perimeters.signals.classification_geometry_signal(
             geometry,
             boundaries,
-            tests.formal.helpers.border_classification.planar_config(1, 3, majority),
+            config,
         )
+        complete = peri_scribe.perimeters.signals.geometry_signal(
+            geometry,
+            boundaries,
+            config,
+        )
+        assert tests.formal.helpers.border_classification.evidence_values(
+            signal,
+        ) == tests.formal.helpers.border_classification.evidence_values(complete)
         distance = int(geometry.distance(boundaries.border))
         commands.append(
             f"geometry 0 0 {distance} 2 1 3 {majority}",

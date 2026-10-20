@@ -81,6 +81,10 @@ def respond (words : List String) : Except String String := do
   | ["capture", previous, current] =>
     return if PerimeterVersions.newCapture (← observation previous)
       (← observation current) then "1" else "0"
+  | "identical" :: current :: values =>
+    let result := PerimeterVersions.timeFirstIndex (← values.mapM observation)
+      (← observation current)
+    return (result.map toString).getD "-1"
   | "collapse" :: values =>
     return observationsText (PerimeterVersions.collapse (← values.mapM observation))
   | "revisions" :: values =>

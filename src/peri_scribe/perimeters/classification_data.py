@@ -77,16 +77,26 @@ class FireObservation:
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class GeometrySignal:
-    """What the fire's geometry says about the state boundary."""
+class GeometryEvidence:
+    """Boundary evidence sufficient for the complete classification result.
+
+    One-sided collections supply these exact fractions, flags, and distance without
+    constructing an absolute-area union.
+    """
 
     distance_to_boundary: pint.Quantity[float]
     outside_area_fraction: float
-    outside_area: pint.Quantity[float]
     inside_area_fraction: float
     crosses: bool
     near: bool
     inside: bool
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class GeometrySignal(GeometryEvidence):
+    """Boundary evidence with the exact absolute area outside the state box."""
+
+    outside_area: pint.Quantity[float]
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)

@@ -56,7 +56,7 @@ def geometry (total inside distance buffer fraction absolute majority : Nat) :
     decide ((total = 0 ∧ majority = 0) ∨
       (0 < total ∧ majority * total ≤ 100 * inside))⟩
 
-/-- The optimized exterior path measures the set union, preserving overlapping area. -/
+/-- Exterior decisions depend on distance and thresholds rather than union acreage. -/
 def exterior (distance buffer majority : Nat) : Geometry :=
   ⟨false, decide (distance ≤ buffer), decide (majority = 0)⟩
 
@@ -112,6 +112,46 @@ def evidence (signal : Geometry) (extent identifier : Bool) : List Nat :=
   (if signal.crosses then [0] else []) ++
     (if signal.near then [1] else []) ++
     (if extent then [2] else []) ++ (if identifier then [3] else [])
+
+/-- Classification keeps its exact fractions and proximity measurement. -/
+structure Evidence (Scalar Distance : Type) where
+  geometry : Geometry
+  outsideFraction : Scalar
+  insideFraction : Scalar
+  distance : Distance
+
+/-- The full measurement API additionally retains exact outside union area. -/
+structure FullSignal (Scalar Distance Area : Type) where
+  evidence : Evidence Scalar Distance
+  outsideArea : Area
+
+/-- Every field returned by the classification consumer is observable. -/
+structure Classification (Scalar : Type) where
+  category : Nat
+  signals : List Nat
+  outsideFraction : Scalar
+  insideFraction : Scalar
+  extentRatio : Option Scalar
+
+def classifyEvidence {Scalar Distance : Type} (signal : Evidence Scalar Distance)
+    (extent identifier : Bool) (ratio : Option Scalar) : Classification Scalar :=
+  ⟨classify signal.geometry extent, evidence signal.geometry extent identifier,
+    signal.outsideFraction, signal.insideFraction, ratio⟩
+
+theorem exact_outside_area_is_not_classification_evidence
+    {Scalar Distance Area : Type} (signal : FullSignal Scalar Distance Area)
+    (otherArea : Area) (extent identifier : Bool) (ratio : Option Scalar) :
+    classifyEvidence {signal with outsideArea := otherArea}.evidence
+      extent identifier ratio =
+      classifyEvidence signal.evidence extent identifier ratio := by
+  rfl
+
+theorem distance_does_not_change_classification_result
+    {Scalar Distance : Type} (signal : Evidence Scalar Distance)
+    (otherDistance : Distance) (extent identifier : Bool) (ratio : Option Scalar) :
+    classifyEvidence {signal with distance := otherDistance} extent identifier ratio =
+      classifyEvidence signal extent identifier ratio := by
+  rfl
 
 def preferWfigs (classification : Nat) : Bool :=
   classification == 2 || classification == 3 || classification == 4
