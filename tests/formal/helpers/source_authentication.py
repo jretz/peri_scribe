@@ -6,17 +6,13 @@ import collections
 import collections.abc
 import contextlib
 import hashlib
-import os
 import pathlib
 import re
-import typing
 
 import peri_scribe.sources.authentication
 import tests.formal.helpers.tlc
-
-
-if typing.TYPE_CHECKING:
-    import tests.helpers.doubles.peri_scribe.sources.authentication
+import tests.helpers.doubles.peri_scribe.sources.authentication
+import tests.helpers.factories.peri_scribe.sources.authentication
 
 
 def edge_histories(
@@ -98,10 +94,10 @@ def replay(
                 scopes.close()
             elif after["stamps"] != before["stamps"]:
                 revision = int(re.findall(r"\d+", after["revisions"])[0])
-                source.write_bytes(revision_bytes(revision))
-                os.utime(
+                tests.helpers.factories.peri_scribe.sources.authentication.rewrite_with_changed_ctime(
                     source,
-                    ns=(modification.st_atime_ns, modification.st_mtime_ns),
+                    revision_bytes(revision),
+                    timestamps=(modification.st_atime_ns, modification.st_mtime_ns),
                 )
             else:
                 calls = len(recorder.paths)

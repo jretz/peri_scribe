@@ -208,9 +208,13 @@ def test_publish_inventory_evidence_rejects_mutation_without_partial_publication
             replacement = tmp_path / "replacement"
             replacement.write_bytes(b"other")
             replacement.replace(paths[-1])
+            os.utime(paths[-1], ns=(original.st_atime_ns, original.st_mtime_ns))
         else:
-            paths[-1].write_bytes(b"other")
-        os.utime(paths[-1], ns=(original.st_atime_ns, original.st_mtime_ns))
+            tests.helpers.factories.peri_scribe.sources.authentication.rewrite_with_changed_ctime(
+                paths[-1],
+                b"other",
+                timestamps=(original.st_atime_ns, original.st_mtime_ns),
+            )
         with pytest.raises(OSError, match="Source changed while authenticating"):
             peri_scribe.sources.authentication.publish_inventory_evidence(
                 owner,

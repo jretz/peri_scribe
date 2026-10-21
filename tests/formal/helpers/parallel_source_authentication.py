@@ -19,6 +19,7 @@ import pytest
 import peri_scribe.sources.authentication
 import tests.formal.helpers.source_authentication
 import tests.formal.helpers.tlc
+import tests.helpers.factories.peri_scribe.sources.authentication
 
 
 class Worker(enum.IntEnum):
@@ -123,13 +124,14 @@ def edit(runtime: Replay, before: str, after: str) -> None:
     """
     changed = changed_position(before, after)
     path = runtime.paths[changed]
-    path.write_bytes(
+    modification = runtime.modifications[changed]
+    tests.helpers.factories.peri_scribe.sources.authentication.rewrite_with_changed_ctime(
+        path,
         tests.formal.helpers.source_authentication.revision_bytes(
             numbers(after)[changed],
         ),
+        timestamps=(modification.st_atime_ns, modification.st_mtime_ns),
     )
-    modification = runtime.modifications[changed]
-    os.utime(path, ns=(modification.st_atime_ns, modification.st_mtime_ns))
 
 
 def resolve(runtime: Replay, before: dict[str, str], after: dict[str, str]) -> str:

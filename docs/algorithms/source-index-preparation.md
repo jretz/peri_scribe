@@ -11,10 +11,17 @@ The pipeline covers the United States; the California classifier is one derived 
 The preparation optimizations share exact representations and reuse unaffected
 dependency blocks. They do not replace an independent invocation's source-byte checks
 with timestamps. A scope owns stable source inputs, and its authentication evidence ends
-when that scope ends. Reliable inode, change-time, modification-time and size metadata
-detect changes within a scope. Changes during a checksum operation cause rejection.
+when that scope ends. Inode, change-time, modification-time and size comparisons detect
+changes that produce a different filesystem stamp. Changes observed during a checksum
+operation cause rejection.
 Cooperating pipeline writers retain the existing year lock; arbitrary external changes
 that defeat both ownership and reliable metadata remain outside this contract.
+
+Nanosecond timestamp fields describe units, not guaranteed clock precision. A rapid
+same-size overwrite with restored modification time can retain the entire stamp if
+change time has not advanced. [Linux inode timestamps](https://docs.kernel.org/filesystems/multigrain-ts.html)
+can share one clock tick. Such indistinguishable edits violate the stable-input premise
+within a scope; independent invocations always read fresh bytes, even with equal stamps.
 
 ## Complexity assessment
 
@@ -172,6 +179,12 @@ starting orders over every checked history. Concrete regressions also exercise o
 symlinks, retargeted ancestor symlinks, pending-evidence expiry and concurrent mixed
 requests. Deferred admission changes representation work, not the required source-byte
 scan or the checked evidence eligibility policy.
+
+Timestamp-preserving mutation fixtures establish the model's changed-stamp premise by
+waiting for an observed change-time difference after the real write. They preserve
+modification time and fail with stamp diagnostics if the bounded wait expires. A fixed
+sleep cannot establish that premise across filesystem clocks. Separate regressions keep
+the entire stamp constant across independent scopes and require a new complete byte read.
 
 The finite `ParallelSourceAuthentication` model adds two independent source batches, one
 edit per source, worker failure, cancellation, scope expiry and process replacement. It

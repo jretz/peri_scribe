@@ -85,7 +85,10 @@ def scope(directory: pathlib.Path) -> collections.abc.Generator[None]:
 
 
 def file_stamp(path: pathlib.Path) -> Stamp:
-    """Include change time so restoring modification time cannot preserve evidence.
+    """Include change time in the owning scope's filesystem identity checks.
+
+    Timestamp units do not guarantee precision. Equal stamps rely on stable owned
+    inputs; rapid writes can share a change time on a coarse filesystem clock.
 
     Args:
         path: Source file whose complete filesystem identity is observed.

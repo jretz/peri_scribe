@@ -9,6 +9,7 @@ import pathlib
 import threading
 
 import peri_scribe.sources.authentication
+import tests.helpers.factories.peri_scribe.sources.authentication
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -31,7 +32,10 @@ class DigestRecorder:
         self.paths.append(path)
         result = self.read(path)
         if self.replacement is not None:
-            path.write_bytes(self.replacement)
+            tests.helpers.factories.peri_scribe.sources.authentication.rewrite_with_changed_ctime(
+                path,
+                self.replacement,
+            )
         return result
 
 

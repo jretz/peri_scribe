@@ -16,6 +16,7 @@ import pytest
 import peri_scribe.preparation
 import peri_scribe.sources.authentication
 import tests.helpers.doubles.peri_scribe.sources.authentication
+import tests.helpers.factories.peri_scribe.sources.authentication
 
 
 def test_file_digest_reads_independent_invocations_freshly(
@@ -55,9 +56,20 @@ def test_file_digest_reauthenticates_changed_owned_inputs(
             temporary = source.with_name("replacement")
             temporary.write_bytes(b"other")
             temporary.replace(source)
+            os.utime(source, ns=(original.st_atime_ns, original.st_mtime_ns))
         else:
-            source.write_bytes(b"other" if change == "same_timestamp" else b"longer")
-        os.utime(source, ns=(original.st_atime_ns, original.st_mtime_ns))
+            tests.helpers.factories.peri_scribe.sources.authentication.rewrite_with_changed_ctime(
+                source,
+                b"other" if change == "same_timestamp" else b"longer",
+                timestamps=(original.st_atime_ns, original.st_mtime_ns),
+            )
+        if change == "same_timestamp":
+            changed = source.stat()
+            assert changed.st_dev == original.st_dev
+            assert changed.st_ino == original.st_ino
+            assert changed.st_size == original.st_size
+            assert changed.st_mtime_ns == original.st_mtime_ns
+            assert changed.st_ctime_ns != original.st_ctime_ns
         second = peri_scribe.sources.authentication.file_digest(source)
     assert first != second
     assert second == hashlib.sha256(source.read_bytes()).hexdigest()
@@ -283,9 +295,20 @@ def test_inventory_digest_reauthenticates_changed_pending_inputs(
             replacement = source.with_name("replacement")
             replacement.write_bytes(b"other")
             replacement.replace(source)
+            os.utime(source, ns=(original.st_atime_ns, original.st_mtime_ns))
         else:
-            source.write_bytes(b"other" if change == "same_timestamp" else b"longer")
-        os.utime(source, ns=(original.st_atime_ns, original.st_mtime_ns))
+            tests.helpers.factories.peri_scribe.sources.authentication.rewrite_with_changed_ctime(
+                source,
+                b"other" if change == "same_timestamp" else b"longer",
+                timestamps=(original.st_atime_ns, original.st_mtime_ns),
+            )
+        if change == "same_timestamp":
+            changed = source.stat()
+            assert changed.st_dev == original.st_dev
+            assert changed.st_ino == original.st_ino
+            assert changed.st_size == original.st_size
+            assert changed.st_mtime_ns == original.st_mtime_ns
+            assert changed.st_ctime_ns != original.st_ctime_ns
         second = peri_scribe.sources.authentication.inventory_digest(source)
     assert first != second
     assert second == hashlib.sha256(source.read_bytes()).hexdigest()

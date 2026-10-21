@@ -66,6 +66,14 @@ and concurrent readers. Arbitrary external edits that defeat input ownership and
 metadata, SHA-256 collisions and filesystem implementation defects are outside this
 guarantee. Cooperating pipeline writers retain the existing year lock.
 
+Each modeled edit advances its change token. Concrete replay writes equal-size bytes,
+restores modification time, and waits for an actual change-time difference before the
+next action. This establishes the existing metadata premise on coarse filesystem clocks;
+it does not require distinct timestamps for arbitrarily close writes. The bounded
+fixture wait fails diagnostically rather than skipping a checked transition. Ordinary
+regressions additionally require independent scopes to hash freshly when every observed
+stamp field remains equal.
+
 Merkle branch persistence uses the existing product-cache transaction and checksum
 contract. `SourceManifest.lean` proves that ordered trees retain every leaf under an
 explicit collision-free, domain-separated node-hash premise and that exact matching
