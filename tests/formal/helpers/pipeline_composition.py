@@ -1,9 +1,15 @@
-"""Connect composed TLC invocations to real coordinator and durable file effects."""
+"""Connect composed TLC invocations to real coordinator and durable file effects.
+
+Design notes:
+[Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
+"""
 
 import collections
+import collections.abc
 import contextlib
 import dataclasses
 import datetime
+import functools
 import json
 import os
 import pathlib
@@ -149,18 +155,22 @@ def begin_action(
     return f"begin:{first}:{last}:{gated}:{forced}:{changed}:{threshold}"
 
 
-def invocation(fields: dict[str, str]) -> Invocation:
+def invocation(
+    fields: dict[str, str],
+    parse_durable: collections.abc.Callable[[str], Durable],
+) -> Invocation:
     """Retain the existing complete invocation contract from a checked terminal node.
 
     Args:
         fields: One actual TLC terminal state.
+        parse_durable: The current graph's parser for immutable durable records.
 
     Returns:
         Its original controls, stage calls, crash boundary, and final durable state.
     """
     return Invocation(
-        before=durable(fields["before"]),
-        after=durable(fields["durable"]),
+        before=parse_durable(fields["before"]),
+        after=parse_durable(fields["durable"]),
         first=int(fields["first"]),
         last=int(fields["last"]),
         gated=fields["gated"] == "TRUE",
@@ -184,6 +194,7 @@ def executions(graph: tests.formal.helpers.tlc.Graph) -> Executions:
         The directed contract and one history from an initial state to each distinct
         invocation outcome.
     """
+    parse_durable = functools.cache(durable)
     previous: dict[int, int | None] = dict.fromkeys(graph.initial)
     queue = collections.deque(graph.initial)
     while queue:
@@ -212,7 +223,8 @@ def executions(graph: tests.formal.helpers.tlc.Graph) -> Executions:
     checked = tests.formal.helpers.paths.Contract(
         graph=graph,
         values={
-            node: durable(fields["durable"]) for node, fields in graph.states.items()
+            node: parse_durable(fields["durable"])
+            for node, fields in graph.states.items()
         },
         actions=actions,
         internal=frozenset({
@@ -230,14 +242,14 @@ def executions(graph: tests.formal.helpers.tlc.Graph) -> Executions:
     for node, fields in graph.states.items():
         if fields["phase"] != '"done"':
             continue
-        record = invocation(fields)
+        record = invocation(fields, parse_durable)
         if record in records:
             continue
         history = []
         current: int | None = node
         while current is not None:
             if graph.states[current]["phase"] == '"done"':
-                history.append(invocation(graph.states[current]))
+                history.append(invocation(graph.states[current], parse_durable))
             current = previous[current]
         records[record] = tuple(reversed(history))
     assert collections.Counter(record.failed_at for record in records) == {

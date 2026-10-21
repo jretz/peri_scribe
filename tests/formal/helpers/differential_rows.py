@@ -1,4 +1,8 @@
-"""Exact footprint histories connect source attribution to actual displayed rings."""
+"""Exact footprint histories connect source attribution to actual displayed rings.
+
+Design notes:
+[Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
+"""
 
 import dataclasses
 import datetime
@@ -135,35 +139,48 @@ def histories() -> list[list[Source]]:
     ]
 
 
+def area_table(*, small: bool) -> str:
+    """Measure the fixed fixture shapes once for an oracle request inventory.
+
+    Args:
+        small: Whether cells straddle the one-square-meter visibility threshold.
+
+    Returns:
+        Sixteen comma-separated integer areas in millionths of a square meter.
+    """
+    return ",".join(
+        str(
+            math.ceil(
+                spatial_data.surface_measurements.area(
+                    footprint(mask, small=small),
+                ).m_as("meters ** 2")
+                * 1_000_000,
+            ),
+        )
+        for mask in range(16)
+    )
+
+
 def command(
     sources: list[Source],
     *,
-    small: bool,
+    areas: str,
     omitted: tuple[int, ...] = (),
 ) -> str:
     """Surface measurements are explicit inputs to the ideal visibility policy.
 
     Args:
         sources: Complete observations, including those that will not emit a ring.
-        small: The geometric scale used by the actual execution.
+        areas: The fixed fixture shapes' area table for this execution's scale.
         omitted: Candidate positions suppressed by a numerical geometry backend.
 
     Returns:
         A request for the proved correction, attribution, sparse deltas, and selection.
     """
-    areas = [
-        math.ceil(
-            spatial_data.surface_measurements.area(footprint(mask, small=small)).m_as(
-                "meters ** 2",
-            )
-            * 1_000_000,
-        )
-        for mask in range(16)
-    ]
     return " ".join([
         "rows",
         ",".join(map(str, omitted)) or "n",
-        ",".join(map(str, areas)),
+        areas,
         *(source.command() for source in sources),
     ])
 

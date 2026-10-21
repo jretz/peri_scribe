@@ -83,6 +83,56 @@ for B and C, and retain both complete outcomes. Reusing the same mutable directo
 B contaminate C. Restarting the abstract matcher from A's visible projection can also
 lose hidden choices needed to reject an impossible continuation.
 
+## Pure fixture reuse and oracle batching
+
+Pure repeated inputs can share immutable results within the current check without
+reusing verification evidence. Pipeline graph preprocessing memoizes durable-record
+parsing by exact TLC record text. The parser cache belongs to one graph construction;
+it retains no checked graph or success receipt. Frozen durable records include the
+complete pending-stage tuple, so sharing a parsed value cannot merge model node IDs,
+actions, predecessor histories, or hidden-state candidates. For `N` record references
+of length `L`, the expensive parsing work runs for only `U` distinct records. Hashing
+and comparing text still costs `O(N * L)` in the worst case; the cache retains `O(U * L)`
+text and parsed data. The cache disappears when construction finishes.
+
+Differential-row checks measure the 16 fixed footprint masks once for each geometric
+scale used by that check. Each immutable table retains the original real surface-area
+measurement, unit conversion, ceiling, and protocol encoding. All generated histories,
+omission variants, production geometry operations, and response comparisons still run.
+For `C` requests and `M` masks, expected-table measurement costs `O(M)` per scale rather
+than `O(C * M)`; request construction still visits every source observation. Tables are
+explicit local inputs and do not survive their conformance check.
+
+Filename-allocation checks capture each actual production choice alongside its own name
+table and reference request. The reserved-name registry advances with the actual choice,
+so every subsequent request describes the same concrete inputs it would receive when
+checked immediately. The stateless Lean reference evaluates all requests in one batch.
+Strict response counts and ordered comparisons require every allocation to agree with
+its own reference result. A wrong early choice still fails its own comparison even if
+later requests were constructed from that choice.
+
+For example, an empty registry and candidates `fire`, `fire-2` produce the first request.
+After production chooses `fire`, the next request records that actual reserved name and
+candidates `fire`, `fire-2`, `fire-3`. Both requests can be evaluated together because the
+second request needs the first production result, which is already available, rather
+than an earlier oracle response. Each response is decoded using its own name table.
+Batching retains `O(C)` request and case storage for `C` allocations, and reduces process
+launches from `C` to one. It does not reduce the allocation inventory or assertions.
+
+The local parsing and area-table transformations are straightforward: their history,
+rule, mathematical, representation, and failure scores are respectively `(1, 0, 1, 1,
+0)` and `(0, 1, 1, 1, 0)`, each totaling 3. Exact memoization and fixed finite tables add
+no domain rule. The allocation adapter scores `(1, 1, 1, 2, 1)`, totaling 6: involved.
+Case-specific token encoding, retained response order, and bounded batched storage need
+the explanation above. The complete verification machinery retains its complex
+assessment. Existing checked Lean definitions and the established stateless batch
+transport cover these adapters; no model property or process protocol changes.
+
+CLI policy tests use structured log capture when asserting failure propagation and
+persisted recovery decisions. Dedicated logging checks retain real console and file
+rendering. Each parameterized failure receives its own exception instance so earlier
+tracebacks cannot become part of a later case's diagnostics.
+
 ## Mutation and coverage evidence
 
 Mutation checks first require a pristine successful baseline for the exact target test

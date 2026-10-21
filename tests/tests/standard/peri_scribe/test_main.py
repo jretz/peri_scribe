@@ -533,15 +533,20 @@ def test_required_work_bypasses_area_and_timer_gate(
         assert scenario.stubs.unconditional_history_calls == [scenario.year]
 
 
+@pytest.mark.usefixtures("cli_log_output")
 @pytest.mark.parametrize("operation", ["collection", "evacuations", "gate", "index"])
-@pytest.mark.parametrize("error", [RuntimeError("failure"), SystemExit("failure")])
+@pytest.mark.parametrize(
+    "error_type",
+    [pytest.param(RuntimeError, id="error0"), pytest.param(SystemExit, id="error1")],
+)
 def test_failed_fetch_or_check_requires_retry_without_advancing_publication(
     scenario: tests.helpers.peri_scribe.main_publication.Scenario,
     runner: click.testing.CliRunner,
     monkeypatch: pytest.MonkeyPatch,
     operation: str,
-    error: BaseException,
+    error_type: type[BaseException],
 ) -> None:
+    error = error_type("failure")
     module, name = {
         "collection": (peri_scribe.sources.fetching, "fetch_all_feeds"),
         "evacuations": (peri_scribe.pipeline, "fetch_external_source"),

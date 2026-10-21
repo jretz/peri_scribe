@@ -8,8 +8,12 @@ def test_differential_rows_for_fire_matches_proved_attribution_and_sparse_deltas
     None
 ):
     cases = tests.formal.helpers.differential_rows.histories()
+    area_tables = {
+        small: tests.formal.helpers.differential_rows.area_table(small=small)
+        for small in (False, True)
+    }
     commands = [
-        tests.formal.helpers.differential_rows.command(case, small=small)
+        tests.formal.helpers.differential_rows.command(case, areas=area_tables[small])
         for case in cases
         for small in (False, True)
     ]
@@ -47,11 +51,12 @@ def test_differential_rows_for_fire_keeps_omitted_candidate_source_measurements(
         source_type(identity=4, shape=15, time=4, values=(60, 20, 0, 50)),
     ]
     omissions = [(0,), (1,), (3,), (0, 1), (1, 3)]
+    areas = tests.formal.helpers.differential_rows.area_table(small=False)
     expected = tests.formal.helpers.oracle.evaluate(
         [
             tests.formal.helpers.differential_rows.command(
                 case,
-                small=False,
+                areas=areas,
                 omitted=omitted,
             )
             for omitted in omissions

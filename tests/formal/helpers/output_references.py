@@ -1,4 +1,8 @@
-"""Exercise reference allocation with actual names and serialized Markdown documents."""
+"""Exercise reference allocation with actual names and serialized Markdown documents.
+
+Design notes:
+[Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
+"""
 
 from __future__ import annotations
 
@@ -16,35 +20,15 @@ import tests.formal.helpers.oracle
 import tests.helpers.factories.peri_scribe.report.markdown
 
 
-def allocated(used: set[str], candidates: list[str]) -> str:
-    """Preserve string equality while Lean chooses the first unoccupied candidate.
-
-    Args:
-        used: Already assigned document or archive names.
-        candidates: Distinct proposed names in their policy order.
-
-    Returns:
-        The fresh name selected by the proved allocation definition.
-    """
-    names = sorted(used | set(candidates))
-    positions = {name: index for index, name in enumerate(names)}
-    result = tests.formal.helpers.oracle.evaluate(
-        [
-            "allocate | "
-            + " ".join(str(positions[name]) for name in sorted(used))
-            + " | "
-            + " ".join(str(positions[name]) for name in candidates),
-        ],
-        executable="oracleOutputs",
-    )[0]
-    assert len(set(candidates)) > len(used)
-    assert len(result) == 1
-    assert result[0] < len(names)
-    return names[result[0]]
-
-
 def check_prefixes() -> None:
-    """Check filename allocation after case, punctuation and empty-name collapse."""
+    """Keep every allocation's name table while sharing one Lean oracle process.
+
+    Each continuation uses the production allocation's actual reserved names. Its
+    reference request captures that same registry, so later comparisons retain the
+    original case ordering and reject any incorrect production choice.
+    """
+    commands: list[str] = []
+    cases: list[tuple[list[str], str]] = []
     for names in itertools.permutations(("Bug", "BUG!", "bug-2", "", "!!!"), 3):
         used: set[str] = set()
         for name in names:
@@ -52,14 +36,27 @@ def check_prefixes() -> None:
             candidates = [base] + [
                 f"{base}-{suffix}" for suffix in range(2, len(used) + 3)
             ]
-            expected = allocated(used, candidates)
+            table = sorted(used | set(candidates))
+            positions = {name: index for index, name in enumerate(table)}
+            assert len(set(candidates)) > len(used)
+            commands.append(
+                "allocate | "
+                + " ".join(str(positions[name]) for name in sorted(used))
+                + " | "
+                + " ".join(str(positions[name]) for name in candidates),
+            )
             actual = peri_scribe.kml.fire_data.unique_filename_prefix(
                 None,
                 name,
                 frozenset(used),
             )
-            assert actual == expected
+            cases.append((table, actual))
             used.add(actual)
+    results = tests.formal.helpers.oracle.evaluate(commands, executable="oracleOutputs")
+    for (table, actual), result in zip(cases, results, strict=True):
+        assert len(result) == 1
+        assert 0 <= result[0] < len(table)
+        assert actual == table[result[0]]
 
 
 def report(names: tuple[str, ...]) -> peri_scribe.report.gathering.FireReport:
