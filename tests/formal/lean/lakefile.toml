@@ -7,7 +7,7 @@ defaultTargets = ["PeriScribe", "oracle", "oracleDomain", "oracleIngestion", "or
   "oracleOwnership", "oracleCoordinateReference", "oracleRawDecoding",
   "oraclePublicationBaseline", "oracleIdentityTransfer", "oracleSourceValidation",
   "oracleComponentIdentity", "oracleNumericalPolicy", "oracleOutputText",
-  "oracleIdentityRecomputation"]
+  "oracleIdentityRecomputation", "oracleKmzPreparation"]
 
 [leanOptions]
 warningAsError = true
@@ -22,6 +22,10 @@ root = "OracleNumericalPolicy"
 [[lean_exe]]
 name = "oracleOutputText"
 root = "OracleOutputText"
+
+[[lean_exe]]
+name = "oracleKmzPreparation"
+root = "OracleKmzPreparation"
 
 [[lean_exe]]
 name = "oracleIdentityRecomputation"

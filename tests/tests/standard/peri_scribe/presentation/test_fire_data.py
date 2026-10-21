@@ -19,6 +19,7 @@ import peri_scribe.presentation.selection
 import spatial_data.measurements
 import spatial_data.surface_measurements
 import tests.helpers.doubles.peri_scribe.presentation.fire_data
+import tests.helpers.factories.geography
 import tests.helpers.factories.geometry
 import tests.helpers.factories.peri_scribe.component_identity
 import tests.helpers.factories.peri_scribe.kml.parsing
@@ -672,3 +673,35 @@ def test_prepare_fire_data_selects_component_points_and_prepares_histories(
         assert fire.summary.point.equals(matching.geometry.iloc[-1])
         assert len(fire.point_positions) == 1
         assert fire.history is not None
+
+
+def test_prepare_fire_data_preserves_component_alias_location_priority() -> None:
+    entry = tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
+        "Example",
+        "active",
+        identifier="a",
+        aliases=["b"],
+    ).model_copy(update={"component_id": "component"})
+    index = tests.helpers.factories.peri_scribe.kml.parsing.fire_index([entry])
+    locations = [shapely.Point(-121, 36), shapely.Point(-122, 37)]
+    points = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["a", "b"],
+            "fire_name": ["Example", "Example"],
+            "fire_component_id": ["component", "component"],
+            "observation_time": [
+                datetime.datetime(2026, 9, day, tzinfo=datetime.UTC) for day in (1, 2)
+            ],
+            "incident_size": [100, 200],
+            "source_attributes": [{}, {}],
+        },
+        locations,
+    )
+    empty = points.iloc[0:0]
+    (prepared,) = peri_scribe.presentation.fire_data.prepare_fire_data(
+        index,
+        empty,
+        points,
+        empty,
+    )
+    assert prepared.summary.point == locations[0]

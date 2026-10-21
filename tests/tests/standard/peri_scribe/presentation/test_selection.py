@@ -465,3 +465,43 @@ def test_perimeter_groups_carries_shared_measurements() -> None:
     assert ring.area == expected_area
     assert ring.added_area == expected_area
     assert ring.sequence_digest == digest
+
+
+def test_perimeter_indexes_preserves_component_ties_and_empty_groups() -> None:
+    shapes = [tests.helpers.factories.geometry.square(index + 1) for index in range(6)]
+    frame = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["b", "a", "b", None, None, None, "empty"],
+            "fire_name": ["Example", "Example", "Example", "Y", "X", "Y", "Empty"],
+            "fire_component_id": ["component"] * 6 + ["empty"],
+            "observation_time": [tests.helpers.factories.time.utc(2026, 9, 1, 0)] * 7,
+        },
+        [*shapes, shapely.geometry.Polygon()],
+    )
+    indexed = peri_scribe.presentation.selection.perimeter_indexes(frame)
+    observations = indexed.by_component["component"]
+    assert [perimeter.geometry for perimeter in observations] == [
+        shapes[position] for position in (0, 2, 1, 3, 5, 4)
+    ]
+    assert indexed.by_component["empty"] == ()
+    assert observations[0] is indexed.by_identifier["b"][0]
+    assert observations[3] is indexed.by_name["Y"][0]
+
+
+def test_point_indexes_keeps_raw_component_keys_and_latest_alias_locations() -> None:
+    locations = [shapely.geometry.Point(index, index) for index in range(5)]
+    points = tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["b", "a", "b", "b", None],
+            "fire_name": ["Example"] * 5,
+            "fire_component_id": [1, 1, 1, "1", 1],
+        },
+        locations,
+    )
+    indexed = peri_scribe.presentation.selection.point_indexes(points)
+    assert indexed.by_component[1] == (
+        {"a": locations[1], "b": locations[2]},
+        {"Example": locations[4]},
+    )
+    assert indexed.by_component["1"] == ({"b": locations[3]}, {})
+    assert indexed.by_identifier["b"] == locations[3]

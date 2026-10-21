@@ -79,6 +79,12 @@ repeated CDATA closers, literal character references, combining text, and all 51
 length-three combinations of eight structural characters. No Python implementation
 of the encoding policy supplies the expected results.
 
+An additional normalization check sends all 1,114,112 Python code points, including
+surrogates, to the compiled oracle in 4,352 ordered chunks of 256. This covers interior
+values of the accepted and rejected intervals as well as their boundaries. Small chunks
+bound the oracle's recursive list depth. The catalogue and ordinary regressions cover
+interacting line endings and mixtures of source characters.
+
 `conformance/test_output_text.py` checks each string in two ways:
 
 - Compare normalization and exact Markdown, XML, and CDATA wire strings with the
@@ -97,6 +103,16 @@ writers. Its KML adapter assembles a minimal real document, folder, placemark, s
 and balloon; the full fire collection builder and resource-reference composition have
 their separate [artifact checks](output_references.md). No selector, storage, text
 encoder, archive writer, or parser is replaced in this bridge.
+
+The shared-balloon check also renders all 904 catalogue strings inside publication
+executions, with zero, one, two and five leading rows after first constructing the
+whole-fire balloon. Parsed common fields retain the oracle's exact normalized text;
+every row/cell boundary agrees with the framing oracle. Backgrounds alternate across
+the prefix boundary at both parities. Ordinary generated tests additionally compare
+the complete wire string with the original flat renderer for variable prefix lengths.
+Weak-reference regressions verify that execution exit releases balloon inputs and
+outputs, and that standalone calls retain neither. This uses the existing execution
+scope rather than adding a new cache transaction or publication protocol.
 
 Sixteen ordinary regression cases preserve the discovered source-text failures:
 Markdown pipes/newlines could displace evidence, inline syntax changed names, Unicode

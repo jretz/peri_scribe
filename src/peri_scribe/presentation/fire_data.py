@@ -19,6 +19,7 @@ import peri_scribe.perimeters.progression
 import peri_scribe.presentation.descriptions
 import peri_scribe.presentation.history_index
 import peri_scribe.presentation.perimeters
+import peri_scribe.presentation.prepared_cache
 import peri_scribe.presentation.score_association
 import peri_scribe.presentation.selection
 import peri_scribe.presentation.text
@@ -165,39 +166,6 @@ def fire_perimeters(
     )
 
 
-def component_perimeters(
-    frame: geopandas.GeoDataFrame,
-) -> dict[str, tuple[peri_scribe.presentation.perimeters.Perimeter, ...]]:
-    """Preserve exact source ownership independently of external alias enrichment.
-
-    Args:
-        frame: Complete full or differential history with stored component identities.
-
-    Returns:
-        Chronological drawable observations for every recorded source component.
-    """
-    index = peri_scribe.presentation.history_index.HistoryRowIndex.from_frame(frame)
-    result: dict[str, tuple[peri_scribe.presentation.perimeters.Perimeter, ...]] = {}
-    for component, positions in index.positions_by_component.items():
-        by_identifier, by_name = peri_scribe.presentation.selection.perimeter_groups(
-            peri_scribe.presentation.history_index.select_rows(frame, positions),
-        )
-        result[str(component)] = tuple(
-            sorted(
-                (
-                    perimeter
-                    for group in (*by_identifier.values(), *by_name.values())
-                    for perimeter in group
-                ),
-                key=lambda perimeter: (
-                    perimeter.observation_time is not None,
-                    perimeter.observation_time,
-                ),
-            ),
-        )
-    return result
-
-
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class PendingFire:
     """Retain shared evidence while each fire's charts are rendered.
@@ -209,7 +177,7 @@ class PendingFire:
         progression_rings: Differential rings available for progression views.
         perimeter_positions: Row positions used to recover descriptive perimeter fields.
         point_positions: Row positions used to recover descriptive point fields.
-        history: Prepared reports and area decisions, when presentation is needed.
+        history: Complete prepared reporting and area evidence for this fire.
     """
 
     entry: peri_scribe.models.FireIndexEntry
@@ -218,7 +186,7 @@ class PendingFire:
     progression_rings: tuple[peri_scribe.perimeters.progression.Ring, ...]
     perimeter_positions: tuple[int, ...]
     point_positions: tuple[int, ...]
-    history: peri_scribe.areas.PreparedHistory | None = None
+    history: peri_scribe.areas.PreparedHistory
 
 
 def prepare_fires(
@@ -281,24 +249,25 @@ def prepare_fires(
     pending: list[PendingFire] = []
     for entry in index.fires:
         fire_identifiers = peri_scribe.presentation.selection.identifiers(entry)
-        perimeter_observations = fire_perimeters(
-            fire_identifiers,
-            entry.name,
-            perimeter_by_identifier,
-            perimeter_by_name,
-        )
-        ring_observations = fire_perimeters(
-            fire_identifiers,
-            entry.name,
-            ring_by_identifier,
-            ring_by_name,
-        )
         if entry.component_id is not None:
             perimeter_observations = (perimeter_by_component or {}).get(
                 entry.component_id,
                 (),
             )
             ring_observations = (ring_by_component or {}).get(entry.component_id, ())
+        else:
+            perimeter_observations = fire_perimeters(
+                fire_identifiers,
+                entry.name,
+                perimeter_by_identifier,
+                perimeter_by_name,
+            )
+            ring_observations = fire_perimeters(
+                fire_identifiers,
+                entry.name,
+                ring_by_identifier,
+                ring_by_name,
+            )
         progression_rings = tuple(
             ring
             for observation in ring_observations
@@ -414,8 +383,10 @@ def prepare_fire_data(
     key = (
         (
             "prepared_fire_data",
-            index.model_dump_json(),
-            None if scores is None else scores.model_dump_json(),
+            peri_scribe.presentation.prepared_cache.document_digest(index),
+            None
+            if scores is None
+            else peri_scribe.presentation.prepared_cache.document_digest(scores),
             tuple(map(id, sources)),
         )
         if peri_scribe.execution.active()
@@ -427,29 +398,21 @@ def prepare_fire_data(
         for previous, current in zip(shared.sources, sources, strict=True)
     ):
         return shared.fires
-    perimeter_by_identifier, perimeter_by_name = (
-        peri_scribe.presentation.selection.perimeter_groups(perimeters)
+    perimeter_indexes = peri_scribe.presentation.selection.perimeter_indexes(perimeters)
+    ring_indexes = peri_scribe.presentation.selection.perimeter_indexes(
+        differential_perimeters,
     )
-    ring_by_identifier, ring_by_name = (
-        peri_scribe.presentation.selection.perimeter_groups(
-            differential_perimeters,
-        )
-    )
-    point_by_identifier, point_by_name = (
-        peri_scribe.presentation.selection.point_locations(
-            points,
-        )
-    )
+    point_indexes = peri_scribe.presentation.selection.point_indexes(points)
     pending = prepare_fires(
         index=index,
         perimeters=perimeters,
         points=points,
-        perimeter_by_identifier=perimeter_by_identifier,
-        perimeter_by_name=perimeter_by_name,
-        ring_by_identifier=ring_by_identifier,
-        ring_by_name=ring_by_name,
-        perimeter_by_component=component_perimeters(perimeters),
-        ring_by_component=component_perimeters(differential_perimeters),
+        perimeter_by_identifier=perimeter_indexes.by_identifier,
+        perimeter_by_name=perimeter_indexes.by_name,
+        ring_by_identifier=ring_indexes.by_identifier,
+        ring_by_name=ring_indexes.by_name,
+        perimeter_by_component=perimeter_indexes.by_component,
+        ring_by_component=ring_indexes.by_component,
         incident_rows=incident_rows,
         histories=histories,
     )
@@ -466,16 +429,16 @@ def prepare_fire_data(
     for position, prepared in enumerate(pending):
         perimeter_rows = peri_scribe.presentation.history_index.select_rows(
             perimeters,
-            prepared.perimeter_positions,
+            prepared.perimeter_positions[-1:],
         )
         point_rows = peri_scribe.presentation.history_index.select_rows(
             points,
-            prepared.point_positions,
+            prepared.point_positions[-1:],
         )
         local_points = (
-            peri_scribe.presentation.selection.point_locations(point_rows)
+            point_indexes.by_component.get(prepared.entry.component_id, ({}, {}))
             if prepared.entry.component_id is not None
-            else (point_by_identifier, point_by_name)
+            else (point_indexes.by_identifier, point_indexes.by_name)
         )
         fires.append(
             PreparedFire(

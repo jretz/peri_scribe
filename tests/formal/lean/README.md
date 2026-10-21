@@ -36,6 +36,8 @@ The [update log chronology inventory](../update_log_chronology.md) connects orde
 archive occurrences with the complete projected snapshot reference.
 The [output text inventory](output_text.md) connects normalized literal content and
 structural encoding proofs with parsed Markdown, HTML, XML, and saved KMZ artifacts.
+The [compact KMZ inventory](kmz_preparation.md) connects exact preparation identities,
+qualification subsets and latest-row attribute projection to concrete cached reads.
 
 | Module | Python boundary | Checked guarantees |
 | --- | --- | --- |
@@ -90,6 +92,7 @@ structural encoding proofs with parsed Markdown, HTML, XML, and saved KMZ artifa
 | `IdentityRecomputation` | `fire_updates.resolved_ownership`, `acknowledged_state`, `prepare_updates` | Unchanged inputs reach a fixed point after acknowledgement: writer and owner selection, alias routes, and retained evidence survive any number of subsequent retries. |
 | `UpdateLogChronology` | `updates.read_entries`, `write_updates_page` | Archive prefixes precede plain tails; filtering preserves occurrence order and equal-time snapshot predecessors. |
 | `OutputText` | `document_text.encoding`, report and KML rendering | Normalized literal text survives encoding while typed structure retains its delimiters, order, and multiplicity. |
+| `KmzPreparation` | `kml.prepared_inputs` | Qualified histories remain complete, every selected fire retains its latest attributes, and every preparation dependency agrees before reuse. |
 | `NumericalPolicy` | `publication.mapping_decision`, `areas.report_can_take_over`, `accepted_reports`, score tiers | Finite binary64 rounding, conversion order, threshold equality, and relative tolerance boundaries follow the declared numerical reference. |
 | `ReplayPrefixes` | Formal pipeline replay helpers | Sequential partial execution composes across every prefix and suffix. Reusing a successful prefix preserves the complete result, including failure, when the copied filesystem image and surviving TLC path equal the original state. |
 

@@ -7,11 +7,14 @@ Design notes:
 from __future__ import annotations
 
 import collections
+import re
 
 
 MARKDOWN_RESERVED = frozenset("\t\n\r#&*<>[\\]_`|~")
 XML_RESERVED = frozenset("\"&'<>")
-XML_RANGES = ((0x20, 0xD7FF), (0xE000, 0xFFFD), (0x10000, 0x10FFFF))
+UNSUPPORTED_XML_CHARACTERS = re.compile(
+    r"[\x00-\x08\x0b\x0c\x0e-\x1f\ud800-\udfff\ufffe\uffff]",
+)
 
 
 def normalized(value: str) -> str:
@@ -28,17 +31,9 @@ def normalized(value: str) -> str:
     Returns:
         Text with portable line endings and valid XML scalar values.
     """
-    return "".join(
-        character
-        if (
-            character in "\t\n"
-            or any(lower <= ord(character) <= upper for lower, upper in XML_RANGES)
-        )
-        else "\ufffd"
-        for character in value
-        .replace("\r\n", "\n")
-        .replace("\r", "\n")
-        .replace("\x85", "\n")
+    return UNSUPPORTED_XML_CHARACTERS.sub(
+        "\ufffd",
+        value.replace("\r\n", "\n").replace("\r", "\n").replace("\x85", "\n"),
     )
 
 

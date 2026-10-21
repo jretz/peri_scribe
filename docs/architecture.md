@@ -481,6 +481,15 @@ convert explicitly rather than assuming acres or square meters.
 
 ## Publication reuse and performance
 
+[KMZ preparation](algorithms/kmz-preparation.md) retains complete qualifying histories
+under the exact authenticated geography pair, fire index and area policies. A matching
+standalone map reads historical geometry and measurements while fetching raw source
+attributes only at each displayed fire's latest selected point/perimeter row. All reads
+finish inside the year lock. Changed generations use complete layers and existing
+per-fire caches; scoring's already shared complete layers remain authoritative. Shared
+perimeter objects, narrow positional plot views and validated history digests avoid
+repeated DataFrame construction and serialization during presentation.
+
 The reuse protocols are explained in [product caches](algorithms/product-caching.md),
 [parsed source caches](algorithms/parsed-source-cache.md), and
 [authenticated geography generations](algorithms/geography-generations.md).

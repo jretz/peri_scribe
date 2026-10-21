@@ -6,8 +6,10 @@ import defusedxml.ElementTree as DefusedElementTree
 import hypothesis
 import hypothesis.strategies
 
+import peri_scribe.execution
 import peri_scribe.kml.descriptions
 import peri_scribe.presentation.descriptions
+import tests.helpers.reference.peri_scribe.kml.descriptions
 import tests.helpers.strategies.peri_scribe.presentation.descriptions
 
 
@@ -52,3 +54,41 @@ def test_description_html_preserves_text_through_kml_and_html_parsing(
     assert [element.get("src") for element in balloon.findall("img")] == list(
         image_filenames,
     )
+
+
+@hypothesis.given(
+    note=hypothesis.strategies.text(),
+    leading_rows=hypothesis.strategies.lists(
+        hypothesis.strategies.tuples(
+            hypothesis.strategies.text(),
+            hypothesis.strategies.one_of(
+                hypothesis.strategies.none(),
+                hypothesis.strategies.text(),
+            ),
+        ),
+        max_size=8,
+    ),
+    filenames=hypothesis.strategies.lists(hypothesis.strategies.text(), max_size=3),
+)
+def test_shared_balloon_variants_preserve_original_exact_wire(
+    note: str,
+    leading_rows: list[tuple[str, str | None]],
+    filenames: list[str],
+) -> None:
+    description = peri_scribe.presentation.descriptions.FireDescription(of_note=note)
+    images = tuple(filenames)
+    with peri_scribe.execution.sharing():
+        peri_scribe.kml.descriptions.description_html(description, images)
+        for count in range(len(leading_rows) + 1):
+            prefix = tuple(leading_rows[:count])
+            assert str(
+                peri_scribe.kml.descriptions.description_html(
+                    description,
+                    images,
+                    prefix,
+                ),
+            ) == tests.helpers.reference.peri_scribe.kml.descriptions.description_html(
+                description,
+                images,
+                prefix,
+            )

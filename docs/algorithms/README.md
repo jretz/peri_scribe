@@ -52,6 +52,7 @@ labeled explanation without motion, including when reduced motion is requested.
 | [Indexed overlaps, streamed layers, and geodesic measurements](spatial-queries-and-measurements.md) | Spatial indexes, ring contributions and coordinate assumptions. |
 | [Immutable geometry sharing](geometry-sharing.md) | Persistent trie insertion and collision-safe identity. |
 | [Typed product caches and published-row reuse](product-caching.md) | Typed evidence keys, canonical values and transactional row reuse. |
+| [Compact evidence for KMZ generation](kmz-preparation.md) | Qualified histories, projected attributes and shared presentation records. |
 
 ## Fire identity, history and policy
 

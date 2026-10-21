@@ -7,7 +7,6 @@ Design notes:
 from __future__ import annotations
 
 import dataclasses
-import hashlib
 import typing
 
 import peri_scribe.areas
@@ -103,9 +102,7 @@ def fire_description(
             tuple(tuple(range(len(frame.rows))) for frame in frames),
             (
                 entry.model_dump_json(),
-                hashlib.sha256(
-                    peri_scribe.presentation.prepared_cache.history_bytes(history),
-                ).digest(),
+                peri_scribe.presentation.prepared_cache.history_digest(history),
             ),
         )
     except ValueError:

@@ -147,6 +147,7 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 | [icons.py](../../src/peri_scribe/kml/icons.py) | [progression presentation](progression-presentation.md) |
 | [plot_data.py](../../src/peri_scribe/kml/plot_data.py) | [chart layout](chart-layout.md) |
 | [plot_rendering.py](../../src/peri_scribe/kml/plot_rendering.py) | [chart layout](chart-layout.md); [product caching](product-caching.md) |
+| [prepared_inputs.py](../../src/peri_scribe/kml/prepared_inputs.py) | [KMZ preparation](kmz-preparation.md) |
 | [styles.py](../../src/peri_scribe/kml/styles.py) | Straightforward **0/1/1/1/0** (3). Independent draw-order arithmetic and style declarations over bounded outlines. |
 | [tour.py](../../src/peri_scribe/kml/tour.py) | [progression presentation](progression-presentation.md) |
 

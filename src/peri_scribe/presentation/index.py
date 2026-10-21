@@ -13,6 +13,7 @@ import peri_scribe.execution
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.phases
+import peri_scribe.presentation.prepared_cache
 import peri_scribe.presentation.selection
 
 
@@ -53,7 +54,11 @@ def prepare_histories(
     """
     sources = (perimeters, points, incident_rows)
     key = (
-        ("presentation_histories", index.model_dump_json(), tuple(map(id, sources)))
+        (
+            "presentation_histories",
+            peri_scribe.presentation.prepared_cache.document_digest(index),
+            tuple(map(id, sources)),
+        )
         if peri_scribe.execution.active()
         else None
     )

@@ -1,5 +1,7 @@
 """Complete source streams and styled SVG paths follow the checked evidence model."""
 
+import pytest
+
 import tests.formal.helpers.chart_evidence
 
 
@@ -10,8 +12,14 @@ def test_contained_perimeter_points_matches_independent_history_reference() -> N
     tests.formal.helpers.chart_evidence.check_independent_histories()
 
 
-def test_contained_perimeter_points_preserves_stored_history_composition() -> None:
-    tests.formal.helpers.chart_evidence.check_stored_history_composition()
+@pytest.mark.parametrize("columnar", [False, True])
+def test_contained_perimeter_points_preserves_stored_history_composition(
+    *,
+    columnar: bool,
+) -> None:
+    tests.formal.helpers.chart_evidence.check_stored_history_composition(
+        columnar=columnar,
+    )
 
 
 def test_line_segments_preserves_all_source_edges_and_legend_styles() -> None:

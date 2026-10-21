@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 350" role="img" aria-labelledby="title description">
+  <title id="title">Latest source attributes follow selected positions and exact feature IDs</title>
+  <desc id="description">All four geometry rows remain loaded. Fire A selects positions zero and two and qualifies. Position two has feature ID twenty seven and its latest attributes are fetched. Fire B does not qualify, so its attributes are omitted.</desc>
+  <style>
+    :root { color-scheme: light dark; }
+    .background { fill:#0f172a; }
+    text { fill:#e2e8f0; font:15px system-ui,sans-serif; }
+    .heading { font-weight:650; font-size:17px; }
+    .muted { fill:#94a3b8; }
+    .cell { stroke:#64748b; stroke-width:1; }
+    .geometry { fill:#1e3a5f; }
+    .selected { fill:#14532d; }
+    .omitted { fill:#253044; }
+    .selected-text { fill:#bbf7d0; }
+    .arrow { stroke:#4ade80; stroke-width:2; fill:none; marker-end:url(#arrowhead); }
+    .arrowhead { fill:#4ade80; }
+    @media (prefers-color-scheme: light) {
+      .background { fill:#ffffff; }
+      text { fill:#172033; }
+      .muted { fill:#536174; }
+      .cell { stroke:#94a3b8; }
+      .geometry { fill:#dbeafe; }
+      .selected { fill:#dcfce7; }
+      .omitted { fill:#f1f5f9; }
+      .selected-text { fill:#14532d; }
+      .arrow { stroke:#15803d; }
+      .arrowhead { fill:#15803d; }
+    }
+  </style>
+  <defs><marker id="arrowhead" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 Z" class="arrowhead"/></marker></defs>
+  <rect class="background" width="860" height="350"/>
+  <text class="heading" x="24" y="30">Complete geometry and projected source attributes</text>
+  <g id="source-layer">
+    <text x="30" y="64">Position</text><text x="115" y="64">Feature ID</text><text x="220" y="64">Fire</text><text x="285" y="64">Geometry and time</text><text x="472" y="64">Source attributes</text>
+    <g id="row-zero"><rect class="cell geometry" x="24" y="76" width="418" height="43"/><rect class="cell omitted" x="442" y="76" width="180" height="43"/><text x="48" y="103">0</text><text x="141" y="103">4</text><text x="231" y="103">A</text><text x="287" y="103">older A geometry</text><text class="muted" x="470" y="103">not demanded</text></g>
+    <g id="row-one"><rect class="cell geometry" x="24" y="119" width="418" height="43"/><rect class="cell omitted" x="442" y="119" width="180" height="43"/><text x="48" y="146">1</text><text x="141" y="146">9</text><text x="231" y="146">B</text><text x="287" y="146">older B geometry</text><text class="muted" x="470" y="146">not demanded</text></g>
+    <g id="row-two"><rect class="cell geometry" x="24" y="162" width="418" height="43"/><rect class="cell selected" x="442" y="162" width="180" height="43"/><text x="48" y="189">2</text><text x="137" y="189">27</text><text x="231" y="189">A</text><text x="287" y="189">latest A geometry</text><text class="selected-text" x="470" y="189">latest A values</text></g>
+    <g id="row-three"><rect class="cell geometry" x="24" y="205" width="418" height="43"/><rect class="cell omitted" x="442" y="205" width="180" height="43"/><text x="48" y="232">3</text><text x="137" y="232">42</text><text x="231" y="232">B</text><text x="287" y="232">latest B geometry</text><text class="muted" x="470" y="232">not demanded</text></g>
+  </g>
+  <g id="qualified-selection"><text class="heading" x="656" y="100">A qualifies</text><text x="656" y="125">positions (0, 2)</text><text x="656" y="149">last position: 2</text><text x="656" y="174">query feature ID 27</text><path class="arrow" d="M650,184 L628,184"/><text class="muted" x="656" y="225">B is excluded</text></g>
+  <text x="24" y="286">A's cached complete history retains earlier reporting and area decisions.</text>
+  <text class="muted" x="24" y="316">Feature IDs locate stored values. Row positions preserve presentation order.</text>
+</svg>

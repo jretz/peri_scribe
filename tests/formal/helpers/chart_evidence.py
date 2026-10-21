@@ -11,6 +11,7 @@ import pytest
 
 import peri_scribe.areas
 import peri_scribe.geo.measurements
+import peri_scribe.history_columns
 import peri_scribe.incidents
 import peri_scribe.kml.plot_data
 import svg_charts.models
@@ -356,11 +357,14 @@ def check_segment_histories(*, rendered: bool) -> None:
             assert tuple(int(entry.style) for entry in legend) == oracle.legend
 
 
-def check_stored_history_composition() -> None:
+def check_stored_history_composition(*, columnar: bool = False) -> None:
     """Stored perimeter lengths and parsed incident reports feed the same ledger.
 
     Percentages are already reconciled by the separately checked incident-history
     policy. This adapter retains the actual frame parsing and complete plot builder.
+
+    Args:
+        columnar: Whether to read measurements through shared positional column views.
     """
     cases = (
         History(lengths=((0, 10), (2, 20)), percentages=((-1, 30), (1, 70), (3, 100))),
@@ -396,8 +400,16 @@ def check_stored_history_composition() -> None:
             crs="EPSG:4326",
         )
         empty = tests.helpers.factories.geography.empty_frame()
+        evidence = (
+            peri_scribe.history_columns.select_rows(
+                peri_scribe.kml.plot_data.perimeter_source(perimeters),
+                tuple(range(len(perimeters))),
+            )
+            if columnar
+            else perimeters
+        )
         actual = peri_scribe.kml.plot_data.contained_perimeter_points(
-            perimeters,
+            evidence,
             point_rows=empty,
             incident_rows=incident_rows,
         )

@@ -42,6 +42,19 @@ an explicitly supplied empty prepared history and a change of original area unit
 that history. Both invalidate descriptions while preserving exact fresh results through
 canonical decoding and domain validation. These cases retain the existing dependency
 contract and introduce no new cache protocol or domain policy.
+
+`helpers/prepared_history_identity.py` also exercises complete-history dependencies
+after a validated payload digest is retained eagerly or captured on first use in one
+execution. Measurement changes, mapping-order changes, in-place unit conversion and
+record-field replacement must invalidate the real description key after an observed
+cache hit. The bridge takes its required-input decision from the same `oracleCache`
+projection and compares the complete resulting description with uncached current output.
+Production guards retain record-field references and one ordered typed encoding of
+mutable containers and foreign scalars. Native immutable scalar leaves and exact tuple
+structure can retain their existing identity. The existing codec's ordered-child
+preservation argument applies to this complete guarded decomposition; no serializer
+checks are removed.
+
 Dependencies may conservatively invalidate even when one particular mutation leaves the
 rendered result unchanged; sound keys need not be minimal keys. A wrapper-only mutation
 must reuse content while producing the current wrapper in the complete result.

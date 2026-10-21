@@ -12,11 +12,13 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import types
 import typing
 
 import peri_scribe.areas
 import peri_scribe.geo.measurements
 import peri_scribe.geo.parsing
+import peri_scribe.history_columns
 import peri_scribe.incidents
 import svg_charts.models
 from measurement_units import units
@@ -80,8 +82,41 @@ class FirePlot:
     y_axis_label: str
 
 
-def exterior_perimeter_measurements(
+def perimeter_source(
     frame: geopandas.GeoDataFrame,
+) -> peri_scribe.history_columns.Source:
+    """Share only the source columns required by perimeter charts.
+
+    The tuples borrow geometry and scalar values. Callers must keep the source unchanged
+    while its position views are used. Duplicate source labels retain pandas selection.
+
+    Args:
+        frame: The complete perimeter history used by the current map.
+
+    Returns:
+        Narrow shared columns, or the original frame for an ambiguous source schema.
+    """
+    if not frame.columns.is_unique:
+        return frame
+    if "observation_time" not in frame.columns:
+        return peri_scribe.history_columns.HistoryColumns(
+            fields=types.MappingProxyType({}),
+        )
+    fields = {
+        "observation_time": tuple(frame["observation_time"]),
+        "geometry": tuple(frame.geometry),
+    }
+    if peri_scribe.geo.measurements.EXTERIOR_COLUMN in frame.columns:
+        fields[peri_scribe.geo.measurements.EXTERIOR_COLUMN] = tuple(
+            frame[peri_scribe.geo.measurements.EXTERIOR_COLUMN],
+        )
+    return peri_scribe.history_columns.HistoryColumns(
+        fields=types.MappingProxyType(fields),
+    )
+
+
+def exterior_perimeter_measurements(
+    frame: peri_scribe.history_columns.Frame,
 ) -> tuple[ExteriorMeasurement, ...]:
     """Return each perimeter row's observation time and unit-bearing exterior length.
 
@@ -95,16 +130,28 @@ def exterior_perimeter_measurements(
     Returns:
         One measurement per row, in the layer's row order.
     """
-    if "observation_time" not in frame.columns:
-        return ()
+    if isinstance(frame, peri_scribe.history_columns.HistoryRows):
+        if "observation_time" not in frame.columns.fields:
+            return ()
+        observation_times = frame.get("observation_time")
+        geometries = frame.get("geometry")
+        stored_lengths = frame.get(
+            peri_scribe.geo.measurements.EXTERIOR_COLUMN,
+            (None,) * len(frame.positions),
+        )
+    else:
+        if "observation_time" not in frame.columns:
+            return ()
+        observation_times = frame["observation_time"]
+        geometries = typing.cast("geopandas.GeoDataFrame", frame).geometry
+        stored_lengths = frame.get(
+            peri_scribe.geo.measurements.EXTERIOR_COLUMN,
+            [None] * len(frame),
+        )
     measurements: list[ExteriorMeasurement] = []
-    stored_lengths = frame.get(
-        peri_scribe.geo.measurements.EXTERIOR_COLUMN,
-        [None] * len(frame),
-    )
     for observation_time, geometry, stored in zip(
-        frame["observation_time"],
-        frame.geometry,
+        observation_times,
+        geometries,
         stored_lengths,
         strict=True,
     ):
@@ -123,7 +170,7 @@ def exterior_perimeter_measurements(
 
 
 def exterior_perimeter_points(
-    frame: geopandas.GeoDataFrame,
+    frame: peri_scribe.history_columns.Frame,
     exterior_measurements: tuple[ExteriorMeasurement, ...] | None = None,
 ) -> tuple[svg_charts.models.SeriesPoint, ...]:
     """Return each perimeter's exterior length in miles over time.
@@ -155,7 +202,7 @@ def exterior_perimeter_points(
 
 
 def contained_perimeter_points(
-    frame: geopandas.GeoDataFrame,
+    frame: peri_scribe.history_columns.Frame,
     exterior_measurements: tuple[ExteriorMeasurement, ...] | None = None,
     *,
     point_rows: geopandas.GeoDataFrame | None = None,
@@ -182,9 +229,14 @@ def contained_perimeter_points(
     if exterior_measurements is None:
         exterior_measurements = exterior_perimeter_measurements(frame)
     if updates is None:
+        empty = (
+            frame.columns.select(())
+            if isinstance(frame, peri_scribe.history_columns.HistoryRows)
+            else frame.iloc[0:0]
+        )
         updates = peri_scribe.incidents.history(
             frame,
-            frame.iloc[0:0] if point_rows is None else point_rows,
+            empty if point_rows is None else point_rows,
             incident_rows,
         )
     lengths = {
@@ -288,7 +340,7 @@ def fire_plots(
 
 
 def fire_plots_from_history(
-    perimeter_rows: geopandas.GeoDataFrame,
+    perimeter_rows: peri_scribe.history_columns.Frame,
     history: peri_scribe.areas.PreparedHistory,
 ) -> tuple[FirePlot, ...]:
     """Keep plots consistent with the fire's prepared reporting and area evidence.

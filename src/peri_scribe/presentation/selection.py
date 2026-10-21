@@ -10,6 +10,8 @@ import decimal
 import json
 import typing
 
+import pint
+
 import peri_scribe.areas
 import peri_scribe.geo.measurements
 import peri_scribe.geo.parsing
@@ -25,7 +27,6 @@ from measurement_units import units
 
 if typing.TYPE_CHECKING:
     import geopandas
-    import pint
     import shapely
 
 
@@ -218,11 +219,13 @@ def persistent_histories(
                 histories[identity] = (
                     peri_scribe.presentation.prepared_cache.read_history(
                         payload,
+                        remember_identity=False,
                     )
                 )
             except ValueError:
                 pass
             else:
+                remember_qualified_history(histories[identity], payload)
                 continue
         if columns is None:
             columns = tuple(
@@ -241,8 +244,32 @@ def persistent_histories(
             payload = peri_scribe.presentation.prepared_cache.history_bytes(history)
         except ValueError:
             continue
+        remember_qualified_history(history, payload)
         spatial_data.product_cache.put("prepared_histories", key, payload)
     return histories
+
+
+def remember_qualified_history(
+    history: peri_scribe.areas.PreparedHistory,
+    payload: bytes,
+) -> None:
+    """Retain digest guards only for histories likely to reach presentation.
+
+    All histories remain available. A later digest request for an unretained history
+    serializes its complete current evidence before capturing mutation guards.
+
+    Args:
+        history: Complete current evidence represented by the canonical payload.
+        payload: Its just-produced or fully validated typed representation.
+    """
+    if history.historical_area is None:
+        return
+    try:
+        qualifies = bool(history.historical_area >= MINIMUM_FIRE_AREA)
+    except ValueError, TypeError, pint.errors.PintError:
+        return
+    if qualifies:
+        peri_scribe.presentation.prepared_cache.remember_history(history, payload)
 
 
 def fires_with_qualifying_area(
@@ -371,27 +398,43 @@ def perimeter_source_references(
     return frozenset(references)
 
 
-def perimeter_groups(
-    perimeters: geopandas.GeoDataFrame,
-) -> tuple[
-    dict[str, list[peri_scribe.presentation.perimeters.Perimeter]],
-    dict[str, list[peri_scribe.presentation.perimeters.Perimeter]],
-]:
-    """Group perimeters by fire, preserving chronological order.
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class PerimeterIndexes:
+    """Share each drawable observation across external and component lookups."""
 
-    Each perimeter keeps its geometry and observation time. Missing and empty shapes
-    cannot supply mapped growth or drawable outlines, so they are excluded from these
-    groups. Their history rows remain available for reported incident information. Fires
-    are keyed by identifier when one is known, and by name otherwise.
+    by_identifier: dict[str, list[peri_scribe.presentation.perimeters.Perimeter]]
+    by_name: dict[str, list[peri_scribe.presentation.perimeters.Perimeter]]
+    by_component: dict[
+        str,
+        tuple[peri_scribe.presentation.perimeters.Perimeter, ...],
+    ]
+
+
+def perimeter_indexes(
+    perimeters: geopandas.GeoDataFrame,
+) -> PerimeterIndexes:
+    """Build every drawing lookup while constructing each observation once.
+
+    Missing and empty shapes remain absent from drawable groups. Component groups
+    retain the identifier-bucket then name-bucket order for equal observation times,
+    while their dated observations sort chronologically.
 
     Args:
         perimeters: The perimeter history layer.
 
     Returns:
-        Perimeters keyed by identifier and by name.
+        External identifier, anonymous name, and exact source-component lookups.
     """
     by_identifier: dict[str, list[peri_scribe.presentation.perimeters.Perimeter]] = {}
     by_name: dict[str, list[peri_scribe.presentation.perimeters.Perimeter]] = {}
+    component_identifiers: dict[
+        object,
+        dict[str, list[peri_scribe.presentation.perimeters.Perimeter]],
+    ] = {}
+    component_names: dict[
+        object,
+        dict[str, list[peri_scribe.presentation.perimeters.Perimeter]],
+    ] = {}
     areas = perimeters.get(
         peri_scribe.geo.measurements.AREA_COLUMN,
         [None] * len(perimeters),
@@ -407,6 +450,7 @@ def perimeter_groups(
     for (
         identifier,
         name,
+        component,
         observation_time,
         geometry,
         stored_area,
@@ -418,6 +462,7 @@ def perimeter_groups(
     ) in zip(
         perimeters["fire_identifier"],
         perimeters["fire_name"],
+        perimeters.get("fire_component_id", [None] * len(perimeters)),
         perimeters["observation_time"],
         perimeters.geometry,
         areas,
@@ -428,6 +473,10 @@ def perimeter_groups(
         perimeters.get("superseded_sources", [None] * len(perimeters)),
         strict=True,
     ):
+        has_component = not peri_scribe.geo.parsing.is_missing(component)
+        if has_component:
+            component_identifiers.setdefault(component, {})
+            component_names.setdefault(component, {})
         if geometry is None or geometry.is_empty:
             continue
         area = peri_scribe.geo.parsing.numeric_value(stored_area)
@@ -448,15 +497,73 @@ def perimeter_groups(
         )
         if peri_scribe.geo.parsing.is_missing(identifier):
             by_name.setdefault(str(name), []).append(perimeter)
+            if has_component:
+                component_names[component].setdefault(str(name), []).append(perimeter)
         else:
             by_identifier.setdefault(str(identifier), []).append(perimeter)
-    return by_identifier, by_name
+            if has_component:
+                component_identifiers[component].setdefault(str(identifier), []).append(
+                    perimeter,
+                )
+    return PerimeterIndexes(
+        by_identifier=by_identifier,
+        by_name=by_name,
+        by_component={
+            str(component): tuple(
+                sorted(
+                    (
+                        perimeter
+                        for group in (
+                            *component_identifiers[component].values(),
+                            *component_names[component].values(),
+                        )
+                        for perimeter in group
+                    ),
+                    key=lambda perimeter: (
+                        perimeter.observation_time is not None,
+                        perimeter.observation_time,
+                    ),
+                ),
+            )
+            for component in component_identifiers
+        },
+    )
 
 
-def point_locations(
+def perimeter_groups(
+    perimeters: geopandas.GeoDataFrame,
+) -> tuple[
+    dict[str, list[peri_scribe.presentation.perimeters.Perimeter]],
+    dict[str, list[peri_scribe.presentation.perimeters.Perimeter]],
+]:
+    """Return drawable observations grouped by external identifier or anonymous name.
+
+    Args:
+        perimeters: The complete perimeter history layer.
+
+    Returns:
+        Perimeters keyed by identifier and by anonymous name, in source row order.
+    """
+    indexed = perimeter_indexes(perimeters)
+    return indexed.by_identifier, indexed.by_name
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class PointIndexes:
+    """Share latest point evidence across external and component identities."""
+
+    by_identifier: dict[str, shapely.Point]
+    by_name: dict[str, shapely.Point]
+    by_component: dict[
+        object,
+        tuple[dict[str, shapely.Point], dict[str, shapely.Point]],
+    ]
+
+
+def point_indexes(
     points: geopandas.GeoDataFrame,
-) -> tuple[dict[str, shapely.Point], dict[str, shapely.Point]]:
-    """Return each fire's last known point location.
+) -> PointIndexes:
+    """Build latest-location maps without selecting a separate frame per component.
 
     Later rows overwrite earlier ones, so each fire keeps the most recent point. Fires
     are keyed by identifier when one is known, and by name otherwise.
@@ -465,21 +572,54 @@ def point_locations(
         points: The point history layer.
 
     Returns:
-        Points keyed by identifier and by name.
+        Global and exact-component locations keyed by identifier and anonymous name.
     """
     by_identifier: dict[str, shapely.Point] = {}
     by_name: dict[str, shapely.Point] = {}
-    for identifier, name, geometry in zip(
+    by_component: dict[
+        object,
+        tuple[dict[str, shapely.Point], dict[str, shapely.Point]],
+    ] = {}
+    for identifier, name, component, geometry in zip(
         points["fire_identifier"],
         points["fire_name"],
+        points.get("fire_component_id", [None] * len(points)),
         points.geometry,
         strict=True,
     ):
+        component_maps = (
+            None
+            if peri_scribe.geo.parsing.is_missing(component)
+            else by_component.setdefault(component, ({}, {}))
+        )
         if peri_scribe.geo.parsing.is_missing(identifier):
             by_name[str(name)] = geometry
+            if component_maps is not None:
+                component_maps[1][str(name)] = geometry
         else:
             by_identifier[str(identifier)] = geometry
-    return by_identifier, by_name
+            if component_maps is not None:
+                component_maps[0][str(identifier)] = geometry
+    return PointIndexes(
+        by_identifier=by_identifier,
+        by_name=by_name,
+        by_component=by_component,
+    )
+
+
+def point_locations(
+    points: geopandas.GeoDataFrame,
+) -> tuple[dict[str, shapely.Point], dict[str, shapely.Point]]:
+    """Return each identity's final point without merging anonymous and named keys.
+
+    Args:
+        points: The complete point history in source order.
+
+    Returns:
+        Latest points keyed by identifier and by anonymous name.
+    """
+    indexed = point_indexes(points)
+    return indexed.by_identifier, indexed.by_name
 
 
 def first_identifier_match[Value](

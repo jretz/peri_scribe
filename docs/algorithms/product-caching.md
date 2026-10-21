@@ -46,6 +46,46 @@ unchanged. Relabeling a DataFrame index does not. This conservative invalidation
 intentional. Hashing only geometry would wrongly reuse descriptions after an attribute
 correction; hashing only a file path would miss replacement content at that same path.
 
+## Prepared history identities
+
+After canonical decoding, domain validation and exact reserialization, a history can
+retain its payload's SHA-256 digest within the owning execution scope. Descriptions use
+that digest as a dependency rather than rebuilding the complete dataclass/JSON tree.
+The registry retains the exact history object, preventing object-ID reuse from matching
+unrelated evidence. Scope exit releases the registry.
+
+Per-fire selection retains guards eagerly only when historical area meets the map's
+inclusion threshold. Smaller or unknown histories remain complete and fully validated;
+their first description request serializes the current evidence and captures guards
+then. Generic history reads still retain identities by default. Declining admission
+changes memory use without changing qualification, accepted values or cache keys.
+
+Frozen records can contain mutable children, including measurement dictionaries and
+Pint quantities. Guards check each record field by reference, traverse exact tuples and
+retain one detached typed encoding of the ordered mutable and foreign scalar children.
+Each digest lookup checks that tuple in one codec pass. A changed field, ordered
+dictionary, numeric type, floating-point encoding, original unit or extended dataclass
+invalidates the digest. The complete serializer then constructs a fresh current identity.
+Native immutable scalars need no independent encoding guard. Callers keep the evidence
+stable while each synchronous check or encoding runs.
+
+This adapter is involved: history 1, rules 2, mathematics 1, representation 2, effects 1;
+total 7. Its invariant is equality with hashing the complete current canonical history
+payload. The existing ordered-codec and complete-dependency theorems provide the
+composition argument; guarded-description conformance additionally mutates nested
+measurements and quantities inside one live execution. The enclosing complex cache
+assessment remains applicable.
+
+Execution-level index and score keys retain compact digests of freshly serialized
+documents. Serializing current contents on each lookup still detects a model's mutable
+alias collection changing in place. Plot keys rebuild dataclass containers while
+borrowing scalar values for synchronous typed encoding, preserving all renderer,
+locale and time-zone dependencies without recursive scalar copies.
+
+The [KMZ preparation](kmz-preparation.md) aggregate binds complete qualifying histories
+to authenticated geography bytes, index and policies. A miss retains the ordinary
+per-row/per-fire cache path; the aggregate does not replace those fine-grained keys.
+
 ## Transaction and read invariants
 
 A scope owns a SQLite connection and an 8 MiB configured page cache. Successful scope

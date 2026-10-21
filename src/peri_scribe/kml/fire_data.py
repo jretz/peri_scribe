@@ -6,6 +6,7 @@ Design notes:
 
 from __future__ import annotations
 
+import collections.abc
 import contextlib
 import dataclasses
 import functools
@@ -15,6 +16,7 @@ import pint
 
 import peri_scribe.areas
 import peri_scribe.execution
+import peri_scribe.history_columns
 import peri_scribe.kml.colormap
 import peri_scribe.kml.plot_data
 import peri_scribe.kml.plot_rendering
@@ -221,7 +223,7 @@ def precompute_interior_added_areas(
 def unique_filename_prefix(
     identifier: str | None,
     name: str,
-    used_prefixes: frozenset[str],
+    used_prefixes: collections.abc.Set[str],
 ) -> str:
     """Return a filename prefix for a fire that avoids *used_prefixes*.
 
@@ -285,22 +287,22 @@ def fire_geometries(
     )
     bundles: list[tuple[str, tuple[peri_scribe.kml.plot_data.FirePlot, ...]]] = []
     used_prefixes: set[str] = set()
+    perimeter_source = peri_scribe.kml.plot_data.perimeter_source(perimeters)
     for fire in prepared:
         prefix = unique_filename_prefix(
             fire.identifier,
             fire.summary.name,
-            frozenset(used_prefixes),
+            used_prefixes,
         )
         used_prefixes.add(prefix)
-        perimeter_rows = peri_scribe.presentation.history_index.select_rows(
-            perimeters,
-            fire.perimeter_positions,
-        )
         bundles.append((
             prefix,
             (
                 peri_scribe.kml.plot_data.fire_plots(
-                    perimeter_rows,
+                    peri_scribe.presentation.history_index.select_rows(
+                        perimeters,
+                        fire.perimeter_positions,
+                    ),
                     peri_scribe.presentation.history_index.select_rows(
                         points,
                         fire.point_positions,
@@ -308,7 +310,10 @@ def fire_geometries(
                 )
                 if fire.history is None
                 else peri_scribe.kml.plot_data.fire_plots_from_history(
-                    perimeter_rows,
+                    peri_scribe.history_columns.select_rows(
+                        perimeter_source,
+                        fire.perimeter_positions,
+                    ),
                     fire.history,
                 )
             ),

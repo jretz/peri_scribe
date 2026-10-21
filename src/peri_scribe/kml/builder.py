@@ -22,13 +22,13 @@ import document_text.encoding
 import kml_io.geometry
 import kml_io.kmz
 import peri_scribe.fire_updates
-import peri_scribe.fires.derived_layers
 import peri_scribe.fires.index
 import peri_scribe.fires.score_files
 import peri_scribe.kml.colormap
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
 import peri_scribe.kml.icons
+import peri_scribe.kml.prepared_inputs
 import peri_scribe.kml.styles
 import peri_scribe.logging
 import peri_scribe.models
@@ -463,20 +463,13 @@ def create_kmz(
     """
     index = peri_scribe.fires.index.load_fire_index(year_directory)
     scores = peri_scribe.fires.score_files.load_fire_scores(year_directory)
-    layers = peri_scribe.fires.derived_layers.read_derived_layers(
-        year_directory,
-        tolerate_missing=False,
-    )
+    prepared = peri_scribe.kml.prepared_inputs.prepare_inputs(year_directory, index)
+    layers = prepared.layers
     perimeters = layers.perimeters
     points = layers.points
     differential_perimeters = layers.differential_perimeters
     fire_count = len(index.fires)
-    histories = peri_scribe.presentation.index.prepare_histories(
-        index,
-        perimeters,
-        points,
-        layers.incidents,
-    )
+    histories = prepared.histories
     index = peri_scribe.presentation.index.area_qualified_index(
         index,
         perimeters,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import functools
 import itertools
 import pathlib
+import sys
 import typing
 import zipfile
 
@@ -14,6 +15,7 @@ import shapely
 import document_text.encoding
 import kml_io.geometry
 import kml_io.kmz
+import peri_scribe.execution
 import peri_scribe.kml.descriptions
 import peri_scribe.presentation.descriptions
 import peri_scribe.report.markdown
@@ -161,6 +163,74 @@ def check_encodings() -> None:
             [plain, "100 acres"],
         ]
         assert all(not list(cell) for cell in rows[0])
+
+
+def check_normalization_codepoints() -> None:
+    """Compare every Python code point with the independently checked definition.
+
+    Small chunks bound the oracle's recursive list depth while covering interior values
+    of every accepted and rejected character range, including surrogates.
+    """
+    chunk_size = 256
+    values = tuple(
+        "".join(
+            chr(value)
+            for value in range(start, min(start + chunk_size, sys.maxunicode + 1))
+        )
+        for start in range(0, sys.maxunicode + 1, chunk_size)
+    )
+    for source, plain in zip(values, expected("normalize", values), strict=True):
+        assert document_text.encoding.normalized(source) == plain
+
+
+def check_balloon_variants() -> None:
+    """Check reused common facts at both parities against the text and framing oracle.
+
+    Every catalogue string crosses HTML and CDATA parsing after the whole-fire body is
+    shared with zero, one, two and five leading rows inside one publication execution.
+    """
+    values = catalogue()
+    leading_counts = (0, 1, 2, 5)
+    frames = tests.formal.helpers.oracle.evaluate(
+        [
+            "rows|" + " ".join("2" for _ in range(19 + count))
+            for count in leading_counts
+        ],
+        executable="oracleOutputText",
+    )
+    for source, plain in zip(values, expected("normalize", values), strict=True):
+        description = peri_scribe.presentation.descriptions.FireDescription(
+            identifier=source,
+            of_note=source,
+        )
+        with peri_scribe.execution.sharing():
+            peri_scribe.kml.descriptions.description_html(description)
+            for count, frame in zip(leading_counts, frames, strict=True):
+                leading_rows = tuple(
+                    (source, None if index % 2 else source) for index in range(count)
+                )
+                encoded = peri_scribe.kml.descriptions.description_html(
+                    description,
+                    leading_rows=leading_rows,
+                )
+                kml = DefusedElementTree.fromstring(
+                    f"<description>{encoded}</description>",
+                )
+                root = DefusedElementTree.fromstring(f"<root>{kml.text}</root>")
+                rows = root.findall("table/tr")
+                assert row_structure(rows) == frame
+                assert [
+                    tuple("".join(cell.itertext()) for cell in row)
+                    for row in rows[:count]
+                ] == [(plain, "--" if index % 2 else plain) for index in range(count)]
+                common = rows[count:]
+                assert "".join(common[7][1].itertext()) == plain
+                assert "".join(common[-1][1].itertext()) == plain
+                assert all(not list(row[1]) for row in rows)
+                assert all(
+                    (row.get("style") is not None) == (index % 2 == 0)
+                    for index, row in enumerate(rows)
+                )
 
 
 def row_structure(rows: list[ET.Element]) -> tuple[int, ...]:

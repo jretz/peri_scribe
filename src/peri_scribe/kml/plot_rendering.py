@@ -23,6 +23,7 @@ import defusedxml.common
 import defusedxml.ElementTree
 
 import peri_scribe.kml.plot_data
+import peri_scribe.presentation.prepared_cache
 import spatial_data.cache_values
 import spatial_data.product_cache
 import svg_charts.models
@@ -104,7 +105,10 @@ def plot_key(request: PlotRequest) -> str | None:
     )
     try:
         payload = spatial_data.cache_values.dumps((
-            tuple(dataclasses.asdict(series) for series in request.series),
+            tuple(
+                peri_scribe.presentation.prepared_cache.record_values(series)
+                for series in request.series
+            ),
             request.y_axis_label,
             settings,
             locale.setlocale(locale.LC_TIME),

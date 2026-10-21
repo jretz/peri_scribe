@@ -7,9 +7,12 @@ import datetime
 import json
 import typing
 
+import pandas as pd
 import pytest
 
 import peri_scribe.areas
+import peri_scribe.geo.measurements
+import peri_scribe.history_columns
 import peri_scribe.kml.plot_data
 import spatial_data.measurements
 import svg_charts.models
@@ -37,6 +40,77 @@ def test_fire_plots_from_history_preserves_all_series() -> None:
     history = peri_scribe.areas.prepare_history(perimeters, points)
     assert peri_scribe.kml.plot_data.fire_plots_from_history(perimeters, history) == (
         peri_scribe.kml.plot_data.fire_plots(perimeters, points)
+    )
+
+
+@pytest.mark.parametrize("positions", [(), (1,), (1, 0, 1)])
+@pytest.mark.parametrize("geometry_name", ["geometry", "footprint"])
+@pytest.mark.parametrize("stored", [False, True])
+def test_fire_plots_from_history_preserves_position_view_evidence(
+    positions: tuple[int, ...],
+    geometry_name: str,
+    *,
+    stored: bool,
+) -> None:
+    perimeters = (
+        tests.helpers.factories.peri_scribe.presentation.fire_data
+    ).description_perimeter_frame()
+    if geometry_name != "geometry":
+        perimeters.rename_geometry(geometry_name, inplace=True)
+    if stored:
+        perimeters[peri_scribe.geo.measurements.EXTERIOR_COLUMN] = [10.0, 0.0]
+    perimeters.index = pd.Index([3, 3])
+    points = (
+        tests.helpers.factories.peri_scribe.presentation.fire_data
+    ).description_point_frame()
+    history = peri_scribe.areas.prepare_history(perimeters, points)
+    source = peri_scribe.kml.plot_data.perimeter_source(perimeters)
+    actual = peri_scribe.kml.plot_data.fire_plots_from_history(
+        peri_scribe.history_columns.select_rows(source, positions),
+        history,
+    )
+    expected = peri_scribe.kml.plot_data.fire_plots_from_history(
+        perimeters.iloc[list(positions)],
+        history,
+    )
+    assert actual == expected
+
+
+def test_perimeter_source_preserves_missing_observation_times() -> None:
+    frame = tests.helpers.factories.geography.geo_frame(
+        {"other": [1]},
+        [tests.helpers.factories.geometry.square(1)],
+    )
+    selected = peri_scribe.history_columns.select_rows(
+        peri_scribe.kml.plot_data.perimeter_source(frame),
+        (0,),
+    )
+    assert peri_scribe.kml.plot_data.exterior_perimeter_measurements(selected) == ()
+
+
+def test_perimeter_source_keeps_pandas_for_duplicate_column_labels() -> None:
+    frame = tests.helpers.factories.geography.geo_frame(
+        {"first": [1], "second": [2]},
+        [tests.helpers.factories.geometry.square(1)],
+    )
+    frame.columns = pd.Index(["first", "first", "geometry"])
+    assert peri_scribe.kml.plot_data.perimeter_source(frame) is frame
+
+
+def test_contained_perimeter_points_reads_reports_through_column_views() -> None:
+    perimeters = (
+        tests.helpers.factories.peri_scribe.presentation.fire_data
+    ).description_perimeter_frame()
+    selected = peri_scribe.history_columns.select_rows(
+        peri_scribe.kml.plot_data.perimeter_source(perimeters),
+        tuple(range(len(perimeters))),
+    )
+    assert peri_scribe.kml.plot_data.contained_perimeter_points(
+        selected,
+        incident_rows=perimeters,
+    ) == peri_scribe.kml.plot_data.contained_perimeter_points(
+        perimeters,
+        incident_rows=perimeters,
     )
 
 

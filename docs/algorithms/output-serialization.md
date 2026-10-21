@@ -40,6 +40,31 @@ at each boundary keeps them in the intended text node or table cell:
    formatting; their interpolated source parts must already be encoded. Split embedded
    `]]>` terminators in generated CDATA descriptions so they cannot close the XML envelope.
 
+Normalization replaces CRLF before remaining CR and NEXT LINE characters, so each CRLF
+pair becomes one LF. A compiled character class then replaces unsupported C0 controls,
+surrogates, U+FFFE and U+FFFF. Each remaining character is independently retained or
+replaced, preserving order and multiplicity. The fixed number of scans takes linear
+time and linear output memory. The output-text bridge checks every Python code point
+against the compiled Lean definition, with separate cases for interacting line endings.
+
+Balloon variants share their escaped common facts and image markup within one
+publication execution. Common rows have two generated bodies, one for each starting
+parity. If a growth ring adds one leading row, the common `Area` row starts unshaded;
+with two leading rows it starts shaded again. Choosing the body by prefix length
+modulo two preserves the original row backgrounds for any prefix. Prefix source values
+still pass through normalization and HTML escaping before entering the table, and the
+complete markup still passes through the CDATA constructor.
+
+This presentation adapter is involved: history 1 for execution-scoped reuse, rules 2
+for escaping and prefix parity, mathematics 1 for ordered concatenation,
+representation 2 for shared bodies, and effects 0; total 6. Whole-fire and growth-ring
+variants reuse common formatting and escaping. Identical complete balloons also reuse
+their final strings within the execution; scope exit releases both caches. Standalone
+calls compute the same output without retaining results. The existing text, row-framing
+and CDATA proofs apply unchanged. Conformance checks parse reused variants at both
+parities, exact reference comparisons cover variable prefixes, and lifetime regressions
+check release of inputs and outputs.
+
 ## Geometry and publication
 
 KML writers emit document, folder, placemark, and geometry envelopes to a stream.
@@ -76,6 +101,12 @@ vertices plus formatting and compression costs. Cache hits reuse boundary string
 an oversized fragment may be created transiently without being retained. Image payloads
 and prepared facts can still be held in memory, and KMZ writing disables ZIP64.
 
+For a balloon's common text of C characters and a variant prefix of P characters,
+formatting and escaping the common body takes O(C) once per execution. A new variant
+still assembles and CDATA-encodes O(C + P) characters. Retention includes both common
+parities and complete unique variants until the execution ends; it is bounded by that
+publication's inputs rather than a fixed byte budget.
+
 Escaping is specific to the output context: Markdown encoding is not a general HTML
 template policy. Staged replacement depends on filesystem rename semantics and
 cooperating writers. It does not make reports, KMZ, update JSON, and checkpoints one
@@ -84,6 +115,7 @@ transaction, and does not establish power-loss durability.
 ## Implementation and verification
 
 - [Text encoding](../../src/document_text/encoding.py),
+  [balloon composition](../../src/peri_scribe/kml/descriptions.py),
   [KML writer](../../src/kml_io/geometry.py),
   [fragment cache](../../src/kml_io/fragments.py),
   [KMZ publication](../../src/kml_io/kmz.py), and
