@@ -71,7 +71,7 @@ async def test_monitor_app_tints_severe_events_without_changing_stripe_brightnes
             neutral,
         )
     assert colors[2] != colors[4]
-    await session.pilot.resize_terminal(120, 24)
+    await session.resize(120, 24)
     await tests.helpers.textual.invoke(
         functools.partial(table.scroll_to, y=1, animate=False, immediate=True),
     )

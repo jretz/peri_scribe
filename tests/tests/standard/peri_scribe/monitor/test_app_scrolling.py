@@ -35,7 +35,7 @@ async def test_monitor_app_scrolls_one_row_per_wheel_event(
 ) -> None:
     session = scrolling_session
     if view == "palette":
-        await session.pilot.resize_terminal(80, 20)
+        await session.resize(80, 20)
         await tests.helpers.textual.invoke(session.app.search_themes)
         await session.command_results()
     else:

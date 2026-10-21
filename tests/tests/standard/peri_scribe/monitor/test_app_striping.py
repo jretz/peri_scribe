@@ -73,7 +73,7 @@ async def test_monitor_app_stripes_options_without_overwriting_selection(
     session = monitor_session
     await tests.helpers.textual.invoke(setattr, session.app, "theme", theme)
     if palette:
-        await session.pilot.resize_terminal(60, 42)
+        await session.resize(60, 42)
         await session.pilot.press("ctrl+p")
         widget = await session.command_results()
     else:

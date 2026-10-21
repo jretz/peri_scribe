@@ -711,7 +711,7 @@ async def test_monitor_app_resized_panes_fit_after_terminal_resize(
     tree = session.app.query_one("#phase-tree")
     stream = session.app.query_one("#pipeline-stream")
     proportion = tree.size.width / (tree.size.width + stream.size.width)
-    await session.pilot.resize_terminal(width, height)
+    await session.resize(width, height)
     assert tree.size.width / (tree.size.width + stream.size.width) == pytest.approx(
         proportion,
         abs=0.02,

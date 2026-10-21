@@ -304,7 +304,7 @@ async def test_monitor_app_status_fits_terminal_with_scrollable_details(
 ) -> None:
     session = monitor_session
     await session.pilot.press("1")
-    await session.pilot.resize_terminal(width, height)
+    await session.resize(width, height)
     for selector in (
         "#status-content",
         "#status-overview",

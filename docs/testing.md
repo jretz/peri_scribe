@@ -52,6 +52,15 @@ Verification](formal_verification.md) before implementing new system behavior, w
 changing covered behavior, or when adding formal checks. Ordinary regression tests for
 discovered implementation bugs remain in the standard test tree.
 
+## Terminal Monitor Tests
+
+Use `tests.helpers.textual.Session.resize` before checking resized terminal geometry or
+scroll bounds. Textual can acknowledge a requested terminal size before its deferred
+screen reflow updates child regions. The helper waits for the current screen's outer
+size to reach the requested dimensions, then waits for child refreshes. Run resizes
+sequentially while keeping the same screen active. The added layout wait has a bounded
+timeout, and same-size requests still finish with a refresh barrier.
+
 ## Browser Viewer Tests
 
 The fire update viewer has two complementary JavaScript suites:

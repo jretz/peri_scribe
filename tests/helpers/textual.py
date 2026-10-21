@@ -8,6 +8,7 @@ import typing
 
 import textual.app
 import textual.command
+import textual.geometry
 import textual.pilot
 import textual.widget
 
@@ -23,6 +24,32 @@ class Session[Application: textual.app.App[None]]:
         """Wait for queued widget changes to reach the composed screen."""
         await self.pilot.pause(0)
         await self.app.wait_for_refresh()
+
+    async def resize(self, width: int, height: int) -> None:
+        """Wait for the current screen's resized layout and child refreshes.
+
+        Resize calls on one session must run sequentially with a stable screen.
+        The screen's outer size acknowledges compositor reflow; its reported size
+        follows the application's request before child geometry has changed.
+
+        Args:
+            width: Requested terminal width in cells.
+            height: Requested terminal height in cells.
+
+        Raises:
+            TimeoutError: If layout and refresh do not complete within five seconds
+                after the pilot returns.
+        """
+        await self.pilot.resize_terminal(width, height)
+        target = textual.geometry.Size(width, height)
+        try:
+            async with asyncio.timeout(5):
+                while self.app.screen.outer_size != target:
+                    await self.refresh()
+                await self.refresh()
+        except TimeoutError as error:
+            message = f"Timed out waiting for {width}x{height} terminal layout"
+            raise TimeoutError(message) from error
 
     async def command_results(self) -> textual.command.CommandList:
         """Wait for command discovery or search before interacting with its results.
