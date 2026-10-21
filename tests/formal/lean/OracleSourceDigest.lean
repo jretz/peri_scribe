@@ -1,4 +1,5 @@
 import PeriScribe.SourceDigest
+import PeriScribe.SourceManifest
 
 open PeriScribe.SourceDigest
 
@@ -8,8 +9,16 @@ def numbers (text : String) : Except String (List Nat) :=
     | some number => pure number
     | none => .error s!"Expected natural number: {value}"
 
+def inventoryPairs : List (List Nat) → Except String (List (List Nat × List Nat))
+  | [] => return []
+  | path :: content :: rest => return (path, content) :: (← inventoryPairs rest)
+  | [_] => throw "Expected paired path and content fields"
+
 def respond (line : String) : Except String (List Nat) := do
   match line.splitOn "|" with
+  | "inventory" :: parts =>
+    return PeriScribe.SourceManifest.inventoryFields
+      (← inventoryPairs (← parts.mapM numbers))
   | "fields" :: parts => return fields (← parts.mapM numbers)
   | ["rows", values] => return orderedRows (← numbers values)
   | ["equal", schemaOne, rowsOne, schemaTwo, rowsTwo] =>

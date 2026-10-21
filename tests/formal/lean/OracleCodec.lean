@@ -20,6 +20,11 @@ def tokens (text : String) : Except String (List Token) :=
 
 def respond (line : String) : Except String String := do
   match line.splitOn "|" with
+  | ["json-equal", left, right] =>
+    let some first := read (← tokens left) | throw "Expected complete first JSON tree"
+    let some second := read (← tokens right) | throw "Expected complete second JSON tree"
+    let identity := fun a b => decide (a = b)
+    return if compareScalarIdentity identity first second then "1" else "0"
   | [left, right] =>
     let first ← tokens left
     let second ← tokens right

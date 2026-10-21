@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 900 370" role="img" aria-labelledby="title description">
+  <title id="title">Conservative source dependencies and deleted bridges</title>
+  <desc id="description">A shared name places four rows in one dependency block while proximity leaves the fourth fire separate. Removing an identifier bridge splits the current dependency block into two independent pieces.</desc>
+  <style>
+    :root { color-scheme: light dark; --background:#111820; --foreground:#e5edf5; --muted:#acbdcc; --block:#183645; --border:#4a7a93; --node:#264457; --edge:#7bddb0; --removed:#d79191; }
+    @media (prefers-color-scheme: light) { :root { --background:#ffffff; --foreground:#172b3b; --muted:#526b7d; --block:#eaf4f8; --border:#52839b; --node:#d7eaf2; --edge:#16714b; --removed:#a24848; } }
+    .background { fill:var(--background); }
+    text { fill:var(--foreground); font:16px system-ui,sans-serif; text-anchor:middle; }
+    .heading { font-weight:600; font-size:18px; }
+    .caption { fill:var(--muted); font-size:14px; }
+    .block { fill:var(--block); stroke:var(--border); stroke-width:1.5; stroke-dasharray:6 4; }
+    .node { fill:var(--node); stroke:var(--border); stroke-width:1.5; }
+    .edge { stroke:var(--edge); stroke-width:3; }
+    .removed { fill:none; stroke:var(--removed); stroke-width:2; stroke-dasharray:4 3; }
+    .cross { stroke:var(--removed); stroke-width:2; }
+  </style>
+  <rect class="background" width="900" height="370"/>
+  <text class="heading" x="450" y="27">One conservative dependency block can contain several fire components</text>
+  <rect class="block" x="40" y="45" width="820" height="125" rx="15"/>
+  <text class="caption" x="450" y="68">All four rows share the normalized name “Canyon”</text>
+  <path class="edge" d="M175 115H320M380 115H525"/>
+  <circle class="node" cx="145" cy="115" r="30"/><text x="145" y="121">A</text>
+  <circle class="node" cx="350" cy="115" r="30"/><text x="350" y="121">B</text>
+  <circle class="node" cx="555" cy="115" r="30"/><text x="555" y="121">C</text>
+  <circle class="node" cx="760" cy="115" r="30"/><text x="760" y="121">D</text>
+  <text class="caption" x="350" y="157">Proximity joins A, B and C</text>
+  <text class="caption" x="760" y="157">D remains separate</text>
+  <text class="heading" x="450" y="207">Current incidence is rebuilt after an identifier bridge is removed</text>
+  <rect class="block" x="60" y="228" width="250" height="105" rx="15"/>
+  <rect class="block" x="590" y="228" width="250" height="105" rx="15"/>
+  <circle class="node" cx="185" cy="272" r="27"/><text x="185" y="278">A</text>
+  <circle class="removed" cx="450" cy="272" r="27"/><text class="caption" x="450" y="278">B</text>
+  <path class="cross" d="M426 248L474 296M426 296L474 248"/>
+  <circle class="node" cx="715" cy="272" r="27"/><text x="715" y="278">C</text>
+  <text class="caption" x="185" y="317">identifier: left</text>
+  <text class="caption" x="450" y="317">left + right removed</text>
+  <text class="caption" x="715" y="317">identifier: right</text>
+  <text class="caption" x="450" y="357">The previous three-row partition cannot match either current block key.</text>
+</svg>

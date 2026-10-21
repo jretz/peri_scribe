@@ -15,9 +15,11 @@ import peri_scribe.exceptions
 import peri_scribe.execution
 import peri_scribe.fires.sources
 import peri_scribe.geo.package
+import peri_scribe.geo.reading
 import peri_scribe.models
 import peri_scribe.sources.snapshots
 import tests.helpers.doubles.peri_scribe.fires.sources
+import tests.helpers.doubles.peri_scribe.geo.source_summaries
 import tests.helpers.factories.peri_scribe.component_identity
 import tests.helpers.factories.peri_scribe.fires.sources
 import tests.helpers.factories.peri_scribe.models
@@ -45,6 +47,40 @@ def test_read_fire_sources_scopes_geometry_sharing_to_each_read(
     first = peri_scribe.fires.sources.read_fire_sources(repeated_geometry_sources)
     second = peri_scribe.fires.sources.read_fire_sources(repeated_geometry_sources)
     assert first.rows[0].record.geometry is not second.rows[0].record.geometry
+
+
+def test_read_fire_sources_rejects_edits_after_complete_parsing(
+    repeated_geometry_sources: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    paths = peri_scribe.sources.snapshots.geo_package_files(repeated_geometry_sources)
+    contents = peri_scribe.geo.reading.read_geopackages_cached(paths)
+    monkeypatch.setattr(
+        peri_scribe.geo.reading,
+        "read_geopackages_cached",
+        tests.helpers.doubles.peri_scribe.geo.source_summaries.ReadThenEdit(
+            contents=contents,
+        ),
+    )
+    with pytest.raises(OSError, match="Sources changed during preparation"):
+        peri_scribe.fires.sources.read_fire_sources(repeated_geometry_sources)
+
+
+def test_read_fire_sources_retains_parse_bound_checksums(
+    repeated_geometry_sources: pathlib.Path,
+) -> None:
+    read = peri_scribe.fires.sources.read_fire_sources(repeated_geometry_sources)
+    assert read.source_checksums == peri_scribe.fires.sources.snapshot_checksums(
+        peri_scribe.sources.snapshots.geo_package_files(repeated_geometry_sources),
+    )
+
+
+def test_snapshot_checksums_raises_readable_error_for_missing_source(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "missing.gpkg"
+    with pytest.raises(SystemExit, match=re.escape(f"Failed to read {path}:")):
+        peri_scribe.fires.sources.snapshot_checksums([path])
 
 
 def test_prepare_fire_sources_shares_evidence_and_fire_identities_within_execution(
@@ -167,9 +203,11 @@ def test_fire_sources_from_groups_links_member_fires_to_their_complex(
 
 
 def test_fire_sources_from_groups_propagates_unknown_layer_error(
+    tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-
+    monkeypatch.chdir(tmp_path)
+    pathlib.Path("fires.gpkg").write_bytes(b"placeholder source bytes")
     fake_read_geopackage = (
         tests.helpers.doubles.peri_scribe.fires.sources.raise_unknown_layer
     )
@@ -192,9 +230,11 @@ def test_fire_sources_from_groups_propagates_unknown_layer_error(
 
 
 def test_fire_sources_from_groups_raises_system_exit_for_unreadable_file(
+    tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-
+    monkeypatch.chdir(tmp_path)
+    pathlib.Path("fires.gpkg").write_bytes(b"placeholder source bytes")
     fake_read_geopackage = (
         tests.helpers.doubles.peri_scribe.fires.sources.raise_missing_snapshot
     )

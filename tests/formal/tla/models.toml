@@ -223,6 +223,12 @@ config = "ParsedCacheRebuild"
 conformance = true
 
 [[models]]
+name = "normalized-cache"
+module = "NormalizedCache"
+config = "NormalizedCache"
+conformance = true
+
+[[models]]
 name = "source-writers"
 module = "SourceWriters"
 config = "SourceWriters"
@@ -331,3 +337,27 @@ conformance = true
 name = "monitor-backward-context-liveness"
 module = "MonitorBackwardContext"
 config = "MonitorBackwardContextLiveness"
+
+[[models]]
+name = "source-authentication"
+module = "SourceAuthentication"
+config = "SourceAuthentication"
+conformance = true
+
+[[models]]
+name = "parallel-source-authentication"
+module = "ParallelSourceAuthentication"
+config = "ParallelSourceAuthentication"
+conformance = true
+
+[[models]]
+name = "grouping-forest"
+module = "GroupingForest"
+config = "GroupingForest"
+conformance = true
+
+[[models]]
+name = "source-summaries"
+module = "SourceSummaries"
+config = "SourceSummaries"
+conformance = true

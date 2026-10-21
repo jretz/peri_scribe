@@ -151,11 +151,28 @@ def test_geometry_signal_matches_exact_union_and_thresholds() -> None:
                 boundaries,
                 config,
             )
+            known_side = None
+            if all(boundaries.box.contains(shape) for shape in shapes):
+                known_side = True
+            elif all(not boundaries.box.intersects(shape) for shape in shapes):
+                known_side = False
+            retained = peri_scribe.perimeters.signals.prepared_geometry_evidence(
+                peri_scribe.perimeters.classification_data.PreparedObservationGeometry(
+                    geometry=optimized,
+                    parts=tuple(shapes),
+                    inside_box=known_side,
+                ),
+                boundaries,
+                config,
+            )
             assert tests.formal.helpers.border_classification.signal_values(
                 actual,
             ) == tests.formal.helpers.border_classification.signal_values(baseline)
             assert tests.formal.helpers.border_classification.evidence_values(
                 summary,
+            ) == tests.formal.helpers.border_classification.evidence_values(baseline)
+            assert tests.formal.helpers.border_classification.evidence_values(
+                retained,
             ) == tests.formal.helpers.border_classification.evidence_values(baseline)
             inside = sum(
                 cell < tests.formal.helpers.border_classification.BORDER_CELL

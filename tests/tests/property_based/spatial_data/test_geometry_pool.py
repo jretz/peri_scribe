@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hypothesis
+import hypothesis.strategies
 import shapely
 
 import spatial_data.geometry_pool
@@ -56,3 +57,22 @@ def test_shared_geometry_preserves_generated_snapshots(
                 assert geometry is expected[digest, wkb]
             else:
                 assert updated is not snapshot
+
+
+@hypothesis.given(
+    observations=tests.helpers.strategies.spatial_data.geometry_pool.observations(),
+    reference=hypothesis.strategies.sampled_from((0, 4326, 3857)),
+)
+def test_geometry_keys_key_agrees_with_canonical_wkb_equality(
+    observations: list[tuple[bytes, bytes]],
+    reference: int,
+) -> None:
+    geometries = [
+        shapely.set_srid(shapely.from_wkb(encoded), reference)
+        for _digest, encoded in observations
+    ]
+    registry = spatial_data.geometry_pool.GeometryKeys()
+    keys = [registry.key(geometry) for geometry in geometries]
+    for left, first in enumerate(geometries):
+        for right, second in enumerate(geometries):
+            assert (keys[left] == keys[right]) == (first.wkb == second.wkb)

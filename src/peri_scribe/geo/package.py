@@ -10,16 +10,20 @@ Design notes:
 
 from __future__ import annotations
 
+import copy
 import dataclasses
+import hashlib
 import json
 import pathlib
 import sqlite3
 import typing
 
 import geopandas
+import shapely
 import structlog
 
 import peri_scribe.exceptions
+import peri_scribe.geo.fingerprints
 import peri_scribe.geo.parsing
 import peri_scribe.models
 import peri_scribe.sources.feed_types
@@ -70,6 +74,10 @@ class FireRowRecord:
     object_id: int | None
     source_name: str
     attributes: dict[str, object]
+    evidence_fingerprint: str | None = dataclasses.field(default=None, compare=False)
+    evidence_basis: peri_scribe.geo.fingerprints.FingerprintBasis | None = (
+        dataclasses.field(default=None, compare=False)
+    )
 
     @classmethod
     def from_row(
@@ -92,17 +100,46 @@ class FireRowRecord:
         Returns:
             The fire row.
         """
+        geometry = (
+            geometry_pool.from_wkb(row["geometry_wkb"])
+            if row["geometry_wkb"] is not None
+            else None
+        )
+        attributes = json.loads(row["attributes_json"])
+        return cls.from_cached_row(
+            row,
+            geometry,
+            attributes,
+            None
+            if row["geometry_wkb"] is None
+            else hashlib.sha256(row["geometry_wkb"]).hexdigest(),
+            hashlib.sha256(row["attributes_json"].encode()).hexdigest(),
+        )
+
+    @classmethod
+    def from_values(
+        cls,
+        row: sqlite3.Row,
+        geometry: shapely.Geometry | None,
+        attributes: dict[str, object],
+    ) -> FireRowRecord:
+        """Decode fixed fields while callers retain the chosen payload ownership.
+
+        Args:
+            row: Typed metadata read in source occurrence order.
+            geometry: The immutable geometry already decoded for this payload.
+            attributes: This row's independently owned attribute bag.
+
+        Returns:
+            The complete source observation.
+        """
         return cls(
             record=peri_scribe.models.FireRecord(
                 name=row["name"],
                 status=peri_scribe.models.FireStatus(row["status"]),
                 identifiers=frozenset(json.loads(row["identifiers"])),
                 names=frozenset(json.loads(row["names"])),
-                geometry=(
-                    geometry_pool.from_wkb(row["geometry_wkb"])
-                    if row["geometry_wkb"] is not None
-                    else None
-                ),
+                geometry=geometry,
                 observed_at=peri_scribe.geo.parsing.observation_time_from(
                     row["observed_at"],
                 ),
@@ -112,7 +149,51 @@ class FireRowRecord:
             ),
             object_id=row["object_id"],
             source_name=row["source_name"],
-            attributes=json.loads(row["attributes_json"]),
+            attributes=attributes,
+        )
+
+    @classmethod
+    def from_cached_row(
+        cls,
+        row: sqlite3.Row,
+        geometry: shapely.Geometry | None,
+        attributes: dict[str, object],
+        geometry_fingerprint: str | None,
+        attributes_fingerprint: str,
+    ) -> FireRowRecord:
+        """Validate persisted evidence against exact dictionary payloads and metadata.
+
+        Args:
+            row: The cache's ordered typed metadata and expected fingerprint.
+            geometry: The dictionary's shared immutable decoded geometry.
+            attributes: A reader-owned template never exposed as a mutable row bag.
+            geometry_fingerprint: Digest of the exact encoded geometry, if present.
+            attributes_fingerprint: Digest of canonical encoded attributes.
+
+        Returns:
+            An independently mutable row with reusable complete evidence identity.
+
+        Raises:
+            ValueError: If the stored row identity disagrees with its current payloads.
+        """
+        decoded = cls.from_values(row, geometry, copy.deepcopy(attributes))
+        expected = peri_scribe.geo.fingerprints.fingerprint_from_payloads(
+            decoded,
+            geometry_fingerprint,
+            attributes_fingerprint,
+        )
+        if row["evidence_fingerprint"] != expected:
+            message = "Parsed row fingerprint does not match its dictionary payloads"
+            raise ValueError(message)
+        return dataclasses.replace(
+            decoded,
+            evidence_fingerprint=expected,
+            evidence_basis=peri_scribe.geo.fingerprints.FingerprintBasis(
+                record=decoded.record,
+                object_id=decoded.object_id,
+                source_name=decoded.source_name,
+                attributes=attributes,
+            ),
         )
 
     def to_row(self, serial: int) -> tuple[object, ...]:
@@ -136,7 +217,9 @@ class FireRowRecord:
             record.status.value,
             json.dumps(sorted(record.identifiers)),
             json.dumps(sorted(record.names)),
-            record.geometry.wkb if record.geometry is not None else None,
+            shapely.to_wkb(record.geometry, include_srid=True)
+            if record.geometry is not None
+            else None,
             (
                 record.observed_at.isoformat()
                 if record.observed_at is not None
@@ -145,10 +228,13 @@ class FireRowRecord:
             record.mission,
             record.point_of_origin_state,
             record.point_of_origin_fips,
-            json.dumps({
-                key: peri_scribe.geo.parsing.json_native_value(value)
-                for key, value in self.attributes.items()
-            }),
+            json.dumps(
+                {
+                    key: peri_scribe.geo.parsing.json_native_value(value)
+                    for key, value in self.attributes.items()
+                },
+                sort_keys=True,
+            ),
         )
 
 

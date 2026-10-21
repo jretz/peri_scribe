@@ -7,6 +7,7 @@ import typing
 
 import pytest
 
+import peri_scribe.fires.sources
 import peri_scribe.geo.package
 import peri_scribe.models
 import peri_scribe.sources.snapshots
@@ -93,6 +94,11 @@ def stub_fire_reader(
             peri_scribe.sources.snapshots,
             "geo_package_files",
             fake_geo_package_files,
+        )
+        monkeypatch.setattr(
+            peri_scribe.fires.sources,
+            "snapshot_checksums",
+            lambda _paths: (),
         )
 
     return stub

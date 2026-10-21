@@ -1,7 +1,7 @@
 # Domain algorithms
 
 These four modules check fire identity ownership, complete area histories, grouping, and
-spatial tile queries through 44 explicit theorems. `OracleDomain.lean` evaluates their
+spatial tile queries through explicit theorems. `OracleDomain.lean` evaluates their
 executable definitions; `oracleDomain` is a default Lake target. Conformance tests use
 this binary through the same process adapter as the pipeline oracle. The axiom audit
 includes these modules through `PeriScribe.lean`.
@@ -99,8 +99,23 @@ graph inputs (2,572 total graph cases), and 400 combinations of identifier/name 
 with missing, empty, identical, nearby, and distant geometries. The graph specification
 uses exhaustive pair comparisons, while Python uses its spatial index and identical-shape
 classes. The tests compare canonical component membership and require every record to
-appear exactly once. GEOS distance predicates, normalization, and STRtree internals are
-external numerical/library assumptions.
+appear exactly once. GEOS distance predicates, normalization, and spatial-index internals
+are external numerical/library assumptions.
+
+The incremental grouping additions prove that an already-connected identifier pair
+makes a further spatial edge redundant, that a sound forest covering every original
+edge by a path preserves the complete partition, and that connected paths cannot leave
+conservative identifier/name dependency blocks. A blockwise replacement theorem connects
+sound complete local partitions with the same global relation. Its premises require
+complete current row identities and exact local evidence; it does not prove SHA-256,
+cache codec behavior or the active-envelope tree implementation.
+
+Conformance forces the active-tree path for the same 400 geometric cases and compares
+400 dependency-block misses and subsequent hits with the executable union definition.
+The separate [forest model](../tla/grouping_forest.md) explores all bounded arbitrary
+graphs and checks concrete multipart-geometry forest outputs. Current incidence is rebuilt
+for every invocation; no deletion or split can retain an old block solely by its former
+component identity.
 
 ## Spatial tile queries
 

@@ -6,13 +6,17 @@ Design notes:
 
 from __future__ import annotations
 
+import collections
+import collections.abc
 import pathlib
 import sqlite3
 import typing
 
+import shapely.errors
 import structlog
 
 import peri_scribe.geo.database
+import peri_scribe.geo.dictionaries
 import peri_scribe.geo.package
 import peri_scribe.geo.parsing
 import peri_scribe.models
@@ -44,15 +48,26 @@ def read_snapshot_contents(
 
     Returns:
         The snapshot's fire rows and complex memberships.
+
+    Raises:
+        ValueError: If a row refers to an absent dictionary encoding.
     """
     # write_snapshot inserts each tuple in order, so rowid retains source ordering.
     rows = conn.execute(
-        "SELECT serial, object_id, source_name, name, status, identifiers, "
-        "names, geometry_wkb, observed_at, mission, point_of_origin_state, "
-        "point_of_origin_fips, attributes_json FROM rows WHERE serial = ? "
-        "ORDER BY rowid",
+        "SELECT rows.*, geometry_payloads.value AS geometry_wkb, "
+        "attribute_payloads.value AS attributes_json FROM rows "
+        "LEFT JOIN geometry_payloads ON geometry_payloads.id = rows.geometry_id "
+        "LEFT JOIN attribute_payloads ON attribute_payloads.id = rows.attributes_id "
+        "WHERE serial = ? ORDER BY rows.rowid",
         (serial,),
     ).fetchall()
+    if any(
+        row["attributes_json"] is None
+        or (row["geometry_id"] is not None and row["geometry_wkb"] is None)
+        for row in rows
+    ):
+        message = "Parsed rows reference missing dictionary payloads"
+        raise ValueError(message)
     memberships = conn.execute(
         "SELECT fire_identifier, complex_identifier, complex_name, observation_time "
         "FROM memberships WHERE serial = ? ORDER BY rowid",
@@ -177,7 +192,7 @@ def read_cached_snapshot(
             checksum=peri_scribe.geo.database.snapshot_checksum(path),
             geometry_pool=geometry_pool,
         )
-    except OSError, ValueError, sqlite3.Error:
+    except OSError, ValueError, sqlite3.Error, shapely.errors.GEOSException:
         logger.debug("Failed to read record cache", path=str(path), exc_info=True)
         return peri_scribe.geo.package.read_geopackage(path)
     if contents is None:
@@ -229,6 +244,168 @@ def read_geopackage_cached(
     if geometry_pool is None:
         geometry_pool = spatial_data.geometry_pool.GeometryPool()
     return read_cached_snapshot(db_path, serial, path, geometry_pool=geometry_pool)
+
+
+def fetch_snapshot_batch(
+    conn: sqlite3.Connection,
+    requests: collections.abc.Mapping[pathlib.Path, tuple[int, str]],
+    *,
+    geometry_pool: spatial_data.geometry_pool.GeometryPool,
+) -> dict[pathlib.Path, peri_scribe.geo.package.GeopackageContents]:
+    """Pin matching receipts, ordered metadata, and shared payloads in one transaction.
+
+    Args:
+        conn: A read-only feed connection, possibly already in a caller transaction.
+        requests: Snapshot paths and their requested serial/current byte checksum.
+        geometry_pool: Shared immutable geometries for this complete source read.
+
+    Returns:
+        Complete contents for authenticated requests; absent requests need fallback.
+    """
+    conn.row_factory = sqlite3.Row
+    conn.execute("SAVEPOINT snapshot_batch")
+    try:
+        receipts = dict(conn.execute("SELECT serial, checksum FROM snapshots"))
+        accepted = {
+            path: serial
+            for path, (serial, checksum) in requests.items()
+            if receipts.get(serial) == checksum
+        }
+        serials = set(accepted.values())
+        metadata = [
+            row
+            for row in conn.execute("SELECT * FROM rows ORDER BY rowid")
+            if row["serial"] in serials
+        ]
+        payloads = peri_scribe.geo.dictionaries.decoded_payloads(
+            conn,
+            metadata,
+            geometry_pool,
+        )
+        rows: dict[int, list[peri_scribe.geo.package.FireRowRecord]] = (
+            collections.defaultdict(list)
+        )
+        for row in metadata:
+            geometry_id = row["geometry_id"]
+            attributes_id = row["attributes_id"]
+            rows[row["serial"]].append(
+                peri_scribe.geo.package.FireRowRecord.from_cached_row(
+                    row,
+                    None if geometry_id is None else payloads.geometries[geometry_id],
+                    payloads.attributes[attributes_id],
+                    None
+                    if geometry_id is None
+                    else payloads.geometry_fingerprints[geometry_id],
+                    payloads.attribute_fingerprints[attributes_id],
+                ),
+            )
+        memberships: dict[int, list[peri_scribe.models.ComplexMembership]] = (
+            collections.defaultdict(list)
+        )
+        for row in conn.execute("SELECT * FROM memberships ORDER BY rowid"):
+            if row["serial"] in serials:
+                memberships[row["serial"]].append(
+                    peri_scribe.models.ComplexMembership(
+                        fire_identifier=row["fire_identifier"],
+                        complex_identifier=row["complex_identifier"],
+                        complex_name=row["complex_name"],
+                        observation_time=peri_scribe.geo.parsing.observation_time_from(
+                            row["observation_time"],
+                        ),
+                    ),
+                )
+        contents = {
+            serial: peri_scribe.geo.package.GeopackageContents(
+                rows=tuple(rows[serial]),
+                memberships=tuple(memberships[serial]),
+            )
+            for serial in serials
+        }
+        return {path: contents[serial] for path, serial in accepted.items()}
+    finally:
+        conn.execute("RELEASE snapshot_batch")
+
+
+def read_feed_batch(
+    paths: collections.abc.Sequence[pathlib.Path],
+    *,
+    geometry_pool: spatial_data.geometry_pool.GeometryPool,
+) -> dict[pathlib.Path, peri_scribe.geo.package.GeopackageContents]:
+    """Synchronize one feed once and authenticate all requests before its pinned read.
+
+    Args:
+        paths: At least one valid named snapshot from the same feed directory.
+        geometry_pool: Shared immutable geometries for this complete source read.
+
+    Returns:
+        Authenticated complete parses available in this feed's record cache.
+    """
+    source_directory = paths[0].parent.parent
+    database_path = peri_scribe.sources.snapshots.record_cache_database_path(
+        source_directory,
+    )
+    with peri_scribe.geo.database.RECORD_CACHE_LOCK:
+        peri_scribe.geo.database.ensure_database_current(
+            database_path,
+            source_directory,
+        )
+    requests = {
+        path: (
+            peri_scribe.sources.snapshots.SourceFile.from_path(path).serial_number,
+            peri_scribe.geo.database.snapshot_checksum(path),
+        )
+        for path in paths
+    }
+    conn = sqlite3.connect(database_path.resolve().as_uri() + "?mode=ro", uri=True)
+    try:
+        return fetch_snapshot_batch(conn, requests, geometry_pool=geometry_pool)
+    finally:
+        conn.close()
+
+
+def read_geopackages_cached(
+    paths: collections.abc.Sequence[pathlib.Path],
+    *,
+    geometry_pool: spatial_data.geometry_pool.GeometryPool | None = None,
+    read_fallback: collections.abc.Callable[
+        [pathlib.Path],
+        peri_scribe.geo.package.GeopackageContents,
+    ]
+    | None = None,
+) -> dict[pathlib.Path, peri_scribe.geo.package.GeopackageContents]:
+    """Read feed dictionaries once while preserving each requested snapshot's parse.
+
+    Args:
+        paths: Requested source snapshot paths in the caller's order.
+        geometry_pool: Shared immutable geometries for the complete source read.
+        read_fallback: The caller's authoritative parser and error translation, if any.
+
+    Returns:
+        One complete parse per path, with direct-source fallback on cache misses/errors.
+    """
+    if geometry_pool is None:
+        geometry_pool = spatial_data.geometry_pool.GeometryPool()
+    if read_fallback is None:
+        read_fallback = peri_scribe.geo.package.read_geopackage
+    feeds: dict[pathlib.Path, list[pathlib.Path]] = collections.defaultdict(list)
+    contents: dict[pathlib.Path, peri_scribe.geo.package.GeopackageContents] = {}
+    for path in paths:
+        try:
+            path.stat()
+            peri_scribe.sources.snapshots.SourceFile.from_path(path)
+        except OSError, ValueError:
+            contents[path] = read_fallback(path)
+        else:
+            feeds[path.parent.parent].append(path)
+    for feed_paths in feeds.values():
+        try:
+            contents.update(read_feed_batch(feed_paths, geometry_pool=geometry_pool))
+        except OSError, ValueError, sqlite3.Error, shapely.errors.GEOSException:
+            logger.debug("Failed to read feed record cache", exc_info=True)
+        for path in feed_paths:
+            if path not in contents:
+                contents[path] = read_fallback(path)
+    return contents
 
 
 def read_layer_dataframe(

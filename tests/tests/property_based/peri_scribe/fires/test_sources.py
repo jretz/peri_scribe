@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import pathlib
+import tempfile
 
 import hypothesis
 import hypothesis.strategies
@@ -26,11 +27,18 @@ import tests.helpers.strategies.peri_scribe.geo.database
 def test_read_fire_sources_preserves_each_rows_provenance_and_all_memberships(
     snapshots: dict[int, peri_scribe.geo.package.GeopackageContents],
 ) -> None:
-    contents = {
-        pathlib.Path(f"sources/snapshot-{serial}.gpkg"): snapshot
-        for serial, snapshot in snapshots.items()
-    }
-    with pytest.MonkeyPatch.context() as patch:
+    with (
+        tempfile.TemporaryDirectory() as temporary,
+        pytest.MonkeyPatch.context() as patch,
+    ):
+        directory = pathlib.Path(temporary) / "sources"
+        directory.mkdir()
+        contents = {
+            directory / f"snapshot-{serial}.gpkg": snapshot
+            for serial, snapshot in snapshots.items()
+        }
+        for path in contents:
+            path.write_bytes(b"snapshot placeholder")
         patch.setattr(
             peri_scribe.sources.snapshots,
             "geo_package_files",
@@ -41,7 +49,7 @@ def test_read_fire_sources_preserves_each_rows_provenance_and_all_memberships(
             "read_fire_geopackage",
             lambda path, **_kwargs: contents[path],
         )
-        actual = peri_scribe.fires.sources.read_fire_sources(pathlib.Path("sources"))
+        actual = peri_scribe.fires.sources.read_fire_sources(directory)
     assert list(zip(actual.paths, actual.rows, strict=True)) == [
         (path, row) for path, snapshot in contents.items() for row in snapshot.rows
     ]

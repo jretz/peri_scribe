@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import pathlib
 
@@ -11,6 +12,8 @@ import peri_scribe.execution
 import peri_scribe.fires.generation
 import peri_scribe.fires.reuse
 import peri_scribe.sources.administrative_boundaries
+import peri_scribe.sources.authentication
+import peri_scribe.sources.manifest
 import peri_scribe.sources.snapshots
 
 
@@ -29,8 +32,8 @@ def test_source_key_shares_hashes_only_within_execution(
     with peri_scribe.execution.sharing():
         first = peri_scribe.fires.generation.source_key(tmp_path)
         monkeypatch.setattr(
-            peri_scribe.fires.reuse,
-            "file_digest",
+            peri_scribe.sources.authentication,
+            "inventory_digest",
             lambda _path: "other",
         )
         assert peri_scribe.fires.generation.source_key(tmp_path) == first
@@ -99,3 +102,32 @@ def test_source_key_ignores_disposable_caches_and_current_state(
     for name in ("record_cache.db", "current.gpkg", "metadata.json"):
         (directory / name).write_bytes(b"disposable")
     assert peri_scribe.fires.generation.source_key(tmp_path) == before
+
+
+def test_source_key_preserves_complete_ordered_generation_framing(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    directory = tmp_path / "sources"
+    feed = directory / "feed"
+    feed.mkdir(parents=True)
+    paths = tuple(feed / f"{index:06d},lastEdit=1.gpkg" for index in range(5))
+    for index, path in enumerate(paths):
+        path.write_bytes(f"complete source bytes {index}".encode())
+    monkeypatch.setattr(
+        peri_scribe.fires.reuse,
+        "derivation_context",
+        lambda _year: "exact-context",
+    )
+    expected = peri_scribe.fires.reuse.data_digest({
+        "context": "exact-context",
+        "sources_root": peri_scribe.sources.manifest.root(
+            (
+                str(path.relative_to(directory)),
+                hashlib.sha256(path.read_bytes()).hexdigest(),
+            )
+            for path in paths
+        ),
+    })
+    with peri_scribe.sources.authentication.scope(directory):
+        assert peri_scribe.fires.generation.source_key(tmp_path) == expected

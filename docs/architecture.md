@@ -532,7 +532,36 @@ context. A partially published pair requires geography rebuilding. Fresh-year sc
 may use empty layers only when both files are absent. A live owning writer may read its
 own completed pair without reacquiring the lock.
 
-Changed generations still read and group all sources. Each fire's `derivation_key`
+Changed generations still authenticate every snapshot and preserve source occurrence order.
+[Source-index preparation](algorithms/source-index-preparation.md) shares authenticated
+checksums within one live scope and composes ordered source leaves through a Merkle
+manifest. Initial inventory checks stream complete files in at most four worker batches;
+the owner joins all workers and validates current stamps before retaining their evidence.
+[Parsed caches](algorithms/parsed-source-cache.md) store geometry and canonical
+attribute payloads once, preserve row occurrences through dictionary references, and read
+a feed through one pinned transaction. Versioned row fingerprints avoid repeated full
+attribute normalization while checking borrowed mutable inputs before reuse. Comparing
+identical immutable scalar children skips recursive calls; mutable containers are still
+visited on every comparison.
+
+[Incremental grouping](algorithms/incremental-grouping.md) persists snapshot summaries,
+identifier/name reverse dependencies and each unchanged dependency block's exact
+partition. Additions, removals and connecting-record corrections invalidate their old and
+new dependency closure, including splits. Indexing loads complete geometry and attributes
+for affected grouping blocks and missing classifications. Loading a requested snapshot
+can also decode unrelated rows in that same snapshot. Summary traversal and byte
+authentication remain global; geometry loading and compatibility searches can be local.
+Selective index plans have their own lifetime. Geography still obtains complete source
+records, and existing complete execution preparations remain shared with indexing.
+A source read and its groups share exact relative path strings through an explicit
+descriptor. Those strings describe lexical provenance and confer no byte-authentication
+authority. Current typed dependency rows construct their canonical reverse index once;
+persisted input still receives full validation. An unchanged dependency inventory needs
+no adjacency traversal.
+[Geometry preparation](algorithms/source-geometry-preparation.md) shares compact exact
+geometry keys, independent interning shards, projection results and prepared boundary
+evidence. Classification uses at most four workers and no more than the available CPU
+count, preserving task order and executor cleanup. Each fire's `derivation_key`
 covers all ordered observations, geometry, attributes, provenance, identity, complex
 membership, and derivation dependencies. Matching fires retain full and differential
 histories; affected fires rebuild their complete histories. Dense reuse reads whole
@@ -553,8 +582,8 @@ excluding container metadata, batch UUIDs, and internal fingerprints. These meas
 exclude live collection and predate subsequent correctness fixes. Local evidence is in
 `data/profiling/2026-09-23-implementation`.
 
-Reaching 10× still requires less full-history loading and reconstruction in consumers,
-plus incremental source grouping for changed runs. A 100× target would require broader
+Reaching 10× still requires less full-history loading and reconstruction in consumers.
+A 100× target would require broader
 reuse of completed artifacts or precomputed output pieces; neither target is established
 by these measurements.
 

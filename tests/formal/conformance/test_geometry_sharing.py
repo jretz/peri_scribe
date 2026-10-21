@@ -1,9 +1,11 @@
 import itertools
 
 import pytest
+import shapely
 
 import spatial_data.geometry_pool
 import tests.formal.helpers.geometry_sharing
+import tests.formal.helpers.oracle
 
 
 def test_compressed_trie_matches_lean_at_every_small_history_prefix() -> None:
@@ -50,4 +52,38 @@ def test_concurrent_pool_publishes_one_object_per_exact_payload(
     assert (
         tests.formal.helpers.geometry_sharing.concurrent_pool()
         == tests.formal.helpers.geometry_sharing.CONCURRENT_REQUESTS
+    )
+
+
+def test_geometry_keys_collision_classes_match_proved_encoding_positions(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        spatial_data.geometry_pool,
+        "geometry_digest",
+        lambda _encoded: bytes(32),
+    )
+    geometries = [
+        shapely.from_wkb(encoded)
+        for encoded in tests.formal.helpers.geometry_sharing.catalogue()
+    ]
+    canonical = list(dict.fromkeys(geometry.wkb for geometry in geometries))
+    commands = []
+    observed = []
+    for order in itertools.permutations(range(len(geometries))):
+        registry = spatial_data.geometry_pool.GeometryKeys()
+        history = []
+        for index in (*order, *reversed(order)):
+            geometry = geometries[index]
+            payload = canonical.index(geometry.wkb)
+            history.append(payload)
+            digest, position = registry.key(geometry)
+            assert digest == bytes(32)
+            commands.append(
+                f"encoding-position {payload} " + " ".join(map(str, history)),
+            )
+            observed.append((position,))
+    assert observed == tests.formal.helpers.oracle.evaluate(
+        commands,
+        executable="oraclePresentationFlow",
     )

@@ -34,7 +34,7 @@ The 44 geometry theorems map to `src/spatial_data/geometry_pool.py`:
   their entries; the actual bridge additionally checks Python object sharing and old
   roots after subsequent mutations of the pool's current root.
 
-`test_geometry_sharing.py` has five conformance tests. Every resulting tree node and
+`test_geometry_sharing.py` has six conformance cases. Every resulting tree node and
 representative agrees with Lean across 4,042 actual insertion transitions: all histories
 through length four over five digest/payload pairs, every permutation of that catalogue,
 and ascending and descending sequences covering all 256 digest bit positions. Each
@@ -52,12 +52,37 @@ The mathematical payload token represents complete canonical EWKB bytes, includi
 no digest collision-freedom assumption is used. The numerical digest abstraction matches
 fixed-width, big-endian bytes, as produced by SHA-256. WKB decoding/encoding, Shapely
 immutability, Python locks and the runtime's memory model are trusted boundaries with
-finite implementation evidence. The pool's lock supplies the serialization assumed by
-the insertion model; the proofs do not enumerate every OS thread schedule. Re-encoding
-noncanonical WKB, such as another byte order, can produce different bytes and is outside
-the canonical-byte reuse guarantee. Allocation failures, malformed WKB, and eventual
-reclamation remain outside these proofs. An ordinary regression checks that geometry
-objects can be collected after the pool and its callers release them.
+finite implementation evidence. Each digest shard's lock supplies the serialization
+assumed by the insertion model; the proofs do not enumerate every OS thread schedule.
+Re-encoding noncanonical WKB, such as another byte order, can produce different bytes
+and is outside the canonical-byte reuse guarantee. Allocation failures, malformed WKB,
+and eventual reclamation remain outside these proofs. An ordinary regression checks that
+geometry objects can be collected after the pool and its callers release them.
+
+## Compact encoding keys and projection preparation
+
+`GeometryPreparation.lean` adds eight theorems. Digest partitions contain exactly their
+assigned entries and distinct partitions are disjoint. Exact encoding-class ordinals
+agree precisely when payloads agree, and appending a class cannot change an old ordinal.
+A projection memo whose entries contain their actual transform results refines direct
+transformation; inserting a computed result preserves that consistency. Source reference
+systems remain part of the projection key.
+
+The geometry bridge now checks each actual pool shard separately, its exact partition,
+and the combined final payload set against the existing executable trie oracle. Another
+1,200 actual compact-key requests, across all permutations and reverse repetitions of a
+catalogue with SRID variants, compare collision ordinals with `encodingPosition` from
+the executable model. The test forces all encodings to one digest and checks equality
+using canonical `.wkb`, deliberately ignoring SRID as the grouping contract requires.
+These tokens are execution-local and do not replace SRID-preserving source fingerprints.
+
+The classification conformance bridge connects prepared one-sided evidence to the same
+Lean geometry decisions and complete numerical summary as the unmerged and union paths.
+Projection arithmetic, prepared GEOS predicates, object retention and lock scheduling
+remain implementation boundaries checked by ordinary tests; the abstract memo theorem
+does not prove PROJ or Python memory management. The design and numerical boundaries are
+documented in [source geometry
+preparation](../../../docs/algorithms/source-geometry-preparation.md).
 
 ## Retained history through visible browser rows
 
@@ -89,12 +114,12 @@ The [projected snapshot inventory](projected_snapshots.md) extends the retained-
 proof through current ownership and compares every emitted row and baseline under
 merges, splits, chains, and cyclic swaps.
 
-`test_update_viewer.py` has six conformance tests. They compare 2,269 retained
-histories with real validated `LogEntry` records and quantity comparisons, checking each
-selected record's complete payload and exact baseline against Lean. Cases cross older
-history, strict cutoff, current and future times, equal timestamps, increases,
-decreases, zero, renaming, same-named distinct fires, logged id/name/local namespaces
-and permutations. Every result round-trips through the real snapshot JSON serializer.
+`test_update_viewer.py` has six conformance tests. They compare 2,269 retained histories
+with real validated `LogEntry` records and quantity comparisons, checking each selected
+record's complete payload and exact baseline against Lean. Cases cross older history,
+strict cutoff, current and future times, equal timestamps, increases, decreases, zero,
+renaming, same-named distinct fires, logged id/name/local namespaces and permutations.
+Every result round-trips through the real snapshot JSON serializer.
 
 The browser bridge checks 476 display states against the executable model using the
 existing full DOM double and the shipped inline script. This includes all 169 pairs of

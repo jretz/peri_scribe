@@ -39,3 +39,31 @@ class ClassificationRecorder:
             if self.classification is None
             else {id(fire): self.classification for fire in groups.fires}
         )
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class HydrationRecorder:
+    """Supply complete histories only for the requested source-summary groups."""
+
+    complete: peri_scribe.fires.sources.FireRecordGroups
+    calls: list[tuple[tuple[int, ...], ...]] = dataclasses.field(default_factory=list)
+
+    def hydrate(
+        self,
+        requested: tuple[tuple[int, ...], ...],
+    ) -> peri_scribe.fires.sources.FireRecordGroups:
+        """Retain original fire identities when returning selected complete histories.
+
+        Args:
+            requested: The source groups whose classifications are unavailable.
+
+        Returns:
+            Complete records and the original fire objects for the requested groups.
+        """
+        self.calls.append(requested)
+        fires = dict(zip(self.complete.groups, self.complete.fires, strict=True))
+        return dataclasses.replace(
+            self.complete,
+            groups=requested,
+            fires=tuple(fires[group] for group in requested),
+        )

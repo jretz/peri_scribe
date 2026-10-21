@@ -155,6 +155,53 @@ def test_classifications_for_prepared_sources_preserves_uncached_operation(
     assert recorder.calls == [("First", "Second")]
 
 
+def test_classification_hydrates_only_missing_complete_histories(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    history_inputs: list[peri_scribe.fires.sources.ReadFireSources],
+) -> None:
+    prepared = peri_scribe.fires.sources.prepare_fire_sources(tmp_path / "sources")
+    complete = prepared.groups
+    partial = dataclasses.replace(
+        complete,
+        records=tuple(
+            dataclasses.replace(record, geometry=None) for record in complete.records
+        ),
+    )
+    classification = peri_scribe.models.FireClassification(
+        classification=peri_scribe.models.BorderClassification.OUTSIDE_CALIFORNIA,
+        outside_area_fraction=1.0,
+        inside_area_fraction=0.0,
+    )
+    recorder = tests.helpers.doubles.peri_scribe.fires.index.ClassificationRecorder(
+        classification=classification,
+    )
+    hydration = tests.helpers.doubles.peri_scribe.fires.index.HydrationRecorder(
+        complete=complete,
+    )
+    monkeypatch.setattr(
+        peri_scribe.fires.classification,
+        "classify_fire_sources",
+        recorder.classify,
+    )
+    keys = {id(fire): fire.name for fire in complete.fires}
+    with spatial_data.product_cache.scope(tmp_path / "products.sqlite", "context"):
+        spatial_data.product_cache.put(
+            peri_scribe.fires.index.CLASSIFICATION_NAMESPACE,
+            keys[id(complete.fires[0])],
+            classification.model_dump_json().encode(),
+        )
+        result = peri_scribe.fires.index.classifications_for_group_keys(
+            tmp_path,
+            partial,
+            keys,
+            hydrate_groups=hydration.hydrate,
+        )
+    assert result == {id(fire): classification for fire in complete.fires}
+    assert hydration.calls == [(complete.groups[1],)]
+    assert recorder.calls == [("Second",)]
+
+
 @pytest.mark.parametrize(
     "payload",
     [None, b"invalid json", b'{"classification": "bad"}'],

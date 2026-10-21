@@ -25,6 +25,7 @@ import pyproj
 import shapely
 
 import peri_scribe.execution
+import peri_scribe.sources.authentication
 import spatial_data.product_cache
 
 
@@ -117,6 +118,7 @@ def scope(
         contextlib.nullcontext()
         if peri_scribe.execution.active()
         else peri_scribe.execution.sharing(),
+        peri_scribe.sources.authentication.scope(year_directory / "sources"),
         spatial_data.product_cache.scope(path, context, unconditional=unconditional),
     ):
         yield

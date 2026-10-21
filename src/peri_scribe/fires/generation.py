@@ -12,6 +12,8 @@ import pathlib
 import peri_scribe.execution
 import peri_scribe.fires.reuse
 import peri_scribe.fires.sources
+import peri_scribe.sources.authentication
+import peri_scribe.sources.manifest
 import peri_scribe.sources.snapshots
 
 
@@ -36,15 +38,16 @@ def source_key(year_directory: pathlib.Path) -> str:
     cached = peri_scribe.execution.get(peri_scribe.execution.Group.SOURCES, key)
     if isinstance(cached, str):
         return cached
+    checksums = peri_scribe.sources.authentication.inventory_digests(paths)
     result = peri_scribe.fires.reuse.data_digest({
         "context": context,
-        "sources": [
+        "sources_root": peri_scribe.sources.manifest.root(
             (
                 str(path.relative_to(directory)),
-                peri_scribe.fires.reuse.file_digest(path),
+                checksum,
             )
-            for path in paths
-        ],
+            for path, checksum in zip(paths, checksums, strict=True)
+        ),
     })
     peri_scribe.execution.put(peri_scribe.execution.Group.SOURCES, key, result)
     return result

@@ -35,7 +35,7 @@ so the identity boundary needs an explicit contract in addition to its score.
 A union-find structure joins any records sharing an identifier. Separately, for each
 shared normalized name, nonempty geometries within `FIRE_PROXIMITY_TOLERANCE` (currently
 0.05 degrees) are joined. Byte-identical geometries are first joined as classes; one
-representative per class enters the spatial index. These classes preserve all adjacency:
+representative per class enters the spatial search. These classes preserve all adjacency:
 a duplicate has the same spatial neighbors as its representative. The final relation is
 transitive connectivity: A can connect to C through B even when A and C aren't close.
 Every pair in a group need not meet the distance threshold.
@@ -110,13 +110,14 @@ normalization and geometry validity remain caller duties.
 
 ## Costs and limitations
 
-For N records, I identifier occurrences, K distinct named geometries, and E nearby pairs,
-identifier lookup and class assembly are linear in their input and WKB bytes. STRtree
-construction is normally O(K log K) and reports O(E) candidates; dense geometries can
-still produce O(K²) pairs. Union-find uses path compression without a union-rank rule;
-its usual benefit must not be reported as the stronger inverse-Ackermann bound that
-requires additional assumptions. Memory includes O(N + I + K + E) query/identity data.
-The separate outlier diagnostic can compare all distinct geometries in a group.
+For N records and I identifier/name incidences, size-balanced union-find with path
+halving uses O((N+I) α(N)) union work. Identifier-connected name buckets need no spatial
+comparison. [Incremental grouping](incremental-grouping.md) explains conservative cached
+dependency blocks, exact compact geometry keys and the active-envelope forest. Large
+queries emit only a spanning forest, although envelope false positives can still require
+quadratic geometry tests. The small STRtree branch has bounded adjacency output below
+its fixed size threshold. The separate outlier diagnostic can compare every distinct
+geometry in a group.
 
 For D declarations and F fires, latest-evidence selection is O(D); following chains for
 every fire is O(F²) in the worst case, with O(D + F) stored evidence and graph state.

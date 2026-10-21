@@ -98,11 +98,15 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 | [classification.py](../../src/peri_scribe/fires/classification.py) | [perimeter geometry policy](perimeter-geometry-policy.md) |
 | [complexes.py](../../src/peri_scribe/fires/complexes.py) | [fire grouping and ownership](fire-grouping-and-ownership.md) |
 | [components.py](../../src/peri_scribe/fires/components.py) | [fire grouping and ownership](fire-grouping-and-ownership.md) |
+| [connectivity.py](../../src/peri_scribe/fires/connectivity.py) | [incremental grouping](incremental-grouping.md) |
+| [grouping_cache.py](../../src/peri_scribe/fires/grouping_cache.py) | [incremental grouping](incremental-grouping.md) |
+| [source_index_cache.py](../../src/peri_scribe/fires/source_index_cache.py) | [incremental grouping](incremental-grouping.md); [retained-index proof boundary](../../tests/formal/lean/retained_source_index.md) |
+| [proximity.py](../../src/peri_scribe/fires/proximity.py) | [incremental grouping](incremental-grouping.md) |
 | [derived_layers.py](../../src/peri_scribe/fires/derived_layers.py) | [geography generations](geography-generations.md) |
 | [differential.py](../../src/peri_scribe/fires/differential.py) | [corrected growth rings](corrected-growth-rings.md); [geography generations](geography-generations.md) |
 | [files.py](../../src/peri_scribe/fires/files.py) | [geography generations](geography-generations.md) |
 | [generation.py](../../src/peri_scribe/fires/generation.py) | [geography generations](geography-generations.md) |
-| [grouping.py](../../src/peri_scribe/fires/grouping.py) | [fire grouping and ownership](fire-grouping-and-ownership.md) |
+| [grouping.py](../../src/peri_scribe/fires/grouping.py) | [fire grouping and ownership](fire-grouping-and-ownership.md); [incremental grouping](incremental-grouping.md) |
 | [history.py](../../src/peri_scribe/fires/history.py) | [perimeter reconciliation](perimeter-reconciliation.md); [perimeter geometry policy](perimeter-geometry-policy.md) |
 | [identity.py](../../src/peri_scribe/fires/identity.py) | [fire grouping and ownership](fire-grouping-and-ownership.md) |
 | [incident_history.py](../../src/peri_scribe/fires/incident_history.py) | [incident area selection](incident-area-selection.md) |
@@ -121,6 +125,9 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 | [__init__.py](../../src/peri_scribe/geo/__init__.py) | **0/0/0/0/0**: package exports or marker; no decision algorithm. |
 | [data.py](../../src/peri_scribe/geo/data.py) | [source validation](source-validation.md) |
 | [database.py](../../src/peri_scribe/geo/database.py) | [parsed source cache](parsed-source-cache.md) |
+| [dictionaries.py](../../src/peri_scribe/geo/dictionaries.py) | [parsed source cache](parsed-source-cache.md) |
+| [fingerprints.py](../../src/peri_scribe/geo/fingerprints.py) | [parsed source cache](parsed-source-cache.md) |
+| [source_summaries.py](../../src/peri_scribe/geo/source_summaries.py) | [parsed source cache](parsed-source-cache.md); [incremental grouping](incremental-grouping.md) |
 | [measurements.py](../../src/peri_scribe/geo/measurements.py) | [source validation](source-validation.md) |
 | [growth_geometry.py](../../src/peri_scribe/geo/growth_geometry.py) | [growth geometry and area](growth-geometry-and-area.md) |
 | [package.py](../../src/peri_scribe/geo/package.py) | [parsed source cache](parsed-source-cache.md) |
@@ -230,6 +237,9 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 
 | Module | Explanation or local assessment |
 | --- | --- |
+| [authentication.py](../../src/peri_scribe/sources/authentication.py) | [source-index preparation](source-index-preparation.md) |
+| [manifest.py](../../src/peri_scribe/sources/manifest.py) | [source-index preparation](source-index-preparation.md) |
+| [provenance.py](../../src/peri_scribe/sources/provenance.py) | [incremental grouping](incremental-grouping.md); [source provenance proofs](../../tests/formal/lean/PeriScribe/SourceProvenance.lean) |
 | [__init__.py](../../src/peri_scribe/sources/__init__.py) | **0/0/0/0/0**: package exports or marker; no decision algorithm. |
 | [administrative_boundaries.py](../../src/peri_scribe/sources/administrative_boundaries.py) | [external source refresh](external-source-refresh.md) |
 | [archives.py](../../src/peri_scribe/sources/archives.py) | [external source refresh](external-source-refresh.md) |
@@ -264,7 +274,7 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 | [exceptions.py](../../src/spatial_data/exceptions.py) | **0/0/0/0/0**: exception vocabulary; no decision algorithm. |
 | [frame_fingerprints.py](../../src/spatial_data/frame_fingerprints.py) | [product caching](product-caching.md) |
 | [geometry.py](../../src/spatial_data/geometry.py) | [spatial queries and measurements](spatial-queries-and-measurements.md) |
-| [geometry_pool.py](../../src/spatial_data/geometry_pool.py) | [geometry sharing](geometry-sharing.md) |
+| [geometry_pool.py](../../src/spatial_data/geometry_pool.py) | [geometry sharing](geometry-sharing.md); [source geometry preparation](source-geometry-preparation.md) |
 | [layers.py](../../src/spatial_data/layers.py) | [spatial queries and measurements](spatial-queries-and-measurements.md) |
 | [measurements.py](../../src/spatial_data/measurements.py) | [spatial queries and measurements](spatial-queries-and-measurements.md) |
 | [surface_measurements.py](../../src/spatial_data/surface_measurements.py) | [growth geometry and area](growth-geometry-and-area.md) |

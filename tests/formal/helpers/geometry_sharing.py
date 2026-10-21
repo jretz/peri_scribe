@@ -218,8 +218,13 @@ def concurrent_pool() -> int:
         geometries = [geometry for token, geometry in results if token == index]
         assert len({id(geometry) for geometry in geometries}) == 1
         assert shapely.to_wkb(geometries[0], include_srid=True) == payloads[index]
-    representation(pool.state, payloads)
-    contents = entries(pool.state, payloads)
+    states = pool.states()
+    contents = []
+    for index, state in enumerate(states):
+        representation(state, payloads)
+        shard_entries = entries(state, payloads)
+        assert all(key % len(states) == index for key, _ in shard_entries)
+        contents.extend(shard_entries)
     expected = {
         (int.from_bytes(spatial_data.geometry_pool.geometry_digest(payload)), index)
         for index, payload in enumerate(payloads)

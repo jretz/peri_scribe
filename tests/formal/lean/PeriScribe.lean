@@ -25,6 +25,7 @@ import PeriScribe.PerimeterComposition
 import PeriScribe.BorderClassification
 import PeriScribe.MonitorReconstruction
 import PeriScribe.SourceDigest
+import PeriScribe.SourceManifest
 import PeriScribe.SourceValidation
 import PeriScribe.SpatialOverlap
 import PeriScribe.DifferentialRows
@@ -32,6 +33,9 @@ import PeriScribe.GrowthMeasurement
 import PeriScribe.CoordinateQuantization
 import PeriScribe.LogSeeking
 import PeriScribe.GeometrySharing
+import PeriScribe.GeometryPreparation
+import PeriScribe.RetainedSourceIndex
+import PeriScribe.SourceProvenance
 import PeriScribe.UpdateViewer
 import PeriScribe.CoordinateReference
 import PeriScribe.IdentityLifecycle

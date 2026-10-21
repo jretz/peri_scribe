@@ -7,21 +7,29 @@ from __future__ import annotations
 
 import dataclasses
 import pathlib
+import typing
 
 import pydantic
 import structlog
 
+import peri_scribe.execution
 import peri_scribe.fires.classification
 import peri_scribe.fires.generation
 import peri_scribe.fires.reuse
+import peri_scribe.fires.source_index_cache
 import peri_scribe.fires.sources
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.output
 import peri_scribe.phases
 import peri_scribe.preparation
+import peri_scribe.sources.provenance
 import peri_scribe.sources.snapshots
 import spatial_data.product_cache
+
+
+if typing.TYPE_CHECKING:
+    import collections.abc
 
 
 # The current version of the fire source index format; bump it when the format changes
@@ -74,6 +82,8 @@ def fire_sources_document(
     source: peri_scribe.models.FireSources,
     sources_directory: pathlib.Path,
     classification: peri_scribe.models.FireClassification | None = None,
+    *,
+    source_paths: peri_scribe.sources.provenance.SourcePaths | None = None,
 ) -> dict[str, object]:
     """Return a JSON-serializable document for *source*.
 
@@ -87,15 +97,18 @@ def fire_sources_document(
         sources_directory: The directory that holds the index file, used to make the
             GeoPackage paths relative.
         classification: The fire's border classification, or None.
+        source_paths: Exact relative strings shared with this preparation.
 
     Returns:
         The fire and its source paths as a JSON-serializable dictionary.
     """
+    provenance = peri_scribe.sources.provenance.for_directory(
+        sources_directory,
+        source_paths,
+    )
     document: dict[str, object] = {
         **fire_document(source.fire),
-        "paths": sorted(
-            str(path.relative_to(sources_directory)) for path in source.paths
-        ),
+        "paths": sorted(provenance.relative(path) for path in source.paths),
     }
     if classification is not None:
         document["classification"] = classification.model_dump(mode="json")
@@ -106,6 +119,8 @@ def fire_index_entries(
     sources: list[peri_scribe.models.FireSources],
     sources_directory: pathlib.Path,
     classifications: dict[int, peri_scribe.models.FireClassification] | None = None,
+    *,
+    source_paths: peri_scribe.sources.provenance.SourcePaths | None = None,
 ) -> list[dict[str, object]]:
     """Return the fire index documents for *sources*, sorted by fire name.
 
@@ -115,17 +130,23 @@ def fire_index_entries(
             GeoPackage paths relative.
         classifications: Each fire's border classification, keyed by the fire object's
             identity, or None when no classifications are known.
+        source_paths: Relative source strings retained by the current preparation.
 
     Returns:
         One document per fire, sorted by fire name.
     """
     if classifications is None:
         classifications = {}
+    provenance = peri_scribe.sources.provenance.for_directory(
+        sources_directory,
+        source_paths,
+    )
     return [
         fire_sources_document(
             source,
             sources_directory,
             classifications.get(id(source.fire)),
+            source_paths=provenance,
         )
         for source in sorted(
             sources,
@@ -194,7 +215,33 @@ def classifications_for_prepared_sources(
         peri_scribe.sources.snapshots.sources_directory_path(year_directory),
         peri_scribe.fires.reuse.derivation_context(year_directory),
     )
-    pairs = peri_scribe.fires.sources.non_complex_fire_sources(prepared.groups)
+    return classifications_for_group_keys(year_directory, prepared.groups, keys)
+
+
+def classifications_for_group_keys(
+    year_directory: pathlib.Path,
+    record_groups: peri_scribe.fires.sources.FireRecordGroups,
+    keys: dict[int, str],
+    *,
+    hydrate_groups: collections.abc.Callable[
+        [tuple[tuple[int, ...], ...]],
+        peri_scribe.fires.sources.FireRecordGroups,
+    ]
+    | None = None,
+) -> dict[int, peri_scribe.models.FireClassification]:
+    """Load exact evidence only for fires whose complete classification is missing.
+
+    Args:
+        year_directory: The year holding the administrative boundary dependency.
+        record_groups: Resolved identities and original source occurrence positions.
+        keys: Complete fire evidence and dependency identities.
+        hydrate_groups: Optional source-summary adapter returning complete records for
+            the requested groups while retaining their original fire objects.
+
+    Returns:
+        Available classifications keyed by those same fire objects.
+    """
+    pairs = peri_scribe.fires.sources.non_complex_fire_sources(record_groups)
     classifications = {
         id(source.fire): classification
         for source, _group in pairs
@@ -206,12 +253,17 @@ def classifications_for_prepared_sources(
         if id(source.fire) not in classifications
     ]
     if missing:
-        calculated = peri_scribe.fires.classification.classify_fire_sources(
+        missing_groups = (
             dataclasses.replace(
-                prepared.groups,
+                record_groups,
                 fires=tuple(fire for fire, _group in missing),
                 groups=tuple(group for _fire, group in missing),
-            ),
+            )
+            if hydrate_groups is None
+            else hydrate_groups(tuple(group for _fire, group in missing))
+        )
+        calculated = peri_scribe.fires.classification.classify_fire_sources(
+            missing_groups,
             year_directory,
         )
         for identifier, classification in calculated.items():
@@ -227,6 +279,75 @@ def classifications_for_prepared_sources(
         recomputed=len(missing),
     )
     return classifications
+
+
+def prepare_source_index(
+    directory: pathlib.Path,
+) -> (
+    peri_scribe.fires.sources.PreparedSources
+    | peri_scribe.fires.source_index_cache.IndexSources
+):
+    """Preserve complete execution preparations while reusing saved index summaries.
+
+    Args:
+        directory: The authoritative source snapshot directory.
+
+    Returns:
+        Complete execution evidence, or an explicitly separate selective index plan.
+    """
+    cached = peri_scribe.execution.get(
+        peri_scribe.execution.Group.SOURCES,
+        directory.resolve(),
+    )
+    if not isinstance(cached, peri_scribe.fires.sources.PreparedSources):
+        incremental = peri_scribe.fires.source_index_cache.prepare_index_sources(
+            directory,
+        )
+        if incremental is not None:
+            return incremental
+    prepared = peri_scribe.fires.sources.prepare_fire_sources(directory)
+    peri_scribe.fires.source_index_cache.remember_index_sources(directory, prepared)
+    return prepared
+
+
+def classifications_for_index_sources(
+    year_directory: pathlib.Path,
+    plan: peri_scribe.fires.source_index_cache.IndexSources,
+) -> dict[int, peri_scribe.models.FireClassification]:
+    """Authenticate per-fire summary evidence before selectively loading geometry.
+
+    Args:
+        year_directory: The year holding all source and classification dependencies.
+        plan: Current ordered snapshot summaries and their exact grouped identities.
+
+    Returns:
+        Reused or freshly calculated classifications with complete source evidence.
+    """
+    directory = peri_scribe.sources.snapshots.sources_directory_path(year_directory)
+    rows = tuple(
+        peri_scribe.fires.reuse.provenance_key(
+            evidence,
+            path,
+            directory,
+            source_paths=plan.read.source_paths,
+        )
+        for evidence, path in zip(
+            plan.evidence_keys,
+            plan.groups.record_paths,
+            strict=True,
+        )
+    )
+    keys = peri_scribe.fires.reuse.group_keys(
+        rows,
+        plan.groups,
+        peri_scribe.fires.reuse.derivation_context(year_directory),
+    )
+    return classifications_for_group_keys(
+        year_directory,
+        plan.groups,
+        keys,
+        hydrate_groups=plan.hydrate_groups,
+    )
 
 
 @peri_scribe.preparation.cached_year
@@ -252,20 +373,24 @@ def index_fire_sources(year_directory: pathlib.Path) -> None:
         with peri_scribe.logging.log_phase(
             peri_scribe.phases.Phase.LOAD_AND_GROUP_SOURCES,
         ):
-            prepared = peri_scribe.fires.sources.prepare_fire_sources(
-                sources_directory,
-            )
+            prepared = prepare_source_index(sources_directory)
             record_groups = prepared.groups
         with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.CLASSIFY_FIRES):
-            classifications = prepared.classifications
-            if classifications is None:
-                classifications = classifications_for_prepared_sources(
+            if isinstance(prepared, peri_scribe.fires.sources.PreparedSources):
+                classifications = prepared.classifications
+                if classifications is None:
+                    classifications = classifications_for_prepared_sources(
+                        year_directory,
+                        prepared,
+                    )
+                    peri_scribe.fires.sources.remember_prepared_sources(
+                        sources_directory,
+                        dataclasses.replace(prepared, classifications=classifications),
+                    )
+            else:
+                classifications = classifications_for_index_sources(
                     year_directory,
                     prepared,
-                )
-                peri_scribe.fires.sources.remember_prepared_sources(
-                    sources_directory,
-                    dataclasses.replace(prepared, classifications=classifications),
                 )
         with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.WRITE_INDEX):
             write_fire_index(year_directory, record_groups, classifications)
@@ -334,6 +459,7 @@ def write_fire_index(
             peri_scribe.fires.sources.fire_sources_from_groups(record_groups),
             sources_directory,
             classifications=classifications,
+            source_paths=record_groups.source_paths,
         ),
     )
     output_path = peri_scribe.sources.snapshots.fire_index_path(year_directory)

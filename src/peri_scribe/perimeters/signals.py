@@ -103,11 +103,11 @@ def geometry_signal(
     # cross the border. Measuring outside area still needs a union so overlapping parts
     # count once.
     if isinstance(union, shapely.GeometryCollection) and (
-        all(box.contains(part) for part in union.geoms)
-        or all(not box.intersects(part) for part in union.geoms)
+        all(boundaries.prepared_box.contains(part) for part in union.geoms)
+        or all(not boundaries.prepared_box.intersects(part) for part in union.geoms)
     ):
         parts = list(union.geoms)
-        inside_box = all(box.contains(part) for part in parts)
+        inside_box = all(boundaries.prepared_box.contains(part) for part in parts)
         evidence = one_sided_collection_evidence(
             parts,
             boundaries,
@@ -179,7 +179,7 @@ def classification_geometry_signal(
         and isinstance(union, shapely.GeometryCollection)
     ):
         parts = list(union.geoms)
-        if all(not boundaries.box.intersects(part) for part in parts):
+        if all(not boundaries.prepared_box.intersects(part) for part in parts):
             return one_sided_collection_evidence(
                 parts,
                 boundaries,
@@ -187,6 +187,31 @@ def classification_geometry_signal(
                 inside_box=False,
             )
     return geometry_signal(union, boundaries, config)
+
+
+def prepared_geometry_evidence(
+    prepared: peri_scribe.perimeters.classification_data.PreparedObservationGeometry,
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
+    config: peri_scribe.perimeters.classification_data.BorderClassificationConfig,
+) -> peri_scribe.perimeters.classification_data.GeometryEvidence:
+    """Consume the exact side already established while preparing a collection.
+
+    Args:
+        prepared: Geometry and one-sided evidence from the same preparation.
+        boundaries: The fixed classification box and border used in preparation.
+        config: The classification thresholds.
+
+    Returns:
+        Complete classification evidence without repeating known box predicates.
+    """
+    if prepared.inside_box is not None:
+        return one_sided_collection_evidence(
+            list(prepared.parts),
+            boundaries,
+            config,
+            inside_box=prepared.inside_box,
+        )
+    return classification_geometry_signal(prepared.geometry, boundaries, config)
 
 
 def freshest_observation(
@@ -257,6 +282,9 @@ def are_contemporaneous(
 def extent_signal(
     observations: list[peri_scribe.perimeters.classification_data.FireObservation],
     config: peri_scribe.perimeters.classification_data.BorderClassificationConfig,
+    *,
+    projections: peri_scribe.perimeters.classification_data.ProjectionCache
+    | None = None,
 ) -> peri_scribe.perimeters.classification_data.ExtentSignal:
     """Compute the FIRIS-versus-WFIGS extent signal.
 
@@ -267,6 +295,7 @@ def extent_signal(
     Args:
         observations: The fire's observations.
         config: The classification thresholds.
+        projections: Exact projections shared with this fire's geometry evidence.
 
     Returns:
         The area ratio and whether the extents disagree.
@@ -299,21 +328,19 @@ def extent_signal(
             wfigs_to_firis_area_ratio=None,
             disagrees=False,
         )
-    firis_geometry = (
-        peri_scribe.perimeters.classification_data.reproject_to_california_albers(
-            typing.cast("shapely.Geometry", firis_freshest.geometry),
-            peri_scribe.perimeters.classification_data.SOURCE_SPATIAL_REFERENCE_IDS[
-                firis_freshest.source
-            ],
-        )
+    if projections is None:
+        projections = peri_scribe.perimeters.classification_data.ProjectionCache()
+    firis_geometry = projections.project(
+        typing.cast("shapely.Geometry", firis_freshest.geometry),
+        peri_scribe.perimeters.classification_data.SOURCE_SPATIAL_REFERENCE_IDS[
+            firis_freshest.source
+        ],
     )
-    wfigs_geometry = (
-        peri_scribe.perimeters.classification_data.reproject_to_california_albers(
-            typing.cast("shapely.Geometry", wfigs_freshest.geometry),
-            peri_scribe.perimeters.classification_data.SOURCE_SPATIAL_REFERENCE_IDS[
-                wfigs_freshest.source
-            ],
-        )
+    wfigs_geometry = projections.project(
+        typing.cast("shapely.Geometry", wfigs_freshest.geometry),
+        peri_scribe.perimeters.classification_data.SOURCE_SPATIAL_REFERENCE_IDS[
+            wfigs_freshest.source
+        ],
     )
     firis_area = firis_geometry.area
     wfigs_area = wfigs_geometry.area

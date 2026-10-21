@@ -1,24 +1,28 @@
 """Grouping fire records that identify the same fire.
 
 [Grouping and ownership](../../../docs/algorithms/fire-grouping-and-ownership.md)
+[Incremental grouping](../../../docs/algorithms/incremental-grouping.md)
 """
 
 from __future__ import annotations
 
 import collections
+import collections.abc
 import datetime
+import functools
 import typing
 
 import shapely
 import structlog
 
 import peri_scribe.fires.complexes
+import peri_scribe.fires.connectivity
+import peri_scribe.fires.grouping_cache
+import peri_scribe.fires.proximity
 import peri_scribe.models
+import spatial_data.geometry_pool
+import spatial_data.product_cache
 from measurement_units import units
-
-
-if typing.TYPE_CHECKING:
-    import pint
 
 
 logger = structlog.get_logger()
@@ -46,39 +50,11 @@ MINIMUM_TIMED_RECORDS = 2
 MINIMUM_SPATIAL_GEOMETRIES = 2
 
 
-def nearby_pairs(
-    geometries: list[shapely.Geometry],
-    *,
-    tolerance: pint.Quantity[float],
-) -> typing.Iterator[tuple[int, int]]:
-    """Yield the index pairs of *geometries* within *tolerance*.
-
-    A spatial index avoids comparing distant geometries. Work still depends on the
-    number of nearby pairs, which can grow quadratically when every geometry is near
-    every other one. Each nonempty geometry is paired with itself, and each distinct
-    pair appears in both directions, so callers can treat the result as a directed
-    graph's adjacency and skip self-pairs.
-
-    Args:
-        geometries: The geometries to compare.
-        tolerance: The maximum distance, in degrees, that counts as nearby.
-
-    Yields:
-        Pairs of indices whose geometries are within the tolerance.
-    """
-    tree = shapely.STRtree(geometries)
-    pairs = tree.query(
-        geometries,
-        predicate="dwithin",
-        distance=tolerance.m_as("degrees"),
-    )
-    for left, right in zip(pairs[0], pairs[1], strict=True):
-        yield int(left), int(right)
-
-
 def records_span_distant_locations(
     records: list[peri_scribe.models.FireRecord],
     group: list[int],
+    *,
+    geometry_keys: spatial_data.geometry_pool.GeometryKeys | None = None,
 ) -> bool:
     """Return whether a record in *group* disagrees with the rest on location.
 
@@ -90,6 +66,7 @@ def records_span_distant_locations(
     Args:
         records: The records that were grouped.
         group: The record indices of one fire.
+        geometry_keys: Execution-owned exact geometry identities, when available.
 
     Returns:
         True when some record disagrees with the rest of the group on location.
@@ -104,7 +81,10 @@ def records_span_distant_locations(
         for index, geometry in geometries_by_index.items()
         if not geometry.is_empty
     ]
-    matched_indices = matched_within_outlier_tolerance(members)
+    matched_indices = matched_within_outlier_tolerance(
+        members,
+        geometry_keys=geometry_keys,
+    )
     for index in group:
         geometry = records[index].geometry
         others_count = len(geometries_by_index) - (
@@ -119,6 +99,8 @@ def records_span_distant_locations(
 
 def matched_within_outlier_tolerance(
     members: list[tuple[int, shapely.Geometry]],
+    *,
+    geometry_keys: spatial_data.geometry_pool.GeometryKeys | None = None,
 ) -> set[int]:
     """Return the members with another member within the outlier tolerance.
 
@@ -132,14 +114,17 @@ def matched_within_outlier_tolerance(
 
     Args:
         members: The group's non-empty geometries, as (index, geometry) pairs.
+        geometry_keys: Execution-owned exact geometry identities, when available.
 
     Returns:
         The indices of the members that have another member within the outlier
         tolerance.
     """
-    classes: dict[bytes, list[tuple[int, shapely.Geometry]]] = {}
+    if geometry_keys is None:
+        geometry_keys = spatial_data.geometry_pool.GeometryKeys()
+    classes: dict[tuple[bytes, int], list[tuple[int, shapely.Geometry]]] = {}
     for member in members:
-        classes.setdefault(member[1].wkb, []).append(member)
+        classes.setdefault(geometry_keys.key(member[1]), []).append(member)
     matched_indices: set[int] = set()
     for class_members in classes.values():
         if len(class_members) >= MINIMUM_SPATIAL_GEOMETRIES:
@@ -166,6 +151,8 @@ def warn_for_inconsistent_fires(
     records: list[peri_scribe.models.FireRecord],
     groups: list[list[int]],
     fires: list[peri_scribe.models.Fire],
+    *,
+    geometry_keys: spatial_data.geometry_pool.GeometryKeys | None = None,
 ) -> None:
     """Log location inconsistencies at info level and long time spans at debug level.
 
@@ -177,9 +164,12 @@ def warn_for_inconsistent_fires(
         records: The records that were grouped.
         groups: The record indices of each fire, aligned with *fires*.
         fires: The fires, aligned with *groups*.
+        geometry_keys: Execution-owned exact geometry identities, when available.
     """
+    if geometry_keys is None:
+        geometry_keys = spatial_data.geometry_pool.GeometryKeys()
     for fire, group in zip(fires, groups, strict=True):
-        if records_span_distant_locations(records, group):
+        if records_span_distant_locations(records, group, geometry_keys=geometry_keys):
             logger.info(
                 "Fire records span distant locations",
                 fire=fire.name,
@@ -203,117 +193,124 @@ def warn_for_inconsistent_fires(
 
 def group_fire_record_indices(
     records: list[peri_scribe.models.FireRecord],
+    *,
+    row_keys: collections.abc.Sequence[str] | None = None,
+    geometry_keys: spatial_data.geometry_pool.GeometryKeys | None = None,
 ) -> list[list[int]]:
-    """Group the indices of fire records that identify the same fire.
+    """Group source positions while retaining exact ordered component semantics.
 
-    Each group holds the indices of its records instead of the records themselves, so
-    callers can look up associated data such as each record's source file.
+    Complete row identities permit independent dependency blocks to reuse previously
+    calculated partitions. Bare calls calculate the entire relation directly.
 
     Args:
-        records: The fire records to group.
+        records: The fire records to group, in authoritative occurrence order.
+        row_keys: Complete canonical source-row fingerprints, aligned with records.
+        geometry_keys: Execution-owned exact geometry identities, when available.
 
     Returns:
-        The groups of record indices, in the order first encountered.
+        Ordered positions in components ordered by their first occurrence.
+
+    Raises:
+        ValueError: If supplied row fingerprints do not align with all records.
     """
-    parent = list(range(len(records)))
-
-    def find(index: int) -> int:
-        """Resolve a record's shared representative for group membership checks.
-
-        Args:
-            index: The record index whose group representative is needed.
-
-        Returns:
-            The representative record index for the group.
-        """
-        while parent[index] != index:
-            parent[index] = parent[parent[index]]
-            index = parent[index]
-        return index
-
-    def union(left: int, right: int) -> None:
-        """Keep records identified as the same fire in a shared group.
-
-        Args:
-            left: One record index whose group should be joined.
-            right: The other record index whose group should be joined.
-        """
-        root_left = find(left)
-        root_right = find(right)
-        if root_left != root_right:
-            parent[root_right] = root_left
-
-    # Records sharing any identifier are the same fire.
+    if geometry_keys is None:
+        geometry_keys = spatial_data.geometry_pool.GeometryKeys()
+    if row_keys is not None:
+        if len(row_keys) != len(records):
+            message = "Grouping evidence keys must align with every source occurrence"
+            raise ValueError(message)
+        if spatial_data.product_cache.active():
+            return peri_scribe.fires.grouping_cache.grouped_indices(
+                records,
+                row_keys,
+                str(FIRE_PROXIMITY_TOLERANCE.m_as("degrees")),
+                functools.partial(
+                    group_fire_record_indices,
+                    geometry_keys=geometry_keys,
+                ),
+            )
+    components = peri_scribe.fires.connectivity.UnionFind.for_count(len(records))
     by_identifier: dict[str, int] = {}
     for index, record in enumerate(records):
         for identifier in record.identifiers:
-            if identifier in by_identifier:
-                union(index, by_identifier[identifier])
-            else:
-                by_identifier[identifier] = index
-
-    merge_records_by_name(records, union)
-
-    groups_by_root: dict[int, list[int]] = {}
-    order: list[int] = []
-    for index in range(len(records)):
-        root = find(index)
-        if root not in groups_by_root:
-            order.append(root)
-            groups_by_root[root] = []
-        groups_by_root[root].append(index)
-    return [groups_by_root[root] for root in order]
+            components.union(index, by_identifier.setdefault(identifier, index))
+    merge_records_by_name(
+        records,
+        components.union,
+        find=components.find,
+        geometry_keys=geometry_keys,
+    )
+    return components.groups()
 
 
 def merge_records_by_name(
     records: list[peri_scribe.models.FireRecord],
     union: typing.Callable[[int, int], None],
+    *,
+    find: typing.Callable[[int], int] | None = None,
+    geometry_keys: spatial_data.geometry_pool.GeometryKeys | None = None,
 ) -> None:
-    """Merge records that share a name and are spatially compatible.
+    """Merge only spatial relationships that can still change identity connectivity.
 
-    The same fire can acquire different identifiers, for example when a new mapping
-    receives a new GUID. A shared name and compatible geometries can still connect those
-    records. Fires with the same name in different regions stay separate because their
-    geometries are too far apart.
-
-    A spatial index limits comparisons to nearby geometries. A name shared by distant
-    fires, such as "Canyon" in California and Alaska, therefore does not require
-    comparing every pair.
+    Identifier-connected name buckets already have every possible edge represented by a
+    path. Other buckets collapse exact geometry classes and emit sufficient proximity
+    edges to preserve the complete connected components.
 
     Args:
         records: The records to merge.
-        union: The union-find union used by the grouping.
+        union: The union operation used by the owning grouping.
+        find: Current representatives, when the owning grouping exposes them.
+        geometry_keys: Execution-owned exact geometry identities, when available.
     """
+    if geometry_keys is None:
+        geometry_keys = spatial_data.geometry_pool.GeometryKeys()
     by_name: dict[str, list[int]] = {}
     for index, record in enumerate(records):
         for name in record.names:
             by_name.setdefault(name, []).append(index)
     for indices in by_name.values():
-        members: list[tuple[int, shapely.Geometry]] = []
-        for index in indices:
-            geometry = records[index].geometry
-            if geometry is not None and not geometry.is_empty:
-                members.append((index, geometry))
-        if len(members) < MINIMUM_SPATIAL_GEOMETRIES:
-            continue
-        # Snapshots often repeat exactly the same perimeter. Those records already lie
-        # within the tolerance of one another, so join them first and compare one
-        # representative per class. Joining two representatives then connects every
-        # record in both classes without repeating the geometry comparisons.
-        classes: dict[bytes, list[tuple[int, shapely.Geometry]]] = {}
-        for member in members:
-            classes.setdefault(member[1].wkb, []).append(member)
-        representatives = [class_members[0] for class_members in classes.values()]
-        for class_members in classes.values():
-            for index, _geometry in class_members[1:]:
-                union(class_members[0][0], index)
+        if find is not None:
+            root = find(indices[0])
+            if all(find(index) == root for index in indices):
+                continue
+        representatives = named_representatives(records, indices, union, geometry_keys)
         if len(representatives) >= MINIMUM_SPATIAL_GEOMETRIES:
-            for left, right in nearby_pairs(
+            for left, right in peri_scribe.fires.proximity.spanning_pairs(
                 [geometry for _index, geometry in representatives],
                 tolerance=FIRE_PROXIMITY_TOLERANCE,
             ):
-                if left != right:
-                    union(representatives[left][0], representatives[right][0])
+                union(representatives[left][0], representatives[right][0])
+
+
+def named_representatives(
+    records: list[peri_scribe.models.FireRecord],
+    indices: list[int],
+    union: typing.Callable[[int, int], None],
+    geometry_keys: spatial_data.geometry_pool.GeometryKeys,
+) -> list[tuple[int, shapely.Geometry]]:
+    """Join exact geometry classes and retain all possible proximity bridges.
+
+    Args:
+        records: Current source occurrences.
+        indices: Original positions sharing one normalized name.
+        union: The owning grouping's union operation.
+        geometry_keys: Exact geometry identities owned by this source preparation.
+
+    Returns:
+        One original occurrence per distinct nonempty geometry class.
+    """
+    classes: dict[tuple[bytes, int], list[tuple[int, shapely.Geometry]]] = {}
+    for index in indices:
+        geometry = records[index].geometry
+        if geometry is not None and not geometry.is_empty:
+            classes.setdefault(geometry_keys.key(geometry), []).append((
+                index,
+                geometry,
+            ))
+    for members in classes.values():
+        for index, _geometry in members[1:]:
+            union(members[0][0], index)
+    return [members[0] for members in classes.values()]
 
 
 def fire_complexes(

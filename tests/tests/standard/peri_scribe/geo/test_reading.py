@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
 import pathlib
 import sqlite3
+import unittest.mock
 
 import pytest
 
@@ -104,6 +106,42 @@ def test_read_geopackage_cached_rebuilds_corrupt_database(
     os.utime(path.parent, ns=(1_700_000_000_000_000_000, 1_700_000_000_000_000_000))
     contents = peri_scribe.geo.reading.read_geopackage_cached(path)
     assert [row.record.name for row in contents.rows] == ["Park Fire"]
+
+
+@pytest.mark.parametrize("batched", [False, True])
+def test_read_geopackage_cached_falls_back_for_invalid_geometry(
+    tmp_path: pathlib.Path,
+    configured_feeds: list[peri_scribe.sources.feed_types.Feed],
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    batched: bool,
+) -> None:
+    path = tests.helpers.factories.peri_scribe.geo.package.write_cache_snapshot(
+        tmp_path,
+        configured_feeds[0],
+        [("Park Fire", "Active")],
+    )
+    expected = peri_scribe.geo.reading.read_geopackage_cached(path)
+    invalid_wkb = b"invalid geometry encoding"
+    with contextlib.closing(
+        sqlite3.connect(
+            tests.helpers.peri_scribe.geo.package.record_cache_database_path(path),
+        ),
+    ) as connection:
+        connection.execute(
+            "UPDATE geometry_payloads SET value = ?, digest = ?",
+            (invalid_wkb, peri_scribe.geo.database.payload_digest(invalid_wkb)),
+        )
+        connection.commit()
+    parse = unittest.mock.Mock(wraps=peri_scribe.geo.package.read_geopackage)
+    monkeypatch.setattr(peri_scribe.geo.package, "read_geopackage", parse)
+    actual = (
+        peri_scribe.geo.reading.read_geopackages_cached([path])[path]
+        if batched
+        else peri_scribe.geo.reading.read_geopackage_cached(path)
+    )
+    assert actual == expected
+    parse.assert_called_once_with(path)
 
 
 @pytest.mark.parametrize("version", [1, 2, 3, 4, 5, 6, 999])

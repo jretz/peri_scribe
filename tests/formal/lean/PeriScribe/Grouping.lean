@@ -156,4 +156,63 @@ def canonical (count : Nat) (edges : List Edge) : List Nat :=
     ((List.range count).find? (fun other =>
       (table[other]?).getD other == (table[node]?).getD node)).getD node
 
+/-- A forest may omit an edge only when its endpoints retain a path. -/
+theorem connected_of_edge_paths {before after : List Edge}
+    (paths : ∀ edge ∈ after, Connected before edge.1 edge.2)
+    {left right : Nat} (connected : Connected after left right) :
+    Connected before left right := by
+  induction connected with
+  | same => exact .same _
+  | edge member => exact paths _ member
+  | reverse _ induction => exact .reverse induction
+  | join _ _ first second => exact .join first second
+
+/-- Exact edge coverage by forest paths preserves the complete partition. -/
+theorem forest_preserves_components (graph forest : List Edge)
+    (sound : ∀ edge ∈ forest, Connected graph edge.1 edge.2)
+    (complete : ∀ edge ∈ graph, Connected forest edge.1 edge.2)
+    (left right : Nat) :
+    labels graph left = labels graph right ↔
+      labels forest left = labels forest right := by
+  rw [union_computes_connected_components, union_computes_connected_components]
+  exact ⟨connected_of_edge_paths complete, connected_of_edge_paths sound⟩
+
+/-- Identifier-connected endpoints make any further spatial edge redundant. -/
+theorem redundant_edge_preserves_components (edges : List Edge) (edge : Edge)
+    (already : Connected edges edge.1 edge.2) (left right : Nat) :
+    labels (edge :: edges) left = labels (edge :: edges) right ↔
+      labels edges left = labels edges right := by
+  apply forest_preserves_components
+  · intro item member
+    exact .edge (List.mem_cons_of_mem edge member)
+  · intro item member
+    rcases List.mem_cons.mp member with equal | previous
+    · subst item
+      exact already
+    · exact .edge previous
+
+/-- Conservative dependency blocks contain every complete connected component. -/
+theorem connected_stays_in_dependency_block (edges : List Edge) (block : Nat → Nat)
+    (within : ∀ edge ∈ edges, block edge.1 = block edge.2)
+    {left right : Nat} (connected : Connected edges left right) :
+    block left = block right := by
+  induction connected with
+  | same => rfl
+  | edge member => exact within _ member
+  | reverse _ induction => exact induction.symm
+  | join _ _ first second => exact first.trans second
+
+/-- Rebuilding or reusing each independent block can use any equal local partition. -/
+theorem blockwise_replacement_preserves_components
+    (graph replacement : List Edge) (block : Nat → Nat)
+    (within : ∀ edge ∈ graph, block edge.1 = block edge.2)
+    (sound : ∀ edge ∈ replacement, Connected graph edge.1 edge.2)
+    (complete : ∀ edge ∈ graph,
+      block edge.1 = block edge.2 → Connected replacement edge.1 edge.2)
+    (left right : Nat) :
+    labels graph left = labels graph right ↔
+      labels replacement left = labels replacement right := by
+  exact forest_preserves_components graph replacement sound
+    (fun edge member => complete edge member (within edge member)) left right
+
 end PeriScribe.Grouping

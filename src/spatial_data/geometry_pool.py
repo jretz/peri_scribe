@@ -2,15 +2,22 @@
 
 [Geometry sharing reasoning](../../docs/algorithms/geometry-sharing.md)
 explains the contract and correctness argument.
+[Source preparation](../../docs/algorithms/source-geometry-preparation.md) explains
+compact encoding keys and independently locked digest partitions.
 """
 
 from __future__ import annotations
 
+import contextlib
 import dataclasses
 import hashlib
 import threading
 
 import shapely
+
+
+GEOMETRY_SHARD_COUNT = 16
+type GeometryKey = tuple[bytes, int]
 
 
 def geometry_digest(wkb: bytes) -> bytes:
@@ -102,17 +109,86 @@ def shared_geometry(
     return updated, geometry
 
 
-class GeometryPool:
-    """A source read owns the lock and replaces immutable cache snapshots.
+class GeometryShard:
+    """One digest partition serializes immutable root replacement independently."""
 
-    Workers share this small synchronization boundary so concurrent decodes cannot
-    publish duplicate geometries. Completed reads release their entire cache.
+    def __init__(self) -> None:
+        """Keep each root's ownership aligned with its insertion lock."""
+        self.state: GeometryState | None = None
+        self.lock = threading.Lock()
+
+
+class EncodingShard:
+    """Exact collision classes keep compact keys separate from coordinate buffers."""
+
+    def __init__(self) -> None:
+        """Bound retained representatives to the source read owning this registry."""
+        self.classes: dict[bytes, list[shapely.Geometry]] = {}
+        self.lock = threading.Lock()
+
+
+class GeometryKeys:
+    """Identify canonical WKB classes without retaining a second coordinate copy."""
+
+    def __init__(self) -> None:
+        """Retained references prevent object identities being recycled during reuse."""
+        self.identities: dict[int, tuple[shapely.Geometry, GeometryKey]] = {}
+        self.lock = threading.Lock()
+        self.shards = tuple(EncodingShard() for _ in range(GEOMETRY_SHARD_COUNT))
+
+    def key(self, geometry: shapely.Geometry) -> GeometryKey:
+        """Preserve the exact SRID-ignoring equality used by `.wkb` consumers.
+
+        Args:
+            geometry: Immutable geometry retained by this source-read owner.
+
+        Returns:
+            A digest and collision-class ordinal, meaningful only in this registry.
+        """
+        identity = id(geometry)
+        with self.lock:
+            retained = self.identities.get(identity)
+            if retained is not None:
+                return retained[1]
+        encoded = geometry.wkb
+        digest = geometry_digest(encoded)
+        shard = self.shards[int.from_bytes(digest) % len(self.shards)]
+        with shard.lock:
+            candidates = shard.classes.setdefault(digest, [])
+            for position, candidate in enumerate(candidates):
+                if candidate.wkb == encoded:
+                    result = digest, position
+                    break
+            else:
+                result = digest, len(candidates)
+                candidates.append(geometry)
+        with self.lock:
+            self.identities[identity] = geometry, result
+        return result
+
+
+class GeometryPool:
+    """A source read owns independently locked immutable geometry partitions.
+
+    Identical digest candidates always reach one shard, so concurrent decodes still
+    publish one object per canonical encoding. Completed reads release their cache.
     """
 
     def __init__(self) -> None:
-        """Give each source read its own cache lifetime and synchronization boundary."""
-        self.state: GeometryState | None = None
-        self.lock = threading.Lock()
+        """Give source decoding and representation keys one explicit lifetime."""
+        self.shards = tuple(GeometryShard() for _ in range(GEOMETRY_SHARD_COUNT))
+        self.geometry_keys = GeometryKeys()
+
+    def states(self) -> tuple[GeometryState | None, ...]:
+        """Read one consistent immutable snapshot across all digest partitions.
+
+        Returns:
+            Roots in fixed shard order; subsequent insertion cannot change them.
+        """
+        with contextlib.ExitStack() as locks:
+            for shard in self.shards:
+                locks.enter_context(shard.lock)
+            return tuple(shard.state for shard in self.shards)
 
     def from_wkb(self, wkb: bytes) -> shapely.Geometry:
         """Reuse matching decoded geometry without retaining the source WKB bytes.
@@ -125,6 +201,7 @@ class GeometryPool:
             A geometry with the supplied coordinates and spatial reference.
         """
         digest = geometry_digest(wkb)
-        with self.lock:
-            self.state, geometry = shared_geometry(self.state, digest, wkb)
+        shard = self.shards[int.from_bytes(digest) % len(self.shards)]
+        with shard.lock:
+            shard.state, geometry = shared_geometry(shard.state, digest, wkb)
             return geometry

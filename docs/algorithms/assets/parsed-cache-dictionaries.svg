@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 330" role="img" aria-labelledby="title description">
+  <title id="title">Separate source occurrences share exact dictionary payloads</title>
+  <desc id="description">Two ordered observations keep distinct snapshot and row identities. Both reference the same exact geometry and attribute payload. Publication commits rows, references, and receipt together.</desc>
+  <style>
+    :root { color-scheme: light dark; --background:#111820; --panel:#1b2937; --text:#e9f0f6; --muted:#afc1d2; --line:#7794aa; --geometry:#75d2c8; --attributes:#f5c975; --receipt:#a6c4ef; }
+    @media (prefers-color-scheme: light) { :root { --background:#f7fafc; --panel:#ffffff; --text:#172b3d; --muted:#4c6479; --line:#6b8498; --geometry:#16796d; --attributes:#946116; --receipt:#365f98; } }
+    .background { fill:#111820; fill:var(--background); }
+    .panel { fill:#1b2937; fill:var(--panel); stroke:#7794aa; stroke:var(--line); stroke-width:1.5; }
+    text { fill:#e9f0f6; fill:var(--text); font:16px system-ui,sans-serif; }
+    .small { fill:#afc1d2; fill:var(--muted); font-size:14px; }
+    .heading { font-size:18px; font-weight:650; }
+    .geometry { stroke:#75d2c8; stroke:var(--geometry); fill:none; stroke-width:2; }
+    .attributes { stroke:#f5c975; stroke:var(--attributes); fill:none; stroke-width:2; }
+    .receipt { fill:#a6c4ef; fill:var(--receipt); }
+    .transaction { fill:none; stroke:#7794aa; stroke:var(--line); stroke-dasharray:6 5; }
+  </style>
+  <rect class="background" width="960" height="330"/>
+  <rect id="transaction-boundary" class="transaction" x="20" y="18" width="920" height="288" rx="12"/>
+  <text class="small" x="40" y="44">One pinned database generation</text>
+  <text class="heading" x="50" y="84">Ordered source occurrences</text>
+  <rect id="first-occurrence" class="panel" x="45" y="100" width="340" height="64" rx="7"/>
+  <text x="62" y="125">Snapshot 7 · row 1</text><text class="small" x="62" y="148">geometry 12 · attributes 42</text>
+  <rect id="second-occurrence" class="panel" x="45" y="182" width="340" height="64" rx="7"/>
+  <text x="62" y="207">Snapshot 8 · row 1</text><text class="small" x="62" y="230">geometry 12 · attributes 42</text>
+  <text class="heading" x="590" y="84">Exact payload dictionaries</text>
+  <rect id="geometry-payload" class="panel" x="585" y="100" width="330" height="64" rx="7"/>
+  <text x="603" y="125">Geometry 12</text><text class="small" x="603" y="148">complete WKB · dimensions · SRID</text>
+  <rect id="attribute-payload" class="panel" x="585" y="182" width="330" height="64" rx="7"/>
+  <text x="603" y="207">Attributes 42</text><text class="small" x="603" y="230">complete canonical JSON object</text>
+  <path id="first-geometry-reference" class="geometry" d="M385 132 C460 132 505 132 585 132"/>
+  <path id="second-geometry-reference" class="geometry" d="M385 214 C480 214 490 132 585 132"/>
+  <path id="first-attribute-reference" class="attributes" d="M385 132 C480 132 490 214 585 214"/>
+  <path id="second-attribute-reference" class="attributes" d="M385 214 C460 214 505 214 585 214"/>
+  <circle class="receipt" cx="54" cy="278" r="5"/>
+  <text class="small" x="68" y="283">Receipt, ordered rows, memberships, and dictionary references commit together.</text>
+</svg>

@@ -63,6 +63,38 @@ def contents(revision: int, serial: int, table: str) -> Rows:
     )
 
 
+def table_statement(table: str, present: set[str]) -> str:
+    """Project dictionary references back to the model's complete logical rows.
+
+    Args:
+        table: The model table whose committed records are being observed.
+        present: Physical tables available at this independently durable DDL boundary.
+
+    Returns:
+        An ordered logical projection, including empty rows during dictionary rebuild.
+    """
+    if table == "snapshots":
+        return "SELECT serial, checksum FROM snapshots ORDER BY serial"
+    if table == "memberships":
+        return "SELECT * FROM memberships ORDER BY serial, fire_identifier"
+    if {"geometry_payloads", "attribute_payloads"} <= present:
+        return (
+            "SELECT rows.serial, rows.object_id, rows.source_name, rows.name, "
+            "rows.status, rows.identifiers, rows.names, geometry_payloads.value, "
+            "rows.observed_at, rows.mission, rows.point_of_origin_state, "
+            "rows.point_of_origin_fips, attribute_payloads.value FROM rows "
+            "LEFT JOIN geometry_payloads ON geometry_payloads.id = rows.geometry_id "
+            "LEFT JOIN attribute_payloads "
+            "ON attribute_payloads.id = rows.attributes_id "
+            "ORDER BY serial, object_id"
+        )
+    return (
+        "SELECT serial, object_id, source_name, name, status, identifiers, names, "
+        "NULL, observed_at, mission, point_of_origin_state, point_of_origin_fips, "
+        "NULL FROM rows ORDER BY serial, object_id"
+    )
+
+
 def observe(path: pathlib.Path) -> Projection:
     """Independent connections expose committed content, including incomplete schemas.
 
@@ -86,15 +118,7 @@ def observe(path: pathlib.Path) -> Projection:
                 table,
                 tuple(
                     reader.execute(
-                        f"SELECT {'serial, checksum' if table == 'snapshots' else '*'} "
-                        f"FROM {table} ORDER BY serial"
-                        + (
-                            ", object_id"
-                            if table == "rows"
-                            else ", fire_identifier"
-                            if table == "memberships"
-                            else ""
-                        ),
+                        table_statement(table, present),
                     ).fetchall(),
                 ),
             )

@@ -43,7 +43,9 @@ labeled explanation without motion, including when reduced motion is requested.
 | [Incremental source collection](source-collection.md) | Candidate completeness, retry decisions and snapshot publication. |
 | [Source interpretation and validation](source-validation.md) | Ambiguous coordinate systems, coverage and content identity. |
 | [External source refresh](external-source-refresh.md) | Conditional refresh, empty results and staged conversion. |
-| [Authenticated parsed source cache](parsed-source-cache.md) | Authenticating receipts and rows in one transaction. |
+| [Authenticated parsed source cache](parsed-source-cache.md) | Authenticating receipts, normalized payload dictionaries and ordered rows in one transaction. |
+| [Source-index preparation](source-index-preparation.md) | Joined parallel byte authentication, complete row fingerprints and ordered Merkle manifests. |
+| [Source geometry preparation](source-geometry-preparation.md) | Exact compact geometry keys, sharded interning and shared projection evidence. |
 | [Reconstructing the interstate border and classification box](border-construction.md) | Snapped adjacency and complete border traversal. |
 | [Building footprint centroids from streamed archives](building-centroids.md) | Streaming and numerically stable polygon moments. |
 | [Compact point storage and batched containment](compact-point-storage.md) | Quantization, partitioning and exact candidate checks. |
@@ -57,6 +59,7 @@ labeled explanation without motion, including when reduced motion is requested.
 | --- | --- |
 | [Trailing aircraft registration recognition](aircraft-recognition.md) | Full registrations, suffix boundaries and mission aliases. |
 | [Fire grouping and current complex ownership](fire-grouping-and-ownership.md) | Connected components, aliases and complex membership. |
+| [Incremental grouping](incremental-grouping.md) | Exact provenance reuse, conservative dependency blocks, deletion-safe partition reuse and exact proximity forests. |
 | [Perimeter reconciliation and survey evidence](perimeter-reconciliation.md) | Survey evidence and retrospective revision. |
 | [Perimeter geometry: border evidence, rejection, and cleaning](perimeter-geometry-policy.md) | Border evidence, size rejection and cleaning. |
 | [Incident evidence and mapped versus reported area](incident-area-selection.md) | Reported versus mapped area on policy timelines. |

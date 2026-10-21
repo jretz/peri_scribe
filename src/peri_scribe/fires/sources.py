@@ -6,11 +6,10 @@
 
 from __future__ import annotations
 
-import concurrent.futures
+import collections.abc
 import dataclasses
 import functools
 import itertools
-import os
 import pathlib
 
 import peri_scribe.exceptions
@@ -18,11 +17,14 @@ import peri_scribe.execution
 import peri_scribe.fires.complexes
 import peri_scribe.fires.components
 import peri_scribe.fires.grouping
+import peri_scribe.geo.fingerprints
 import peri_scribe.geo.package
 import peri_scribe.geo.reading
 import peri_scribe.logging
 import peri_scribe.models
 import peri_scribe.phases
+import peri_scribe.sources.authentication
+import peri_scribe.sources.provenance
 import peri_scribe.sources.snapshots
 import spatial_data.geometry_pool
 
@@ -36,6 +38,16 @@ class FireRecordGroups:
     fires: tuple[peri_scribe.models.Fire, ...]
     groups: tuple[tuple[int, ...], ...]
     complex_identifiers: frozenset[str]
+    source_paths: peri_scribe.sources.provenance.SourcePaths | None = dataclasses.field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+    geometry_keys: spatial_data.geometry_pool.GeometryKeys | None = dataclasses.field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -46,6 +58,21 @@ class ReadFireSources:
     paths: tuple[pathlib.Path, ...]
     memberships: tuple[peri_scribe.models.ComplexMembership, ...]
     membership_paths: tuple[pathlib.Path, ...] = ()
+    source_paths: peri_scribe.sources.provenance.SourcePaths | None = dataclasses.field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
+    source_checksums: tuple[tuple[pathlib.Path, str], ...] = dataclasses.field(
+        default=(),
+        compare=False,
+        repr=False,
+    )
+    geometry_keys: spatial_data.geometry_pool.GeometryKeys | None = dataclasses.field(
+        default=None,
+        compare=False,
+        repr=False,
+    )
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -92,6 +119,31 @@ def read_fire_geopackage(
         raise SystemExit(message) from error
 
 
+def snapshot_checksums(
+    paths: collections.abc.Sequence[pathlib.Path],
+) -> tuple[tuple[pathlib.Path, str], ...]:
+    """Retain the exact byte identities belonging to one complete source parse.
+
+    Args:
+        paths: Authoritative snapshots in source inventory order.
+
+    Returns:
+        Ordered source paths and their current authenticated byte identities.
+
+    Raises:
+        SystemExit: If a snapshot cannot be authenticated from its current bytes.
+    """
+    result: list[tuple[pathlib.Path, str]] = []
+    for path in paths:
+        try:
+            checksum = peri_scribe.sources.authentication.file_digest(path)
+        except OSError as error:
+            message = f"Failed to read {path}: {error}"
+            raise SystemExit(message) from error
+        result.append((path, checksum))
+    return tuple(result)
+
+
 def read_fire_sources(directory: pathlib.Path) -> ReadFireSources:
     """Read the fire rows and complex memberships under *directory* in one pass.
 
@@ -105,31 +157,43 @@ def read_fire_sources(directory: pathlib.Path) -> ReadFireSources:
 
     Returns:
         The fire rows, their source files, and the complex memberships.
+
+    Raises:
+        OSError: If source identities change while the complete parse is read.
     """
     files = peri_scribe.sources.snapshots.geo_package_files(directory)
+    checksums = snapshot_checksums(files)
+    geometry_pool = spatial_data.geometry_pool.GeometryPool()
     read = functools.partial(
         read_fire_geopackage,
-        geometry_pool=spatial_data.geometry_pool.GeometryPool(),
+        geometry_pool=geometry_pool,
     )
-    # Worker threads can overlap the parts of GeoPackage reading that release the GIL.
-    # Collect results in file order to keep rows, paths, and memberships aligned.
     rows: list[peri_scribe.geo.package.FireRowRecord] = []
     paths: list[pathlib.Path] = []
     memberships: list[peri_scribe.models.ComplexMembership] = []
     membership_paths: list[pathlib.Path] = []
-    worker_count = os.cpu_count() or 1
-    with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
-        contents_by_file = executor.map(read, files, buffersize=2 * worker_count)
-        for path, contents in zip(files, contents_by_file, strict=True):
-            rows.extend(contents.rows)
-            paths.extend(itertools.repeat(path, len(contents.rows)))
-            memberships.extend(contents.memberships)
-            membership_paths.extend(itertools.repeat(path, len(contents.memberships)))
+    contents_by_file = peri_scribe.geo.reading.read_geopackages_cached(
+        files,
+        geometry_pool=geometry_pool,
+        read_fallback=read,
+    )
+    for path in files:
+        contents = contents_by_file[path]
+        rows.extend(contents.rows)
+        paths.extend(itertools.repeat(path, len(contents.rows)))
+        memberships.extend(contents.memberships)
+        membership_paths.extend(itertools.repeat(path, len(contents.memberships)))
+    if snapshot_checksums(files) != checksums:
+        message = f"Sources changed during preparation: {directory}"
+        raise OSError(message)
     return ReadFireSources(
         rows=tuple(rows),
         paths=tuple(paths),
         memberships=tuple(memberships),
         membership_paths=tuple(membership_paths),
+        source_checksums=checksums,
+        source_paths=peri_scribe.sources.provenance.SourcePaths(directory=directory),
+        geometry_keys=geometry_pool.geometry_keys,
     )
 
 
@@ -154,7 +218,14 @@ def group_fire_sources(read: ReadFireSources) -> FireRecordGroups:
         fires that are complex parents.
     """
     records = [row.record for row in read.rows]
-    groups = peri_scribe.fires.grouping.group_fire_record_indices(records)
+    groups = peri_scribe.fires.grouping.group_fire_record_indices(
+        records,
+        row_keys=tuple(
+            peri_scribe.geo.fingerprints.row_evidence_fingerprint(row)
+            for row in read.rows
+        ),
+        geometry_keys=read.geometry_keys,
+    )
     anchors = peri_scribe.fires.components.anchors(read.rows, read.paths)
     fires = [
         dataclasses.replace(
@@ -171,7 +242,12 @@ def group_fire_sources(read: ReadFireSources) -> FireRecordGroups:
         )
         for group in groups
     ]
-    peri_scribe.fires.grouping.warn_for_inconsistent_fires(records, groups, fires)
+    peri_scribe.fires.grouping.warn_for_inconsistent_fires(
+        records,
+        groups,
+        fires,
+        geometry_keys=read.geometry_keys,
+    )
     fires_by_identifier: dict[str, peri_scribe.models.Fire] = {}
     for group, fire in zip(groups, fires, strict=True):
         for index in group:
@@ -194,6 +270,8 @@ def group_fire_sources(read: ReadFireSources) -> FireRecordGroups:
         fires=tuple(fires),
         groups=tuple(tuple(group) for group in groups),
         complex_identifiers=frozenset(complex_identifiers),
+        source_paths=read.source_paths,
+        geometry_keys=read.geometry_keys,
     )
 
 

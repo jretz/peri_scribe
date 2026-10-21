@@ -46,8 +46,15 @@ The following inventories describe specific parts of the system:
   lifetime, successful validation, and complete database publication.
 - [Raw snapshots and changing feeds](snapshots.md): atomic snapshot discovery, interrupted
   writes, changing remote queries, and full collection after provider quiescence.
+- [Source authentication](source_authentication.md): live scope ownership, fresh byte checks,
+  reliable metadata invalidation, every checked scope/read transition, and complete joined
+  admission in `ParallelSourceAuthentication` under failure, cancellation and expiry.
+- [Grouping forests](grouping_forest.md): discovery cuts, exact components and bounded
+  forest edges across all four-node undirected graphs.
 - [Parsed source caches](parsed_cache.md): checksum/row/membership transactions, concurrent
-  readers, schema rebuilds, source inventory changes, and authoritative fallback.
+  readers, schema rebuilds, source inventory changes, exact payload dictionaries in
+  `NormalizedCache`, slim authenticated projections in `SourceSummaries`, and authoritative
+  fallback.
 - [Commands and geography readers](command_readers.md): shared source-writer exclusion,
   validation recovery intent, and authenticated matching generations for consumers.
 - [Document publication and feed coordination](collection_publication.md): complete

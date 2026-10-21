@@ -9,9 +9,11 @@ import dataclasses
 import datetime
 import enum
 import functools
+import threading
 import typing
 
 import pyproj
+import shapely
 
 import spatial_data.geometry
 import spatial_data.reference
@@ -20,7 +22,6 @@ from measurement_units import units
 
 if typing.TYPE_CHECKING:
     import pint
-    import shapely
 
 
 class FireSourceKind(enum.Enum):
@@ -60,6 +61,38 @@ class Boundaries:
 
     box: shapely.Geometry
     border: shapely.Geometry
+    prepared_boxes: threading.local = dataclasses.field(
+        default_factory=threading.local,
+        init=False,
+        repr=False,
+        compare=False,
+    )
+
+    @property
+    def prepared_box(self) -> shapely.Geometry:
+        """Own native prepared-predicate caches separately in each worker thread.
+
+        Returns:
+            A prepared clone with identical coordinates, precision, and reference.
+        """
+        prepared = typing.cast(
+            "shapely.Geometry | None",
+            getattr(self.prepared_boxes, "geometry", None),
+        )
+        if prepared is None:
+            prepared = shapely.set_srid(self.box, shapely.get_srid(self.box))
+            shapely.prepare(prepared)
+            self.prepared_boxes.geometry = prepared
+        return prepared
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class PreparedObservationGeometry:
+    """Carry exact one-sided collection evidence without repeating box predicates."""
+
+    geometry: shapely.Geometry | None
+    parts: tuple[shapely.Geometry, ...] = ()
+    inside_box: bool | None = None
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -144,3 +177,39 @@ def reproject_to_california_albers(
     """
     transformer = transformer_for_spatial_reference_id(source_spatial_reference_id)
     return spatial_data.geometry.transform_coordinates(geometry, transformer)
+
+
+class ProjectionCache:
+    """Retain exact object/reference-system projections for one classification."""
+
+    def __init__(self) -> None:
+        """Release projected geometry when its owning classification finishes."""
+        self.entries: dict[
+            tuple[int, int],
+            tuple[shapely.Geometry, shapely.Geometry],
+        ] = {}
+
+    def project(
+        self,
+        geometry: shapely.Geometry,
+        source_spatial_reference_id: int,
+    ) -> shapely.Geometry:
+        """Reuse a projection only for the same retained object and source CRS.
+
+        Args:
+            geometry: Immutable coordinates interpreted in the supplied reference.
+            source_spatial_reference_id: EPSG ID establishing that interpretation.
+
+        Returns:
+            The exact result of the classification's deterministic projection.
+        """
+        key = id(geometry), source_spatial_reference_id
+        entry = self.entries.get(key)
+        if entry is not None:
+            return entry[1]
+        projected = reproject_to_california_albers(
+            geometry,
+            source_spatial_reference_id,
+        )
+        self.entries[key] = geometry, projected
+        return projected

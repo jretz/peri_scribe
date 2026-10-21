@@ -7,14 +7,18 @@ Design notes:
 from __future__ import annotations
 
 import contextlib
+import enum
 import hashlib
 import pathlib
 import sqlite3
 import threading
+import typing
 
 import structlog
 
+import peri_scribe.geo.fingerprints
 import peri_scribe.geo.package
+import peri_scribe.sources.authentication
 import peri_scribe.sources.snapshots
 
 
@@ -22,7 +26,7 @@ logger = structlog.get_logger()
 
 
 # Cache compatibility includes preservation of all supported relationship identifiers.
-RECORD_CACHE_SCHEMA_VERSION = 7
+RECORD_CACHE_SCHEMA_VERSION = 8
 
 
 RECORD_CACHE_SCHEMA = """
@@ -41,12 +45,13 @@ CREATE TABLE rows (
   status TEXT,
   identifiers TEXT,
   names TEXT,
-  geometry_wkb BLOB,
+  geometry_id INTEGER,
   observed_at TEXT,
   mission TEXT,
   point_of_origin_state TEXT,
   point_of_origin_fips TEXT,
-  attributes_json TEXT
+  attributes_id INTEGER NOT NULL,
+  evidence_fingerprint TEXT NOT NULL
 );
 CREATE INDEX rows_serial ON rows(serial);
 CREATE TABLE memberships (
@@ -56,6 +61,21 @@ CREATE TABLE memberships (
   complex_name TEXT,
   observation_time TEXT
 );
+DROP TABLE IF EXISTS geometry_payloads;
+DROP TABLE IF EXISTS attribute_payloads;
+CREATE TABLE geometry_payloads (
+  id INTEGER PRIMARY KEY,
+  digest BLOB NOT NULL,
+  value BLOB NOT NULL
+);
+CREATE INDEX geometry_payloads_digest ON geometry_payloads(digest);
+CREATE TABLE attribute_payloads (
+  id INTEGER PRIMARY KEY,
+  digest BLOB NOT NULL,
+  value TEXT NOT NULL
+);
+CREATE INDEX attribute_payloads_digest ON attribute_payloads(digest);
+CREATE INDEX memberships_serial ON memberships(serial);
 """
 
 
@@ -65,6 +85,106 @@ RECORD_CACHE_LOCK = threading.Lock()
 # Tracks which record cache databases are already in sync with their snapshot
 # directories, so open_and_sync is only run once per signature.
 RECORD_CACHE_SYNCED: dict[pathlib.Path, tuple[int | tuple[str, int], ...]] = {}
+
+
+class PayloadKind(enum.Enum):
+    """Limit dynamic SQL table selection to the two exact payload dictionaries."""
+
+    GEOMETRY = "geometry_payloads"
+    ATTRIBUTES = "attribute_payloads"
+
+
+def intern_payload(
+    conn: sqlite3.Connection,
+    kind: PayloadKind,
+    payload: bytes | str,
+) -> int:
+    """Resolve digest candidates with complete bytes before sharing an encoding.
+
+    Args:
+        conn: The transaction also publishing row references and snapshot receipts.
+        kind: The dictionary's closed table identity.
+        payload: Complete geometry bytes or canonical attribute JSON.
+
+    Returns:
+        A database-local key whose equality never substitutes digest equality.
+    """
+    digest = payload_digest(payload)
+    for identifier, candidate in conn.execute(
+        f"SELECT id, value FROM {kind.value} WHERE digest = ?",
+        (digest,),
+    ):
+        if candidate == payload:
+            return identifier
+    return typing.cast(
+        "int",
+        conn.execute(
+            f"INSERT INTO {kind.value} (digest, value) VALUES (?, ?)",
+            (digest, payload),
+        ).lastrowid,
+    )
+
+
+def payload_digest(payload: bytes | str) -> bytes:
+    """Keep indexes compact while exact candidate checks resolve hash collisions.
+
+    Args:
+        payload: Complete binary geometry or canonical attribute text.
+
+    Returns:
+        The digest selecting dictionary equality candidates.
+    """
+    return hashlib.sha256(
+        payload.encode() if isinstance(payload, str) else payload,
+    ).digest()
+
+
+def normalized_row(
+    conn: sqlite3.Connection,
+    row: peri_scribe.geo.package.FireRowRecord,
+    serial: int,
+) -> tuple[object, ...]:
+    """Retain every row occurrence while replacing repeated payloads with references.
+
+    Args:
+        conn: The snapshot writer's current transaction.
+        row: Complete immutable record fields and caller-owned attributes.
+        serial: The snapshot serial owning this occurrence.
+
+    Returns:
+        Typed metadata, dictionary keys, and a complete path-independent fingerprint.
+    """
+    values = row.to_row(serial)
+    geometry = typing.cast("bytes | None", values[7])
+    attributes = typing.cast("str", values[12])
+    geometry_key = (
+        None
+        if geometry is None
+        else intern_payload(conn, PayloadKind.GEOMETRY, geometry)
+    )
+    attributes_key = intern_payload(conn, PayloadKind.ATTRIBUTES, attributes)
+    fingerprint = peri_scribe.geo.fingerprints.fingerprint_from_payloads(
+        row,
+        None if geometry is None else hashlib.sha256(geometry).hexdigest(),
+        hashlib.sha256(attributes.encode()).hexdigest(),
+    )
+    return (*values[:7], geometry_key, *values[8:12], attributes_key, fingerprint)
+
+
+def collect_unreferenced_payloads(conn: sqlite3.Connection) -> None:
+    """Retire only encodings no surviving row can reference in this transaction.
+
+    Args:
+        conn: The transaction replacing or deleting complete snapshot row sets.
+    """
+    conn.execute(
+        "DELETE FROM geometry_payloads WHERE id NOT IN "
+        "(SELECT geometry_id FROM rows WHERE geometry_id IS NOT NULL)",
+    )
+    conn.execute(
+        "DELETE FROM attribute_payloads WHERE id NOT IN "
+        "(SELECT attributes_id FROM rows)",
+    )
 
 
 def reset_database(conn: sqlite3.Connection) -> None:
@@ -122,10 +242,10 @@ def write_snapshot(
     )
     conn.executemany(
         "INSERT INTO rows (serial, object_id, source_name, name, status, "
-        "identifiers, names, geometry_wkb, observed_at, mission, "
-        "point_of_origin_state, point_of_origin_fips, attributes_json) "
-        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
-        [row.to_row(source_file.serial_number) for row in contents.rows],
+        "identifiers, names, geometry_id, observed_at, mission, "
+        "point_of_origin_state, point_of_origin_fips, attributes_id, "
+        "evidence_fingerprint) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        [normalized_row(conn, row, source_file.serial_number) for row in contents.rows],
     )
     conn.executemany(
         "INSERT INTO memberships VALUES (?, ?, ?, ?, ?)",
@@ -189,8 +309,7 @@ def snapshot_checksum(path: pathlib.Path) -> str:
     Returns:
         The SHA-256 checksum of all snapshot bytes.
     """
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+    return peri_scribe.sources.authentication.file_digest(path)
 
 
 def sync_database(conn: sqlite3.Connection, source_directory: pathlib.Path) -> None:
@@ -224,7 +343,9 @@ def sync_database(conn: sqlite3.Connection, source_directory: pathlib.Path) -> N
             stat.st_size,
             stat.st_mtime_ns,
         )
-    for serial in set(stored) - set(current):
+    removed = set(stored) - set(current)
+    changed = bool(removed)
+    for serial in removed:
         conn.execute("DELETE FROM rows WHERE serial = ?", (serial,))
         conn.execute("DELETE FROM memberships WHERE serial = ?", (serial,))
         conn.execute("DELETE FROM snapshots WHERE serial = ?", (serial,))
@@ -233,8 +354,11 @@ def sync_database(conn: sqlite3.Connection, source_directory: pathlib.Path) -> N
         checksum = snapshot_checksum(path)
         if stored.get(serial) == (size, mtime_ns, checksum):
             continue
+        changed = True
         contents = peri_scribe.geo.package.read_geopackage(path)
         write_snapshot(conn, source_file, size, mtime_ns, contents, checksum=checksum)
+    if changed:
+        collect_unreferenced_payloads(conn)
     conn.commit()
 
 

@@ -30,6 +30,7 @@ import peri_scribe.perimeters.signals
 import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.borders
 import peri_scribe.sources.snapshots
+import spatial_data.geometry_pool
 import spatial_data.reference
 
 
@@ -104,13 +105,17 @@ def load_boundaries(
     )
 
 
-def unioned_observation_geometry(
+def prepare_observation_geometry(
     observations: typing.Iterable[
         peri_scribe.perimeters.classification_data.FireObservation
     ],
     boundaries: peri_scribe.perimeters.classification_data.Boundaries,
-) -> shapely.Geometry | None:
-    """Return a geometry describing the observations in California Albers.
+    *,
+    projections: peri_scribe.perimeters.classification_data.ProjectionCache
+    | None = None,
+    geometry_keys: spatial_data.geometry_pool.GeometryKeys | None = None,
+) -> peri_scribe.perimeters.classification_data.PreparedObservationGeometry:
+    """Retain projected geometry and exact one-sided collection evidence together.
 
     Snapshots often repeat the same mapped shape. Collapse byte-identical (source,
     geometry) pairs before projection: projecting the same pair twice gives the same
@@ -130,13 +135,21 @@ def unioned_observation_geometry(
     Args:
         observations: The fire's observations.
         boundaries: The California box and interstate border in CA Albers.
+        projections: Exact object/CRS projections shared by classification consumers.
+        geometry_keys: Compact exact WKB classes owned by the source read.
 
     Returns:
-        The union (or unmerged collection) of the distinct geometries in California
-        Albers, or None when there are none.
+        Geometry in California Albers and a known side for one-sided collections.
     """
+    if projections is None:
+        projections = peri_scribe.perimeters.classification_data.ProjectionCache()
+    if geometry_keys is None:
+        geometry_keys = spatial_data.geometry_pool.GeometryKeys()
     seen: set[
-        tuple[peri_scribe.perimeters.classification_data.FireSourceKind, bytes]
+        tuple[
+            peri_scribe.perimeters.classification_data.FireSourceKind,
+            spatial_data.geometry_pool.GeometryKey,
+        ]
     ] = set()
     distinct: list[
         tuple[
@@ -148,7 +161,7 @@ def unioned_observation_geometry(
         geometry = observation.geometry
         if geometry is None or geometry.is_empty:
             continue
-        key = (observation.source, geometry.wkb)
+        key = (observation.source, geometry_keys.key(geometry))
         if key in seen:
             continue
         seen.add(key)
@@ -156,7 +169,7 @@ def unioned_observation_geometry(
     geometries: list[shapely.Geometry] = []
     for observation, geometry in distinct:
         geometries.append(
-            peri_scribe.perimeters.classification_data.reproject_to_california_albers(
+            projections.project(
                 geometry,
                 peri_scribe.perimeters.classification_data.SOURCE_SPATIAL_REFERENCE_IDS[
                     observation.source
@@ -164,15 +177,46 @@ def unioned_observation_geometry(
             ),
         )
     if not geometries:
-        return None
+        return peri_scribe.perimeters.classification_data.PreparedObservationGeometry(
+            geometry=None,
+        )
     if len(geometries) == 1:
-        return geometries[0]
-    box = boundaries.box
-    if all(box.contains(geometry) for geometry in geometries) or all(
-        not box.intersects(geometry) for geometry in geometries
-    ):
-        return shapely.GeometryCollection(geometries)
-    return shapely.union_all(geometries)
+        return peri_scribe.perimeters.classification_data.PreparedObservationGeometry(
+            geometry=geometries[0],
+        )
+    box = boundaries.prepared_box
+    inside_box: bool | None = None
+    if all(box.contains(geometry) for geometry in geometries):
+        inside_box = True
+    elif all(not box.intersects(geometry) for geometry in geometries):
+        inside_box = False
+    if inside_box is not None:
+        return peri_scribe.perimeters.classification_data.PreparedObservationGeometry(
+            geometry=shapely.GeometryCollection(geometries),
+            parts=tuple(geometries),
+            inside_box=inside_box,
+        )
+    return peri_scribe.perimeters.classification_data.PreparedObservationGeometry(
+        geometry=shapely.union_all(geometries),
+    )
+
+
+def unioned_observation_geometry(
+    observations: typing.Iterable[
+        peri_scribe.perimeters.classification_data.FireObservation
+    ],
+    boundaries: peri_scribe.perimeters.classification_data.Boundaries,
+) -> shapely.Geometry | None:
+    """Return exact projected coverage, retaining one-sided parts as a collection.
+
+    Args:
+        observations: The fire's observations, including repeated source shapes.
+        boundaries: The California box and interstate border in California Albers.
+
+    Returns:
+        The projected geometry, or None without nonempty observations.
+    """
+    return prepare_observation_geometry(observations, boundaries).geometry
 
 
 def classify(
@@ -241,6 +285,7 @@ def classify_fire(
     boundaries: peri_scribe.perimeters.classification_data.Boundaries,
     config: peri_scribe.perimeters.classification_data.BorderClassificationConfig
     | None = None,
+    geometry_keys: spatial_data.geometry_pool.GeometryKeys | None = None,
 ) -> peri_scribe.models.FireClassification:
     """Classify one fire from its records and source files.
 
@@ -249,6 +294,7 @@ def classify_fire(
         record_paths: The GeoPackage file each record came from.
         boundaries: The California box and interstate border in California Albers.
         config: The classification thresholds. Defaults to the standard thresholds.
+        geometry_keys: Exact encoding classes retained by this source-read owner.
 
     Returns:
         The fire's border classification and evidence.
@@ -270,12 +316,23 @@ def classify_fire(
         )
         for record, path in zip(records, record_paths, strict=True)
     ]
+    projections = peri_scribe.perimeters.classification_data.ProjectionCache()
+    prepared = prepare_observation_geometry(
+        observations,
+        boundaries,
+        projections=projections,
+        geometry_keys=geometry_keys,
+    )
     return classify(
-        geometry=peri_scribe.perimeters.signals.classification_geometry_signal(
-            unioned_observation_geometry(observations, boundaries),
+        geometry=peri_scribe.perimeters.signals.prepared_geometry_evidence(
+            prepared,
             boundaries,
             config,
         ),
-        extent=peri_scribe.perimeters.signals.extent_signal(observations, config),
+        extent=peri_scribe.perimeters.signals.extent_signal(
+            observations,
+            config,
+            projections=projections,
+        ),
         identifier=peri_scribe.perimeters.signals.identifier_signal(observations),
     )

@@ -24,11 +24,13 @@ import structlog
 
 import peri_scribe.execution
 import peri_scribe.fires.sources
-import peri_scribe.geo.parsing
+import peri_scribe.geo.fingerprints
 import peri_scribe.perimeters.classification_data
 import peri_scribe.perimeters.cleaning
 import peri_scribe.perimeters.size_filtering
 import peri_scribe.sources.administrative_boundaries
+import peri_scribe.sources.authentication
+import peri_scribe.sources.provenance
 import spatial_data.layers
 import spatial_data.row_index
 
@@ -66,8 +68,7 @@ def file_digest(path: pathlib.Path) -> str:
     Returns:
         The SHA-256 checksum.
     """
-    with path.open("rb") as stream:
-        return hashlib.file_digest(stream, "sha256").hexdigest()
+    return peri_scribe.sources.authentication.file_digest(path)
 
 
 def data_digest(value: object) -> str:
@@ -199,39 +200,71 @@ def fire_keys(
     Returns:
         The input fingerprint for each in-memory fire identity.
     """
-    geometry_digests: dict[int, str] = {}
-    rows: list[str] = []
-    for row, path in zip(read.rows, read.paths, strict=True):
-        record = row.record
-        geometry = record.geometry
-        if geometry is not None and id(geometry) not in geometry_digests:
-            geometry_digests[id(geometry)] = hashlib.sha256(
-                shapely.to_wkb(geometry, include_srid=True),
-            ).hexdigest()
-        fields = {
-            field.name: getattr(record, field.name)
-            for field in dataclasses.fields(record)
-            if field.name not in {"geometry", "identifiers", "names"}
-        }
-        rows.append(
-            data_digest({
-                "record": fields,
-                "identifiers": sorted(record.identifiers),
-                "names": sorted(record.names),
-                "geometry": None
-                if geometry is None
-                else geometry_digests[id(geometry)],
-                "attributes": {
-                    key: peri_scribe.geo.parsing.json_native_value(value)
-                    for key, value in row.attributes.items()
-                },
-                "object_id": row.object_id,
-                "source": row.source_name,
-                "path": str(path.relative_to(sources_directory)),
-            }),
+    source_paths = peri_scribe.sources.provenance.for_directory(
+        sources_directory,
+        read.source_paths,
+    )
+    rows = [
+        provenance_key(
+            peri_scribe.geo.fingerprints.row_evidence_fingerprint(row),
+            path,
+            sources_directory,
+            source_paths=source_paths,
         )
+        for row, path in zip(read.rows, read.paths, strict=True)
+    ]
+    return group_keys(rows, groups, context)
+
+
+def provenance_key(
+    evidence: str,
+    path: pathlib.Path,
+    sources_directory: pathlib.Path,
+    *,
+    source_paths: peri_scribe.sources.provenance.SourcePaths | None = None,
+) -> str:
+    """Keep source location in every row identity consumed by a derived fire product.
+
+    Args:
+        evidence: Complete path-independent source row identity.
+        path: The authoritative snapshot containing this occurrence.
+        sources_directory: The source root used to express relative provenance.
+        source_paths: Shared lexical strings belonging to this preparation.
+
+    Returns:
+        The same canonical identity for full rows and authenticated row summaries.
+    """
+    return data_digest({
+        "evidence": evidence,
+        "path": (
+            str(path.relative_to(sources_directory))
+            if source_paths is None
+            else peri_scribe.sources.provenance.for_directory(
+                sources_directory,
+                source_paths,
+            ).relative(path)
+        ),
+    })
+
+
+def group_keys(
+    rows: collections.abc.Sequence[str],
+    groups: peri_scribe.fires.sources.FireRecordGroups,
+    context: str,
+) -> dict[int, str]:
+    """Combine complete ordered row identities with the resolved fire metadata.
+
+    Args:
+        rows: Complete evidence and provenance identities in source occurrence order.
+        groups: Resolved identities and positions of those same source occurrences.
+        context: The complete derivation environment and dependency fingerprint.
+
+    Returns:
+        The complete input fingerprint for each in-memory fire identity.
+    """
     return {
         id(fire): data_digest({
+            "version": 2,
             "context": context,
             "name": fire.name,
             "identifier": fire.identifier,

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import gc
+import unittest.mock
 import weakref
 
 import pytest
@@ -132,3 +133,51 @@ def test_geometry_pool_from_wkb_releases_geometries_with_pool() -> None:
     del geometry, pool
     gc.collect()
     assert reference() is None
+
+
+def test_geometry_pool_from_wkb_does_not_block_other_digest_shards() -> None:
+    pool = spatial_data.geometry_pool.GeometryPool()
+    first = shapely.Point(0, 0).wkb
+    first_shard = int.from_bytes(
+        spatial_data.geometry_pool.geometry_digest(first),
+    ) % len(
+        pool.shards,
+    )
+    other = next(
+        geometry.wkb
+        for index in range(1, 100)
+        for geometry in [shapely.Point(index, index)]
+        if int.from_bytes(spatial_data.geometry_pool.geometry_digest(geometry.wkb))
+        % len(pool.shards)
+        != first_shard
+    )
+    with (
+        concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor,
+        pool.shards[first_shard].lock,
+    ):
+        result = executor.submit(pool.from_wkb, other).result(timeout=10)
+    assert result.wkb == other
+
+
+def test_geometry_pool_states_retains_immutable_roots() -> None:
+    pool = spatial_data.geometry_pool.GeometryPool()
+    first = pool.from_wkb(shapely.Point(1, 2).wkb)
+    snapshot = pool.states()
+    retained = tuple(root for root in snapshot if root is not None)
+    pool.from_wkb(shapely.Point(3, 4).wkb)
+    assert len(retained) == 1
+    assert retained[0].geometries == (first,)
+    assert retained[0].smaller is None
+    assert retained[0].larger is None
+
+
+def test_geometry_pool_states_releases_admitted_locks_after_failure() -> None:
+    pool = spatial_data.geometry_pool.GeometryPool()
+    failure = unittest.mock.MagicMock()
+    failure.lock.__enter__.side_effect = RuntimeError("snapshot interrupted")
+    first = pool.shards[0]
+    pool.shards = first, failure
+    with pytest.raises(RuntimeError, match="snapshot interrupted"):
+        pool.states()
+    assert first.lock.acquire(blocking=False)
+    first.lock.release()

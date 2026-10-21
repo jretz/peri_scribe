@@ -1,6 +1,7 @@
 """Classifying fires relative to the California interstate border.
 
-[Geometry policy](../../../docs/algorithms/perimeter-geometry-policy.md)
+[Geometry policy](../../../docs/algorithms/perimeter-geometry-policy.md) and
+[worker resource strategy](../../../docs/algorithms/source-geometry-preparation.md).
 """
 
 from __future__ import annotations
@@ -19,6 +20,16 @@ import peri_scribe.perimeters.classification_data
 
 
 logger = structlog.get_logger()
+CLASSIFICATION_WORKER_LIMIT = 4
+
+
+def classification_worker_count() -> int:
+    """Bound native geometry work and its per-thread boundary indexes.
+
+    Returns:
+        At most four workers, with one worker when CPU availability is unknown.
+    """
+    return min(CLASSIFICATION_WORKER_LIMIT, os.cpu_count() or 1)
 
 
 def classify_fire_group(
@@ -40,6 +51,7 @@ def classify_fire_group(
         records=[record_groups.records[index] for index in group],
         record_paths=[record_groups.record_paths[index] for index in group],
         boundaries=boundaries,
+        geometry_keys=record_groups.geometry_keys,
     )
 
 
@@ -75,7 +87,7 @@ def classify_fire_sources(
         )
         return {}
     with concurrent.futures.ThreadPoolExecutor(
-        max_workers=os.cpu_count() or 1,
+        max_workers=classification_worker_count(),
     ) as executor:
         return {
             id(source.fire): classification

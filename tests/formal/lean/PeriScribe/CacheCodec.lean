@@ -176,4 +176,47 @@ theorem appended_trailing_tokens_rejected (value : Value) (extra : List Token)
   have : extra.length = 0 := by omega
   exact nonempty (List.length_eq_zero_iff.mp this)
 
+/-- A caller may bypass payload comparison only for an identical immutable scalar. -/
+def compareScalarIdentity (identity : Value → Value → Bool) : Value → Value → Bool
+  | first@(.scalar ..), second@(.scalar ..) =>
+      if identity first second then true else decide (first = second)
+  | .empty first, .empty second => decide (first = second)
+  | .branch first left tail, .branch second right rest =>
+      decide (first = second) && compareScalarIdentity identity left right &&
+        compareScalarIdentity identity tail rest
+  | _, _ => false
+
+theorem scalar_identity_comparison_is_exact
+    (identity : Value → Value → Bool)
+    (sound : ∀ first second left right,
+      identity (.scalar first left) (.scalar second right) = true →
+        Value.scalar first left = Value.scalar second right)
+    (first second : Value) :
+    compareScalarIdentity identity first second = decide (first = second) := by
+  induction first generalizing second with
+  | scalar tag payload =>
+    cases second with
+    | scalar other bytes =>
+      by_cases same : identity (.scalar tag payload) (.scalar other bytes) = true
+      · simp [compareScalarIdentity, sound tag other payload bytes same]
+      · simp [compareScalarIdentity, same]
+    | empty => simp [compareScalarIdentity]
+    | branch => simp [compareScalarIdentity]
+  | empty tag => cases second <;> simp [compareScalarIdentity]
+  | branch tag left tail leftProof tailProof =>
+    cases second with
+    | scalar => simp [compareScalarIdentity]
+    | empty => simp [compareScalarIdentity]
+    | branch other right rest =>
+      simp [compareScalarIdentity, leftProof, tailProof, Bool.and_assoc]
+
+theorem scalar_identity_preserves_encoding_equality
+    (identity : Value → Value → Bool)
+    (sound : ∀ first second left right,
+      identity (.scalar first left) (.scalar second right) = true →
+        Value.scalar first left = Value.scalar second right)
+    (first second : Value) :
+    compareScalarIdentity identity first second = decide (encode first = encode second) := by
+  simp [scalar_identity_comparison_is_exact identity sound, equal_encoding_iff]
+
 end PeriScribe.CacheCodec

@@ -1,5 +1,9 @@
 import PeriScribe.GeometrySharing
+import PeriScribe.GeometryPreparation
 import PeriScribe.UpdateViewer
+import PeriScribe.SourceManifest
+import PeriScribe.RetainedSourceIndex
+import PeriScribe.SourceProvenance
 
 namespace PeriScribe.PresentationFlowOracle
 
@@ -46,6 +50,18 @@ def integers (values : List Int) : String :=
 
 def naturals (values : List Nat) : String := integers (values.map Int.ofNat)
 
+/-- Decode only oracle transport; source values remain in the caller's exact table. -/
+def manifestTree : Nat → List Nat →
+    Except String (SourceManifest.Tree Nat Nat × List Nat)
+  | 0, _ => throw "Incomplete manifest tree"
+  | _ + 1, 2 :: rest => return (.empty, rest)
+  | _ + 1, 0 :: path :: content :: rest => return (.leaf path content, rest)
+  | fuel + 1, 1 :: rest => do
+    let (left, rest) ← manifestTree fuel rest
+    let (right, rest) ← manifestTree fuel rest
+    return (.branch left right, rest)
+  | _ + 1, _ => throw "Expected manifest constructor"
+
 def ownership (text : String) :
     Except String (UpdateViewer.Key × UpdateViewer.Key) := do
   match text.splitOn "," with
@@ -55,6 +71,33 @@ def ownership (text : String) :
 
 def respond (words : List String) : Except String String := do
   match words with
+  | "source-path" :: values =>
+    let (values, tail) := values.span (· != "--")
+    let table ← values.mapM natural
+    let keys ← (tail.drop 1).mapM natural
+    return naturals (SourceProvenance.trace
+      (fun key => (table[key]?).getD 0) (fun _ => none) keys)
+  | "changed" :: values =>
+    let (nodes, tail) := values.span (· != "--")
+    let (before, tail) := (tail.drop 1).span (· != "--")
+    let after := tail.drop 1
+    return naturals (RetainedSourceIndex.changed (← nodes.mapM natural)
+      (← before.mapM entry) (← after.mapM entry))
+  | "affected" :: values =>
+    let (current, tail) := values.span (· != "--")
+    let (changed, tail) := (tail.drop 1).span (· != "--")
+    let (before, tail) := (tail.drop 1).span (· != "--")
+    let after := tail.drop 1
+    return naturals (RetainedSourceIndex.affected (← current.mapM natural)
+      (← before.mapM entry) (← after.mapM entry) (← changed.mapM natural))
+  | "manifest" :: values =>
+    let tokens ← values.mapM natural
+    let (tree, rest) ← manifestTree tokens.length tokens
+    if rest != [] then throw "Trailing manifest constructors"
+    return naturals (SourceManifest.constructorTokens tree)
+  | "encoding-position" :: payload :: values =>
+    return toString (GeometryPreparation.encodingPosition (← values.mapM natural)
+      (← natural payload))
   | "tree" :: entries =>
     match ← entries.mapM entry with
     | [] => return "2"

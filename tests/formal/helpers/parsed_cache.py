@@ -26,8 +26,8 @@ READ_PHASE_COUNT = 3
 SNAPSHOT_COUNT = 2
 READ_SCHEDULE_COUNT = 288
 SYNC_CONFIGURATION_COUNT = 12
-SYNC_INTERRUPTION_COUNT = 110
-SCHEMA_PREFIX_COUNT = 9
+SYNC_INTERRUPTION_COUNT = 176
+SCHEMA_PREFIX_COUNT = 16
 
 
 def numbers(value: str) -> tuple[int, ...]:
@@ -266,10 +266,19 @@ def mutation_count(initial: tuple[int, ...], target: tuple[int, ...]) -> int:
     Returns:
         The concrete INSERT and DELETE statement count before commit.
     """
-    return sum(
-        0 if old == new else 3 if new == 0 else 7
-        for old, new in zip(initial, target, strict=True)
-    )
+    retained = set(initial) - {0}
+    statements = 0
+    for old, new in zip(initial, target, strict=True):
+        if old == new:
+            continue
+        if new == 0:
+            statements += 3
+        else:
+            statements += 7
+            if new not in retained:
+                statements += 4
+                retained.add(new)
+    return statements + 2 if statements else 0
 
 
 def trace_statement(
@@ -430,7 +439,7 @@ def replay_rebuild(
         database=database,
         execution=checked.start(tests.formal.helpers.cache_paths.observe(database)),
     )
-    reset_statements = 8
+    reset_statements = 15
     with contextlib.closing(sqlite3.connect(database)) as connection:
         connection.execute("PRAGMA user_version = 1")
         interruption = InterruptSchema(connection=connection, stop_after=phase)

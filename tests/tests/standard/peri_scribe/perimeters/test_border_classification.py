@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 import pathlib
+import unittest.mock
 
 import pytest
 import shapely.geometry
@@ -11,15 +12,102 @@ import shapely.geometry
 import peri_scribe.models
 import peri_scribe.perimeters.border_classification
 import peri_scribe.perimeters.classification_data
+import peri_scribe.perimeters.signals
 import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.borders
+import spatial_data.geometry_pool
 import spatial_data.reference
 import tests.helpers.assertions.peri_scribe.perimeters.classification
 import tests.helpers.doubles.peri_scribe.perimeters.classification
+import tests.helpers.factories.peri_scribe.models
 import tests.helpers.factories.peri_scribe.perimeters.classification
 import tests.helpers.factories.peri_scribe.perimeters.signals
 import tests.helpers.reference.peri_scribe.perimeters.classification
 from measurement_units import units
+
+
+@pytest.mark.parametrize("inside_box", [True, False])
+def test_prepare_observation_geometry_reuses_exact_collection_side_evidence(
+    wgs84_boundaries: peri_scribe.perimeters.classification_data.Boundaries,
+    *,
+    inside_box: bool,
+) -> None:
+    left = -121 if inside_box else -118
+    observations = [
+        tests.helpers.factories.peri_scribe.perimeters.signals.observation(
+            tests.helpers.factories.peri_scribe.perimeters.signals.FIRIS,
+            shapely.geometry.box(left + offset, 38, left + offset + 0.2, 38.2),
+        )
+        for offset in (0, 0.1)
+    ]
+    prepared = (
+        peri_scribe.perimeters.border_classification.prepare_observation_geometry(
+            observations,
+            wgs84_boundaries,
+        )
+    )
+    config = peri_scribe.perimeters.classification_data.BorderClassificationConfig()
+    reference = peri_scribe.perimeters.signals.classification_geometry_signal(
+        prepared.geometry,
+        wgs84_boundaries,
+        config,
+    )
+    with (
+        unittest.mock.patch.object(
+            shapely,
+            "contains",
+            side_effect=AssertionError("prepared side must be reused"),
+        ),
+        unittest.mock.patch.object(
+            shapely,
+            "intersects",
+            side_effect=AssertionError("prepared side must be reused"),
+        ),
+    ):
+        actual = peri_scribe.perimeters.signals.prepared_geometry_evidence(
+            prepared,
+            wgs84_boundaries,
+            config,
+        )
+    assert prepared.inside_box is inside_box
+    assert actual.distance_to_boundary == reference.distance_to_boundary
+    assert actual.inside_area_fraction == reference.inside_area_fraction
+    assert actual.outside_area_fraction == reference.outside_area_fraction
+    assert actual.crosses == reference.crosses
+    assert actual.near == reference.near
+    assert actual.inside == reference.inside
+
+
+def test_classify_fire_shares_projection_between_geometry_and_extent_signals(
+    wgs84_boundaries: peri_scribe.perimeters.classification_data.Boundaries,
+) -> None:
+    geometry = shapely.geometry.box(-120.5, 38, -120.3, 38.2)
+    record = tests.helpers.factories.peri_scribe.models.fire_record(
+        "Example",
+        peri_scribe.models.FireStatus.ACTIVE,
+        geometry=geometry,
+    )
+    expected_projections = 2
+    with unittest.mock.patch.object(
+        peri_scribe.perimeters.classification_data,
+        "reproject_to_california_albers",
+        wraps=peri_scribe.perimeters.classification_data.reproject_to_california_albers,
+    ) as project:
+        actual = peri_scribe.perimeters.border_classification.classify_fire(
+            records=[record, record, record],
+            record_paths=[
+                pathlib.Path(f"sources/{source}/000___/000000,lastEdit=0.gpkg")
+                for source in (
+                    "CA_Perimeters_NIFC_FIRIS_public_view_0",
+                    "WFIGS_Interagency_Perimeters_Current_0",
+                    "WFIGS_Interagency_Perimeters_Current_0",
+                )
+            ],
+            boundaries=wgs84_boundaries,
+            geometry_keys=spatial_data.geometry_pool.GeometryKeys(),
+        )
+    assert project.call_count == expected_projections
+    assert actual.wfigs_to_firis_area_ratio is not None
 
 
 @pytest.mark.parametrize(
