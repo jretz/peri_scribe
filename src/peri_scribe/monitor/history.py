@@ -565,11 +565,13 @@ class Reader:
                 metadata.st_size,
                 metadata.st_mtime_ns,
             )
-            for path in self.directory.glob("????-??.jsonl.zst")
+            for monthly in log_paths(self.directory)
+            for path in peri_scribe.log_reading.log_components(monthly)
+            if path.suffix == ".zst"
             for metadata in (path.stat(),)
         }
         if any(
-            path.name.removesuffix(".zst") in self.months
+            path.name[:7] + ".jsonl" in self.months
             and self.archive_signatures.get(path) != signature
             for path, signature in archives.items()
         ):
@@ -591,20 +593,11 @@ class Reader:
             month = path.name.removesuffix(".zst")
             if month not in self.months:
                 try:
-                    archive = next(
-                        (
-                            component
-                            for component in peri_scribe.log_reading.log_components(
-                                path,
-                            )
-                            if component.suffix == ".zst"
-                        ),
-                        None,
-                    )
                     lines = (
-                        peri_scribe.log_reading.component_lines(archive)
-                        if archive is not None
-                        else ()
+                        line
+                        for component in peri_scribe.log_reading.log_components(path)
+                        if component.suffix == ".zst"
+                        for line in peri_scribe.log_reading.component_lines(component)
                     )
                     for batch in record_batches(
                         recent_records(decoded_records(lines), since),

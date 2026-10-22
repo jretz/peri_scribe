@@ -39,8 +39,9 @@ failure of each SELECT. The writer can remove or replace the requested snapshot.
 conformance permits commits during the reader transaction; SQLite's default journal mode
 also preserves the transaction and can block a competing commit until the reader ends.
 
-`ParsedCacheRebuild` explores 92 states, including interruption and one restart before
-or after any of the fifteen schema statements. Its reader uses the pinned read contract
+`ParsedCacheRebuild` explores 100 states, including interruption and one restart before
+or after any of the seventeen schema statements. This includes dictionary-table removal
+and creation. Its reader uses the pinned read contract
 from `ParsedCacheRead`; table removal produces a read error, and newly created tables
 contain no receipt until synchronization succeeds. The old parse and the rebuilt parse
 are each complete. These are safety models. Successful retry is checked as a reachable
@@ -74,10 +75,11 @@ bridge substitutes only GeoPackage parsing with distinct parsed fixtures; cache
 serialization, source discovery, checksums, metadata, SQL, transaction cleanup, and
 subsequent reads remain real. Dictionary inserts and reclamation are included in the
 concrete interruption matrix. The logical observer reconstructs complete payload values
-from dictionary references, so changing a reference or dropping a live payload changes
-the observed contract rather than disappearing behind an integer ID.
+from dictionary references and explicit storage encodings, including exact decompression
+with the committed dictionary bytes. Changing a reference or dropping a live payload
+changes the observed contract rather than disappearing behind an integer ID.
 
-For all thirty-two initial schema prefixes, it interrupts the actual DDL, checks the
+For all thirty-six initial schema prefixes, it interrupts the actual DDL, checks the
 model's read outcome, verifies authoritative fallback through `read_cached_snapshot`,
 and runs `ensure_database_current` to repair the cache using the same continuous path
 matcher. The [execution extension](../execution_paths_extensions.md) describes exact

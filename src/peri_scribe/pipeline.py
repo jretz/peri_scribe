@@ -2,20 +2,16 @@
 
 Algorithm reasoning and contracts:
 [Pipeline publication](../../docs/algorithms/pipeline-publication.md)
+[Supervised stage processes](../../docs/algorithms/stage-processes.md)
 """
 
 from __future__ import annotations
 
-import dataclasses
 import datetime
-import math
 import pathlib
-import re
 import textwrap
-import typing
 
 import click
-import pint
 import structlog
 
 import peri_scribe.cli_options
@@ -46,121 +42,15 @@ import peri_scribe.sources.fetching
 import peri_scribe.sources.full_fetch_state
 import peri_scribe.sources.snapshots
 import peri_scribe.sources.validation
-from measurement_units import units
+import peri_scribe.supervision
 
 
 logger = structlog.get_logger()
 
 
-class Duration(click.ParamType):
-    """A duration of whole minutes, hours or days.
-
-    Values are a non-negative whole number followed by ``m``, ``h`` or ``d``, for
-    example ``5m``, ``12h`` or ``1d``, and convert to a ``datetime.timedelta``.
-    """
-
-    name = "duration"
-
-    def convert(
-        self,
-        value: object,
-        param: click.Parameter | None,
-        ctx: click.Context | None,
-    ) -> datetime.timedelta:
-        """Return *value* converted to a ``datetime.timedelta``.
-
-        Strings use the duration syntax described above. An already-converted
-        ``datetime.timedelta`` passes through unchanged, so the type also works with
-        timedelta defaults.
-
-        Args:
-            value: The option value to convert.
-            param: The parameter the value came from.
-            ctx: The click context.
-
-        Returns:
-            The parsed duration.
-        """
-        if isinstance(value, datetime.timedelta):
-            return value
-        message = (
-            f"{value!r} is not a duration of whole minutes, hours or days "
-            "such as '5m', '12h' or '1d'"
-        )
-        if not isinstance(value, str):
-            self.fail(message, param, ctx)
-        duration_match = re.fullmatch(r"([0-9]+)([mhd])", value)
-        if duration_match is None:
-            self.fail(message, param, ctx)
-        count = int(duration_match.group(1))
-        try:
-            if duration_match.group(2) == "m":
-                return datetime.timedelta(minutes=count)
-            if duration_match.group(2) == "h":
-                return datetime.timedelta(hours=count)
-            return datetime.timedelta(days=count)
-        except OverflowError:
-            self.fail(f"{value!r} is too large to be a duration", param, ctx)
-
-
-class Area(click.ParamType):
-    """Require a positive finite area with explicit physical units."""
-
-    name = "area"
-
-    def convert(
-        self,
-        value: object,
-        param: click.Parameter | None,
-        ctx: click.Context | None,
-    ) -> pint.Quantity[float]:
-        """Reject unitless and non-area values before the pipeline can write data.
-
-        Args:
-            value: The command-line area value, including its physical units.
-            param: The Click parameter used to report validation errors, if available.
-            ctx: The Click invocation context, if available.
-
-        Returns:
-            The positive area converted to square meters.
-        """
-        message = f"{value!r} is not a positive area such as '25 acre'"
-        if not isinstance(value, (str, pint.Quantity)):
-            self.fail(message, param, ctx)
-        try:
-            area = units.Quantity(value).to("meters ** 2")
-        except pint.errors.PintError, TypeError, ValueError:
-            self.fail(message, param, ctx)
-        if not math.isfinite(area.magnitude) or area.magnitude <= 0:
-            self.fail(message, param, ctx)
-        return typing.cast("pint.Quantity[float]", area)
-
-
-def publication_threshold(
-    _context: click.Context,
-    _parameter: click.Parameter,
-    value: tuple[pint.Quantity[float], datetime.timedelta] | None,
-) -> peri_scribe.publication.Threshold | None:
-    """Validate the area and time settings as one publication policy.
-
-    Args:
-        _context: The invocation context supplied by Click; unused by this callback.
-        _parameter: The option supplied by Click; unused by this callback.
-        value: The parsed area and duration, or None when the option was omitted.
-
-    Returns:
-        The configured policy, or None when the option was omitted.
-
-    Raises:
-        click.BadParameter: If the publication interval is not positive.
-    """
-    if value is None:
-        return None
-    area, interval = value
-    if interval <= datetime.timedelta(0):
-        message = "The publication interval must be positive"
-        raise click.BadParameter(message)
-    return peri_scribe.publication.Threshold(area=area, interval=interval)
+Duration = peri_scribe.cli_options.Duration
+Area = peri_scribe.cli_options.Area
+publication_threshold = peri_scribe.cli_options.publication_threshold
 
 
 def fetch_external_source(
@@ -633,45 +523,10 @@ def run_reports_stage(year_directory: pathlib.Path) -> None:
     write_reports(year_directory)
 
 
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class PipelineStage:
-    """A named pipeline stage and its description."""
-
-    name: peri_scribe.pipeline_stages.Stage
-    description: str
-
-
-PIPELINE_STAGES: tuple[PipelineStage, ...] = (
-    PipelineStage(
-        name=peri_scribe.pipeline_stages.Stage.FETCH,
-        description=(
-            "Fetch fire feeds, external sources (buildings, evacuations, and "
-            "Natural Earth places), and the administrative-boundary GeoPackage."
-        ),
-    ),
-    PipelineStage(
-        name=peri_scribe.pipeline_stages.Stage.GEOGRAPHY,
-        description="Derive fire geography histories from the fetched sources.",
-    ),
-    PipelineStage(
-        name=peri_scribe.pipeline_stages.Stage.SCORE,
-        description="Score fires from the derived geography.",
-    ),
-    PipelineStage(
-        name=peri_scribe.pipeline_stages.Stage.KMZ,
-        description="Build the symbolized KMZ for Google Earth.",
-    ),
-    PipelineStage(
-        name=peri_scribe.pipeline_stages.Stage.REPORTS,
-        description="Write fire reports from the derived outputs.",
-    ),
-)
-
-
-STAGE_NAMES = tuple(stage.name.value for stage in PIPELINE_STAGES)
-
-
-STAGE_INDEX = {stage.name: index for index, stage in enumerate(PIPELINE_STAGES)}
+PipelineStage = peri_scribe.cli_options.PipelineStage
+PIPELINE_STAGES = peri_scribe.cli_options.PIPELINE_STAGES
+STAGE_NAMES = peri_scribe.cli_options.STAGE_NAMES
+STAGE_INDEX = peri_scribe.cli_options.STAGE_INDEX
 
 
 def run_pipeline_stage(
@@ -726,210 +581,11 @@ def run_pipeline_stage(
     return True
 
 
-def print_stages() -> None:
-    """Print the pipeline stages and their descriptions."""
-    width = max(len(stage.name) for stage in PIPELINE_STAGES)
-    for stage in PIPELINE_STAGES:
-        click.echo(f"{stage.name:<{width}}  {stage.description}")
+print_stages = peri_scribe.cli_options.print_stages
+selected_stage_range = peri_scribe.cli_options.selected_stage_range
 
 
-def selected_stage_range(
-    only_stage: str | None,
-    from_stage: str | None,
-    to_stage: str | None,
-) -> tuple[int, int]:
-    """Return the inclusive indexes of the pipeline stages to run.
-
-    Args:
-        only_stage: The single stage to run, or None to use ``from_stage``/``to_stage``.
-        from_stage: The first stage to run, or None for the first pipeline stage.
-        to_stage: The last stage to run, or None for the last pipeline stage.
-
-    Returns:
-        A ``(start, end)`` pair of inclusive indexes into ``PIPELINE_STAGES``.
-
-    Raises:
-        click.UsageError: When ``from_stage`` comes after ``to_stage``.
-    """
-    if only_stage is not None:
-        index = STAGE_INDEX[peri_scribe.pipeline_stages.Stage(only_stage)]
-        return index, index
-    start = (
-        STAGE_INDEX[peri_scribe.pipeline_stages.Stage(from_stage)]
-        if from_stage is not None
-        else 0
-    )
-    end = (
-        STAGE_INDEX[peri_scribe.pipeline_stages.Stage(to_stage)]
-        if to_stage is not None
-        else len(PIPELINE_STAGES) - 1
-    )
-    if start > end:
-        message = (
-            f"--from {from_stage or PIPELINE_STAGES[0].name} cannot follow "
-            f"--to {to_stage or PIPELINE_STAGES[-1].name}"
-        )
-        raise click.UsageError(message)
-    return start, end
-
-
-@click.command(
-    help=textwrap.dedent(
-        f"""\
-        Run the PeriScribe pipeline.
-
-        A full run goes through fetch, geography, score, kmz, and reports in that order.
-        Fetch collects every configured fire feed and checks the external sources:
-        buildings, evacuations, and Natural Earth places. It fetches the state boundary
-        GeoPackage only when the stored file is missing or unusable. New fire snapshots
-        or changed evacuations or place locations require the later stages to rebuild.
-        An unchanged fetch can finish without rebuilding when no other work is pending.
-
-        Incremental fetching uses the feeds' change information. Use
-        --full-fetch-interval to also catch source edits that this can miss. The first
-        invocation with the option fetches every fire feed in full, storing only new or
-        changed features. Later invocations do so when the requested interval has passed
-        since the last successful full fetch. Every scheduled full fetch requires a
-        complete derived rebuild, even if no features changed. Without this option,
-        every fire-feed fetch is incremental.
-
-        Use --only for one stage, --from and --to for a range, or --list-stages to see
-        the choices. --unconditional rebuilds the selected stages even without changed
-        inputs and bypasses prior geography when that stage is selected. Static feeds
-        such as buildings are still downloaded only when missing or unusable. An error
-        stops the pipeline; later runs resume unfinished builds.
-
-        --publish-threshold AREA TIME_DELTA lets runs collect small updates without
-        rebuilding outputs each time. It saves fire geometry and checks evacuations and
-        place locations before deciding whether to build. A mapped-area increase or
-        decrease of at least AREA since the last published mapping triggers a build.
-        Smaller unpublished changes wait until TIME_DELTA has passed since the last
-        completed local KMZ. For example, --publish-threshold "25 acre" 5m uses a change
-        of 25 acres or a five-minute interval. Evacuation or place-location changes,
-        scheduled full fetches, unfinished builds, and --unconditional bypass this wait.
-        {peri_scribe.cli_options.year_directory_default_help()}
-        """,
-    ),
-)
-@click.argument(
-    "year_directory",
-    callback=peri_scribe.cli_options.command_year_directory,
-    type=click.Path(path_type=pathlib.Path, exists=True, file_okay=False),
-    required=False,
-)
-@click.option(
-    "--publish-threshold",
-    type=(Area(), Duration()),
-    callback=publication_threshold,
-    metavar="AREA TIME_DELTA",
-    help=textwrap.dedent(
-        """\
-        Publish when any mapped area changes by at least AREA in either direction,
-        or unpublished data has waited until TIME_DELTA since the last KMZ.
-        Use positive values, for example '25 acre' 5m.
-        """,
-    ),
-)
-@click.option(
-    "--full-fetch-interval",
-    type=Duration(),
-    help=textwrap.dedent(
-        """\
-        Fetch every fire feed in full whenever the last successful full fetch is at
-        least this old; for example 12h or 1d.
-        """,
-    ),
-)
-@click.option(
-    "--unconditional",
-    is_flag=True,
-    help=textwrap.dedent(
-        """\
-        Rebuild selected stages without reusing prior geography, even when nothing
-        changed.
-        """,
-    ),
-)
-@click.option(
-    "--only",
-    "only_stage",
-    type=click.Choice(STAGE_NAMES, case_sensitive=False),
-    help="Run only the named pipeline stage.",
-)
-@click.option(
-    "--from",
-    "from_stage",
-    type=click.Choice(STAGE_NAMES, case_sensitive=False),
-    help="Start the pipeline at the named stage (default: fetch).",
-)
-@click.option(
-    "--to",
-    "to_stage",
-    type=click.Choice(STAGE_NAMES, case_sensitive=False),
-    help="Stop the pipeline after the named stage (default: reports).",
-)
-@click.option(
-    "--list-stages",
-    is_flag=True,
-    help="List the pipeline stages and their descriptions without running anything.",
-)
-@peri_scribe.logging.log_command
-def run(
-    year_directory: pathlib.Path,
-    *,
-    full_fetch_interval: datetime.timedelta | None = None,
-    publish_threshold: peri_scribe.publication.Threshold | None = None,
-    unconditional: bool = False,
-    only_stage: str | None = None,
-    from_stage: str | None = None,
-    to_stage: str | None = None,
-    list_stages: bool = False,
-) -> None:
-    """Run the selected pipeline stages.
-
-    Args:
-        year_directory: The resolved directory holding the pipeline data and logs.
-        full_fetch_interval: How often to fetch every fire feed in full, or None to
-            always fetch incrementally.
-        publish_threshold: Defer publication until the area or time requirement is met.
-        unconditional: Whether to run selected stages regardless of input changes and
-            bypass history reuse when geography is selected.
-        only_stage: A single stage to run, or None to use a stage range.
-        from_stage: The first stage in the range, or None to start at fetch.
-        to_stage: The last stage in the range, or None to finish at reports.
-        list_stages: Whether to print stage descriptions without running the pipeline.
-
-    Raises:
-        click.UsageError: When the stage selection is invalid.
-    """
-    if list_stages:
-        print_stages()
-        return
-    if only_stage is not None and (from_stage is not None or to_stage is not None):
-        message = "--only cannot be combined with --from or --to"
-        raise click.UsageError(message)
-    start, end = selected_stage_range(only_stage, from_stage, to_stage)
-    with peri_scribe.pipeline_state.run_lock(year_directory) as acquired:
-        if not acquired:
-            logger.info(
-                "Another run owns this year; skipping invocation",
-                year=str(year_directory),
-            )
-            return
-        logger.info(
-            "Planned phases",
-            branches=peri_scribe.sources.catalog.configured_phase_branches(),
-            gated=publish_threshold is not None,
-            stages=tuple(stage.name for stage in PIPELINE_STAGES[start : end + 1]),
-        )
-        run_selected_stages(
-            year_directory,
-            start,
-            end,
-            full_fetch_interval=full_fetch_interval,
-            unconditional=unconditional,
-            publish_threshold=publish_threshold,
-        )
+run = peri_scribe.supervision.run
 
 
 @peri_scribe.preparation.cached_year
@@ -941,7 +597,10 @@ def run_selected_stages(
     full_fetch_interval: datetime.timedelta | None,
     unconditional: bool,
     publish_threshold: peri_scribe.publication.Threshold | None = None,
-) -> None:
+    initialize: bool = True,
+    stop_after_geography: bool = False,
+    publication_inputs: peri_scribe.publication.Collection | None = None,
+) -> peri_scribe.supervision.SegmentResult:
     """Keep recovery state until the required outputs have successfully completed.
 
     Args:
@@ -953,19 +612,24 @@ def run_selected_stages(
         unconditional: Whether to force the selected stages to rebuild, in addition to
             any unconditional requirement already recorded in recovery state.
         publish_threshold: The optional mapped-area and elapsed-time gate.
+        initialize: Record selected work once at the beginning of the logical run.
+        stop_after_geography: Return a continuation after successful geography.
+        publication_inputs: Exact frozen inputs handed off by the geography process.
+
+    Returns:
+        Continuation state only after a completed segment or an unchanged fetch.
     """
     selected = tuple(
         stage.name
         for stage in PIPELINE_STAGES[start : end + 1]
         if stage.name != peri_scribe.pipeline_stages.Stage.FETCH
     )
-    if selected and (unconditional or start > 0):
+    if initialize and selected and (unconditional or start > 0):
         peri_scribe.pipeline_state.require_stages(
             year_directory,
             selected,
             unconditional=unconditional,
         )
-    publication_inputs = None
     for stage in PIPELINE_STAGES[start : end + 1]:
         pending = peri_scribe.pipeline_state.read_state(year_directory)
         should_continue = run_pipeline_stage(
@@ -998,6 +662,19 @@ def run_selected_stages(
         ):
             publication_inputs = peri_scribe.publication.collect(year_directory)
         peri_scribe.pipeline_state.complete_stage(year_directory, stage.name)
+        if (
+            stop_after_geography
+            and stage.name == peri_scribe.pipeline_stages.Stage.GEOGRAPHY
+        ):
+            return peri_scribe.supervision.SegmentResult(
+                next_stage=STAGE_INDEX[stage.name] + 1,
+                publication_inputs=(
+                    None
+                    if publication_inputs is None
+                    else publication_inputs.model_dump_json()
+                ),
+            )
+    return peri_scribe.supervision.SegmentResult()
 
 
 @click.command(

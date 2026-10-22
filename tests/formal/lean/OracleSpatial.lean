@@ -2,6 +2,7 @@ import PeriScribe.SpatialOverlap
 import PeriScribe.DifferentialRows
 import PeriScribe.GrowthMeasurement
 import PeriScribe.CoordinateQuantization
+import PeriScribe.PointWindow
 
 namespace PeriScribe.SpatialOracle
 
@@ -32,6 +33,11 @@ def box (value : String) : Except String SpatialOverlap.Box := do
 
 def shape (value : String) : Except String SpatialOverlap.Shape :=
   if value = "n" then pure [] else (value.splitOn ":").mapM box
+
+def point (value : String) : Except String PointWindow.Point := do
+  match value.splitOn "," with
+  | [longitude, latitude] => return ⟨← integer longitude, ← integer latitude⟩
+  | _ => throw "Expected two integer coordinates"
 
 def shapes (value : String) : Except String (List SpatialOverlap.Shape) :=
   if value = "empty" then pure [] else (value.splitOn ";").mapM shape
@@ -73,6 +79,12 @@ def geometry (tokens : List String) : Except String GrowthMeasurement.Geometry :
 
 def respond (words : List String) : Except String String := do
   match words with
+  | "point-window" :: envelope :: points =>
+    let bounds ← box envelope
+    let query := PointWindow.Box.mk bounds.left bounds.bottom bounds.right bounds.top
+    let selected := PointWindow.candidates (← points.mapM point) query
+    return String.intercalate " " (selected.flatMap fun point =>
+      [toString point.longitude, toString point.latitude])
   | ["overlap", queries, features] =>
     let queries := (← shapes queries).zipIdx.map fun (shape, index) =>
       SpatialOverlap.Query.mk index shape

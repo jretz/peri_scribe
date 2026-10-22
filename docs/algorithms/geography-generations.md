@@ -15,6 +15,9 @@ relationship while holding a lock that excludes writers.
 Inputs include ordered source snapshots, all raw observations/provenance, grouped fires,
 code and runtime dependencies, cleaning/classification settings and boundary data. Outputs
 are full perimeter/point/incident histories, differential histories, and signatures.
+The differential file declares only its growth perimeter layer. Point and incident
+histories are read from the full file; no duplicate point layer is required to
+authenticate the pair.
 Generation keys are opaque hashes; coordinates and measurement units remain the domain
 transformers' responsibility. Cooperating readers/writers use the year lock.
 

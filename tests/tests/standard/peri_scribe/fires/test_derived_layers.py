@@ -170,7 +170,10 @@ def test_read_derived_layers_avoids_eager_indexing_of_normalized_publication_lay
     )
     peri_scribe.fires.reuse.write_layers(
         differential,
-        [dataclasses.replace(cached_layers[0], name=name) for name in full_names[:2]],
+        [
+            dataclasses.replace(cached_layers[0], name=name)
+            for name in peri_scribe.fires.differential.DIFFERENTIAL_LAYER_NAMES
+        ],
         generation=peri_scribe.fires.differential.differential_generation(
             history,
             tmp_path,

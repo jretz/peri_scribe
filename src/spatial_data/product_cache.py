@@ -2,6 +2,8 @@
 
 [Product cache reasoning](../../docs/algorithms/product-caching.md)
 explains the contract and correctness argument.
+[Context retention](../../docs/algorithms/product-cache-retention.md) explains
+transactional retirement and physical compaction.
 """
 
 from __future__ import annotations
@@ -16,18 +18,22 @@ import sqlite3
 
 import structlog
 
+import spatial_data.payload_codec
+
 
 logger = structlog.get_logger()
+MINIMUM_COMPACTION_BYTES = 16 * 1024 * 1024
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Store:
-    """One transaction owns a bounded SQLite page cache for a publication."""
+    """One connection owns a publication and all contexts used by nested scopes."""
 
     path: pathlib.Path
     context: str
     connection: sqlite3.Connection
     unconditional: bool
+    retained_contexts: set[str] = dataclasses.field(default_factory=set)
 
 
 CURRENT: contextvars.ContextVar[Store | None] = contextvars.ContextVar(
@@ -65,8 +71,14 @@ def open_store(path: pathlib.Path) -> sqlite3.Connection:
             "CREATE TABLE IF NOT EXISTS products ("
             "context TEXT NOT NULL, namespace TEXT NOT NULL, key TEXT NOT NULL, "
             "checksum BLOB NOT NULL, value BLOB NOT NULL, "
+            "encoding INTEGER NOT NULL DEFAULT 0, "
             "PRIMARY KEY (context, namespace, key)) WITHOUT ROWID",
         )
+        columns = {row[1] for row in connection.execute("PRAGMA table_info(products)")}
+        if "encoding" not in columns:
+            connection.execute(
+                "ALTER TABLE products ADD COLUMN encoding INTEGER NOT NULL DEFAULT 0",
+            )
     except sqlite3.Error:
         connection.close()
         raise
@@ -98,6 +110,7 @@ def scope(
     resolved = path.resolve()
     existing = CURRENT.get()
     if existing is not None and existing.path == resolved:
+        existing.retained_contexts.add(context)
         token = CURRENT.set(
             dataclasses.replace(
                 existing,
@@ -108,7 +121,10 @@ def scope(
         try:
             yield
         finally:
+            disabled = CURRENT.get() is None
             CURRENT.reset(token)
+            if disabled:
+                CURRENT.set(None)
         return
     try:
         connection = open_store(resolved)
@@ -120,14 +136,14 @@ def scope(
         finally:
             CURRENT.reset(token)
         return
-    token = CURRENT.set(
-        Store(
-            path=resolved,
-            context=context,
-            connection=connection,
-            unconditional=unconditional,
-        ),
+    store = Store(
+        path=resolved,
+        context=context,
+        connection=connection,
+        unconditional=unconditional,
+        retained_contexts={context},
     )
+    token = CURRENT.set(store)
     try:
         yield
         try:
@@ -138,9 +154,91 @@ def scope(
                 path=str(resolved),
                 exc_info=True,
             )
+        else:
+            if CURRENT.get() is not None:
+                maintain_store(store)
     finally:
         CURRENT.reset(token)
         connection.close()
+
+
+def retire_contexts(
+    connection: sqlite3.Connection,
+    retained_contexts: collections.abc.Set[str],
+) -> bool:
+    """Delete obsolete contexts within a transaction owned by the caller.
+
+    Args:
+        connection: The cache connection after application products have committed.
+        retained_contexts: Every dependency context admitted by that owning scope.
+
+    Returns:
+        Whether obsolete contexts were present and their removal was requested.
+    """
+    obsolete = tuple(
+        (context,)
+        for (context,) in connection.execute("SELECT DISTINCT context FROM products")
+        if context not in retained_contexts
+    )
+    connection.executemany("DELETE FROM products WHERE context = ?", obsolete)
+    return bool(obsolete)
+
+
+def needs_compaction(connection: sqlite3.Connection, *, retired: bool) -> bool:
+    """Reclaim retired generations and retry substantial deferred compaction.
+
+    Args:
+        connection: A cache connection with no uncommitted transaction.
+        retired: Whether this maintenance pass removed obsolete contexts.
+
+    Returns:
+        Whether free pages justify rebuilding SQLite's physical page layout.
+    """
+    (free_pages,) = connection.execute("PRAGMA freelist_count").fetchone()
+    if not free_pages:
+        return False
+    if retired:
+        return True
+    (page_size,) = connection.execute("PRAGMA page_size").fetchone()
+    (pages,) = connection.execute("PRAGMA page_count").fetchone()
+    return (
+        free_pages * page_size >= MINIMUM_COMPACTION_BYTES and free_pages * 4 >= pages
+    )
+
+
+def maintain_store(store: Store) -> None:
+    """Retire unused contexts after successful publication without risking its products.
+
+    SQLite readers retain their committed snapshot. A busy reader, interrupted cleanup,
+    or storage failure can defer physical reclamation; none permits partial retirement
+    or changes a retained product's bytes. The products table has no implicit rowids.
+
+    Args:
+        store: The outer scope whose application transaction has already committed.
+    """
+    try:
+        with store.connection:
+            retired = retire_contexts(
+                store.connection,
+                store.retained_contexts | {store.context},
+            )
+    except sqlite3.Error:
+        logger.warning("Product context retirement deferred", exc_info=True)
+        return
+    try:
+        if needs_compaction(store.connection, retired=retired):
+            compact_store(store.connection)
+    except sqlite3.Error:
+        logger.warning("Product cache compaction deferred", exc_info=True)
+
+
+def compact_store(connection: sqlite3.Connection) -> None:
+    """Rebuild physical pages while SQLite preserves complete logical products.
+
+    Args:
+        connection: A committed connection to the WITHOUT ROWID product table.
+    """
+    connection.execute("VACUUM")
 
 
 def get(namespace: str, key: str) -> bytes | None:
@@ -158,7 +256,7 @@ def get(namespace: str, key: str) -> bytes | None:
         return None
     try:
         row = store.connection.execute(
-            "SELECT checksum, value FROM products "
+            "SELECT checksum, value, encoding FROM products "
             "WHERE context = ? AND namespace = ? AND key = ?",
             (store.context, namespace, key),
         ).fetchone()
@@ -168,10 +266,35 @@ def get(namespace: str, key: str) -> bytes | None:
         return None
     if row is None:
         return None
-    checksum, value = row
-    if not isinstance(value, bytes) or hashlib.sha256(value).digest() != checksum:
+    checksum, value, encoding = row
+    if not isinstance(value, bytes):
         return None
-    return value
+    try:
+        value = decoded_payload(value, encoding)
+    except ValueError:
+        return None
+    return value if hashlib.sha256(value).digest() == checksum else None
+
+
+def decoded_payload(value: bytes, encoding: int) -> bytes:
+    """Decode the explicit storage format independently of the logical checksum.
+
+    Args:
+        value: Stored payload bytes.
+        encoding: The row's format marker; raw bytes are zero, framed bytes are one.
+
+    Returns:
+        The exact logical payload awaiting checksum validation.
+
+    Raises:
+        ValueError: If the storage format is unsupported.
+    """
+    if encoding == 0:
+        return value
+    if encoding == 1:
+        return spatial_data.payload_codec.decode(value)
+    message = "Unsupported product storage encoding"
+    raise ValueError(message)
 
 
 def put(namespace: str, key: str, value: bytes) -> None:
@@ -186,13 +309,18 @@ def put(namespace: str, key: str, value: bytes) -> None:
     if store is None:
         return
     try:
+        encoded = spatial_data.payload_codec.encode(value)
+    except ValueError:
+        return
+    try:
         store.connection.execute(
-            "INSERT INTO products VALUES (?, ?, ?, ?, ?) "
+            "INSERT INTO products (context, namespace, key, checksum, value, encoding) "
+            "VALUES (?, ?, ?, ?, ?, 1) "
             "ON CONFLICT (context, namespace, key) DO UPDATE SET "
-            "checksum = excluded.checksum, value = excluded.value "
+            "checksum = excluded.checksum, value = excluded.value, encoding = 1 "
             "WHERE products.checksum IS NOT excluded.checksum "
-            "OR products.value IS NOT excluded.value",
-            (store.context, namespace, key, hashlib.sha256(value).digest(), value),
+            "OR products.value IS NOT excluded.value OR products.encoding != 1",
+            (store.context, namespace, key, hashlib.sha256(value).digest(), encoded),
         )
     except sqlite3.Error:
         logger.warning("Product cache write failed", exc_info=True)

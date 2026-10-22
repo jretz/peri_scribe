@@ -323,3 +323,35 @@ def test_history_digest_has_no_identity_authority_between_execution_scopes(
         pytest.raises(ValueError, match="Unsupported cache value"),
     ):
         peri_scribe.presentation.prepared_cache.history_digest(history)
+
+
+def test_history_payload_reuses_guarded_immutable_bytes() -> None:
+    history = peri_scribe.areas.PreparedHistory(
+        updates=(),
+        estimates=(),
+        latest_area=25.0 * units.acres,
+        historical_area=25.0 * units.acres,
+    )
+    payload = peri_scribe.presentation.prepared_cache.history_bytes(history)
+    with peri_scribe.execution.sharing():
+        peri_scribe.presentation.prepared_cache.remember_history(history, payload)
+        assert (
+            peri_scribe.presentation.prepared_cache.history_payload(history) is payload
+        )
+
+
+def test_history_payload_rebuilds_after_mutable_measurement_changes() -> None:
+    area = 25.0 * units.acres
+    history = peri_scribe.areas.PreparedHistory(
+        updates=(),
+        estimates=(),
+        latest_area=area,
+        historical_area=area,
+    )
+    payload = peri_scribe.presentation.prepared_cache.history_bytes(history)
+    with peri_scribe.execution.sharing():
+        peri_scribe.presentation.prepared_cache.remember_history(history, payload)
+        area.ito("meter ** 2")
+        current = peri_scribe.presentation.prepared_cache.history_payload(history)
+        assert current != payload
+        assert current == peri_scribe.presentation.prepared_cache.history_bytes(history)

@@ -198,11 +198,16 @@ def connection_state(connection: sqlite3.Connection) -> tuple[int, frozenset[int
         Manifest generation and all retained symbolic payload identities.
     """
     document = connection.execute(
-        "SELECT value FROM products WHERE context = ? AND namespace = ? AND key = ?",
+        "SELECT value, encoding FROM products "
+        "WHERE context = ? AND namespace = ? AND key = ?",
         ("policy", MANIFEST_NAMESPACE, "current"),
     ).fetchone()
     assert document is not None
-    generation = int(spatial_data.row_index.read_manifest(document[0]).checksum)
+    generation = int(
+        spatial_data.row_index.read_manifest(
+            spatial_data.product_cache.decoded_payload(*document),
+        ).checksum,
+    )
     retained = {
         key
         for (key,) in connection.execute(

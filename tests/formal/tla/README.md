@@ -32,8 +32,22 @@ The following inventories describe specific parts of the system:
   allocation, acknowledgement, and stable recomputation from saved checkpoints.
 - [Persistent product caches](cache.md): cache transparency, authenticated selections,
   interrupted transactions, and generation replacement.
+- [General diagnostic log segments](../log_segments.md): complete tail sealing,
+  ordered components, authenticated compression and interruption recovery.
+- [Prepared-product context retention](product-retention.md): atomic obsolete-context
+  retirement, reader snapshots and content-preserving compaction.
+- [Parsed-cache compaction](cache_compaction.md): rowid-preserving staging, validation,
+  closed SQLite connections and complete atomic replacement under writer ownership.
 - [Ingestion and worker protocols](ingestion.md): feed-cache replay, static download
   completion, cancellation, and resource ownership.
+- [Ordered completion workers](ordered-workers.md): count- and weight-limited admission,
+  completion-driven refill, input-order results and errors, cancellation, and joining.
+- [Bounded source reads](bounded-source-read.md): pinned catalog ownership, verified
+  detailed work, final source validation, and worker settlement before reader release.
+- [Supervised stage processes](stage-processes.md): inherited writer leases, exact
+  continuation inputs, pending-stage prefixes and joined child cancellation.
+- [Document-local boundary spill](boundary-spill.md): complete fresh-entry admission,
+  encoded-byte and entry limits, corrupt-read misses, and scope-owned temporary files.
 - [Browser and monitor protocols](../observers.md): conditional refresh, file following,
   context recovery, coverage compaction, and cached status projection.
 - [Composed pipeline invocations](composition.md): selected ranges, forced work, policy

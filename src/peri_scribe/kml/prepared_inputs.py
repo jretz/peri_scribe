@@ -262,7 +262,9 @@ def write_histories(key: str, histories: Histories) -> None:
                 (
                     identity,
                     compression.zstd.compress(
-                        peri_scribe.presentation.prepared_cache.history_bytes(history),
+                        peri_scribe.presentation.prepared_cache.history_payload(
+                            history,
+                        ),
                         level=2,
                     ),
                 )

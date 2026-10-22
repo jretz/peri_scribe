@@ -49,38 +49,18 @@ def read_snapshot_contents(
     Returns:
         The snapshot's fire rows and complex memberships.
 
-    Raises:
-        ValueError: If a row refers to an absent dictionary encoding.
     """
-    # write_snapshot inserts each tuple in order, so rowid retains source ordering.
     rows = conn.execute(
-        "SELECT rows.*, geometry_payloads.value AS geometry_wkb, "
-        "attribute_payloads.value AS attributes_json FROM rows "
-        "LEFT JOIN geometry_payloads ON geometry_payloads.id = rows.geometry_id "
-        "LEFT JOIN attribute_payloads ON attribute_payloads.id = rows.attributes_id "
-        "WHERE serial = ? ORDER BY rows.rowid",
+        "SELECT * FROM rows WHERE serial = ? ORDER BY rowid",
         (serial,),
     ).fetchall()
-    if any(
-        row["attributes_json"] is None
-        or (row["geometry_id"] is not None and row["geometry_wkb"] is None)
-        for row in rows
-    ):
-        message = "Parsed rows reference missing dictionary payloads"
-        raise ValueError(message)
     memberships = conn.execute(
         "SELECT fire_identifier, complex_identifier, complex_name, observation_time "
         "FROM memberships WHERE serial = ? ORDER BY rowid",
         (serial,),
     ).fetchall()
     return peri_scribe.geo.package.GeopackageContents(
-        rows=tuple(
-            peri_scribe.geo.package.FireRowRecord.from_row(
-                row,
-                geometry_pool=geometry_pool,
-            )
-            for row in rows
-        ),
+        rows=decode_rows(conn, rows, geometry_pool),
         memberships=tuple(
             peri_scribe.models.ComplexMembership(
                 fire_identifier=row["fire_identifier"],
@@ -246,6 +226,42 @@ def read_geopackage_cached(
     return read_cached_snapshot(db_path, serial, path, geometry_pool=geometry_pool)
 
 
+def decode_rows(
+    conn: sqlite3.Connection,
+    metadata: collections.abc.Sequence[sqlite3.Row],
+    geometry_pool: spatial_data.geometry_pool.GeometryPool,
+) -> tuple[peri_scribe.geo.package.FireRowRecord, ...]:
+    """Share exact payload decoding across complete and single-snapshot readers.
+
+    Args:
+        conn: The pinned transaction authenticating every metadata row.
+        metadata: Ordered source occurrences with normalized payload references.
+        geometry_pool: The source read's shared immutable geometries.
+
+    Returns:
+        Complete authenticated records in their original occurrence order.
+    """
+    payloads = peri_scribe.geo.dictionaries.decoded_payloads(
+        conn,
+        metadata,
+        geometry_pool,
+    )
+    return tuple(
+        peri_scribe.geo.package.FireRowRecord.from_cached_row(
+            row,
+            None
+            if row["geometry_id"] is None
+            else payloads.geometries[row["geometry_id"]],
+            payloads.attributes[row["attributes_id"]],
+            None
+            if row["geometry_id"] is None
+            else payloads.geometry_fingerprints[row["geometry_id"]],
+            payloads.attribute_fingerprints[row["attributes_id"]],
+        )
+        for row in metadata
+    )
+
+
 def fetch_snapshot_batch(
     conn: sqlite3.Connection,
     requests: collections.abc.Mapping[pathlib.Path, tuple[int, str]],
@@ -277,28 +293,15 @@ def fetch_snapshot_batch(
             for row in conn.execute("SELECT * FROM rows ORDER BY rowid")
             if row["serial"] in serials
         ]
-        payloads = peri_scribe.geo.dictionaries.decoded_payloads(
-            conn,
-            metadata,
-            geometry_pool,
-        )
         rows: dict[int, list[peri_scribe.geo.package.FireRowRecord]] = (
             collections.defaultdict(list)
         )
-        for row in metadata:
-            geometry_id = row["geometry_id"]
-            attributes_id = row["attributes_id"]
-            rows[row["serial"]].append(
-                peri_scribe.geo.package.FireRowRecord.from_cached_row(
-                    row,
-                    None if geometry_id is None else payloads.geometries[geometry_id],
-                    payloads.attributes[attributes_id],
-                    None
-                    if geometry_id is None
-                    else payloads.geometry_fingerprints[geometry_id],
-                    payloads.attribute_fingerprints[attributes_id],
-                ),
-            )
+        for metadata_row, decoded_row in zip(
+            metadata,
+            decode_rows(conn, metadata, geometry_pool),
+            strict=True,
+        ):
+            rows[metadata_row["serial"]].append(decoded_row)
         memberships: dict[int, list[peri_scribe.models.ComplexMembership]] = (
             collections.defaultdict(list)
         )

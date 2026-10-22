@@ -133,6 +133,11 @@ def log_paths(
         for path in directory.glob("????-??.jsonl.zst")
     }
     paths.update({path.name: path for path in directory.glob("????-??.jsonl")})
+    for component in directory.glob("????-??.*.jsonl*"):
+        name = component.name.removesuffix(".rotation.json").removesuffix(".zst")
+        if peri_scribe.logging.SEGMENT_PATTERN.fullmatch(name):
+            monthly_name = name[:7] + ".jsonl"
+            paths.setdefault(monthly_name, directory / monthly_name)
     first_month = since.astimezone().strftime("%Y-%m") if since else ""
     return tuple(paths[name] for name in sorted(paths) if name >= first_month)
 
@@ -181,6 +186,17 @@ def log_components(path: pathlib.Path) -> tuple[pathlib.Path, ...]:
         raise OSError(str(error)) from error
     candidates = (archive,) if committed else (archive, plain)
     retained = tuple(candidate for candidate in candidates if candidate.exists())
+    if re.fullmatch(r"[0-9]{4}-(0[1-9]|1[0-2])\.jsonl", plain.name):
+        segments = tuple(
+            component
+            for segment in peri_scribe.logging.segment_paths(plain)
+            for component in log_components(segment)
+        )
+        retained = (
+            *(candidate for candidate in retained if candidate == archive),
+            *segments,
+            *(candidate for candidate in retained if candidate == plain),
+        )
     if not retained:
         raise FileNotFoundError(path)
     return retained

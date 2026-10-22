@@ -175,13 +175,17 @@ class Follower:
         current: set[tuple[int, int]] = set()
         errors: list[str] = []
         records: list[dict[str, object]] = []
+        archives: list[pathlib.Path] = []
         caught_up = True
-        for path in sorted(self.directory.glob("????-??.jsonl")):
+        for monthly in peri_scribe.log_reading.log_paths(self.directory):
             try:
-                if path in peri_scribe.log_reading.log_components(path):
-                    current.add(self.discover(path, since))
+                for path in peri_scribe.log_reading.log_components(monthly):
+                    if path.suffix != ".zst":
+                        current.add(self.discover(path, since))
+                    else:
+                        archives.append(path)
             except OSError as error:
-                errors.append(f"{path.name}: {error}")
+                errors.append(f"{monthly.name}: {error}")
         for identity, cursor in tuple(self.cursors.items()):
             try:
                 updated, entries = read_cursor(cursor, since=since)
@@ -194,6 +198,8 @@ class Follower:
                 records.extend(entries)
                 caught_up = caught_up and exhausted
                 self.cursors[identity] = updated
+                if not exhausted:
+                    break
                 if identity not in current and exhausted:
                     cursor.stream.close()
                     del self.cursors[identity]
@@ -201,9 +207,7 @@ class Follower:
         return Batch(
             records=tuple(records),
             errors=tuple(errors),
-            archives=tuple(
-                sorted(self.directory.glob("????-??.jsonl.zst"), reverse=True),
-            ),
+            archives=tuple(reversed(archives)),
             caught_up=caught_up,
         )
 

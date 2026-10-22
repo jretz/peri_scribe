@@ -40,6 +40,8 @@ from measurement_units import units
 
 
 logger = structlog.get_logger()
+MAXIMUM_LOG_SEGMENT_BYTES = 16 * 1024 * 1024
+SEGMENT_PATTERN = re.compile(r"[0-9]{4}-(0[1-9]|1[0-2])\.[0-9]{12,}\.jsonl")
 PHASE_PATH: contextvars.ContextVar[tuple[str, ...]] = contextvars.ContextVar(
     "phase_path",
     default=(),
@@ -239,11 +241,12 @@ def recover_rotation(path: pathlib.Path) -> bool:
     return True
 
 
-def compress_log(path: pathlib.Path) -> None:
+def compress_log(path: pathlib.Path, *, level: int = 19) -> None:
     """Publish a complete archive before removing its original log.
 
     Args:
         path: The closed monthly log, protected by the log directory's writer lock.
+        level: Zstandard effort for this closed component.
     """
     if recover_rotation(path):
         return
@@ -262,7 +265,7 @@ def compress_log(path: pathlib.Path) -> None:
                 }
         with (
             path.open("rb") as source,
-            compression.zstd.open(temporary, "ab", level=19) as destination,
+            compression.zstd.open(temporary, "ab", level=level) as destination,
         ):
             if archived_batches:
                 for line in source:
@@ -282,6 +285,55 @@ def compress_log(path: pathlib.Path) -> None:
         temporary.replace(archive)
     path.unlink()
     rotation_receipt_path(path).unlink()
+
+
+def segment_paths(path: pathlib.Path) -> tuple[pathlib.Path, ...]:
+    """Discover numbered components without treating an archive as another segment.
+
+    Args:
+        path: The active plain monthly general log.
+
+    Returns:
+        Plain segment names in original publication order, including archived sources.
+    """
+    names = {
+        candidate.name.removesuffix(".rotation.json").removesuffix(".zst")
+        for candidate in path.parent.glob(path.stem + ".*.jsonl*")
+    }
+    return tuple(
+        sorted(
+            (path.with_name(name) for name in names if SEGMENT_PATTERN.fullmatch(name)),
+            key=lambda component: int(component.stem.rsplit(".", 1)[1]),
+        ),
+    )
+
+
+def seal_log(path: pathlib.Path, *, force: bool = False) -> None:
+    """Move a complete active tail into an immutable independently compressed segment.
+
+    Atomic rename publishes all source bytes before compression. Readers can therefore
+    use a plain segment after interruption, and the existing rotation receipt protects
+    its later archive publication and source retirement.
+
+    Args:
+        path: The active general log protected by its directory's writer lock.
+        force: Seal a closed month's remaining tail even below the size threshold.
+    """
+    if not path.exists() or (
+        not force and path.stat().st_size < MAXIMUM_LOG_SEGMENT_BYTES
+    ):
+        return
+    with path.open("rb") as stream:
+        if stream.seek(0, os.SEEK_END) == 0:
+            return
+        stream.seek(-1, os.SEEK_END)
+        if stream.read(1) != b"\n":
+            return
+    previous = segment_paths(path)
+    number = int(previous[-1].stem.rsplit(".", 1)[1]) + 1 if previous else 1
+    destination = path.with_name(f"{path.stem}.{number:012d}.jsonl")
+    path.replace(destination)
+    compress_log(destination, level=3)
 
 
 def rotation_paths(
@@ -304,12 +356,19 @@ def rotation_paths(
         path.with_name(path.name.removesuffix(".rotation.json"))
         for path in directory.glob("*.jsonl.rotation.json")
         if re.fullmatch(pattern, path.name.removesuffix(".rotation.json"))
+        or (
+            not suffix
+            and SEGMENT_PATTERN.fullmatch(path.name.removesuffix(".rotation.json"))
+        )
     }
     eligible = {
         path
         for path in directory.glob("*.jsonl")
-        if re.fullmatch(pattern, path.name)
-        and path.name[:7] < compression_month(timestamp)
+        if (
+            re.fullmatch(pattern, path.name)
+            and path.name[:7] < compression_month(timestamp)
+        )
+        or (not suffix and SEGMENT_PATTERN.fullmatch(path.name))
     }
     return tuple(sorted(pending | eligible))
 
@@ -348,6 +407,22 @@ def contains_batch(path: pathlib.Path, batch_id: str) -> bool:
 
     Returns:
         Whether either retained representation contains the batch.
+    """
+    for component in (path, *segment_paths(path)):
+        if contains_component_batch(component, batch_id):
+            return True
+    return False
+
+
+def contains_component_batch(path: pathlib.Path, batch_id: str) -> bool:
+    """Search a plain/archive pair for a journal's explicit identity.
+
+    Args:
+        path: A logical component protected by its directory's writer lock.
+        batch_id: The journal's stable identifier.
+
+    Returns:
+        Whether either retained physical representation contains the batch.
     """
     for candidate in (path, path.with_suffix(".jsonl.zst")):
         opener = compression.zstd.open if candidate.suffix == ".zst" else open
@@ -404,8 +479,15 @@ def append_monthly_records(
         timestamp = timestamp or now
         filename = timestamp.strftime("%Y-%m") + suffix + ".jsonl"
         for path in rotation_paths(directory, suffix, now):
-            compress_log(path)
+            if SEGMENT_PATTERN.fullmatch(path.name):
+                compress_log(path, level=3)
+            elif not suffix and segment_paths(path):
+                seal_log(path, force=True)
+            else:
+                compress_log(path)
         path = directory / filename
+        if not suffix:
+            seal_log(path)
         if batch_id is not None and contains_batch(path, batch_id):
             return
         entries = tuple(

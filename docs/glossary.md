@@ -89,9 +89,13 @@ precedence and handling of ambiguous or cyclic relationships.
   footprint using projected area weighting, subtracting holes and combining polygon
   parts. Nationwide building locations are stored in `sources/buildings.sqlite` as
   compact, quantized point tiles for spatial counting.
+- **Adaptive point index** — An in-memory longitude ordering used when many spatial
+  queries share one building tile. Inclusive coordinate windows reduce candidates before
+  the unchanged strict geometry test; duplicate points still count separately.
 
 See [configured feeds](../src/peri_scribe/sources/feeds.py),
-[source comparison](../src/peri_scribe/sources/digests.py), and
+[source comparison](../src/peri_scribe/sources/digests.py),
+[adaptive point queries](algorithms/adaptive-point-queries.md), and
 [data handling](architecture.md#data-handling).
 
 ## Geography and histories
@@ -104,15 +108,15 @@ See [configured feeds](../src/peri_scribe/sources/feeds.py),
   containment, retained independently of perimeter changes. Its rows have null geometry
   and preserve the evidence supporting each measurement.
 - **Full geography history** — The cleaned `perimeter_history`, `point_history`, and
-  `incident_history` layers in `derived/history_of_full_geography.gpkg`. Full perimeters
-  describe each retained footprint before conversion into growth rings.
+  `incident_history` layers in `derived/history_of_full_geography.gpkg`. Full
+  perimeters describe each retained footprint before conversion into growth rings.
 - **Reconciliation** — Resolving overlapping or competing observations into a consistent
   derived history, including superseded or implausible perimeter updates. Original
   snapshots remain available as evidence.
 - **Differential geography history** — The history in
   `derived/history_of_differential_geography.gpkg` whose perimeter layer represents
   growth steps. Later reductions correct earlier footprints before added areas are
-  derived; its point layer is copied from the full history.
+  derived. Point and incident evidence stays in the authenticated full history.
 - **Growth ring / progression ring** — The geometry added at one step of the corrected
   perimeter history, with its observation time. Progression maps color these rings to
   show the sequence of mapped growth. A ring need not be circular or contiguous.
@@ -130,7 +134,8 @@ See [configured feeds](../src/peri_scribe/sources/feeds.py),
 - **Geodesic measurement** — Area or length measured on the Earth's reference ellipsoid.
   The shared measurement functions use WGS 84 and return quantities with explicit units.
 - **GeoPackage (GPKG)** — A SQLite-based geospatial file with named layers, spatial
-  metadata, and attributes. PeriScribe uses it for fire snapshots and derived histories.
+  metadata, and attributes. PeriScribe uses it for source snapshots, reference geography,
+  and derived history layers.
 
 See [differential history](../src/peri_scribe/fires/differential.py),
 [progression measurements](../src/peri_scribe/perimeters/progression.py), and
@@ -184,11 +189,26 @@ See [area selection](architecture.md#incident-evidence-and-area-selection),
   logs, and run state. Pipeline commands default to `data/<current year>`.
 - **Pipeline stage** — A selectable step in `run`: `fetch`, `geography`, `score`, `kmz`,
   or `reports`. Stage selection can run a single stage or an ordered range.
+- **Supervised stage boundary** — A run spanning geography and later stages uses two
+  sequential child processes. The geography process exits before scoring begins, releasing
+  its native allocations while the parent and active child retain the same writer lease.
+  Runs wholly on one side of the boundary execute in the command process.
+- **Writer lease** — Ownership of the year lock held through an open file description.
+  Parent and child descriptors refer to the same lease; it ends when the last holder
+  closes its descriptor, including during cancellation or parent interruption.
 - **Derived data** — Recomputable results built from source observations, including
   cleaned histories, stored geometry measurements, and scores under `derived/`.
 - **Source generation** — A fingerprint of the ordered snapshot paths and contents,
   together with derivation dependencies. A validated unchanged generation can reuse the
   source index and geography without parsing the source snapshots again.
+- **Source catalog** — An authenticated, ordered inventory of source metadata and
+  payload references held under pinned cache read transactions. Geography loads complete
+  geometry and attributes for each grouping block or fire as needed, then checks the
+  source inventory again before releasing completed results.
+- **Bounded source work** — Admission of detailed per-fire work under limits on pending
+  task count and declared input bytes. Completed tasks release admission capacity while
+  results and errors remain in input order. The limits exclude completed output rows,
+  global metadata, and native geometry allocations, so they do not bound total memory.
 - **Derivation key** — A per-fire fingerprint covering ordered observations, geometry,
   attributes, provenance, identity, complex membership, and derivation dependencies.
   It determines whether that fire's complete histories can be reused.
@@ -205,6 +225,27 @@ See [area selection](architecture.md#incident-evidence-and-area-selection),
   such as classifications, measurements, building counts, and rendered fragments.
   Deleting this disposable cache makes later runs recompute the products. Authoritative
   source and history files remain separate.
+- **Canonical prepared payload** — The exact typed binary representation of prepared
+  facts, preserving scalar types, units, bits, and ordering. A retained payload can serve
+  another consumer after identity and mutation guards confirm that its inputs still
+  match; public mutable inputs remain checked.
+- **Compressed cache payload** — A versioned frame that restores exact logical bytes
+  from independent Zstandard blocks or raw blocks. Parsed source caches can also use
+  reversible geometry prediction and immutable attribute dictionaries. These storage
+  changes leave authoritative source files unchanged.
+- **Boundary spill** — A private temporary stream that lets one KMZ document reuse
+  freshly prepared polygon boundary text after it leaves the memory cache. Its compressed
+  bytes and indexed entries have separate limits, and the stream closes when the
+  document succeeds or fails. Missing or corrupt fragments are rendered again.
+- **Product context retention** — Retiring prepared-product contexts unused by a
+  successfully completed publication scope, while retaining its current and nested
+  contexts. Compaction reclaims freed pages without changing retained products.
+- **Parsed-cache compaction** — Rebuilding a disposable source-record cache with the
+  same ordered rows, memberships, dictionary values and receipts. Original source
+  snapshots remain authoritative and unchanged.
+- **Diagnostic log segment** — A numbered sealed part of a general monthly log,
+  compressed independently while a small plain tail accepts new records. Readers retain
+  occurrence order across legacy archives, segments and that tail.
 - **Unconditional rebuild** — A run with `--unconditional` that executes the selected
   stages regardless of input changes. When geography is selected, it bypasses prior
   history reuse. Stage selection and static-source download policies still apply.
@@ -227,6 +268,9 @@ See [area selection](architecture.md#incident-evidence-and-area-selection),
   tail, preserving all occurrences while sharing the writer's lock.
 
 See [pipeline usage](../README.md#how-it-works),
+[bounded source work](algorithms/bounded-source-work.md),
+[supervised processes](algorithms/stage-processes.md),
+[prepared representations](algorithms/prepared-product-representations.md),
 [log rotation](../src/peri_scribe/logging.py),
 [publication reuse](architecture.md#publication-reuse-and-performance), and
 [recovery and scheduling](architecture.md#recovery-and-scheduling).

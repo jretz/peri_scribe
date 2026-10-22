@@ -112,7 +112,10 @@ def test_prune_removes_only_unretained_keys_in_current_namespace_and_context(
     path = tmp_path / "products.sqlite"
     with spatial_data.product_cache.scope(path, "other policy"):
         spatial_data.product_cache.put("history", "obsolete", b"other context")
-    with spatial_data.product_cache.scope(path, "policy"):
+    with (
+        spatial_data.product_cache.scope(path, "other policy"),
+        spatial_data.product_cache.scope(path, "policy"),
+    ):
         spatial_data.product_cache.put("history", "keep", b"retained")
         spatial_data.product_cache.put("history", "obsolete", b"superseded")
         spatial_data.product_cache.put("chart", "obsolete", b"other namespace")

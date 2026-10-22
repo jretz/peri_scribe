@@ -15,12 +15,14 @@ skipping a scalar comparison under a sound identity hint preserves exact tree eq
 and encoding equality. Branches still compare their children recursively, including
 when a container is shared. The executable `oracleCodec` uses these exact
 encoding and decoding definitions. The oracle's token transport is not the production
-JSON format; the bridge lowers both declared and actual JSON trees into this grammar.
+binary format. An independent
+binary parser lowers real framed bytes and independently declared typed fixtures into
+this grammar.
 
 ## Implementation connection
 
 `helpers/cache_codec.py` specifies 50 scalar fixtures independently of
-`spatial_data.cache_values.encode`. These include all three missing sentinels, booleans,
+`spatial_data.cache_values.dumps`. These include all three missing sentinels, booleans,
 arbitrary-size integers, signed zero, neighboring floating-point bit patterns, infinities,
 distinct NaN payloads, text, bytes, enum identity, original measurement units, datetime
 offset/fold, pandas timestamp resolution, nanosecond durations, NumPy type/bytes, and
@@ -31,7 +33,9 @@ The bridge compares each real stored payload and its decoded/re-encoded result w
 declared tree through Lean, also checking the restored Python type. It checks all 15,753
 pairs against the proved equality relation, including pairs intentionally equal under
 frozen-set permutation. A further 356 malformed prefix cases exercise incomplete roots
-and appended values. Ten actual decoder fixtures reject noncanonical duplicate mapping
+and appended values; each fixture also checks real binary truncation, an empty root,
+and appended bytes against the application decoder. Ten actual decoder fixtures reject
+noncanonical duplicate mapping
 keys/set elements, invalid scalar shapes, unsafe NumPy storage, and unapproved enums.
 Those last decoder rejections are finite implementation checks, not a proof of Python's
 complete input-validation grammar.
@@ -50,8 +54,10 @@ not prove Python's implementation of type identity or custom subclass dispatch.
 ## Boundaries
 
 The mathematical result concerns tagged tree structure and exact scalar payloads. The
-Python bridge uses UTF-8 bytes and preserves every JSON field; the theorem does not
-prove Python's JSON parser, Unicode encoding, NumPy, pandas, Pint, or GEOS. Geometry is
+Python bridge interprets one-byte tags and four-byte big-endian payload lengths,
+retaining every typed child and exact scalar byte. An independent fixture encoder
+checks complete expected wire bytes before oracle comparisons. The theorem does not
+prove Python framing, Unicode encoding, NumPy, pandas, Pint, or GEOS. Geometry is
 represented by WKB, rather than geometric equivalence. Datetime semantics retain the
 serialized instant/offset/fold, not a named timezone's future transition rules.
 Supported enums require the caller's explicit allowlist. Frozen sets are compared by
@@ -64,3 +70,8 @@ The source owners are `src/spatial_data/cache_values.py` and
 and `conformance/test_json_evidence.py`. Changing tags, supported types, canonical ordering,
 or retained fields requires updating the declared representation fixtures and the
 appropriate proof boundary together.
+
+The internal binary format and guarded immutable payload handoff are described in
+[prepared product representations](../../../docs/algorithms/prepared-product-representations.md).
+The representation change preserves the existing proved typed-tree contract; no new
+state transition is introduced by writing its scalar payloads directly.

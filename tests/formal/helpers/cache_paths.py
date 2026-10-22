@@ -11,6 +11,7 @@ import sqlite3
 
 import pytest
 
+import peri_scribe.geo.payload_storage
 import tests.formal.helpers.paths
 import tests.formal.helpers.tlc
 import tests.helpers.factories.peri_scribe.geo.database
@@ -82,7 +83,10 @@ def table_statement(table: str, present: set[str]) -> str:
             "SELECT rows.serial, rows.object_id, rows.source_name, rows.name, "
             "rows.status, rows.identifiers, rows.names, geometry_payloads.value, "
             "rows.observed_at, rows.mission, rows.point_of_origin_state, "
-            "rows.point_of_origin_fips, attribute_payloads.value FROM rows "
+            "rows.point_of_origin_fips, attribute_payloads.value, "
+            "geometry_payloads.encoding, geometry_payloads.original_size, "
+            "attribute_payloads.encoding, attribute_payloads.original_size, "
+            "attribute_payloads.dictionary_id FROM rows "
             "LEFT JOIN geometry_payloads ON geometry_payloads.id = rows.geometry_id "
             "LEFT JOIN attribute_payloads "
             "ON attribute_payloads.id = rows.attributes_id "
@@ -92,6 +96,46 @@ def table_statement(table: str, present: set[str]) -> str:
         "SELECT serial, object_id, source_name, name, status, identifiers, names, "
         "NULL, observed_at, mission, point_of_origin_state, point_of_origin_fips, "
         "NULL FROM rows ORDER BY serial, object_id"
+    )
+
+
+def logical_rows(reader: sqlite3.Connection, table: str, present: set[str]) -> Rows:
+    """Decode committed storage without hiding missing rows or interrupted schemas.
+
+    Args:
+        reader: Independent connection observing the writer's durable state.
+        table: The logical table whose contents the model identifies.
+        present: Physical tables visible at this completed statement boundary.
+
+    Returns:
+        Exact row values, including original WKB bytes and attribute text.
+    """
+    records = reader.execute(table_statement(table, present)).fetchall()
+    if table != "rows" or not {"geometry_payloads", "attribute_payloads"} <= present:
+        return tuple(records)
+    dictionaries = (
+        peri_scribe.geo.payload_storage.dictionaries(reader)
+        if "codec_dictionaries" in present
+        else {}
+    )
+    return tuple(
+        (
+            *row[:7],
+            None
+            if row[7] is None
+            else peri_scribe.geo.payload_storage.decode(row[7], row[13], row[14]),
+            *row[8:12],
+            None
+            if row[12] is None
+            else peri_scribe.geo.payload_storage.decode(
+                row[12],
+                row[15],
+                row[16],
+                dictionary=dictionaries.get(row[17]),
+                text=True,
+            ),
+        )
+        for row in records
     )
 
 
@@ -116,11 +160,7 @@ def observe(path: pathlib.Path) -> Projection:
         return tuple(
             (
                 table,
-                tuple(
-                    reader.execute(
-                        table_statement(table, present),
-                    ).fetchall(),
-                ),
+                logical_rows(reader, table, present),
             )
             for table in TABLES
             if table in present
@@ -242,6 +282,8 @@ class Observer:
             self.pending_commit = statement.lstrip().startswith("COMMIT")
         except AssertionError as error:
             self.failure = error
+        except (ValueError, sqlite3.Error) as error:
+            self.failure = AssertionError("Invalid committed cache projection", error)
 
     def finish(self, *, aborted: bool = False) -> None:
         """Check the final operation after callbacks can no longer expose its result.

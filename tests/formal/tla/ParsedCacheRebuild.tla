@@ -15,7 +15,7 @@ Init ==
     /\ answer = Read(tables, receipt, rows, memberships)
 
 Reset ==
-    /\ phase < 15 /\ phase' = phase + 1
+    /\ phase < 17 /\ phase' = phase + 1
     /\ tables' = CASE phase = 0 -> tables \ {"rows"}
                     [] phase = 1 -> tables \ {"memberships"}
                     [] phase = 2 -> tables \ {"snapshots"}
@@ -29,16 +29,16 @@ Reset ==
     /\ answer' = Read(tables', receipt', rows', memberships')
     /\ UNCHANGED <<source, restarted>>
 CrashAndRestart ==
-    /\ phase \in 0..15 /\ ~restarted
+    /\ phase \in 0..17 /\ ~restarted
     /\ phase' = 0 /\ restarted' = TRUE
     /\ UNCHANGED <<source, tables, receipt, rows, memberships, answer>>
 Synchronize ==
-    /\ phase = 15 /\ phase' = 16
+    /\ phase = 17 /\ phase' = 18
     /\ receipt' = source /\ rows' = source /\ memberships' = source
     /\ answer' = <<source, source>>
     /\ UNCHANGED <<source, tables, restarted>>
 Next == Reset \/ CrashAndRestart \/ Synchronize
 Spec == Init /\ [][Next]_variables
 NoPartialRebuildRead == answer # <<>> => answer = <<source, source>>
-SuccessfulRebuildMatchesSource == phase = 16 => answer = <<source, source>>
+SuccessfulRebuildMatchesSource == phase = 18 => answer = <<source, source>>
 =============================================================================

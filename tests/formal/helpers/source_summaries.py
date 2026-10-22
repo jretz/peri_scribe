@@ -80,34 +80,37 @@ def replay(state: dict[str, str], directory: pathlib.Path) -> None:
     assert len(modes) == PATH_COUNT
     paths: list[pathlib.Path] = []
     cache = directory / "products.sqlite"
-    for serial, (revision, mode) in enumerate(zip(previous, modes, strict=True), 1):
-        path = tests.helpers.factories.peri_scribe.geo.source_summaries.snapshot(
-            source_root,
-            serial,
-            revision,
-        )
-        paths.append(path)
-        if mode == "absent":
-            continue
-        with spatial_data.product_cache.scope(
-            cache,
-            "old" if mode == "old-context" else "current",
-        ):
-            peri_scribe.geo.source_summaries.seed_summaries(
+    # The model starts with a mixed-context inventory. One owner admits every seeded
+    # context so maintenance preserves that complete checked input before selection.
+    with spatial_data.product_cache.scope(cache, "current"):
+        for serial, (revision, mode) in enumerate(zip(previous, modes, strict=True), 1):
+            path = tests.helpers.factories.peri_scribe.geo.source_summaries.snapshot(
                 source_root,
-                {path: source_contents(path)},
-                {path: peri_scribe.geo.database.snapshot_checksum(path)},
+                serial,
+                revision,
             )
-            if mode == "damaged":
-                spatial_data.product_cache.put(
-                    peri_scribe.geo.source_summaries.NAMESPACE,
-                    peri_scribe.geo.source_summaries.snapshot_key(
-                        path,
-                        source_root,
-                        peri_scribe.geo.database.snapshot_checksum(path),
-                    ),
-                    b"invalid summary",
+            paths.append(path)
+            if mode == "absent":
+                continue
+            with spatial_data.product_cache.scope(
+                cache,
+                "old" if mode == "old-context" else "current",
+            ):
+                peri_scribe.geo.source_summaries.seed_summaries(
+                    source_root,
+                    {path: source_contents(path)},
+                    {path: peri_scribe.geo.database.snapshot_checksum(path)},
                 )
+                if mode == "damaged":
+                    spatial_data.product_cache.put(
+                        peri_scribe.geo.source_summaries.NAMESPACE,
+                        peri_scribe.geo.source_summaries.snapshot_key(
+                            path,
+                            source_root,
+                            peri_scribe.geo.database.snapshot_checksum(path),
+                        ),
+                        b"invalid summary",
+                    )
     for path, revision in zip(paths, current, strict=True):
         path.write_text(str(revision), encoding="utf-8")
     with spatial_data.product_cache.scope(cache, "current"):

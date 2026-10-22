@@ -44,14 +44,17 @@ labeled explanation without motion, including when reduced motion is requested.
 | [Source interpretation and validation](source-validation.md) | Ambiguous coordinate systems, coverage and content identity. |
 | [External source refresh](external-source-refresh.md) | Conditional refresh, empty results and staged conversion. |
 | [Authenticated parsed source cache](parsed-source-cache.md) | Authenticating receipts, normalized payload dictionaries and ordered rows in one transaction. |
+| [Exact compressed cache payloads](compressed-payloads.md) | Reversible byte prediction, bounded zstd frames, canonical identity and transactional dictionaries. |
 | [Source-index preparation](source-index-preparation.md) | Joined parallel byte authentication, complete row fingerprints and ordered Merkle manifests. |
 | [Source geometry preparation](source-geometry-preparation.md) | Exact compact geometry keys, sharded interning and shared projection evidence. |
 | [Reconstructing the interstate border and classification box](border-construction.md) | Snapped adjacency and complete border traversal. |
 | [Building footprint centroids from streamed archives](building-centroids.md) | Streaming and numerically stable polygon moments. |
 | [Compact point storage and batched containment](compact-point-storage.md) | Quantization, partitioning and exact candidate checks. |
+| [Adaptive building-point queries](adaptive-point-queries.md) | Per-tile cost admission, inclusive range search and exact point multiplicity. |
 | [Indexed overlaps, streamed layers, and geodesic measurements](spatial-queries-and-measurements.md) | Spatial indexes, ring contributions and coordinate assumptions. |
 | [Immutable geometry sharing](geometry-sharing.md) | Persistent trie insertion and collision-safe identity. |
 | [Typed product caches and published-row reuse](product-caching.md) | Typed evidence keys, canonical values and transactional row reuse. |
+| [Prepared product representations](prepared-product-representations.md) | Exact binary values, streamed fingerprints, guarded payload reuse and shared description rows. |
 | [Compact evidence for KMZ generation](kmz-preparation.md) | Qualified histories, projected attributes and shared presentation records. |
 
 ## Fire identity, history and policy
@@ -74,7 +77,13 @@ labeled explanation without motion, including when reduced motion is requested.
 | Note | Main reasoning |
 | --- | --- |
 | [Pipeline scheduling and publication decisions](pipeline-publication.md) | Durable intent, stage prerequisites and publication gates. |
+| [Supervised stage processes](stage-processes.md) | Continuous inherited writer leases, exact handoff and joined cancellation. |
 | [Authenticated geography generations and reuse](geography-generations.md) | Authenticated full/differential pairs and selective reuse. |
+| [Ordered history work and evidence lifetimes](history-work-queues.md) | Completion-driven count and byte admission, ordered outcomes, cancellation and worker settlement. |
+| [Bounded source work](bounded-source-work.md) | Pinned compact metadata, exact dependency-block grouping and per-fire source hydration. |
+| [Sharing immutable attribute strings](attribute-string-sharing.md) | Bounded exact string reuse with independent mutable containers. |
+| [Prepared-product context retention](product-cache-retention.md) | Transactional retirement and physical compaction of obsolete contexts. |
+| [Ordered parsed-cache compaction](parsed-cache-compaction.md) | Exact rowid-preserving replacement under stable writer ownership. |
 | [Recoverable fire update publication](update-journal.md) | Ordered durable writes, interrupted batches and recovery. |
 | [Log rotation, coherent reads, and time windows](log-retention.md) | Rotation receipts, coherent reads and time windows. |
 | [Cancellation and monitor resource ownership](worker-lifetimes.md) | Cancellation through admitted work and resource cleanup. |
@@ -90,6 +99,7 @@ labeled explanation without motion, including when reduced motion is requested.
 | --- | --- |
 | [Shared fire selection and ranking](presentation-selection.md) | History matching, rank deduplication and growth windows. |
 | [Nearest place descriptions](nearest-place.md) | Conditional pruning bound and projected candidate distance. |
+| [Fresh boundary fragments within a KML document](fresh-boundary-spill.md) | Bounded compressed temporary storage reuses freshly rendered coordinates during forced publication. |
 | [Literal text and streamed output publication](output-serialization.md) | Literal text, cached geometry and streamed publication. |
 | [Progression colors, playback, and map icons](progression-presentation.md) | Active-area colors, timed visibility and icon sampling. |
 | [Time series and distribution charts](chart-layout.md) | Temporal joins, empirical distributions and knee fitting. |

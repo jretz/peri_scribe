@@ -7,6 +7,7 @@ import pathlib
 import re
 import typing
 
+import peri_scribe.fires.differential
 import peri_scribe.fires.files
 import peri_scribe.fires.reuse
 import peri_scribe.pipeline_stages
@@ -116,7 +117,12 @@ class Observer:
             self.files.checksums[metadata.checksum],
             self.files.parents[generation] if differential else int(generation),
             metadata.version == peri_scribe.fires.reuse.CACHE_VERSION,
-            metadata.layers == (layers[:2] if differential else layers),
+            metadata.layers
+            == (
+                peri_scribe.fires.differential.DIFFERENTIAL_LAYER_NAMES
+                if differential
+                else layers
+            ),
         )
 
     def snapshot(self) -> Projection:

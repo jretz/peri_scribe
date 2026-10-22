@@ -10,11 +10,11 @@ updates the current version's geometry without creating another version.
 
 [Reconciliation](../../../docs/algorithms/perimeter-reconciliation.md)
 [Geometry policy](../../../docs/algorithms/perimeter-geometry-policy.md)
+[Bounded history work](../../../docs/algorithms/history-work-queues.md)
 """
 
 from __future__ import annotations
 
-import concurrent.futures
 import functools
 import itertools
 import json
@@ -23,6 +23,7 @@ import pathlib
 
 import geopandas
 
+import peri_scribe.concurrency
 import peri_scribe.fires.reuse
 import peri_scribe.fires.sources
 import peri_scribe.geo.measurements
@@ -51,6 +52,7 @@ IDENTITY_COLUMNS = [
 # it. Keep the pool small so contention does not erase the benefit of parallel geometry
 # work.
 HISTORY_ROW_WORKER_COUNT = min(4, os.cpu_count() or 1)
+HISTORY_TASK_BUFFER_SIZE = 64
 
 
 def classification_text(
@@ -475,21 +477,19 @@ def history_layer_rows(
     reused = {} if reused is None else reused
     perimeter_rows: list[dict[str, object]] = []
     point_rows: list[dict[str, object]] = []
-    with concurrent.futures.ThreadPoolExecutor(
+    with peri_scribe.concurrency.ordered_parallel_map(
+        functools.partial(
+            grouped_history_rows,
+            full_rows=full_rows,
+            full_paths=full_paths,
+            sources_directory=sources_directory,
+            classifications=classifications,
+            reused=reused,
+        ),
+        non_complex_fires,
         max_workers=HISTORY_ROW_WORKER_COUNT,
-    ) as executor:
-        results = executor.map(
-            functools.partial(
-                grouped_history_rows,
-                full_rows=full_rows,
-                full_paths=full_paths,
-                sources_directory=sources_directory,
-                classifications=classifications,
-                reused=reused,
-            ),
-            non_complex_fires,
-            buffersize=2 * HISTORY_ROW_WORKER_COUNT,
-        )
+        max_pending=HISTORY_TASK_BUFFER_SIZE,
+    ) as results:
         for (fire, _group), (fire_perimeter_rows, fire_point_rows) in zip(
             non_complex_fires,
             results,

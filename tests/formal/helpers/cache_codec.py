@@ -5,12 +5,12 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import itertools
-import json
 import struct
 import typing
 
 import numpy as np
 import pandas as pd
+import pytest
 import shapely
 
 import peri_scribe.areas
@@ -252,11 +252,12 @@ def compare_round_trips() -> None:
             enums=(peri_scribe.areas.AreaSource,),
         )
         assert type(restored) is type(case.value)
+        assert payload == canonical_payload(case.representation)
         commands.extend((
-            command(case.representation, json.loads(payload)),
+            command(case.representation, wire_representation(payload)),
             command(
                 case.representation,
-                json.loads(spatial_data.cache_values.dumps(restored)),
+                wire_representation(spatial_data.cache_values.dumps(restored)),
             ),
         ))
     assert tests.formal.helpers.oracle.evaluate(commands, executable="oracleCodec") == [
@@ -292,6 +293,13 @@ def compare_framing() -> None:
     """Omitting a child or adding a trailing value cannot produce an accepted root."""
     requests = []
     for case in cases():
+        payload = spatial_data.cache_values.dumps(case.value)
+        for malformed_payload in (payload[:-1], payload + b"\0", payload[:5]):
+            with pytest.raises(ValueError, match=r"[Cc]ache"):
+                spatial_data.cache_values.loads(
+                    malformed_payload,
+                    enums=(peri_scribe.areas.AreaSource,),
+                )
         encoded = tokens(case.representation)
         original = ";".join(encoded)
         requests.extend(
@@ -310,6 +318,143 @@ def canonical_payload(representation: typing.Sequence[object]) -> bytes:
         representation: The deliberately invalid typed wire value.
 
     Returns:
-        Compact JSON bytes suitable for the real decoder.
+        Independently framed binary bytes suitable for the real decoder.
     """
-    return json.dumps(representation, separators=(",", ":")).encode()
+    return b"PSCV\x02" + wire_node(representation)
+
+
+WIRE_NAMES = (
+    "none",
+    "missing",
+    "not_a_time",
+    "bool",
+    "int",
+    "float",
+    "str",
+    "bytes",
+    "tuple",
+    "list",
+    "frozenset",
+    "dict",
+    "enum",
+    "quantity",
+    "datetime",
+    "timestamp",
+    "timedelta",
+    "pandas_timedelta",
+    "numpy",
+    "geometry",
+)
+
+
+def wire_node(representation: typing.Sequence[object]) -> bytes:
+    """Frame independently declared semantic fixtures using the specified wire grammar.
+
+    Args:
+        representation: One tagged fixture, including deliberate malformed cases.
+
+    Returns:
+        Its binary node without the root version prefix.
+    """
+    kind = str(representation[0])
+    fields = representation[1:]
+    match kind, fields:
+        case (("none" | "missing" | "not_a_time"), []):
+            payload = b""
+        case "bool", [value]:
+            payload = bytes((int(value) if isinstance(value, bool) else 2,))
+        case (("int" | "str"), [str(value)]):
+            payload = value.encode()
+        case (("float" | "bytes" | "geometry"), [str(value)]):
+            payload = bytes.fromhex(value)
+        case (("tuple" | "list" | "frozenset"), [list(children)]):
+            nodes = [wire_node(child) for child in children]
+            payload = b"".join(sorted(nodes) if kind == "frozenset" else nodes)
+        case "dict", [list(children)]:
+            payload = b"".join(wire_node(child) for pair in children for child in pair)
+        case "numpy", [str(dtype), str(value)]:
+            payload = wire_node(["str", dtype]) + wire_node(["bytes", value])
+        case _:
+            payload = b"".join(
+                wire_node(
+                    field
+                    if isinstance(field, list)
+                    else ["int", str(field)]
+                    if isinstance(field, int)
+                    else ["str", field],
+                )
+                for field in fields
+            )
+    return bytes((WIRE_NAMES.index(kind),)) + len(payload).to_bytes(4, "big") + payload
+
+
+def wire_representation(payload: bytes) -> object:
+    """Interpret real wire bytes independently of the application decoder.
+
+    Args:
+        payload: One production-encoded value.
+
+    Returns:
+        The semantic tagged tree consumed by the checked Lean oracle.
+    """
+    assert payload[:5] == b"PSCV\x02"
+    representation, end = wire_tree(payload, 5)
+    assert end == len(payload)
+    return representation
+
+
+def wire_tree(payload: bytes, offset: int) -> tuple[list[object], int]:
+    """Lower framed bytes into the independent semantic fixture vocabulary.
+
+    Args:
+        payload: One complete parent payload.
+        offset: The next child's start position.
+
+    Returns:
+        The semantic tree and the next unread position.
+    """
+    kind = WIRE_NAMES[payload[offset]]
+    first = offset + 5
+    end = first + int.from_bytes(payload[offset + 1 : first], "big")
+    assert end <= len(payload)
+    content = payload[first:end]
+    if kind in {"none", "missing", "not_a_time"}:
+        assert not content
+        return [kind], end
+    if kind in {"bool", "int", "str", "float", "bytes", "geometry"}:
+        value = (
+            bool(content[0])
+            if kind == "bool"
+            else content.decode()
+            if kind in {"int", "str"}
+            else content.hex()
+        )
+        return [kind, value], end
+    children = []
+    position = 0
+    while position < len(content):
+        child, position = wire_tree(content, position)
+        children.append(child)
+    if kind in {"tuple", "list", "frozenset"}:
+        return [kind, children], end
+    if kind == "dict":
+        return [
+            kind,
+            [children[index : index + 2] for index in range(0, len(children), 2)],
+        ], end
+    if kind == "numpy":
+        return [kind, children[0][1], children[1][1]], end
+    fields = [
+        child
+        if child[0] not in {"str", "int"}
+        else int(str(child[1]))
+        if child[0] == "int"
+        else child[1]
+        for child in children
+    ]
+    # Enum values and quantity magnitudes retain their own scalar tags.
+    if kind == "enum":
+        fields[1] = children[1]
+    if kind == "quantity":
+        fields[0] = children[0]
+    return [kind, *fields], end

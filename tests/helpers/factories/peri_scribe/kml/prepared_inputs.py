@@ -11,8 +11,6 @@ import shapely
 
 import peri_scribe.areas
 import peri_scribe.fires.derived_layers
-import peri_scribe.fires.differential
-import peri_scribe.fires.files
 import peri_scribe.kml.prepared_inputs
 import peri_scribe.models
 import spatial_data.layers
@@ -30,6 +28,8 @@ class Geography:
     """Own independently writable test files and the source evidence they contain."""
 
     year_directory: pathlib.Path
+    full_path: pathlib.Path
+    differential_path: pathlib.Path
     index: peri_scribe.models.FireIndex
     layers: peri_scribe.fires.derived_layers.DerivedLayers
     histories: peri_scribe.kml.prepared_inputs.Histories
@@ -73,10 +73,8 @@ def geography(
         Original layers, immutable file checksums, and independent prepared facts.
     """
     year_directory = directory / "2026"
-    full = peri_scribe.fires.files.history_geopackage_path(year_directory)
-    differential = peri_scribe.fires.differential.differential_geopackage_path(
-        year_directory,
-    )
+    full = year_directory / "derived" / "history_of_full_geography.gpkg"
+    differential = year_directory / "derived" / "history_of_differential_geography.gpkg"
     full.parent.mkdir(parents=True)
     values: dict[str, object] = {
         "fire_identifier": ["id-a", "id-b", "id-a"],
@@ -136,6 +134,8 @@ def geography(
     ])
     return Geography(
         year_directory=year_directory,
+        full_path=full,
+        differential_path=differential,
         index=index,
         layers=layers,
         histories={("id", "id-a"): history(30), ("id", "id-b"): history(1)},

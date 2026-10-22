@@ -49,8 +49,9 @@ correction; hashing only a file path would miss replacement content at that same
 ## Prepared history identities
 
 After canonical decoding, domain validation and exact reserialization, a history can
-retain its payload's SHA-256 digest within the owning execution scope. Descriptions use
-that digest as a dependency rather than rebuilding the complete dataclass/JSON tree.
+retain its canonical immutable payload and SHA-256 digest within the owning execution
+scope. Descriptions use that digest as a dependency; qualified aggregate storage reuses
+the payload. Both paths validate the mutation guards before reusing either value.
 The registry retains the exact history object, preventing object-ID reuse from matching
 unrelated evidence. Scope exit releases the registry.
 
@@ -95,6 +96,12 @@ an ancestor's forced-miss flag. A separate-path scope owns its own connection. U
 storage or statement errors disable cache reuse so the caller can compute fresh results.
 An earlier successful statement can still commit after a later statement error; the
 protocol does not assume that every statement failure rolls back the whole transaction.
+
+After a healthy application commit, [context retention](product-cache-retention.md)
+retires obsolete dependency contexts in a separate transaction and reclaims their
+physical pages when possible. Every context admitted by the outer scope or its
+same-path nested scopes remains available. Cleanup failure can defer reclamation without
+undoing the completed products.
 
 The publication transaction makes the complete generation visible together:
 
@@ -157,3 +164,7 @@ transaction cases, connected by [conformance](../../tests/formal/conformance/tes
 The models assume complete initial generations, correct caller dependencies and artifact
 checksums, SQLite atomicity, and cooperating ownership. They do not prove every caller's
 dependency inventory, SQLite internals, hash collision resistance, or power-loss durability.
+
+[Prepared product representations](prepared-product-representations.md) describes the
+binary codec, framed key preimages, current latest-row views, and compressed SQLite
+values. These internal representations preserve the logical cache contracts above.

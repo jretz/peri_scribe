@@ -1,12 +1,14 @@
 """Stream geometry into KML while sharing serialization work across views.
 
 The writer caches serialized rings so geometry appearing in several folders can reuse
-its coordinate text. A fixed memory limit bounds retained fragments; a persistent cache
-can supply fragments no longer in memory. Missing fragments are formatted again when
-needed. Callers own the destination stream and choose the document's presentation.
+its coordinate text. Fixed memory and document-local disk limits bound retained
+fragments; a persistent cache can also supply fragments no longer in memory. Missing
+fragments are formatted again when needed. Callers own the destination stream and choose
+the document's presentation.
 
 Design notes:
-[Output serialization](../../docs/algorithms/output-serialization.md).
+[Output serialization](../../docs/algorithms/output-serialization.md) and
+[fresh boundary spill](../../docs/algorithms/fresh-boundary-spill.md).
 """
 
 from __future__ import annotations
@@ -145,30 +147,34 @@ class KmlWriter:
         Yields:
             Control while the caller writes document features.
         """
-        self.write(f'<kml xmlns="{KML_NAMESPACE}" xmlns:gx="{GX_NAMESPACE}"><Document>')
-        try:
-            for style in styles:
-                self.write(style)
-            self.write(f"<name>{escape_text(name)}</name>")
-            if description is not None:
-                self.write(
-                    f"<description>{description_text(description)}</description>",
-                )
-            yield
-        finally:
-            self.write("</Document></kml>")
-            logger.info(
-                "KML boundary cache",
-                accounted_retained_fragment_bytes=self.geometry_cache.retained_bytes,
-                accounted_peak_fragment_bytes=self.geometry_cache.peak_bytes,
-                largest_accounted_fragment_bytes=(
-                    self.geometry_cache.largest_fragment_bytes
-                ),
-                fragment_budget_bytes=self.geometry_cache.budget,
-                memory_hits=self.geometry_cache.memory_hits,
-                persistent_hits=self.geometry_cache.persistent_hits,
-                computed=self.geometry_cache.computed,
+        with self.geometry_cache.spill():
+            self.write(
+                f'<kml xmlns="{KML_NAMESPACE}" xmlns:gx="{GX_NAMESPACE}"><Document>',
             )
+            try:
+                for style in styles:
+                    self.write(style)
+                self.write(f"<name>{escape_text(name)}</name>")
+                if description is not None:
+                    self.write(
+                        f"<description>{description_text(description)}</description>",
+                    )
+                yield
+            finally:
+                self.write("</Document></kml>")
+                logger.info(
+                    "KML boundary cache",
+                    accounted_retained_fragment_bytes=self.geometry_cache.retained_bytes,
+                    accounted_peak_fragment_bytes=self.geometry_cache.peak_bytes,
+                    largest_accounted_fragment_bytes=(
+                        self.geometry_cache.largest_fragment_bytes
+                    ),
+                    fragment_budget_bytes=self.geometry_cache.budget,
+                    memory_hits=self.geometry_cache.memory_hits,
+                    persistent_hits=self.geometry_cache.persistent_hits,
+                    spill_hits=self.geometry_cache.spill_hits,
+                    computed=self.geometry_cache.computed,
+                )
 
     @contextlib.contextmanager
     def folder(

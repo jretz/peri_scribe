@@ -8,6 +8,7 @@ import PeriScribe.AreaHistory
 import PeriScribe.Grouping
 import PeriScribe.Identity
 import PeriScribe.SpatialIndex
+import PeriScribe.PointWindow
 import PeriScribe.IncrementalCollection
 import PeriScribe.PointConstruction
 import PeriScribe.PerimeterVersions
@@ -20,6 +21,7 @@ import PeriScribe.ComplexOwnership
 import PeriScribe.RankedViews
 import PeriScribe.OutputReferences
 import PeriScribe.CacheCodec
+import PeriScribe.PayloadCodec
 import PeriScribe.BuildingCentroids
 import PeriScribe.PerimeterComposition
 import PeriScribe.BorderClassification

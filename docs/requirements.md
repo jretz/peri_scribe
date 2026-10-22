@@ -22,7 +22,10 @@ is kept as its latest GeoPackage, while the buildings source is stored as a comp
 SQLite database at `sources/buildings.sqlite`. A successful empty evacuation response
 clears the stored zones and counts as a change when zones were previously present.
 Repeated empty responses leave that empty snapshot unchanged. Retrieval failures retain
-the stored version when one exists.
+the stored version when one exists. Retained fire snapshots must stay close to the
+original source representation, including attributes, geometry, coordinate reference
+systems, file format, and organization. Derived caches and transient working data can
+change representation without rewriting those authoritative snapshots.
 
 Location descriptions use every U.S. place, including territories, in Natural Earth's
 1:10m populated places simple dataset. `sources/cities.sqlite` stores each place's name,
@@ -55,6 +58,11 @@ policy permits one, allowing several source changes to accumulate first.
 
 Use `--only`, `--from`, and `--to` to select a single stage or a range. A failed step
 stops the pipeline and leaves the required work pending so a later invocation can retry.
+
+Ranges crossing geography and scoring use fresh sequential worker processes under one
+continuous year writer lock. Complete GDAL history layers preserve canonical scalar
+types, geometry coordinates and output order. Source snapshots retain their original
+file representation.
 
 Fire index JSON, score JSON, score-distribution HTML, and Markdown reports are written
 to staging files before replacing their public paths. If writing is interrupted, readers
@@ -100,6 +108,12 @@ interrupted compression must preserve every diagnostic record exactly once while
 retaining legitimate identical records and later arrivals for an archived month.
 Fire-update logs also compress eligible months after successful generation with no new
 fire updates.
+
+General diagnostic logs seal complete active tails at a 16 MiB threshold into numbered
+independently compressed segments. Existing oversized tails and individual records can
+exceed that threshold. Sealing and compression must preserve every occurrence across
+interruption, keep legacy monthly archives readable, and retain a plain active tail.
+Fire-update journals retain their monthly identities and batch-replay contract.
 
 Diagnostic readers combine archived records with later plain records for the same month
 and use committed rotation receipts to avoid replaying retired records. Reads share the
@@ -230,6 +244,31 @@ and derivation dependencies. A change rebuilds the affected fire's complete hist
 including earlier rings. Missing, incompatible, damaged, or incompletely published reuse
 data causes recomputation. Source snapshots remain authoritative and unchanged.
 
+Source preparation may retain compact metadata globally and decode detailed geometry
+and attributes only for the dependency block or fire being processed. It must preserve
+exact grouping, classification, relationship observations, source order, and provenance.
+Every admitted worker must finish or be joined before its pinned source readers close.
+Source changes detected before full-history publication must reject that preparation.
+Unsupported compact representations must retain the complete-source fallback.
+
+Count and byte admission limits apply to unfinished work, with one oversized fire
+permitted alone. Worker completion may admit another task before an earlier result is
+ready, but result and worker-error delivery must follow the original input order. These
+limits do not constrain all retained output rows, ready results, or native memory.
+
+Internal compression must preserve logical bytes exactly, keep cache checksums over
+those bytes, and publish compression dictionaries together with every referring value.
+Use zstd where the stored format supports it. Corrupt or unsupported disposable cache
+entries must cause a safe miss or rebuild. Source formats, compatible KMZ ZIP members,
+and image encodings retain their own format requirements.
+Storage savings must not justify a measurable forced-pipeline slowdown.
+
+Forced publication must continue to recompute products from current inputs. It may reuse
+exact products computed inside the same active publication scope, including boundary
+fragments in bounded temporary storage. Changing intermediate representations must
+preserve ordered KMZ member content, fire-update documents, and reports for the same
+inputs and observation time.
+
 Cleaned area, exterior perimeter length, ring area, and displayed added area are
 computed in geography and stored for downstream consumers. Displayed added area must
 match the consumer's exact ordered ring sequence. Missing measurements or a different
@@ -304,9 +343,11 @@ to `data/<current year>`.
 - Replacement history files and their checksum metadata must permit recovery after an
   interrupted write. Invalid recovery state requires a full derived rebuild.
 - Only one `run` or `validate-sources` invocation may write to a year directory at a
-  time. An overlapping invocation logs a skip and exits successfully; failed processes
-  release their lock. Validation records derived rebuild requirements before modifying
-  live snapshots and retains them after a changed or interrupted collection.
+  time. An overlapping invocation logs a skip and exits successfully. Supervised workers
+  retain the lock until they finish, including after their parent exits; cancellation
+  joins the active worker before returning. Validation records rebuild requirements
+  before modifying live snapshots and retains them after a changed or interrupted
+  collection.
 - Downstream geography reads must authenticate a matching full/differential generation
   while excluding concurrent writers. An interrupted or incompatible pair requires a
   geography rebuild. Fresh-year scoring may return empty layers when both files are

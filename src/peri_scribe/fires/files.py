@@ -1,7 +1,8 @@
-"""Writing the fire history GeoPackage files.
+"""Write canonical full-history GeoPackages after bounded source reconstruction.
 
 Algorithm reasoning and contracts:
 [Geography generations](../../../docs/algorithms/geography-generations.md)
+[Bounded source work](../../../docs/algorithms/bounded-source-work.md)
 """
 
 from __future__ import annotations
@@ -13,6 +14,8 @@ import pathlib
 
 import structlog
 
+import peri_scribe.execution
+import peri_scribe.fires.bounded_sources
 import peri_scribe.fires.classification
 import peri_scribe.fires.generation
 import peri_scribe.fires.history
@@ -20,6 +23,7 @@ import peri_scribe.fires.incident_history
 import peri_scribe.fires.index
 import peri_scribe.fires.reuse
 import peri_scribe.fires.sources
+import peri_scribe.geo.catalog
 import peri_scribe.geo.measurements
 import peri_scribe.incidents
 import peri_scribe.logging
@@ -27,6 +31,7 @@ import peri_scribe.phases
 import peri_scribe.preparation
 import peri_scribe.sources.snapshots
 import spatial_data.layers
+import spatial_data.product_cache
 
 
 PERIMETER_LAYER_NAME = "perimeter_history"
@@ -104,7 +109,7 @@ POINT_COLUMNS = [
 
 
 def history_geopackage_path(year_directory: pathlib.Path) -> pathlib.Path:
-    """Return the path of the derived history GeoPackage for *year_directory*.
+    """Return the canonical full-history GeoPackage path for *year_directory*.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
@@ -125,7 +130,7 @@ def write_history_of_full_geography(
     *,
     unconditional: bool = False,
 ) -> pathlib.Path:
-    """Build and write the full geography and incident history GeoPackage.
+    """Build and write the canonical full geography and incident histories.
 
     The spatial layers are ``perimeter_history`` and ``point_history``; the separate
     ``incident_history`` layer preserves reports on their own observation dates.
@@ -137,7 +142,7 @@ def write_history_of_full_geography(
         unconditional: Recompute every fire and refresh its source index.
 
     Returns:
-        The path of the written GeoPackage.
+        The path of the written canonical history GeoPackage.
     """
     unconditional = peri_scribe.preparation.unconditional_rebuild(
         requested=unconditional,
@@ -151,6 +156,13 @@ def write_history_of_full_geography(
     ):
         logger.info("Full geography unchanged", path=str(output_path))
         return output_path
+    bounded = write_bounded_full_geography(
+        year_directory,
+        generation=generation,
+        unconditional=unconditional,
+    )
+    if bounded is not None:
+        return bounded
     with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.LOAD_AND_GROUP_SOURCES):
         prepared = peri_scribe.fires.sources.prepare_fire_sources(
             peri_scribe.sources.snapshots.sources_directory_path(year_directory),
@@ -254,6 +266,50 @@ def write_prepared_full_geography(
         reused=len(reused),
         recomputed=len(keys) - len(reused),
     )
+    return publish_full_rows(
+        output_path,
+        perimeter_rows,
+        point_rows,
+        peri_scribe.fires.incident_history.incident_layer_rows(
+            prepared.read,
+            record_groups,
+            sources_directory,
+            reused={
+                identifier: cached[peri_scribe.incidents.LAYER_NAME][key]
+                for identifier, key in keys.items()
+                if key in cached.get(peri_scribe.incidents.LAYER_NAME, {})
+            },
+            derivation_keys=keys,
+        ),
+        generation=generation
+        if peri_scribe.fires.generation.classifications_complete(
+            record_groups,
+            previously_classified | classifications.keys(),
+        )
+        else None,
+    )
+
+
+def publish_full_rows(
+    output_path: pathlib.Path,
+    perimeter_rows: list[dict[str, object]],
+    point_rows: list[dict[str, object]],
+    incident_rows: list[dict[str, object]],
+    *,
+    generation: str | None,
+) -> pathlib.Path:
+    """Normalize and publish the complete ordered layers through the shared writer.
+
+    Args:
+        output_path: Full-history destination protected by the owning writer scope.
+        perimeter_rows: Complete reconciled perimeter rows in original fire order.
+        point_rows: Complete point versions in original fire order.
+        incident_rows: Independent reconciled reporting evidence.
+        generation: Complete input identity, or None for incomplete classification.
+
+    Returns:
+        The complete published history path.
+    """
     peri_scribe.fires.reuse.write_layers(
         output_path,
         [
@@ -274,29 +330,142 @@ def write_prepared_full_geography(
             spatial_data.layers.LayerData(
                 name=peri_scribe.incidents.LAYER_NAME,
                 dataframe=peri_scribe.fires.history.build_dataframe(
-                    peri_scribe.fires.incident_history.incident_layer_rows(
-                        prepared.read,
-                        record_groups,
-                        sources_directory,
-                        reused={
-                            identifier: cached[peri_scribe.incidents.LAYER_NAME][key]
-                            for identifier, key in keys.items()
-                            if key in cached.get(peri_scribe.incidents.LAYER_NAME, {})
-                        },
-                        derivation_keys=keys,
-                    ),
+                    incident_rows,
                     peri_scribe.fires.incident_history.COLUMNS,
                 ),
             ),
         ],
+        generation=generation,
+    )
+    return output_path
+
+
+def write_bounded_full_geography(
+    year_directory: pathlib.Path,
+    *,
+    generation: str,
+    unconditional: bool,
+) -> pathlib.Path | None:
+    """Use complete preparation when a disposable bounded catalog is unavailable.
+
+    Args:
+        year_directory: The year owning source and derived geography files.
+        generation: Complete source and derivation environment identity.
+        unconditional: Whether prior prepared products must be recomputed.
+
+    Returns:
+        The published path, or None when the complete source adapter is needed.
+    """
+    try:
+        return build_bounded_full_geography(
+            year_directory,
+            generation=generation,
+            unconditional=unconditional,
+        )
+    except peri_scribe.geo.catalog.UnavailableError:
+        logger.info("Using complete source preparation", exc_info=True)
+        return None
+
+
+def build_bounded_full_geography(
+    year_directory: pathlib.Path,
+    *,
+    generation: str,
+    unconditional: bool,
+) -> pathlib.Path:
+    """Release raw fire evidence while collecting complete ordered output layers.
+
+    Args:
+        year_directory: The year whose complete source inventory is consumed.
+        generation: Authenticated source and derivation environment identity.
+        unconditional: Whether all prior prepared histories must be recomputed.
+
+    Returns:
+        The complete published full-history GeoPackage path.
+    """
+    directory = peri_scribe.sources.snapshots.sources_directory_path(year_directory)
+    output_path = history_geopackage_path(year_directory)
+    with peri_scribe.geo.catalog.open_catalog(directory) as catalog:
+        peri_scribe.execution.clear(peri_scribe.execution.Group.SOURCES)
+        with peri_scribe.logging.log_phase(
+            peri_scribe.phases.Phase.LOAD_AND_GROUP_SOURCES,
+        ):
+            groups = peri_scribe.fires.bounded_sources.prepare_groups(catalog)
+        context = peri_scribe.fires.reuse.derivation_context(year_directory)
+        identities = [
+            peri_scribe.fires.reuse.provenance_key(
+                entry.row["evidence_fingerprint"],
+                path,
+                directory,
+                source_paths=catalog.read.source_paths,
+            )
+            for entry, path in zip(catalog.entries, catalog.read.paths, strict=True)
+        ]
+        keys = peri_scribe.fires.reuse.group_keys(identities, groups, context)
+        cached = peri_scribe.fires.reuse.read_rows(
+            output_path,
+            FULL_LAYER_NAMES,
+            unconditional=unconditional,
+            keys=frozenset(keys.values()),
+        )
+        signature = peri_scribe.fires.reuse.validated_signature(
+            output_path,
+            FULL_LAYER_NAMES,
+        )
+        reusable = signature is not None and signature.generation is not None
+        rows_by_fire = {
+            identifier: peri_scribe.fires.bounded_sources.Rows(
+                perimeters=cached.get(PERIMETER_LAYER_NAME, {}).get(key, []),
+                points=cached.get(POINT_LAYER_NAME, {}).get(key, []),
+                incidents=cached.get(peri_scribe.incidents.LAYER_NAME, {}).get(
+                    key,
+                    [],
+                ),
+            )
+            for identifier, key in keys.items()
+            if reusable and any(key in layer for layer in cached.values())
+        }
+        classifications = {
+            identifier: classification
+            for identifier, key in keys.items()
+            if (classification := peri_scribe.fires.index.cached_classification(key))
+            is not None
+        }
+        with peri_scribe.logging.log_phase(
+            peri_scribe.phases.Phase.RECONSTRUCT_GEOGRAPHY,
+        ):
+            rows, classifications = peri_scribe.fires.bounded_sources.build_rows(
+                catalog,
+                groups,
+                keys,
+                year_directory,
+                cached=rows_by_fire,
+                classifications=classifications,
+            )
+    for identifier, classification in classifications.items():
+        spatial_data.product_cache.put(
+            peri_scribe.fires.index.CLASSIFICATION_NAMESPACE,
+            keys[identifier],
+            classification.model_dump_json().encode(),
+        )
+    if unconditional:
+        peri_scribe.fires.index.write_fire_index(
+            year_directory,
+            groups,
+            classifications,
+        )
+    return publish_full_rows(
+        output_path,
+        rows.perimeters,
+        rows.points,
+        rows.incidents,
         generation=generation
         if peri_scribe.fires.generation.classifications_complete(
-            record_groups,
-            previously_classified | classifications.keys(),
+            groups,
+            classifications,
         )
         else None,
     )
-    return output_path
 
 
 def classified_reused_fires(

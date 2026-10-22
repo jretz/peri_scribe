@@ -10,11 +10,14 @@ import unittest.mock
 if typing.TYPE_CHECKING:
     import pytest
 
+import itertools
+
 import peri_scribe.geo.database
 import peri_scribe.geo.package
 import peri_scribe.geo.reading
 import peri_scribe.sources.snapshots
 import spatial_data.geometry_pool
+import spatial_data.payload_codec
 import tests.helpers.factories.peri_scribe.geo.database
 
 
@@ -70,9 +73,12 @@ def test_intern_payload_resolves_digest_collisions_with_complete_values(
         assert (
             peri_scribe.geo.database.intern_payload(connection, kind, b"first") == first
         )
-        assert connection.execute(
-            "SELECT value FROM geometry_payloads ORDER BY id",
-        ).fetchall() == [(b"first",), (b"second",)]
+        assert list(
+            itertools.starmap(
+                spatial_data.payload_codec.decode,
+                connection.execute("SELECT value FROM geometry_payloads ORDER BY id"),
+            ),
+        ) == [b"first", b"second"]
 
 
 def test_collect_unreferenced_payloads_retains_surviving_snapshot_references() -> None:

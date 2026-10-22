@@ -1,4 +1,45 @@
 [[models]]
+name = "boundary-spill"
+module = "BoundarySpill"
+config = "BoundarySpill"
+conformance = true
+
+[[models]]
+name = "bounded-source-read"
+module = "BoundedSourceRead"
+config = "BoundedSourceRead"
+conformance = true
+
+[[models]]
+name = "ordered-workers"
+module = "OrderedWorkers"
+config = "OrderedWorkers"
+conformance = true
+
+[[models]]
+name = "ordered-workers-liveness"
+module = "OrderedWorkers"
+config = "OrderedWorkersLiveness"
+
+[[models]]
+name = "product-retention"
+module = "ProductRetention"
+config = "ProductRetention"
+conformance = true
+
+[[models]]
+name = "parsed-cache-compaction"
+module = "ParsedCacheCompaction"
+config = "ParsedCacheCompaction"
+conformance = true
+
+[[models]]
+name = "log-segments"
+module = "LogSegments"
+config = "LogSegments"
+conformance = true
+
+[[models]]
 name = "run-state"
 module = "RunState"
 config = "RunState"
@@ -360,4 +401,9 @@ conformance = true
 name = "source-summaries"
 module = "SourceSummaries"
 config = "SourceSummaries"
+conformance = true
+[[models]]
+name = "stage-processes"
+module = "StageProcesses"
+config = "StageProcesses"
 conformance = true

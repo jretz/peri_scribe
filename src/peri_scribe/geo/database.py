@@ -16,8 +16,10 @@ import typing
 
 import structlog
 
+import peri_scribe.geo.compaction
 import peri_scribe.geo.fingerprints
 import peri_scribe.geo.package
+import peri_scribe.geo.payload_storage
 import peri_scribe.sources.authentication
 import peri_scribe.sources.snapshots
 
@@ -26,7 +28,7 @@ logger = structlog.get_logger()
 
 
 # Cache compatibility includes preservation of all supported relationship identifiers.
-RECORD_CACHE_SCHEMA_VERSION = 8
+RECORD_CACHE_SCHEMA_VERSION = 9
 
 
 RECORD_CACHE_SCHEMA = """
@@ -66,16 +68,23 @@ DROP TABLE IF EXISTS attribute_payloads;
 CREATE TABLE geometry_payloads (
   id INTEGER PRIMARY KEY,
   digest BLOB NOT NULL,
-  value BLOB NOT NULL
+  value BLOB NOT NULL,
+  encoding INTEGER NOT NULL DEFAULT 0,
+  original_size INTEGER NOT NULL
 );
 CREATE INDEX geometry_payloads_digest ON geometry_payloads(digest);
 CREATE TABLE attribute_payloads (
   id INTEGER PRIMARY KEY,
   digest BLOB NOT NULL,
-  value TEXT NOT NULL
+  value BLOB NOT NULL,
+  encoding INTEGER NOT NULL DEFAULT 0,
+  original_size INTEGER NOT NULL,
+  dictionary_id INTEGER
 );
 CREATE INDEX attribute_payloads_digest ON attribute_payloads(digest);
 CREATE INDEX memberships_serial ON memberships(serial);
+DROP TABLE IF EXISTS codec_dictionaries;
+CREATE TABLE codec_dictionaries (id INTEGER PRIMARY KEY, value BLOB NOT NULL);
 """
 
 
@@ -110,17 +119,38 @@ def intern_payload(
         A database-local key whose equality never substitutes digest equality.
     """
     digest = payload_digest(payload)
-    for identifier, candidate in conn.execute(
-        f"SELECT id, value FROM {kind.value} WHERE digest = ?",
+    dictionaries = peri_scribe.geo.payload_storage.dictionaries(conn)
+    dictionary_column = "dictionary_id" if kind is PayloadKind.ATTRIBUTES else "NULL"
+    for identifier, value, encoding, size, dictionary_id in conn.execute(
+        f"SELECT id, value, encoding, original_size, {dictionary_column} "
+        f"FROM {kind.value} WHERE digest = ?",
         (digest,),
     ):
+        candidate = peri_scribe.geo.payload_storage.decode(
+            value,
+            encoding,
+            size,
+            dictionary=dictionaries.get(dictionary_id),
+            text=kind is PayloadKind.ATTRIBUTES,
+        )
         if candidate == payload:
             return identifier
+    dictionary_id = next(iter(dictionaries), None) if isinstance(payload, str) else None
+    stored, encoding, size = peri_scribe.geo.payload_storage.encode(
+        payload,
+        dictionary=dictionaries.get(dictionary_id),
+    )
+    extra_column = ", dictionary_id" if kind is PayloadKind.ATTRIBUTES else ""
+    extra_placeholder = ", ?" if kind is PayloadKind.ATTRIBUTES else ""
+    values = (digest, stored, encoding, size)
+    if kind is PayloadKind.ATTRIBUTES:
+        values += (dictionary_id,)
     return typing.cast(
         "int",
         conn.execute(
-            f"INSERT INTO {kind.value} (digest, value) VALUES (?, ?)",
-            (digest, payload),
+            f"INSERT INTO {kind.value} (digest, value, encoding, original_size"
+            f"{extra_column}) VALUES (?, ?, ?, ?{extra_placeholder})",
+            values,
         ).lastrowid,
     )
 
@@ -359,6 +389,7 @@ def sync_database(conn: sqlite3.Connection, source_directory: pathlib.Path) -> N
         write_snapshot(conn, source_file, size, mtime_ns, contents, checksum=checksum)
     if changed:
         collect_unreferenced_payloads(conn)
+        peri_scribe.geo.payload_storage.prepare_dictionary(conn)
     conn.commit()
 
 
@@ -405,15 +436,24 @@ def ensure_database_current(
     if RECORD_CACHE_SYNCED.get(db_path) == signature:
         return
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    try:
-        open_and_sync(db_path, source_directory)
-    except sqlite3.DatabaseError:
-        logger.debug(
-            "Record cache database unusable; rebuilding",
-            path=str(db_path),
-            exc_info=True,
-        )
-        with contextlib.suppress(OSError):
-            db_path.unlink()
-        open_and_sync(db_path, source_directory)
+    with peri_scribe.geo.compaction.writer_lock(db_path):
+        try:
+            open_and_sync(db_path, source_directory)
+        except sqlite3.DatabaseError, ValueError:
+            logger.debug(
+                "Record cache database unusable; rebuilding",
+                path=str(db_path),
+                exc_info=True,
+            )
+            with contextlib.suppress(OSError):
+                db_path.unlink()
+            open_and_sync(db_path, source_directory)
+        try:
+            peri_scribe.geo.compaction.compact(db_path, RECORD_CACHE_SCHEMA)
+        except OSError, ValueError, sqlite3.Error:
+            logger.warning(
+                "Record cache compaction unavailable; keeping synchronized data",
+                path=str(db_path),
+                exc_info=True,
+            )
     RECORD_CACHE_SYNCED[db_path] = signature

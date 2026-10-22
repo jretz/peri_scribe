@@ -25,6 +25,8 @@ import typing
 import numpy as np
 import shapely
 
+import spatial_data.point_index
+
 
 # The coordinate scale and 0.5° tile layout of the compact point database.
 # Coordinates are stored as signed little-endian int32 values in units of 1e-5 degrees,
@@ -547,7 +549,8 @@ def point_counts_within(
 
     Nearby queries often need the same tiles. Grouping them by tile avoids reading and
     decompressing those points repeatedly, while keeping only one tile's points and one
-    query's candidates at a time.
+    query's candidates at a time. Tiles shared by enough queries gain a temporary
+    longitude index, amortizing repeated envelope selection over those queries.
 
     Envelope filtering keeps every possible match for the exact containment test. That
     test excludes points on polygon boundaries and counts duplicate coordinates
@@ -586,8 +589,17 @@ def point_counts_within(
             tile_points = read_tile_points(connection, identifier)
             if tile_points is None:
                 continue
+            longitude_index = (
+                spatial_data.point_index.LongitudeIndex.build(tile_points)
+                if len(tile_queries) >= spatial_data.point_index.MINIMUM_INDEXED_QUERIES
+                else None
+            )
             for index, geometry, encoded in tile_queries:
-                candidates = points_within_box(tile_points, encoded)
+                candidates = (
+                    longitude_index.select(encoded)
+                    if longitude_index is not None
+                    else points_within_box(tile_points, encoded)
+                )
                 if not candidates.size:
                     continue
                 try:
@@ -602,6 +614,8 @@ def point_counts_within(
                     )
                 finally:
                     shapely.destroy_prepared(geometry)
+            # Release the index before decoding the next tile.
+            del longitude_index
     finally:
         connection.close()
     return counts

@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import collections.abc
 import dataclasses
 import datetime
 import pathlib
@@ -153,14 +154,36 @@ def observations(
     if membership_paths and len(membership_paths) != len(memberships):
         message = "Complex memberships and source paths must have matching lengths"
         raise ValueError(message)
+    declarations = (
+        (observation, row.record.identifiers, path)
+        for row, path in zip(rows, paths, strict=True)
+        if (observation := row_observation(row, path)) is not None
+    )
+    return complete_observations(declarations, memberships, membership_paths)
+
+
+def complete_observations(
+    declarations: collections.abc.Iterable[
+        tuple[MembershipObservation, frozenset[str], pathlib.Path]
+    ],
+    memberships: tuple[peri_scribe.models.ComplexMembership, ...],
+    membership_paths: tuple[pathlib.Path, ...],
+) -> list[MembershipObservation]:
+    """Combine ordered row declarations with independent membership fallbacks.
+
+    Args:
+        declarations: Row evidence, its aliases, and source path in occurrence order.
+        memberships: Assignments retained independently by source parsing.
+        membership_paths: Their aligned paths, or empty for undated callers.
+
+    Returns:
+        Row declarations followed by uncovered membership observations.
+    """
     result: list[MembershipObservation] = []
     covered: set[
         tuple[str, str | None, pathlib.Path | None, datetime.datetime | None]
     ] = set()
-    for row, path in zip(rows, paths, strict=True):
-        observation = row_observation(row, path)
-        if observation is None:
-            continue
+    for observation, identifiers, path in declarations:
         result.append(observation)
         covered.update(
             (
@@ -169,7 +192,7 @@ def observations(
                 path if membership_paths else None,
                 observation.observation_time,
             )
-            for identifier in row.record.identifiers
+            for identifier in identifiers
         )
     for index, membership in enumerate(memberships):
         path = membership_paths[index] if membership_paths else None

@@ -9,11 +9,13 @@ Design notes:
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import typing
 
 import peri_scribe.areas
 import peri_scribe.execution
 import peri_scribe.fires.scoring
+import peri_scribe.history_columns
 import peri_scribe.models
 import peri_scribe.perimeters.progression
 import peri_scribe.presentation.descriptions
@@ -23,6 +25,9 @@ import peri_scribe.presentation.prepared_cache
 import peri_scribe.presentation.score_association
 import peri_scribe.presentation.selection
 import peri_scribe.presentation.text
+import spatial_data.cache_values
+import spatial_data.frame_fingerprints
+import spatial_data.product_cache
 
 
 if typing.TYPE_CHECKING:
@@ -425,16 +430,22 @@ def prepare_fire_data(
         if scores is not None
         else {}
     )
+    columns = tuple(
+        peri_scribe.history_columns.prepare_source(frame)
+        for frame in (perimeters, points)
+    )
+    schemas = description_schemas((perimeters, points))
     fires: list[PreparedFire] = []
     for position, prepared in enumerate(pending):
-        perimeter_rows = peri_scribe.presentation.history_index.select_rows(
-            perimeters,
+        perimeter_rows = peri_scribe.history_columns.select_rows(
+            columns[0],
             prepared.perimeter_positions[-1:],
         )
-        point_rows = peri_scribe.presentation.history_index.select_rows(
-            points,
+        point_rows = peri_scribe.history_columns.select_rows(
+            columns[1],
             prepared.point_positions[-1:],
         )
+        fingerprints = latest_row_fingerprints((perimeter_rows, point_rows), schemas)
         local_points = (
             point_indexes.by_component.get(prepared.entry.component_id, ({}, {}))
             if prepared.entry.component_id is not None
@@ -461,15 +472,14 @@ def prepare_fire_data(
                         perimeter_rows,
                         point_rows,
                         history=prepared.history,
+                        row_fingerprints=fingerprints,
                         of_note=(
                             associated[position].explanation
                             if position in associated
                             else None
                         ),
                     ),
-                    type_one=peri_scribe.fires.scoring.fire_is_type_one_incident(
-                        point_rows,
-                    ),
+                    type_one=latest_type_one(point_rows),
                 ),
                 identifier=prepared.entry.identifier,
                 history=prepared.history,
@@ -483,6 +493,90 @@ def prepare_fire_data(
         SharedFires(sources=sources, fires=fires),
     )
     return fires
+
+
+def description_schemas(
+    frames: tuple[geopandas.GeoDataFrame, ...],
+) -> tuple[bytes, ...]:
+    """Prepare complete schema evidence only when a cache can consume it.
+
+    Args:
+        frames: Complete unchanged source layers for this description preparation.
+
+    Returns:
+        Schema digests, or an empty tuple when caching is inactive or unsupported.
+    """
+    if not spatial_data.product_cache.active():
+        return ()
+    try:
+        return tuple(
+            spatial_data.frame_fingerprints.frame_schema(frame) for frame in frames
+        )
+    except ValueError:
+        return ()
+
+
+def latest_row_fingerprints(
+    rows: tuple[peri_scribe.history_columns.Frame, ...],
+    schemas: tuple[bytes, ...],
+) -> tuple[spatial_data.frame_fingerprints.FrameRows, ...] | None:
+    """Carry current row identities directly from shared source columns.
+
+    Args:
+        rows: Latest-row views from this preparation call.
+        schemas: Complete source schema digests, or none when caching is inactive.
+
+    Returns:
+        Exact current schema and row evidence, or None for unsupported cache scalars.
+    """
+    if not schemas:
+        return None
+    try:
+        return tuple(
+            spatial_data.frame_fingerprints.FrameRows(
+                schema=schema,
+                rows=tuple(
+                    hashlib.sha256(
+                        spatial_data.cache_values.dumps(
+                            tuple(
+                                values[position]
+                                for values in frame.columns.fields.values()
+                            ),
+                        ),
+                    ).digest()
+                    for position in frame.positions
+                )
+                if not frame.empty
+                else (),
+            )
+            if isinstance(frame, peri_scribe.history_columns.HistoryRows)
+            else spatial_data.frame_fingerprints.frame_rows(
+                typing.cast("geopandas.GeoDataFrame", frame),
+            )
+            for frame, schema in zip(rows, schemas, strict=True)
+        )
+    except ValueError:
+        return None
+
+
+def latest_type_one(points: peri_scribe.history_columns.Frame) -> bool:
+    """Apply the existing scoring designation to the latest borrowed point row.
+
+    Args:
+        points: This fire's selected latest point evidence.
+
+    Returns:
+        Whether that row carries the Type 1 Incident designation.
+    """
+    if points.empty:
+        return False
+    row = peri_scribe.history_columns.last_row(points)
+    return (
+        peri_scribe.fires.scoring.importance_points(
+            peri_scribe.fires.scoring.complexity_level(row.get("source_attributes")),
+        )
+        == peri_scribe.fires.scoring.IMPORTANCE_POINTS_BY_LEVEL["Type 1 Incident"]
+    )
 
 
 def optional_history_index(

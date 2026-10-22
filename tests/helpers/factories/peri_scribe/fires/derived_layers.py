@@ -52,10 +52,7 @@ def publish_pair(directory: pathlib.Path, revision: int) -> None:
         peri_scribe.fires.differential.differential_geopackage_path(directory),
         [
             spatial_data.layers.LayerData(name=name, dataframe=dataframe)
-            for name in (
-                peri_scribe.fires.files.PERIMETER_LAYER_NAME,
-                peri_scribe.fires.files.POINT_LAYER_NAME,
-            )
+            for name in peri_scribe.fires.differential.DIFFERENTIAL_LAYER_NAMES
         ],
         generation=peri_scribe.fires.differential.differential_generation(
             full_path,

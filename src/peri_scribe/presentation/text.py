@@ -11,6 +11,7 @@ import typing
 
 import peri_scribe.areas
 import peri_scribe.geo.measurements
+import peri_scribe.history_columns
 import peri_scribe.incidents
 import peri_scribe.models
 import peri_scribe.presentation.descriptions
@@ -52,12 +53,14 @@ FUEL_MODEL_ATTRIBUTE_KEYS: dict[int, tuple[str, str]] = {
 
 def fire_description(
     entry: peri_scribe.models.FireIndexEntry,
-    perimeter_rows: geopandas.GeoDataFrame,
-    point_rows: geopandas.GeoDataFrame,
+    perimeter_rows: peri_scribe.history_columns.Frame,
+    point_rows: peri_scribe.history_columns.Frame,
     of_note: str | None = None,
     *,
-    incident_rows: geopandas.GeoDataFrame | None = None,
+    incident_rows: peri_scribe.history_columns.Frame | None = None,
     history: peri_scribe.areas.PreparedHistory | None = None,
+    row_fingerprints: tuple[spatial_data.frame_fingerprints.FrameRows, ...]
+    | None = None,
 ) -> peri_scribe.presentation.descriptions.FireDescription:
     """Return *entry*'s latest state for its balloon description.
 
@@ -73,6 +76,8 @@ def fire_description(
             when the fire has no saved score.
         incident_rows: The optional independent reporting history for this fire.
         history: Already prepared reporting and area evidence, or None to prepare it.
+        row_fingerprints: Exact latest-row identities prepared from these unchanged
+            source views in the current call, or None for independent frame callers.
 
     Returns:
         The fire's latest state.
@@ -93,10 +98,7 @@ def fire_description(
             incident_rows,
         )
     try:
-        frames = tuple(
-            spatial_data.frame_fingerprints.frame_rows(frame.iloc[-1:])
-            for frame in (perimeter_rows, point_rows)
-        )
+        frames = row_fingerprints or latest_fingerprints((perimeter_rows, point_rows))
         key = spatial_data.frame_fingerprints.selected_key(
             frames,
             tuple(tuple(range(len(frame.rows))) for frame in frames),
@@ -140,13 +142,40 @@ def fire_description(
     return dataclasses.replace(description, of_note=of_note)
 
 
+def latest_fingerprints(
+    frames: tuple[peri_scribe.history_columns.Frame, ...],
+) -> tuple[spatial_data.frame_fingerprints.FrameRows, ...]:
+    """Fingerprint standalone mutable frames at the moment they are consumed.
+
+    Args:
+        frames: Selected perimeter and point history frames.
+
+    Returns:
+        Their latest-row identities with complete schema evidence.
+
+    Raises:
+        ValueError: When borrowed column views have no supplied schema identity.
+    """
+    if any(
+        isinstance(frame, peri_scribe.history_columns.HistoryRows) for frame in frames
+    ):
+        message = "Column views require current schema fingerprints"
+        raise ValueError(message)
+    return tuple(
+        spatial_data.frame_fingerprints.frame_rows(
+            typing.cast("geopandas.GeoDataFrame", frame).iloc[-1:],
+        )
+        for frame in frames
+    )
+
+
 def build_fire_description(
     entry: peri_scribe.models.FireIndexEntry,
-    perimeter_rows: geopandas.GeoDataFrame,
-    point_rows: geopandas.GeoDataFrame,
+    perimeter_rows: peri_scribe.history_columns.Frame,
+    point_rows: peri_scribe.history_columns.Frame,
     of_note: str | None = None,
     *,
-    incident_rows: geopandas.GeoDataFrame | None = None,
+    incident_rows: peri_scribe.history_columns.Frame | None = None,
     history: peri_scribe.areas.PreparedHistory | None = None,
 ) -> peri_scribe.presentation.descriptions.FireDescription:
     """Derive stable facts from the latest rows and complete reporting evidence.
@@ -162,13 +191,21 @@ def build_fire_description(
     Returns:
         The fire's latest state with its exact original measurement units.
     """
-    perimeter_row = perimeter_rows.iloc[-1] if not perimeter_rows.empty else None
-    point_row = point_rows.iloc[-1] if not point_rows.empty else None
+    perimeter_row = (
+        peri_scribe.history_columns.last_row(perimeter_rows)
+        if not perimeter_rows.empty
+        else None
+    )
+    point_row = (
+        peri_scribe.history_columns.last_row(point_rows)
+        if not point_rows.empty
+        else None
+    )
 
     exterior_perimeter: pint.Quantity[float] | None = None
     if perimeter_row is not None:
         exterior_perimeter = peri_scribe.geo.measurements.exterior_perimeter(
-            perimeter_row.geometry,
+            perimeter_row.get("geometry"),
             perimeter_row.get(peri_scribe.geo.measurements.EXTERIOR_COLUMN),
         )
 
@@ -337,9 +374,9 @@ def score_explanation_for(
 
 
 def selected_area_description(
-    perimeters: geopandas.GeoDataFrame,
-    points: geopandas.GeoDataFrame,
-    incident_rows: geopandas.GeoDataFrame | None,
+    perimeters: peri_scribe.history_columns.Frame,
+    points: peri_scribe.history_columns.Frame,
+    incident_rows: peri_scribe.history_columns.Frame | None,
     *,
     history: peri_scribe.areas.PreparedHistory | None = None,
 ) -> tuple[pint.Quantity[float] | None, str | None]:

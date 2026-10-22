@@ -62,6 +62,7 @@ class HistoryIdentity:
 
     history: peri_scribe.areas.PreparedHistory
     digest: bytes
+    payload: bytes
     guards: tuple[HistoryGuard, ...]
 
 
@@ -216,6 +217,7 @@ def remember_history(
             HistoryIdentity(
                 history=history,
                 digest=digest,
+                payload=payload,
                 guards=history_guards(history),
             ),
         )
@@ -231,6 +233,40 @@ def history_digest(history: peri_scribe.areas.PreparedHistory) -> bytes:
     Returns:
         The same digest as hashing its complete current canonical history payload.
     """
+    identity = valid_history_identity(history)
+    if identity is not None:
+        return identity.digest
+    return remember_history(history, history_bytes(history))
+
+
+def history_payload(history: peri_scribe.areas.PreparedHistory) -> bytes:
+    """Share immutable canonical bytes while checking mutable public evidence.
+
+    Args:
+        history: Current prepared evidence, computed or validated from storage.
+
+    Returns:
+        Its complete current typed payload, reused only while every guard matches.
+    """
+    identity = valid_history_identity(history)
+    if identity is not None:
+        return identity.payload
+    payload = history_bytes(history)
+    remember_history(history, payload)
+    return payload
+
+
+def valid_history_identity(
+    history: peri_scribe.areas.PreparedHistory,
+) -> HistoryIdentity | None:
+    """Validate one retained immutable payload and digest against current evidence.
+
+    Args:
+        history: The current history whose fields and mutable children must match.
+
+    Returns:
+        Its existing identity, or None when a fresh serialization is required.
+    """
     identity = peri_scribe.execution.get(
         peri_scribe.execution.Group.HISTORIES,
         ("prepared_history_identity", id(history)),
@@ -240,8 +276,8 @@ def history_digest(history: peri_scribe.areas.PreparedHistory) -> bytes:
         and identity.history is history
         and all(history_guard_matches(guard) for guard in identity.guards)
     ):
-        return identity.digest
-    return remember_history(history, history_bytes(history))
+        return identity
+    return None
 
 
 def history_guard_matches(guard: HistoryGuard) -> bool:

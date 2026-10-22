@@ -3,6 +3,7 @@
 Algorithm reasoning and contracts:
 [Pipeline publication](../../docs/algorithms/pipeline-publication.md)
 [Geography generations](../../docs/algorithms/geography-generations.md)
+[Supervised stage processes](../../docs/algorithms/stage-processes.md)
 """
 
 from __future__ import annotations
@@ -221,21 +222,84 @@ def run_lock(year_directory: pathlib.Path) -> typing.Generator[bool]:
     Yields:
         Whether this invocation owns the year's writer lock.
     """
-    with file_lock(year_directory, shared=False) as acquired:
-        if not acquired:
-            yield False
-            return
-        ownership = WriterOwnership(
-            directory=year_directory.resolve(),
-            process=os.getpid(),
-            thread=threading.get_ident(),
-        )
-        token = WRITERS.set((*WRITERS.get(), ownership))
+    with run_lease(year_directory) as descriptor:
+        yield descriptor is not None
+
+
+@contextlib.contextmanager
+def run_lease(year_directory: pathlib.Path) -> typing.Generator[int | None]:
+    """Keep an exclusive file description live across supervised child processes.
+
+    Each holder closes its reference without explicitly unlocking the shared open file
+    description. A surviving child therefore keeps the lease after its parent dies.
+
+    Args:
+        year_directory: The year whose cooperating writers must remain excluded.
+
+    Yields:
+        The inheritable lease descriptor, or None when another owner holds the lock.
+    """
+    path = lock_path(year_directory)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as stream:
         try:
-            yield True
-        finally:
-            ownership.active = False
-            WRITERS.reset(token)
+            fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            yield None
+            return
+        with writer_context(year_directory):
+            yield stream.fileno()
+
+
+@contextlib.contextmanager
+def inherited_lease(
+    year_directory: pathlib.Path,
+    descriptor: int,
+) -> typing.Generator[None]:
+    """Authenticate an inherited descriptor and own its nested reads until exit.
+
+    Args:
+        year_directory: The directory protected by the parent's continuous lease.
+        descriptor: An inherited reference to that exact lock file description.
+
+    Yields:
+        Control while the child holds a validated writer lease.
+
+    Raises:
+        ValueError: If the descriptor belongs to a different lock file.
+    """
+    with os.fdopen(descriptor, "a", closefd=True) as stream:
+        actual = os.fstat(stream.fileno())
+        expected = lock_path(year_directory).stat()
+        if (actual.st_dev, actual.st_ino) != (expected.st_dev, expected.st_ino):
+            message = "Inherited writer lease does not match this year"
+            raise ValueError(message)
+        fcntl.flock(stream, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        with writer_context(year_directory):
+            yield
+
+
+@contextlib.contextmanager
+def writer_context(year_directory: pathlib.Path) -> typing.Generator[None]:
+    """Permit nested reads only within this process's verified writer scope.
+
+    Args:
+        year_directory: The directory protected by the caller's live lease.
+
+    Yields:
+        Control with process and thread ownership registered for nested readers.
+    """
+    ownership = WriterOwnership(
+        directory=year_directory.resolve(),
+        process=os.getpid(),
+        thread=threading.get_ident(),
+    )
+    token = WRITERS.set((*WRITERS.get(), ownership))
+    try:
+        yield
+    finally:
+        ownership.active = False
+        WRITERS.reset(token)
 
 
 @contextlib.contextmanager

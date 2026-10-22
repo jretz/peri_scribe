@@ -85,3 +85,61 @@ def interrupt_pruned_publication(path: pathlib.Path) -> typing.Never:
         spatial_data.product_cache.prune("history", ["replacement"])
         message = "interrupted"
         raise RuntimeError(message)
+
+
+def interrupt_changed_context(path: pathlib.Path) -> typing.Never:
+    """A failed new-context publication must preserve the preceding cache contexts.
+
+    Args:
+        path: The isolated cache containing previous-context products.
+
+    Raises:
+        RuntimeError: Publication fails after writing an uncommitted current product.
+    """
+    with spatial_data.product_cache.scope(path, "current"):
+        spatial_data.product_cache.put("history", "key", b"uncommitted")
+        message = "publication failed"
+        raise RuntimeError(message)
+
+
+def hold_compaction_reader(
+    reader: sqlite3.Connection,
+    connection: sqlite3.Connection,
+    *,
+    retired: bool,
+) -> bool:
+    """Pin an independent committed snapshot after retirement and before VACUUM.
+
+    Args:
+        reader: The independent connection owned by the test.
+        connection: The production maintenance connection.
+        retired: Whether production retirement removed obsolete contexts.
+
+    Returns:
+        True so the actual SQLite compaction encounters the active reader.
+    """
+    reader.execute("BEGIN")
+    reader.execute("SELECT count(*) FROM products").fetchone()
+    return True
+
+
+def deny_statements(
+    action: int,
+    first_argument: str | None,
+    second_argument: str | None,
+    database: str | None,
+    source: str | None,
+) -> int:
+    """Reject a statement while allowing the test to restore the real connection.
+
+    Args:
+        action: SQLite's requested operation identifier.
+        first_argument: The operation's first object name or argument.
+        second_argument: The operation's second object name or argument.
+        database: The database containing the affected object.
+        source: The triggering view or trigger, if present.
+
+    Returns:
+        SQLite's denial code, producing a real database exception.
+    """
+    return sqlite3.SQLITE_DENY

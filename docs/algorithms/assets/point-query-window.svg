@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 224" role="img" aria-labelledby="title description">
+  <title id="title">Inclusive longitude bounds retain duplicate endpoint points</title>
+  <desc id="description">A sorted array contains minus two, minus one twice, zero, one twice, and two. The selected window includes every value from minus one through one. Its first excluded index is the position containing two.</desc>
+  <style>
+    :root { color-scheme: light dark; --background: #111820; }
+    svg { background: var(--background); }
+    .background { fill: var(--background); }
+    text { font-family: system-ui, sans-serif; font-size: 17px; fill: #e4edf5; }
+    .small { font-size: 14px; }
+    .point { fill: #1b2937; stroke: #8ba3b3; stroke-width: 1.5; }
+    .selected { fill: #254c43; }
+    .window { fill: #1a342e; }
+    .boundary { stroke: #75d2bd; stroke-width: 3; }
+    @media (prefers-color-scheme: light) {
+      :root { --background: #f8fafc; }
+      text { fill: #18272c; }
+      .point { fill: #f2f5f5; stroke: #536b72; }
+      .selected { fill: #d5eee8; }
+      .window { fill: #e9f6f1; }
+      .boundary { stroke: #087c68; }
+    }
+  </style>
+  <rect class="background" width="760" height="224"/>
+  <text x="28" y="30">Sorted encoded longitudes</text>
+  <rect class="window" x="140" y="66" width="450" height="64" rx="8"/>
+  <g text-anchor="middle">
+    <rect class="point" x="50" y="76" width="80" height="44" rx="5"/>
+    <rect class="point selected" x="140" y="76" width="80" height="44" rx="5"/>
+    <rect class="point selected" x="230" y="76" width="80" height="44" rx="5"/>
+    <rect class="point selected" x="320" y="76" width="80" height="44" rx="5"/>
+    <rect class="point selected" x="410" y="76" width="80" height="44" rx="5"/>
+    <rect class="point selected" x="500" y="76" width="80" height="44" rx="5"/>
+    <rect class="point" x="590" y="76" width="80" height="44" rx="5"/>
+    <text x="90" y="104">−2</text><text x="180" y="104">−1</text>
+    <text x="270" y="104">−1</text><text x="360" y="104">0</text>
+    <text x="450" y="104">1</text><text x="540" y="104">1</text>
+    <text x="630" y="104">2</text>
+  </g>
+  <path class="boundary" d="M135 58V148M585 58V148"/>
+  <text x="135" y="172" class="small">First longitude ≥ −1</text>
+  <text x="585" y="172" class="small" text-anchor="middle">First longitude &gt; 1</text>
+  <text x="360" y="207" text-anchor="middle">Keep both copies at each inclusive endpoint</text>
+</svg>

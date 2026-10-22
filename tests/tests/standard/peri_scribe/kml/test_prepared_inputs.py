@@ -353,7 +353,7 @@ def test_read_projected_layer_keeps_schema_and_exact_latest_attributes(
     fixture = tests.helpers.factories.peri_scribe.kml.prepared_inputs.geography(
         tmp_path,
     )
-    path = peri_scribe.fires.files.history_geopackage_path(fixture.year_directory)
+    path = fixture.full_path
     selected = peri_scribe.kml.prepared_inputs.qualified_index(
         fixture.index,
         fixture.histories,
@@ -376,7 +376,7 @@ def test_read_projected_layer_keeps_fid_gaps_separate_from_row_positions(
     fixture = tests.helpers.factories.peri_scribe.kml.prepared_inputs.geography(
         tmp_path,
     )
-    path = peri_scribe.fires.files.history_geopackage_path(fixture.year_directory)
+    path = fixture.full_path
     with contextlib.closing(sqlite3.connect(path)) as connection:
         connection.execute("DELETE FROM perimeter_history WHERE fid = 2")
         connection.commit()
@@ -399,7 +399,7 @@ def test_read_projected_layer_preserves_original_attribute_schema(
         tmp_path,
         attributes=attributes,
     )
-    path = peri_scribe.fires.files.history_geopackage_path(fixture.year_directory)
+    path = fixture.full_path
     actual = peri_scribe.kml.prepared_inputs.read_projected_layer(
         path,
         "perimeter_history",
@@ -676,9 +676,14 @@ def test_prepare_inputs_retains_valid_empty_qualification_without_attributes(
 
 def test_prepare_inputs_rejects_unrelated_writer_before_reading_products(
     tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     fixture = tests.helpers.factories.peri_scribe.kml.prepared_inputs.geography(
         tmp_path,
+    )
+    tests.helpers.doubles.peri_scribe.kml.prepared_inputs.legacy_paths(
+        monkeypatch,
+        fixture,
     )
     with (
         spatial_data.product_cache.scope(tmp_path / "products.sqlite", "test"),

@@ -27,7 +27,7 @@ SNAPSHOT_COUNT = 2
 READ_SCHEDULE_COUNT = 288
 SYNC_CONFIGURATION_COUNT = 12
 SYNC_INTERRUPTION_COUNT = 176
-SCHEMA_PREFIX_COUNT = 16
+SCHEMA_PREFIX_COUNT = 18
 
 
 def numbers(value: str) -> tuple[int, ...]:
@@ -439,7 +439,7 @@ def replay_rebuild(
         database=database,
         execution=checked.start(tests.formal.helpers.cache_paths.observe(database)),
     )
-    reset_statements = 15
+    reset_statements = 17
     with contextlib.closing(sqlite3.connect(database)) as connection:
         connection.execute("PRAGMA user_version = 1")
         interruption = InterruptSchema(connection=connection, stop_after=phase)

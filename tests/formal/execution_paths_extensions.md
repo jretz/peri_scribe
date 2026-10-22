@@ -11,8 +11,8 @@ process exit treated as a terminal stutter must leave that value unchanged.
 | Area | Models | Concrete histories |
 | --- | --- | ---: |
 | Pipeline composition | `PipelineComposition` | 19,240 retained outcomes, each preceded by its actual earlier invocations |
-| Parsed-cache synchronization | `ParsedCache` | 110 interrupted transactions with healthy retries, plus 12 uninterrupted configurations |
-| Parsed-cache schema recovery | `ParsedCacheRebuild` | 18 initial prefixes and their actual repair |
+| Parsed-cache synchronization | `ParsedCache` | 176 interrupted transactions with healthy retries, plus 12 uninterrupted configurations |
+| Parsed-cache schema recovery | `ParsedCacheRebuild` | 36 initial prefixes and their actual repair |
 | Geography readers | `GeographyReaders` | 162 original reader cases plus 20 writer-prefix/read histories |
 | Geography publication | `GeographyPublication` | 44 publication/recovery histories, each followed by a later source generation |
 
@@ -60,7 +60,8 @@ may be invisible to the observer, but they cannot publish partial committed reco
 Schema resets expose separately committed table drops and creates. A real interruption
 and connection close are followed by an explicit `CrashAndRestart`, then actual
 `ensure_database_current` repair. The recovery model allows interruption before the
-first DDL statement as well as after it and explores 64 states. `ParsedCache` includes a
+first DDL statement as well as after all seventeen statements and explores 100 states.
+`ParsedCache` includes a
 restart edge back to its write state and explores 234 states. The separate
 reader-scheduling checks cover 288 pinned-reader schedules and their fallback results;
 they do not claim whole-prefix matching.

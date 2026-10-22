@@ -1,17 +1,17 @@
-"""Building the differential point and perimeter history for a year's fires.
+"""Build the differential perimeter history for a year's fires.
 
-The differential history is derived from the full history GeoPackage. The point layer is
-copied unchanged, while the perimeter layer shows the area each perimeter added over the
-previous one. Reductions in later perimeters are folded into the previous perimeter as
-corrections, so the differential layer shows only growth.
+The differential history is derived from the full-history GeoPackage. Each perimeter
+shows the area added over the previous one. Reductions in later perimeters are folded
+into the previous perimeter as corrections, so the differential layer shows only growth.
+Point and incident evidence belongs to the authenticated full-history file.
 
 [Growth rings](../../../docs/algorithms/corrected-growth-rings.md)
 [Generation and reuse](../../../docs/algorithms/geography-generations.md)
+[Bounded history work](../../../docs/algorithms/history-work-queues.md)
 """
 
 from __future__ import annotations
 
-import concurrent.futures
 import functools
 import os
 import pathlib
@@ -20,6 +20,8 @@ import typing
 import shapely
 import structlog
 
+import peri_scribe.concurrency
+import peri_scribe.execution
 import peri_scribe.fires.files
 import peri_scribe.fires.history
 import peri_scribe.fires.reuse
@@ -40,6 +42,7 @@ if typing.TYPE_CHECKING:
 
 
 DIFFERENTIAL_OUTPUT_FILENAME = "history_of_differential_geography.gpkg"
+DIFFERENTIAL_LAYER_NAMES = (peri_scribe.fires.files.PERIMETER_LAYER_NAME,)
 logger = structlog.get_logger()
 
 # Geometry calls release the GIL, but Python attribute work still competes for it. Keep
@@ -97,7 +100,7 @@ DIFFERENTIAL_PERIMETER_COLUMNS = [
 
 
 def differential_geopackage_path(year_directory: pathlib.Path) -> pathlib.Path:
-    """Return the path of the derived differential history GeoPackage.
+    """Return the differential history GeoPackage path.
 
     Args:
         year_directory: The year directory that holds the ``derived`` directory.
@@ -512,14 +515,12 @@ def differential_perimeter_dataframe(
     rows: list[dict[str, object]] = []
     reused_count = 0
     recomputed_count = 0
-    with concurrent.futures.ThreadPoolExecutor(
+    with peri_scribe.concurrency.ordered_parallel_map(
+        functools.partial(differential_group_rows, reused=reused),
+        groups,
         max_workers=DIFFERENTIAL_WORKER_COUNT,
-    ) as executor:
-        results = executor.map(
-            functools.partial(differential_group_rows, reused=reused),
-            groups,
-            buffersize=2 * DIFFERENTIAL_WORKER_COUNT,
-        )
+        max_pending=peri_scribe.fires.history.HISTORY_TASK_BUFFER_SIZE,
+    ) as results:
         for fire_rows, was_reused in results:
             rows.extend(fire_rows)
             reused_count += was_reused
@@ -566,12 +567,12 @@ def write_history_of_differential_geography(
     *,
     unconditional: bool = False,
 ) -> pathlib.Path:
-    """Build and write the differential point and perimeter history GeoPackage.
+    """Build and write the canonical differential perimeter history.
 
     The full history is built first so the differential always matches the current
-    source data. The output holds a ``perimeter_history`` layer of per-perimeter growth
-    and a ``point_history`` layer copied from the full history. Unchanged fires retain
-    their rings and measurements; changes rebuild the fire's complete sequence.
+    source data. The output holds a ``perimeter_history`` layer of per-perimeter growth.
+    Unchanged fires retain their rings and measurements; changes rebuild the fire's
+    complete sequence.
 
     Args:
         year_directory: The year directory that holds the ``sources`` directory.
@@ -588,6 +589,7 @@ def write_history_of_differential_geography(
             year_directory,
             unconditional=unconditional,
         )
+    peri_scribe.execution.clear(peri_scribe.execution.Group.SOURCES)
     with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.DIFFERENTIAL_HISTORY):
         output_path = differential_geopackage_path(year_directory)
         generation = differential_generation(full_path, year_directory)
@@ -597,10 +599,7 @@ def write_history_of_differential_geography(
             and peri_scribe.fires.reuse.generation_matches(
                 output_path,
                 generation,
-                (
-                    peri_scribe.fires.files.PERIMETER_LAYER_NAME,
-                    peri_scribe.fires.files.POINT_LAYER_NAME,
-                ),
+                DIFFERENTIAL_LAYER_NAMES,
             )
         ):
             logger.info("Differential geography unchanged", path=str(output_path))
@@ -608,10 +607,6 @@ def write_history_of_differential_geography(
         full_perimeters = peri_scribe.fires.reuse.read_published_layer(
             full_path,
             peri_scribe.fires.files.PERIMETER_LAYER_NAME,
-        )
-        full_points = peri_scribe.fires.reuse.read_published_layer(
-            full_path,
-            peri_scribe.fires.files.POINT_LAYER_NAME,
         )
         cached = peri_scribe.fires.reuse.read_rows(
             output_path,
@@ -634,10 +629,6 @@ def write_history_of_differential_geography(
                             {},
                         ),
                     ),
-                ),
-                spatial_data.layers.LayerData(
-                    name=peri_scribe.fires.files.POINT_LAYER_NAME,
-                    dataframe=full_points,
                 ),
             ],
             generation=generation,

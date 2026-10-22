@@ -2,19 +2,60 @@
 
 from __future__ import annotations
 
+import contextlib
 import pathlib
-import typing
+import sqlite3
 
 import geopandas
 import pyproj
 import shapely
 import shapely.geometry
 
+import peri_scribe.geo.fingerprints
+import peri_scribe.geo.package
+import peri_scribe.sources.feed_types
 import spatial_data.layers
 
 
-if typing.TYPE_CHECKING:
-    import peri_scribe.sources.feed_types
+def cache_row(
+    source: peri_scribe.geo.package.FireRowRecord,
+    **changes: object,
+) -> sqlite3.Row:
+    """Expose exact logical payloads under the public row adapter's column names.
+
+    Args:
+        source: Complete original evidence serialized with its typed metadata.
+        changes: Deliberate changes to stored columns after their fingerprint is set.
+
+    Returns:
+        A named SQLite row independent of any persistent database schema.
+    """
+    columns = (
+        "serial",
+        "object_id",
+        "source_name",
+        "name",
+        "status",
+        "identifiers",
+        "names",
+        "geometry_wkb",
+        "observed_at",
+        "mission",
+        "point_of_origin_state",
+        "point_of_origin_fips",
+        "attributes_json",
+    )
+    values = dict(zip(columns, source.to_row(7), strict=True))
+    values["evidence_fingerprint"] = (
+        peri_scribe.geo.fingerprints.complete_row_fingerprint(source)
+    )
+    values.update(changes)
+    with contextlib.closing(sqlite3.connect(":memory:")) as connection:
+        connection.row_factory = sqlite3.Row
+        return connection.execute(
+            "SELECT " + ", ".join(f"? AS {column}" for column in values),
+            tuple(values.values()),
+        ).fetchone()
 
 
 def wgs84_dataframe(

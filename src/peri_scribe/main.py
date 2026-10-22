@@ -17,7 +17,7 @@ import peri_scribe.logging
 
 
 DEFERRED_COMMANDS = {
-    "run": ("peri_scribe.pipeline", "run"),
+    "run": ("peri_scribe.supervision", "run"),
     "show-colormap": ("peri_scribe.pipeline", "show_colormap"),
     "validate-sources": ("peri_scribe.pipeline", "validate_sources"),
     "show-latencies": ("peri_scribe.show_latencies.cli", "show_latencies"),

@@ -38,6 +38,8 @@ The [output text inventory](output_text.md) connects normalized literal content 
 structural encoding proofs with parsed Markdown, HTML, XML, and saved KMZ artifacts.
 The [compact KMZ inventory](kmz_preparation.md) connects exact preparation identities,
 qualification subsets and latest-row attribute projection to concrete cached reads.
+The [point-window inventory](point_window.md) connects sorted integer longitude windows
+to exact inclusive envelope filtering and duplicate-preserving containment counts.
 
 | Module | Python boundary | Checked guarantees |
 | --- | --- | --- |
@@ -55,6 +57,7 @@ qualification subsets and latest-row attribute projection to concrete cached rea
 | `IdentityOutput` | `fires.sources`, `presentation.selection`, `presentation.history_index`, `presentation.fire_data` | Component and tagged-history ownership, exact eligible observation retention, chronological alias aggregation, and explicit identifier/name fallback boundaries. |
 | `SparseEvidence` | `areas`, `presentation.selection`, `presentation.index` | Dated-history precedence, sparse current and historical fallback, missing versus zero, visibility witnesses, and continued qualification when an already qualifying dated history is extended. |
 | `SpatialIndex` | `point_store.tile_id`, `tile_ids_for_box`, `point_counts_within` | Tile enumeration is complete and duplicate-free; counting across the enumerated tiles equals exhaustive bag counting under the stated containment assumptions. |
+| `PointWindow` | `point_index`, `point_store.point_counts_within` | Sorted longitude windows preserve the candidate bag and arbitrary exact containment counts, including inclusive bounds and duplicate points. |
 | `Grouping` | `fires.grouping.group_fire_record_indices` | Executable class merging computes exactly undirected connectivity, independent of edge order and duplicate edges; parent-pointer operations have explicit representation obligations. |
 | `RetainedSourceIndex` | `fires.source_index_cache.changed_rows`, `affected_rows`, compact anchor summaries | Complete optional evidence determines changed occurrences; old-plus-new dependency paths determine exactly the current affected rows. Conservative dependency coverage and stable complete endpoint evidence justify clean-block reuse and equality with an independent full current index. Order-preserving compact ranks retain every subset minimum under an explicit rank-construction premise. Eleven theorems and 31,250 concrete retained-inventory histories connect the closure proof to serialized summaries and reverse-map traversal; ordinary generated subset checks exercise the separate rank adapter. |
 | `PerimeterVersions` | `perimeters.versions`, `areas` | Revision windows remain anchored; collapsing observations preserves provenance; supersession retains its witness; survey freshness follows the last actual survey; time-first eligibility preserves the first identical match for pure total predicates. |
@@ -66,6 +69,7 @@ qualification subsets and latest-row attribute projection to concrete cached rea
 | `RankedViews` | `presentation.score_association`, `presentation.views` | Unique ranked owners retain their winning score; observation windows exclude future evidence. |
 | `OutputReferences` | KMZ resources and Markdown report anchors | Allocated names, owner references, and tour targets remain unique and complete. |
 | `CacheCodec` | `spatial_data.cache_values`, `peri_scribe.geo.fingerprints` | Tagged trees round-trip injectively, preserve scalar payloads and child order, and reject incomplete or trailing prefix tokens. Sound immutable-scalar identity shortcuts preserve complete typed-tree and encoding equality. |
+| `PayloadCodec` | `spatial_data.payload_prediction`, shared compressed payload storage | Recursive XOR prediction is reversible and injective for finite byte lists; rectangular transposition and padding removal preserve exact bytes. Finite adapter conformance checks the NumPy layout and production frames; zstd correctness remains an assumption. |
 | `BuildingCentroids` | `spatial_data.centroid_math`, `centroid_streaming` | Exact signed moments, orientation, translation, hole subtraction, and feature preservation across streaming chunks. |
 | `PerimeterComposition` | Complete perimeter reconciliation | Attribute precedence and source lineage survive the composition; final losses require a rejection witness. |
 | `BorderClassification` | Border signals, classification, and source preference | Geometric classification and optimized collection handling follow the declared evidence policy; the consumed summary preserves every classification result field without absolute outside area. |
@@ -73,6 +77,7 @@ qualification subsets and latest-row attribute projection to concrete cached rea
 | `SourceDigest` | `sources.digests` | Field framing is injective; schema identity survives empty frames; canonical row order retains multiplicity. |
 | `SourceManifest` | `sources.manifest` | Complete ordered trees retain paths, content fields and multiplicity under an explicit injective node-hash premise; equal ordered children preserve a completed branch identity. Fixed path/checksum pair flattening followed by field framing is injective before hashing. Executable constructor, whole-input key and field framing checks cover actual SHA-256 composition and persistent reuse for inventories of zero through forty leaves. |
 | `SourceProvenance` | `sources.provenance`, current source-index metadata construction | A valid pure lexical memo preserves every ordered result and duplicate; canonical current reverse construction agrees with full aggregate validation under typed-row and unique-reference premises; an empty changed set has no affected rows. Six theorems, 518 executable memo histories and ordinary strict-decoding regressions state the adapter boundaries. |
+| `SourceProvenance` identity specialization | `geo.attribute_strings.AttributeStrings` | The generic valid-memo result theorem preserves exact immutable strings. Four capacity bounds and 121 ordered traces each compare the concrete pool with the compiled identity memo; ordinary checks cover container independence and Unicode/scalar preservation. Admission limits affect storage, not values. |
 | `SourceValidation` | `sources.validation.validate_feed` | Indexed success is equivalent to complete relational coverage with unique IDs, every required attribute, and a known matching CRS; extra stored content and input reordering preserve valid coverage. |
 | `SpatialOverlap` | `spatial_data.overlaps` | Indexed evacuation-overlap searches agree with exhaustive intersection and streamed batches. |
 | `DifferentialRows` | `fires.differential` | Growth blocks retain their final source attribution, sparse deltas retain their baseline, and visible ring sequences preserve order. |
@@ -123,6 +128,7 @@ The inventories below connect each group of proofs to its implementation checks:
 | [Complex ownership](complex_ownership.md) | Current parent selection, releases, and mergers through incident history. |
 | [Ranked views and output references](output_references.md) | Consistent score ownership across outputs and valid references to fire details and resources. |
 | [Typed codecs](cache_codec.md) | Structured encoding and fixtures for exact representations. |
+| [Exact payload prediction](payload_codec.md) | Reversible byte prediction, concrete compressed-frame conformance, and atomic dictionary storage assumptions. |
 | [Perimeter composition](perimeter_composition.md) | Complete reconciliation and border classification, including optimized geometry handling. |
 | [Centroids and monitor reconstruction](centroids_monitor.md) | Exact footprint moments, preservation of streamed features, and reconstruction of runs and phases. |
 | [Source fingerprints](source_digest.md) | Source-change encoding, schema identity, and row comparisons that ignore order but preserve duplicates. |

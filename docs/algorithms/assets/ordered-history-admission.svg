@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="294" viewBox="0 0 860 294" role="img" aria-labelledby="title desc">
+  <title id="title">Completion-driven admission with ordered results</title>
+  <desc id="desc">Worker zero runs a long first task. Worker one finishes task one and admits task two before task zero ends. Later results wait in memory and are delivered in original order when task zero finishes.</desc>
+  <style>
+    :root { color-scheme: light dark; --background: #111820; }
+    svg { background: var(--background); }
+    .background { fill: var(--background); }
+    text { font: 15px system-ui, sans-serif; fill: #e4edf5; }
+    .small { font-size: 13px; }
+    .line { stroke: #9caebe; stroke-width: 2; }
+    .slow-task { fill: #29475f; }
+    .ready-task { fill: #244832; }
+    .delivery { fill: #35364f; }
+    .connector { fill: none; stroke-width: 2; }
+    .admission { stroke: #85d6a4; }
+    .completion { stroke: #82baff; }
+    @media (prefers-color-scheme: light) {
+      :root { --background: #f8fafc; }
+      text { fill: #172b3a; }
+      .line { stroke: #64748b; }
+      .slow-task { fill: #b9d8f1; }
+      .ready-task { fill: #bbdfc6; }
+      .delivery { fill: #e4e8f2; }
+      .admission { stroke: #276749; }
+      .completion { stroke: #245784; }
+    }
+  </style>
+  <rect class="background" width="860" height="294" rx="12"/>
+  <text x="24" y="32" font-weight="600">Completion frees admission; original position controls delivery</text>
+  <text x="24" y="77">Worker 0</text>
+  <text x="24" y="133">Worker 1</text>
+  <path d="M134 93H803 M134 149H803" class="line"/>
+  <rect class="slow-task" x="148" y="53" width="398" height="35" rx="6"/>
+  <text x="167" y="76">Task 0: slow</text>
+  <rect class="ready-task" x="148" y="109" width="126" height="35" rx="6"/>
+  <text x="177" y="132">Task 1</text>
+  <rect class="ready-task" x="290" y="109" width="126" height="35" rx="6"/>
+  <text x="319" y="132">Task 2</text>
+  <path class="connector admission" d="M274 126H287 M281 120L287 126L281 132"/>
+  <text x="151" y="175" class="small">Task 1 completes → admit task 2</text>
+  <path class="connector admission" d="M274 149V209H534 M416 149V222H534" stroke-dasharray="5 4"/>
+  <text x="24" y="216">Ready results</text>
+  <text x="151" y="245" class="small">1 and 2 wait for position 0</text>
+  <path class="connector completion" d="M546 89V209H578 M572 203L578 209L572 215"/>
+  <rect class="delivery" x="588" y="190" width="201" height="40" rx="6"/>
+  <text x="608" y="215">Deliver: 0 → 1 → 2</text>
+  <text x="588" y="252" class="small">The caller receives input order.</text>
+  <text x="734" y="173" class="small">Time →</text>
+</svg>

@@ -123,10 +123,7 @@ def authenticated_pair(
     )
     differential = peri_scribe.fires.reuse.validated_signature(
         differential_path,
-        (
-            peri_scribe.fires.files.PERIMETER_LAYER_NAME,
-            peri_scribe.fires.files.POINT_LAYER_NAME,
-        ),
+        peri_scribe.fires.differential.DIFFERENTIAL_LAYER_NAMES,
     )
     if (
         full is None

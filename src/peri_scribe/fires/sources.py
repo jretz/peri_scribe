@@ -226,6 +226,28 @@ def group_fire_sources(read: ReadFireSources) -> FireRecordGroups:
         ),
         geometry_keys=read.geometry_keys,
     )
+    return assemble_groups(read, groups)
+
+
+def assemble_groups(
+    read: ReadFireSources,
+    groups: list[list[int]],
+    *,
+    observations: list[peri_scribe.fires.complexes.MembershipObservation] | None = None,
+    warn: bool = True,
+) -> FireRecordGroups:
+    """Apply shared identities and global complex ownership to an ordered partition.
+
+    Args:
+        read: Source metadata or complete rows in authoritative occurrence order.
+        groups: The exact ordered fire partition over those occurrences.
+        observations: Complete ownership declarations when attributes are not resident.
+        warn: Whether complete geometries are available for spatial diagnostics.
+
+    Returns:
+        Group identities and resolved ownership over the supplied records.
+    """
+    records = [row.record for row in read.rows]
     anchors = peri_scribe.fires.components.anchors(read.rows, read.paths)
     fires = [
         dataclasses.replace(
@@ -242,12 +264,13 @@ def group_fire_sources(read: ReadFireSources) -> FireRecordGroups:
         )
         for group in groups
     ]
-    peri_scribe.fires.grouping.warn_for_inconsistent_fires(
-        records,
-        groups,
-        fires,
-        geometry_keys=read.geometry_keys,
-    )
+    if warn:
+        peri_scribe.fires.grouping.warn_for_inconsistent_fires(
+            records,
+            groups,
+            fires,
+            geometry_keys=read.geometry_keys,
+        )
     fires_by_identifier: dict[str, peri_scribe.models.Fire] = {}
     for group, fire in zip(groups, fires, strict=True):
         for index in group:
@@ -256,11 +279,15 @@ def group_fire_sources(read: ReadFireSources) -> FireRecordGroups:
     complexes = peri_scribe.fires.grouping.fire_complexes(
         list(read.memberships),
         fires_by_identifier,
-        observations=peri_scribe.fires.complexes.observations(
-            read.rows,
-            read.paths,
-            read.memberships,
-            read.membership_paths,
+        observations=(
+            peri_scribe.fires.complexes.observations(
+                read.rows,
+                read.paths,
+                read.memberships,
+                read.membership_paths,
+            )
+            if observations is None
+            else observations
         ),
     )
     complex_identifiers = {complex_.identifier for complex_ in complexes}

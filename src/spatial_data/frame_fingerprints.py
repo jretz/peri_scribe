@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import dataclasses
 import hashlib
+import struct
 import typing
 
 import spatial_data.cache_values
@@ -39,13 +40,6 @@ def frame_rows(frame: geopandas.GeoDataFrame) -> FrameRows:
         Schema and per-row SHA-256 digests for ordered subset selection.
 
     """
-    geometry_name = frame.active_geometry_name
-    schema = spatial_data.cache_values.dumps((
-        tuple(frame.columns),
-        tuple(str(dtype) for dtype in frame.dtypes),
-        geometry_name,
-        None if geometry_name is None or frame.crs is None else frame.crs.to_wkt(),
-    ))
     # Series iteration preserves scalar types and repeated column labels.
     rows = (
         ()
@@ -56,9 +50,28 @@ def frame_rows(frame: geopandas.GeoDataFrame) -> FrameRows:
         )
     )
     return FrameRows(
-        schema=hashlib.sha256(schema).digest(),
+        schema=frame_schema(frame),
         rows=rows,
     )
+
+
+def frame_schema(frame: geopandas.GeoDataFrame) -> bytes:
+    """Fingerprint column semantics once for many latest-row selections.
+
+    Args:
+        frame: The complete source layer.
+
+    Returns:
+        The exact ordered schema and CRS digest, independent of selected positions.
+    """
+    geometry_name = frame.active_geometry_name
+    schema = spatial_data.cache_values.dumps((
+        tuple(frame.columns),
+        tuple(str(dtype) for dtype in frame.dtypes),
+        geometry_name,
+        None if geometry_name is None or frame.crs is None else frame.crs.to_wkt(),
+    ))
+    return hashlib.sha256(schema).digest()
 
 
 def selected_key(
@@ -76,10 +89,15 @@ def selected_key(
     Returns:
         The combined SHA-256 cache key.
     """
-    selected = tuple(
-        (frame.schema, tuple(frame.rows[position] for position in rows))
-        for frame, rows in zip(frames, positions, strict=True)
-    )
-    return hashlib.sha256(
-        spatial_data.cache_values.dumps((identity, selected)),
-    ).hexdigest()
+    payload = spatial_data.cache_values.dumps(identity)
+    digest = hashlib.sha256(b"selected-rows-v2\0")
+    digest.update(struct.pack("!QQ", len(payload), len(frames)))
+    digest.update(payload)
+    for frame, rows in zip(frames, positions, strict=True):
+        digest.update(struct.pack("!QQ", len(frame.schema), len(rows)))
+        digest.update(frame.schema)
+        for position in rows:
+            row = frame.rows[position]
+            digest.update(struct.pack("!Q", len(row)))
+            digest.update(row)
+    return digest.hexdigest()

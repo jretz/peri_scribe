@@ -8,16 +8,12 @@ from __future__ import annotations
 
 import datetime
 import json
-import typing
 
 import peri_scribe.geo.parsing
+import peri_scribe.history_columns
 
 
-if typing.TYPE_CHECKING:
-    import pandas as pd
-
-
-def column_value(row: pd.Series | None, column: str) -> object:
+def column_value(row: peri_scribe.history_columns.Row | None, column: str) -> object:
     """Return *row*'s value in *column*, or None when it is missing.
 
     Args:
@@ -27,15 +23,15 @@ def column_value(row: pd.Series | None, column: str) -> object:
     Returns:
         The column's value, or None when the row or value is missing.
     """
-    if row is None or column not in row.index:
+    if row is None:
         return None
-    value = row[column]
+    value = row.get(column)
     if peri_scribe.geo.parsing.is_missing(value):
         return None
     return value
 
 
-def text_value(row: pd.Series | None, column: str) -> str | None:
+def text_value(row: peri_scribe.history_columns.Row | None, column: str) -> str | None:
     """Return *row*'s text value in *column*, or None when it is blank.
 
     Args:
@@ -64,7 +60,10 @@ def as_datetime(value: object) -> datetime.datetime | None:
     return peri_scribe.geo.parsing.observation_time_from(value)
 
 
-def datetime_value(row: pd.Series | None, column: str) -> datetime.datetime | None:
+def datetime_value(
+    row: peri_scribe.history_columns.Row | None,
+    column: str,
+) -> datetime.datetime | None:
     """Return *row*'s datetime value in *column*, or None when it is missing.
 
     Args:
@@ -103,7 +102,10 @@ def source_attributes_dictionary(value: object) -> dict[str, object] | None:
     return attributes
 
 
-def source_attribute_value(row: pd.Series | None, key: str) -> object:
+def source_attribute_value(
+    row: peri_scribe.history_columns.Row | None,
+    key: str,
+) -> object:
     """Return *key* from *row*'s preserved source attributes, or None.
 
     The history layers keep each row's original source attributes as a JSON string,
@@ -123,7 +125,10 @@ def source_attribute_value(row: pd.Series | None, key: str) -> object:
     return attributes.get(key)
 
 
-def source_text_value(row: pd.Series | None, key: str) -> str | None:
+def source_text_value(
+    row: peri_scribe.history_columns.Row | None,
+    key: str,
+) -> str | None:
     """Return *key* from *row*'s source attributes as text, or None when blank.
 
     Args:
@@ -141,8 +146,8 @@ def source_text_value(row: pd.Series | None, key: str) -> str | None:
 
 
 def first_source_text(
-    perimeter_row: pd.Series | None,
-    point_row: pd.Series | None,
+    perimeter_row: peri_scribe.history_columns.Row | None,
+    point_row: peri_scribe.history_columns.Row | None,
     point_key: str | None,
     perimeter_key: str | None,
 ) -> str | None:
@@ -170,7 +175,10 @@ def first_source_text(
     return None
 
 
-def source_attribute_number(row: pd.Series | None, key: str) -> float | None:
+def source_attribute_number(
+    row: peri_scribe.history_columns.Row | None,
+    key: str,
+) -> float | None:
     """Return *key* from *row*'s preserved source attributes as a number, or None.
 
     Args:
@@ -184,8 +192,8 @@ def source_attribute_number(row: pd.Series | None, key: str) -> float | None:
 
 
 def first_source_number(
-    perimeter_row: pd.Series | None,
-    point_row: pd.Series | None,
+    perimeter_row: peri_scribe.history_columns.Row | None,
+    point_row: peri_scribe.history_columns.Row | None,
     point_key: str | None,
     perimeter_key: str | None,
 ) -> float | None:
@@ -214,8 +222,8 @@ def first_source_number(
 
 
 def numbered_source_text(
-    perimeter_row: pd.Series | None,
-    point_row: pd.Series | None,
+    perimeter_row: peri_scribe.history_columns.Row | None,
+    point_row: peri_scribe.history_columns.Row | None,
     slot_keys: dict[int, tuple[str, str]],
 ) -> str | None:
     """Return the distinct present attribute values, ordered by slot number.

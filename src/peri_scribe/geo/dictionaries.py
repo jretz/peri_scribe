@@ -13,7 +13,9 @@ import json
 import sqlite3
 import typing
 
+import peri_scribe.geo.attribute_strings
 import peri_scribe.geo.database
+import peri_scribe.geo.payload_storage
 
 
 if typing.TYPE_CHECKING:
@@ -53,23 +55,31 @@ def payload_values(
     Raises:
         ValueError: If a referenced encoding is absent or has damaged content metadata.
     """
+    dictionaries = peri_scribe.geo.payload_storage.dictionaries(conn)
+    dictionary_column = (
+        "dictionary_id"
+        if kind is peri_scribe.geo.database.PayloadKind.ATTRIBUTES
+        else "NULL AS dictionary_id"
+    )
     found: set[int] = set()
     ordered = sorted(identifiers)
     for position in range(0, len(ordered), PAYLOAD_BATCH_SIZE):
         batch = ordered[position : position + PAYLOAD_BATCH_SIZE]
         placeholders = ",".join("?" for _ in batch)
         for row in conn.execute(
-            f"SELECT id, digest, value FROM {kind.value} "
+            f"SELECT id, digest, value, encoding, original_size, {dictionary_column} "
+            f"FROM {kind.value} "
             f"WHERE id IN ({placeholders}) ORDER BY id",
             batch,
         ):
-            value = row["value"]
-            expected_type = (
-                bytes if kind is peri_scribe.geo.database.PayloadKind.GEOMETRY else str
+            value = peri_scribe.geo.payload_storage.decode(
+                row["value"],
+                row["encoding"],
+                row["original_size"],
+                dictionary=dictionaries.get(row["dictionary_id"]),
+                text=kind is peri_scribe.geo.database.PayloadKind.ATTRIBUTES,
             )
-            if not isinstance(value, expected_type) or (
-                peri_scribe.geo.database.payload_digest(value) != row["digest"]
-            ):
+            if peri_scribe.geo.database.payload_digest(value) != row["digest"]:
                 message = "Parsed dictionary payload does not match its stored digest"
                 raise ValueError(message)
             found.add(row["id"])
@@ -113,6 +123,7 @@ def decoded_payloads(
         geometry_fingerprints[identifier] = hashlib.sha256(encoded).hexdigest()
     attributes: dict[int, dict[str, object]] = {}
     attribute_fingerprints: dict[int, str] = {}
+    strings = peri_scribe.geo.attribute_strings.AttributeStrings()
     for identifier, value in payload_values(
         conn,
         peri_scribe.geo.database.PayloadKind.ATTRIBUTES,
@@ -122,7 +133,7 @@ def decoded_payloads(
         if encoded.lstrip()[:1] != "{":
             message = "Parsed attributes must be a complete JSON object"
             raise ValueError(message)
-        document = json.loads(encoded)
+        document = json.loads(encoded, object_pairs_hook=strings.mapping)
         attributes[identifier] = document
         attribute_fingerprints[identifier] = hashlib.sha256(
             encoded.encode(),

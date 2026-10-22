@@ -19,7 +19,8 @@ same distribution, with one dependency set and release cycle:
   policy, pipeline logging, reports, and map composition.
 - `spatial_data` owns geometry transformation and interning, geodesic measurements,
   coordinate systems, bounded layer reads and GeoPackage writes, streamed polygon
-  centroids, indexed overlap queries, and compact tiled point storage.
+  centroids, indexed overlap queries, compact tiled point storage, and exact reusable
+  payload codecs.
 - `arcgis_access` owns FeatureServer metadata and feature queries, retries, conversion
   to GeoDataFrames, and interpretation of ambiguous ArcGIS spatial-reference metadata.
   Callers supply request identity, timeouts, layer names, and geometry-column names.
@@ -109,6 +110,12 @@ several outputs one transaction or guarantee that writes survive power loss.
 The primary workflow runs fetch, geography, score, kmz, and reports in order. The
 [README pipeline overview](../README.md#how-it-works) describes each stage and its main outputs.
 
+[Stage supervision](algorithms/stage-processes.md) uses two fresh sequential worker
+processes for a range crossing geography and scoring. A lightweight parent retains one
+inherited writer lease across both workers. The frozen publication inputs, pending work,
+options and command identity cross the handoff; cancellation settles the child before
+the parent releases its lease. Other selected ranges run in the current process.
+
 After fetch, it skips derived outputs only when no fire, evacuation, or city data changed
 and no rebuild is required. A scheduled full fetch requires an unconditional derived
 rebuild, even when it writes no new snapshot. `--unconditional` forces the selected
@@ -141,7 +148,9 @@ evidence; [history ownership](algorithms/history-ownership.md) explains later tr
 
 Fire-feed data is kept close to the source format: source attributes, geometry, source
 coordinate reference systems, and observation metadata are retained in the snapshot
-GeoPackages. Snapshots are stored under:
+GeoPackages. Performance changes can replace derived caches and working representations;
+they do not rewrite authoritative snapshots into a normalized or packed source format.
+Snapshots are stored under:
 
 `data/<year>/sources/<feed>/<serial-bucket>/<serial>,lastEdit=<timestamp>.gpkg`
 
@@ -186,11 +195,16 @@ outputs. Collection and publication cache format versions invalidate older check
 
 Derived data is written below `data/<year>/derived/`:
 
-- `history_of_full_geography.gpkg` contains `perimeter_history`, `point_history`, and
-  `incident_history`.
-- `history_of_differential_geography.gpkg` contains corrected growth rings.
+- `history_of_full_geography.gpkg` contains `perimeter_history`, `point_history`,
+  and `incident_history`.
+- `history_of_differential_geography.gpkg` contains corrected growth perimeters;
+  point and incident evidence stays in full history.
 - `fire_scores.json` contains one score and explanation per fire.
 - `fire_scores_ccdf.html` plots the score distribution.
+
+GDAL writes the complete history layers to GeoPackages before downstream consumers
+read them. Global scalar types, geometry normalization, CRS and row order therefore
+follow the complete-layer writer and reader contract.
 
 The KMZ is written to `data/<year>/maps/PeriScribe Fires <year>.kmz` and the fire
 reports to `data/<year>/reports/PeriScribe Fires <year>.md`.
@@ -268,6 +282,14 @@ rotations before new appends, including late arrivals for an archived month; leg
 identical diagnostic records remain distinct. Diagnostic readers share the writer lock
 while streaming a month. They join an archived prefix with a distinct plain tail, or
 select the archive alone when its authenticated receipt already includes that source.
+
+General diagnostic logs seal complete tails at a 16 MiB threshold into numbered
+`YYYY-MM.{sequence}.jsonl.zst` segments. Existing oversized logs and individual records
+may exceed the threshold. Each segment reuses authenticated rotation receipts and
+compresses independently, retaining an ordinary live tail. Readers consume the legacy
+monthly archive, numbered segments in order, then the live tail; monitors finish an
+earlier bounded cursor before emitting a later component. Fire-update journals keep
+their monthly file identities. See [log retention](algorithms/log-retention.md).
 
 The reader for fire-update logs holds the same shared lock across discovery and reading.
 It reads archived records before later plain records, preserving that order for equal
@@ -481,32 +503,41 @@ convert explicitly rather than assuming acres or square meters.
 
 ## Publication reuse and performance
 
-[KMZ preparation](algorithms/kmz-preparation.md) retains complete qualifying histories
-under the exact authenticated geography pair, fire index and area policies. A matching
-standalone map reads historical geometry and measurements while fetching raw source
-attributes only at each displayed fire's latest selected point/perimeter row. All reads
-finish inside the year lock. Changed generations use complete layers and existing
-per-fire caches; scoring's already shared complete layers remain authoritative. Shared
-perimeter objects, narrow positional plot views and validated history digests avoid
-repeated DataFrame construction and serialization during presentation.
+Complete authenticated history layers serve scoring, maps and reports within a shared
+execution scope. The [KMZ preparation adapter](algorithms/kmz-preparation.md) reuses
+prepared area histories and qualified-history projections. Shared perimeter objects,
+narrow positional plot views and validated history digests avoid repeated serialization
+during presentation. Detailed reads finish inside the year lock.
 
 The reuse protocols are explained in [product caches](algorithms/product-caching.md),
-[parsed source caches](algorithms/parsed-source-cache.md), and
+[parsed source caches](algorithms/parsed-source-cache.md),
+[exact compressed payloads](algorithms/compressed-payloads.md), and
 [authenticated geography generations](algorithms/geography-generations.md).
 
-`execution.py` shares source grouping and classification across indexing and geography,
-then shares derived frames, area histories, and summaries across scoring, KMZ, and
-reports. Source objects are released after geography; remaining references are released
-at scope exit, including failures. Standalone stages use the same lifecycle.
+`execution.py` shares complete source preparations when their adapter needs them, then
+shares area histories and completed summaries across scoring, KMZ, and reports.
+Full-history reconstruction first tries a pinned compact source catalog and clears any
+complete source preparation already retained by indexing. Each worker releases its raw
+source group after producing detached history rows. Completed rows remain ordered until
+the complete layers are written through GDAL. The complete adapter remains
+the fallback for unsupported or unavailable catalogs and releases source objects after
+full-history publication. Both paths retire source evidence before differential history;
+remaining execution references are released at scope exit, including failures.
+Standalone stages use the same lifecycle.
 
 `preparation.py` manages disposable products in `derived/prepared-products.sqlite`:
 classifications, histories, descriptions, spatial measurements, buffers, building
 counts, SVGs, and KML boundaries. Keys cover exact relevant inputs, policies, code, and
 runtime dependencies. Invalid or unavailable products fall back to computation.
+After a healthy outer publication scope commits, contexts unused by that scope and its
+nested consumers are retired transactionally. SQLite compacts freed pages while retaining
+all current-context products; busy readers or cleanup failure defer maintenance. See
+[context retention](algorithms/product-cache-retention.md).
 Deleting the database makes later runs recompute those products. SQLite's page cache
 is 8 MiB and the KML fragment cache retains at most 16 MiB of accounted values. Other
-objects also use memory, so neither limit bounds total RAM. Old runtime contexts remain
-on disk.
+objects also use memory, so neither limit bounds total RAM. Product BLOBs use the shared
+versioned zstd codec with a raw fallback when framing would make them larger. Explicit
+storage markers preserve supported raw entries; checksums authenticate decoded bytes.
 
 History preparation shares immutable column tuples and selects each fire through its
 original row positions. The grouping and fingerprint inputs remain the authenticated
@@ -522,6 +553,11 @@ Prepared-fact serialization rebuilds dataclass containers and borrows scalar val
 synchronous encoding; callers own those inputs and must not mutate them during encoding.
 Canonical decoding, domain validation, and exact reserialization checks remain part of
 every prepared-fact cache read.
+[Prepared products](algorithms/prepared-product-representations.md) use typed binary
+values, raw geometry bytes, streamed complete input fingerprints, and guarded reuse of
+immutable qualified history payloads. Description preparation shares original column
+values and selected row positions across a synchronous call, retaining the same schemas
+and scalar evidence.
 
 Complete source generations hash ordered snapshot paths and bytes plus derivation
 dependencies. Parsed source records in `record_cache.db` also validate snapshot content
@@ -529,10 +565,10 @@ checksums. Each reader authenticates the checksum and reads records and complex
 memberships in one SQLite transaction, so a concurrent cache rewrite cannot mix
 generations. Cache synchronization commits receipts and their contents together. An
 unchanged, fully classified generation can retain its source index and geography
-without parsing sources or rewriting GeoPackages. Output checksums and complete layer
-signatures authenticate reuse; replacement files are published atomically before their
-`.reuse.json` metadata. `--unconditional` bypasses reuse of prior outputs and refreshes
-the fire index when rebuilding geography.
+without parsing sources or rewriting history GeoPackages. Output checksums and complete
+layer signatures authenticate reuse; replacement files are published atomically before
+their `.reuse.json` metadata. `--unconditional` bypasses reuse of prior outputs and
+refreshes the fire index when rebuilding geography.
 
 Downstream readers hold the year lock across authentication and all layer reads. They
 accept full and differential histories only when both signatures authenticate and the
@@ -552,6 +588,39 @@ a feed through one pinned transaction. Versioned row fingerprints avoid repeated
 attribute normalization while checking borrowed mutable inputs before reuse. Comparing
 identical immutable scalar children skips recursive calls; mutable containers are still
 visited on every comparison.
+An execution-local [attribute string pool](algorithms/attribute-string-sharing.md)
+shares equal immutable keys and short strings while retaining independently mutable
+row attributes. [Parsed-cache compaction](algorithms/parsed-cache-compaction.md)
+rebuilds large-slack caches with exact rowids, rows and memberships, then atomically
+publishes the verified replacement under a stable neighboring writer lock. Authoritative
+source snapshots retain their original formats and organization.
+
+Parsed-cache schema 9 records canonical payload lengths alongside explicit encoding
+markers. Geometry BLOBs use reversible XOR prediction and byte-lane shuffling before
+zstd level-three compression; attributes can share one immutable 16 KiB dictionary per
+feed generation. Dictionary bytes and referring values commit together. Readers decode
+bounded independent blocks and verify the original logical bytes before use. Complete
+candidate equality still resolves digest collisions. The standalone cache upgrade
+preserves payload IDs and occurrence rowids, then ordered compaction repacks within-page
+slack. Incompatible or damaged disposable caches can always be rebuilt from snapshots.
+
+Full-history [bounded source work](algorithms/bounded-source-work.md) retains ordered
+metadata, provenance, payload references, and fingerprints in `geo.catalog`. It pins the
+feed transactions until all workers finish. Conservative identifier/name dependency
+blocks load their exact geometry only while computing the existing grouping partition;
+relationship attributes are projected into global ownership observations while their
+full documents remain transient. Per-fire workers then hydrate complete raw evidence
+for classification, reconciliation, and incident history. Anonymous source anchors and
+unavailable cache evidence use the complete source adapter. The source inventory and
+checksums are checked again before the catalog scope releases its results.
+
+The scheduler admits at most 64 pending tasks and 128 MiB of declared canonical input
+payload bytes for this path, with an oversized fire admitted alone. Up to four workers
+run, and completion releases admission capacity even when an earlier result is pending.
+Results and worker errors are delivered in original input order. Cancellation joins
+admitted work before closing the pinned readers. Global metadata, completed result
+buffers, final output rows, and native geometry allocations remain outside the input
+admission budget; this is a bound on raw-source work, not total process memory.
 
 [Incremental grouping](algorithms/incremental-grouping.md) persists snapshot summaries,
 identifier/name reverse dependencies and each unchanged dependency block's exact
@@ -560,8 +629,9 @@ new dependency closure, including splits. Indexing loads complete geometry and a
 for affected grouping blocks and missing classifications. Loading a requested snapshot
 can also decode unrelated rows in that same snapshot. Summary traversal and byte
 authentication remain global; geometry loading and compatibility searches can be local.
-Selective index plans have their own lifetime. Geography still obtains complete source
-records, and existing complete execution preparations remain shared with indexing.
+Selective index plans have their own lifetime. Full-history geography uses the compact
+catalog and per-fire hydration when supported; complete execution preparation remains
+available for its fallback and other callers.
 A source read and its groups share exact relative path strings through an explicit
 descriptor. Those strings describe lexical provenance and confer no byte-authentication
 authority. Current typed dependency rows construct their canonical reverse index once;
@@ -573,9 +643,27 @@ evidence. Classification uses at most four workers and no more than the availabl
 count, preserving task order and executor cleanup. Each fire's `derivation_key`
 covers all ordered observations, geometry, attributes, provenance, identity, complex
 membership, and derivation dependencies. Matching fires retain full and differential
-histories; affected fires rebuild their complete histories. Dense reuse reads whole
-GeoPackage layers; sparse reuse can use a lazy row index bound to the published file's
-checksum and exact normalized values. Published GeoPackages remain authoritative.
+histories; affected fires rebuild their complete histories.
+History workers use [ordered admission](algorithms/history-work-queues.md)
+to keep independent fire computations supplied while preserving original result order.
+The pending-count limit also applies to differential work. Full history is read from its
+authenticated GeoPackage, and each worker receives one fire's canonical operands.
+Completed growth rows retain original fire order before complete-layer publication.
+GeoPackage adapters support complete-layer reads and the lazy checksum-bound row index.
+
+[Adaptive building queries](algorithms/adaptive-point-queries.md) sort longitude values
+only for tiles receiving enough queries to amortize construction. Binary search narrows
+the inclusive integer envelope before the existing strict containment test. The
+temporary index preserves duplicate centroids and leaves the source database unchanged.
+
+KML documents own an optional [fresh boundary spool](algorithms/fresh-boundary-spill.md)
+in addition to the 16 MiB memory cache. It retains at most 128 MiB of compressed fragments
+and 8,192 entries in one private temporary file. Forced publication can reuse exact
+fragments computed during that document while continuing to reject prior persistent
+products. Capacity exhaustion or a rejected spool read/write falls back to ordinary
+rendering. KMZ members retain compatible ZIP DEFLATE; PNG and WebP keep their required
+image encodings. Internal cache and log compression uses zstd where those formats permit
+it.
 
 Consumers share stored geometry area, exterior perimeter, and added-area measurements;
 ring measurements require a matching ordered `ring_sequence_digest`. Scores, rankings,

@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 import shapely.geometry
 
+import peri_scribe.execution
 import peri_scribe.fires.classification
 import peri_scribe.fires.differential
 import peri_scribe.fires.files
@@ -19,7 +20,6 @@ import peri_scribe.preparation
 import spatial_data.layers
 import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.fires.differential
-import tests.helpers.factories.geography
 import tests.helpers.factories.geometry
 import tests.helpers.factories.peri_scribe.fires.differential
 
@@ -140,7 +140,7 @@ def test_differential_group_rows_normalizes_missing_classification_before_reuse(
     ]
     monkeypatch.setattr(
         peri_scribe.fires.differential,
-        "differential_rows_for_fire",
+        "differential_perimeter_dataframe",
         tests.helpers.doubles.errors.raising_stub(AssertionError("Unchanged rings")),
     )
 
@@ -632,7 +632,7 @@ def test_differential_perimeter_dataframe_parallel_matches_single_worker(
     assert parallel["fire_identifier"].tolist() == fire_identifiers
 
 
-def test_write_history_of_differential_geography_writes_two_layers(
+def test_write_history_of_differential_geography_writes_only_perimeters(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: pathlib.Path,
 ) -> None:
@@ -648,16 +648,15 @@ def test_write_history_of_differential_geography_writes_two_layers(
             [],
         )
     )
-    points = tests.helpers.factories.geography.geo_frame(
-        {"fire_name": ["Bug"]},
-        [shapely.geometry.Point(0, 0)],
+    reader = (
+        tests.helpers.doubles.peri_scribe.fires.differential.PublishedPerimeterReader(
+            dataframe=perimeters,
+        )
     )
     monkeypatch.setattr(
         spatial_data.layers,
         "read_layer",
-        lambda _path, layer_name: (
-            perimeters if layer_name == "perimeter_history" else points
-        ),
+        reader.read,
     )
     written: list[tuple[pathlib.Path, list[spatial_data.layers.LayerData]]] = []
     monkeypatch.setattr(
@@ -665,14 +664,19 @@ def test_write_history_of_differential_geography_writes_two_layers(
         "write_layers",
         lambda path, layers, **_kwargs: written.append((path, layers)),
     )
-    result = peri_scribe.fires.differential.write_history_of_differential_geography(
-        tmp_path,
-    )
+    with peri_scribe.execution.sharing():
+        peri_scribe.execution.put(
+            peri_scribe.execution.Group.SOURCES,
+            "lifetime",
+            object(),
+        )
+        result = peri_scribe.fires.differential.write_history_of_differential_geography(
+            tmp_path,
+        )
     assert result == tmp_path / "derived/history_of_differential_geography.gpkg"
     assert len(written) == 1
     _path, layers = written[0]
-    assert [layer.name for layer in layers] == [
-        peri_scribe.fires.files.PERIMETER_LAYER_NAME,
-        peri_scribe.fires.files.POINT_LAYER_NAME,
-    ]
-    assert layers[1].dataframe is points
+    assert tuple(layer.name for layer in layers) == (
+        peri_scribe.fires.differential.DIFFERENTIAL_LAYER_NAMES
+    )
+    assert reader.calls == ["perimeter_history"]

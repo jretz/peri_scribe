@@ -109,10 +109,15 @@ def test_read_geopackage_cached_rebuilds_corrupt_database(
 
 
 @pytest.mark.parametrize("batched", [False, True])
-def test_read_geopackage_cached_falls_back_for_invalid_geometry(
+@pytest.mark.parametrize(
+    "invalid_content",
+    [b"invalid geometry encoding", "invalid dictionary", 7, 1.5],
+)
+def test_read_geopackage_cached_falls_back_for_invalid_payload_storage(
     tmp_path: pathlib.Path,
     configured_feeds: list[peri_scribe.sources.feed_types.Feed],
     monkeypatch: pytest.MonkeyPatch,
+    invalid_content: bytes | str | float,
     *,
     batched: bool,
 ) -> None:
@@ -122,16 +127,24 @@ def test_read_geopackage_cached_falls_back_for_invalid_geometry(
         [("Park Fire", "Active")],
     )
     expected = peri_scribe.geo.reading.read_geopackage_cached(path)
-    invalid_wkb = b"invalid geometry encoding"
     with contextlib.closing(
         sqlite3.connect(
             tests.helpers.peri_scribe.geo.package.record_cache_database_path(path),
         ),
     ) as connection:
-        connection.execute(
-            "UPDATE geometry_payloads SET value = ?, digest = ?",
-            (invalid_wkb, peri_scribe.geo.database.payload_digest(invalid_wkb)),
-        )
+        if isinstance(invalid_content, bytes):
+            connection.execute(
+                "UPDATE geometry_payloads SET value = ?, digest = ?",
+                (
+                    invalid_content,
+                    peri_scribe.geo.database.payload_digest(invalid_content),
+                ),
+            )
+        else:
+            connection.execute(
+                "INSERT INTO codec_dictionaries (id, value) VALUES (1, ?)",
+                (invalid_content,),
+            )
         connection.commit()
     parse = unittest.mock.Mock(wraps=peri_scribe.geo.package.read_geopackage)
     monkeypatch.setattr(peri_scribe.geo.package, "read_geopackage", parse)

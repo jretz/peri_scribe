@@ -21,8 +21,10 @@ import peri_scribe.sources.cities
 import peri_scribe.sources.fetching
 import peri_scribe.sources.full_fetch_state
 import peri_scribe.sources.validation
+import peri_scribe.supervision
 import tests.helpers.doubles.peri_scribe.main
 import tests.helpers.doubles.peri_scribe.pipeline_state
+import tests.helpers.doubles.peri_scribe.supervision
 import tests.helpers.factories.peri_scribe.sources.snapshots
 
 
@@ -121,6 +123,11 @@ def run_stubs(
         tests.helpers.doubles.peri_scribe.pipeline_state.isolate_files(
             monkeypatch,
             tmp_path,
+        )
+        monkeypatch.setattr(
+            peri_scribe.supervision,
+            "run_child",
+            tests.helpers.doubles.peri_scribe.supervision.inline_child,
         )
         stubs = tests.helpers.doubles.peri_scribe.main.RunStubs(
             fetch_result=peri_scribe.sources.fetching.FetchResult(

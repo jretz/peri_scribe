@@ -28,7 +28,7 @@ def test_payload_values_rejects_changed_dictionary_encoding(
             b"original",
         )
         connection.execute("UPDATE geometry_payloads SET value = ?", (payload,))
-        with pytest.raises(ValueError, match="stored digest"):
+        with pytest.raises(ValueError, match=r"stored digest|header"):
             list(
                 peri_scribe.geo.dictionaries.payload_values(
                     connection,
@@ -44,9 +44,15 @@ def test_payload_values_reads_more_than_one_parameter_batch() -> None:
         connection.row_factory = sqlite3.Row
         peri_scribe.geo.database.reset_database(connection)
         connection.executemany(
-            "INSERT INTO attribute_payloads VALUES (?, ?, ?)",
+            "INSERT INTO attribute_payloads (id, digest, value, original_size) "
+            "VALUES (?, ?, ?, ?)",
             [
-                (key, hashlib.sha256(value.encode()).digest(), value)
+                (
+                    key,
+                    hashlib.sha256(value.encode()).digest(),
+                    value,
+                    len(value.encode()),
+                )
                 for key, value in expected.items()
             ],
         )
@@ -69,8 +75,9 @@ def test_decoded_payloads_rejects_nonobject_attribute_documents() -> None:
         tests.helpers.factories.peri_scribe.geo.database.store(connection, 1)
         payload = json.dumps(["invalid attribute bag"])
         connection.execute(
-            "UPDATE attribute_payloads SET value = ?, digest = ?",
-            (payload, hashlib.sha256(payload.encode()).digest()),
+            "UPDATE attribute_payloads SET value = ?, digest = ?, "
+            "encoding = 0, original_size = ?",
+            (payload, hashlib.sha256(payload.encode()).digest(), len(payload.encode())),
         )
         with pytest.raises(ValueError, match="complete JSON object"):
             peri_scribe.geo.reading.fetch_snapshot_batch(
