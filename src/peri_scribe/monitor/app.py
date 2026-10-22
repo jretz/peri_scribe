@@ -19,6 +19,7 @@ import textual.widgets.tree
 import peri_scribe.monitor.controller
 import peri_scribe.monitor.events
 import peri_scribe.monitor.model
+import peri_scribe.monitor.performance_widgets
 import peri_scribe.monitor.presentation
 import peri_scribe.monitor.rendering
 import peri_scribe.monitor.status_widgets
@@ -70,6 +71,7 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
         textual.binding.Binding("3", "view('logs')", "Logs", show=False),
         textual.binding.Binding("4", "view('runs')", "Runs", show=False),
         textual.binding.Binding("5", "view('report')", "Report", show=False),
+        textual.binding.Binding("6", "view('performance')", "Performance", show=False),
     ]
 
     def __init__(
@@ -108,10 +110,10 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
 
     @typing.override
     def compose(self) -> textual.app.ComposeResult:
-        """Provide live health and four diagnostic views over the same evidence.
+        """Provide live health and diagnostic views over the same evidence.
 
         Yields:
-            Navigation, pipeline hierarchy, events, run history, and current report.
+            Navigation, pipeline hierarchy, events, runs, report, and performance.
         """
         yield textual.widgets.Header()
         yield textual.widgets.Static(id="activity", markup=False)
@@ -149,6 +151,8 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
                     show_table_of_contents=False,
                     id="report-viewer",
                 )
+            with textual.widgets.TabPane("Performance", id="performance"):
+                yield peri_scribe.monitor.performance_widgets.PerformancePane()
         yield textual.widgets.Static(id="decisions", markup=False)
         yield peri_scribe.monitor.widgets.PaneDivider(
             views,
@@ -273,7 +277,7 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
         self,
         event: textual.widgets.TabbedContent.TabActivated,
     ) -> None:
-        """Give report and run-history views their full available reading area.
+        """Give single-pane views their full available reading area.
 
         Args:
             event: The active terminal tab.

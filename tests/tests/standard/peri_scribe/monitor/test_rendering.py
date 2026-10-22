@@ -17,6 +17,7 @@ import tests.helpers.doubles.peri_scribe.monitor.rendering
 import tests.helpers.doubles.peri_scribe.monitor.tasks
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.factories.peri_scribe.monitor.rendering
+import tests.helpers.factories.peri_scribe.monitor.status
 import tests.helpers.fixtures.peri_scribe.monitor.controller
 
 
@@ -209,6 +210,8 @@ async def test_apply_records_preserves_phase_cursor_across_replacement(
         app.branches,
         filtering,
         filtering,
+        history=app.controller.snapshot.history.state,
+        now=tests.helpers.factories.peri_scribe.monitor.status.NOW,
     )
     await peri_scribe.monitor.rendering.apply_records(
         app,

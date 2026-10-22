@@ -4,6 +4,7 @@ import peri_scribe.monitor.display
 import peri_scribe.monitor.model
 import peri_scribe.phases
 import tests.helpers.factories.peri_scribe.monitor.events
+import tests.helpers.factories.peri_scribe.monitor.status
 
 
 def test_event_rows_keeps_captured_filters_and_literal_event_identity() -> None:
@@ -62,6 +63,8 @@ def test_prepare_keeps_inspected_run_separate_from_live_history_and_filters() ->
         tests.helpers.factories.peri_scribe.monitor.events.BRANCHES,
         peri_scribe.monitor.display.Filter(minimum_level="error", query=""),
         peri_scribe.monitor.display.Filter(minimum_level="debug", query=""),
+        history=state,
+        now=tests.helpers.factories.peri_scribe.monitor.status.NOW,
     )
     assert [row.run.identifier for row in prepared.runs] == ["newer", "older"]
     assert [row.event for row in prepared.logs] == list(selected.events)

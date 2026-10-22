@@ -3,6 +3,7 @@
 import peri_scribe.monitor.display
 import peri_scribe.monitor.model
 import tests.helpers.factories.peri_scribe.monitor.events
+import tests.helpers.factories.peri_scribe.monitor.status
 
 
 def records(
@@ -36,4 +37,6 @@ def records(
         tests.helpers.factories.peri_scribe.monitor.events.BRANCHES,
         filtering,
         filtering,
+        history=state,
+        now=tests.helpers.factories.peri_scribe.monitor.status.NOW,
     )

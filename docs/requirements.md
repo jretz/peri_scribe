@@ -145,6 +145,18 @@ it does not restart an admitted read. Browsing paused evidence remains stable wh
 session continues collecting live data. Cosmetic age updates belong to presentation;
 health expiry and evidence retention belong to the domain session.
 
+The Performance tab shows durations over the last 48 hours, grouped by execution mode,
+including fetch-only invocations, conditional builds, unconditional builds, and partial
+stage selections. Each type has its own time series drawn with terminal line characters
+without sample dots, and its own histogram with independently scaled duration ranges and
+counts. Completion-time labels use Pacific Time, including daylight saving changes.
+Histograms show duration ranges, bars, and counts without axes. They use more equal-width
+intervals when the observed range and sample population support them; this binning detail
+does not appear in interface labels. Both charts use successful command completions with
+valid recorded durations and completion times in the inclusive 48-hour window. Performance
+uses the full recent evidence history and stays current while diagnostic browsing is
+paused.
+
 The startup target is 1–2 seconds from launching `mise monitor` to the first complete
 Status frame on the current benchmark machine with `data/2026`. Report fresh-process
 measurements and filesystem-cache conditions separately from later background completion.
@@ -318,7 +330,7 @@ Run `peri_scribe --help` for the available commands:
   perimeter publication to the end of a run that writes a KMZ. See
   [Latency Charts](latency_charts.md) for the evidence and measurement limits.
 - `monitor` opens an interactive terminal view of live logs, pipeline phases, run
-  history, and the current report.
+  history, performance charts, and the current report.
 - `version` prints the installed PeriScribe version.
 
 The `run` command accepts an optional year-directory argument; when omitted it defaults

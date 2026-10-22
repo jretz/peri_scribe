@@ -83,6 +83,131 @@ A newer report causes another pass. Leaving Report does not cancel its preparati
 Cosmetic age text has a presentation-owned deadline; evidence expiry and health thresholds
 remain domain policy. Moving the observation clock backward re-evaluates both layers.
 
+## Performance charts
+
+Performance uses the live session's compact structural history, which retains all
+recent command completions after verbose diagnostic rows leave the interactive view.
+Preparing the charts shares the existing presentation worker and generation check.
+Paused log selection does not freeze this live history. Selecting Performance before
+the first paint uses the already collected health evidence without requesting another
+reader. The charts update after the first complete Status frame or an explicit request.
+
+Both charts for an execution mode use the same successful completions within the inclusive
+interval from the observation time minus 48 hours through the observation time. The
+recorded elapsed duration preserves the command's monotonic timing measurement; missing
+or unusable duration metadata cannot provide a sample. Completion timestamps locate
+samples along the time axis. Each line chart has its own axes, with a zero-based duration
+scale ending at that mode's greatest observed duration. A zero-only series uses a
+one-second range. Each completion-time axis covers the same 48-hour observation window,
+with labels converted to `America/Los_Angeles`, including PDT/PST changes. Quantized line
+segments replace sample markers; an isolated observation remains a single horizontal
+line cell.
+
+The histogram uses that mode's observed duration range and independently scales its bars
+to its largest bin count. Its interface contains only a heading, duration intervals,
+bars, and bin counts. It draws no axes and does not describe the binning policy in its
+labels. Terminal resizing redraws the prepared samples without reading evidence again.
+The presentation clock also refreshes the time axis at least once per minute, even when
+the evidence has not changed.
+
+### Execution modes
+
+The `run` command can collect sources, defer publication, or build selected outputs.
+Grouping by command name would mix durations of substantially different work. Mode
+selection reads the command's supplied parameters, latest valid selected-stage plan,
+observed top-level stages, gate outcome, and recorded rebuild requirement. It gives
+specific observed outcomes precedence over a broad planned build:
+
+| Evidence, in precedence order | Series label |
+| --- | --- |
+| A command other than `run` | Its command name. |
+| Another invocation owns the writer lock | `Skipped · another run active`. |
+| Explicit stage listing | `List stages`. |
+| Explicitly selected fetch stage alone | `Fetch only`. |
+| Publication gate rejected further work | `Fetch only · publication deferred`. |
+| Only fetch executed, with derived stages skipped | `Fetch only · unchanged`. |
+| Only fetch executed, without a more specific outcome | `Fetch only`. |
+| Derived work with an explicit or recorded unconditional rebuild | `Unconditional build`. |
+| Other selected or observed derived work | `Conditional build`. |
+| Insufficient mode evidence | `run`. |
+
+Partial derived selections append their scope, such as `geography only` or `geography to
+kmz`. The recorded stage plan takes precedence over command options; when absent, valid
+`only`, `from`, and `to` selections recover the scope. Missing parameters cannot establish
+an unconditional build, but a recorded unconditional rebuild completion can. Every valid
+completion belongs to exactly one label, and every label receives a separate chart pair.
+Fetch-only modes appear first, with `Fetch only` before its qualified variants. All other
+modes follow in alphabetical order.
+For example, a successful `run` with only fetch selected belongs to `Fetch only`, while
+another `run` with unconditional geography-to-reports work belongs to
+`Unconditional build · geography to reports`. Their duration and count scales are
+independent even though the diagnostic command name is identical.
+
+### Adaptive duration intervals
+
+The histogram spans the minimum and maximum observed durations. Uniform data uses one
+positive-width interval immediately below its duration, limited to 0.01 seconds and
+bounded by zero; zero-only data spans zero through 0.01 seconds. At large magnitudes,
+the preceding representable value supplies a positive interval when subtraction rounds
+away that width.
+
+For varied data, start with the larger of eight and the rounded-up square root of the
+sample population. Limit this count by forty, the number of distinct durations, and the
+number of 0.01-second intervals that fit within the observed spread. A spread narrower
+than 0.01 seconds uses one bin. This resolution matches the command logger's recorded
+timing precision. Sparse data cannot create many empty subdivisions, while a rich
+distribution can show more detail. For example, 1,600 distinct one-second-spaced
+durations use forty bins. Durations clustered from 100 through 100.39 seconds use at most
+thirty-nine bins, regardless of the large absolute duration. Duration labels retain
+enough precision to distinguish neighboring intervals.
+
+Bin edges are computed once and shared by labels and sample assignment. A sample equal
+to an internal edge belongs to the following bin, and the final edge belongs to the
+last bin. Searching these edges preserves that rule when floating-point division would
+round an edge into its preceding bin. If floating-point spacing would repeat an edge,
+reduce the bin count until every interval has positive width. For example, nine distinct
+durations from zero through 1.56 seconds support eight bins of nominal width 0.195 seconds:
+
+| Sample | Relevant duration interval | Assignment |
+| --- | --- | --- |
+| 1.17 seconds | [0.975, 1.17) | Excluded from the sixth bin. |
+| 1.17 seconds | [1.17, 1.365) | Included in the seventh bin. |
+| 1.56 seconds | [1.365, 1.56] | Included in the final bin. |
+
+Computing `1.17 / 1.56 * 8` can produce `5.999999999999999`; rounding down would
+assign the sample to the sixth bin. Comparing against the shared edges instead gives
+every finite nonnegative sample exactly one interval consistent with the labels.
+Zero, single-sample, and identical-duration series use the same rules.
+
+For H retained structural events and C completed samples, preparation costs at most
+O(H log H + C log C) time, including evidence ordering and chronological grouping, and
+O(H + C) temporary memory. Rendering a chart of width W and fixed height costs O(C + W)
+time and memory: chronological segments cross each column at most once, and coincident
+columns require only a bounded vertical connection. The histogram takes O(C) time and
+up to forty bins; edge search and any reductions have fixed bounds. Mode labeling scans
+the same retained structural evidence without requesting additional reads.
+The 48-hour evidence window bounds retained history by time rather than run count.
+
+Chart selection, scaling, and binning are presentation transformations. Their complexity
+assessment is **2/2/2/1/0 = 7, involved**: command-start parameters combine with later
+stage and gate evidence; mode precedence interacts with selected scope; floating-point
+interval boundaries are shared by labels and counts; samples use ordinary in-memory
+collections. Mode labeling alone is **2/2/0/1/0 = 5, involved**. This section explains
+those choices and their verification. The widget
+adapter is **1/1/0/1/0 = 3, straightforward**: locally retained display data, independent
+update and resize handlers, and bounded terminal text. Existing docstrings and ordinary
+tests cover their contracts. They introduce no ingestion policy, domain transitions,
+resource ownership, or persistence protocol for an additional formal model to establish.
+
+Implementation: [chart preparation and drawing](../../src/peri_scribe/monitor/performance.py),
+[execution modes](../../src/peri_scribe/monitor/performance_types.py),
+and [terminal sizing](../../src/peri_scribe/monitor/performance_widgets.py).
+Verification: [boundary examples](../../tests/tests/standard/peri_scribe/monitor/test_performance.py),
+[mode examples](../../tests/tests/standard/peri_scribe/monitor/test_performance_types.py),
+[adaptive intervals](../../tests/tests/standard/peri_scribe/monitor/test_performance_histogram.py),
+[interval properties](../../tests/tests/property_based/peri_scribe/monitor/test_performance.py),
+and [terminal integration](../../tests/tests/standard/peri_scribe/monitor/test_app_performance.py).
+
 ## Shutdown, bounds, and verification
 
 Shutdown first stops presentation publication and detaches its subscription. The session

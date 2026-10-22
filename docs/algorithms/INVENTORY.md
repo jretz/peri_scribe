@@ -171,6 +171,9 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 | [health_presentation.py](../../src/peri_scribe/monitor/health_presentation.py) | [monitor presentation](monitor-presentation.md); [monitor evidence](monitor-evidence.md) |
 | [history.py](../../src/peri_scribe/monitor/history.py) | [monitor evidence](monitor-evidence.md) |
 | [model.py](../../src/peri_scribe/monitor/model.py) | [monitor evidence](monitor-evidence.md) |
+| [performance.py](../../src/peri_scribe/monitor/performance.py) | [Monitor presentation: performance charts](monitor-presentation.md#performance-charts), involved **2/2/2/1/0** (7). Execution-mode evidence and adaptive floating-point bin boundaries determine independent chart groups. |
+| [performance_types.py](../../src/peri_scribe/monitor/performance_types.py) | [Monitor presentation: performance charts](monitor-presentation.md#performance-charts), involved **2/2/0/1/0** (5). Command parameters and observed stage and gate outcomes determine execution-mode labels. |
+| [performance_widgets.py](../../src/peri_scribe/monitor/performance_widgets.py) | Straightforward **1/1/0/1/0** (3). Local prepared chart data, independent display and resize handlers, and terminal text sized to its viewport. |
 | [presentation.py](../../src/peri_scribe/monitor/presentation.py) | Straightforward **0/1/1/1/0** (3). Independent display rules, ordinary unit formatting and bounded row/text materialization. |
 | [projection.py](../../src/peri_scribe/monitor/projection.py) | [monitor evidence](monitor-evidence.md) |
 | [rendering.py](../../src/peri_scribe/monitor/rendering.py) | [monitor presentation](monitor-presentation.md) |

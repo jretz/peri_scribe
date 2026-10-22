@@ -1,10 +1,12 @@
 """Prepare terminal content independently of widget lifetimes and mutation."""
 
 import dataclasses
+import datetime
 import typing
 
 import peri_scribe.monitor.events
 import peri_scribe.monitor.model
+import peri_scribe.monitor.performance
 import peri_scribe.monitor.presentation
 import peri_scribe.phases
 
@@ -47,6 +49,8 @@ class Records:
     pipeline: tuple[EventRow, ...]
     logs: tuple[EventRow, ...]
     runs: tuple[RunRow, ...]
+    performance: tuple[peri_scribe.monitor.performance.Series, ...]
+    observed_at: datetime.datetime
 
 
 def event_rows(
@@ -79,6 +83,9 @@ def prepare(
     branches: peri_scribe.phases.Branches,
     pipeline: Filter,
     logs: Filter,
+    *,
+    history: peri_scribe.monitor.model.State,
+    now: datetime.datetime,
 ) -> Records:
     """Prepare diagnostic content while the terminal can continue processing input.
 
@@ -88,6 +95,8 @@ def prepare(
         branches: The configured phase catalogue.
         pipeline: Captured Pipeline controls.
         logs: Captured Logs controls.
+        history: Complete recent structural evidence, independent of row retention.
+        now: The shared observation time for the performance window.
 
     Returns:
         Formatted phases, events, and runs for one consistent request.
@@ -111,4 +120,6 @@ def prepare(
             RunRow(run=item, cells=peri_scribe.monitor.presentation.run_cells(item))
             for item in reversed(state.runs)
         ),
+        performance=peri_scribe.monitor.performance.prepare(history, now),
+        observed_at=now,
     )

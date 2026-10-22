@@ -92,14 +92,16 @@ class Controller:
         previous = self.snapshot
         self.snapshot = snapshot
         app = self.app
-        if snapshot.records is not previous.records:
-            if app.following:
-                app.visible_state = snapshot.records
-                app.selected_run = (
-                    snapshot.records.runs[-1].identifier
-                    if snapshot.records.runs
-                    else ""
-                )
+        if snapshot.records is not previous.records and app.following:
+            app.visible_state = snapshot.records
+            app.selected_run = (
+                snapshot.records.runs[-1].identifier if snapshot.records.runs else ""
+            )
+        if (
+            snapshot.records is not previous.records
+            or snapshot.history is not previous.history
+            or snapshot.health is not previous.health
+        ):
             self.schedule_display()
         app.query_one("#older", textual.widgets.Button).disabled = not any(
             path not in snapshot.loaded_archives for path in snapshot.archives
@@ -147,12 +149,15 @@ class Controller:
             try:
                 await asyncio.wait_for(
                     self.cosmetic_changed.wait(),
-                    max(0, (deadline - now).total_seconds()) if deadline else None,
+                    min(60, max(0, (deadline - now).total_seconds()))
+                    if deadline
+                    else 60,
                 )
             except TimeoutError:
                 if self.available():
                     self.show_health(datetime.datetime.now(datetime.UTC))
                     peri_scribe.monitor.rendering.show_activity(self.app)
+                    self.schedule_display()
 
     def available(self) -> bool:
         """Keep callbacks from publishing into a detached terminal.
@@ -263,6 +268,8 @@ class Controller:
                 run,
                 app.branches,
                 *filters,
+                history=self.snapshot.history.state,
+                now=datetime.datetime.now(datetime.UTC),
             )
             if not self.available():
                 return
@@ -286,6 +293,10 @@ class Controller:
             name: The terminal tab selected by the user.
         """
         if not self.available() or name == "status":
+            return
+        if name == "performance":
+            self.schedule_display(requested=True)
+            await self.flush_display()
             return
         request = (
             peri_scribe.monitor.session.RefreshReport()

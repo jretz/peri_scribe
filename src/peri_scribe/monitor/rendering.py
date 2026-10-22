@@ -9,6 +9,7 @@ import textual.widgets
 
 import peri_scribe.monitor.display
 import peri_scribe.monitor.model
+import peri_scribe.monitor.performance_widgets
 import peri_scribe.monitor.presentation
 import peri_scribe.monitor.status
 import peri_scribe.monitor.storage
@@ -92,6 +93,10 @@ async def apply_records(
     for item in prepared.runs:
         table.add_row(*item.cells, key=item.run.identifier)
     table.move_cursor(row=row)
+    app.query_one(peri_scribe.monitor.performance_widgets.PerformancePane).show_view(
+        prepared.performance,
+        prepared.observed_at,
+    )
 
 
 def show_activity(app: peri_scribe.monitor.terminal_contract.Host) -> None:
@@ -102,11 +107,16 @@ def show_activity(app: peri_scribe.monitor.terminal_contract.Host) -> None:
         datetime.datetime.now(datetime.UTC),
     )
     mode = "FOLLOW" if app.following else f"PAUSED · new events: {pending}"
+    view = app.query_one("#views", textual.widgets.TabbedContent).active
+    live_descriptions = {
+        "status": (
+            "LIVE STATUS · select an observation to inspect its Pipeline evidence"
+        ),
+        "performance": "LIVE PERFORMANCE · last 48 hours",
+    }
     peri_scribe.monitor.widgets.update_content(
         app.query_one("#activity", textual.widgets.Static),
-        "LIVE STATUS · select an observation to inspect its Pipeline evidence"
-        if app.query_one("#views", textual.widgets.TabbedContent).active == "status"
-        else f"{mode} · {description}",
+        live_descriptions.get(view, f"{mode} · {description}"),
         layout=False,
     )
 

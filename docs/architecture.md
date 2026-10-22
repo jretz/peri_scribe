@@ -329,6 +329,14 @@ independent of the concrete application, including their type annotations. See
 [monitor sessions](algorithms/monitor-sessions.md) and
 [monitor presentation](algorithms/monitor-presentation.md) for lifecycle boundaries.
 
+`monitor.performance` prepares completed command durations from the session's compact
+48-hour history, independently of the bounded interactive run list.
+`monitor.performance_types` labels execution modes from command parameters, selected
+stages, and observed gate and rebuild outcomes. The terminal draws a separate time series
+and adaptive duration histogram for each mode. Time-series labels use Pacific Time;
+histograms present labeled bars and counts without axes. `monitor.performance_widgets`
+fits those charts to the current terminal width while preserving vertical scrolling.
+
 An admitted operation retains ownership through worker completion even if its caller is
 cancelled. Unmount detaches subscriptions, stops admission and display updates, signals
 readers to stop, and asynchronously waits for admitted work before closing descriptors.
