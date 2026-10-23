@@ -39,7 +39,7 @@ async def test_monitor_app_scrolls_one_row_per_wheel_event(
         await tests.helpers.textual.invoke(session.app.search_themes)
         await session.command_results()
     else:
-        await tests.helpers.textual.invoke(session.app.action_view, view)
+        await session.show_view(view)
         await session.app.refresh_files()
     await session.refresh()
     pane = session.app.screen.query_one(selector)
@@ -52,7 +52,7 @@ async def test_monitor_app_scrolls_one_row_per_wheel_event(
             immediate=True,
         ),
     )
-    await session.pilot.pause()
+    await session.refresh()
     assert pane.scroll_offset.y == initial_offset
     await tests.helpers.textual.invoke(
         pane.post_message,
@@ -68,5 +68,5 @@ async def test_monitor_app_scrolls_one_row_per_wheel_event(
             ctrl=False,
         ),
     )
-    await session.pilot.pause()
+    await session.refresh()
     assert pane.scroll_offset.y == initial_offset + distance

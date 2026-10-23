@@ -24,8 +24,7 @@ async def test_snapshot_screen_export_snapshot_preserves_screen_dimensions_and_s
     tab: str,
 ) -> None:
     session = monitor_session
-    await tests.helpers.textual.invoke(session.app.action_view, tab)
-    await session.pilot.pause()
+    await session.show_view(tab)
     screen = session.app.screen
     assert isinstance(screen, peri_scribe.monitor.screenshots.SnapshotScreen)
     await tests.helpers.textual.invoke(
@@ -39,8 +38,7 @@ async def test_snapshot_screen_export_snapshot_preserves_footer_during_binding_r
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     session = monitor_session
-    await tests.helpers.textual.invoke(session.app.action_view, "report")
-    await session.pilot.pause()
+    await session.show_view("report")
     screen = session.app.screen
     assert isinstance(screen, peri_scribe.monitor.screenshots.SnapshotScreen)
     footer = session.app.query_one(textual.widgets.Footer)
@@ -63,9 +61,7 @@ async def test_snapshot_screen_export_snapshot_preserves_unicode_and_scrolled_co
     scrolling_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     session = scrolling_session
-    await tests.helpers.textual.invoke(session.app.action_view, "report")
-    await session.app.controller.render_report()
-    await session.refresh()
+    await session.show_view("report")
     viewer = session.app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
     await tests.helpers.textual.scroll_end(viewer)
     await tests.helpers.textual.invoke(

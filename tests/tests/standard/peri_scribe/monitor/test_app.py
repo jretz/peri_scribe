@@ -19,6 +19,7 @@ import peri_scribe.monitor.widgets
 import peri_scribe.phases
 import peri_scribe.pipeline_stages
 import tests.helpers.doubles.peri_scribe.monitor.app
+import tests.helpers.doubles.peri_scribe.monitor.synchronization
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.fixtures.peri_scribe.monitor.application
 import tests.helpers.textual
@@ -171,7 +172,7 @@ async def test_monitor_app_filters_and_inspects_events(
         "value",
         "moonshine",
     )
-    await monitor_session.pilot.pause()
+    await monitor_session.settle()
     table = stream.query_one(peri_scribe.monitor.widgets.EventTable)
     assert table.row_count == 1
     await tests.helpers.textual.invoke(
@@ -192,7 +193,7 @@ async def test_monitor_app_report_uses_current_file_and_mtime(
     path = monitor_session.app.report_path
     path.write_text("# Fires\n\n[Jump](#moonshine)\n\n## Moonshine\n\nDetails")
     await monitor_session.app.refresh_files()
-    await monitor_session.pilot.press("5")
+    await monitor_session.show_view("report")
     viewer = monitor_session.app.query_one(
         "#report-viewer",
         textual.widgets.MarkdownViewer,
@@ -228,9 +229,10 @@ async def test_monitor_app_prepares_report_before_its_tab_is_selected(
     expected_updates = [unittest.mock.call("# First"), unittest.mock.call("# Latest")]
     assert read.call_count == len(expected_updates)
     assert update.await_args_list == expected_updates
-    await session.pilot.press("5")
+    await session.show_view("report")
     await session.app.refresh_files()
-    await session.pilot.press("1", "5")
+    await session.show_view("status")
+    await session.show_view("report")
     assert update.await_args_list == expected_updates
 
 
@@ -241,7 +243,7 @@ async def test_monitor_app_refreshes_replaced_report_while_paused(
     await tests.helpers.textual.invoke(monitor_session.app.action_toggle_follow)
     path = monitor_session.app.report_path
     path.write_text("# Original")
-    await monitor_session.pilot.press("5")
+    await monitor_session.show_view("report")
     temporary = path.with_suffix(".new")
     temporary.write_text("# Replacement")
     temporary.replace(path)
@@ -258,7 +260,9 @@ async def test_monitor_app_refreshes_report_while_another_tab_is_selected(
 ) -> None:
     session = monitor_session
     session.app.report_path.write_text("# Original")
-    await session.pilot.press("5", tab)
+    await session.show_view("report")
+    await session.pilot.press(tab)
+    await session.settle()
     read = unittest.mock.Mock(wraps=peri_scribe.monitor.storage.read_report)
     monkeypatch.setattr(peri_scribe.monitor.storage, "read_report", read)
     viewer = session.app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
@@ -269,7 +273,7 @@ async def test_monitor_app_refreshes_report_while_another_tab_is_selected(
     read.assert_called_once()
     update.assert_awaited_once_with("# Replacement")
     assert session.app.controller.snapshot.report.content == "# Replacement"
-    await session.pilot.press("5")
+    await session.show_view("report")
     update.assert_awaited_once()
 
 
@@ -280,7 +284,7 @@ async def test_monitor_app_retains_report_preparation_after_leaving_its_tab(
 ) -> None:
     session = monitor_session
     session.app.report_path.write_text("# Original")
-    await session.pilot.press("5")
+    await session.show_view("report")
     viewer = session.app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
     update = unittest.mock.AsyncMock(wraps=viewer.document.update)
     monkeypatch.setattr(viewer.document, "update", update)
@@ -313,12 +317,13 @@ async def test_monitor_app_selects_historical_run(
         ),
     )
     await monitor_session.app.refresh_files()
-    await monitor_session.pilot.press("3")
+    await monitor_session.show_view("runs")
     table = monitor_session.app.query_one("#run-table", textual.widgets.DataTable)
     await tests.helpers.textual.invoke(
         monitor_session.app.select_row,
         textual.widgets.DataTable.RowSelected(table, 0, next(iter(table.rows))),
     )
+    await monitor_session.settle()
     assert not monitor_session.app.following
     assert monitor_session.app.current_run().status == "completed"
     assert not monitor_session.app.tree_nodes
@@ -422,8 +427,13 @@ async def test_monitor_app_preserves_live_events_arriving_during_archive_loading
             append=peri_scribe.monitor.model.append_records,
         ),
     )
-    await tests.helpers.textual.invoke(session.app.call_later, session.app.load_older)
-    try:
+    with tests.helpers.doubles.peri_scribe.monitor.synchronization.release_on_exit(
+        release,
+    ):
+        await tests.helpers.textual.invoke(
+            session.app.call_later,
+            session.app.load_older,
+        )
         assert await asyncio.to_thread(started.wait, timeout=5)
         tests.helpers.factories.peri_scribe.monitor.events.write_log(
             session.directory,
@@ -436,8 +446,6 @@ async def test_monitor_app_preserves_live_events_arriving_during_archive_loading
         session.app.controller.session.files_changed = True
         refresh = asyncio.create_task(session.app.controller.session.tick())
         await asyncio.sleep(0)
-    finally:
-        release.set()
     await refresh
     await session.pilot.pause()
     await session.app.refresh_files()
@@ -472,7 +480,7 @@ async def test_monitor_app_preserves_report_scroll_on_refresh(
     path = monitor_session.app.report_path
     path.write_text("# Report\n\n" + "Paragraph\n\n" * 200)
     await monitor_session.app.refresh_files()
-    await monitor_session.pilot.press("5")
+    await monitor_session.show_view("report")
     viewer = monitor_session.app.query_one(
         "#report-viewer",
         textual.widgets.MarkdownViewer,
@@ -480,12 +488,12 @@ async def test_monitor_app_preserves_report_scroll_on_refresh(
     await tests.helpers.textual.invoke(
         functools.partial(viewer.scroll_page_down, animate=False),
     )
-    await monitor_session.pilot.pause()
+    await monitor_session.refresh()
     before = viewer.scroll_offset
     assert before.y > 0
     path.write_text(path.read_text() + "New paragraph\n\n")
     await monitor_session.app.refresh_files()
-    await monitor_session.pilot.pause()
+    await monitor_session.refresh()
     assert viewer.scroll_offset == before
 
 
@@ -518,9 +526,7 @@ async def test_monitor_app_scrollbars_keep_terminal_edge_neutral(
     selector: str,
 ) -> None:
     session = scrolling_session
-    await tests.helpers.textual.invoke(session.app.action_view, tab)
-    await session.app.controller.render_report()
-    await session.refresh()
+    await session.show_view(tab)
     pane = session.app.query_one(selector)
     assert pane.show_vertical_scrollbar
     backgrounds = set()
@@ -532,7 +538,7 @@ async def test_monitor_app_scrollbars_keep_terminal_edge_neutral(
                 animate=False,
             ),
         )
-        await session.pilot.pause()
+        await session.refresh()
         bar = pane.vertical_scrollbar
         for row in range(bar.region.y, bar.region.bottom):
             style = session.app.screen.get_style_at(session.app.size.width - 1, row)
@@ -576,7 +582,7 @@ async def test_monitor_app_refresh_files_does_not_scroll_a_viewer_removed_during
 ) -> None:
     session = monitor_session
     viewer = session.app.query_one("#report-viewer", textual.widgets.MarkdownViewer)
-    await session.pilot.press("5")
+    await session.show_view("report")
     session.app.report_path.write_text("# Updated report")
     monkeypatch.setattr(
         viewer.document,
@@ -657,8 +663,7 @@ async def test_monitor_app_resizes_panes_by_dragging(
     movement: tuple[int, int],
 ) -> None:
     session = monitor_session
-    await tests.helpers.textual.invoke(session.app.action_view, tab)
-    await session.pilot.pause()
+    await session.show_view(tab)
     leading = session.app.query_one(before)
     trailing = session.app.query_one(after)
     initial = getattr(leading.size, dimension)
@@ -694,7 +699,7 @@ async def test_monitor_app_preserves_resized_panes_after_refresh_and_tab_changes
     sizes = (tree.size, inspection.size)
     await session.app.refresh_files()
     await session.pilot.press("4", "5", "3", "2")
-    await session.refresh()
+    await session.settle()
     assert (tree.size, inspection.size) == sizes
 
 

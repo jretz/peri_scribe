@@ -1,7 +1,10 @@
 """Run the real terminal adapter on each async test's isolated event loop."""
 
+import asyncio
 import collections.abc
+import contextlib
 import dataclasses
+import functools
 import pathlib
 import typing
 import unittest.mock
@@ -14,6 +17,7 @@ import time_machine
 
 import peri_scribe.monitor.app
 import peri_scribe.monitor.session
+import tests.helpers.doubles.peri_scribe.monitor.app
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.factories.peri_scribe.monitor.status
 import tests.helpers.textual
@@ -26,13 +30,56 @@ class Session(tests.helpers.textual.Session[peri_scribe.monitor.app.MonitorApp])
     directory: pathlib.Path
     clock: collections.abc.Callable[[], object]
 
+    async def settle(self) -> None:
+        """Wait for dispatched controls, content preparation, and the resulting paint.
+
+        Tests keep inputs stable while this runs. Dispatching control messages first
+        admits tab workers and filter preparation; joining both kinds of work keeps
+        their final table replacement and cursor movement ahead of assertions.
+        """
+        await self.refresh()
+        await self.app.workers.wait_for_complete()
+        await self.app.controller.flush_display()
+        await self.refresh()
+
+    async def show_view(self, name: str) -> None:
+        """Finish tab preparation and painting before browsing its rendered rows.
+
+        Tab activation prepares content in background workers. Their final cursor
+        movement can scroll a table, so assertions need both completed preparation and
+        the resulting screen refresh.
+
+        Args:
+            name: The terminal tab to display.
+        """
+        self.app.action_view(name)
+        await self.settle()
+
+
+async def pause_clock(app: peri_scribe.monitor.app.MonitorApp) -> None:
+    """Finish automatic age updates before a test controls presentation time.
+
+    Freezing the observation clock leaves the asyncio timer running. Joining its
+    cancellation prevents it from resetting explicitly displayed ages or preparing
+    tables during the scenario.
+
+    Args:
+        app: A mounted monitor whose cosmetic clock has started.
+    """
+    cosmetic = app.controller.cosmetic_task
+    assert cosmetic is not None
+    cosmetic.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await cosmetic
+    app.controller.cosmetic_task = None
+
 
 @pytest_asyncio.fixture
 async def monitor_session(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> typing.AsyncIterator[Session]:
-    """Control file refreshes and terminal capabilities independently of the host.
+    """Control observation, cosmetic timers, and terminal capabilities explicitly.
 
     Args:
         tmp_path: The current test's isolated filesystem.
@@ -64,18 +111,18 @@ async def monitor_session(
         tick=False,
     ):
         async with tests.helpers.textual.mounted(app) as session:
-            await tests.helpers.textual.invoke(app.action_view, "pipeline")
-            await app.controller.activate("pipeline")
-            await app.controller.flush_display()
-            await session.refresh()
-            if app.controller.background is not None:
-                await app.controller.background
-            yield Session(
+            await pause_clock(app)
+            monitor = Session(
                 app=app,
                 pilot=session.pilot,
                 directory=directory,
                 clock=app.controller.session.tick,
             )
+            await monitor.show_view("pipeline")
+            if app.controller.background is not None:
+                await app.controller.background
+            await monitor.settle()
+            yield monitor
 
 
 async def remove_views(app: peri_scribe.monitor.app.MonitorApp) -> None:
@@ -85,6 +132,37 @@ async def remove_views(app: peri_scribe.monitor.app.MonitorApp) -> None:
         app: The headless observer whose presentation is being removed.
     """
     await app.query_one("#views").remove()
+
+
+@pytest.fixture
+def evidence_completed(
+    monitor_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+) -> asyncio.Event:
+    """Observe one completed evidence command after its control message bubbles.
+
+    Input delivery may finish before the status control's message reaches the app.
+    The controller's return joins the requested read and evidence presentation.
+
+    Args:
+        monitor_session: The mounted monitor whose evidence command is observed.
+        monkeypatch: Restore the command after the current test.
+
+    Returns:
+        A signal set only after successful evidence navigation finishes.
+    """
+    completed = asyncio.Event()
+    controller = monitor_session.app.controller
+    monkeypatch.setattr(
+        controller,
+        "open_evidence",
+        functools.partial(
+            tests.helpers.doubles.peri_scribe.monitor.app.open_evidence_with_completion,
+            completed,
+            controller.open_evidence,
+        ),
+    )
+    return completed
 
 
 @pytest.fixture

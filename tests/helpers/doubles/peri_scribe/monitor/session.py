@@ -2,10 +2,14 @@
 
 import asyncio
 import collections.abc
+import contextlib
 import dataclasses
 import pathlib
+import typing
 
+import peri_scribe.concurrency
 import peri_scribe.monitor.session
+import tests.helpers.doubles.peri_scribe.monitor.synchronization
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -16,6 +20,67 @@ class Gate:
     released: asyncio.Event = dataclasses.field(default_factory=asyncio.Event)
     requests: list[str] = dataclasses.field(default_factory=list)
     failures: frozenset[str] = frozenset()
+    tasks: list[asyncio.Task[object]] = dataclasses.field(default_factory=list)
+
+    def start[Result](
+        self,
+        operation: collections.abc.Coroutine[typing.Any, typing.Any, Result],
+    ) -> asyncio.Task[Result]:
+        """Retain a caller so assertion failure can still join its admitted work.
+
+        Args:
+            operation: The request or shutdown call controlled by this scenario.
+
+        Returns:
+            The scheduled caller, whose result the scenario must check explicitly.
+        """
+        task = asyncio.create_task(operation)
+        self.tasks.append(task)
+        return task
+
+    @contextlib.asynccontextmanager
+    async def running(
+        self,
+        session: peri_scribe.monitor.session.MonitorSession,
+    ) -> collections.abc.AsyncGenerator[None]:
+        """Release blocked work and retire its session if an assertion fails.
+
+        Successful scenarios await each caller and check its outcome themselves.
+        Failure cleanup joins those callers before monkeypatches can be restored,
+        while preserving the assertion that interrupted the scenario.
+
+        Args:
+            session: The domain owner whose requests use this gate.
+
+        Yields:
+            Control while the scenario admits and checks requests.
+        """
+        try:
+            yield
+        except BaseException as failure:
+            self.released.set()
+            cleanup = asyncio.create_task(self.finish(session))
+            await peri_scribe.concurrency.finish_worker(cleanup)
+            try:
+                cleanup.result()
+            except BaseException as cleanup_failure:
+                raise failure from cleanup_failure
+            raise
+        else:
+            self.released.set()
+            await session.close()
+
+    async def finish(
+        self,
+        session: peri_scribe.monitor.session.MonitorSession,
+    ) -> None:
+        """Keep failed-scenario joins and resource retirement in one owned task.
+
+        Args:
+            session: The owner whose gate has already been released.
+        """
+        await asyncio.gather(*self.tasks, return_exceptions=True)
+        await session.close()
 
     async def execute(
         self,
@@ -89,3 +154,30 @@ async def changes(
     assert await asyncio.to_thread(directory.is_dir)
     assert not stopped.is_set()
     yield None
+
+
+async def fail_after_admission(
+    gate: Gate,
+    session: peri_scribe.monitor.session.MonitorSession,
+    failure: AssertionError,
+    *,
+    cancel_cleanup: bool = False,
+) -> None:
+    """Interrupt a scenario while its real request waits for explicit release.
+
+    Args:
+        gate: The test owner responsible for releasing and joining its callers.
+        session: The actual scheduler retaining the admitted request.
+        failure: The assertion that cleanup must preserve.
+        cancel_cleanup: Whether cancellation competes with the failed scenario's join.
+    """
+    async with gate.running(session):
+        gate.start(
+            session.request(peri_scribe.monitor.session.LoadRun(identifier="active")),
+        )
+        await gate.started.wait()
+        if cancel_cleanup:
+            tests.helpers.doubles.peri_scribe.monitor.synchronization.interrupt_cleanup(
+                failure,
+            )
+        raise failure

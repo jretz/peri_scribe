@@ -327,8 +327,18 @@ def test_reader_close_interrupts_catch_up_after_the_active_batch(
         )
         try:
             assert started.wait(timeout=5)
+            waiting = threading.Event()
+            monkeypatch.setattr(
+                reader,
+                "reading",
+                tests.helpers.doubles.peri_scribe.monitor.history.observed_lock(
+                    reader.reading,
+                    waiting,
+                ),
+            )
             closing = executor.submit(reader.close)
-            assert reader.stopped.wait(timeout=5)
+            assert waiting.wait(timeout=5)
+            assert reader.stopped.is_set()
             assert not closing.done()
         finally:
             release.set()

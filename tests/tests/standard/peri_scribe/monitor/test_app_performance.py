@@ -22,7 +22,7 @@ async def test_monitor_app_performance_keyboard_navigation_hides_inspection(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
     await monitor_session.pilot.press("6")
-    await monitor_session.refresh()
+    await monitor_session.settle()
     assert (
         monitor_session.app.query_one("#views", textual.widgets.TabbedContent).active
         == "performance"
@@ -138,12 +138,6 @@ async def test_controller_watch_presentation_advances_performance_without_reads(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     controller = monitor_session.app.controller
-    task = controller.cosmetic_task
-    assert task is not None
-    task.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await task
-    controller.cosmetic_task = None
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
         monitor_session.directory,
         tests.helpers.factories.peri_scribe.monitor.status.record(
@@ -196,7 +190,7 @@ async def test_monitor_app_performance_resizes_charts_and_preserves_scroll(
         ),
     )
     await monitor_session.app.refresh_files()
-    await monitor_session.pilot.press("6")
+    await monitor_session.show_view("performance")
     pane = monitor_session.app.query_one(
         peri_scribe.monitor.performance_widgets.PerformancePane,
     )

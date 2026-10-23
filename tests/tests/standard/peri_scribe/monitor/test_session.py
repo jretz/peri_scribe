@@ -149,34 +149,34 @@ async def test_monitor_session_request_prioritizes_queued_work_without_preemptio
     )
     gate = tests.helpers.doubles.peri_scribe.monitor.session.Gate()
     monkeypatch.setattr(peri_scribe.monitor.session, "execute", gate.execute)
-    active = asyncio.create_task(
-        session.request(peri_scribe.monitor.session.LoadRun(identifier="active")),
-    )
-    await gate.started.wait()
-    background = asyncio.create_task(
-        session.request(
-            peri_scribe.monitor.session.LoadRun(identifier="background"),
-            priority=peri_scribe.monitor.session.Priority.BACKGROUND,
-        ),
-    )
-    immediate = asyncio.create_task(
-        session.request(
-            peri_scribe.monitor.session.LoadRun(identifier="immediate"),
-            priority=peri_scribe.monitor.session.Priority.IMMEDIATE,
-        ),
-    )
-    following = asyncio.create_task(
-        session.request(
-            peri_scribe.monitor.session.LoadRun(identifier="following"),
-            priority=peri_scribe.monitor.session.Priority.IMMEDIATE,
-        ),
-    )
-    await tests.helpers.doubles.peri_scribe.monitor.session.queued(session, 3)
-    assert gate.requests == ["active"]
-    gate.released.set()
-    await asyncio.gather(active, background, immediate, following)
-    assert gate.requests == ["active", "immediate", "following", "background"]
-    await session.close()
+    async with gate.running(session):
+        active = gate.start(
+            session.request(peri_scribe.monitor.session.LoadRun(identifier="active")),
+        )
+        await gate.started.wait()
+        background = gate.start(
+            session.request(
+                peri_scribe.monitor.session.LoadRun(identifier="background"),
+                priority=peri_scribe.monitor.session.Priority.BACKGROUND,
+            ),
+        )
+        immediate = gate.start(
+            session.request(
+                peri_scribe.monitor.session.LoadRun(identifier="immediate"),
+                priority=peri_scribe.monitor.session.Priority.IMMEDIATE,
+            ),
+        )
+        following = gate.start(
+            session.request(
+                peri_scribe.monitor.session.LoadRun(identifier="following"),
+                priority=peri_scribe.monitor.session.Priority.IMMEDIATE,
+            ),
+        )
+        await tests.helpers.doubles.peri_scribe.monitor.session.queued(session, 3)
+        assert gate.requests == ["active"]
+        gate.released.set()
+        await asyncio.gather(active, background, immediate, following)
+        assert gate.requests == ["active", "immediate", "following", "background"]
 
 
 @pytest.mark.asyncio
@@ -190,30 +190,30 @@ async def test_monitor_session_promote_reuses_identity_and_changes_admission_ord
     )
     gate = tests.helpers.doubles.peri_scribe.monitor.session.Gate()
     monkeypatch.setattr(peri_scribe.monitor.session, "execute", gate.execute)
-    active_request = peri_scribe.monitor.session.LoadRun(identifier="active")
-    active = asyncio.create_task(session.request(active_request))
-    await gate.started.wait()
-    ordinary = asyncio.create_task(
-        session.request(peri_scribe.monitor.session.LoadRun(identifier="ordinary")),
-    )
-    request = peri_scribe.monitor.session.LoadRun(identifier="promoted")
-    promoted = asyncio.create_task(
-        session.request(
-            request,
-            priority=peri_scribe.monitor.session.Priority.BACKGROUND,
-        ),
-    )
-    await tests.helpers.doubles.peri_scribe.monitor.session.queued(session, 2)
-    assert not session.promote(active_request)
-    assert not session.promote(
-        peri_scribe.monitor.session.LoadRun(identifier="promoted"),
-    )
-    assert session.promote(request)
-    assert not session.promote(request)
-    gate.released.set()
-    await asyncio.gather(active, ordinary, promoted)
-    assert gate.requests == ["active", "promoted", "ordinary"]
-    await session.close()
+    async with gate.running(session):
+        active_request = peri_scribe.monitor.session.LoadRun(identifier="active")
+        active = gate.start(session.request(active_request))
+        await gate.started.wait()
+        ordinary = gate.start(
+            session.request(peri_scribe.monitor.session.LoadRun(identifier="ordinary")),
+        )
+        request = peri_scribe.monitor.session.LoadRun(identifier="promoted")
+        promoted = gate.start(
+            session.request(
+                request,
+                priority=peri_scribe.monitor.session.Priority.BACKGROUND,
+            ),
+        )
+        await tests.helpers.doubles.peri_scribe.monitor.session.queued(session, 2)
+        assert not session.promote(active_request)
+        assert not session.promote(
+            peri_scribe.monitor.session.LoadRun(identifier="promoted"),
+        )
+        assert session.promote(request)
+        assert not session.promote(request)
+        gate.released.set()
+        await asyncio.gather(active, ordinary, promoted)
+        assert gate.requests == ["active", "promoted", "ordinary"]
 
 
 @pytest.mark.asyncio
@@ -227,21 +227,23 @@ async def test_monitor_session_request_cancels_queued_work_without_execution(
     )
     gate = tests.helpers.doubles.peri_scribe.monitor.session.Gate()
     monkeypatch.setattr(peri_scribe.monitor.session, "execute", gate.execute)
-    active = asyncio.create_task(
-        session.request(peri_scribe.monitor.session.LoadRun(identifier="active")),
-    )
-    await gate.started.wait()
-    queued = asyncio.create_task(
-        session.request(peri_scribe.monitor.session.LoadRun(identifier="cancelled")),
-    )
-    await tests.helpers.doubles.peri_scribe.monitor.session.queued(session, 1)
-    queued.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await queued
-    gate.released.set()
-    await active
-    assert gate.requests == ["active"]
-    await session.close()
+    async with gate.running(session):
+        active = gate.start(
+            session.request(peri_scribe.monitor.session.LoadRun(identifier="active")),
+        )
+        await gate.started.wait()
+        queued = gate.start(
+            session.request(
+                peri_scribe.monitor.session.LoadRun(identifier="cancelled"),
+            ),
+        )
+        await tests.helpers.doubles.peri_scribe.monitor.session.queued(session, 1)
+        queued.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await queued
+        gate.released.set()
+        await active
+        assert gate.requests == ["active"]
 
 
 @pytest.mark.asyncio
@@ -255,20 +257,20 @@ async def test_monitor_session_request_settles_admitted_work_despite_cancellatio
     )
     gate = tests.helpers.doubles.peri_scribe.monitor.session.Gate()
     monkeypatch.setattr(peri_scribe.monitor.session, "execute", gate.execute)
-    active = asyncio.create_task(
-        session.request(peri_scribe.monitor.session.LoadRun(identifier="active")),
-    )
-    await gate.started.wait()
-    for _ in range(3):
-        active.cancel()
-        await asyncio.sleep(0)
-    assert not active.done()
-    assert session.owner.lock.locked()
-    gate.released.set()
-    with pytest.raises(asyncio.CancelledError):
-        await active
-    assert session.snapshot.errors == ("active",)
-    await session.close()
+    async with gate.running(session):
+        active = gate.start(
+            session.request(peri_scribe.monitor.session.LoadRun(identifier="active")),
+        )
+        await gate.started.wait()
+        for _ in range(3):
+            active.cancel()
+            await asyncio.sleep(0)
+        assert not active.done()
+        assert session.owner.lock.locked()
+        gate.released.set()
+        with pytest.raises(asyncio.CancelledError):
+            await active
+        assert session.snapshot.errors == ("active",)
 
 
 @pytest.mark.asyncio
@@ -310,37 +312,43 @@ async def test_monitor_session_close_rejects_late_publication_and_retires_once(
     stream = next(iter(session.follower.cursors.values())).stream
     gate = tests.helpers.doubles.peri_scribe.monitor.session.Gate()
     monkeypatch.setattr(peri_scribe.monitor.session, "execute", gate.execute)
-    active = asyncio.create_task(
-        session.request(peri_scribe.monitor.session.LoadRun(identifier="active")),
-    )
-    await gate.started.wait()
-    queued = asyncio.create_task(
-        session.request(peri_scribe.monitor.session.LoadRun(identifier="queued")),
-    )
-    await tests.helpers.doubles.peri_scribe.monitor.session.queued(session, 1)
-    cancelled = asyncio.create_task(
-        session.request(peri_scribe.monitor.session.LoadRun(identifier="cancelled")),
-    )
-    await tests.helpers.doubles.peri_scribe.monitor.session.queued(session, 2)
-    cancelled.cancel()
-    with pytest.raises(asyncio.CancelledError):
-        await cancelled
-    closing = asyncio.create_task(session.close())
-    await session.owner.stopped.wait()
-    assert not stream.closed
-    assert not closing.done()
-    assert await queued is before
-    for _ in range(3):
-        closing.cancel()
-        await asyncio.sleep(0)
-    gate.released.set()
-    assert await active is before
-    with pytest.raises(asyncio.CancelledError):
-        await closing
-    assert stream.closed
-    assert session.snapshot is before
-    await session.close()
-    assert await session.request(peri_scribe.monitor.session.RefreshRecords()) is before
+    async with gate.running(session):
+        active = gate.start(
+            session.request(peri_scribe.monitor.session.LoadRun(identifier="active")),
+        )
+        await gate.started.wait()
+        queued = gate.start(
+            session.request(peri_scribe.monitor.session.LoadRun(identifier="queued")),
+        )
+        await tests.helpers.doubles.peri_scribe.monitor.session.queued(session, 1)
+        cancelled = gate.start(
+            session.request(
+                peri_scribe.monitor.session.LoadRun(identifier="cancelled"),
+            ),
+        )
+        await tests.helpers.doubles.peri_scribe.monitor.session.queued(session, 2)
+        cancelled.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await cancelled
+        closing = gate.start(session.close())
+        await session.owner.stopped.wait()
+        assert not stream.closed
+        assert not closing.done()
+        assert await queued is before
+        for _ in range(3):
+            closing.cancel()
+            await asyncio.sleep(0)
+        gate.released.set()
+        assert await active is before
+        with pytest.raises(asyncio.CancelledError):
+            await closing
+        assert stream.closed
+        assert session.snapshot is before
+        await session.close()
+        assert (
+            await session.request(peri_scribe.monitor.session.RefreshRecords())
+            is before
+        )
 
 
 @pytest.mark.asyncio

@@ -1,10 +1,31 @@
 """Coordinate shutdown with an in-flight history batch without timing assumptions."""
 
+import collections.abc
+import contextlib
 import dataclasses
 import datetime
 import threading
 
 import peri_scribe.monitor.storage
+
+
+@contextlib.contextmanager
+def observed_lock(
+    lock: threading.Lock,
+    waiting: threading.Event,
+) -> collections.abc.Generator[None]:
+    """Acknowledge a shutdown acquisition before waiting on the actual read lock.
+
+    Args:
+        lock: The lock already held by an admitted history read.
+        waiting: Signals that shutdown has reached its resource ownership boundary.
+
+    Yields:
+        Control after the active read releases its ownership.
+    """
+    waiting.set()
+    with lock:
+        yield
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)

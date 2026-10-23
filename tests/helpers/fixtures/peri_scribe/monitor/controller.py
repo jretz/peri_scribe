@@ -14,6 +14,7 @@ import peri_scribe.monitor.app
 import peri_scribe.monitor.session
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.factories.peri_scribe.monitor.status
+import tests.helpers.fixtures.peri_scribe.monitor.application
 import tests.helpers.textual
 
 
@@ -80,6 +81,9 @@ async def initial_monitor(
         tick=False,
     ):
         async with tests.helpers.textual.mounted(app) as session:
+            await tests.helpers.fixtures.peri_scribe.monitor.application.pause_clock(
+                app,
+            )
             yield Session(
                 app=app,
                 pilot=session.pilot,

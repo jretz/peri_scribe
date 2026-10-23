@@ -6,6 +6,7 @@ import pytest
 import textual.widgets
 
 import peri_scribe.monitor.widgets
+import tests.helpers.doubles.peri_scribe.monitor.widgets
 import tests.helpers.fixtures.peri_scribe.monitor.application
 import tests.helpers.fixtures.peri_scribe.monitor.widgets
 import tests.helpers.textual
@@ -73,8 +74,10 @@ async def test_pane_divider_resizes_with_arrow_keys(
     session = monitor_session
     divider = session.app.query_one(selector, peri_scribe.monitor.widgets.PaneDivider)
     initial = getattr(divider.before.size, dimension)
-    await tests.helpers.textual.invoke(divider.focus)
-    await session.pilot.press(key)
+    with tests.helpers.doubles.peri_scribe.monitor.widgets.delayed_frames():
+        await tests.helpers.textual.invoke(divider.focus)
+        await session.pilot.press(key)
+    await session.refresh()
     assert getattr(divider.before.size, dimension) == initial + change
     assert session.app.following
 
@@ -147,6 +150,7 @@ async def test_pane_divider_ignores_unrelated_keys(
     initial = divider.before.size
     await tests.helpers.textual.invoke(divider.focus)
     await session.pilot.press("up", "down", "x")
+    await session.refresh()
     assert divider.before.size == initial
 
 

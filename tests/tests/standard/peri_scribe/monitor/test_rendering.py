@@ -199,6 +199,10 @@ async def test_apply_records_preserves_phase_cursor_across_replacement(
     app = initial_monitor.app
     await app.controller.activate("pipeline")
     app.action_view("pipeline")
+    await initial_monitor.refresh()
+    await app.workers.wait_for_complete()
+    await app.controller.flush_display()
+    await initial_monitor.refresh()
     tree = app.query_one("#phase-tree", textual.widgets.Tree)
     path, previous = next(iter(app.tree_nodes.items()))
     tree.move_cursor(previous)

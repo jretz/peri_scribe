@@ -54,6 +54,76 @@ discovered implementation bugs remain in the standard test tree.
 
 ## Terminal Monitor Tests
 
+Use the monitor session's `show_view` helper before inspecting a tab's rendered rows or
+changing its scroll position. After keyboard navigation, filtering, or run selection,
+use `settle` when the assertion depends on prepared content. Keep input stable during
+these waits. Both monitor fixtures disable automatic file reads and cosmetic timers
+and fix the observation clock. A frozen wall clock alone does not stop an asyncio timer
+from scheduling another table update. The ordinary fixture also joins initial background
+preparation before yielding; the startup fixture leaves that preparation under test
+control. Both fixtures join cosmetic-task cancellation before yielding. Timer and
+shutdown tests start the real cosmetic loop explicitly when needed.
+
+The completion order matters: first dispatch queued control messages, then join
+tab-activation workers and the controller's display task, then wait for the final
+paint. For example, changing a search field schedules preparation outside Textual's
+worker manager. A paint wait alone can still show the preceding rows, and joining
+only Textual workers leaves that search running. The final refresh lets table cursor
+movement and Markdown layout reach the screen before scroll or screenshot assertions.
+Use plain `refresh` for widget changes that do not schedule content preparation. Keep
+explicit gates in tests that intentionally inspect work in progress; do not settle
+away the concurrency those tests are exercising.
+
+Status-link keyboard actions and exception-row selections post a separate evidence
+navigation message. Await the `evidence_completed` fixture, then `settle`, before
+checking the selected run, tab, or details. Input delivery can finish while the evidence
+reader is still running, and navigation completion can precede queued focus and tab
+updates. The fixture observes one navigation. Start selection tests on a different run
+so the expected result cannot already be present before navigation.
+
+Keep blocked session requests inside `Gate.running` and register their tasks with
+`Gate.start`. The scope releases the gate, joins requests, and closes the session if an
+assertion fails. Admitted requests deliberately defer cancellation until their work
+finishes, so relying on pytest's task cancellation can leave teardown waiting forever.
+Keep the explicit result and cancellation assertions in the test body; cleanup must
+preserve the original failure. Replay adapters that create their own owner or session
+must also join admitted callers and close that owner on failure, before their
+monkeypatches are restored. Cleanup itself must tolerate cancellation while preserving
+the original failure. For example, an assertion while three callers are admitted must
+release the worker gate, join all three callers, and close their owner even if another
+cancellation arrives during that cleanup. The adapters reuse the existing
+[worker lifetime contract](algorithms/worker-lifetimes.md); they retain O(C) task
+references for C callers and wait for those callers to finish. See the
+[session gate helper](../tests/helpers/doubles/peri_scribe/monitor/session.py) and
+[replay adapter](../tests/formal/helpers/monitor_tasks.py).
+
+For UI gates, enter `release_on_exit` before dispatching the worker or waiting for
+admission. Dispatch can yield before the worker starts, so cleanup must cover both
+dispatch and admission waits. The mounted fixture can then finish its pending work during
+teardown. See the
+[synchronization helpers](../tests/helpers/doubles/peri_scribe/monitor/synchronization.py).
+
+Before asserting that a thread remains blocked during shutdown, observe its attempt
+to acquire the actual held lock. A stop signal can acknowledge the shutdown request
+before the thread reaches that lock, allowing an unlocked implementation to pass the
+assertion under some schedules. Preserve the real lock while observing that boundary;
+see the [history helpers](../tests/helpers/doubles/peri_scribe/monitor/history.py).
+
+Keyboard input can finish before the next frame applies pane geometry. Wait for
+`refresh` after divider keys before asserting sizes, including assertions that an
+ignored key leaves sizes unchanged. `Pilot.press` drains key messages but does not
+wait for the resulting frame.
+
+These helpers are thin test adapters over existing completion APIs. Their sequencing
+assessment is **2/0/0/0/1 = 3, involved**: control delivery must precede joining work,
+and the join must precede paint. They add no application policy or resource protocol
+requiring a separate formal model. Event-gated regressions check that a blocked worker
+keeps the helper pending and that releasing it produces the expected content. Joining
+W active Textual workers uses O(W) temporary space; elapsed time depends on preparation
+and rendering. The helpers propagate preparation failures rather than retrying assertions.
+See the [monitor fixture](../tests/helpers/fixtures/peri_scribe/monitor/application.py)
+and [synchronization regressions](../tests/tests/standard/test_monitor_session.py).
+
 Use `tests.helpers.textual.Session.resize` before checking resized terminal geometry or
 scroll bounds. Textual can acknowledge a requested terminal size before its deferred
 screen reflow updates child regions. The helper waits for the current screen's outer

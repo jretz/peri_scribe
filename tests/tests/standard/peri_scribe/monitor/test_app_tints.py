@@ -45,8 +45,7 @@ async def test_monitor_app_tints_severe_events_without_changing_stripe_brightnes
     )
     await session.app.refresh_files()
     await tests.helpers.textual.invoke(setattr, session.app, "theme", theme)
-    await tests.helpers.textual.invoke(session.app.action_view, view)
-    await session.pilot.pause()
+    await session.show_view(view)
     table = session.app.query_one(
         "#pipeline-stream .events" if view == "pipeline" else "#log-stream .events",
         peri_scribe.monitor.widgets.EventTable,
@@ -75,7 +74,7 @@ async def test_monitor_app_tints_severe_events_without_changing_stripe_brightnes
     await tests.helpers.textual.invoke(
         functools.partial(table.scroll_to, y=1, animate=False, immediate=True),
     )
-    await session.pilot.pause()
+    await session.refresh()
     assert table.scroll_offset.y == 1
     assert (
         await tests.helpers.textual.invoke(
@@ -118,8 +117,7 @@ async def test_monitor_app_tints_finished_runs_without_changing_stripe_brightnes
         )
     await session.app.refresh_files()
     await tests.helpers.textual.invoke(setattr, session.app, "theme", theme)
-    await tests.helpers.textual.invoke(session.app.action_view, "runs")
-    await session.pilot.pause()
+    await session.show_view("runs")
     table = session.app.query_one("#run-table", peri_scribe.monitor.widgets.TintedTable)
     colors = [
         (

@@ -4,7 +4,6 @@ import asyncio
 import collections.abc
 import dataclasses
 import datetime
-import functools
 import typing
 import unittest.mock
 
@@ -21,7 +20,6 @@ import peri_scribe.monitor.status
 import peri_scribe.monitor.status_widgets
 import peri_scribe.monitor.storage
 import tests.helpers.doubles.errors
-import tests.helpers.doubles.peri_scribe.monitor.app
 import tests.helpers.doubles.peri_scribe.monitor.changes
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.factories.peri_scribe.monitor.status
@@ -163,7 +161,7 @@ async def test_monitor_app_status_uses_live_phase_while_pipeline_is_paused(
 @pytest.mark.asyncio
 async def test_monitor_app_status_links_load_run_beyond_interactive_history(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
-    monkeypatch: pytest.MonkeyPatch,
+    evidence_completed: asyncio.Event,
 ) -> None:
     session = monitor_session
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
@@ -183,24 +181,14 @@ async def test_monitor_app_status_links_load_run_beyond_interactive_history(
         run.identifier != "failed"
         for run in session.app.controller.snapshot.records.runs
     )
-    completed = asyncio.Event()
-    monkeypatch.setattr(
-        session.app.controller,
-        "open_evidence",
-        functools.partial(
-            tests.helpers.doubles.peri_scribe.monitor.app.open_evidence_with_completion,
-            completed,
-            session.app.controller.open_evidence,
-        ),
-    )
     await tests.helpers.textual.invoke(
         session.app.query_one(
             "#status-failure",
             peri_scribe.monitor.status_widgets.StatusLink,
         ).on_click,
     )
-    await asyncio.wait_for(completed.wait(), timeout=5)
-    await session.refresh()
+    await asyncio.wait_for(evidence_completed.wait(), timeout=5)
+    await session.settle()
     assert session.app.current_run().identifier == "failed"
     assert not session.app.following
     assert (
@@ -216,6 +204,7 @@ async def test_monitor_app_status_links_load_run_beyond_interactive_history(
 @pytest.mark.asyncio
 async def test_monitor_app_status_exception_row_opens_latest_instance(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    evidence_completed: asyncio.Event,
 ) -> None:
     session = monitor_session
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
@@ -224,19 +213,24 @@ async def test_monitor_app_status_exception_row_opens_latest_instance(
         *tests.helpers.factories.peri_scribe.monitor.status.failed_run(run_id="latest"),
     )
     await session.app.refresh_files()
+    session.app.following = False
+    session.app.selected_run = "first"
+    await session.show_view("status")
+    assert session.app.current_run().identifier == "first"
     pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
     table = pane.query_one("#status-exceptions", textual.widgets.DataTable)
     await tests.helpers.textual.invoke(
         pane.select_evidence,
         textual.widgets.DataTable.RowSelected(table, 0, next(iter(table.rows))),
     )
-    await session.pilot.pause()
+    await asyncio.wait_for(evidence_completed.wait(), timeout=5)
     assert session.app.current_run().identifier == "latest"
 
 
 @pytest.mark.asyncio
 async def test_monitor_app_status_link_supports_keyboard(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    evidence_completed: asyncio.Event,
 ) -> None:
     session = monitor_session
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
@@ -247,6 +241,8 @@ async def test_monitor_app_status_link_supports_keyboard(
     await session.pilot.press("1")
     await tests.helpers.textual.invoke(session.app.query_one("#status-failure").focus)
     await session.pilot.press("enter")
+    await asyncio.wait_for(evidence_completed.wait(), timeout=5)
+    await session.settle()
     assert (
         session.app.query_one("#views", textual.widgets.TabbedContent).active
         == "pipeline"

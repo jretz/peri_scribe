@@ -30,8 +30,7 @@ async def test_monitor_app_stripes_rows_across_the_full_width_after_scrolling(
 ) -> None:
     session = scrolling_session
     await tests.helpers.textual.invoke(setattr, session.app, "theme", theme)
-    await tests.helpers.textual.invoke(session.app.action_view, view)
-    await session.pilot.pause()
+    await session.show_view(view)
     widget = session.app.query_one(selector)
     backgrounds = []
     for offset in (0, 1):
@@ -43,7 +42,7 @@ async def test_monitor_app_stripes_rows_across_the_full_width_after_scrolling(
                 immediate=True,
             ),
         )
-        await session.pilot.pause()
+        await session.refresh()
         colors = [
             (
                 await tests.helpers.textual.invoke(
@@ -84,7 +83,7 @@ async def test_monitor_app_stripes_options_without_overwriting_selection(
         await tests.helpers.textual.invoke(select.action_show_overlay)
         widget = select.query_one(textual.widgets.OptionList)
     await tests.helpers.textual.invoke(setattr, widget, "highlighted", 0)
-    await session.pilot.pause()
+    await session.refresh()
     colors = [
         (
             await tests.helpers.textual.invoke(
@@ -100,7 +99,7 @@ async def test_monitor_app_stripes_options_without_overwriting_selection(
     assert colors[1] == colors[3] != colors[2]
     assert colors[0] not in colors[1:]
     await tests.helpers.textual.invoke(setattr, widget, "highlighted", 1)
-    await session.pilot.pause()
+    await session.refresh()
     selected = await tests.helpers.textual.invoke(
         tests.helpers.assertions.peri_scribe.monitor.striping.row_backgrounds,
         widget,

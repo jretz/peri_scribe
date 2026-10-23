@@ -12,7 +12,6 @@ import peri_scribe.monitor.status_widgets
 import tests.helpers.doubles.peri_scribe.monitor.tasks
 import tests.helpers.factories.peri_scribe.monitor.status
 import tests.helpers.fixtures.peri_scribe.monitor.application
-import tests.helpers.textual
 
 
 @pytest.mark.parametrize(
@@ -97,8 +96,7 @@ async def test_render_report_does_not_publish_completion_after_unmount(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     app = monitor_session.app
-    await tests.helpers.textual.invoke(app.action_view, "report")
-    await monitor_session.pilot.pause()
+    await monitor_session.show_view("report")
     app.report_path.write_text("# Newly observed report")
     document = app.query_one("#report-viewer", textual.widgets.MarkdownViewer).document
     update = tests.helpers.doubles.peri_scribe.monitor.tasks.PausedUpdate(

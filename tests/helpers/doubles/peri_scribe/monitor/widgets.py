@@ -1,12 +1,49 @@
 """Mount real controls with only the neighboring widgets their behavior requires."""
 
+import collections.abc
+import contextlib
 import typing
+import unittest.mock
 
 import textual.app
 import textual.containers
+import textual.timer
 import textual.widgets
 
 import peri_scribe.monitor.widgets
+
+
+@contextlib.contextmanager
+def delayed_frames() -> collections.abc.Generator[None]:
+    """Hold automatic screen frames while input handlers request layout changes.
+
+    Other timers keep running. Resuming the held timers on exit schedules their work
+    without painting synchronously, so a subsequent refresh must await the geometry.
+
+    Yields:
+        An input interval whose frame timers resume even if an action fails.
+    """
+    timers: set[textual.timer.Timer] = set()
+    resume = textual.timer.Timer.resume
+
+    def defer(timer: textual.timer.Timer) -> None:
+        """Keep only screen updates from racing ahead of the test's refresh.
+
+        Args:
+            timer: The timer being resumed by the mounted widget.
+        """
+        if timer.name == "screen_update":
+            timer.pause()
+            timers.add(timer)
+        else:
+            resume(timer)
+
+    try:
+        with unittest.mock.patch.object(textual.timer.Timer, "resume", defer):
+            yield
+    finally:
+        for timer in timers:
+            resume(timer)
 
 
 class DividerApp(textual.app.App[None]):

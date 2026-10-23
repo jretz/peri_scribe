@@ -48,7 +48,7 @@ async def test_snapshot_app_save_snapshot_captures_monitor_after_palette_closes(
     await session.command_results()
     with unittest.mock.patch.object(session.app, "notify") as notify:
         await session.pilot.press("enter")
-        await session.pilot.pause()
+        await session.refresh()
     after = datetime.datetime.now().astimezone()
     assert not isinstance(session.app.screen, textual.command.CommandPalette)
     paths = list((session.directory / "screenshots").glob("*.txt"))

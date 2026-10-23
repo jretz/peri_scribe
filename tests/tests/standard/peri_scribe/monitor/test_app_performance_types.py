@@ -78,6 +78,6 @@ async def test_monitor_app_performance_separates_modes_within_the_run_command(
         100,
         1000,
     ]
-    await monitor_session.pilot.press("6")
+    await monitor_session.show_view("performance")
     chart = pane.query_one("#performance-charts", textual.widgets.Static)
     assert all(series.command in str(chart.content) for series in pane.series)

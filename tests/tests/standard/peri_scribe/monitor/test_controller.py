@@ -19,6 +19,7 @@ import peri_scribe.monitor.status_widgets
 import peri_scribe.monitor.tasks
 import peri_scribe.monitor.widgets
 import tests.helpers.doubles.peri_scribe.monitor.controller
+import tests.helpers.doubles.peri_scribe.monitor.synchronization
 import tests.helpers.doubles.peri_scribe.monitor.tasks
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.factories.peri_scribe.monitor.status
@@ -152,17 +153,17 @@ async def test_controller_activate_joins_background_content_already_admitted(
     )
     monkeypatch.setattr(peri_scribe.monitor.session, "execute", gate.execute)
     controller = initial_monitor.app.controller
-    initial_monitor.begin_background()
-    await gate.started.wait()
-    navigation = asyncio.create_task(controller.activate(name))
-    try:
+    with tests.helpers.doubles.peri_scribe.monitor.synchronization.release_on_exit(
+        gate.released,
+    ):
+        initial_monitor.begin_background()
+        await gate.started.wait()
+        navigation = asyncio.create_task(controller.activate(name))
         await asyncio.sleep(0)
         assert not navigation.done()
         assert controller.content[kind].priority == (
             peri_scribe.monitor.session.Priority.IMMEDIATE
         )
-    finally:
-        gate.released.set()
     await navigation
     assert controller.background is not None
     await controller.background
@@ -180,22 +181,24 @@ async def test_controller_prepare_content_promotes_queued_work_without_duplicate
         kind=peri_scribe.monitor.session.RefreshHealth,
     )
     monkeypatch.setattr(peri_scribe.monitor.session, "execute", gate.execute)
-    active = asyncio.create_task(
-        controller.session.request(peri_scribe.monitor.session.RefreshHealth()),
-    )
-    await gate.started.wait()
-    ordinary = asyncio.create_task(
-        controller.session.request(peri_scribe.monitor.session.RefreshReport()),
-    )
-    background = asyncio.create_task(
-        controller.prepare_content(
-            peri_scribe.monitor.session.RefreshRecords(),
-            priority=peri_scribe.monitor.session.Priority.BACKGROUND,
-        ),
-    )
-    await asyncio.sleep(0)
-    navigation = asyncio.create_task(controller.activate("pipeline"))
-    try:
+    with tests.helpers.doubles.peri_scribe.monitor.synchronization.release_on_exit(
+        gate.released,
+    ):
+        active = asyncio.create_task(
+            controller.session.request(peri_scribe.monitor.session.RefreshHealth()),
+        )
+        await gate.started.wait()
+        ordinary = asyncio.create_task(
+            controller.session.request(peri_scribe.monitor.session.RefreshReport()),
+        )
+        background = asyncio.create_task(
+            controller.prepare_content(
+                peri_scribe.monitor.session.RefreshRecords(),
+                priority=peri_scribe.monitor.session.Priority.BACKGROUND,
+            ),
+        )
+        await asyncio.sleep(0)
+        navigation = asyncio.create_task(controller.activate("pipeline"))
         await asyncio.sleep(0)
         expected_pending = 2
         assert len(controller.session.pending) == expected_pending
@@ -203,8 +206,6 @@ async def test_controller_prepare_content_promotes_queued_work_without_duplicate
             controller.session.pending[0].request,
             peri_scribe.monitor.session.RefreshRecords,
         )
-    finally:
-        gate.released.set()
     await asyncio.gather(active, ordinary, background, navigation)
     assert [type(request) for request in gate.requests] == [
         peri_scribe.monitor.session.RefreshHealth,
@@ -275,9 +276,11 @@ async def test_controller_prepare_display_repeats_after_superseded_widget_applic
         operation=peri_scribe.monitor.rendering.apply_records,
     )
     monkeypatch.setattr(peri_scribe.monitor.rendering, "apply_records", gate.apply)
-    app.controller.schedule_display()
-    await gate.started.wait()
-    try:
+    with tests.helpers.doubles.peri_scribe.monitor.synchronization.release_on_exit(
+        gate.released,
+    ):
+        app.controller.schedule_display()
+        await gate.started.wait()
         change = tests.helpers.doubles.peri_scribe.monitor.controller.DisplayChange(
             operation=app.render_state,
         )
@@ -285,8 +288,6 @@ async def test_controller_prepare_display_repeats_after_superseded_widget_applic
         stream = app.query_one("#pipeline-stream", peri_scribe.monitor.widgets.Stream)
         stream.query_one(textual.widgets.Input).value = "Beta"
         await asyncio.wait_for(change.dispatched.wait(), 5)
-    finally:
-        gate.released.set()
     await app.controller.flush_display()
     assert gate.generations[0] < gate.generations[-1]
     assert app.controller.prepared_generation == app.controller.generation
@@ -391,6 +392,7 @@ async def test_controller_close_discards_worker_completion_after_detachment(
 ) -> None:
     controller = initial_monitor.app.controller
     await controller.activate("pipeline")
+    controller.cosmetic_task = asyncio.create_task(controller.watch_presentation())
     preparation = tests.helpers.doubles.peri_scribe.monitor.tasks.PausedCall(
         function=peri_scribe.monitor.display.prepare,
     )
