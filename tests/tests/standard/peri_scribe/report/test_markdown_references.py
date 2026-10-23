@@ -11,7 +11,7 @@ def test_markdown_text_disambiguates_detail_anchors_and_section_collisions() -> 
             name,
             identifier=str(index),
         )
-        for index, name in enumerate(("Bug", "Bug!", "Bug-1", "Top Fires"))
+        for index, name in enumerate(("Bug", "Bug!", "Bug-1", "Top"))
     )
     report = peri_scribe.report.gathering.FireReport(
         new_notable_fires=(),
@@ -25,7 +25,7 @@ def test_markdown_text_disambiguates_detail_anchors_and_section_collisions() -> 
     assert "[**Bug**](#fire-detail:0)" in text
     assert "[**Bug!**](#fire-detail:1)" in text
     assert "[**Bug-1**](#fire-detail:2)" in text
-    assert "[**Top Fires**](#fire-detail:3)" in text
+    assert "[**Top**](#fire-detail:3)" in text
 
     assert all(
         f'<a id="fire-detail:{index}"></a>' in text for index in range(len(entries))

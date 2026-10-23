@@ -68,23 +68,26 @@ def top_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
     fires: list[Fire],
     scores: peri_scribe.models.FireScores,
 ) -> list[Fire]:
-    """Return the highest-scoring fires that are present in *fires*.
+    """Return the highest-scoring eligible fires that are present in *fires*.
 
     Scores can include fires excluded from the map for lacking a qualifying area
     estimate, so the result is matched back to the filtered fire list. A score matches
     by identifier first, then by source component. Only scores without a component can
     fall back to a name; that keeps anonymous fires with the same name separate.
+    Holding fires retain their score ownership but cannot occupy a ranked place.
 
     Args:
         fires: The fires that can be shown in the KMZ.
         scores: The saved score for each fire.
 
     Returns:
-        The top fires in descending score order.
+        The top fires outside Holding status in descending score order.
     """
-    return [fire for fire, _entry in matched_fire_scores(fires, scores)][
-        :TOP_FIRE_COUNT
-    ]
+    return [
+        fire
+        for fire, _entry in matched_fire_scores(fires, scores)
+        if fire.status is not peri_scribe.models.FireStatus.HOLDING
+    ][:TOP_FIRE_COUNT]
 
 
 def score_maps(
@@ -186,23 +189,23 @@ def notable_score_threshold(
     fires: typing.Sequence[peri_scribe.presentation.fire_data.FireSummary],
     scores: peri_scribe.models.FireScores,
 ) -> int | None:
-    """Return the lowest score in the top fraction of active fires.
+    """Return the lowest score in the top fraction of fires agencies mark Active.
 
-    Take :data:`NOTABLE_SCORE_FRACTION` of the scored active fires, rounding the count
-    up, and use the last score as the cutoff. Equal scores also qualify, so the selected
-    group can exceed that fraction.
+    Take :data:`NOTABLE_SCORE_FRACTION` of scored Active and Holding fires, rounding
+    the count up, and use the last score as the cutoff. Equal scores also qualify, so
+    the selected group can exceed that fraction.
 
     Args:
         fires: The fires that can be shown in the KMZ.
         scores: The saved score for each fire.
 
     Returns:
-        The cutoff score, or None when no active fire has a score.
+        The cutoff score, or None when no agency Active fire has a score.
     """
     active_scores = [
         entry.score
         for fire, entry in matched_fire_scores(fires, scores)
-        if fire.status is peri_scribe.models.FireStatus.ACTIVE
+        if fire.status is not peri_scribe.models.FireStatus.INACTIVE
     ]
     if not active_scores:
         return None
@@ -244,8 +247,8 @@ def new_notable_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
 ) -> list[Fire]:
     """Return newly discovered fires that meet the notable-fire criteria.
 
-    At least one showable active fire must have a score to establish the cutoff.
-    Discovery must fall within :data:`NEW_NOTABLE_DISCOVERY_LOOKBACK` of
+    At least one showable Active or Holding fire must have a score to establish the
+    cutoff. Discovery must fall within :data:`NEW_NOTABLE_DISCOVERY_LOOKBACK` of
     *reference_time*. A fire then qualifies either by scoring among the top active fires
     or by reaching :data:`NEW_NOTABLE_MINIMUM_AREA_ACRES` and meeting another signal: at
     least :data:`NEW_NOTABLE_SIZE_AREA_ACRES`, overlap with an evacuation zone, or at
@@ -285,7 +288,7 @@ def new_notable_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
 def type_one_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
     fires: list[Fire],
 ) -> list[Fire]:
-    """Return active fires currently marked as Type 1 Incidents, sorted by name.
+    """Return agency Active Type 1 Incidents, including Holding, sorted by name.
 
     The latest point-history designation is the one used by scoring. Using it here also
     removes a fire from the view when it's downgraded from Type 1. Names are sorted
@@ -300,7 +303,7 @@ def type_one_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
     qualifying = [
         fire
         for fire in fires
-        if fire.status is peri_scribe.models.FireStatus.ACTIVE and fire.type_one
+        if fire.status is not peri_scribe.models.FireStatus.INACTIVE and fire.type_one
     ]
     qualifying.sort(key=peri_scribe.presentation.fire_data.fire_name_key)
     return qualifying

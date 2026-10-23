@@ -10,7 +10,6 @@ Design notes:
 
 from __future__ import annotations
 
-import datetime
 import functools
 import io
 import pathlib
@@ -152,7 +151,7 @@ def fire_view_folders(
         ring_style_urls: The style URL for each progression ring color, keyed by its
             ``#RRGGBB`` color.
     """
-    wall_clock_time = datetime.datetime.now(datetime.UTC)
+    wall_clock_time = peri_scribe.presentation.fire_data.presentation_time()
     new_notable = peri_scribe.presentation.views.new_notable_fires(
         fires,
         scores,
@@ -257,11 +256,11 @@ def fire_status_folders(
     *,
     top_fires_present: bool,
 ) -> None:
-    """Append the active and inactive fire folders that hold fires.
+    """Append the nonempty status folders in active, holding, inactive order.
 
-    The active fires folder loads checked unless the top fires view is checked instead;
-    the inactive fires folder loads checked only when there is no top-fire view and no
-    active fire to check. A status folder with no fires is omitted.
+    The first status folder loads checked unless the top fires view is checked instead.
+    Every other folder and its descendants load hidden, so Google Earth selects only
+    one radio option. A status folder with no fires is omitted.
 
     Args:
         writer: The writer to append to.
@@ -271,30 +270,23 @@ def fire_status_folders(
             ``#RRGGBB`` color.
         top_fires_present: Whether the checked top fires by name view was written.
     """
-    has_active_fires = any(
-        fire.status is peri_scribe.models.FireStatus.ACTIVE for fire in fires
-    )
-    has_inactive_fires = any(
-        fire.status is peri_scribe.models.FireStatus.INACTIVE for fire in fires
-    )
-    if has_active_fires:
+    visible_folder_present = top_fires_present
+    for status in (
+        peri_scribe.models.FireStatus.ACTIVE,
+        peri_scribe.models.FireStatus.HOLDING,
+        peri_scribe.models.FireStatus.INACTIVE,
+    ):
+        if not any(fire.status is status for fire in fires):
+            continue
         peri_scribe.kml.folders.status_folder(
             writer,
             fires,
-            peri_scribe.models.FireStatus.ACTIVE,
+            status,
             style_urls,
             ring_style_urls,
-            visible=not top_fires_present,
+            visible=not visible_folder_present,
         )
-    if has_inactive_fires:
-        peri_scribe.kml.folders.status_folder(
-            writer,
-            fires,
-            peri_scribe.models.FireStatus.INACTIVE,
-            style_urls,
-            ring_style_urls,
-            visible=not top_fires_present and not has_active_fires,
-        )
+        visible_folder_present = True
 
 
 def fire_kml(
@@ -332,8 +324,8 @@ def write_fire_kml(
     progression-ring styles, and a top-level folder, also named *name*. The top-level
     folder holds the fire views as radio options, each created only when it holds fires.
     When scores are supplied the folder begins with the newly discovered, Type 1, fast
-    growing, and most-personnel views, followed by the top-fire views and the active and
-    inactive fire folders; without scores it holds the active and inactive fire folders.
+    growing, and most-personnel views, followed by the top-fire views and the active,
+    holding, and inactive fire folders; without scores it holds the status folders.
 
     Args:
         stream: The destination for the generated XML.
@@ -359,7 +351,8 @@ def write_fire_kml(
     )
     # Google Earth checks the last radio option with visible content. When any fires
     # are available, only one view starts checked: top fires by name if it has fires,
-    # otherwise active fires, otherwise inactive fires. Empty views are omitted.
+    # otherwise active fires, otherwise holding fires, otherwise inactive fires. Empty
+    # views are omitted.
     with (
         writer.document(
             name,

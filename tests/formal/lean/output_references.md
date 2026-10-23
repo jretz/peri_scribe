@@ -22,15 +22,19 @@ separately checks those scores through real publication rounds; this ranking mod
 not include that additional resolution branch.
 
 Scores are ordered by descending score and case-folded name, preserving input order
-on ties. The first row resolving to each owner is retained before applying the output
-limit. The proofs establish:
+on ties. The first row resolving to each owner is retained. Top Fires then excludes
+Holding owners before applying the output limit. Complete score association still
+includes those owners, so their scores cannot transfer to a same-name eligible fire.
+The proofs establish:
 
 - Every selected owner is showable and has a complete supporting source score row.
 - Identifier matching has priority over conflicting name matches.
 - Owners are unique and the result respects the requested limit and ranked order.
 - Each owner's retained score is at least every other score resolving to that owner.
-- Top-fire owner selection equals the prefix of the associations used for displayed
-  scores and explanations. Association retains the exact winning source row.
+- Top-fire owner selection equals the prefix of the eligible associations used for
+  displayed scores and explanations. Association retains the exact winning source row.
+- Holding owners never occur in Top Fires, and exclusion preserves supported score
+  ownership, uniqueness, and association order while respecting the output limit.
 
 `presentation.score_association.associated_scores` supplies this relation to top and
 notable views, prepared description notes, and report entries. The lower-level
@@ -41,7 +45,10 @@ location measurement and entry construction run over the union of selected fires
 
 Conformance exercises 480 configurations over three fires: all showable subsets,
 distinct and repeated names, alias score rows, identifierless fallback, score ties,
-opposing score orders, and three limits. Another 420 scenarios run real DataFrame
+opposing score orders, and three limits. Crossing this domain with every Holding subset
+adds 3,840 configurations against the executable eligible-owner policy. Holding is an
+explicit excluded-owner input to this model; its derivation from growth history is
+covered separately. Another 420 scenarios run real DataFrame
 history preparation, descriptions, and `report_from_fires` with limits of 1, 2, and 50,
 comparing selected score and explanation provenance with the Lean association output.
 An additional case places 60 unshowable scores before an eligible fire, ensuring that

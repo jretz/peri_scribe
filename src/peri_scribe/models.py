@@ -62,9 +62,10 @@ def times_are_contemporaneous(
 
 
 class FireStatus(enum.Enum):
-    """Whether a fire is active or inactive."""
+    """Agency activity, refined by observed growth for presentation."""
 
     ACTIVE = "active"
+    HOLDING = "holding"
     INACTIVE = "inactive"
 
 

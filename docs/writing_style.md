@@ -37,3 +37,8 @@ items or steps that are easier to follow that way. Keep the wording straightforw
 leave out promotional language and unnecessary jargon. If something is interesting,
 surprising, or frustrating, it's fine for that to come through. Explain what makes it
 so.
+
+Browser reports should follow the reader's light or dark mode preference. Use
+`prefers-color-scheme` and `color-scheme` for report surfaces, text, and controls, and
+make embedded charts adapt too. Avoid fixed white chart backgrounds in dark reports.
+Check the rendered report in both modes, including chart labels and legends.

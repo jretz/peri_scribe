@@ -287,8 +287,19 @@ match the consumer's exact ordered ring sequence. Missing measurements or a diff
 sequence require calculation for the actual geometry. Scores and presentation remain
 freshly generated, including effects of external inputs and time.
 
-The KMZ includes active and inactive fire folders, latest perimeters, progression rings,
-fire information, and score-based top fire views.
+The KMZ includes Active, Active but Holding, and Inactive folders, latest perimeters,
+progression rings, fire information, and score-based top fire views.
+Empty status folders are omitted. Holding fires are excluded from Top Fires in every
+consumer, including reports and both KMZ Top Fires orders, before its 50-fire limit.
+
+Agency Active fires remain Active when either reported or full mapped area grows by
+more than both 10 acres and 0.5% over three days, or by more than 10 acres and either
+25 acres or 1% over seven days. Each stream uses its own last pre-window acreage and
+largest subsequent acreage. No recent update is required for Holding. Unknown dated
+acreage and a stream's initial three days retain Active; a missing seven-day baseline
+does not extend that grace. Agency Inactive takes precedence. Presentation recalculates
+this status at publication time while source evidence retains agency status. See
+[fire activity](algorithms/fire-activity.md) for exact boundaries and limitations.
 
 Current area in scores, charts, balloons, and reports follows one shared policy. Recent
 mapping supplies measured geometry area, including downward corrections. Without usable

@@ -37,7 +37,7 @@ async def test_report_viewer_resolves_generated_summary_anchor(
     [
         ("Moonshine", "Moonshine"),
         ("Bug", "Bug!", "Bug-1"),
-        ("Top Fires", "Fire Details", "PeriScribe Fires 2026"),
+        ("Top", "Fire Details", "PeriScribe Fires 2026"),
         ("Café / 東京", "Café -- 東京", "[Fire] & <Fire>"),
     ],
 )

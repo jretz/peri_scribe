@@ -17,6 +17,12 @@ def test_top_fires_filters_excluded_scores_before_limit() -> None:
     tests.formal.helpers.ranked_views.check_exclusion_before_limit()
 
 
+def test_top_fires_excludes_holding_after_resolving_complete_score_ownership() -> None:
+    cases = tests.formal.helpers.ranked_views.holding_rankings()
+    assert len(cases) == tests.formal.helpers.ranked_views.HOLDING_RANKING_COUNT
+    tests.formal.helpers.ranked_views.check_selected_rankings(cases)
+
+
 def test_fire_growth_matches_selected_past_evidence_model() -> None:
     assert (
         len(tests.formal.helpers.ranked_views.growth_histories())

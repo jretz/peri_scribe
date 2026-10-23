@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import datetime
 
+import pytest
 import shapely.geometry
 
 import peri_scribe.kml.builder
@@ -936,7 +937,16 @@ def test_fire_folder_can_load_visible(style_urls: dict[str, str]) -> None:
 def test_status_folder_name_for_active() -> None:
     assert (
         peri_scribe.kml.folders.status_folder_name(peri_scribe.models.FireStatus.ACTIVE)
-        == "Active Fires"
+        == "Active"
+    )
+
+
+def test_status_folder_name_for_holding() -> None:
+    assert (
+        peri_scribe.kml.folders.status_folder_name(
+            peri_scribe.models.FireStatus.HOLDING,
+        )
+        == "Active but Holding"
     )
 
 
@@ -953,14 +963,14 @@ def test_top_fires_folder_holds_fires_visible_by_default(
     peri_scribe.kml.folders.top_fires_folder(
         writer,
         [fire],
-        "Top Fires by Name",
+        "Top by Name",
         style_urls,
         peri_scribe.kml.builder.ring_style_urls_for([fire]),
     )
     document = tests.helpers.peri_scribe.kml.parsing.document_from_writer(writer)
     folder = tests.helpers.peri_scribe.kml.parsing.folder_named(
         document,
-        "Top Fires by Name",
+        "Top by Name",
     )
     # The folder loads checked and holds the fire folders directly, all visible, so the
     # fires all show as soon as the folder is enabled.
@@ -983,7 +993,7 @@ def test_top_fires_folder_hides_whole_tree_when_unchecked(
     peri_scribe.kml.folders.top_fires_folder(
         writer,
         [fire],
-        "Top Fires by Score",
+        "Top by Score",
         style_urls,
         {},
         visible=False,
@@ -991,7 +1001,7 @@ def test_top_fires_folder_hides_whole_tree_when_unchecked(
     document = tests.helpers.peri_scribe.kml.parsing.document_from_writer(writer)
     folder = tests.helpers.peri_scribe.kml.parsing.folder_named(
         document,
-        "Top Fires by Score",
+        "Top by Score",
     )
     # An unchecked top-fires folder hides its whole tree, so it carries no visible
     # content and its checkbox in Google Earth loads off instead of being selected.
@@ -1004,11 +1014,28 @@ def test_status_folder_name_for_inactive() -> None:
         peri_scribe.kml.folders.status_folder_name(
             peri_scribe.models.FireStatus.INACTIVE,
         )
-        == "Inactive Fires"
+        == "Inactive"
     )
 
 
-def test_status_folder_filters_by_status(style_urls: dict[str, str]) -> None:
+@pytest.mark.parametrize(
+    ("status", "folder_name", "fire_name"),
+    [
+        (peri_scribe.models.FireStatus.ACTIVE, "Active", "Active Fire"),
+        (
+            peri_scribe.models.FireStatus.HOLDING,
+            "Active but Holding",
+            "Holding Fire",
+        ),
+        (peri_scribe.models.FireStatus.INACTIVE, "Inactive", "Inactive Fire"),
+    ],
+)
+def test_status_folder_filters_by_status(
+    style_urls: dict[str, str],
+    status: peri_scribe.models.FireStatus,
+    folder_name: str,
+    fire_name: str,
+) -> None:
     active = peri_scribe.kml.fire_data.FireGeometry(
         name="Active Fire",
         status=peri_scribe.models.FireStatus.ACTIVE,
@@ -1021,21 +1048,27 @@ def test_status_folder_filters_by_status(style_urls: dict[str, str]) -> None:
         point=None,
         perimeters=(),
     )
+    holding = peri_scribe.kml.fire_data.FireGeometry(
+        name="Holding Fire",
+        status=peri_scribe.models.FireStatus.HOLDING,
+        point=None,
+        perimeters=(),
+    )
     writer = tests.helpers.factories.kml_io.geometry.MemoryKmlWriter()
     peri_scribe.kml.folders.status_folder(
         writer,
-        [active, inactive],
-        peri_scribe.models.FireStatus.ACTIVE,
+        [active, holding, inactive],
+        status,
         style_urls,
         {},
     )
     document = tests.helpers.peri_scribe.kml.parsing.document_from_writer(writer)
     folder = tests.helpers.peri_scribe.kml.parsing.folder_named(
         document,
-        "Active Fires",
+        folder_name,
     )
     assert tests.helpers.peri_scribe.kml.parsing.folder_list_item_type(folder) is None
-    assert tests.helpers.peri_scribe.kml.parsing.folder_names(folder) == ["Active Fire"]
+    assert tests.helpers.peri_scribe.kml.parsing.folder_names(folder) == [fire_name]
 
 
 def test_status_folder_can_load_hidden(style_urls: dict[str, str]) -> None:
@@ -1057,7 +1090,7 @@ def test_status_folder_can_load_hidden(style_urls: dict[str, str]) -> None:
     document = tests.helpers.peri_scribe.kml.parsing.document_from_writer(writer)
     folder = tests.helpers.peri_scribe.kml.parsing.folder_named(
         document,
-        "Active Fires",
+        "Active",
     )
     # The folder and its whole tree load unchecked, so the folder carries no visible
     # content and its checkbox in Google Earth loads off instead of being selected.
@@ -1107,7 +1140,7 @@ def test_status_folder_holds_every_fire(style_urls: dict[str, str]) -> None:
     document = tests.helpers.peri_scribe.kml.parsing.document_from_writer(writer)
     folder = tests.helpers.peri_scribe.kml.parsing.folder_named(
         document,
-        "Active Fires",
+        "Active",
     )
     assert tests.helpers.peri_scribe.kml.parsing.folder_names(folder) == [
         "Rings",

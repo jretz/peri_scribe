@@ -1,7 +1,7 @@
 """Building the KML folder hierarchy for a year's fires.
 
-These helpers append each fire's folder and the top-level active and inactive status
-folders to a shared :class:`kml_io.geometry.KmlWriter`.
+These helpers append each fire's folder and the top-level status folders to a shared
+:class:`kml_io.geometry.KmlWriter`.
 
 Design notes:
 [Output serialization](../../../docs/algorithms/output-serialization.md).
@@ -28,16 +28,17 @@ if typing.TYPE_CHECKING:
     import document_text.encoding
 
 
-ACTIVE_FIRES_FOLDER_NAME = "Active Fires"
-INACTIVE_FIRES_FOLDER_NAME = "Inactive Fires"
-TOP_FIRES_BY_NAME_FOLDER_NAME = "Top Fires by Name"
-TOP_FIRES_BY_SCORE_FOLDER_NAME = "Top Fires by Score"
+ACTIVE_FIRES_FOLDER_NAME = "Active"
+HOLDING_FIRES_FOLDER_NAME = "Active but Holding"
+INACTIVE_FIRES_FOLDER_NAME = "Inactive"
+TOP_FIRES_BY_NAME_FOLDER_NAME = "Top by Name"
+TOP_FIRES_BY_SCORE_FOLDER_NAME = "Top by Score"
 
-NEW_NOTABLE_FIRES_FOLDER_NAME = "New, Notable Fires"
-TYPE_1_FIRES_FOLDER_NAME = "Type 1 Fires"
-FAST_GROWING_FIRES_BY_ACRES_FOLDER_NAME = "Fast Growing Fires (acres)"
-FAST_GROWING_FIRES_BY_PERCENT_FOLDER_NAME = "Fast Growing Fires (%)"
-MOST_PERSONNEL_FIRES_FOLDER_NAME = "Fires with Most Personnel"
+NEW_NOTABLE_FIRES_FOLDER_NAME = "New, Notable"
+TYPE_1_FIRES_FOLDER_NAME = "Type 1"
+FAST_GROWING_FIRES_BY_ACRES_FOLDER_NAME = "Fast Growing (acres)"
+FAST_GROWING_FIRES_BY_PERCENT_FOLDER_NAME = "Fast Growing (%)"
+MOST_PERSONNEL_FIRES_FOLDER_NAME = "Most Personnel"
 
 # The folder inside each fire's folder that holds its outline perimeters, present only
 # when the fire has more than one.
@@ -249,6 +250,8 @@ def status_folder_name(status: peri_scribe.models.FireStatus) -> str:
     """
     if status is peri_scribe.models.FireStatus.ACTIVE:
         return ACTIVE_FIRES_FOLDER_NAME
+    if status is peri_scribe.models.FireStatus.HOLDING:
+        return HOLDING_FIRES_FOLDER_NAME
     return INACTIVE_FIRES_FOLDER_NAME
 
 
@@ -275,7 +278,7 @@ def status_folder(
         ring_style_urls: The style URL for each progression ring color, keyed by its
             ``#RRGGBB`` color.
         visible: Whether the folder loads checked, or None for the status default
-            (active fires load checked, inactive fires load unchecked).
+            (active and holding fires load checked, inactive fires load unchecked).
     """
     status_fires = [fire for fire in fires if fire.status is status]
     inactive = status is peri_scribe.models.FireStatus.INACTIVE

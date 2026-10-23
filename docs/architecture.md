@@ -83,6 +83,13 @@ ranking, row selection, and descriptive text shared by reports and maps. Its
 `FireSummary` contains facts without rendered images. Both output paths use this layer;
 reports do not import KML modules or chart rendering through it.
 
+[Fire activity](algorithms/fire-activity.md) refines agency Active into Active or Active
+but Holding using independent three-day and seven-day reported/mapped growth windows.
+Shared summaries apply this pure policy at the execution's presentation time. The fire
+index retains agency status, and future publications recalculate the derived status.
+Top Fires excludes Holding before its limit in all consumers. The KMZ places Holding
+in its own status folder with full perimeter and progression views.
+
 Saved scores are matched against all fires eligible for display, first by identifier,
 then by component identity. Only scores without a component can fall back to a name.
 Each identity keeps its highest-ranked score row. Top views, report scores, and

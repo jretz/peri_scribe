@@ -50,6 +50,12 @@ def respond (line : String) : Except String String := do
       let fires ← (values first).mapM fire
       let scores ← (values second).mapM score
       return numbers (RankedViews.top (← natural limit) fires scores)
+    | ["eligibleTop", limit, excluded] =>
+      let fires ← (values first).mapM fire
+      let scores ← (values second).mapM score
+      let excluded ← if excluded = "-" then pure [] else
+        (excluded.splitOn ",").mapM natural
+      return numbers (RankedViews.eligibleTop (← natural limit) excluded fires scores)
     | ["associations"] =>
       let fires ← (values first).mapM fire
       let scores ← (values second).mapM score

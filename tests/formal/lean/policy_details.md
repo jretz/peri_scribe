@@ -31,11 +31,13 @@ qualify, and strong signals can admit a lower score. Future discoveries are excl
 Selection retains unique owners, winning score provenance, and descending score/name
 order.
 
-The existing behavior intentionally uses active fires to establish the threshold but
-does not require every selected fire to remain active. A recently discovered inactive
-fire may qualify. Without any active scored owner, the entire view is empty, including
-otherwise signal-qualified fires. These policies are represented explicitly rather than
-inferred from a generic ranking theorem.
+The existing behavior intentionally uses agency Active fires, including derived
+Holding, to establish the threshold but does not require every selected fire to remain
+active. A recently discovered inactive fire may qualify. Without any agency Active
+scored owner, the entire view is empty, including otherwise signal-qualified fires.
+These policies are represented explicitly rather than inferred from a generic ranking
+theorem. The model's activity flag describes agency activity, independently of the
+derived growth classification.
 
 The bridge checks 648 complete populations with sizes zero through 26, active/inactive
 subsets, missing score rows, unknown owners, colliding names, identifier aliases,
@@ -44,7 +46,9 @@ and a missing reference time. Another 980 cases cross acreage/building boundarie
 missing and zero measurements, evacuation flags, active status, and discovery times
 immediately before, at, and after both window boundaries. Expected thresholds and
 selected owner/source pairs come from the compiled oracle; Python does not calculate
-an independent copy of the selection policy.
+an independent copy of the selection policy. Replaying all 1,628 cases with agency
+Active represented as Holding checks the production adapter against that same activity
+contract.
 
 Names are order-preserving natural tokens and timestamps are integral UTC seconds.
 The proofs use the default top fifth and integral acreage/count thresholds; arbitrary

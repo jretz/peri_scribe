@@ -67,6 +67,7 @@ labeled explanation without motion, including when reduced motion is requested.
 | [Perimeter reconciliation and survey evidence](perimeter-reconciliation.md) | Survey evidence and retrospective revision. |
 | [Perimeter geometry: border evidence, rejection, and cleaning](perimeter-geometry-policy.md) | Border evidence, size rejection and cleaning. |
 | [Incident evidence and mapped versus reported area](incident-area-selection.md) | Reported versus mapped area on policy timelines. |
+| [Active and Holding fires](fire-activity.md) | Separate reported/mapped cumulative windows, initial history, and publication-time status. |
 | [Corrected history and growth rings](corrected-growth-rings.md) | Backward corrections before forward differencing. |
 | [Growth geometry precision and surface area](growth-geometry-and-area.md) | Fixed-grid overlays and consistent straight-edge ellipsoidal area. |
 | [Fire score evidence and spatial signals](fire-scoring.md) | Evidence, area tiers and spatial signals. |

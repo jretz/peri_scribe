@@ -185,7 +185,7 @@ def test_fire_table_section_renders_linked_rows_with_blank_missing_cells() -> No
         growth=5_000.0,
     )
     lines = peri_scribe.report.markdown.fire_table_section(
-        "Fastest Growing Fires (acres)",
+        "Fastest Growing (acres)",
         (bug, fire),
         columns=(
             (
@@ -203,7 +203,7 @@ def test_fire_table_section_renders_linked_rows_with_blank_missing_cells() -> No
     )
 
     assert lines == [
-        "## Fastest Growing Fires (acres)",
+        "## Fastest Growing (acres)",
         "",
         "| Fire                      | 48-Hour Growth |      Area |",
         "| ------------------------- | -------------: | --------: |",
@@ -219,7 +219,7 @@ def test_fire_table_section_renders_name_without_anchor() -> None:
         area=100.0,
     )
     lines = peri_scribe.report.markdown.fire_table_section(
-        "Top Fires",
+        "Top",
         (entry,),
         columns=(
             (
@@ -236,7 +236,7 @@ def test_fire_table_section_renders_name_without_anchor() -> None:
 
 def test_fire_table_section_marks_empty_section() -> None:
     lines = peri_scribe.report.markdown.fire_table_section(
-        "Top Fires",
+        "Top",
         (),
         columns=(
             (
@@ -248,7 +248,7 @@ def test_fire_table_section_marks_empty_section() -> None:
         anchors={},
     )
 
-    assert lines == ["## Top Fires", "", "_No fires._", ""]
+    assert lines == ["## Top", "", "_No fires._", ""]
 
 
 def test_fire_detail_rows_show_the_balloon_facts() -> None:
@@ -425,16 +425,16 @@ def test_markdown_text_renders_title_sections_and_details() -> None:
     text = peri_scribe.report.markdown.markdown_text(report, 2026)
 
     assert "# PeriScribe Fires 2026" in text
-    assert "## New, Notable Fires" in text
-    assert "## Type 1 Fires" in text
-    assert "## Fastest Growing Fires (acres)" in text
-    assert "## Fastest Growing Fires (%)" in text
-    assert "## Top Fires" in text
+    assert "## New, Notable" in text
+    assert "## Type 1" in text
+    assert "## Fastest Growing (acres)" in text
+    assert "## Fastest Growing (%)" in text
+    assert "## Top" in text
     assert "## Fire Details" in text
-    assert text.index("## Fire Details") > text.index("## Top Fires")
-    assert text.index("## Type 1 Fires") > text.index("## New, Notable Fires")
-    assert text.index("## Fastest Growing Fires (acres)") > text.index(
-        "## Type 1 Fires",
+    assert text.index("## Fire Details") > text.index("## Top")
+    assert text.index("## Type 1") > text.index("## New, Notable")
+    assert text.index("## Fastest Growing (acres)") > text.index(
+        "## Type 1",
     )
     summary_lines = text.split("## Fire Details")[0].splitlines()
     assert (
@@ -499,9 +499,9 @@ def test_markdown_text_renders_type_one_section_between_new_and_fastest() -> Non
 
     text = peri_scribe.report.markdown.markdown_text(report, 2026)
     summary_lines = text.split("## Fire Details")[0].splitlines()
-    type_one_heading = summary_lines.index("## Type 1 Fires")
+    type_one_heading = summary_lines.index("## Type 1")
 
-    assert "## New, Notable Fires" in summary_lines[:type_one_heading]
+    assert "## New, Notable" in summary_lines[:type_one_heading]
     assert any(
         line.startswith("| Fire") and "Location" in line
         for line in summary_lines[type_one_heading:]
@@ -514,8 +514,8 @@ def test_markdown_text_renders_type_one_section_between_new_and_fastest() -> Non
     )
     assert any("100 acres" in line for line in summary_lines[type_one_heading:])
     assert "### Bug" in text
-    assert text.index("## Fastest Growing Fires (acres)") > text.index(
-        "## Type 1 Fires",
+    assert text.index("## Fastest Growing (acres)") > text.index(
+        "## Type 1",
     )
 
 
@@ -604,7 +604,7 @@ def test_fire_table_section_renders_location_column() -> None:
         growth=5_000.0,
     )
     lines = peri_scribe.report.markdown.fire_table_section(
-        "Fastest Growing Fires (acres)",
+        "Fastest Growing (acres)",
         (bug, fire),
         columns=(
             (
@@ -635,8 +635,8 @@ def test_fire_table_section_renders_location_column() -> None:
     assert "+5,000 acres" in fire_row
 
 
-# "New, Notable Fires" and "Top Fires" both contain a fire with a location, so both
-# summary tables must show the location column.
+# "New, Notable" and "Top" both contain a fire with a location, so both summary tables
+# must show the location column.
 
 
 def test_markdown_text_shows_location_in_sections_and_details() -> None:

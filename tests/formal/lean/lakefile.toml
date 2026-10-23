@@ -7,13 +7,18 @@ defaultTargets = ["PeriScribe", "oracle", "oracleDomain", "oracleIngestion", "or
   "oracleOwnership", "oracleCoordinateReference", "oracleRawDecoding",
   "oraclePublicationBaseline", "oracleIdentityTransfer", "oracleSourceValidation",
   "oracleComponentIdentity", "oracleNumericalPolicy", "oracleOutputText",
-  "oracleIdentityRecomputation", "oracleKmzPreparation", "oraclePayloadCodec"]
+  "oracleIdentityRecomputation", "oracleKmzPreparation", "oraclePayloadCodec",
+  "oracleActivity"]
 
 [leanOptions]
 warningAsError = true
 
 [[lean_lib]]
 name = "PeriScribe"
+
+[[lean_exe]]
+name = "oracleActivity"
+root = "OracleActivity"
 
 [[lean_exe]]
 name = "oraclePayloadCodec"

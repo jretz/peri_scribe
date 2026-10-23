@@ -58,8 +58,15 @@ class Fire:
             self.owner + 100,
         ))
 
-    def actual(self) -> peri_scribe.presentation.fire_data.FireSummary:
+    def actual(
+        self,
+        *,
+        holding: bool = False,
+    ) -> peri_scribe.presentation.fire_data.FireSummary:
         """Feed production selection real summaries and descriptions.
+
+        Args:
+            holding: Whether agency Active owners have derived Holding status.
 
         Returns:
             The same raw identity and eligibility represented in Python.
@@ -75,9 +82,15 @@ class Fire:
                 identifiers=frozenset({str(self.owner), str(self.owner + 100)}),
                 description=description,
             ),
-            status=peri_scribe.models.FireStatus.ACTIVE
-            if self.active
-            else peri_scribe.models.FireStatus.INACTIVE,
+            status=(
+                (
+                    peri_scribe.models.FireStatus.HOLDING
+                    if holding
+                    else peri_scribe.models.FireStatus.ACTIVE
+                )
+                if self.active
+                else peri_scribe.models.FireStatus.INACTIVE
+            ),
         )
 
 
@@ -260,11 +273,12 @@ def signal_cases() -> tuple[Case, ...]:
     )
 
 
-def check_cases(cases: tuple[Case, ...]) -> None:
+def check_cases(cases: tuple[Case, ...], *, holding: bool = False) -> None:
     """Compare production's complete threshold and selected source rows with Lean.
 
     Args:
         cases: Unresolved source populations whose policies are computed by the oracle.
+        holding: Whether to represent agency Active owners as Holding in production.
     """
     expected = tests.formal.helpers.oracle.evaluate(
         [case.command() for case in cases],
@@ -275,7 +289,7 @@ def check_cases(cases: tuple[Case, ...]) -> None:
         expected,
         strict=True,
     ):
-        fires = [fire.actual() for fire in case.fires]
+        fires = [fire.actual(holding=holding) for fire in case.fires]
         scores = peri_scribe.models.FireScores(
             version="formal",
             fires=[score.actual(index) for index, score in enumerate(case.scores)],

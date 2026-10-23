@@ -61,9 +61,9 @@ def new_folder_scenario() -> tuple[
 
 
 NEW_FOLDER_NAMES = [
-    "New, Notable Fires",
-    "Type 1 Fires",
-    "Fast Growing Fires (acres)",
-    "Fast Growing Fires (%)",
-    "Fires with Most Personnel",
+    "New, Notable",
+    "Type 1",
+    "Fast Growing (acres)",
+    "Fast Growing (%)",
+    "Most Personnel",
 ]

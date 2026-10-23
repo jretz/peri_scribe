@@ -95,6 +95,7 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 | Module | Explanation or local assessment |
 | --- | --- |
 | [__init__.py](../../src/peri_scribe/fires/__init__.py) | **0/0/0/0/0**: package exports or marker; no decision algorithm. |
+| [activity.py](../../src/peri_scribe/fires/activity.py) | [fire activity](fire-activity.md) |
 | [bounded_sources.py](../../src/peri_scribe/fires/bounded_sources.py) | [bounded source work](bounded-source-work.md) |
 | [buffering.py](../../src/peri_scribe/fires/buffering.py) | [fire scoring](fire-scoring.md) |
 | [classification.py](../../src/peri_scribe/fires/classification.py) | [perimeter geometry policy](perimeter-geometry-policy.md) |

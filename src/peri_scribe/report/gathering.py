@@ -444,7 +444,7 @@ def report_from_fires[Fire: peri_scribe.presentation.fire_data.FireSummary](
     Returns:
         The report's sections and their deduplicated fire details.
     """
-    reference_time = datetime.datetime.now(datetime.UTC)
+    reference_time = peri_scribe.presentation.fire_data.presentation_time()
     sections = (
         peri_scribe.presentation.views.new_notable_fires(
             fires,

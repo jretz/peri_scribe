@@ -206,6 +206,57 @@ theorem associated_score_is_owner_maximum (fires : List Fire) (scores : List Sco
   exact retain_keeps_owner_maximum Prod.fst (fun item : Nat × Score => item.2.value)
     [] rows ordered (owner, selected) (owner, candidate) chosen member rfl
 
+/-- Excluded owners keep their score ownership but cannot occupy a ranked place. -/
+def eligibleTop (limit : Nat) (excluded : List Nat) (fires : List Fire)
+    (scores : List Score) : List Nat :=
+  (((associations fires scores).map Prod.fst).filter
+    (fun owner => !excluded.contains owner)).take limit
+
+theorem eligible_top_excludes_holding (limit : Nat) (excluded : List Nat)
+    (fires : List Fire) (scores : List Score) (owner : Nat)
+    (member : owner ∈ eligibleTop limit excluded fires scores) :
+    owner ∉ excluded := by
+  have selected := List.mem_of_mem_take member
+  simpa using (List.mem_filter.mp selected).2
+
+theorem eligible_top_has_no_duplicates (limit : Nat) (excluded : List Nat)
+    (fires : List Fire) (scores : List Score) :
+    (eligibleTop limit excluded fires scores).Nodup :=
+  ((association_owners_are_unique fires scores).filter _).sublist
+    (List.take_sublist _ _)
+
+theorem eligible_top_is_bounded (limit : Nat) (excluded : List Nat)
+    (fires : List Fire) (scores : List Score) :
+    (eligibleTop limit excluded fires scores).length ≤ limit := by
+  simp [eligibleTop]; omega
+
+theorem eligible_top_preserves_association_order (limit : Nat) (excluded : List Nat)
+    (fires : List Fire) (scores : List Score) :
+    (eligibleTop limit excluded fires scores).Sublist
+      ((associations fires scores).map Prod.fst) :=
+  (List.take_sublist _ _).trans List.filter_sublist
+
+theorem eligible_top_has_exact_score_owner (limit : Nat) (excluded : List Nat)
+    (fires : List Fire) (scores : List Score) (owner : Nat)
+    (member : owner ∈ eligibleTop limit excluded fires scores) :
+    ∃ score ∈ scores, ∃ fire ∈ fires,
+      resolve fires score = some fire ∧ fire.owner = owner := by
+  have selected := List.mem_of_mem_take member
+  obtain ⟨score, belongs, same⟩ := List.mem_map.mp (List.mem_filter.mp selected).1
+  have support := associated_score_retains_exact_source fires scores
+    score.1 score.2 belongs
+  exact ⟨score.2, by simpa [same] using support⟩
+
+theorem eligible_top_without_exclusions (limit : Nat) (fires : List Fire)
+    (scores : List Score) : eligibleTop limit [] fires scores = top limit fires scores := by
+  have allEligible : ((associations fires scores).map Prod.fst).filter
+      (fun owner => !([] : List Nat).contains owner) =
+      (associations fires scores).map Prod.fst := by
+    apply List.filter_eq_self.mpr
+    intro owner member
+    rfl
+  rw [eligibleTop, allEligible, top_and_display_share_owners]
+
 
 theorem first_ranked_owner_is_retained (key : α → Nat) (first : α) (rest : List α) :
     retain key [] (first :: rest) = first :: retain key [key first] rest := by

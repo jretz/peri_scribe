@@ -19,6 +19,7 @@ import PeriScribe.SparseEvidence
 import PeriScribe.CacheDependencies
 import PeriScribe.ComplexOwnership
 import PeriScribe.RankedViews
+import PeriScribe.FireActivity
 import PeriScribe.OutputReferences
 import PeriScribe.CacheCodec
 import PeriScribe.PayloadCodec

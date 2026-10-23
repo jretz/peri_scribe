@@ -4,16 +4,20 @@
 
 Design notes:
 [Incident area selection](../../../docs/algorithms/incident-area-selection.md).
+[Active and Holding fires](../../../docs/algorithms/fire-activity.md).
 """
 
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import hashlib
+import math
 import typing
 
 import peri_scribe.areas
 import peri_scribe.execution
+import peri_scribe.fires.activity
 import peri_scribe.fires.scoring
 import peri_scribe.history_columns
 import peri_scribe.models
@@ -28,6 +32,7 @@ import peri_scribe.presentation.text
 import spatial_data.cache_values
 import spatial_data.frame_fingerprints
 import spatial_data.product_cache
+from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
@@ -352,6 +357,86 @@ class SharedFires:
     fires: list[PreparedFire]
 
 
+def presentation_time(
+    reference_time: datetime.datetime | None = None,
+) -> datetime.datetime:
+    """Give one publication's summaries and views the same elapsed-time cutoffs.
+
+    Args:
+        reference_time: An explicit assessment time, or None for this execution's clock.
+
+    Returns:
+        The explicit UTC time or the first presentation time in this execution. Outside
+        an execution scope, each call observes the current UTC time.
+    """
+    if reference_time is None:
+        previous = peri_scribe.execution.get(
+            peri_scribe.execution.Group.PRESENTATION,
+            "reference_time",
+        )
+        if isinstance(previous, datetime.datetime):
+            return previous
+        time = datetime.datetime.now(datetime.UTC)
+    else:
+        time = peri_scribe.fires.activity.utc_time(reference_time)
+    peri_scribe.execution.put(
+        peri_scribe.execution.Group.PRESENTATION,
+        "reference_time",
+        time,
+    )
+    return time
+
+
+def pending_activity(
+    fire: PendingFire,
+    reference_time: datetime.datetime,
+) -> peri_scribe.models.FireStatus:
+    """Use full mapping and reconciled reports without mixing their area bases.
+
+    Args:
+        fire: One identity's complete source history, before chart rendering.
+        reference_time: Shared publication time for the growth windows.
+
+    Returns:
+        Agency Inactive or the observed Active/Holding classification. Simultaneous
+        maps use the largest measured footprint, preserving the analysis's tie rule.
+    """
+    status = peri_scribe.models.FireStatus(fire.entry.status)
+    if status is peri_scribe.models.FireStatus.INACTIVE:
+        return status
+    reference_time = peri_scribe.fires.activity.utc_time(reference_time)
+    reported = tuple(
+        peri_scribe.fires.activity.AreaObservation(
+            time=update.observation_time,
+            area=update.measurements["incident_size"] * units.acres,
+        )
+        for update in fire.history.updates
+        if "incident_size" in update.measurements
+    )
+    mapped: dict[datetime.datetime, peri_scribe.fires.activity.AreaObservation] = {}
+    for perimeter in fire.perimeters:
+        if perimeter.observation_time is None:
+            continue
+        time = peri_scribe.fires.activity.utc_time(perimeter.observation_time)
+        if time > reference_time:
+            continue
+        area = perimeter.measured_area
+        if not math.isfinite(area.m_as("acres")) or area < 0 * units.acres:
+            continue
+        previous = mapped.get(time)
+        if previous is None or area > previous.area:
+            mapped[time] = peri_scribe.fires.activity.AreaObservation(
+                time=time,
+                area=area,
+            )
+    return peri_scribe.fires.activity.active_status(
+        status,
+        reported,
+        tuple(mapped.values()),
+        reference_time,
+    )
+
+
 def prepare_fire_data(
     index: peri_scribe.models.FireIndex,
     perimeters: geopandas.GeoDataFrame,
@@ -365,6 +450,7 @@ def prepare_fire_data(
         peri_scribe.areas.PreparedHistory,
     ]
     | None = None,
+    reference_time: datetime.datetime | None = None,
 ) -> list[PreparedFire]:
     """Prepare shared fire facts and history evidence in index order.
 
@@ -380,10 +466,12 @@ def prepare_fire_data(
         scores: Saved scores and explanations, when available.
         incident_rows: The optional independent reporting history.
         histories: Already prepared histories keyed by canonical fire identity.
+        reference_time: Explicit growth assessment time, or this publication's clock.
 
     Returns:
         One prepared summary and its source evidence per indexed fire.
     """
+    reference_time = presentation_time(reference_time)
     sources = (perimeters, points, differential_perimeters, incident_rows, histories)
     key = (
         (
@@ -393,6 +481,7 @@ def prepare_fire_data(
             if scores is None
             else peri_scribe.presentation.prepared_cache.document_digest(scores),
             tuple(map(id, sources)),
+            reference_time,
         )
         if peri_scribe.execution.active()
         else None
@@ -445,7 +534,6 @@ def prepare_fire_data(
             columns[1],
             prepared.point_positions[-1:],
         )
-        fingerprints = latest_row_fingerprints((perimeter_rows, point_rows), schemas)
         local_points = (
             point_indexes.by_component.get(prepared.entry.component_id, ({}, {}))
             if prepared.entry.component_id is not None
@@ -455,7 +543,7 @@ def prepare_fire_data(
             PreparedFire(
                 summary=FireSummary(
                     name=prepared.entry.name,
-                    status=peri_scribe.models.FireStatus(prepared.entry.status),
+                    status=pending_activity(prepared, reference_time),
                     point=peri_scribe.presentation.selection.fire_point_location(
                         prepared.identifiers,
                         prepared.entry.name,
@@ -472,7 +560,10 @@ def prepare_fire_data(
                         perimeter_rows,
                         point_rows,
                         history=prepared.history,
-                        row_fingerprints=fingerprints,
+                        row_fingerprints=latest_row_fingerprints(
+                            (perimeter_rows, point_rows),
+                            schemas,
+                        ),
                         of_note=(
                             associated[position].explanation
                             if position in associated

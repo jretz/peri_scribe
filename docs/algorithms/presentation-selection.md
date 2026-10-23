@@ -97,26 +97,30 @@ its first matching row, hence the highest-ranked one. Legacy duplicate names res
 the final same-name input position, an explicit compatibility rule rather than evidence
 that the names denote the same fire.
 
-Views have distinct eligibility rules. Only Type 1 selection requires each returned
-fire to be active. New/notable uses the active scored population to set a threshold,
-while the other views retain their own stated status and evidence rules.
+Views have distinct eligibility rules. Top Fires excludes Holding owners after complete
+score association and before its limit. This keeps an excluded owner's score from
+falling back to another same-name fire, and leaves its ranked place available for the
+next eligible owner. Type 1 and the new/notable percentile population use agency
+activity, including both Active and Holding. The other views retain their own stated
+status and evidence rules.
 
 | View | Eligibility and ordering |
 | --- | --- |
-| Top fires | First 50 distinct matched owners in descending score/name order; no active-status requirement. |
+| Top fires | First 50 distinct matched owners outside Holding status in descending score/name order; inactive fires remain eligible. |
 | New and notable | Discovery in the inclusive five-day interval ending at reference time, then qualifying score or signals; sorted by descending score/name with no 50-fire cap. |
-| Type 1 | Active and latest point-history designation is Type 1; sort by case-folded name. |
+| Type 1 | Agency Active, including Holding, and latest point-history designation is Type 1; sort by case-folded name. |
 | Fast growth by acres | At least 1,000 mapped acres added over the 48-hour window; greatest growth first, then name, limited to 50. |
 | Fast growth by percent | Known positive baseline and at least 10% mapped growth over that window; greatest percentage first, then name, limited to 50. |
 | Most personnel | Known personnel with description observation time in the inclusive seven-day interval; greatest count first, then name, limited to 50. |
 
 New/notable's threshold is the score at rank `max(1, ceil(active_scored_count × 0.20))`
-among descending scores of matched active owners. Ties can admit more than that nominal
-fraction. If no active scored owner exists, the entire view is empty, including otherwise
-strong signal cases. A recently discovered inactive fire can qualify once that threshold
-exists. Signal qualification requires known area of at least 100 acres and then either
-at least 1,000 acres, evacuation overlap, or at least 100 buildings. The score route does
-not itself impose that acreage minimum. Future discoveries are excluded.
+among descending scores of matched owners agencies mark Active, including Holding.
+Ties can admit more than that nominal fraction. If no such scored owner exists, the
+entire view is empty, including otherwise strong signal cases. A recently discovered
+inactive fire can qualify once that threshold exists. Signal qualification requires
+known area of at least 100 acres and then either at least 1,000 acres, evacuation overlap,
+or at least 100 buildings. The score route does not itself impose that acreage minimum.
+Future discoveries are excluded.
 
 Personnel is the latest known reported count from prepared description facts. Its
 freshness gate uses the description's observation time, not an independently recomputed

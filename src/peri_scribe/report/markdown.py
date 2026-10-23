@@ -48,11 +48,11 @@ DISCOVERY_LABEL = peri_scribe.presentation.descriptions.DISCOVERY_LABEL
 # detail rows use it.
 LOCATION_LABEL = "Location"
 
-NEW_NOTABLE_HEADING = "New, Notable Fires"
-TYPE_ONE_HEADING = "Type 1 Fires"
-ACRE_GROWTH_HEADING = "Fastest Growing Fires (acres)"
-PERCENT_GROWTH_HEADING = "Fastest Growing Fires (%)"
-TOP_FIRES_HEADING = "Top Fires"
+NEW_NOTABLE_HEADING = "New, Notable"
+TYPE_ONE_HEADING = "Type 1"
+ACRE_GROWTH_HEADING = "Fastest Growing (acres)"
+PERCENT_GROWTH_HEADING = "Fastest Growing (%)"
+TOP_FIRES_HEADING = "Top"
 DETAILS_HEADING = "Fire Details"
 
 # A cell holds plain text to escape or Markdown already prepared for rendering.

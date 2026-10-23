@@ -22,6 +22,7 @@ from measurement_units import units
 
 
 RANKING_COUNT = 480
+HOLDING_RANKING_COUNT = RANKING_COUNT * 8
 GROWTH_COUNT = 751
 NAME_SCORE_INDEX = 6
 UNLIMITED = 50
@@ -38,6 +39,7 @@ class Ranking:
     visible: int
     values: tuple[int, ...]
     limit: int
+    holding: int = 0
 
     def inputs(
         self,
@@ -51,9 +53,16 @@ class Ranking:
             Source fire objects and all saved score rows.
         """
         fires = [
-            tests.helpers.factories.peri_scribe.presentation.views.active_fire(
-                f"Fire {name}",
-                identifiers=frozenset({str(owner), str(owner + 3)}),
+            dataclasses.replace(
+                tests.helpers.factories.peri_scribe.presentation.views.active_fire(
+                    f"Fire {name}",
+                    identifiers=frozenset({str(owner), str(owner + 3)}),
+                ),
+                status=(
+                    peri_scribe.models.FireStatus.HOLDING
+                    if self.holding & (1 << owner)
+                    else peri_scribe.models.FireStatus.ACTIVE
+                ),
             )
             for owner, name in enumerate(self.names)
             if self.visible & (1 << owner)
@@ -88,6 +97,11 @@ class Ranking:
             f"{self.names[index % 3]},{value},{index}"
             for index, value in enumerate(self.values)
         )
+        if self.holding:
+            excluded = ",".join(
+                str(owner) for owner in range(3) if self.holding & (1 << owner)
+            )
+            return f"eligibleTop {self.limit} {excluded} | {fires} | {scores}"
         return f"top {self.limit} | {fires} | {scores}"
 
 
@@ -116,7 +130,27 @@ def rankings() -> tuple[Ranking, ...]:
 
 def check_rankings() -> None:
     """Compare actual selected object ownership with the proved rank/dedup pipeline."""
-    cases = rankings()
+    check_selected_rankings(rankings())
+
+
+def holding_rankings() -> tuple[Ranking, ...]:
+    """Exercise every Holding subset without changing complete score ownership.
+
+    Returns:
+        The ranking domain crossed with all subsets of three Holding owners.
+    """
+    return tuple(
+        dataclasses.replace(case, holding=holding)
+        for case, holding in itertools.product(rankings(), range(8))
+    )
+
+
+def check_selected_rankings(cases: tuple[Ranking, ...]) -> None:
+    """Compare resolved owners with the proved complete-association selection.
+
+    Args:
+        cases: Raw scores, showable fires, Holding status, and requested limits.
+    """
     expected = tests.formal.helpers.oracle.evaluate(
         [case.command() for case in cases],
         executable="oracleOutputs",

@@ -8,14 +8,95 @@ import typing
 
 import shapely.geometry
 
+import peri_scribe.areas
+import peri_scribe.incidents
 import peri_scribe.perimeters.progression
+import peri_scribe.presentation.fire_data
+import peri_scribe.presentation.perimeters
 import spatial_data.measurements
 import tests.helpers.factories.geography
 import tests.helpers.factories.geometry
+import tests.helpers.factories.peri_scribe.fires.activity
+import tests.helpers.factories.peri_scribe.kml.parsing
 
 
 if typing.TYPE_CHECKING:
     import geopandas
+
+
+def pending_activity(
+    reported: list[tuple[float, float]],
+    mapped: list[tuple[float, float]],
+) -> peri_scribe.presentation.fire_data.PendingFire:
+    """Build separate reporting and measured-mapping evidence for one fire.
+
+    Args:
+        reported: Day offsets and reported acreages.
+        mapped: Day offsets and measured mapped acreages.
+
+    Returns:
+        Pending evidence sharing the activity factory's reference time.
+    """
+    updates = tuple(
+        peri_scribe.incidents.IncidentUpdate(
+            observation_time=observation.time,
+            report_time=None,
+            confirmed=False,
+            source="wfigs_location",
+            source_file="report.gpkg",
+            serial=position,
+            measurements={"incident_size": observation.area.m_as("acres")},
+        )
+        for position, observation in enumerate(
+            tests.helpers.factories.peri_scribe.fires.activity.observations(reported),
+        )
+    )
+    return peri_scribe.presentation.fire_data.PendingFire(
+        entry=tests.helpers.factories.peri_scribe.kml.parsing.fire_index_entry(
+            "Bug",
+            "active",
+            identifier="id-bug",
+        ),
+        identifiers=frozenset({"id-bug"}),
+        perimeters=tuple(
+            peri_scribe.presentation.perimeters.Perimeter(
+                geometry=tests.helpers.factories.geometry.square(0.01),
+                observation_time=observation.time,
+                area=observation.area,
+            )
+            for observation in (
+                tests.helpers.factories.peri_scribe.fires.activity.observations(mapped)
+            )
+        ),
+        progression_rings=(),
+        perimeter_positions=(),
+        point_positions=(),
+        history=peri_scribe.areas.PreparedHistory(
+            updates=updates,
+            estimates=(),
+            latest_area=None,
+            historical_area=None,
+        ),
+    )
+
+
+def activity_frame() -> geopandas.GeoDataFrame:
+    """Build a dated unchanged point history for shared-summary clock tests.
+
+    Returns:
+        A direct incident observation on the activity factory's reference day.
+    """
+    return tests.helpers.factories.geography.geo_frame(
+        {
+            "fire_identifier": ["id-bug"],
+            "fire_name": ["Bug"],
+            "observation_time": [
+                tests.helpers.factories.peri_scribe.fires.activity.REFERENCE_TIME,
+            ],
+            "incident_size": [100.0],
+        },
+        [shapely.geometry.Point(0, 0)],
+    )
 
 
 def area_frame(

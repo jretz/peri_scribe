@@ -31,6 +31,11 @@ such as `data/2026/`, unless they link to project files.
 - **Active / inactive** — The status assembled from source records. A grouped fire is
   active when any of its records is active. This status is separate from its score and
   whether it qualifies for presentation.
+- **Active but Holding** — A presentation status for an agency Active fire whose
+  reported and full mapped acreage do not meet the three-day or seven-day cumulative
+  growth thresholds. Unknown history and initial three-day history retain Active;
+  Holding needs no fresh observation. Holding fires have a separate KMZ folder and are
+  excluded from Top Fires. See [fire activity](algorithms/fire-activity.md).
 - **Border classification** — A fire's relationship to the California boundary, such as
   inside, outside, near, or crossing it. This classification helps reconcile sources;
   it does not define the project's geographic scope.

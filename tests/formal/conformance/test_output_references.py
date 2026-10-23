@@ -58,9 +58,9 @@ def test_check_prefixes_rejects_an_incorrect_final_allocation() -> None:
 @pytest.mark.parametrize(
     "names",
     [
-        ("Bug", "Bug!", "Bug-1", "Top Fires"),
+        ("Bug", "Bug!", "Bug-1", "Top"),
         ("Same", "Same", "same", "SAME"),
-        ("Fire Details", "Type 1 Fires", "PeriScribe Fires 2026", "Other"),
+        ("Fire Details", "Type 1", "PeriScribe Fires 2026", "Other"),
         ("A--B", "--A--", "A  B", "A & B"),
         ("**Bold**", "Café", "under_score", "[name]"),
     ],
@@ -75,7 +75,7 @@ def test_markdown_report_links_retain_detail_ownership(
 @pytest.mark.parametrize(
     "names",
     [
-        ("Same", "Same", "same", "Top Fires"),
+        ("Same", "Same", "same", "Top"),
         ("Fire Details", "A--B", "A  B", "<a id='fire-detail:0'>North</a>"),
     ],
 )
