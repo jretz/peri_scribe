@@ -12,7 +12,9 @@ exposes the same definitions through `projected-snapshot`. The implementation ow
 The model retains each original observation and performs one ownership lookup on its
 durable identity. An absent mapping falls back to that original identity. A separate
 current group determines which earlier acreage supplies the baseline; original log
-identity and observation payload remain unchanged.
+identity and observation payload remain unchanged. The row includes an optional opaque
+preview token. The preservation result holds for every token, independent of ownership,
+acreage, and chronology.
 
 The executable collector keeps an acreage ledger keyed by current group. An independent
 reference searches the complete retained raw prefix for the last observation in that
@@ -42,12 +44,11 @@ pre-window history, future rows, zero, equality, increases, and decreases. Every
 also runs in reverse input order, including equal timestamps. Additional cases use
 legacy identifier/name fallback without saved log identities.
 
-The comparison checks the full ordered emitted sequence: occurrence identity, immutable
-original identity, current owner, and exact previous acreage. It also checks every other
-serialized original field, presence or absence of the explicit projection, and snapshot
-JSON round trips. Expected baseline and inclusion decisions come from the executable
-Lean model, not from another call to production snapshot code. No production defect was
-found in these checks, and no snapshot implementation change was required.
+The comparison checks occurrence identity, immutable original identity, current owner,
+and exact previous acreage for every row in order. It also checks every other serialized
+original field, including distinct saved WebP previews and rows with no preview. The
+checks cover presence or absence of the explicit projection and snapshot JSON round
+trips. The executable Lean model supplies the expected baseline and inclusion decisions.
 
 ## Boundaries
 
@@ -58,4 +59,6 @@ milliseconds and exactly representable eighth-acre values. Datetime parsing, arb
 floating-point conversion, source truth, and third-party libraries remain outside the
 proof. This composition does not reassign raw logs, chase owner chains transitively, or
 prove browser rendering; the [viewer inventory](geometry_updates.md) and history-transfer
-browser bridge cover the latter separately.
+browser bridge cover the latter separately. The model begins with a recorded preview
+token. Rendering and legacy reconstruction from retained geometry have implementation
+tests.

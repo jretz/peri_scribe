@@ -26,6 +26,7 @@ import peri_scribe.perimeters.identity
 import peri_scribe.presentation.fire_data
 import peri_scribe.presentation.perimeters
 import peri_scribe.presentation.selection
+import peri_scribe.previews
 import peri_scribe.publication
 import peri_scribe.report.gathering
 
@@ -618,6 +619,7 @@ def prepare_updates[Fire: peri_scribe.presentation.fire_data.FireSummary](
             "mapped_area": peri_scribe.logging.log_value(
                 fire.perimeters[-1].measured_area.to("acres"),
             ),
+            "preview": peri_scribe.previews.fire_preview(fire),
         })
     return PreparedUpdates(
         records=tuple(records),

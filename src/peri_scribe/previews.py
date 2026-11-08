@@ -62,7 +62,7 @@ def cached_content(key: str) -> bytes | None:
 
 
 def fire_preview(fire: peri_scribe.presentation.fire_data.FireSummary) -> str | None:
-    """Draw each fire's latest state using the KMZ's shared ring-color selection.
+    """Draw the supplied mapping using the KMZ's shared ring-color selection.
 
     Args:
         fire: A prepared fire with full and differential perimeter histories.

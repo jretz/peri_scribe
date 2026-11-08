@@ -32,8 +32,10 @@ arbitrary unjournaled publication attempts.
 ## Approach and invariants
 
 Preparation resolves [history ownership](history-ownership.md) and freezes records without
-acknowledging them. The builder then performs these independently interruptible writes
-in order:
+acknowledging them. Each record includes a WebP data URL from the prepared mapping, or
+an explicit null when there is no drawable preview. Keeping the image in the batch
+preserves the map from that publication when a retry encounters newer geometry. The
+builder then performs these independently interruptible writes in order.
 
 1. Replace the completed KMZ.
 2. Commit its publication checkpoint when fresh frozen publication inputs are available.
@@ -53,10 +55,11 @@ and skips an already retained batch. A new journaled append copies the destinati
 private file, writes the complete batch, and replaces the destination atomically.
 Recognizing any occurrence of a batch is sufficient only because its append is all-or-none.
 
-Validate every record before writing any journal or batch: finite nonnegative acreage in
-acres, schema fields, and canonical encoded identity pairs. Invalid stored intent must
-never be treated as absence. The disposable publication measurement cache has a different
-error policy and is not authoritative update intent.
+Validate every record before writing any journal or batch. The schema requires finite
+nonnegative acreage in acres and canonical encoded identity pairs. It accepts a WebP data
+URL, a null preview, or an absent preview field for legacy records. Invalid stored intent
+must never be treated as absence. The disposable publication measurement cache has a
+different error policy and is not authoritative update intent.
 
 The surviving journal identifies the recovery action at each interruption point:
 
@@ -97,9 +100,9 @@ publication checkpoints therefore have distinct meanings.
 
 For B serialized batch bytes and L existing destination bytes, atomic append requires
 O(L + B) I/O and temporary disk space. Batch lookup scans retained lines and may decompress
-an archive; memory includes all prepared records and serialized entries. Checkpoint work
-is proportional to retained history. Rotation costs are covered in
-[log retention](log-retention.md).
+an archive. Memory includes all prepared records and serialized entries, including their
+preview bytes. Checkpoint work is proportional to retained history. Rotation costs are
+covered in [log retention](log-retention.md).
 
 Hash/UUID collisions, forged metadata, corrupt archives, noncooperating writers, and
 power loss are outside the recovery guarantee. A KMZ overwritten before its journal is
@@ -120,3 +123,6 @@ identifies every durable action and the bounded two-batch/two-interruption model
 [durable update validation](../../tests/formal/tla/durable_update_validation.md) describe
 actual-file and schema conformance. [Execution assurance](../../tests/formal/execution_assurance.md)
 adds abrupt-process recovery; it does not extend the fault model to storage power loss.
+[Builder conformance](../../tests/formal/conformance/test_journal_builder.py) checks that
+the saved preview payload survives publication and recovery. The model abstracts the
+batch payload, so rendering adds no journal states or transitions.

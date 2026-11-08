@@ -9,6 +9,7 @@ import pathlib
 import shutil
 
 import peri_scribe.updates
+import tests.formal.helpers.journal
 import tests.formal.helpers.oracle
 import tests.formal.helpers.process
 
@@ -32,6 +33,7 @@ class Observation:
     area: int
     identifier: int | None = None
     logged: tuple[int, int] | None = None
+    preview: int | None = None
 
     def text(self) -> str:
         """Keep stable identity fields independent until the proved policy runs.
@@ -41,9 +43,10 @@ class Observation:
         """
         kind, key = self.logged or ("-", "-")
         identifier = "-" if self.identifier is None else self.identifier
+        preview = "-" if self.preview is None else self.preview
         return (
             f"{self.serial},{self.time},{identifier},{self.name},"
-            f"{kind},{key},{self.area}"
+            f"{kind},{key},{self.area},{preview}"
         )
 
     def record(self) -> peri_scribe.updates.LogEntry:
@@ -56,7 +59,7 @@ class Observation:
         if self.logged is not None:
             kind, key = self.logged
             logged = (KINDS[kind], NAMES[key] if kind == 1 else str(key))
-        return peri_scribe.updates.LogEntry.model_validate({
+        record = peri_scribe.updates.LogEntry.model_validate({
             "timestamp": NOW + datetime.timedelta(milliseconds=self.time),
             "identifier": str(self.identifier) if self.identifier is not None else None,
             "name": NAMES[self.name],
@@ -65,6 +68,25 @@ class Observation:
             "batch_id": str(self.serial),
             "log_identity": logged,
         })
+        if self.preview is not None:
+            return record.model_copy(
+                update={"preview": tests.formal.helpers.journal.PREVIEWS[self.preview]},
+            )
+        return record
+
+
+def original_entry(update: peri_scribe.updates.Update) -> peri_scribe.updates.LogEntry:
+    """Read the original payload from the update's public representation.
+
+    Args:
+        update: A projected snapshot occurrence with optional imagery.
+
+    Returns:
+        The validated logged fields without the current owner or acreage baseline.
+    """
+    return peri_scribe.updates.LogEntry.model_validate(
+        update.model_dump(exclude={"history_identity", "previous_mapped_area"}),
+    )
 
 
 def histories() -> tuple[tuple[Observation, ...], ...]:
@@ -145,10 +167,7 @@ def compare_histories(histories: tuple[tuple[Observation, ...], ...]) -> int:
                 if update.previous_mapped_area is None
                 else int(update.previous_mapped_area.value * 8),
             ))
-            assert (
-                update.model_dump(exclude={"previous_mapped_area", "history_identity"})
-                == original[update.batch_id].model_dump()
-            )
+            assert original_entry(update) == original[update.batch_id]
             assert update.history_identity is None
         assert tuple(observed) == answer, history
         assert snapshot.generated_at == NOW
@@ -380,12 +399,7 @@ def projection_steps(
         strict=True,
     ):
         assert (update.history_identity or update.identity()) == identities[owner]
-        assert (
-            update.model_dump(
-                exclude={"history_identity", "previous_mapped_area"},
-            )
-            == entry.model_dump()
-        )
+        assert original_entry(update) == entry
     return (
         Step(records=original),
         Step(records=snapshot.updates),

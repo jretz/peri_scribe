@@ -219,8 +219,9 @@ reports to `data/<year>/reports/PeriScribe Fires <year>.md`.
 ### Fire-update history
 
 `fire_updates.py` prepares fire-update records from the same in-memory summaries used by
-the KMZ, reusing report selection and location descriptions. After successful KMZ
-generation it appends to `logs/YYYY-MM-fire-updates.jsonl` and saves
+the KMZ, reusing report selection and location descriptions. Each record includes the
+preview rendered from that summary, or a null preview when drawing is unavailable.
+After successful KMZ generation it appends to `logs/YYYY-MM-fire-updates.jsonl` and saves
 `derived/fire_updates_state.json`. This baseline includes all eligible fires, including
 those outside the report's interesting sections. Normalized geometry and observation
 time identify new perimeters; pending updates survive unsuccessful KMZ generation.
@@ -364,12 +365,16 @@ The KMZ builder passes its prepared fire summaries to `updates.py`. Current hist
 ownership and saved identifier/component aliases associate visible rows with these
 summaries. Aliases resolve current fires to durable log buckets, then ownership maps
 buckets to their current owner. A bucket's identifier can differ from its owner's
-report identity. Each fire is rendered once per snapshot and shares its latest preview
-across repeated updates. Optional `preview` fields contain WebP data URLs and add no
-fields to durable logs or checkpoints. The same association refreshes each visible
-row's location from the current fire geometry and city database. Unmatched rows and
-fires without usable location evidence retain the logged location. These display
-changes do not create update events or alter acreage history.
+report identity. The association refreshes each visible row's location from the current
+fire geometry and city database. Unmatched rows and fires without usable location
+evidence retain the logged location.
+
+Each row carries forward the WebP data URL from its own log record, even when a later
+fire inherits the row's history. For records with no preview field, the current summary
+can supply a dated history prefix ending at an unambiguous observation that agrees
+with the row's time and acreage. The snapshot builder computes growth rings from that
+prefix, so later observations cannot trim the earlier preview's rings. See
+[historical previews](algorithms/update-viewer.md#previews-at-publication).
 
 The presentation preview modules draw all KMZ-colored growth rings and the latest three
 complete outlines using a local azimuthal equidistant projection. Each candidate
@@ -402,10 +407,10 @@ and antialiased transparency. Pillow encodes exact quantized pixels with lossles
 quality 100 and method 6, without metadata or transport compression. The existing
 disposable product store reuses previews by ordered geometry/color fingerprints and the
 application/runtime context, including Pillow and the renderer's source bytes. Renderer
-changes invalidate reused images on the next completed KMZ build, which regenerates the
-viewer snapshot. The viewer uses native 128×72 boxes on desktop and 72×56 boxes on
-phones with `object-fit: contain`; image-only refreshes update retained rows without
-restarting highlight transitions or favicon notifications.
+changes invalidate cached renders. Saved images stay with their log records. The viewer
+uses native 128×72 boxes on desktop and 72×56 boxes on phones with `object-fit: contain`.
+Image-only refreshes update retained rows without restarting highlight transitions or
+favicon notifications.
 
 At widths up to 480 pixels, acreage spans both grid columns beneath the preview and
 heading. Departing copies share the grid and responsive rules, including text-only rows.

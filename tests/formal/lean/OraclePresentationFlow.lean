@@ -32,11 +32,11 @@ def treeText : GeometrySharing.Tree → List Nat
 
 def row (text : String) : Except String UpdateViewer.Row := do
   match text.splitOn "," with
-  | [serial, time, identifier, name, kind, key, area] =>
+  | [serial, time, identifier, name, kind, key, area, preview] =>
     return ⟨← natural serial, ← integer time, ← optional identifier, ← natural name,
       ← (if kind = "-" then pure none else
-        return some (← natural kind, ← natural key)), ← natural area⟩
-  | _ => throw "Expected serial,time,identifier,name,kind,key,area"
+        return some (← natural kind, ← natural key)), ← natural area, ← optional preview⟩
+  | _ => throw "Expected serial,time,identifier,name,kind,key,area,preview"
 
 def visible (text : String) : Except String UpdateViewer.Visible := do
   match text.splitOn "," with

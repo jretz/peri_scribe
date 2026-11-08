@@ -13,13 +13,13 @@ viewer. The browser accepts validated snapshots and ages their entries using its
 
 | Dimension | Score | Reason |
 | --- | --- | --- |
-| History and state | 3 | Current ownership projects immutable historical buckets before comparison. |
-| Rule interaction | 2 | Snapshot validity, connectivity, eligibility, and UI state are independent. |
-| Mathematical reasoning | 1 | Stable sorting, grouping, and layout transforms are established operations. |
+| History and state | 3 | Current ownership projects immutable historical buckets before comparison. Older rows can reconstruct an image from the retained mapping at their cutoff. |
+| Rule interaction | 2 | Saved previews take precedence over reconstruction, which requires agreement between mapping dates and logged acres. Snapshot validity, connectivity, eligibility, and UI state are independent. |
+| Mathematical reasoning | 2 | Growth rings must be recomputed for the dated prefix because later geometries can change the earlier rings. |
 | Scale and representation | 2 | Record-signature queues preserve repeated rows while reusing DOM elements. |
 | Failure and concurrency | 3 | Overlapping refreshes, timeouts, and partial outcomes retain the displayed state. |
 
-Total **11: complex**. Durable update identity and journaling are explained in
+Total **12 (complex)**. Durable update identity and journaling are explained in
 [history ownership](history-ownership.md) and [update journal](update-journal.md).
 
 ## Compare before filtering
@@ -44,10 +44,44 @@ After ownership projection, compare one owner's retained observations in order:
 Equal timestamps retain input occurrence order. Even a zero-change entry can become
 the next entry's predecessor. Missing months simply supply no evidence.
 
-Previews and locations are associated through current ownership and source identities.
-Repeated updates share one current fire preview. Display refresh does not rewrite
-durable log records or create mapping events. Rows without a matched fire or usable
-location evidence retain their logged locations.
+Current ownership and source identities associate rows with current fires for location
+descriptions. Rows without a matched fire or usable location evidence retain their
+logged locations.
+
+## Previews at publication
+
+Each new record stores the image rendered from the same prepared fire summary that
+supplies its acreage and KMZ geometry. The viewer copies that image from the record
+even after a later correction changes its fire's shape or ownership. An explicit null
+means no preview was available from that publication.
+
+When a row has no saved preview field, use the fire associated through current
+ownership and source identities. Take the dated perimeter observations at or before
+the row's publication time. Render that prefix only when exactly one perimeter has the
+latest eligible timestamp, has nonempty geometry, and matches the logged value in
+measured acres. The acreage check helps reject histories that have since changed.
+A missing fire, an empty prefix, a tie at the latest timestamp, empty latest geometry,
+or an acreage mismatch leaves the row without an image.
+
+Recompute the [corrected growth rings](corrected-growth-rings.md) from the dated
+perimeters in observation order. The same differential calculation used for the KMZ
+works backward through the prefix, so only corrections through the row's cutoff can
+trim its earlier rings. Then use the usual [preview renderer](preview-orientation.md)
+to color the recomputed rings and draw the outlines.
+
+For example, a 100-acre observation at 09:00 and a 130-acre observation at 11:00
+can supply previews for a 100-acre row published at 10:00 and a 130-acre row at noon.
+The first image stops at the 09:00 perimeter. If the 11:00 perimeter grows east and
+withdraws a western lobe, the 10:00 preview still shows that lobe. Filtering the
+current rings by date would leave the earlier preview with the lobe already removed.
+If a correction later replaces the 09:00 geometry with a 105-acre perimeter, the
+10:00 row loses its reconstructed image. A row with an image saved at publication
+continues to show that image.
+
+Reconstruction uses the history available when the viewer is built. A late-arriving
+observation can have a date before the cutoff, and a replacement shape can have the
+same acreage as the original. Saving the rendered image at publication preserves the
+original map through both cases. Display refresh leaves the durable records intact.
 
 ## Refresh and response clocks
 
@@ -96,14 +130,25 @@ not. Subsequent qualifying additions restart the notification interval.
 
 ## Costs, limits, and verification
 
-Snapshot sorting costs `O(N log N)` for retained entries and holds `O(N)` records. Browser
-replacement uses signature maps and queues; repeated array shifts can be quadratic
-within a large duplicate group. Rendering sorts matching entries and performs DOM
-measurement, so its cost includes browser layout. Current browser time controls aging;
-clock skew and throttled timers can affect presentation.
+Snapshot sorting costs `O(N log N)` for retained entries and holds `O(N)` records plus
+their saved image bytes. For each visible row that needs reconstruction, filtering the
+matched fire's P perimeters takes `O(P)` time and space. Each eligible prefix then
+incurs the [cost of differential geometry](corrected-growth-rings.md#costs-and-limitations)
+for that prefix and the [cost of rendering](preview-orientation.md). Browser replacement
+uses signature maps and queues, where repeated array shifts can be quadratic within a
+large duplicate group. Rendering sorts matching entries and performs DOM measurement,
+so its cost includes browser layout. Current browser time controls aging. Clock skew
+and throttled timers can affect presentation.
+
+Journal recovery treats preview data as part of the saved record. Reconstruction only
+decorates the snapshot, so it adds no recovery transitions. Preview regressions check
+historical selection and the renderer's own tests cover image construction.
 
 - [Snapshot builder](../../src/peri_scribe/updates.py) and
   [browser implementation](../../src/peri_scribe/updates.html).
+- [Shared growth-ring calculation](../../src/peri_scribe/fires/differential.py).
+- [Update preview regressions](../../tests/tests/standard/peri_scribe/test_updates_previews.py)
+  and [image construction tests](../../tests/tests/standard/peri_scribe/test_previews.py).
 - [Projected snapshots](../../tests/formal/lean/projected_snapshots.md),
   [BrowserRefresh](../../tests/formal/tla/BrowserRefresh.tla), and
   [BrowserResponsiveness](../../tests/formal/tla/BrowserResponsiveness.tla).

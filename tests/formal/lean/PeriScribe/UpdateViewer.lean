@@ -11,6 +11,7 @@ structure Row where
   name : Nat
   logged : Option Key
   area : Nat
+  preview : Option Nat := none
   deriving DecidableEq, Repr
 
 def identity (row : Row) : Key :=

@@ -18,6 +18,10 @@ import tests.formal.helpers.corpus
 
 EPOCH = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
 LOG_NAME = "2026-01-fire-updates.jsonl"
+PREVIEWS = (
+    "data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA==",
+    "data:image/webp;base64,UklGRhwAAABXRUJQVlA4TA8AAAAvAAAAAAcQ/Y/+ByKi/wEA",
+)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -149,6 +153,7 @@ def records(batch: int) -> tuple[dict[str, object], ...]:
             "name": f"Fire {number}",
             "location": None,
             "mapped_area": {"value": batch * 10 + number, "units": "acre"},
+            "preview": PREVIEWS[batch - 1],
         }
         for number in range(2)
     )

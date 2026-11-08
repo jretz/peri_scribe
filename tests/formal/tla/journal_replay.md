@@ -21,10 +21,12 @@ JSON, plain JSONL, and Zstandard archives. Each nonempty abstract batch contains
 real fire records, so the checks distinguish whole-batch replay from per-record
 duplication. They call `fire_updates.recover_updates` twice and compare the complete
 retained payloads, their multiplicities, the checkpoint, journal removal, and original
-timestamps with TLC's result. A frozen clock exercises current and expired months.
+timestamps with TLC's result. Distinct WebP payloads identify the mapping recorded for
+each generation. A frozen clock exercises current and expired months.
 The real viewer writer then reads the recovered logs and publishes its HTML and JSON.
 The complete viewer payload must retain each fire's identity, current and previous
-acreage, batch ID, and original timestamp; expired windows must be empty.
+acreage, batch ID, original timestamp, and recorded preview. Expired windows must be
+empty.
 
 `helpers/journal_builder.py` additionally runs the real `kml.builder.create_kmz` and
 injects process loss immediately before and after these durable boundaries:

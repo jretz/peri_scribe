@@ -44,7 +44,6 @@ ICON_CONTENT = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR4nGNgYGBgAAAABQAB"
     "pfZFQAAAAABJRU5ErkJggg==",
 )
-PREVIEW = "data:image/webp;base64,UklGRhoAAABXRUJQVlA4TA0AAAAvAAAAEAcQERGIiP4HAA=="
 
 
 class ProcessLoss(BaseException):
@@ -211,6 +210,27 @@ class Scenario:
             return 0
         return next(number for number, value in self.states.items() if value == state)
 
+    def log_entry(self, generation: int, number: int) -> peri_scribe.updates.LogEntry:
+        """Specify the frozen payload for each occurrence in a fixture batch.
+
+        Args:
+            generation: The publication that originally observed the mapping.
+            number: The fire within that publication's batch.
+
+        Returns:
+            A complete log occurrence with its original preview and journal metadata.
+        """
+        return peri_scribe.updates.LogEntry(
+            timestamp=self.timestamps[generation],
+            identifier=f"fire-{number}",
+            log_identity=("id", f"fire-{number}"),
+            name=f"Fire {number}",
+            location=None,
+            batch_id=self.batch_ids[generation],
+            mapped_area=peri_scribe.updates.Acreage(value=100 * generation + number),
+            preview=tests.formal.helpers.journal.PREVIEWS[generation - 1],
+        )
+
     def log_counts(self, *, compressed: bool) -> tuple[int, ...]:
         """Validate record pairs and timestamp retention while reading actual logs.
 
@@ -232,15 +252,16 @@ class Scenario:
                 for line in stream:
                     entry = peri_scribe.updates.LogEntry.model_validate_json(line)
                     generation = int(entry.mapped_area.value) // 100
-                    assert entry.timestamp == self.timestamps[generation]
                     grouped[generation].append(entry)
         result = []
         for generation in (1, 2):
             entries = grouped[generation]
             assert len(entries) in {0, RECORDS_PER_GENERATION}
             if entries:
-                assert {entry.identifier for entry in entries} == {"fire-0", "fire-1"}
-                assert len({entry.batch_id for entry in entries}) == 1
+                assert entries == [
+                    self.log_entry(generation, number)
+                    for number in range(RECORDS_PER_GENERATION)
+                ]
             result.append(len(entries) // 2)
         return tuple(result)
 
@@ -282,11 +303,7 @@ class Scenario:
         )
         displayed = self.viewer_times[viewer.generated_at] if viewer is not None else 0
         if viewer is not None:
-            # Ignore preview imagery; compare every other logged field exactly.
-            occurrences = tuple(
-                record.model_copy(update={"preview": None}) for record in viewer.updates
-            )
-            assert occurrences == self.viewer_records(displayed, viewer.generated_at)
+            assert viewer.updates == self.viewer_records(displayed, viewer.generated_at)
         return (
             kmz,
             published,
@@ -338,14 +355,8 @@ class Scenario:
         """
         return tuple(
             peri_scribe.updates.Update(
-                timestamp=self.timestamps[batch],
-                identifier=f"fire-{number}",
-                log_identity=("id", f"fire-{number}"),
+                **self.log_entry(batch, number).model_dump(),
                 history_identity=("id", f"fire-{number}"),
-                name=f"Fire {number}",
-                location=None,
-                batch_id=self.batch_ids[batch],
-                mapped_area=peri_scribe.updates.Acreage(value=100 * batch + number),
                 previous_mapped_area=(
                     peri_scribe.updates.Acreage(value=100 * (batch - 1) + number)
                     if batch > 1
@@ -429,7 +440,11 @@ def install(monkeypatch: pytest.MonkeyPatch, scenario: Scenario) -> None:
         lambda *_args, **_kwargs: {},
     )
     monkeypatch.setattr(peri_scribe.report.gathering, "report_from_fires", report)
-    monkeypatch.setattr(peri_scribe.previews, "fire_preview", lambda _fire: PREVIEW)
+    monkeypatch.setattr(
+        peri_scribe.previews,
+        "fire_preview",
+        lambda _fire: tests.formal.helpers.journal.PREVIEWS[scenario.generation - 1],
+    )
     monkeypatch.setattr(
         peri_scribe.kml.icons,
         "interior_progression_icon",

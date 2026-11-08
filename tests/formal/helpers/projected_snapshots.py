@@ -103,6 +103,7 @@ def observations(
             identifier=key[1] if key[0] == 0 else None,
             logged=None if legacy else key,
             area=area,
+            preview=None if legacy or index == 1 else index // 2,
         )
         for index, (key, time, area) in enumerate(zip(keys, times, areas, strict=True))
     )
@@ -196,12 +197,7 @@ def compare(catalogue: tuple[Case, ...]) -> int:
         for update in snapshot.updates:
             assert update.batch_id is not None
             original = originals[update.batch_id]
-            assert (
-                update.model_dump(
-                    exclude={"history_identity", "previous_mapped_area"},
-                )
-                == original.model_dump()
-            )
+            assert tests.formal.helpers.update_viewer.original_entry(update) == original
             assert update.history_identity == ownership.get(original.identity())
             observed.extend((
                 int(update.batch_id),

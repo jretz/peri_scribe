@@ -13,6 +13,7 @@ import time_machine
 import peri_scribe.fire_updates
 import peri_scribe.logging
 import peri_scribe.models
+import peri_scribe.previews
 import peri_scribe.report.gathering
 import peri_scribe.updates
 import tests.helpers.doubles.errors
@@ -130,6 +131,7 @@ def test_prepare_updates_shares_report_locations_and_uses_mapped_acres(
             "name": "Timber",
             "location": report.fire_details[0].location,
             "mapped_area": {"value": 1234.5, "units": "acre"},
+            "preview": peri_scribe.previews.fire_preview(fire),
         },
     )
     assert not peri_scribe.fire_updates.state_path(tmp_path).exists()

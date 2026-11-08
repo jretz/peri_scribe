@@ -56,9 +56,9 @@ theorem equal_time_occurrence_order_is_preserved (rows : List Row) (first second
 
 /-- An old same-second late tail must supply the baseline of a later visible update. -/
 def historical (serial area : Nat) : Row :=
-  ⟨serial, -100, some 0, 0, some (2, 0), area⟩
+  ⟨serial, -100, some 0, 0, some (2, 0), area, none⟩
 
-def current : Row := ⟨2, 0, some 0, 0, some (2, 0), 150⟩
+def current : Row := ⟨2, 0, some 0, 0, some (2, 0), 150, some 0⟩
 
 theorem equal_time_history_preserves_later_baseline :
     projectedSnapshot (fun _ => none) 0 10

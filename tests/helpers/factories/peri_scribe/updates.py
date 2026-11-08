@@ -59,4 +59,6 @@ def write_log(
     path.parent.mkdir(parents=True, exist_ok=True)
     opener = compression.zstd.open if path.suffix == ".zst" else open
     with opener(path, "wt", encoding="utf-8") as stream:
-        stream.writelines(entry.model_dump_json() + "\n" for entry in entries)
+        stream.writelines(
+            entry.model_dump_json(exclude_unset=True) + "\n" for entry in entries
+        )

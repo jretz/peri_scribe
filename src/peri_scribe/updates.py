@@ -7,6 +7,7 @@ Design notes:
 import collections.abc
 import compression.zstd
 import contextlib
+import dataclasses
 import datetime
 import importlib.resources
 import pathlib
@@ -17,8 +18,11 @@ import pydantic
 
 import peri_scribe.fire_update_records
 import peri_scribe.fire_updates
+import peri_scribe.fires.differential
+import peri_scribe.geo.measurements
 import peri_scribe.log_reading
 import peri_scribe.paths
+import peri_scribe.perimeters.progression
 import peri_scribe.presentation.fire_data
 import peri_scribe.presentation.selection
 import peri_scribe.previews
@@ -29,6 +33,7 @@ from measurement_units import units
 
 if typing.TYPE_CHECKING:
     import geopandas
+    import shapely
 
 
 WINDOW = datetime.timedelta(hours=48)
@@ -59,9 +64,8 @@ class Update(LogEntry):
 
     previous_mapped_area: Acreage | None
     history_identity: HistoryIdentity | None = None
-    preview: str | None = pydantic.Field(
+    preview: peri_scribe.fire_update_records.Preview | None = pydantic.Field(
         default=None,
-        pattern=r"^data:image/webp;base64,[A-Za-z0-9+/]+={0,2}$",
         exclude_if=lambda value: value is None,
     )
 
@@ -147,7 +151,7 @@ def snapshot_from_entries(
         if now - WINDOW < timestamp and entry.mapped_area.quantity() != previous_area:
             updates.append(
                 Update(
-                    **entry.model_dump(),
+                    **entry.model_dump(exclude_unset=True),
                     previous_mapped_area=(
                         previous.mapped_area if previous is not None else None
                     ),
@@ -175,6 +179,59 @@ def write_html(path: pathlib.Path) -> None:
         temporary.replace(path)
 
 
+def preview_from_history(
+    fire: peri_scribe.presentation.fire_data.FireSummary,
+    update: Update,
+) -> str | None:
+    """Reconstruct a legacy row's preview from a matching dated mapping.
+
+    Args:
+        fire: The current fire with its retained history in observation order.
+        update: The older log occurrence with a publication time and mapped acreage.
+
+    Returns:
+        The dated history through its latest eligible perimeter if that perimeter is
+        unique at its observation time and matches the logged acreage, or None.
+    """
+    perimeters = tuple(
+        perimeter
+        for perimeter in fire.perimeters
+        if perimeter.observation_time is not None
+        and perimeter.observation_time <= update.timestamp
+    )
+    if not perimeters:
+        return None
+    latest = perimeters[-1]
+    tied = (
+        len(perimeters) > 1
+        and perimeters[-2].observation_time == latest.observation_time
+    )
+    if (
+        tied
+        or latest.geometry.is_empty
+        or latest.measured_area.to("acres") != update.mapped_area.quantity()
+    ):
+        return None
+    # Later perimeters can trim earlier growth rings, so rebuild them from the prefix.
+    rows = peri_scribe.fires.differential.differential_rows_for_fire(
+        [{"observation_time": perimeter.observation_time} for perimeter in perimeters],
+        [perimeter.geometry for perimeter in perimeters],
+    )
+    rings = tuple(
+        peri_scribe.perimeters.progression.Ring(
+            geometry=typing.cast("shapely.Geometry", row["geometry"]),
+            observation_time=typing.cast("datetime.datetime", row["observation_time"]),
+            area=typing.cast("float", row[peri_scribe.geo.measurements.AREA_COLUMN])
+            * units.Unit("meters ** 2"),
+        )
+        for row in rows
+        if peri_scribe.perimeters.progression.SEQUENCE_COLUMN in row
+    )
+    return peri_scribe.previews.fire_preview(
+        dataclasses.replace(fire, perimeters=perimeters, progression_rings=rings),
+    )
+
+
 def with_previews(
     snapshot: Snapshot,
     fires: collections.abc.Sequence[peri_scribe.presentation.fire_data.FireSummary],
@@ -182,10 +239,11 @@ def with_previews(
     *,
     state: peri_scribe.fire_updates.State | None = None,
 ) -> Snapshot:
-    """Reuse each current fire's preview and location across its visible occurrences.
+    """Keep recorded previews and fill available presentation fields for each row.
 
-    Locations describe the fire's current geography. A historical occurrence without
-    a matching current fire or available geography retains its recorded location.
+    An absent preview field identifies a legacy row eligible for reconstruction. A
+    recorded null means the publication had no drawable preview. Locations describe the
+    fire's current geography when available, with the logged location as a fallback.
 
     Args:
         snapshot: Chronological updates with current history ownership already applied.
@@ -206,10 +264,7 @@ def with_previews(
             by_identity[
                 peri_scribe.fire_update_records.IDENTITY.validate_json(owner)
             ] = fire
-    presentation: dict[
-        peri_scribe.presentation.selection.AreaKey,
-        tuple[str | None, str | None],
-    ] = {}
+    locations: dict[peri_scribe.presentation.selection.AreaKey, str | None] = {}
     updates = []
     for update in snapshot.updates:
         identity = update.history_identity or update.identity()
@@ -218,13 +273,14 @@ def with_previews(
             updates.append(update)
             continue
         key = peri_scribe.report.gathering.fire_identity(fire)
-        if key not in presentation:
-            presentation[key] = (
-                peri_scribe.previews.fire_preview(fire),
-                peri_scribe.report.gathering.fire_location(fire, cities),
-            )
-        preview, location = presentation[key]
-        fields = {"preview": preview}
+        if key not in locations:
+            locations[key] = peri_scribe.report.gathering.fire_location(fire, cities)
+        location = locations[key]
+        fields = {}
+        if "preview" not in update.model_fields_set:
+            preview = preview_from_history(fire, update)
+            if preview is not None:
+                fields["preview"] = preview
         if location is not None:
             fields["location"] = location
         updates.append(update.model_copy(update=fields))
@@ -242,7 +298,7 @@ def write_updates_page(
 
     Args:
         year_directory: The year directory holding the completed KMZ and logs.
-        fires: Prepared KMZ fires supplying current previews and locations.
+        fires: Prepared KMZ fires supplying current locations and historical geometry.
     """
     state = peri_scribe.fire_updates.read_authoritative(
         peri_scribe.fire_updates.state_path(year_directory),

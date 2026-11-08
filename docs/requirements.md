@@ -78,7 +78,8 @@ After successful KMZ generation, `logs/YYYY-MM-fire-updates.jsonl` records each
 interesting fire with a new mapped perimeter since the last successful KMZ. Interesting
 fires are the distinct fires in any report section before Fire Details. Each JSON line
 contains the timestamp, identifier, stable log identity, name, the report's location
-text, and measured area in acres as a numeric value with units.
+text, measured area in acres as a numeric value with units, and the perimeter preview
+from that publication. A null preview records that no image was available.
 
 Adding identifiers or changing a fire's name preserves its acreage history. This also
 applies when its normalized spelling changes as the first identifier arrives. Unrelated
@@ -173,20 +174,25 @@ previous acreage means an initial change equal to current acreage. Repeated upda
 the same fire remain separate; decreases are included.
 
 Visible locations are recalculated from the current fire geometry and current city
-database, using the same fire association as previews. Rows without a matched current
-fire or usable geometry retain their logged locations. Refreshing the city dataset
-rebuilds reports and updates without creating new fire-update events or rewriting logs.
+database. Rows without a matched current fire or usable geometry retain their logged
+locations. Refreshing the city dataset rebuilds reports and updates without creating
+new fire-update events or rewriting logs.
 
 Malformed fire-update checkpoints or pending journals must stop publication before
 mutating durable evidence. Invalid pending intent remains available for repair.
 
-Each update leads with its fire's latest available perimeter preview. A 128×72 image
-uses one geographic scale for both axes and a rotation chosen separately for each fire
-from -90° inclusive to +90° exclusive of north up. The score balances the fire's linear
-size against overlap with the north dart: fitted scale divided by the maximum fitted
-scale, minus 0.75 times the overlap fraction. The overlap fraction is the area shared by
-the map's convex hull and the dart's convex hull with two pixels of breathing room,
-divided by the entire buffered dart hull's area.
+Each update leads with its fire's perimeter preview from the KMZ that produced that
+row. For a log record without a saved preview field, the viewer can use the retained
+dated perimeter history through the latest observation at or before publication. That
+observation must be unique at its timestamp and match the logged acreage exactly. The
+viewer computes growth rings from that dated history through the matching observation.
+
+A 128×72 image uses one geographic scale for both axes and a rotation chosen separately
+for each preview from -90° inclusive to +90° exclusive of north up. The score divides
+the fitted scale by the maximum fitted scale and subtracts 0.75 times the overlap
+fraction. The overlap fraction is the area shared by the map's convex hull and the
+dart's convex hull with two pixels of breathing room, divided by the entire buffered
+dart hull's area.
 
 All growth rings use their opaque KMZ fill colors beneath the latest three complete
 perimeter outlines: white, yellow, and red from oldest to newest. With fewer

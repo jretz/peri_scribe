@@ -272,7 +272,7 @@ def test_write_updates_page_uses_available_history_across_month_boundaries(
         "generated_at": "2026-09-01T00:00:00Z",
         "updates": [
             {
-                **current.model_dump(mode="json"),
+                **current.model_dump(mode="json", exclude={"preview"}),
                 "previous_mapped_area": (
                     None if missing_history else {"value": 100, "units": "acre"}
                 ),

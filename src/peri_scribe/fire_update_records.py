@@ -18,6 +18,12 @@ if typing.TYPE_CHECKING:
 
 type HistoryIdentity = tuple[typing.Literal["id", "name", "local", "component"], str]
 IDENTITY = pydantic.TypeAdapter(HistoryIdentity)
+type Preview = typing.Annotated[
+    str,
+    pydantic.StringConstraints(
+        pattern=r"^data:image/webp;base64,[A-Za-z0-9+/]+={0,2}$",
+    ),
+]
 
 
 def canonical_identity(value: str) -> str:
@@ -81,6 +87,7 @@ class Record(pydantic.BaseModel):
     location: str | None
     mapped_area: Acreage
     log_identity: HistoryIdentity | None = None
+    preview: Preview | None = None
 
 
 def validated_records(
