@@ -1,13 +1,13 @@
 """Preserve real marker persistence across independent interpreter lifetimes."""
 
+import functools
 import pathlib
 
-import pytest
-
-import peri_scribe.pipeline
 import peri_scribe.pipeline_state
+import peri_scribe.sources.fetch_control
 import tests.formal.helpers.crash_worker
 import tests.formal.helpers.pipeline_state
+import tests.helpers.doubles.attribute_overrides
 import tests.helpers.doubles.peri_scribe.pipeline_fetch_recovery
 
 
@@ -97,11 +97,7 @@ def run(request: tests.formal.helpers.crash_worker.Request) -> None:
             request.terminate()
         return count
 
-    with pytest.MonkeyPatch.context() as patch:
-        tests.helpers.doubles.peri_scribe.pipeline_fetch_recovery.install(
-            patch,
-            scenario,
-        )
+    with tests.helpers.doubles.attribute_overrides.AttributeOverrides() as patch:
         patch.setattr(pathlib.Path, "replace", replace)
         patch.setattr(pathlib.Path, "write_text", write)
         if request.phase == "crash" and request.boundary == "marker":
@@ -112,10 +108,16 @@ def run(request: tests.formal.helpers.crash_worker.Request) -> None:
             )
         with peri_scribe.pipeline_state.run_lock(directory) as acquired:
             assert acquired, "dead fetch process retained its year lock"
-            assert peri_scribe.pipeline.run_fetch_stage(
+            assert peri_scribe.sources.fetch_control.run_ungated_fetch(
                 directory,
                 full_fetch_interval=None,
                 unconditional=False,
+                collect=functools.partial(
+                    peri_scribe.sources.fetch_control.collect_fire_sources,
+                    fetch=scenario.fetch,
+                    prepare=scenario.prepare,
+                ),
+                refresh=scenario.refresh,
             )
     inspect()
     request.record(

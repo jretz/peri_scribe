@@ -4,12 +4,12 @@ Passing against the current implementation doesn't show that a test would catch 
 `conformance/test_defect_checks.py` checks that the established conformance tests reject
 twenty specific production defects after passing against unchanged source.
 
-One interpreter runs every unique selected test against private copies of the source
-packages. Workers share that complete successful baseline through the current run's
-atomically published corpus. Each defect case makes its own temporary source copy,
-requires every source and resource digest to match the baseline, and changes one
-expression in one named production function. It then reruns the established check in a
-fresh interpreter. Repository source files and Lean/TLA+ specifications stay unchanged.
+One fresh interpreter checks all nineteen unique targets against an unchanged private
+source tree. Each of the twenty mutations then gets a separate private source tree and
+fresh interpreter. Native imports bind each test to its actual changed source. The
+source/resource hashes must match the passing baseline before the mutation is applied.
+Repository source files, Lean/TLA+ specifications and conformance assertions remain
+unchanged.
 
 | Deliberate defect | Existing check required to fail |
 | --- | --- |
@@ -41,13 +41,27 @@ timeout, or tool failure cannot stand in for successful defect detection. The mu
 must fail the named test with its expected semantic assertion or missing-exception
 diagnostic. Fixtures and conformance assertions are unchanged in both executions.
 
-Independent defect cases use the formal suite's parallel workers. Twenty mutations
-have nineteen unique target checks, so a complete run uses one pristine baseline
-interpreter and twenty isolated mutant interpreters. Each nested pytest session stays
-serial, preserving isolated source imports and avoiding nested worker pools. The baseline
-report must contain exactly the selected target identities with no skipped, failed, or
-error outcomes. Checked TLC graphs remain shared within the outer formal invocation;
-production executions and mutated source trees remain independent.
+Isolated interpreters use pytest's `--assert=plain` mode to execute the original Python
+assertions. Source-expression diagnostics then use the current import location. This
+avoids pytest-rewritten bytecode retaining another checkout's absolute source paths after
+a directory is copied. The original assertion conditions and strict rejection checks
+still apply. The outer conformance suite retains its ordinary assertion rewriting.
+
+Each mutant must produce exactly one native JUnit testcase with its expected identity
+and semantic failure. Missing results, skips, additional cases, and setup or teardown
+errors reject the check. Process exit and diagnostics must also agree with that failure.
+The existing process owner joins descendants before releasing their temporary files.
+Checked TLC graphs remain shared within the outer formal invocation; mutable test data
+and mutation verdicts belong to this run.
+
+The orchestration scores **1/1/0/1/2 = 5, involved**: the pristine run precedes mutant
+execution, exact identities and failure predicates are checked, each process owns
+bounded source snapshots, and the existing process owner coordinates failures. For S
+source bytes across F files, T unique targets and D defects, source copying and
+validation take O((D + 1)S) work, plus the native test work. With W active mutant
+workers, private source storage is O(WS); the shared baseline retains O(F + T) hashes
+and target names. No function bodies or import state are restored between tests because
+each mutant interpreter exits.
 
 These checks run inside `mise formal-conformance` and the full `mise formal`. Run only
 these checks with `mise formal-defects`. They demonstrate sensitivity to these twenty

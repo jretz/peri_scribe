@@ -6,11 +6,10 @@ import fcntl
 import json
 import pathlib
 
-import pytest
-
 import peri_scribe.logging
 import tests.formal.helpers.crash_worker
 import tests.formal.helpers.log_rotation
+import tests.helpers.doubles.attribute_overrides
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -51,7 +50,7 @@ def run(request: tests.formal.helpers.crash_worker.Request) -> None:
         scenario.path.write_bytes(tests.formal.helpers.log_rotation.LINES[1] * 2)
         scenario.inspect()
         return
-    with pytest.MonkeyPatch.context() as patch:
+    with tests.helpers.doubles.attribute_overrides.AttributeOverrides() as patch:
         scenario.install(patch)
         if request.phase == "crash":
             tests.formal.helpers.crash_worker.interruption(

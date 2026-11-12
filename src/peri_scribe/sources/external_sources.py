@@ -43,10 +43,9 @@ from __future__ import annotations
 import pathlib
 import typing
 
-import arcgis.features
-import arcgis.gis
 import structlog
 
+import arcgis_access.client as arcgis
 import arcgis_access.data
 import peri_scribe.exceptions
 import peri_scribe.geo.data

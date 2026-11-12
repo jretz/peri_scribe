@@ -105,10 +105,11 @@ integers. Ownership and evidence records have the form `history,value`; fire rec
 
 ## Implementation conformance
 
-The bridge checks 291 complete identified-fire batches against the compiled oracle.
-The 288 generated combinations vary both historical lineage sets, preferred minimum or
+The bridge checks 259 distinct identified-fire batches against the compiled oracle.
+The generated combinations vary both historical lineage sets, preferred minimum or
 maximum writer, distinct or overlapping current aliases, four timestamp patterns,
-retained owners, and newer empty geometry. Three additional cases cover legacy direct
+retained owners, and newer empty geometry. A shared singleton lineage already fixes
+the preferred bucket for all aliases. Three additional cases cover legacy direct
 keys and histories reserved solely through provenance. Timestamp cases include missing,
 negative, zero, and equal times, latest observations before the final input perimeter,
 and newer empty geometries that cannot win the priority calculation.

@@ -11,6 +11,7 @@ import typing
 
 import click
 
+import peri_scribe.cli_help
 import peri_scribe.cli_options
 import peri_scribe.show_latencies.perimeters
 import peri_scribe.show_latencies.runs
@@ -130,10 +131,9 @@ def render(
 @click.command(
     "show-latencies",
     help=(
-        "Chart how long pipeline runs take and the estimated delay from source "
-        "perimeter publication to the end of a run that produces a KMZ. Each curve "
-        "shows the fraction of measurements within a given duration. The chart "
-        "appears inline in a compatible image-capable terminal. "
+        f"{peri_scribe.cli_help.LATENCIES_HELP} "
+        "Each curve shows the fraction of measurements within a given duration. "
+        "The chart appears inline in a compatible image-capable terminal. "
         + peri_scribe.cli_options.year_directory_default_help()
     ),
 )

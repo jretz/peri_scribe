@@ -4,16 +4,18 @@ from __future__ import annotations
 
 import dataclasses
 import enum
+import importlib
 import pathlib
 import typing
 
-import peri_scribe.pipeline
 import peri_scribe.pipeline_state
-import peri_scribe.sources.fetching
+import peri_scribe.sources.snapshots
 
 
 if typing.TYPE_CHECKING:
     import pytest
+
+    import tests.helpers.doubles.attribute_overrides
 
 
 class ProcessLoss(BaseException):
@@ -76,21 +78,24 @@ class Scenario:
         *,
         year: int,
         full: bool = False,
-    ) -> peri_scribe.sources.fetching.FetchResult:
+        build_index: bool = True,
+    ) -> peri_scribe.sources.snapshots.FetchResult:
         """Return the real collection result type after persistent source mutation.
 
         Args:
             _base_directory: Root accepted by the production fetch backend.
             year: The requested collection year.
             full: Whether this is a scheduled complete fetch.
+            build_index: Require the ungated collection policy.
 
         Returns:
             Durable snapshot paths and the truthful change indication.
         """
         assert year == int(self.directory.name)
+        assert build_index
         self.full_fetches.append(full)
         changed = self.mutate(Mutation.FIRE)
-        return peri_scribe.sources.fetching.FetchResult(
+        return peri_scribe.sources.snapshots.FetchResult(
             snapshot_paths=(self.path(Mutation.FIRE),) if changed else (),
             changed=changed,
         )
@@ -115,21 +120,26 @@ class Scenario:
         self.calls.append("prepare")
 
 
-def install(monkeypatch: pytest.MonkeyPatch, scenario: Scenario) -> None:
+def install(
+    monkeypatch: tests.helpers.doubles.attribute_overrides.AttributePatch,
+    scenario: Scenario,
+) -> None:
     """Retain production run-state I/O, full scheduling, and recovery decisions.
 
     Args:
         monkeypatch: Isolated replacement scope.
         scenario: Persistent source revisions and selected fault location.
     """
-    monkeypatch.setattr(peri_scribe.sources.fetching, "fetch_all_feeds", scenario.fetch)
+    fetching = importlib.import_module("peri_scribe.sources.fetching")
+    pipeline = importlib.import_module("peri_scribe.pipeline")
+    monkeypatch.setattr(fetching, "fetch_all_feeds", scenario.fetch)
     monkeypatch.setattr(
-        peri_scribe.pipeline,
+        pipeline,
         "refresh_external_sources",
         scenario.refresh,
     )
     monkeypatch.setattr(
-        peri_scribe.pipeline,
+        pipeline,
         "prepare_administrative_boundaries",
         scenario.prepare,
     )

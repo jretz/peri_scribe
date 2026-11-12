@@ -12,8 +12,6 @@ import hashlib
 import pathlib
 import typing
 
-import structlog
-
 import spatial_data.cache_values
 import spatial_data.product_cache
 
@@ -22,7 +20,6 @@ if typing.TYPE_CHECKING:
     import geopandas
 
 
-logger = structlog.get_logger()
 KEY_COLUMN = "derivation_key"
 MANIFEST_KEY = "current"
 ENTRY_LENGTH = 2
@@ -152,7 +149,11 @@ def read(
             return None
         return load_groups(manifest, payload_namespace, requested_keys)
     except ValueError:
-        logger.warning("Published row index is invalid", path=str(path), exc_info=True)
+        spatial_data.product_cache.cache_logger().warning(
+            "Published row index is invalid",
+            path=str(path),
+            exc_info=True,
+        )
         return None
 
 
@@ -260,7 +261,7 @@ def seed(
             grouped_rows(normalized_frame) if rows is None else rows,
         )
     except ValueError:
-        logger.warning(
+        spatial_data.product_cache.cache_logger().warning(
             "Published rows could not be indexed",
             path=str(path),
             exc_info=True,

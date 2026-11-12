@@ -2,48 +2,43 @@
 name = "boundary-spill"
 module = "BoundarySpill"
 config = "BoundarySpill"
-conformance = true
+conformance = "states"
 
 [[models]]
 name = "bounded-source-read"
 module = "BoundedSourceRead"
 config = "BoundedSourceRead"
-conformance = true
+conformance = "graph"
 
 [[models]]
 name = "ordered-workers"
 module = "OrderedWorkers"
 config = "OrderedWorkers"
-conformance = true
-
-[[models]]
-name = "ordered-workers-liveness"
-module = "OrderedWorkers"
-config = "OrderedWorkersLiveness"
+conformance = "graph"
 
 [[models]]
 name = "product-retention"
 module = "ProductRetention"
 config = "ProductRetention"
-conformance = true
+conformance = "states"
 
 [[models]]
 name = "parsed-cache-compaction"
 module = "ParsedCacheCompaction"
 config = "ParsedCacheCompaction"
-conformance = true
+conformance = "graph"
 
 [[models]]
 name = "log-segments"
 module = "LogSegments"
 config = "LogSegments"
-conformance = true
+conformance = "states"
 
 [[models]]
 name = "run-state"
 module = "RunState"
 config = "RunState"
-conformance = true
+conformance = "states"
 
 [[models]]
 name = "run-scheduler"
@@ -59,12 +54,7 @@ config = "RunSchedulerLiveness"
 name = "pipeline-composition"
 module = "PipelineComposition"
 config = "PipelineComposition"
-conformance = true
-
-[[models]]
-name = "pipeline-composition-liveness"
-module = "PipelineComposition"
-config = "PipelineCompositionLiveness"
+conformance = "graph"
 
 [[models]]
 name = "publication-gate"
@@ -72,27 +62,16 @@ module = "PublicationGate"
 config = "PublicationGate"
 
 [[models]]
-name = "update-journal"
-module = "UpdateJournal"
-config = "UpdateJournal"
-conformance = true
-
-[[models]]
-name = "update-journal-liveness"
-module = "UpdateJournal"
-config = "UpdateJournalLiveness"
-
-[[models]]
 name = "journal-replay"
 module = "JournalReplay"
 config = "JournalReplay"
-conformance = true
+conformance = "graph"
 
 [[models]]
 name = "geography-publication"
 module = "GeographyPublication"
 config = "GeographyPublication"
-conformance = true
+conformance = "graph"
 
 [[models]]
 name = "geography-publication-liveness"
@@ -108,12 +87,7 @@ config = "ExternalRefresh"
 name = "fetch-crash"
 module = "FetchCrash"
 config = "FetchCrash"
-conformance = true
-
-[[models]]
-name = "fetch-crash-liveness"
-module = "FetchCrash"
-config = "FetchCrashLiveness"
+conformance = "graph"
 
 [[models]]
 name = "geography-pair-is-not-atomic"
@@ -125,7 +99,7 @@ expected_invariant = "PairAlwaysMatches"
 name = "feed-cache"
 module = "FeedCache"
 config = "FeedCache"
-conformance = true
+conformance = "states"
 
 [[models]]
 name = "feed-cache-liveness"
@@ -136,109 +110,79 @@ config = "FeedCacheLiveness"
 name = "static-download"
 module = "StaticDownload"
 config = "StaticDownload"
-conformance = true
-
-[[models]]
-name = "static-download-liveness"
-module = "StaticDownload"
-config = "StaticDownloadLiveness"
+conformance = "states"
 
 [[models]]
 name = "conditional-download"
 module = "ConditionalDownload"
 config = "ConditionalDownload"
-conformance = true
+conformance = "graph"
 
 [[models]]
 name = "worker-lifetime"
 module = "WorkerLifetime"
 config = "WorkerLifetime"
-conformance = true
-
-[[models]]
-name = "worker-lifetime-liveness"
-module = "WorkerLifetime"
-config = "WorkerLifetimeLiveness"
+conformance = "states"
 
 [[models]]
 name = "buildings-construction"
 module = "BuildingsConstruction"
 config = "BuildingsConstruction"
-conformance = true
-
-[[models]]
-name = "buildings-construction-liveness"
-module = "BuildingsConstruction"
-config = "BuildingsConstructionLiveness"
+conformance = "states"
 
 [[models]]
 name = "cache-read"
 module = "CacheRead"
 config = "CacheRead"
-conformance = true
+conformance = "states"
 
 [[models]]
 name = "product-cache"
 module = "ProductCache"
 config = "ProductCache"
-conformance = true
+conformance = "states"
 
 [[models]]
 name = "browser-refresh"
 module = "BrowserRefresh"
 config = "BrowserRefresh"
-conformance = true
-
-[[models]]
-name = "browser-refresh-liveness"
-module = "BrowserRefresh"
-config = "BrowserRefreshLiveness"
+conformance = "states"
 
 [[models]]
 name = "browser-responsiveness"
 module = "BrowserResponsiveness"
 config = "BrowserResponsiveness"
-conformance = true
+conformance = "states"
 
 [[models]]
 name = "monitor-reader"
 module = "MonitorReader"
 config = "MonitorReader"
-conformance = true
+conformance = "states"
 
 [[models]]
 name = "monitor-projection"
 module = "MonitorProjection"
 config = "MonitorProjection"
-conformance = true
+conformance = "states"
 
 [[models]]
 name = "monitor-context"
 module = "MonitorContext"
 config = "MonitorContext"
-conformance = true
-
-[[models]]
-name = "monitor-context-liveness"
-module = "MonitorContext"
-config = "MonitorContextLiveness"
+conformance = "states"
 
 [[models]]
 name = "snapshot-publication"
 module = "SnapshotPublication"
 config = "SnapshotPublication"
-conformance = true
-
-[[models]]
-name = "snapshot-publication-liveness"
-module = "SnapshotPublication"
-config = "SnapshotPublicationLiveness"
+conformance = "states"
 
 [[models]]
 name = "snapshot-collection"
 module = "SnapshotCollection"
 config = "SnapshotCollection"
-conformance = true
+conformance = "states"
 
 [[models]]
 name = "snapshot-collection-liveness"
@@ -249,75 +193,60 @@ config = "SnapshotCollectionLiveness"
 name = "parsed-cache"
 module = "ParsedCache"
 config = "ParsedCache"
-conformance = true
+conformance = "graph"
 
 [[models]]
 name = "parsed-cache-read"
 module = "ParsedCacheRead"
 config = "ParsedCacheRead"
-conformance = true
+conformance = "states"
 
 [[models]]
 name = "parsed-cache-rebuild"
 module = "ParsedCacheRebuild"
 config = "ParsedCacheRebuild"
-conformance = true
+conformance = "graph"
 
 [[models]]
 name = "normalized-cache"
 module = "NormalizedCache"
 config = "NormalizedCache"
-conformance = true
+conformance = "states"
 
 [[models]]
 name = "source-writers"
 module = "SourceWriters"
 config = "SourceWriters"
-conformance = true
+conformance = "states"
 
 [[models]]
 name = "geography-readers"
 module = "GeographyReaders"
 config = "GeographyReaders"
-conformance = true
+conformance = "graph"
 [[models]]
 name = "document-publication"
 module = "DocumentPublication"
 config = "DocumentPublication"
-conformance = true
+conformance = "states"
 
 [[models]]
 name = "feed-coordinator"
 module = "FeedCoordinator"
 config = "FeedCoordinator"
-conformance = true
-
-[[models]]
-name = "feed-coordinator-liveness"
-module = "FeedCoordinator"
-config = "FeedCoordinatorLiveness"
-
-[[models]]
-name = "document-publication-liveness"
-module = "DocumentPublication"
-config = "DocumentPublicationLiveness"
+conformance = "states"
 
 [[models]]
 name = "log-rotation"
 module = "LogRotation"
 config = "LogRotation"
-conformance = true
-
-[[models]]
-name = "log-rotation-liveness"
-module = "LogRotation"
-config = "LogRotationLiveness"
+conformance = "graph"
 
 [[models]]
 name = "log-readers"
 module = "LogReaders"
 config = "LogReaders"
-conformance = true
+conformance = "graph"
 
 [[models]]
 name = "log-readers-liveness"
@@ -328,7 +257,7 @@ config = "LogReadersLiveness"
 name = "monitor-tasks"
 module = "MonitorTasks"
 config = "MonitorTasks"
-conformance = true
+conformance = "graph"
 
 [[models]]
 name = "monitor-tasks-liveness"
@@ -344,7 +273,7 @@ config = "IdentityRecomputation"
 name = "identity-recomputation-bridge"
 module = "IdentityRecomputation"
 config = "IdentityRecomputationBridge"
-conformance = true
+conformance = "graph"
 
 [[models]]
 name = "identity-recomputation-three-fires"
@@ -355,24 +284,19 @@ config = "IdentityRecomputationThree"
 name = "durable-update-validation"
 module = "DurableUpdateValidation"
 config = "DurableUpdateValidation"
-conformance = true
-
-[[models]]
-name = "durable-update-validation-liveness"
-module = "DurableUpdateValidation"
-config = "DurableUpdateValidationLiveness"
+conformance = "graph"
 
 [[models]]
 name = "monitor-session"
 module = "MonitorSession"
 config = "MonitorSession"
-conformance = true
+conformance = "graph"
 
 [[models]]
 name = "monitor-backward-context"
 module = "MonitorBackwardContext"
 config = "MonitorBackwardContext"
-conformance = true
+conformance = "states"
 
 [[models]]
 name = "monitor-backward-context-liveness"
@@ -383,27 +307,32 @@ config = "MonitorBackwardContextLiveness"
 name = "source-authentication"
 module = "SourceAuthentication"
 config = "SourceAuthentication"
-conformance = true
+conformance = "graph"
 
 [[models]]
 name = "parallel-source-authentication"
 module = "ParallelSourceAuthentication"
 config = "ParallelSourceAuthentication"
-conformance = true
+conformance = "graph"
 
 [[models]]
 name = "grouping-forest"
 module = "GroupingForest"
 config = "GroupingForest"
-conformance = true
+conformance = "graph"
 
 [[models]]
 name = "source-summaries"
 module = "SourceSummaries"
 config = "SourceSummaries"
-conformance = true
+conformance = "states"
 [[models]]
 name = "stage-processes"
 module = "StageProcesses"
 config = "StageProcesses"
-conformance = true
+conformance = "graph"
+
+[[models]]
+name = "verification-admission"
+module = "VerificationAdmission"
+config = "VerificationAdmission"

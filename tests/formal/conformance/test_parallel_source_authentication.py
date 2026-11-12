@@ -15,7 +15,11 @@ def test_inventory_digests_matches_all_checked_parallel_authentication_transitio
         "ParallelSourceAuthentication",
         tmp_path / "tlc",
     )
-    histories = tests.formal.helpers.source_authentication.edge_histories(graph)
+    expected_edges = 3_404
+    assert sum(map(len, graph.outgoing.values())) == expected_edges
+    histories = tests.formal.helpers.source_authentication.maximal_edge_histories(graph)
+    expected_histories = 2_197
+    assert len(histories) == expected_histories
     observed = set()
     for index, history in enumerate(histories):
         observed.update(
@@ -25,7 +29,6 @@ def test_inventory_digests_matches_all_checked_parallel_authentication_transitio
                 tmp_path / f"replay-{index}",
             ),
         )
-    assert len(histories) == sum(map(len, graph.outgoing.values()))
     assert observed == {
         "read",
         "failure",

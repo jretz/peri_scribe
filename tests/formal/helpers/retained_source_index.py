@@ -111,7 +111,7 @@ def compare_histories(*, mixed_tags: bool) -> int:
         ],
         executable="oraclePresentationFlow",
     )
-    closures = tests.formal.helpers.oracle.evaluate(
+    closures = tests.formal.helpers.oracle.evaluate_distinct(
         [
             " ".join([
                 "affected",

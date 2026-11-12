@@ -456,7 +456,7 @@ def run_browser(cases: list[list[dict[str, object]]]) -> int:
     node = shutil.which("node")
     assert node is not None, "Run mise formal-conformance to provide Node"
     result = tests.formal.helpers.process.run(
-        [node, str(pathlib.Path(__file__).with_suffix(".mjs"))],
+        [node, "--single-threaded", str(pathlib.Path(__file__).with_suffix(".mjs"))],
         standard_input=json.dumps(cases),
     )
     assert result.returncode == 0, result.stdout + result.stderr

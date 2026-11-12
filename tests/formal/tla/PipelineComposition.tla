@@ -151,15 +151,41 @@ NextInvocation ==
                    threshold, current, inputs, previous, deferredBefore, executed,
                    stageForces, failures, failedAt>>
 
-Progress == (\E start, finish \in 0..4, gate, force, change, qualifies \in BOOLEAN:
-               /\ (change => start = 0 /\ durable.source = 0)
-               /\ (qualifies => gate /\ start = 0)
-               /\ Begin(start, finish, gate, force, change, qualifies))
+Progress == (/\ phase = "idle"
+             /\ IF invocation >= ExploratoryInvocations
+                  THEN Begin(0, 4, FALSE, FALSE, FALSE, FALSE)
+                  ELSE \E start \in 0..4:
+                       \E finish \in start..4, gate, force \in BOOLEAN:
+                       \E change \in IF start = 0 /\ durable.source = 0
+                                      THEN BOOLEAN ELSE {FALSE},
+                          qualifies \in IF gate /\ start = 0
+                                        THEN BOOLEAN ELSE {FALSE}:
+                           Begin(start, finish, gate, force, change, qualifies))
             \/ StartFetch \/ ConsumeDeferred \/ Fetch \/ FinishFetch \/ Execute
             \/ Commit \/ Invalidate \/ Acknowledge \/ NextInvocation
 Next == Progress \/ Crash
 Spec == Init /\ [][Next]_variables
 LiveSpec == Spec /\ WF_variables(Progress)
+
+FinalInvocationDone == phase = "done" /\ invocation = ExploratoryInvocations + 1
+
+\* Each invocation has room for every stage and its internal persistence boundaries.
+\* Gated fetch consumes deferred intent after writing, while ungated fetch does it before.
+PhasePosition ==
+    CASE phase = "idle" -> 61
+      [] phase = "done" -> 60
+      [] OTHER -> 10 * current + (
+           CASE phase = "stage" -> 0
+             [] phase = "fetch consume" -> IF gated THEN 3 ELSE 1
+             [] phase = "fetch write" -> IF gated THEN 1 ELSE 2
+             [] phase = "fetch decide" -> IF gated THEN 2 ELSE 3
+             [] phase = "commit publication" -> 1
+             [] phase = "invalidate publication" -> 2
+             [] phase = "acknowledge" -> 4)
+Rank == 64 * (ExploratoryInvocations + 1 - invocation) + (63 - PhasePosition)
+RankIsNatural == Rank \in Nat
+RankDecreases == [][Rank' < Rank]_variables
+ProgressAvailable == ~FinalInvocationDone => ENABLED <<Progress>>_variables
 
 TypeOK == /\ durable.pending \in States /\ durable.source \in 0..1
           /\ durable.outputs \in [DerivedStages -> 0..1]
@@ -181,8 +207,8 @@ InheritedForceReachesRequiredStage == \A index \in DOMAIN executed:
     executed[index] \in Members(before.pending.remaining) => stageForces[index]
 DeferredConsumptionIsProtected == action = "consume deferred" =>
     durable.pending.remaining = StageOrder
-FinalRecovery == phase = "done" /\ invocation = ExploratoryInvocations + 1 =>
+FinalRecovery == FinalInvocationDone =>
     durable.pending = EmptyState /\ ~durable.deferred /\
     \A stage \in DerivedStages: durable.outputs[stage] = durable.source
-EventuallyRecovered == <>(phase = "done" /\ invocation = ExploratoryInvocations + 1)
+EventuallyRecovered == <>FinalInvocationDone
 =============================================================================

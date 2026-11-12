@@ -110,5 +110,24 @@ SuccessfulIndexIncludesEverySnapshot == indexAttempted /\ ~indexFailure =>
 OrdinaryFailuresDoNotCancel == cancel => \E feed \in Feeds: result[feed] = "fatal"
 NoHiddenFailure == phase = "done" =>
     \A feed \in Feeds: result[feed] \in {"change", "same"}
-EventuallySettled == <> (phase \in {"done", "failed", "crashed"})
+Settled == phase \in {"done", "failed", "crashed"}
+EventuallySettled == <> Settled
+
+PhaseRank == CASE phase = "mark" -> 5
+               [] phase = "collect" -> 4
+               [] phase = "index" -> 3
+               [] phase = "ack" -> 2
+               [] phase = "restore" -> 1
+               [] OTHER -> 0
+\* Waiting workers have two steps left and running workers have one.
+\* Cancellation spends its own bit even when no waiting worker remains.
+Rank == PhaseRank + 2 * Cardinality({feed \in Feeds: worker[feed] = "waiting"})
+                  + Cardinality({feed \in Feeds: worker[feed] = "running"})
+                  + (IF cancel THEN 0 ELSE 1)
+RankIsNatural == Rank \in Nat
+RankDecreases == [][Rank' < Rank]_variables
+FairProgress == Mark \/ Cancel \/ Join \/ Index \/ Ack \/ Restore
+                \/ \E feed \in Feeds: Start(feed) \/ Finish(feed)
+\* The witness must be both individually fair and admitted by the checked relation.
+ProgressAvailable == ~Settled => ENABLED <<FairProgress /\ Next>>_variables
 =============================================================================

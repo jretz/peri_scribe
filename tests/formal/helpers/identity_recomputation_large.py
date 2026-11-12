@@ -177,10 +177,10 @@ class Execution:
         return tuple(sorted(self.ownership.owners))
 
     def command(self, count: int) -> str:
-        """Run complete resolve, learn, acknowledge, and repeated resolution in Lean.
+        """Run initial resolution and every requested feedback cycle in Lean.
 
         Args:
-            count: Number of already acknowledged feedback cycles.
+            count: Number of feedback cycles after the first acknowledgment.
 
         Returns:
             The raw input protocol; no production decision is used as a claim or owner.
@@ -293,6 +293,28 @@ class Execution:
         return tuple(values)
 
 
+def decode_observations(response: tuple[int, ...]) -> list[tuple[int, ...]]:
+    """Recover every length-delimited feedback observation in execution order.
+
+    Args:
+        response: One complete Lean response for an initial state and its retries.
+
+    Returns:
+        Exactly one complete observation per concrete resolution cycle.
+    """
+    observations = []
+    offset = 0
+    for _ in range(REPETITIONS + 1):
+        assert offset < len(response)
+        length = response[offset]
+        offset += 1
+        assert 0 <= length <= len(response) - offset
+        observations.append(response[offset : offset + length])
+        offset += length
+    assert offset == len(response)
+    return observations
+
+
 def check_sequences(directory: pathlib.Path, mode: str, seed: int) -> int:
     """Persist and recompute larger actual checkpoints against complete Lean executions.
 
@@ -326,6 +348,7 @@ def check_sequences(directory: pathlib.Path, mode: str, seed: int) -> int:
             claims=expected[0],
             ownership=ownership,
         )
+        commands.append(execution.command(REPETITIONS))
         baseline = None
         case_directory = directory / str(index)
         for count in range(REPETITIONS + 1):
@@ -343,7 +366,6 @@ def check_sequences(directory: pathlib.Path, mode: str, seed: int) -> int:
                 case.signatures,
                 case.sources,
             )
-            commands.append(execution.command(count))
             outputs.append(execution.observed(ownership, acknowledged))
             if baseline is None:
                 baseline = acknowledged
@@ -373,7 +395,12 @@ def check_sequences(directory: pathlib.Path, mode: str, seed: int) -> int:
         commands,
         executable="oracleIdentityRecomputation",
     )
-    for index, (actual, expected) in enumerate(zip(outputs, answers, strict=True)):
+    expected_outputs = [
+        output for answer in answers for output in decode_observations(answer)
+    ]
+    for index, (actual, expected) in enumerate(
+        zip(outputs, expected_outputs, strict=True),
+    ):
         assert actual == expected, (
             index,
             "complete ownership feedback diverged",

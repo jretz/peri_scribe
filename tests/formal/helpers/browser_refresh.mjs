@@ -61,8 +61,14 @@ async function replay(state, prefix) {
 }
 
 const states = JSON.parse(fs.readFileSync(0, "utf8"));
+let checked = 0;
 for (const state of states) {
   await replay(state, "");
-  await replay(state, "W/");
+  checked += 1;
+  // Without an ETag, both prefixes produce the same request and response headers.
+  if (state.kind !== "none") {
+    await replay(state, "W/");
+    checked += 1;
+  }
 }
-process.stdout.write(JSON.stringify({checked: states.length * 2}) + "\n");
+process.stdout.write(JSON.stringify({checked}) + "\n");

@@ -67,15 +67,39 @@ unbounded refinement proof of Python, a proof that unobserved fields are irrelev
 a guarantee that every possible thread schedule was exercised. Projection mappings and
 the classification of internal/environment steps remain reviewable parts of the bridge.
 
+Geography-reader replay uses plain console tracebacks for its expected error cases.
+The scoped formatter preserves structured events, exception types, messages and chains,
+and restores the active renderer after replay. Native reader, file, mutation and TLC
+observations are unchanged. Ordinary logging tests retain Rich formatting coverage.
+
+## Equal requests in finite conformance tests
+
+The incremental-collection test keeps every independent Lean response and every
+source-field, geometry, timestamp and selection assertion. It executes each equal
+ordered stored/current source request once, then shares frozen rows. Missing source
+features, no changes and an empty returned frame remain different outcomes. Each new
+request still uses its own real SQLite selector and ArcGIS feature conversion.
+
+The temporal complex-ownership test shares only equal complete evidence histories.
+Reversed and duplicated histories keep their original order and multiplicity. Its
+completed production graph contains frozen records, fires and complexes; this fixture
+has no mutable source or geometry cache. Every variant still runs the original
+projection, including member-set and object-identity checks on complex back-links.
+
+Both caches belong to one test call, retain actual production observations, and leave
+the independent Lean oracle authoritative. They do not apply to native transaction
+schedules, durable writes, process-death tests or deliberate-defect interpreters.
+
 ## Actual process death and fresh recovery
 
 `helpers/crash_worker.py` runs real production writers inside isolated subprocesses.
 Each fresh interpreter imports only its selected family from `helpers/crash_workers/`,
 so SQLite and rotation checks avoid loading unrelated builder and pipeline dependencies.
-`helpers/process_crashes.py` starts a separate interpreter to seed a prior generation, a
-second interpreter that dies at the selected operation, and a third that recovers the
-same files. It verifies distinct process IDs and the exact exit status. Half the cases
-use `os._exit(91)` and half send the worker `SIGKILL`.
+`helpers/process_crashes.py` starts a separate interpreter to seed each initial
+generation. Every scenario extends a private copy with its own interpreter that dies
+at the selected operation and a fresh interpreter that recovers the same files. It
+verifies distinct process IDs and the exact exit status. Half the cases use
+`os._exit(91)` and half send the worker `SIGKILL`.
 
 An `atexit` handler and an enclosing `finally` would each leave a sentinel if they ran.
 Both must remain absent. Ordinary exceptions, missing fault injection, assertion errors,
@@ -83,30 +107,34 @@ and successful child returns cannot count as process-crash evidence. Worker time
 also fail the check. All application files, SQLite databases, abandoned private staging,
 and harness evidence live in each test's temporary directory.
 
-The curated matrix contains 36 crashes and 108 separate interpreter executions:
+The curated matrix contains 38 hard process interruptions.
 
 | Area | Cases | Interruption and recovery |
 | --- | ---: | --- |
 | Fetch recovery requirements | 8 | Before/after pending-marker replacement, after fire-source persistence, and after evacuation persistence, with each boundary using both termination methods |
-| Builder and update journal | 14 | Before/after KMZ replacement, publication checkpoint, pending journal, atomic log append, mapping checkpoint, journal removal, and viewer replacement |
+| KMZ and update publication | 14 | Before/after KMZ replacement, publication checkpoint, pending journal, atomic log append, mapping checkpoint, journal removal, and viewer replacement |
+| Complete KMZ builder | 2 | Before/after viewer replacement through the builder that prepares the archive and viewer |
 | Diagnostic rotation | 8 | Before/after receipt publication, archive replacement, source removal, and receipt retirement, starting with an existing archive and repeated diagnostic occurrences |
 | SQLite product generation | 6 | After each of two payload statements, after manifest publication, after pruning, and immediately before/after transaction commit |
 
-All 36 scenarios are separate parametrized pytest items, allowing workers to schedule
-them independently. Each scenario's seed, crash, and recovery interpreters still run
-sequentially over the same private files. The checked model corpus is shared as immutable
-data within one pytest run and published only after TLC completes successfully; session
-fixtures prepare each worker's contracts once. No checked results carry over from a
-previous run, and no application state is shared between scenarios.
+All 38 scenarios are separate parametrized pytest items, allowing workers to schedule
+them independently. Each crash interpreter finishes before the recovery interpreter
+opens the same private files. Workers share immutable checked model data for the current
+pytest run after TLC completes successfully. Session fixtures prepare each worker's
+contracts once, and each scenario owns its application state.
 
-Fetch subprocesses retain real coordinator, marker, and locking code; only external
-source work is replaced with isolated persisted revisions. The unchanged retry uses the
-surviving files to decide truthfully whether another revision was written. Builder
-subprocesses reuse the existing controlled input geometry/rendering fixture and retain
-the real KMZ, JSON, journal, log, checkpoint, and viewer persistence stack. Rotation
-subprocesses acquire the actual directory `.rotation.lock`; builder and fetch workers
-acquire the actual year lock. Fresh recovery must reacquire those locks after the
-previous process dies.
+Fetch subprocesses call the same ungated coordinator as the pipeline. The worker loads
+the recovery code and supplies isolated persisted revisions at the source boundaries.
+The unchanged retry uses the surviving files to decide whether another revision was
+written. The hard KMZ publication
+matrix and the complete builder call the same native archive, checkpoint, journal, log,
+and viewer sequence. The matrix shares immutable input bytes prepared by the real
+builder in the current test session. A worker recovers pending work and reads its own
+authoritative state before selecting the exact fixture inputs for that generation.
+Each test still observes the actual replacements and removals, including failures
+before and after the viewer replacement. Rotation workers acquire the actual directory
+`.rotation.lock`, and the KMZ and fetch workers acquire the actual year lock. Fresh
+recovery must reacquire those locks after the previous process dies.
 
 For fetch, builder, and rotation, observations emitted on both sides of durable
 operations are checked as one continuous abstract path across all three interpreters,

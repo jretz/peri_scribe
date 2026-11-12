@@ -5,4 +5,5 @@ pytest_plugins = [
     "tests.formal.helpers.fixtures.defects",
     "tests.formal.helpers.fixtures.pipeline_composition",
     "tests.formal.helpers.fixtures.process_crashes",
+    "tests.helpers.fixtures.peri_scribe.fire_updates",
 ]

@@ -9,15 +9,17 @@ from __future__ import annotations
 import datetime
 import enum
 import functools
+import importlib
 import struct
+import sys
+import types
 import typing
 
-import numpy as np
-import pandas as pd
-import pint
-import shapely
 
-from measurement_units import units
+if typing.TYPE_CHECKING:
+    import numpy as np
+    import pandas as pd
+    import pint
 
 
 MAGIC = b"PSCV\x02"
@@ -44,6 +46,19 @@ TAGS = {
     "numpy": 18,
     "geometry": 19,
 }
+
+
+@functools.cache
+def scalar_library(name: str) -> types.ModuleType:
+    """Initialize a scientific scalar library when its codec needs it.
+
+    Args:
+        name: The module selected by the codec's fixed dispatch rules.
+
+    Returns:
+        The loaded library, reused for later scalar operations.
+    """
+    return importlib.import_module(name)
 
 
 def dumps(value: object) -> bytes:
@@ -91,7 +106,18 @@ def append_children(
     HEADER.pack_into(output, start, TAGS[kind], len(output) - start - HEADER.size)
 
 
-NATIVE_TYPES = frozenset({bool, int, float, str, bytes, tuple, list, frozenset, dict})
+NATIVE_TYPES = frozenset({
+    types.NoneType,
+    bool,
+    int,
+    float,
+    str,
+    bytes,
+    tuple,
+    list,
+    frozenset,
+    dict,
+})
 
 
 def write(value: object, output: bytearray) -> None:
@@ -121,14 +147,12 @@ def write_special(value: object, output: bytearray) -> None:
     Raises:
         ValueError: When NumPy storage could contain executable object references.
     """
-    if value is None or value is pd.NA or value is pd.NaT:
-        kind = (
-            "none" if value is None else "missing" if value is pd.NA else "not_a_time"
-        )
-        append_scalar(kind, b"", output)
+    pd = scalar_library("pandas")
+    if value is pd.NA or value is pd.NaT:
+        append_scalar("missing" if value is pd.NA else "not_a_time", b"", output)
     elif isinstance(value, enum.Enum):
         append_children("enum", (type_name(type(value)), value.value), output)
-    elif isinstance(value, pint.Quantity):
+    elif isinstance(value, scalar_library("pint").Quantity):
         append_children("quantity", (value.magnitude, str(value.units)), output)
     elif isinstance(value, datetime.datetime):
         append_children(
@@ -147,13 +171,13 @@ def write_special(value: object, output: bytearray) -> None:
                 (value.days, value.seconds, value.microseconds),
                 output,
             )
-    elif isinstance(value, np.generic):
+    elif isinstance(value, scalar_library("numpy").generic):
         if value.dtype.hasobject or value.dtype.fields is not None:
             message = "Object and structured NumPy scalars are not cache values"
             raise ValueError(message)
         append_children("numpy", (value.dtype.str, value.tobytes()), output)
-    elif isinstance(value, shapely.Geometry):
-        append_scalar("geometry", shapely.to_wkb(value, include_srid=True), output)
+    elif isinstance(value, (geometry := scalar_library("shapely")).Geometry):
+        append_scalar("geometry", geometry.to_wkb(value, include_srid=True), output)
     else:
         write_builtin(value, output)
 
@@ -186,6 +210,8 @@ def write_builtin(value: object, output: bytearray) -> None:
             (child for pair in value.items() for child in pair),
             output,
         )
+    elif value is None:
+        append_scalar("none", b"", output)
     else:
         unsupported(value)
 
@@ -246,8 +272,9 @@ def loads(payload: bytes, *, enums: tuple[type[enum.Enum], ...] = ()) -> object:
         IndexError,
         OverflowError,
         struct.error,
-        pint.errors.PintError,
-        shapely.errors.GEOSException,
+        # A missing or partially loaded library contributes no new exception class.
+        getattr(sys.modules.get("pint.errors"), "PintError", struct.error),
+        getattr(sys.modules.get("shapely.errors"), "GEOSException", struct.error),
     ) as error:
         message = "Invalid cache value"
         raise ValueError(message) from error
@@ -299,14 +326,17 @@ def read_float(payload: bytes) -> float:
 
 LEAF_READERS: dict[int, typing.Callable[[bytes], object]] = {
     TAGS["none"]: functools.partial(read_missing, value=None),
-    TAGS["missing"]: functools.partial(read_missing, value=pd.NA),
-    TAGS["not_a_time"]: functools.partial(read_missing, value=pd.NaT),
+    TAGS["missing"]: lambda payload: read_missing(payload, scalar_library("pandas").NA),
+    TAGS["not_a_time"]: lambda payload: read_missing(
+        payload,
+        scalar_library("pandas").NaT,
+    ),
     TAGS["bool"]: read_bool,
     TAGS["int"]: int,
     TAGS["float"]: read_float,
     TAGS["str"]: bytes.decode,
     TAGS["bytes"]: bytes,
-    TAGS["geometry"]: shapely.from_wkb,
+    TAGS["geometry"]: lambda payload: scalar_library("shapely").from_wkb(payload),
 }
 
 
@@ -420,13 +450,15 @@ def construct_numpy(tag: int, children: list[object]) -> object:
         ValueError: When this is not a supported NumPy scalar shape.
     """
     match tag, children:
-        case 17, [np.timedelta64() as duration]:
-            return pd.Timedelta(duration)
+        case 17, [duration] if isinstance(
+            duration,
+            scalar_library("numpy").timedelta64,
+        ):
+            return scalar_library("pandas").Timedelta(duration)
         case 18, [str(dtype), bytes(content)]:
             return numpy_scalar(dtype, content)
-        case _:
-            message = "Unsupported or invalid cache value"
-            raise ValueError(message)
+    message = "Unsupported or invalid cache value"
+    raise ValueError(message)
 
 
 def timestamp(instant: str, fold: int, unit: str) -> pd.Timestamp:
@@ -443,6 +475,7 @@ def timestamp(instant: str, fold: int, unit: str) -> pd.Timestamp:
     Raises:
         TypeError: When the instant names a missing sentinel instead of a timestamp.
     """
+    pd = scalar_library("pandas")
     value = pd.Timestamp(instant)
     if not isinstance(value, pd.Timestamp):
         message = "A cached timestamp cannot contain a missing value"
@@ -465,6 +498,7 @@ def numpy_scalar(dtype: str, payload: bytes) -> np.generic:
     Raises:
         ValueError: When the dtype or buffer does not identify one safe scalar.
     """
+    np = scalar_library("numpy")
     scalar_type = np.dtype(dtype)
     if scalar_type.hasobject or scalar_type.fields is not None:
         message = "Unsafe NumPy cache dtype"
@@ -489,7 +523,8 @@ def quantity(magnitude: object, unit: str) -> pint.Quantity:
     Raises:
         TypeError: When the magnitude is not a supported numeric scalar.
     """
+    np = scalar_library("numpy")
     if not isinstance(magnitude, (int, float, np.integer, np.floating)):
         message = "A cached quantity requires a numeric scalar"
         raise TypeError(message)
-    return units.Quantity(magnitude, unit)
+    return scalar_library("measurement_units").units.Quantity(magnitude, unit)

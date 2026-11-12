@@ -17,6 +17,9 @@ import tests.helpers.factories.peri_scribe.fire_updates_ownership
 from measurement_units import units
 
 
+pytestmark = pytest.mark.usefixtures("reuse_update_previews")
+
+
 @pytest.mark.parametrize("reverse_order", [False, True])
 def test_prepare_updates_keeps_new_namesakes_separate_from_enriched_history(
     tmp_path: pathlib.Path,

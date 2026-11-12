@@ -4,7 +4,6 @@ import dataclasses
 import enum
 import io
 import pathlib
-import typing
 
 import requests
 
@@ -13,11 +12,8 @@ import peri_scribe.sources.catalog
 import peri_scribe.sources.cities
 import tests.formal.helpers.paths
 import tests.formal.helpers.tlc
+import tests.helpers.doubles.attribute_overrides
 import tests.helpers.factories.peri_scribe.sources.cities
-
-
-if typing.TYPE_CHECKING:
-    import pytest
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -112,7 +108,7 @@ def contract(
 def replay(
     graph: tests.formal.helpers.tlc.Graph,
     directory: pathlib.Path,
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: tests.helpers.doubles.attribute_overrides.AttributePatch,
     *,
     existing: str,
     validators: str,
@@ -180,7 +176,7 @@ def replay(
 def configure_transport(
     observer: Observer,
     scenario: Scenario,
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: tests.helpers.doubles.attribute_overrides.AttributePatch,
 ) -> None:
     """Keep upstream response selection separate from the real persistence operations.
 
@@ -257,7 +253,7 @@ def configure_transport(
 def configure_storage(
     observer: Observer,
     scenario: Scenario,
-    monkeypatch: pytest.MonkeyPatch,
+    monkeypatch: tests.helpers.doubles.attribute_overrides.AttributePatch,
 ) -> None:
     """Inject failures around actual conversion, validation, and replacement.
 

@@ -1,7 +1,6 @@
 """Real cursor handles replay complete TLC traces without record loss or repetition."""
 
 import pathlib
-import tempfile
 
 import tests.formal.helpers.corpus
 import tests.formal.helpers.observers
@@ -14,12 +13,38 @@ def test_follower_poll_refines_tlc_cursor_traces(tmp_path: pathlib.Path) -> None
         tmp_path,
     )
     assert len(states) == tests.formal.helpers.observers.CURSOR_STATE_COUNT
-    traces = {
-        tuple(tests.formal.helpers.observers.sequence(state["trace"]))
+    expected = {
+        tuple(tests.formal.helpers.observers.sequence(state["trace"])): tuple(
+            tests.formal.helpers.observers.sequence(state["delivered"]),
+        )
         for state in states
     }
-    assert ("partial", "poll", "truncate", "poll", "write", "poll") in traces
-    assert ("write", "poll", "partial", "truncate", "poll", "write", "poll") in traces
-    for state in states:
-        with tempfile.TemporaryDirectory(dir=tmp_path) as directory:
-            tests.formal.helpers.observers.replay_reader(state, pathlib.Path(directory))
+    assert len(expected) == len(states)
+    assert ("partial", "poll", "truncate", "poll", "write", "poll") in expected
+    assert ("write", "poll", "partial", "truncate", "poll", "write", "poll") in expected
+    parents = {trace[:-1] for trace in expected if trace}
+    assert parents <= expected.keys()
+    checked: set[tests.formal.helpers.observers.ReaderTrace] = set()
+    terminal_shapes = set()
+    directory = tmp_path / "reader"
+    directory.mkdir()
+    for trace in expected:
+        if trace in parents:
+            continue
+        terminal_shapes.add(
+            tests.formal.helpers.observers.replay_reader(
+                trace,
+                expected,
+                checked,
+                directory,
+            ),
+        )
+        for path in directory.iterdir():
+            path.unlink()
+    assert checked == expected.keys()
+    assert terminal_shapes == {
+        (False, False),
+        (False, True),
+        (True, False),
+        (True, True),
+    }

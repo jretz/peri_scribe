@@ -1,6 +1,7 @@
 """Replay checked collection outcomes through the real asyncio and pipeline control."""
 
 import asyncio
+import collections.abc
 import dataclasses
 import datetime
 import pathlib
@@ -67,7 +68,7 @@ def integer_set(value: str) -> frozenset[int]:
     return frozenset(map(int, re.findall(r"\d+", value)))
 
 
-def cases(states: list[dict[str, str]]) -> dict[Case, set[Outcome]]:
+def cases(states: collections.abc.Iterable[dict[str, str]]) -> dict[Case, set[Outcome]]:
     """Retain every legal final outcome for each checked input configuration.
 
     Args:
@@ -232,18 +233,53 @@ class CollectionProbe:
             stop_after_collection,
         )
 
-    def run(self) -> Outcome:
-        """Execute a complete ungated invocation or the gated collection boundary.
-
-        Returns:
-            Durable output compared with checked reachable states.
-        """
+    def prepare(self) -> None:
+        """Create the native initial state before invoking the production facade."""
         self.directory.mkdir(parents=True)
         if self.case.prior:
             peri_scribe.pipeline_state.require_stages(
                 self.directory,
                 (peri_scribe.pipeline_stages.Stage.REPORTS,),
             )
+
+    def check_collection(self) -> None:
+        """Observe worker completion and saved files independently of policy output."""
+        assert not self.active
+        assert self.finished == self.started
+        assert self.peak <= CAPACITY
+        assert (
+            frozenset(
+                int(path.stem) for path in (self.directory / "sources").glob("*.gpkg")
+            )
+            == self.saved
+        )
+
+    def pending(self) -> bool:
+        """Read the actual pending and deferred markers after collection.
+
+        Returns:
+            Whether the next invocation still has a recovery obligation.
+        """
+        return bool(
+            peri_scribe.pipeline_state.read_state(self.directory).remaining
+            or peri_scribe.pipeline_state.deferred_inputs_path(self.directory).exists(),
+        )
+
+    def acknowledged(self) -> bool:
+        """Observe native cadence acknowledgment after the pipeline has returned.
+
+        Returns:
+            Whether successful full collection wrote a cadence checkpoint.
+        """
+        return peri_scribe.sources.full_fetch_state.state_path(self.directory).exists()
+
+    def run(self) -> Outcome:
+        """Execute a complete ungated invocation or the gated collection boundary.
+
+        Returns:
+            Durable output compared with checked reachable states.
+        """
+        self.prepare()
         threshold = (
             peri_scribe.publication.Threshold(
                 area=1 * units.acre,
@@ -268,27 +304,12 @@ class CollectionProbe:
                 assert self.case.deferred
             except ExceptionGroup, OSError, SystemExit:
                 phase = "failed"
-        assert not self.active
-        assert self.finished == self.started
-        assert self.peak <= CAPACITY
-        assert (
-            frozenset(
-                int(path.stem) for path in (self.directory / "sources").glob("*.gpkg")
-            )
-            == self.saved
-        )
+        self.check_collection()
         return Outcome(
             snapshots=frozenset(self.saved),
             indexed=self.indexed,
-            pending=bool(
-                peri_scribe.pipeline_state.read_state(self.directory).remaining
-                or peri_scribe.pipeline_state.deferred_inputs_path(
-                    self.directory,
-                ).exists(),
-            ),
-            acknowledged=peri_scribe.sources.full_fetch_state.state_path(
-                self.directory,
-            ).exists(),
+            pending=self.pending(),
+            acknowledged=self.acknowledged(),
             attempted=self.attempted,
             phase=phase,
         )
@@ -310,17 +331,19 @@ def stop_after_collection(
     raise CollectionBoundary
 
 
-def replay(states: list[dict[str, str]], directory: pathlib.Path) -> int:
+def replay(
+    checked: collections.abc.Mapping[Case, collections.abc.Set[Outcome]],
+    directory: pathlib.Path,
+) -> int:
     """Run every checked input combination against the actual collection coordinator.
 
     Args:
-        states: All reachable checked TLC states.
+        checked: Every permitted outcome for each checked input combination.
         directory: Isolated tree for persistent pipeline state.
 
     Returns:
         Number of exercised input combinations.
     """
-    checked = cases(states)
     for number, (case, expected) in enumerate(checked.items()):
         probe = CollectionProbe(
             case=case,
@@ -409,17 +432,19 @@ class CancelledSibling(CollectionProbe):
         patch.setattr(peri_scribe.sources.fetching, "collect_one_feed", track)
 
 
-def replay_cancellation(states: list[dict[str, str]], directory: pathlib.Path) -> int:
+def replay_cancellation(
+    checked: collections.abc.Mapping[Case, collections.abc.Set[Outcome]],
+    directory: pathlib.Path,
+) -> int:
     """Require actual late sibling writes to remain within checked final outcomes.
 
     Args:
-        states: All reachable checked TLC states.
+        checked: Every permitted outcome for each checked input combination.
         directory: Isolated run trees.
 
     Returns:
         Number of deliberately forced cancellation interleavings.
     """
-    checked = cases(states)
     selected = {
         case: expected
         for case, expected in checked.items()

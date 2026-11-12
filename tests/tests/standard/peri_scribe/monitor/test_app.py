@@ -22,6 +22,7 @@ import tests.helpers.doubles.peri_scribe.monitor.app
 import tests.helpers.doubles.peri_scribe.monitor.synchronization
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.fixtures.peri_scribe.monitor.application
+import tests.helpers.fixtures.peri_scribe.monitor.presentation
 import tests.helpers.textual
 
 
@@ -118,29 +119,29 @@ async def test_monitor_app_selects_started_source_branch(
 
 @pytest.mark.asyncio
 async def test_monitor_app_pause_keeps_collecting(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    component_monitor: tests.helpers.fixtures.peri_scribe.monitor.presentation.Session,
 ) -> None:
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
-        monitor_session.directory,
+        component_monitor.directory,
         tests.helpers.factories.peri_scribe.monitor.events.record(
             "Starting command",
             command="run",
         ),
     )
-    await monitor_session.app.refresh_files()
-    await tests.helpers.textual.invoke(monitor_session.app.action_toggle_follow)
-    visible = monitor_session.app.visible_state
+    await component_monitor.app.refresh_files()
+    await tests.helpers.textual.invoke(component_monitor.app.action_toggle_follow)
+    visible = component_monitor.app.visible_state
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
-        monitor_session.directory,
+        component_monitor.directory,
         tests.helpers.factories.peri_scribe.monitor.events.record("New event"),
     )
-    await monitor_session.app.refresh_files()
-    assert monitor_session.app.visible_state is visible
-    assert monitor_session.app.controller.snapshot.records.sequence > visible.sequence
-    await tests.helpers.textual.invoke(monitor_session.app.action_toggle_follow)
+    await component_monitor.app.refresh_files()
+    assert component_monitor.app.visible_state is visible
+    assert component_monitor.app.controller.snapshot.records.sequence > visible.sequence
+    await tests.helpers.textual.invoke(component_monitor.app.action_toggle_follow)
     assert (
-        monitor_session.app.visible_state
-        is monitor_session.app.controller.snapshot.records
+        component_monitor.app.visible_state
+        is component_monitor.app.controller.snapshot.records
     )
 
 
@@ -186,10 +187,14 @@ async def test_monitor_app_filters_and_inspects_events(
     assert stream.query_one(textual.widgets.Input).value == ""
 
 
-@pytest.mark.asyncio
-async def test_monitor_app_report_uses_current_file_and_mtime(
+async def assert_report_uses_current_file_and_mtime(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
+    """Check linked Markdown and its filesystem observation in the actual viewer.
+
+    Args:
+        monitor_session: The mounted monitor at the scenario boundary.
+    """
     path = monitor_session.app.report_path
     path.write_text("# Fires\n\n[Jump](#moonshine)\n\n## Moonshine\n\nDetails")
     await monitor_session.app.refresh_files()
@@ -211,11 +216,16 @@ async def test_monitor_app_report_uses_current_file_and_mtime(
     )
 
 
-@pytest.mark.asyncio
-async def test_monitor_app_prepares_report_before_its_tab_is_selected(
+async def assert_prepares_report_before_its_tab_is_selected(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Keep hidden report replacements ahead of the first native Report tab visit.
+
+    Args:
+        monitor_session: The mounted monitor at the scenario boundary.
+        monkeypatch: Restores scenario-local observation wrappers.
+    """
     session = monitor_session
     read = unittest.mock.Mock(wraps=peri_scribe.monitor.storage.read_report)
     monkeypatch.setattr(peri_scribe.monitor.storage, "read_report", read)
@@ -236,10 +246,14 @@ async def test_monitor_app_prepares_report_before_its_tab_is_selected(
     assert update.await_args_list == expected_updates
 
 
-@pytest.mark.asyncio
-async def test_monitor_app_refreshes_replaced_report_while_paused(
+async def assert_refreshes_replaced_report_while_paused(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
+    """Read an atomic report publication while record browsing remains paused.
+
+    Args:
+        monitor_session: The mounted monitor at the scenario boundary.
+    """
     await tests.helpers.textual.invoke(monitor_session.app.action_toggle_follow)
     path = monitor_session.app.report_path
     path.write_text("# Original")
@@ -251,13 +265,18 @@ async def test_monitor_app_refreshes_replaced_report_while_paused(
     assert monitor_session.app.controller.snapshot.report.content == "# Replacement"
 
 
-@pytest.mark.parametrize("tab", ["1", "2", "3", "4"])
-@pytest.mark.asyncio
-async def test_monitor_app_refreshes_report_while_another_tab_is_selected(
+async def assert_refreshes_report_while_another_tab_is_selected(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
     tab: str,
 ) -> None:
+    """Observe one hidden report read and document update during native navigation.
+
+    Args:
+        monitor_session: The mounted monitor at the scenario boundary.
+        monkeypatch: Restores scenario-local observation wrappers.
+        tab: The native tab or its keyboard shortcut.
+    """
     session = monitor_session
     session.app.report_path.write_text("# Original")
     await session.show_view("report")
@@ -277,11 +296,16 @@ async def test_monitor_app_refreshes_report_while_another_tab_is_selected(
     update.assert_awaited_once()
 
 
-@pytest.mark.asyncio
-async def test_monitor_app_retains_report_preparation_after_leaving_its_tab(
+async def assert_retains_report_preparation_after_leaving_its_tab(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Keep a completed report update when its reader navigates away from Report.
+
+    Args:
+        monitor_session: The mounted monitor at the scenario boundary.
+        monkeypatch: Restores scenario-local observation wrappers.
+    """
     session = monitor_session
     session.app.report_path.write_text("# Original")
     await session.show_view("report")
@@ -392,10 +416,10 @@ async def test_monitor_app_loads_older_month_on_request(
 
 @pytest.mark.asyncio
 async def test_monitor_app_preserves_live_events_arriving_during_archive_loading(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    component_monitor: tests.helpers.fixtures.peri_scribe.monitor.presentation.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session = monitor_session
+    session = component_monitor
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
         session.directory,
         tests.helpers.factories.peri_scribe.monitor.events.record(
@@ -430,10 +454,8 @@ async def test_monitor_app_preserves_live_events_arriving_during_archive_loading
     with tests.helpers.doubles.peri_scribe.monitor.synchronization.release_on_exit(
         release,
     ):
-        await tests.helpers.textual.invoke(
-            session.app.call_later,
-            session.app.load_older,
-        )
+        loading = asyncio.create_task(session.app.load_older())
+        await asyncio.sleep(0)
         assert await asyncio.to_thread(started.wait, timeout=5)
         tests.helpers.factories.peri_scribe.monitor.events.write_log(
             session.directory,
@@ -446,8 +468,8 @@ async def test_monitor_app_preserves_live_events_arriving_during_archive_loading
         session.app.controller.session.files_changed = True
         refresh = asyncio.create_task(session.app.controller.session.tick())
         await asyncio.sleep(0)
-    await refresh
-    await session.pilot.pause()
+    await asyncio.gather(loading, refresh)
+    await asyncio.sleep(0)
     await session.app.refresh_files()
     assert [run.identifier for run in session.app.controller.snapshot.records.runs] == [
         "archive",
@@ -473,10 +495,14 @@ async def test_monitor_app_preserves_collapsed_branches_during_live_updates(
     assert not monitor_session.app.tree_nodes[path].is_expanded
 
 
-@pytest.mark.asyncio
-async def test_monitor_app_preserves_report_scroll_on_refresh(
+async def assert_preserves_report_scroll_on_refresh(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
+    """Keep the native viewer offset after appending another Markdown paragraph.
+
+    Args:
+        monitor_session: The mounted monitor at the scenario boundary.
+    """
     path = monitor_session.app.report_path
     path.write_text("# Report\n\n" + "Paragraph\n\n" * 200)
     await monitor_session.app.refresh_files()
@@ -508,25 +534,35 @@ async def test_monitor_app_keeps_status_and_controls_inside_viewport(
         assert region.bottom <= monitor_session.app.size.height
 
 
-@pytest.mark.parametrize(
-    ("tab", "selector"),
-    [
-        ("pipeline", "#phase-tree"),
-        ("pipeline", "#pipeline-stream .events"),
-        ("logs", "#log-stream .events"),
-        ("runs", "#run-table"),
-        ("report", "#report-viewer"),
-        ("pipeline", "#inspection"),
-    ],
-)
 @pytest.mark.asyncio
 async def test_monitor_app_scrollbars_keep_terminal_edge_neutral(
     scrolling_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
-    tab: str,
-    selector: str,
+    subtests: pytest.Subtests,
 ) -> None:
     session = scrolling_session
-    await session.show_view(tab)
+    for tab, selector in (
+        ("pipeline", "#phase-tree"),
+        ("pipeline", "#pipeline-stream .events"),
+        ("pipeline", "#inspection"),
+        ("logs", "#log-stream .events"),
+        ("runs", "#run-table"),
+        ("report", "#report-viewer"),
+    ):
+        with subtests.test(tab=tab, selector=selector):
+            await session.show_view_from_pipeline(tab)
+            await assert_neutral_terminal_edge(session, selector)
+
+
+async def assert_neutral_terminal_edge(
+    session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    selector: str,
+) -> None:
+    """Compare the last terminal column at three positions in one pane.
+
+    Args:
+        session: The settled monitor with the selected pane visible.
+        selector: The pane with a visible vertical scrollbar.
+    """
     pane = session.app.query_one(selector)
     assert pane.show_vertical_scrollbar
     backgrounds = set()
@@ -544,6 +580,37 @@ async def test_monitor_app_scrollbars_keep_terminal_edge_neutral(
             style = session.app.screen.get_style_at(session.app.size.width - 1, row)
             backgrounds.add(style.color if style.reverse else style.bgcolor)
     assert len(backgrounds) == 1
+
+
+@pytest.mark.asyncio
+async def test_monitor_app_reopens_pipeline_at_existing_cursors(
+    scrolling_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+) -> None:
+    session = scrolling_session
+    await session.show_view("pipeline")
+    tree = session.app.query_one("#phase-tree", textual.widgets.Tree)
+    table = session.app.query_one(
+        "#pipeline-stream .events",
+        peri_scribe.monitor.widgets.EventTable,
+    )
+    phase = next(reversed(session.app.tree_nodes.values()))
+    await tests.helpers.textual.invoke(tree.move_cursor, phase)
+    await session.refresh()
+    tree_offset = tree.scroll_offset.y
+    assert tree_offset > 0
+    assert table.max_scroll_y > 0
+    for pane in (tree, table):
+        await tests.helpers.textual.invoke(
+            functools.partial(pane.scroll_to, y=0, animate=False, immediate=True),
+        )
+    await session.refresh()
+    assert (tree.scroll_offset.y, table.scroll_offset.y) == (0, 0)
+    await session.show_view("logs")
+    await session.show_view("pipeline")
+    assert tree.cursor_node is phase
+    assert tree.scroll_offset.y == tree_offset
+    assert table.cursor_row == table.row_count - 1
+    assert table.scroll_offset.y == table.max_scroll_y
 
 
 @pytest.mark.asyncio
@@ -636,23 +703,7 @@ async def test_monitor_app_ignores_tab_changes_after_shutdown_begins(
     assert inspection.display
 
 
-@pytest.mark.parametrize(
-    ("tab", "divider", "before", "after", "dimension", "movement"),
-    [
-        (
-            "pipeline",
-            "#pipeline-divider",
-            "#phase-tree",
-            "#pipeline-stream",
-            "width",
-            (10, 0),
-        ),
-        ("pipeline", "#inspection-divider", "#views", "#inspection", "height", (0, -4)),
-        ("logs", "#inspection-divider", "#views", "#inspection", "height", (0, -4)),
-    ],
-)
-@pytest.mark.asyncio
-async def test_monitor_app_resizes_panes_by_dragging(
+async def assert_resizes_panes_by_dragging(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     *,
     tab: str,
@@ -662,6 +713,17 @@ async def test_monitor_app_resizes_panes_by_dragging(
     dimension: str,
     movement: tuple[int, int],
 ) -> None:
+    """Check native pointer capture, exact divider movement and conserved pane size.
+
+    Args:
+        monitor_session: The mounted monitor at the scenario boundary.
+        tab: The native tab or its keyboard shortcut.
+        divider: The native divider receiving pointer input.
+        before: The pane preceding the divider.
+        after: The pane following the divider.
+        dimension: The changed width or height.
+        movement: The real pointer displacement in terminal cells.
+    """
     session = monitor_session
     await session.show_view(tab)
     leading = session.app.query_one(before)
@@ -675,22 +737,30 @@ async def test_monitor_app_resizes_panes_by_dragging(
     assert session.app.mouse_captured is None
 
 
-@pytest.mark.parametrize("tab", ["runs", "report"])
-@pytest.mark.asyncio
-async def test_monitor_app_hides_inspection_divider_on_single_pane_tabs(
+async def assert_hides_inspection_divider_on_single_pane_tabs(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     tab: str,
 ) -> None:
+    """Hide the native inspection divider on a tab with one pane.
+
+    Args:
+        monitor_session: The mounted monitor at the scenario boundary.
+        tab: The native tab or its keyboard shortcut.
+    """
     session = monitor_session
     await tests.helpers.textual.invoke(session.app.action_view, tab)
     await session.pilot.pause()
     assert not session.app.query_one("#inspection-divider").display
 
 
-@pytest.mark.asyncio
-async def test_monitor_app_preserves_resized_panes_after_refresh_and_tab_changes(
+async def assert_preserves_resized_panes_after_refresh_and_tab_changes(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
+    """Keep dragged pane sizes through file refresh and keyboard tab navigation.
+
+    Args:
+        monitor_session: The mounted monitor at the scenario boundary.
+    """
     session = monitor_session
     await session.drag(session.app.query_one("#pipeline-divider"), (10, 0))
     await session.drag(session.app.query_one("#inspection-divider"), (0, -4))
@@ -703,13 +773,18 @@ async def test_monitor_app_preserves_resized_panes_after_refresh_and_tab_changes
     assert (tree.size, inspection.size) == sizes
 
 
-@pytest.mark.parametrize(("width", "height"), [(80, 24), (160, 50)])
-@pytest.mark.asyncio
-async def test_monitor_app_resized_panes_fit_after_terminal_resize(
+async def assert_resized_panes_fit_after_terminal_resize(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     width: int,
     height: int,
 ) -> None:
+    """Keep pane proportions and viewport bounds after native terminal resizing.
+
+    Args:
+        monitor_session: The mounted monitor at the scenario boundary.
+        width: The requested terminal width in cells.
+        height: The requested terminal height in cells.
+    """
     session = monitor_session
     await session.drag(session.app.query_one("#pipeline-divider"), (10, 0))
     await session.drag(session.app.query_one("#inspection-divider"), (0, -4))
@@ -727,3 +802,132 @@ async def test_monitor_app_resized_panes_fit_after_terminal_resize(
         assert region.height > 0
         assert region.right <= width
         assert region.bottom <= height
+
+
+@pytest.mark.asyncio
+async def test_monitor_app_report_preparation_survives_native_navigation_and_refresh(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    monkeypatch: pytest.MonkeyPatch,
+    subtests: pytest.Subtests,
+) -> None:
+    session = monitor_session
+    with (
+        subtests.test(scenario="prepares_report_before_its_tab_is_selected"),
+        monkeypatch.context() as patch,
+    ):
+        await assert_prepares_report_before_its_tab_is_selected(session, patch)
+    with subtests.test(scenario="report_uses_current_file_and_mtime"):
+        await assert_report_uses_current_file_and_mtime(session)
+    with subtests.test(scenario="refreshes_replaced_report_while_paused"):
+        await assert_refreshes_replaced_report_while_paused(session)
+    await tests.helpers.textual.invoke(session.app.action_live)
+    await session.settle()
+    for tab in ("1", "2", "3", "4"):
+        with (
+            subtests.test(
+                scenario="refreshes_report_while_another_tab_is_selected",
+                tab=tab,
+            ),
+            monkeypatch.context() as patch,
+        ):
+            await assert_refreshes_report_while_another_tab_is_selected(
+                session,
+                patch,
+                tab,
+            )
+    with (
+        subtests.test(scenario="retains_report_preparation_after_leaving_its_tab"),
+        monkeypatch.context() as patch,
+    ):
+        await assert_retains_report_preparation_after_leaving_its_tab(session, patch)
+    with subtests.test(scenario="preserves_report_scroll_on_refresh"):
+        await assert_preserves_report_scroll_on_refresh(session)
+
+
+@pytest.mark.asyncio
+async def test_monitor_app_pane_sizes_survive_native_drag_navigation_and_resize(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    subtests: pytest.Subtests,
+) -> None:
+    session = monitor_session
+    for tab, divider, before, after, dimension, movement in (
+        (
+            "pipeline",
+            "#pipeline-divider",
+            "#phase-tree",
+            "#pipeline-stream",
+            "width",
+            (10, 0),
+        ),
+        ("pipeline", "#inspection-divider", "#views", "#inspection", "height", (0, -4)),
+        ("logs", "#inspection-divider", "#views", "#inspection", "height", (0, -4)),
+    ):
+        with subtests.test(
+            scenario="resizes_panes_by_dragging",
+            tab=tab,
+            divider=divider,
+        ):
+            try:
+                await assert_resizes_panes_by_dragging(
+                    session,
+                    tab=tab,
+                    divider=divider,
+                    before=before,
+                    after=after,
+                    dimension=dimension,
+                    movement=movement,
+                )
+            finally:
+                await session.drag(
+                    session.app.query_one(divider),
+                    (-movement[0], -movement[1]),
+                )
+                await session.refresh()
+    for tab in ("runs", "report"):
+        with subtests.test(
+            scenario="hides_inspection_divider_on_single_pane_tabs",
+            tab=tab,
+        ):
+            await assert_hides_inspection_divider_on_single_pane_tabs(
+                session,
+                tab,
+            )
+    await session.show_view("pipeline")
+    with subtests.test(
+        scenario="preserves_resized_panes_after_refresh_and_tab_changes",
+    ):
+        try:
+            await assert_preserves_resized_panes_after_refresh_and_tab_changes(
+                session,
+            )
+        finally:
+            await restore_pane_sizes(session)
+    for width, height in ((80, 24), (160, 50)):
+        with subtests.test(
+            scenario="resized_panes_fit_after_terminal_resize",
+            width=width,
+            height=height,
+        ):
+            try:
+                await assert_resized_panes_fit_after_terminal_resize(
+                    session,
+                    width,
+                    height,
+                )
+            finally:
+                await session.resize(*tests.helpers.textual.DEFAULT_TERMINAL_SIZE)
+                await restore_pane_sizes(session)
+
+
+async def restore_pane_sizes(
+    session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+) -> None:
+    """Undo the scenario's real divider movements before the next layout probe.
+
+    Args:
+        session: The mounted monitor with Pipeline visible.
+    """
+    await session.show_view("pipeline")
+    await session.drag(session.app.query_one("#pipeline-divider"), (-10, 0))
+    await session.drag(session.app.query_one("#inspection-divider"), (0, 4))
+    await session.refresh()

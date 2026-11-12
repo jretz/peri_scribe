@@ -40,6 +40,32 @@ class Case:
     full: bool
 
 
+type Features = tuple[
+    tuple[int, tests.helpers.factories.peri_scribe.sources.fetching.FetchFeature],
+    ...,
+]
+type Request = tuple[Features, Features, bool]
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class ObservedRow:
+    """Retain the actual source fields without sharing a mutable feature frame."""
+
+    identifier: int
+    name: str
+    status: str
+    geometry: shapely.Geometry
+    modified: object
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class Observation:
+    """Keep missing features, no changes, and returned rows as distinct outcomes."""
+
+    rows: tuple[ObservedRow, ...] | None
+    no_features: bool = False
+
+
 def cases() -> list[Case]:
     """Cover every combination of the three selection routes and content differences.
 
@@ -135,12 +161,14 @@ def command(case: Case) -> str:
     )
 
 
-def replay(case: Case, expected: tuple[int, ...]) -> None:
-    """Compare real fetching, SQL, normalization and geometry against the Lean result.
+def observe(case: Case) -> Observation:
+    """Capture one real fetch over the exact closed SQLite and ArcGIS fixture.
 
     Args:
         case: Stable source facts.
-        expected: Object IDs returned by the compiled Lean definition.
+
+    Returns:
+        Immutable fields observed before the private database and patch scope close.
     """
     stored_frame = tests.helpers.factories.peri_scribe.sources.fetching.fetch_frame(
         case.stored,
@@ -174,23 +202,63 @@ def replay(case: Case, expected: tuple[int, ...]) -> None:
                 full=case.full,
             )
         except arcgis_access.exceptions.NoFeaturesError:
-            assert case.full
-            assert not case.current
-            assert not expected
-            return
+            return Observation(rows=None, no_features=True)
+        if actual is None:
+            return Observation(rows=None)
+        return Observation(
+            rows=tuple(
+                ObservedRow(
+                    identifier=row.OBJECTID,
+                    name=row["name"],
+                    status=row["status"],
+                    geometry=row[actual.geometry.name],
+                    modified=row["ModifiedOnDateTime_dt"],
+                )
+                for _, row in actual.iterrows()
+            ),
+        )
+
+
+def replay(
+    case: Case,
+    expected: tuple[int, ...],
+    observations: dict[Request, Observation] | None = None,
+) -> None:
+    """Check every Lean response while sharing equal requests within one invocation.
+
+    Args:
+        case: Stable source facts, including the original source iteration order.
+        expected: Object IDs returned by the compiled Lean definition.
+        observations: Completed immutable outcomes owned by this conformance test.
+    """
+    if observations is None:
+        observed = observe(case)
+    else:
+        request = (tuple(case.stored.items()), tuple(case.current.items()), case.full)
+        if request not in observations:
+            observations[request] = observe(case)
+        observed = observations[request]
+    if observed.no_features:
+        assert case.full
+        assert not case.current
+        assert not expected
+        return
+    actual = observed.rows
     if not expected:
         assert actual is None
         return
     assert actual is not None
-    assert tuple(actual.OBJECTID) == expected, case
-    for _, row in actual.iterrows():
-        feature = case.current[row.OBJECTID]
-        assert row["name"] == feature.name
-        assert row["status"] == ("Active" if feature.active else "Inactive")
-        assert row[actual.geometry.name] == shapely.Point(feature.longitude, 0)
+    assert tuple(row.identifier for row in actual) == expected, case
+    for row in actual:
+        feature = case.current[row.identifier]
+        assert row.name == feature.name
+        assert row.status == ("Active" if feature.active else "Inactive")
+        assert row.geometry == shapely.Point(feature.longitude, 0)
         assert peri_scribe.sources.changes.modified_datetime_from(
-            row["ModifiedOnDateTime_dt"],
-        ) == moment(feature.modified_minute)
+            row.modified,
+        ) == moment(
+            feature.modified_minute,
+        )
 
 
 def moment(minute: int | None) -> datetime.datetime | None:

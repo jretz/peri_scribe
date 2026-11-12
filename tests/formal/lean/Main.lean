@@ -80,6 +80,30 @@ def footprintText (shape : Fin 4 → Bool) : String :=
 /-- Requests execute the definitions imported by the checked theorem modules. -/
 def respond (words : List String) : Except String String := do
   match words with
+  | ["feed-policy", full, prior, indexFailure, deferred, snapshots, fatal, sourceError] =>
+    let policy := FetchComposition.Policy.mk (← boolean full) (← boolean prior)
+      (← boolean indexFailure) (← boolean deferred)
+    let collection := FetchComposition.Collection.mk (← natural snapshots)
+      (← boolean fatal) (← boolean sourceError)
+    let outcome := FetchComposition.execute policy collection
+    return s!"{outcome.snapshots} {outcome.indexed} {bit outcome.pending} " ++
+      s!"{bit outcome.acknowledged} {bit outcome.indexAttempted} {bit outcome.failed}"
+  | ["fetch-finish", mask, force, changed, externalChanged, full, deferred,
+      unconditional] =>
+    let previous := Pipeline.Pending.mk (← pending mask) (← boolean force)
+    let (state, proceed) := FetchComposition.finishFetch previous (← boolean changed)
+      (← boolean externalChanged) (← boolean full) (← boolean deferred)
+      (← boolean unconditional)
+    return s!"{pendingText state} {bit proceed}"
+  | ["complete-write", mask, force, completed] =>
+    let state := Pipeline.Pending.mk (← pending mask) (← boolean force)
+    let result := FetchComposition.completedState state (← stage completed)
+    return s!"{bit result.isSome} {pendingText (result.getD state)}"
+  | "pipeline-file-footprint" :: positions =>
+    let shape ← positions.mapM natural
+    if PipelineFileFootprint.acceptsProgram shape then
+      return String.intercalate " " ("1" :: PipelineFileFootprint.changes.map toString)
+    return "0"
   | "corrected" :: masks =>
     let history ← masks.mapM footprint
     return String.intercalate " "

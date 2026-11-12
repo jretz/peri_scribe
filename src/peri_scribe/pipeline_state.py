@@ -12,19 +12,23 @@ import contextlib
 import contextvars
 import dataclasses
 import fcntl
+import functools
+import importlib
 import os
 import pathlib
-import tempfile
 import threading
 import typing
 
 import pydantic
-import structlog
 
+import peri_scribe.durable_file
 import peri_scribe.pipeline_stages
 
 
-logger = structlog.get_logger()
+if typing.TYPE_CHECKING:
+    import structlog.typing
+
+
 DERIVED_STAGES: tuple[peri_scribe.pipeline_stages.Stage, ...] = (
     peri_scribe.pipeline_stages.Stage.GEOGRAPHY,
     peri_scribe.pipeline_stages.Stage.SCORE,
@@ -41,6 +45,16 @@ class PendingRun(pydantic.BaseModel):
     version: typing.Literal[1] = 1
     remaining: tuple[peri_scribe.pipeline_stages.Stage, ...] = ()
     unconditional: bool = False
+
+
+@functools.cache
+def state_logger() -> structlog.typing.FilteringBoundLogger:
+    """Load logging when a state change or warning has something to report.
+
+    Returns:
+        The structured logger for recovery state events.
+    """
+    return importlib.import_module("structlog").get_logger()
 
 
 def state_path(year_directory: pathlib.Path) -> pathlib.Path:
@@ -79,6 +93,18 @@ def deferred_inputs_path(year_directory: pathlib.Path) -> pathlib.Path:
     return year_directory / "deferred_inputs"
 
 
+def has_deferred_inputs(year_directory: pathlib.Path) -> bool:
+    """Determine whether saved inputs may still require derivation.
+
+    Args:
+        year_directory: The year whose deferred-input marker should be checked.
+
+    Returns:
+        Whether the deferred-input marker exists.
+    """
+    return peri_scribe.durable_file.at(deferred_inputs_path(year_directory)).exists()
+
+
 def defer_inputs(year_directory: pathlib.Path) -> None:
     """Record saved inputs before publication can be deferred.
 
@@ -88,9 +114,7 @@ def defer_inputs(year_directory: pathlib.Path) -> None:
     Args:
         year_directory: The year whose collection may introduce unpublished inputs.
     """
-    path = deferred_inputs_path(year_directory)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.touch()
+    peri_scribe.durable_file.at(deferred_inputs_path(year_directory)).touch()
 
 
 def clear_deferred_inputs(year_directory: pathlib.Path) -> None:
@@ -99,7 +123,9 @@ def clear_deferred_inputs(year_directory: pathlib.Path) -> None:
     Args:
         year_directory: The year whose deferred inputs have durable coverage.
     """
-    deferred_inputs_path(year_directory).unlink(missing_ok=True)
+    peri_scribe.durable_file.at(deferred_inputs_path(year_directory)).remove(
+        missing_ok=True,
+    )
 
 
 def read_state(year_directory: pathlib.Path) -> PendingRun:
@@ -113,11 +139,12 @@ def read_state(year_directory: pathlib.Path) -> PendingRun:
     """
     path = state_path(year_directory)
     try:
-        state = PendingRun.model_validate_json(path.read_bytes())
+        raw_state = peri_scribe.durable_file.at(path).read_bytes()
+        state = PendingRun.model_validate_json(raw_state)
     except FileNotFoundError:
         return PendingRun()
     except ValueError as error:
-        logger.warning(
+        state_logger().warning(
             "Invalid run state; requiring full rebuild",
             error=str(error),
             exc_info=True,
@@ -136,12 +163,55 @@ def write_state(year_directory: pathlib.Path, state: PendingRun) -> None:
         year_directory: The year directory whose recovery state should be replaced.
         state: The pending stages and their unconditional rebuild requirement.
     """
-    path = state_path(year_directory)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=path.parent) as directory:
-        temporary = pathlib.Path(directory) / path.name
-        temporary.write_text(state.model_dump_json())
-        temporary.replace(path)
+    peri_scribe.durable_file.at(state_path(year_directory)).replace_text(
+        state.model_dump_json(),
+    )
+
+
+def required_state(
+    state: PendingRun,
+    stages: tuple[peri_scribe.pipeline_stages.Stage, ...],
+    *,
+    unconditional: bool = False,
+) -> PendingRun:
+    """Combine recovery requirements in dependency order.
+
+    Args:
+        state: The captured requirements before invalidating downstream work.
+        stages: The additional stages whose inputs changed.
+        unconditional: Whether pending work must bypass prior derivations.
+
+    Returns:
+        The complete requirements to persist before changing inputs.
+    """
+    return PendingRun(
+        remaining=tuple(
+            stage for stage in DERIVED_STAGES if stage in {*state.remaining, *stages}
+        ),
+        unconditional=state.unconditional or unconditional,
+    )
+
+
+def completed_state(
+    state: PendingRun,
+    stage: peri_scribe.pipeline_stages.Stage,
+) -> PendingRun | None:
+    """Acknowledge only the first outstanding prerequisite.
+
+    Args:
+        state: The captured requirements before acknowledging successful work.
+        stage: The stage that completed successfully.
+
+    Returns:
+        The remaining requirements, or None when no write is needed.
+    """
+    if not state.remaining or state.remaining[0] != stage:
+        return None
+    remaining = state.remaining[1:]
+    return PendingRun(
+        remaining=remaining,
+        unconditional=state.unconditional if remaining else False,
+    )
 
 
 def require_stages(
@@ -160,14 +230,7 @@ def require_stages(
     state = read_state(year_directory)
     write_state(
         year_directory,
-        PendingRun(
-            remaining=tuple(
-                stage
-                for stage in DERIVED_STAGES
-                if stage in {*state.remaining, *stages}
-            ),
-            unconditional=state.unconditional or unconditional,
-        ),
+        required_state(state, stages, unconditional=unconditional),
     )
 
 
@@ -182,18 +245,16 @@ def complete_stage(
         stage: The name of the stage that completed successfully.
     """
     state = read_state(year_directory)
-    if not state.remaining or state.remaining[0] != stage:
+    completed = completed_state(state, stage)
+    if completed is None:
         return
-    remaining = state.remaining[1:]
-    write_state(
-        year_directory,
-        PendingRun(
-            remaining=remaining,
-            unconditional=state.unconditional if remaining else False,
-        ),
-    )
+    remaining = completed.remaining
+    write_state(year_directory, completed)
     if not remaining:
-        logger.info("Required rebuild completed", unconditional=state.unconditional)
+        state_logger().info(
+            "Required rebuild completed",
+            unconditional=state.unconditional,
+        )
 
 
 @dataclasses.dataclass(kw_only=True)

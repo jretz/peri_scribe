@@ -34,6 +34,23 @@ def integer(value: float) -> int:
     return numerator * (SCALE // denominator)
 
 
+def encoded_integer(value: float) -> str:
+    """Send the exact subnormal-unit count as a signed significand and binary shift.
+
+    Args:
+        value: One finite binary64 operand, including either zero sign.
+
+    Returns:
+        A compact integer token whose value is the significand times two to the shift.
+    """
+    scaled = integer(value)
+    if not scaled:
+        return "0"
+    magnitude = abs(scaled)
+    shift = (magnitude & -magnitude).bit_length() - 1
+    return f"{scaled >> shift}:{shift}"
+
+
 def arguments(*values: float) -> str:
     """Keep all numeric operands on one exact scale.
 
@@ -43,7 +60,7 @@ def arguments(*values: float) -> str:
     Returns:
         Whitespace-separated exact integers for the compiled oracle.
     """
-    return " ".join(str(integer(value)) for value in values)
+    return " ".join(map(encoded_integer, values))
 
 
 def neighbors(value: float) -> tuple[float, ...]:

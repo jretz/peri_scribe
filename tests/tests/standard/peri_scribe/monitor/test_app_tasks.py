@@ -12,6 +12,7 @@ import peri_scribe.monitor.status_widgets
 import tests.helpers.doubles.peri_scribe.monitor.tasks
 import tests.helpers.factories.peri_scribe.monitor.status
 import tests.helpers.fixtures.peri_scribe.monitor.application
+import tests.helpers.fixtures.peri_scribe.monitor.presentation
 
 
 @pytest.mark.parametrize(
@@ -20,30 +21,30 @@ import tests.helpers.fixtures.peri_scribe.monitor.application
 )
 @pytest.mark.asyncio
 async def test_monitor_app_archive_and_refresh_preserve_owned_evidence(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    component_monitor: tests.helpers.fixtures.peri_scribe.monitor.presentation.Session,
     monkeypatch: pytest.MonkeyPatch,
     *,
     stop: bool,
     cancel: bool,
 ) -> None:
     await tests.helpers.doubles.peri_scribe.monitor.tasks.application_replay(
-        monitor_session.app,
+        component_monitor.app,
         monkeypatch,
         stop=stop,
         cancel=cancel,
     )
     assert [
-        run.identifier for run in monitor_session.app.controller.snapshot.records.runs
+        run.identifier for run in component_monitor.app.controller.snapshot.records.runs
     ] == ([] if stop else ["archive", "new"])
 
 
 @pytest.mark.asyncio
 async def test_monitor_app_on_unmount_retains_descriptors_during_shared_lock_wait(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    component_monitor: tests.helpers.fixtures.peri_scribe.monitor.presentation.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     await tests.helpers.doubles.peri_scribe.monitor.tasks.shared_lock_replay(
-        monitor_session.app,
+        component_monitor.app,
         monkeypatch,
     )
 
@@ -51,12 +52,12 @@ async def test_monitor_app_on_unmount_retains_descriptors_during_shared_lock_wai
 @pytest.mark.parametrize("fails", [False, True])
 @pytest.mark.asyncio
 async def test_monitor_app_open_status_evidence_cannot_publish_after_unmount(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    component_monitor: tests.helpers.fixtures.peri_scribe.monitor.presentation.Session,
     monkeypatch: pytest.MonkeyPatch,
     *,
     fails: bool,
 ) -> None:
-    app = monitor_session.app
+    app = component_monitor.app
     previous = app.visible_state
     notification = unittest.mock.Mock()
     monkeypatch.setattr(app, "notify", notification)

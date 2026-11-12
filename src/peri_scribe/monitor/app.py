@@ -25,6 +25,7 @@ import peri_scribe.monitor.rendering
 import peri_scribe.monitor.status_widgets
 import peri_scribe.monitor.storage
 import peri_scribe.monitor.striping
+import peri_scribe.monitor.terminal_presentation
 import peri_scribe.monitor.theme
 import peri_scribe.monitor.widgets
 import peri_scribe.paths
@@ -79,6 +80,9 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
         year_directory: pathlib.Path,
         report_path: pathlib.Path,
         branches: peri_scribe.phases.Branches,
+        *,
+        presentation: peri_scribe.monitor.terminal_presentation.Presentation
+        | None = None,
     ) -> None:
         """Inject filesystem locations and catalogue instances into the adapter.
 
@@ -86,10 +90,12 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
             year_directory: The observed year's data directory.
             report_path: The report path resolved by the existing report module.
             branches: Configured feed and source names.
+            presentation: Concrete terminal effects, or the native widget adapter.
         """
         super().__init__(year_directory)
         self.scroll_sensitivity_y = 1.0
         self.theme = peri_scribe.monitor.theme.DEFAULT_THEME
+        self.initial_view = ""
         self.report_path = report_path
         self.kmz_path = peri_scribe.paths.kmz_path(year_directory)
         self.branches = branches
@@ -98,7 +104,14 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
         self.selected_phase: peri_scribe.phases.Path = ()
         self.following = True
         self.rendered_report = peri_scribe.monitor.storage.Report()
-        self.controller = peri_scribe.monitor.controller.Controller(self)
+        self.controller = (
+            peri_scribe.monitor.controller.Controller(self)
+            if presentation is None
+            else peri_scribe.monitor.controller.Controller(
+                self,
+                presentation=presentation,
+            )
+        )
         self.rows: dict[
             textual.widgets.DataTable,
             dict[str, peri_scribe.monitor.events.Event],
@@ -117,7 +130,7 @@ class MonitorApp(peri_scribe.monitor.striping.StripedApp):
         """
         yield textual.widgets.Header()
         yield textual.widgets.Static(id="activity", markup=False)
-        views = textual.widgets.TabbedContent(id="views")
+        views = textual.widgets.TabbedContent(id="views", initial=self.initial_view)
         inspection = textual.containers.VerticalScroll(id="inspection")
         with views:
             with textual.widgets.TabPane("Status", id="status"):

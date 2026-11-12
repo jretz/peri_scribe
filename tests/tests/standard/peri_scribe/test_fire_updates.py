@@ -23,6 +23,9 @@ import tests.helpers.factories.peri_scribe.report.locations
 from measurement_units import units
 
 
+pytestmark = pytest.mark.usefixtures("reuse_update_previews")
+
+
 @pytest.mark.parametrize("legacy_state", [False, True])
 def test_prepare_updates_keeps_identity_when_a_preferred_identifier_arrives(
     tmp_path: pathlib.Path,

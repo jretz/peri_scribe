@@ -10,18 +10,15 @@ Algorithm reasoning and contracts:
 import asyncio
 import dataclasses
 import datetime
-
-import textual.widgets
+import functools
 
 import peri_scribe.monitor.display
 import peri_scribe.monitor.health_presentation
-import peri_scribe.monitor.rendering
 import peri_scribe.monitor.session
 import peri_scribe.monitor.status
-import peri_scribe.monitor.status_widgets
 import peri_scribe.monitor.tasks
 import peri_scribe.monitor.terminal_contract
-import peri_scribe.monitor.widgets
+import peri_scribe.monitor.terminal_presentation
 
 
 type ContentRequest = (
@@ -42,13 +39,25 @@ class ContentWork:
 class Controller:
     """Schedule terminal updates while the session remains independent of the UI."""
 
-    def __init__(self, app: peri_scribe.monitor.terminal_contract.Host) -> None:
+    def __init__(
+        self,
+        app: peri_scribe.monitor.terminal_contract.Host,
+        *,
+        presentation: peri_scribe.monitor.terminal_presentation.Presentation
+        | None = None,
+    ) -> None:
         """Keep rendering lifetimes separate from the session's reader ownership.
 
         Args:
             app: The terminal adapter receiving prepared content.
+            presentation: Concrete widget effects, or the native terminal adapter.
         """
         self.app = app
+        self.presentation = (
+            peri_scribe.monitor.terminal_presentation.Widgets()
+            if presentation is None
+            else presentation
+        )
         self.session = peri_scribe.monitor.session.MonitorSession(
             app.year_directory,
             app.report_path,
@@ -74,7 +83,7 @@ class Controller:
         await self.session.start()
         await self.accept(self.session.snapshot)
         self.cosmetic_task = asyncio.create_task(self.watch_presentation())
-        self.app.call_after_refresh(self.begin_background)
+        self.presentation.after_refresh(self.app, self.begin_background)
 
     async def listen(self) -> None:
         """Apply the newest delivered snapshot on the terminal's event loop."""
@@ -103,17 +112,17 @@ class Controller:
             or snapshot.health is not previous.health
         ):
             self.schedule_display()
-        app.query_one("#older", textual.widgets.Button).disabled = not any(
-            path not in snapshot.loaded_archives for path in snapshot.archives
+        self.presentation.older_enabled(
+            app,
+            enabled=any(
+                path not in snapshot.loaded_archives for path in snapshot.archives
+            ),
         )
         if snapshot.health is not previous.health:
             self.show_health(datetime.datetime.now(datetime.UTC))
             self.cosmetic_changed.set()
-        peri_scribe.monitor.rendering.show_activity(app)
-        peri_scribe.monitor.widgets.update_content(
-            app.query_one("#file-status", textual.widgets.Static),
-            "\n".join(snapshot.errors),
-        )
+        self.presentation.activity(app)
+        self.presentation.errors(app, snapshot.errors)
         if self.presented and snapshot.report != previous.report:
             await self.render_report()
 
@@ -124,9 +133,8 @@ class Controller:
             now: The current presentation clock observation.
         """
         if self.available() and self.snapshot.health is not None:
-            self.app.query_one(
-                peri_scribe.monitor.status_widgets.StatusPane,
-            ).show_view(
+            self.presentation.health(
+                self.app,
                 peri_scribe.monitor.health_presentation.prepare(
                     self.snapshot.health,
                     now,
@@ -156,7 +164,7 @@ class Controller:
             except TimeoutError:
                 if self.available():
                     self.show_health(datetime.datetime.now(datetime.UTC))
-                    peri_scribe.monitor.rendering.show_activity(self.app)
+                    self.presentation.activity(self.app)
                     self.schedule_display()
 
     def available(self) -> bool:
@@ -166,7 +174,7 @@ class Controller:
             Whether the terminal still accepts presentation updates.
         """
         return bool(
-            not self.stopped and self.app.is_running and self.app.query("#views"),
+            not self.stopped and self.presentation.available(self.app),
         )
 
     def begin_background(self) -> None:
@@ -245,23 +253,7 @@ class Controller:
             generation = self.generation
             app = self.app
             run = app.current_run()
-            filters = []
-            for identifier in ("pipeline-stream", "log-stream"):
-                stream = app.query_one(
-                    f"#{identifier}",
-                    peri_scribe.monitor.widgets.Stream,
-                )
-                filters.append(
-                    peri_scribe.monitor.display.Filter(
-                        minimum_level=str(
-                            stream.query_one(textual.widgets.Select).value,
-                        ),
-                        query=stream.query_one(textual.widgets.Input).value,
-                        path=app.selected_phase
-                        if identifier == "pipeline-stream"
-                        else (),
-                    ),
-                )
+            filters = self.presentation.filters(app)
             prepared = await asyncio.to_thread(
                 peri_scribe.monitor.display.prepare,
                 self.snapshot.records,
@@ -275,7 +267,7 @@ class Controller:
                 return
             if generation != self.generation:
                 continue
-            await peri_scribe.monitor.rendering.apply_records(app, prepared, generation)
+            await self.presentation.records(app, prepared, generation)
             if generation == self.generation:
                 self.prepared_generation = generation
 
@@ -311,8 +303,17 @@ class Controller:
         if name == "report":
             await self.render_report()
         else:
-            self.schedule_display(requested=True)
+            if self.display_task is None:
+                self.schedule_display(requested=True)
             await self.flush_display()
+            self.presentation.after_refresh(
+                self.app,
+                functools.partial(
+                    self.presentation.cursor,
+                    self.app,
+                    name,
+                ),
+            )
 
     async def refresh(self) -> None:
         """Request a fresh domain snapshot for explicit refresh commands."""
@@ -367,15 +368,15 @@ class Controller:
                 severity="warning",
             )
         else:
-            await peri_scribe.monitor.rendering.inspect_evidence(self.app, run, target)
+            await self.presentation.evidence(self.app, run, target)
 
     async def render_report(self) -> None:
         """Serialize Markdown updates and reject obsolete completion checkpoints."""
         async with self.report_lock:
             while self.available() and self.snapshot.report != self.app.rendered_report:
                 report = self.snapshot.report
-                await peri_scribe.monitor.rendering.apply_report(self.app, report)
-                if not self.available() or not self.app.query("#report-viewer"):
+                await self.presentation.report(self.app, report)
+                if not self.available() or not self.presentation.has_report(self.app):
                     return
 
     async def close(self) -> None:

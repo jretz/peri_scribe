@@ -17,6 +17,9 @@ import tests.helpers.peri_scribe.fires.snapshot_contents
 import tests.helpers.peri_scribe.geo.package
 
 
+pytestmark = pytest.mark.usefixtures("reuse_preparation_environment")
+
+
 @pytest.mark.parametrize("clear_memo", [False, True])
 def test_index_fire_sources_rechecks_snapshot_bytes_before_certifying_generation(
     tmp_path: pathlib.Path,

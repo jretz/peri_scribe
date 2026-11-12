@@ -6,6 +6,7 @@ Design notes:
 
 from __future__ import annotations
 
+import collections.abc
 import contextlib
 import datetime
 import pathlib
@@ -83,6 +84,9 @@ def latest_features_by_object_id(
 def existing_features(
     directory: pathlib.Path,
     feed: peri_scribe.sources.feed_types.Feed,
+    *,
+    source_files: collections.abc.Sequence[peri_scribe.sources.snapshots.SourceFile]
+    | None = None,
 ) -> geopandas.GeoDataFrame | None:
     """Return the latest stored feature per OBJECTID across *directory*'s files.
 
@@ -93,18 +97,19 @@ def existing_features(
     Args:
         directory: The directory holding the source's GeoPackage files.
         feed: The feed whose layer is read from each file.
+        source_files: An already discovered inventory in ascending serial order.
 
     Returns:
         The most recent feature per OBJECTID, or None when there are none.
     """
+    if source_files is None:
+        source_files = peri_scribe.sources.snapshots.existing_source_files(directory)
     dataframes = [
         peri_scribe.geo.reading.read_layer_dataframe(
             directory / source_file.relative_path,
             feed,
         )
-        for source_file in peri_scribe.sources.snapshots.existing_source_files(
-            directory,
-        )
+        for source_file in source_files
     ]
     return latest_features_by_object_id(dataframes)
 
@@ -214,14 +219,13 @@ def write_current_state(
                 exc_info=True,
             )
     if base is None:
-        base = existing_features(directory, feed)
+        base = existing_features(directory, feed, source_files=source_files)
     merged = latest_features_by_object_id([base, new_features])
-    newest_serial_number = current_state_serial_number(directory)
-    if merged is None or newest_serial_number is None:
+    if merged is None or not source_files:
         return
     state_path = peri_scribe.sources.snapshots.current_state_path(
         directory,
-        newest_serial_number,
+        source_files[-1].serial_number,
     )
     state_path.parent.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(dir=state_path.parent) as temporary_directory:

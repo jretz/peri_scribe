@@ -13,15 +13,31 @@ import typing
 
 import click
 
-import peri_scribe.logging
+import peri_scribe.cli_help
 
 
 DEFERRED_COMMANDS = {
-    "run": ("peri_scribe.supervision", "run"),
-    "show-colormap": ("peri_scribe.pipeline", "show_colormap"),
-    "validate-sources": ("peri_scribe.pipeline", "validate_sources"),
-    "show-latencies": ("peri_scribe.show_latencies.cli", "show_latencies"),
-    "monitor": ("peri_scribe.monitor.cli", "monitor"),
+    "run": ("peri_scribe.supervision", "run", peri_scribe.cli_help.RUN_HELP),
+    "show-colormap": (
+        "peri_scribe.pipeline",
+        "show_colormap",
+        peri_scribe.cli_help.COLORMAP_HELP,
+    ),
+    "validate-sources": (
+        "peri_scribe.pipeline",
+        "validate_sources",
+        peri_scribe.cli_help.VALIDATE_HELP,
+    ),
+    "show-latencies": (
+        "peri_scribe.show_latencies.cli",
+        "show_latencies",
+        peri_scribe.cli_help.LATENCIES_HELP,
+    ),
+    "monitor": (
+        "peri_scribe.monitor.cli",
+        "monitor",
+        peri_scribe.cli_help.MONITOR_HELP,
+    ),
 }
 
 
@@ -52,13 +68,32 @@ class Commands(click.Group):
             Its command definition, or None for an unknown name.
         """
         if cmd_name in DEFERRED_COMMANDS:
-            module_name, function = DEFERRED_COMMANDS[cmd_name]
+            module_name, function, _ = DEFERRED_COMMANDS[cmd_name]
             module = importlib.import_module(module_name)
             return typing.cast(
                 "click.Command",
                 getattr(module, function),
             )
         return super().get_command(ctx, cmd_name)
+
+    @typing.override
+    def format_commands(
+        self,
+        ctx: click.Context,
+        formatter: click.HelpFormatter,
+    ) -> None:
+        """List command summaries without loading their runtime dependencies.
+
+        Args:
+            ctx: The current command-line invocation.
+            formatter: The Click formatter for this terminal width.
+        """
+        commands = dict(self.commands)
+        commands.update({
+            name: click.Command(name, help=summary)
+            for name, (_, _, summary) in DEFERRED_COMMANDS.items()
+        })
+        click.Group(commands=commands).format_commands(ctx, formatter)
 
 
 @click.group(
@@ -96,7 +131,8 @@ def cli(stderr_log_level: str, file_log_level: str) -> None:
         stderr_log_level: Minimum severity for console logging.
         file_log_level: Minimum severity for persistent command logs.
     """
-    peri_scribe.logging.configure_logging(stderr_log_level, file_log_level)
+    logging = importlib.import_module("peri_scribe.logging")
+    logging.configure_logging(stderr_log_level, file_log_level)
 
 
 def distribution_version() -> str:

@@ -558,18 +558,20 @@ class Reader:
         Returns:
             Current evidence after archive selection and plain cursor discovery.
         """
-        archives = {
-            path: (
-                metadata.st_dev,
-                metadata.st_ino,
-                metadata.st_size,
-                metadata.st_mtime_ns,
-            )
-            for monthly in log_paths(self.directory)
-            for path in peri_scribe.log_reading.log_components(monthly)
-            if path.suffix == ".zst"
-            for metadata in (path.stat(),)
-        }
+        monthly_logs = {}
+        archives = {}
+        for monthly in log_paths(self.directory):
+            components = peri_scribe.log_reading.log_components(monthly)
+            monthly_logs[monthly] = components
+            for path in components:
+                if path.suffix == ".zst":
+                    metadata = path.stat()
+                    archives[path] = (
+                        metadata.st_dev,
+                        metadata.st_ino,
+                        metadata.st_size,
+                        metadata.st_mtime_ns,
+                    )
         if any(
             path.name[:7] + ".jsonl" in self.months
             and self.archive_signatures.get(path) != signature
@@ -589,13 +591,16 @@ class Reader:
             run.identifier for run in self.history.state.runs
         )
         since = now - WINDOW
-        for path in log_paths(self.directory, since=since):
+        first_month = since.astimezone().strftime("%Y-%m")
+        for path, components in monthly_logs.items():
             month = path.name.removesuffix(".zst")
+            if month < first_month:
+                continue
             if month not in self.months:
                 try:
                     lines = (
                         line
-                        for component in peri_scribe.log_reading.log_components(path)
+                        for component in components
                         if component.suffix == ".zst"
                         for line in peri_scribe.log_reading.component_lines(component)
                     )
@@ -611,7 +616,7 @@ class Reader:
                         f"{path.name}: {error}",
                     )
             self.months.add(month)
-        batch = self.follower.poll(since=since)
+        batch = self.follower.poll_locked(since=since, retained=monthly_logs)
         self.history = append(self.history, batch.records, now)
         if batch.caught_up:
             self.restore_context(now)

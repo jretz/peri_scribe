@@ -4,6 +4,7 @@ import pathlib
 import unittest.mock
 
 import pytest
+import structlog
 
 import peri_scribe.fires.sources
 import tests.formal.helpers.complex_aliases
@@ -19,13 +20,24 @@ def test_group_fire_sources_matches_lean_temporal_complex_ownership() -> None:
     )
     expected_count = 2197
     assert len(cases) == expected_count
-    for case, outcome in zip(cases, expected, strict=True):
-        for equivalent in (case, tuple(reversed(case)), (*case, *case)):
-            read = tests.formal.helpers.complex_ownership.source_history(equivalent)
-            groups = peri_scribe.fires.sources.group_fire_sources(read)
-            assert (
-                tests.formal.helpers.complex_ownership.projection(groups) == outcome
-            ), case
+    grouped: dict[
+        tests.formal.helpers.complex_ownership.History,
+        peri_scribe.fires.sources.FireRecordGroups,
+    ] = {}
+    with structlog.testing.capture_logs():
+        for case, outcome in zip(cases, expected, strict=True):
+            for equivalent in (case, tuple(reversed(case)), (*case, *case)):
+                if equivalent not in grouped:
+                    read = tests.formal.helpers.complex_ownership.source_history(
+                        equivalent,
+                    )
+                    grouped[equivalent] = peri_scribe.fires.sources.group_fire_sources(
+                        read,
+                    )
+                groups = grouped[equivalent]
+                assert (
+                    tests.formal.helpers.complex_ownership.projection(groups) == outcome
+                ), case
 
 
 def test_group_fire_sources_matches_lean_after_parsed_cache_roundtrip(

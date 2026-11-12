@@ -186,6 +186,45 @@ theorem difference_uses_latest_present_value (current previous : Int)
   | succ count induction =>
     simpa [List.replicate_succ, difference, firstPresent] using induction
 
+/-- Inspect the original preceding attributes until one parses successfully. -/
+def scanPresent {Attribute : Type} (parse : Attribute → Option Int) :
+    List Attribute → Option Int
+  | [] => none
+  | value :: rest => (parse value).orElse (fun _ => scanPresent parse rest)
+
+theorem scan_present_matches_mapped_history {Attribute : Type}
+    (parse : Attribute → Option Int) (history : List Attribute) :
+    scanPresent parse history = firstPresent (history.map parse) := by
+  induction history with
+  | nil => rfl
+  | cons value rest induction =>
+    cases present : parse value <;> simp [scanPresent, present, firstPresent, induction]
+
+/-- A missing current value never demands a preceding attribute. -/
+def lazyDifference {Attribute : Type} (parse : Attribute → Option Int)
+    (current : Attribute) (previous : List Attribute) : Option Int :=
+  (parse current).map (fun value => value - (scanPresent parse previous).getD 0)
+
+theorem lazy_difference_matches_existing_policy {Attribute : Type}
+    (parse : Attribute → Option Int) (current : Attribute) (previous : List Attribute) :
+    lazyDifference parse current previous = difference (parse current) (previous.map parse) := by
+  simp [lazyDifference, difference, scan_present_matches_mapped_history]
+
+def inspected {Attribute : Type} (parse : Attribute → Option Int) :
+    List Attribute → Nat
+  | [] => 0
+  | value :: rest => if (parse value).isSome then 1 else 1 + inspected parse rest
+
+theorem scans_stop_at_an_earlier_present_candidate {Attribute : Type}
+    (parse : Attribute → Option Int) (gap older : List Attribute) (previous : Attribute)
+    (present : (parse previous).isSome = true) :
+    inspected parse (gap ++ previous :: older) ≤ gap.length + 1 := by
+  induction gap with
+  | nil => simp [inspected, present]
+  | cons value rest induction =>
+    simp only [List.cons_append, List.length_cons, inspected]
+    split <;> omega
+
 def completeChanges (previous : Int) : List (Option Int) → List Int
   | [] => []
   | none :: rest => completeChanges previous rest

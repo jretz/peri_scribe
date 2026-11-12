@@ -85,12 +85,14 @@ def current_year(
 @pytest.fixture
 def run_stubs(
     monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
     tmp_path: pathlib.Path,
 ) -> typing.Callable[..., tests.helpers.doubles.peri_scribe.main.RunStubs]:
     """Install step stubs for the run command.
 
     Args:
         monkeypatch: The fixture used to replace pipeline steps and state paths.
+        request: Selects structured capture when the test checks pipeline policy.
         tmp_path: The isolated directory for recovery state and the run lock.
 
     Returns:
@@ -107,6 +109,7 @@ def run_stubs(
         stored_state: (
             peri_scribe.sources.full_fetch_state.FullFetchState | None
         ) = None,
+        render_logs: bool = False,
     ) -> tests.helpers.doubles.peri_scribe.main.RunStubs:
         """Isolate pipeline stages and capture their invocations.
 
@@ -116,10 +119,13 @@ def run_stubs(
                 fetch.
             cities_changed: Whether city locations differ across the simulated fetch.
             stored_state: Previously recorded full-fetch checkpoint, or None if absent.
+            render_logs: Whether the test examines real console output or log files.
 
         Returns:
             The configured fetch outcome and captured pipeline calls.
         """
+        if not render_logs:
+            request.getfixturevalue("cli_log_output")
         tests.helpers.doubles.peri_scribe.pipeline_state.isolate_files(
             monkeypatch,
             tmp_path,

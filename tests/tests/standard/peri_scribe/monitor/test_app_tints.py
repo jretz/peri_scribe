@@ -11,20 +11,25 @@ import tests.helpers.fixtures.peri_scribe.monitor.application
 import tests.helpers.textual
 
 
-@pytest.mark.parametrize("theme", ["flexoki", "textual-light"])
-@pytest.mark.parametrize("view", ["pipeline", "logs"])
-@pytest.mark.asyncio
-async def test_monitor_app_tints_severe_events_without_changing_stripe_brightness(
+async def assert_tints_severe_events_without_changing_stripe_brightness(
     color_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    subtests: pytest.Subtests,
     theme: str,
-    view: str,
 ) -> None:
+    """Check severe-event colors before the same command enters the run-list probes.
+
+    Args:
+        color_session: The mounted monitor with terminal colors enabled.
+        subtests: Names each native observation or pane.
+        theme: The terminal palette under observation.
+    """
     session = color_session
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
         session.directory,
         *(
             tests.helpers.factories.peri_scribe.monitor.events.record(
                 f"Event {index}",
+                run_id="0",
                 level=level,
             )
             for index, level in enumerate(
@@ -45,11 +50,27 @@ async def test_monitor_app_tints_severe_events_without_changing_stripe_brightnes
     )
     await session.app.refresh_files()
     await tests.helpers.textual.invoke(setattr, session.app, "theme", theme)
+    with subtests.test(view="pipeline"):
+        await assert_severe_event_tints(session, "pipeline", "#pipeline-stream .events")
+    await session.resize(*tests.helpers.textual.DEFAULT_TERMINAL_SIZE)
+    with subtests.test(view="logs"):
+        await assert_severe_event_tints(session, "logs", "#log-stream .events")
+
+
+async def assert_severe_event_tints(
+    session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    view: str,
+    selector: str,
+) -> None:
+    """Check row colors before and after scrolling moves a tinted row on screen.
+
+    Args:
+        session: The seeded monitor at its default terminal size.
+        view: The monitor tab containing the event table.
+        selector: The event table to inspect on that tab.
+    """
     await session.show_view(view)
-    table = session.app.query_one(
-        "#pipeline-stream .events" if view == "pipeline" else "#log-stream .events",
-        peri_scribe.monitor.widgets.EventTable,
-    )
+    table = session.app.query_one(selector, peri_scribe.monitor.widgets.EventTable)
     colors = [
         (
             await tests.helpers.textual.invoke(
@@ -86,12 +107,16 @@ async def test_monitor_app_tints_severe_events_without_changing_stripe_brightnes
     ) == colors[2]
 
 
-@pytest.mark.parametrize("theme", ["flexoki", "textual-light"])
-@pytest.mark.asyncio
-async def test_monitor_app_tints_finished_runs_without_changing_stripe_brightness(
+async def assert_tints_finished_runs_without_changing_stripe_brightness(
     color_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     theme: str,
 ) -> None:
+    """Check native run outcomes while retaining the preceding command evidence.
+
+    Args:
+        color_session: The mounted monitor with terminal colors enabled.
+        theme: The terminal palette under observation.
+    """
     session = color_session
     for index, status in enumerate(
         ("open", "completed", "completed", "failed", "failed", "open", "open"),
@@ -139,3 +164,29 @@ async def test_monitor_app_tints_finished_runs_without_changing_stripe_brightnes
             neutral,
         )
     assert colors[1] != colors[3]
+
+
+@pytest.mark.parametrize("theme", ["flexoki", "textual-light"])
+@pytest.mark.asyncio
+async def test_monitor_app_tints_preserve_native_stripes_for_events_and_runs(
+    color_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    subtests: pytest.Subtests,
+    theme: str,
+) -> None:
+    session = color_session
+    with subtests.test(
+        scenario="tints_severe_events_without_changing_stripe_brightness",
+    ):
+        await assert_tints_severe_events_without_changing_stripe_brightness(
+            session,
+            subtests,
+            theme,
+        )
+    await session.resize(*tests.helpers.textual.DEFAULT_TERMINAL_SIZE)
+    with subtests.test(
+        scenario="tints_finished_runs_without_changing_stripe_brightness",
+    ):
+        await assert_tints_finished_runs_without_changing_stripe_brightness(
+            session,
+            theme,
+        )

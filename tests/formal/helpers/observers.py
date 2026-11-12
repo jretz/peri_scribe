@@ -22,6 +22,9 @@ PROJECTION_CASE_COUNT = PROJECTION_HISTORY_COUNT * 7**2 * 3
 NOT_CAUGHT_UP = 2
 
 
+type ReaderTrace = tuple[str | int, ...]
+
+
 def sequence(value: str) -> list[str | int]:
     """Preserve TLC's sequence order in the JSON transport for trace replay.
 
@@ -65,12 +68,22 @@ def browser_cases(states: list[dict[str, str]]) -> list[dict[str, object]]:
     ]
 
 
-def replay_reader(state: dict[str, str], directory: pathlib.Path) -> None:
-    """Exercise OS handles, partial bytes, rotation, and detectable truncation.
+def replay_reader(
+    trace: ReaderTrace,
+    expected: dict[ReaderTrace, tuple[str | int, ...]],
+    checked: set[ReaderTrace],
+    directory: pathlib.Path,
+) -> tuple[bool, bool]:
+    """Check each prefix in order on the same live follower and actual files.
 
     Args:
-        state: A reachable cursor state with its complete action trace.
+        trace: A maximal reachable cursor trace.
+        expected: The delivered records for every TLC prefix.
+        checked: Prefixes already asserted, including those shared with other traces.
         directory: An isolated directory for this trace's files.
+
+    Returns:
+        Whether the terminal cursor follows the current file and buffers a partial row.
 
     Raises:
         AssertionError: If the model introduces an unimplemented action.
@@ -83,7 +96,9 @@ def replay_reader(state: dict[str, str], directory: pathlib.Path) -> None:
         peri_scribe.monitor.storage.Follower(directory, tail=False),
     ) as follower:
         assert not follower.poll().records
-        for action in sequence(state["trace"]):
+        assert expected[()] == ()
+        checked.add(())
+        for index, action in enumerate(trace, 1):
             match action:
                 case "write" | "finish":
                     record = json.dumps({"event": "Progress", "record": next_record})
@@ -105,7 +120,19 @@ def replay_reader(state: dict[str, str], directory: pathlib.Path) -> None:
                     path.write_bytes(b"")
                 case _:
                     raise AssertionError(action)
-    assert delivered == sequence(state["delivered"]), state
+            prefix = trace[:index]
+            assert tuple(delivered) == expected[prefix], prefix
+            checked.add(prefix)
+        # Small modeled files drain in one poll, leaving either the active file or the
+        # retired file that the follower has yet to drain.
+        assert len(follower.cursors) == 1
+        ((identity, cursor),) = follower.cursors.items()
+        current = path.stat()
+        terminal = (identity == (current.st_dev, current.st_ino), bool(cursor.partial))
+        assert not cursor.stream.closed
+    assert not follower.cursors
+    assert cursor.stream.closed
+    return terminal
 
 
 def projection_events(value: str) -> tuple[tuple[int, bool], ...]:

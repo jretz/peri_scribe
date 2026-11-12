@@ -24,6 +24,10 @@ fail in a counterexample configuration. An unexpected failure, a different viola
 invariant, or an expected counterexample that disappears is an error. `PipelineState`
 is a shared operator module, not a separate executable specification.
 
+Configurations with conformance consumers declare `conformance = "graph"` for directed
+paths or `conformance = "states"` for a reachable-state inventory. Both modes explore
+the complete model and run every configured check.
+
 ## Source mapping and bounds
 
 The following inventories describe specific parts of the system:
@@ -44,6 +48,8 @@ The following inventories describe specific parts of the system:
   completion-driven refill, input-order results and errors, cancellation, and joining.
 - [Bounded source reads](bounded-source-read.md): pinned catalog ownership, verified
   detailed work, final source validation, and worker settlement before reader release.
+- [Verification admission][verification-admission]: complete ordinary and proof
+  prerequisites, one full formal worker pool, nominal capacity and abort ordering.
 - [Supervised stage processes](stage-processes.md): inherited writer leases, exact
   continuation inputs, pending-stage prefixes and joined child cancellation.
 - [Document-local boundary spill](boundary-spill.md): complete fresh-entry admission,
@@ -161,7 +167,7 @@ checkpoint replacement, journal removal, viewer replacement, and
 optional publication-checkpoint removal. The application has separate files for these
 operations; the model preserves those failure boundaries.
 
-Both configurations explore two sequential batches, at most two interruptions, and all
+The configuration explores two sequential batches, at most two interruptions, and all
 four combinations of empty/nonempty batches. Each batch independently chooses whether
 fresh publication inputs are available and whether the invocation is gated, producing
 64 initial states and 49,596 reachable states. Those choices remain fixed across a
@@ -192,16 +198,33 @@ and archive decoding remain assumptions of the abstract model. Empty batches adv
 the checkpoint without an append. Already-acknowledged builds also traverse rotation,
 without creating another journal or changing their checkpoint.
 
-`JournalReplay.tla` retains checked recovery input/output pairs for actual-file
-conformance. The [journal replay inventory](journal_replay.md) describes all 130
-distinct recovery relations and the additional 50 fault-injected builder scenarios.
+`JournalReplay.tla` checks this complete publication graph as well as recovery
+input/output pairs for actual-file conformance. The [journal replay inventory](journal_replay.md)
+explains the shared exploration and describes all 130 distinct recovery relations and
+the additional 50 fault-injected builder scenarios.
 
-Journal liveness adds weak fairness of progress. With finite batches, at most two
-interruptions, and successful future I/O, the final viewer and checkpoint are
-eventually published. It does not require the environment to generate further data or
-eventually rotate logs. New source generations arrive only after the preceding modeled
-publication completes; publication history overwritten before any journal is written
-is outside the exactly-once claim.
+Journal liveness uses weak fairness of progress. TLC checks that the rank is a natural
+number, that every nonstuttering transition decreases it, and that every state before
+the final batch ends enables a nonstuttering `Progress` transition. The same fairness
+assumption and these premises imply `EventuallyPublished`. The final viewer and
+checkpoint agree with the completed batch by `CompletedPublicationConsistent`. See the
+[Lean rank proof](../lean/PeriScribe/RankedLiveness.lean).
+
+The rank reserves 64 values for each combination of remaining batches and retries.
+Within a block, recovery precedes normal publication. For example, after recovering a
+journal, unlinking it returns to preparation at a later position. The low bit lets
+`oldMonth` decrease the rank even when aging the logs leaves the phase unchanged. A
+crash uses a lower block by spending a retry, and starting the next batch also uses a
+lower block.
+
+The assessment is `(1, 2, 2, 1, 1)`, totaling 7. The rank accounts for local ordering
+through recovery, retry, and log aging. Checking it adds constant work per transition.
+The ranked check matched the complete graph from the safety configuration and the
+outcome of the direct liveness check.
+
+New source generations arrive only after the preceding modeled publication completes.
+Publication history overwritten before any journal is written is outside the
+exactly-once claim.
 
 ### Geography and cache publication
 
@@ -251,8 +274,8 @@ cleanup failures after publication, and concurrent writers are outside this mode
 ## Fetch recovery
 
 `FetchCrash.tla` maps to ungated `pipeline.run_fetch_stage`, the scheduled-full marker
-in `fetch_fire_sources`, and `pipeline_state` persistence. Both safety and liveness
-configurations explore 13,594 states, starting from all 32 valid pending-stage/force
+in `fetch_fire_sources`, and `pipeline_state` persistence. One configuration checks
+safety and liveness across 13,594 states, starting from all 32 valid pending-stage/force
 combinations, changed or unchanged fire and evacuation inputs, scheduled-full or
 incremental collection, and explicit user forcing. At most two abrupt interruptions
 can occur, including immediately after either independently durable source mutation.
@@ -273,7 +296,7 @@ TLC-exported completion records drive 512 real coordinator executions. A further
 exported mutation-boundary records drive actual state persistence, simulated
 interruptions, and truthful unchanged retries for both input families.
 
-`FetchCrashLiveness.cfg` adds weak fairness of enabled progress and checks eventual
+`FetchCrash.cfg` assumes weak fairness of enabled progress when checking eventual
 completion with output matching the stable input targets. The finite interruption budget
 and continuing invocations are required progress assumptions. Retries use incremental
 collection, demonstrating recovery even when the full-fetch checkpoint already advanced;
@@ -305,7 +328,7 @@ corruption during a run, forged metadata, hash collisions, UUID collisions, unre
 locking filesystems, and noncooperating writers are outside the checked guarantees.
 
 Safety is checked for all paths inside the finite bounds, including failures at every
-modeled boundary. Fairness appears only in liveness configurations. Terminal protocols
+modeled boundary. Fairness conditions apply to liveness properties. Terminal protocols
 disable TLC's deadlock check because successful completion intentionally has no next
 work; the liveness property still rejects nonterminal executions that cannot finish.
 No symmetry reduction or state constraint removes intermediate states.
@@ -315,3 +338,5 @@ conformance cases together. Add a new action when a persistent write gains its o
 failure boundary. Preserve counterexample traces as regression cases before repairing a
 protocol. Increasing a bound explores a larger finite instance; it does not turn a TLC
 result into a proof for arbitrary instances.
+
+[verification-admission]: ../../../docs/algorithms/verification-tooling.md#fresh-conformance-admission

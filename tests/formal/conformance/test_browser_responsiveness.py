@@ -34,8 +34,13 @@ def test_create_response_monitor_refines_tlc_histories(tmp_path: pathlib.Path) -
     node = shutil.which("node")
     assert node is not None, "Run mise formal-conformance to provide Node"
     result = tests.formal.helpers.process.run(
-        [node, str(pathlib.Path(__file__).parents[1] / "helpers/browser_response.mjs")],
+        [
+            node,
+            "--single-threaded",
+            str(pathlib.Path(__file__).parents[1] / "helpers/browser_response.mjs"),
+        ],
         standard_input=json.dumps(cases),
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert json.loads(result.stdout) == {"checked": len(cases) * 3}
+    expected_replays = 8988
+    assert json.loads(result.stdout) == {"checked": expected_replays}

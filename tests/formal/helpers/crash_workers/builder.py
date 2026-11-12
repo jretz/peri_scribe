@@ -2,22 +2,25 @@
 
 import dataclasses
 import datetime
+import functools
+import importlib
 import json
 import pathlib
-
-import pytest
 
 import peri_scribe.fire_updates
 import peri_scribe.paths
 import peri_scribe.pipeline_state
+import peri_scribe.preparation
 import peri_scribe.publication
 import tests.formal.helpers.crash_worker
 import tests.formal.helpers.journal
-import tests.formal.helpers.journal_builder
+import tests.formal.helpers.journal_builder_inputs
+import tests.formal.helpers.journal_wire_observer
+import tests.helpers.doubles.attribute_overrides
 
 
 @dataclasses.dataclass(kw_only=True)
-class Builder(tests.formal.helpers.journal_builder.Scenario):
+class Builder(tests.formal.helpers.journal_wire_observer.Scenario):
     """Persist only harness identities needed to interpret a later fresh interpreter."""
 
     request: tests.formal.helpers.crash_worker.Request
@@ -48,8 +51,14 @@ def run(request: tests.formal.helpers.crash_worker.Request) -> None:
     Args:
         request: A first publication, interrupted second publication, or fresh retry.
     """
-    scenario = Builder(directory=request.directory, allowed=None, request=request)
-    metadata = pathlib.Path(request.root) / "builder.json"
+    scenario = Builder(directory=request.directory, request=request)
+    root = pathlib.Path(request.root)
+    metadata = root / "builder.json"
+    full = (
+        importlib.import_module("tests.formal.helpers.journal_builder")
+        if request.family == "builder_full"
+        else None
+    )
     if metadata.exists():
         payload = json.loads(metadata.read_text())
         scenario.states = {
@@ -78,9 +87,26 @@ def run(request: tests.formal.helpers.crash_worker.Request) -> None:
         "unlink journal": peri_scribe.fire_updates.pending_path(directory),
         "viewer": directory / "maps" / "updates.json",
     }
-    with pytest.MonkeyPatch.context() as patch:
-        tests.formal.helpers.journal_builder.install(patch, scenario)
-        tests.formal.helpers.journal_builder.boundary(patch, scenario, None)
+    with tests.helpers.doubles.attribute_overrides.AttributeOverrides() as patch:
+        if full is None:
+            assert request.builder_catalogue is not None
+            patch.setattr(
+                peri_scribe.preparation,
+                "runtime_fingerprint",
+                lambda: "formal-journal-persistence",
+            )
+            publish = functools.partial(
+                tests.formal.helpers.journal_builder_inputs.publish_fixture,
+                catalogue_path=pathlib.Path(request.builder_catalogue),
+            )
+        else:
+            full.install(patch, scenario)
+            publish = functools.partial(full.publish_fixture, fresh=True)
+        tests.formal.helpers.journal_wire_observer.boundary(
+            patch,
+            scenario.inspect,
+            None,
+        )
         scenario.generation = 1 if request.phase == "seed" else 2
         if request.phase == "crash":
             request.record("event", "batch")
@@ -95,6 +121,11 @@ def run(request: tests.formal.helpers.crash_worker.Request) -> None:
         )
         with peri_scribe.pipeline_state.run_lock(directory) as acquired:
             assert acquired, "dead writer retained the year lock"
-            tests.formal.helpers.journal_builder.build(scenario, now, fresh=True)
+            publish(scenario, now)
             scenario.inspect()
+    if request.phase == "seed":
+        assert full is not None
+        full.write_input_catalogue(
+            root / tests.formal.helpers.journal_builder_inputs.CATALOGUE_NAME,
+        )
     request.record("complete", request.phase)

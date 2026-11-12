@@ -254,9 +254,9 @@ def replay(
     node = history[0].source
     assert node in graph.initial
     with contextlib.ExitStack() as scopes:
-        scopes.enter_context(peri_scribe.sources.authentication.scope(directory))
-        owner = peri_scribe.sources.authentication.CURRENT.get()
-        assert owner is not None
+        owner = scopes.enter_context(
+            tests.formal.helpers.source_authentication.checked_scope(directory),
+        )
         runtime = Replay(
             paths=paths,
             modifications=tuple(path.stat() for path in paths),

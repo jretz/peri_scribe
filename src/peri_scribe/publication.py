@@ -10,37 +10,21 @@ import dataclasses
 import datetime
 import enum
 import hashlib
+import importlib
 import math
 import pathlib
-import tempfile
 import typing
 
 import pydantic
-import shapely
-import structlog
 
-import peri_scribe.fires.identity
-import peri_scribe.geo.package
-import peri_scribe.geo.parsing
+import peri_scribe.durable_file
 import peri_scribe.models
-import peri_scribe.perimeters.size_filtering
-import peri_scribe.perimeters.versions
-import peri_scribe.sources.catalog
-import peri_scribe.sources.cities
-import peri_scribe.sources.external_data
-import peri_scribe.sources.feeds
-import peri_scribe.sources.snapshots
-import spatial_data.measurements
-import spatial_data.reference
-from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
     import geopandas
     import pint
-
-
-logger = structlog.get_logger()
+    import shapely
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -107,6 +91,7 @@ class Mapping(pydantic.BaseModel):
         """
         if self.area_square_meters is None:
             return None
+        units = importlib.import_module("measurement_units").units
         return self.area_square_meters * units.Unit("meters ** 2")
 
 
@@ -196,7 +181,9 @@ class Decision:
     proceed: bool
     reason: Reason
     change: pint.Quantity[float] = dataclasses.field(
-        default_factory=lambda: 0.0 * units.acres,
+        default_factory=lambda: (
+            0.0 * importlib.import_module("measurement_units").units.acres
+        ),
     )
     fire: str | None = None
 
@@ -210,8 +197,8 @@ def file_stamp(path: pathlib.Path) -> FileStamp:
     Returns:
         The file size and last modification time in native filesystem units.
     """
-    status = path.stat()
-    return FileStamp(size=status.st_size, modified_nanoseconds=status.st_mtime_ns)
+    size, modified_nanoseconds = peri_scribe.durable_file.at(path).identity()
+    return FileStamp(size=size, modified_nanoseconds=modified_nanoseconds)
 
 
 def collection_path(year_directory: pathlib.Path) -> pathlib.Path:
@@ -238,6 +225,16 @@ def publication_path(year_directory: pathlib.Path) -> pathlib.Path:
     return year_directory / "publication_state.json"
 
 
+def invalidate(year_directory: pathlib.Path) -> None:
+    """Require a fresh checkpoint when an output has superseded its evidence.
+
+    Args:
+        year_directory: The year whose publication checkpoint should be cleared.
+    """
+    path = publication_path(year_directory)
+    peri_scribe.durable_file.at(path).remove(missing_ok=True)
+
+
 def read_state[State: pydantic.BaseModel](
     path: pathlib.Path,
     state_type: type[State],
@@ -252,11 +249,12 @@ def read_state[State: pydantic.BaseModel](
         The validated state, or None when it is missing or corrupt.
     """
     try:
-        return state_type.model_validate_json(path.read_bytes())
+        raw_state = peri_scribe.durable_file.at(path).read_bytes()
+        return state_type.model_validate_json(raw_state)
     except FileNotFoundError:
         return None
     except ValueError as error:
-        logger.warning(
+        importlib.import_module("structlog").get_logger().warning(
             "Invalid publication state",
             path=path,
             error=str(error),
@@ -272,11 +270,7 @@ def write_state(path: pathlib.Path, state: pydantic.BaseModel) -> None:
         path: The destination of the complete state file.
         state: The validated state to persist.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with tempfile.TemporaryDirectory(dir=path.parent) as directory:
-        temporary = pathlib.Path(directory) / path.name
-        temporary.write_text(state.model_dump_json())
-        temporary.replace(path)
+    peri_scribe.durable_file.at(path).replace_text(state.model_dump_json())
 
 
 def read_publication(
@@ -330,10 +324,12 @@ def shape_measurement(geometry: shapely.Geometry | None) -> tuple[str, float | N
     """
     if geometry is None or geometry.is_empty:
         return "", None
+    shapely = importlib.import_module("shapely")
     shape = hashlib.sha256(shapely.normalize(geometry).wkb).hexdigest()
     if not geometry.is_valid or geometry.geom_type not in {"Polygon", "MultiPolygon"}:
         return shape, None
-    area = spatial_data.measurements.area(shapely.orient_polygons(geometry))
+    measurements = importlib.import_module("spatial_data.measurements")
+    area = measurements.area(shapely.orient_polygons(geometry))
     return shape, area.m_as("meters ** 2") if math.isfinite(area.magnitude) else None
 
 
@@ -353,26 +349,33 @@ def snapshot_mappings(
     Returns:
         Raw perimeter measurements and source provenance for this snapshot.
     """
+    packages = importlib.import_module("peri_scribe.geo.package")
+    parsing = importlib.import_module("peri_scribe.geo.parsing")
+    size_filtering = importlib.import_module("peri_scribe.perimeters.size_filtering")
+    versions = importlib.import_module("peri_scribe.perimeters.versions")
+    feeds = importlib.import_module("peri_scribe.sources.feeds")
+    reference = importlib.import_module("spatial_data.reference")
+    units = importlib.import_module("measurement_units").units
     measurements: list[Mapping] = []
-    for feed, source_frame in peri_scribe.geo.package.layers_by_feed(path):
-        if feed == peri_scribe.sources.feeds.WFIGS_INCIDENT_LOCATIONS_FEED:
+    for feed, source_frame in packages.layers_by_feed(path):
+        if feed == feeds.WFIGS_INCIDENT_LOCATIONS_FEED:
             continue
-        frame = source_frame.to_crs(spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID)
+        frame = source_frame.to_crs(reference.WGS84_SPATIAL_REFERENCE_ID)
         geometry_name = str(frame.geometry.name)
         for _, row in frame.iterrows():
-            record = peri_scribe.geo.parsing.fire_record_from_row(
+            record = parsing.fire_record_from_row(
                 row,
                 feed,
                 row[geometry_name],
             )
             if record is None:
                 continue
-            source = peri_scribe.perimeters.versions.source_observation_from_row(
-                peri_scribe.geo.package.FireRowRecord(
+            source = versions.source_observation_from_row(
+                packages.FireRowRecord(
                     record=record,
-                    object_id=peri_scribe.geo.parsing.object_id_from(row),
+                    object_id=parsing.object_id_from(row),
                     source_name=feed.name,
-                    attributes=peri_scribe.geo.parsing.row_attributes(
+                    attributes=parsing.row_attributes(
                         row,
                         geometry_name,
                     ),
@@ -387,13 +390,13 @@ def snapshot_mappings(
                     object_id=source.object_id,
                     identifiers=tuple(sorted(record.identifiers)),
                     name=record.name,
-                    observed_at=peri_scribe.perimeters.versions.effective_time(source),
+                    observed_at=versions.effective_time(source),
                     captured_at=captured_at,
                     serial=source.serial_number,
                     shape=shape,
                     area_square_meters=area,
                     collapsed=(
-                        peri_scribe.perimeters.size_filtering.area_is_implausibly_small(
+                        size_filtering.area_is_implausibly_small(
                             None if area is None else area * units.Unit("meters ** 2"),
                             source.attributes,
                         )
@@ -412,20 +415,22 @@ def collect(year_directory: pathlib.Path) -> Collection:
     Returns:
         The saved inventory and measurements, including unacknowledged updates.
     """
-    sources_directory = peri_scribe.sources.snapshots.sources_directory_path(
-        year_directory,
-    )
+    catalog = importlib.import_module("peri_scribe.sources.catalog")
+    city_source = importlib.import_module("peri_scribe.sources.cities")
+    external_data = importlib.import_module("peri_scribe.sources.external_data")
+    snapshots = importlib.import_module("peri_scribe.sources.snapshots")
+    sources_directory = snapshots.sources_directory_path(year_directory)
     files = {
         str(path.relative_to(sources_directory)): file_stamp(path)
-        for path in peri_scribe.sources.snapshots.geo_package_files(sources_directory)
+        for path in snapshots.geo_package_files(sources_directory)
     }
     cached = read_state(collection_path(year_directory), Collection) or Collection()
-    evacuation_path = peri_scribe.sources.external_data.output_path(
+    evacuation_path = external_data.output_path(
         year_directory,
-        peri_scribe.sources.catalog.EVACUATIONS_SOURCE,
+        catalog.EVACUATIONS_SOURCE,
     )
     evacuations = file_stamp(evacuation_path) if evacuation_path.exists() else None
-    cities = peri_scribe.sources.cities.database_digest(year_directory)
+    cities = city_source.database_digest(year_directory)
     if (
         cached.files == files
         and set(cached.mappings) == set(files)
@@ -433,6 +438,7 @@ def collect(year_directory: pathlib.Path) -> Collection:
         and cached.cities == cities
     ):
         return cached
+    units = importlib.import_module("measurement_units").units
     mappings: dict[str, tuple[Mapping, ...]] = {}
     for relative, stamp in files.items():
         if cached.files.get(relative) == stamp and relative in cached.mappings:
@@ -616,6 +622,7 @@ def mapping_decision(
     """
     if candidates is None:
         return Decision(proceed=True, reason=Reason.UNCERTAIN_MAPPING)
+    units = importlib.import_module("measurement_units").units
     largest = Decision(proceed=False, reason=Reason.BELOW_THRESHOLD)
     for current, fire in candidates.values():
         baseline = fire.mapping if fire is not None else None
@@ -640,6 +647,38 @@ def mapping_decision(
     return largest
 
 
+def published_mapping(
+    collection: Collection,
+    *,
+    object_id: float | None,
+    source_file: str,
+    name: str,
+) -> Mapping:
+    """Require one raw source observation for the displayed perimeter.
+
+    Args:
+        collection: The inventory frozen for the completed geography stage.
+        object_id: The displayed row's source object ID, if present.
+        source_file: The displayed row's saved source file.
+        name: The displayed fire name for invalid provenance diagnostics.
+
+    Returns:
+        The unique source observation represented by this perimeter.
+
+    Raises:
+        ValueError: If the source row does not identify one saved observation.
+    """
+    matches = [
+        mapping
+        for mapping in collection.mappings.get(source_file, ())
+        if mapping.object_id == object_id
+    ]
+    if len(matches) != 1:
+        message = f"Cannot identify published mapping source for {name}"
+        raise ValueError(message)
+    return matches[0]
+
+
 def published_fires(
     collection: Collection,
     perimeters: geopandas.GeoDataFrame,
@@ -654,10 +693,9 @@ def published_fires(
 
     Returns:
         The per-fire raw measurements represented by the displayed histories.
-
-    Raises:
-        ValueError: When a displayed source row cannot be identified uniquely.
     """
+    identity = importlib.import_module("peri_scribe.fires.identity")
+    parsing = importlib.import_module("peri_scribe.geo.parsing")
     included_identifiers = {
         identifier
         for entry in index.fires
@@ -674,41 +712,36 @@ def published_fires(
     }
     fires: dict[str, PublishedFire] = {}
     for _, row in perimeters.iterrows():
-        identifier = peri_scribe.geo.parsing.normalize_identifier(
+        identifier = parsing.normalize_identifier(
             row["fire_identifier"],
         )
         name = str(row["fire_name"])
-        component_id = peri_scribe.fires.identity.normalized_identifier(
+        component_id = identity.normalized_identifier(
             row.get("fire_component_id"),
         )
         key = (
             "id:" + identifier
             if identifier is not None
-            else peri_scribe.fires.identity.identity_key(name, None, component_id)
+            else identity.identity_key(name, None, component_id)
         )
         aliases_value = row["fire_aliases"]
         aliases = {
             alias
             for value in (
                 []
-                if peri_scribe.geo.parsing.is_missing(aliases_value)
+                if parsing.is_missing(aliases_value)
                 else str(aliases_value).split(",")
             )
-            if (alias := peri_scribe.geo.parsing.normalize_identifier(value))
-            is not None
+            if (alias := parsing.normalize_identifier(value)) is not None
         }
         if identifier is not None:
             aliases.add(identifier)
-        object_id = peri_scribe.geo.parsing.numeric_value(row["source_objectid"])
-        matches = [
-            mapping
-            for mapping in collection.mappings.get(str(row["source_file"]), ())
-            if mapping.object_id == object_id
-        ]
-        if len(matches) != 1:
-            message = f"Cannot identify published mapping source for {name}"
-            raise ValueError(message)
-        mapping = matches[0]
+        mapping = published_mapping(
+            collection,
+            object_id=parsing.numeric_value(row["source_objectid"]),
+            source_file=str(row["source_file"]),
+            name=name,
+        )
         aliases.update(mapping.identifiers)
         if key in fires:
             aliases.update(fires[key].identifiers)

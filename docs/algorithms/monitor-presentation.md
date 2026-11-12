@@ -19,6 +19,36 @@ requests domain resources using `RefreshHealth`, `RefreshRecords`, `RefreshRepor
 **Total 9: complex.** This note covers presentation scheduling; domain admission,
 subscription, and reader ownership guarantees are defined by the session contract.
 
+## Controller and terminal boundary
+
+The controller owns request readiness, snapshot selection, generation authorization and
+task retirement. Its presentation port supplies current filter values and applies the
+actual immutable health, record and report payloads. The native implementation delegates
+the existing Textual widget functions and selectors, including completed-frame callbacks,
+attachment checks, evidence navigation and cursor visibility. Dispatch adds constant work
+per presentation request; the formatting, row batching and reader costs are unchanged.
+
+This boundary lets policy tests exercise the actual application controller and domain
+session without assembling every terminal pane. A private recording implementation keeps
+actual prepared payloads and controls the attachment, filter and frame inputs. Real log
+files, reader threads, queued work, priorities, cancellations and cleanup remain active.
+It supplies no substitute policy calculation or saved passing result. Mutable fixture
+state belongs to one case; prepared values are immutable.
+
+Native tests retain first-paint and background preparation, input and evidence routing,
+row/evidence mapping, Markdown completion, widget detachment, layout, scrolling, cursor
+visibility, resizing, themes and screenshot behavior. The unchanged mounted cohort checks
+the extraction before component tests take ownership of policy assertions. Controlled
+comparisons then check input dimensions, assertions, native outcomes and source coverage.
+The representation boundary changes no session transition or numerical policy, so the
+existing domain and worker-lifetime models retain their stated scope.
+
+Mounted tests acknowledge native widget queues and completed screen refreshes through
+`RefreshPilot`. The adapter inherits the actual input methods and retains the native
+application context and shutdown. A completed frame supplies the readiness boundary for
+mouse actions and resize probes. Explicit delays and keyboard dispatch retain their
+existing behavior. This test synchronization changes no controller or session policy.
+
 ## First frame and subsequent preparation
 
 Startup requests complete health evidence, including missing command context. The
@@ -63,6 +93,13 @@ mutating widgets. On completion, the controller compares generations. Obsolete r
 are discarded and preparation repeats with current inputs. Applying long tables yields
 periodically and checks generation and attachment again, allowing input and shutdown to
 make progress. Completion is recorded only for the generation actually applied.
+
+Pipeline, Logs, and Runs share each prepared generation. Switching among these tabs
+joins pending work and starts it if no display task exists yet. A settled generation
+stays valid because changing tabs leaves the records, selection, and filters intact.
+After reflow, the active tab reveals its existing cursors. The callback checks that
+the terminal is still attached and the same tab is active. Performance still takes a
+fresh observation time on every visit so its rolling chart window is current.
 
 Each table retains its own mapping from generation-qualified row keys to evidence until
 that table is replaced. A click in the other table during a batch yield still resolves
@@ -230,6 +267,7 @@ boundary, early navigation, generation rejection, paused selection, report repla
 and detached widgets; these are outside the finite domain protocol model.
 
 Implementation: [controller](../../src/peri_scribe/monitor/controller.py),
+[native presentation](../../src/peri_scribe/monitor/terminal_presentation.py),
 [row preparation](../../src/peri_scribe/monitor/display.py),
 [widget application](../../src/peri_scribe/monitor/rendering.py), and
 [terminal adapter](../../src/peri_scribe/monitor/app.py).

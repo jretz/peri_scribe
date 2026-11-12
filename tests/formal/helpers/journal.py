@@ -4,6 +4,7 @@ import collections
 import compression.zstd
 import dataclasses
 import datetime
+import importlib
 import json
 import pathlib
 import re
@@ -13,7 +14,6 @@ import time_machine
 import peri_scribe.fire_updates
 import peri_scribe.publication
 import peri_scribe.updates
-import tests.formal.helpers.corpus
 
 
 EPOCH = datetime.datetime(2026, 1, 1, tzinfo=datetime.UTC)
@@ -80,13 +80,14 @@ def recoveries(directory: pathlib.Path) -> tuple[Recovery, ...]:
         Every distinct observable recovery relation, including empty batches.
     """
     records = {}
-    for fields in tests.formal.helpers.corpus.states(
+    corpus = importlib.import_module("tests.formal.helpers.corpus")
+    for fields in corpus.projected_states(
         "JournalReplay",
         "JournalReplay",
         directory,
+        ("recoveryInput", "durable", "recoveryAge", "hasRecords"),
+        where=("recovered", frozenset({"TRUE"})),
     ):
-        if fields["recovered"] != "TRUE":
-            continue
         outcome = Recovery(
             before=durable(fields["recoveryInput"]),
             after=durable(fields["durable"]),

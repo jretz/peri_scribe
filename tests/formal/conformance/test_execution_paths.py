@@ -15,7 +15,10 @@ def test_path_observe_accepts_internal_steps_and_explicit_stutters(
     path = contract.start(observations[0])
     assert len(path.candidates) > 1
     for value in observations:
-        path = path.observe(value).observe(value)
+        advanced = path.observe(value)
+        path = advanced.observe(value)
+        assert path.candidates == advanced.candidates
+        assert path.observations == advanced.observations + 1
     assert path.value == observations[-1]
 
 

@@ -175,6 +175,33 @@ Next == (Progress \/ Crash \/ AgeLogs) /\ UNCHANGED publicationModes
 Spec == Init /\ [][Next]_variables
 FairSpec == Spec /\ WF_variables(Progress)
 
+FinalJournalDone == phase = "done" /\ target = BatchCount
+
+\* Recovering an existing journal reaches preparation before normal publication starts.
+RotationPosition ==
+    CASE phase = "rotate" -> 1
+      [] phase = "publish archive" -> 2
+      [] phase = "remove plain" -> 3
+      [] phase = "forget rotation" -> 4
+      [] phase = "append" -> 5
+      [] phase = "checkpoint" -> 6
+      [] phase = "unlink" -> 7
+PhasePosition ==
+    CASE phase = "prepare" -> IF durable.journal # 0 THEN 0 ELSE 10
+      [] phase = "kmz" -> 11
+      [] phase = "publication" -> 12
+      [] phase = "journal" -> 13
+      [] phase = "viewer" -> 24
+      [] phase = "invalidate publication" -> 25
+      [] phase = "done" -> 26
+      [] OTHER -> (IF resume = "prepare" THEN 0 ELSE 14) + RotationPosition
+BatchAndRetryRank == (BatchCount - target) * (MaximumFailures + 1) + failures
+Rank == 64 * BatchAndRetryRank + 2 * (31 - PhasePosition) +
+    (IF oldMonth THEN 0 ELSE 1)
+RankIsNatural == Rank \in Nat
+RankDecreases == [][Rank' < Rank]_variables
+ProgressAvailable == ~FinalJournalDone => ENABLED <<Progress>>_variables
+
 TypeOK ==
     /\ durable \in [kmz: 0..BatchCount, publication: 0..BatchCount,
          journal: 0..BatchCount, checkpoint: 0..BatchCount, viewer: 0..BatchCount,
@@ -222,5 +249,5 @@ GatedPartialInvalidatesPublication ==
 UngatedPartialCannotAcknowledgeFreshInputs ==
     phase = "done" /\ ~publicationModes[target].gated
     /\ ~publicationModes[target].freshInputs => durable.publication < target
-EventuallyPublished == <> (phase = "done" /\ target = BatchCount)
+EventuallyPublished == <>FinalJournalDone
 =============================================================================

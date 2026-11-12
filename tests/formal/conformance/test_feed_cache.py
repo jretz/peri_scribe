@@ -26,10 +26,13 @@ def test_write_current_state_matches_every_checked_cache_candidate(
     )
     candidates = [state for state in states if state["phase"] == '"writing"']
     assert len(candidates) == 4**3 * 3 * 4 * 2
+    templates: tests.formal.helpers.feed_cache.FrameTemplates = {}
     with structlog.testing.capture_logs():
         for state in candidates:
-            tests.formal.helpers.feed_cache.replay(
-                state,
-                tmp_path / "source",
-                monkeypatch,
-            )
+            with monkeypatch.context() as patch:
+                tests.formal.helpers.feed_cache.replay(
+                    state,
+                    tmp_path / "source",
+                    patch,
+                    templates,
+                )

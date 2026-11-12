@@ -2,6 +2,7 @@
 
 import compression.zstd
 import datetime
+import json
 import pathlib
 import unittest.mock
 
@@ -122,6 +123,35 @@ def test_recover_rotation_refuses_malformed_receipts(
         peri_scribe.logging.recover_rotation(path)
     assert path.read_bytes() == b"preserved source\n"
     assert receipt.read_bytes() == payload
+
+
+def test_recover_rotation_accepts_alternate_receipt_layout(
+    tmp_path: pathlib.Path,
+) -> None:
+    path = tmp_path / "2026-01.jsonl"
+    archive = path.with_suffix(".jsonl.zst")
+    records = b'{"event":"saved diagnostic"}\n'
+    path.write_bytes(records)
+    archive.write_bytes(compression.zstd.compress(records))
+    model = peri_scribe.logging.RotationReceipt(
+        source_checksum=peri_scribe.logging.required_file_checksum(path),
+        archive_checksum=None,
+        target_checksum=peri_scribe.logging.required_file_checksum(archive),
+    )
+    receipt = peri_scribe.logging.rotation_receipt_path(path)
+    receipt.write_text(
+        json.dumps(model.model_dump(), indent=2, sort_keys=True),
+        encoding="utf-8",
+    )
+
+    assert peri_scribe.logging.recover_rotation(path)
+    assert not path.exists()
+    assert not receipt.exists()
+    assert compression.zstd.decompress(archive.read_bytes()) == records
+
+
+def test_logging_leaves_unknown_receipt_attribute_absent() -> None:
+    assert not hasattr(peri_scribe.logging, "Receipt")
 
 
 @pytest.mark.parametrize("committed", [False, True])

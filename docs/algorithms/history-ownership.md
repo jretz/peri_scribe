@@ -44,7 +44,8 @@ identity contracts necessary regardless of score.
 2. Consider remaining legacy name continuity. Require normalized-name agreement and a
    shared mapping signature or exact source reference; empty histories need no mapping
    witness. A match must be unique in both directions. An acknowledged local alias can
-   resolve an otherwise recurring ambiguity.
+   resolve an otherwise recurring ambiguity. A pass with no candidates seeking a name
+   match has no claims to add.
 3. Resolve each claimed bucket by the greatest mapping priority: dated evidence outranks
    undated evidence, then latest nonempty mapping time, then report identity. Iteration
    order cannot decide a winner.
@@ -64,6 +65,11 @@ Writer uniqueness follows because each won bucket has one winning fire and each 
 allocation reserves an unused key. Unioning evidence into a writer does not erase old
 buckets. Retaining losing routes is essential: overwriting lineage with only the winning
 route would prevent a corrected fire from reclaiming its own earlier history.
+
+Group the final winning buckets by fire before choosing writer keys. Group the completed
+owner map by key before assembling inherited histories. Both passes retain the order of
+their input maps. They leave the priority, preferred-or-smallest choice, and the owner
+assignments intact.
 
 For unchanged inputs, a current writer wins its own bucket on recomputation. Learning
 adds histories already owned by that writer while retaining its old winning claims;
@@ -91,11 +97,12 @@ instant changes. Empty latest geometry suppresses an update record.
 ## Costs and limitations
 
 Let F be current fires, H retained buckets, C total expanded claims, A aliases, and E
-retained evidence tokens. Priority ordering costs O(F log F); claim traversal costs at
-least O(A + C). Current per-fire scans over winners/owners and name candidates can cost
-O(FH), with set-intersection work depending on evidence sizes. Checkpoint storage is
-O(H + A + C + E); historical evidence is deliberately retained and is not bounded by a
-fixed number of recent updates. Geometry signature calculation adds geometry-byte cost.
+retained evidence tokens. Priority ordering costs O(F log F), and claim traversal costs
+at least O(A + C). Grouping winning and owned buckets costs O(F + H) time and temporary
+space. Name candidate scans can cost O(FH), with set-intersection work depending on
+evidence sizes. Checkpoint storage is O(H + A + C + E). Historical evidence is retained
+without a fixed limit on recent updates. Geometry signature calculation adds
+geometry-byte cost.
 
 Stable retries assume unchanged current identities, priority and evidence, valid
 canonical identity encodings, and collision-resistant local digests. The algorithm does

@@ -25,10 +25,67 @@ def entry (text : String) : Except String GeometrySharing.Entry := do
   | [digest, payload] => return (← natural digest, ← natural payload)
   | _ => throw "Expected digest,payload"
 
-def treeText : GeometrySharing.Tree → List Nat
-  | .leaf digest payloads => [0, digest, payloads.length] ++ payloads
+def treeText (tree : GeometrySharing.Tree) (tail : List Nat := []) : List Nat :=
+  match tree with
+  | .leaf digest payloads => 0 :: digest :: payloads.length :: (payloads ++ tail)
   | .branch digest split smaller larger =>
-    [1, digest, split] ++ treeText smaller ++ treeText larger
+    1 :: digest :: split :: treeText smaller (treeText larger tail)
+
+def treePrefixes : List GeometrySharing.Entry → List GeometrySharing.Tree
+  | [] => []
+  | first :: rest =>
+    let initial := GeometrySharing.Tree.leaf first.1 [first.2]
+    rest.scanl (fun tree item => GeometrySharing.insert tree item.1 item.2) initial
+
+structure DigestCatalogue where
+  positions : Std.HashMap Nat Nat := {}
+  values : Array Nat := #[]
+
+def digestCatalogue (entries : List GeometrySharing.Entry) : DigestCatalogue :=
+  entries.foldl (fun table (digest, _) =>
+    if table.positions.contains digest then table
+    else ⟨table.positions.insert digest table.values.size, table.values.push digest⟩) {}
+
+structure TreeCatalogue where
+  positions : Std.HashMap GeometrySharing.PackedNode Nat := {}
+  nodes : Array GeometrySharing.PackedNode := #[]
+
+abbrev PackTree := StateT TreeCatalogue (Except String)
+
+def digestOrdinal (table : DigestCatalogue) (digest : Nat) : PackTree Nat := do
+  match table.positions[digest]? with
+  | some ordinal =>
+    if table.values[ordinal]? = some digest then return ordinal
+    else throw "Digest ordinal has a different value"
+  | none => throw "Output digest has no exact input identity"
+
+def internTreeNode (node : GeometrySharing.PackedNode) : PackTree Nat := do
+  let table ← get
+  match table.positions[node]? with
+  | some ordinal =>
+    if table.nodes[ordinal]? = some node then return ordinal
+    else throw "Tree node ordinal has a different value"
+  | none =>
+    let ordinal := table.nodes.size
+    set ({ positions := table.positions.insert node ordinal,
+           nodes := table.nodes.push node } : TreeCatalogue)
+    return ordinal
+
+def packTree (digests : DigestCatalogue) : GeometrySharing.Tree → PackTree Nat
+  | .leaf digest payloads => do
+    internTreeNode (.leaf (← digestOrdinal digests digest) payloads)
+  | .branch digest split smaller larger => do
+    let ordinal ← digestOrdinal digests digest
+    let left ← packTree digests smaller
+    let right ← packTree digests larger
+    internTreeNode (.branch ordinal split left right)
+
+def packedPrefixes (entries : List GeometrySharing.Entry) : Except String (List Nat) := do
+  let (roots, table) ← ((treePrefixes entries).mapM (packTree (digestCatalogue entries))).run {}
+  let records := table.nodes.toList.flatMap fun node =>
+    let tokens := node.tokens
+    tokens.length :: tokens
+  return table.nodes.size :: roots.length :: (records ++ roots)
 
 def row (text : String) : Except String UpdateViewer.Row := do
   match text.splitOn "," with
@@ -98,10 +155,12 @@ def respond (words : List String) : Except String String := do
   | "encoding-position" :: payload :: values =>
     return toString (GeometryPreparation.encodingPosition (← values.mapM natural)
       (← natural payload))
-  | "tree" :: entries =>
-    match ← entries.mapM entry with
-    | [] => return "2"
-    | first :: rest => return naturals (treeText (GeometrySharing.build first rest))
+  | "tree-prefixes" :: entries =>
+    return naturals ((treePrefixes (← entries.mapM entry)).flatMap fun tree =>
+      let tokens := treeText tree
+      tokens.length :: tokens)
+  | "packed-tree-prefixes" :: entries =>
+    return naturals (← packedPrefixes (← entries.mapM entry))
   | "lookup" :: digest :: payload :: entries =>
     let query := (← natural digest, ← natural payload)
     match ← entries.mapM entry with

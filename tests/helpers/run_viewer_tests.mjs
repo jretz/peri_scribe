@@ -26,7 +26,7 @@ try {
   assert.ok(tests.length, "Viewer coverage requires at least one test file");
   const reporter = url.fileURLToPath(new URL("viewer_coverage.mjs", import.meta.url));
   const result = childProcess.spawnSync(process.execPath, [
-    "--test", `--test-reporter=${reporter}`, ...tests
+    "--test", "--test-concurrency=1", `--test-reporter=${reporter}`, ...tests
   ], {
     stdio: "inherit",
     env: {

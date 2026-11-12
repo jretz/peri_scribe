@@ -18,6 +18,9 @@ import tests.helpers.factories.peri_scribe.fire_updates
 from measurement_units import units
 
 
+pytestmark = pytest.mark.usefixtures("reuse_update_previews")
+
+
 @pytest.mark.parametrize("prepare_again", [False, True])
 @pytest.mark.parametrize(
     "retry_delay",

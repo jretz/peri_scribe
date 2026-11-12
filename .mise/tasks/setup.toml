@@ -40,11 +40,11 @@ run = "mise lock"
 #
 # Use conda-forge GEOS binaries and build Shapely against them until released Shapely
 # wheels include the fix. Then revisit these tasks and pyproject.toml's source build.
-description = "Install GEOS and a C compiler from conda-forge binaries"
+description = "Install GEOS, a C compiler and pkg-config from conda-forge binaries"
 depends = ["install-tools"]
 sources = [".mise/config.toml"]
 outputs = ["{{env.GEOS_PREFIX}}/conda-meta/history"]
-run = 'micromamba create --yes --no-rc --override-channels --channel conda-forge --prefix "$GEOS_PREFIX" "geos=$GEOS_VERSION" c-compiler'
+run = 'micromamba create --yes --no-rc --override-channels --channel conda-forge --prefix "$GEOS_PREFIX" "geos=$GEOS_VERSION" c-compiler pkg-config'
 
 [venv]
 description = "Sync Python packages and build Shapely against the project GEOS"

@@ -2,6 +2,8 @@ import {
   test, expect, update, finishAnimations, requiredHeadingWidth, resizeHeading
 } from "../../../helpers/browser/updates.mjs";
 
+test.use({ reuseContext: true });
+
 test("startPage preserves fractional name widths at the stacking boundary",
   async ({ viewer }) => {
     const name = "East South Fork Trinity River Lightning Complex";

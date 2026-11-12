@@ -12,17 +12,31 @@ import collections.abc
 import contextlib
 import contextvars
 import dataclasses
+import functools
 import hashlib
+import importlib
 import pathlib
 import sqlite3
-
-import structlog
+import typing
 
 import spatial_data.payload_codec
 
 
-logger = structlog.get_logger()
+if typing.TYPE_CHECKING:
+    import structlog.typing
+
+
 MINIMUM_COMPACTION_BYTES = 16 * 1024 * 1024
+
+
+@functools.cache
+def cache_logger() -> structlog.typing.FilteringBoundLogger:
+    """Load diagnostics when a cache operation reports a failure.
+
+    Returns:
+        The logger for cache operations.
+    """
+    return importlib.import_module("structlog").get_logger()
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -129,7 +143,11 @@ def scope(
     try:
         connection = open_store(resolved)
     except OSError, sqlite3.Error:
-        logger.warning("Product cache unavailable", path=str(resolved), exc_info=True)
+        cache_logger().warning(
+            "Product cache unavailable",
+            path=str(resolved),
+            exc_info=True,
+        )
         token = CURRENT.set(None)
         try:
             yield
@@ -149,7 +167,7 @@ def scope(
         try:
             connection.commit()
         except sqlite3.Error:
-            logger.warning(
+            cache_logger().warning(
                 "Product cache commit failed",
                 path=str(resolved),
                 exc_info=True,
@@ -223,13 +241,13 @@ def maintain_store(store: Store) -> None:
                 store.retained_contexts | {store.context},
             )
     except sqlite3.Error:
-        logger.warning("Product context retirement deferred", exc_info=True)
+        cache_logger().warning("Product context retirement deferred", exc_info=True)
         return
     try:
         if needs_compaction(store.connection, retired=retired):
             compact_store(store.connection)
     except sqlite3.Error:
-        logger.warning("Product cache compaction deferred", exc_info=True)
+        cache_logger().warning("Product cache compaction deferred", exc_info=True)
 
 
 def compact_store(connection: sqlite3.Connection) -> None:
@@ -261,7 +279,7 @@ def get(namespace: str, key: str) -> bytes | None:
             (store.context, namespace, key),
         ).fetchone()
     except sqlite3.Error:
-        logger.warning("Product cache read failed", exc_info=True)
+        cache_logger().warning("Product cache read failed", exc_info=True)
         CURRENT.set(None)
         return None
     if row is None:
@@ -323,7 +341,7 @@ def put(namespace: str, key: str, value: bytes) -> None:
             (store.context, namespace, key, hashlib.sha256(value).digest(), encoded),
         )
     except sqlite3.Error:
-        logger.warning("Product cache write failed", exc_info=True)
+        cache_logger().warning("Product cache write failed", exc_info=True)
         CURRENT.set(None)
 
 
@@ -355,5 +373,5 @@ def prune(namespace: str, keep_keys: collections.abc.Collection[str]) -> None:
         )
         store.connection.execute("DROP TABLE retained_product_keys")
     except sqlite3.Error:
-        logger.warning("Product cache pruning failed", exc_info=True)
+        cache_logger().warning("Product cache pruning failed", exc_info=True)
         CURRENT.set(None)

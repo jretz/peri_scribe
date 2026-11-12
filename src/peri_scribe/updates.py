@@ -4,11 +4,14 @@ Design notes:
 [Update snapshots and browser reconciliation](../../docs/algorithms/update-viewer.md).
 """
 
+from __future__ import annotations
+
 import collections.abc
 import compression.zstd
 import contextlib
 import dataclasses
 import datetime
+import importlib
 import importlib.resources
 import pathlib
 import tempfile
@@ -18,22 +21,17 @@ import pydantic
 
 import peri_scribe.fire_update_records
 import peri_scribe.fire_updates
-import peri_scribe.fires.differential
-import peri_scribe.geo.measurements
 import peri_scribe.log_reading
 import peri_scribe.paths
-import peri_scribe.perimeters.progression
-import peri_scribe.presentation.fire_data
-import peri_scribe.presentation.selection
-import peri_scribe.previews
 import peri_scribe.publication
-import peri_scribe.report.gathering
-from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
     import geopandas
     import shapely
+
+    import peri_scribe.presentation.fire_data as fire_data_types
+    import peri_scribe.presentation.selection as selection_types
 
 
 WINDOW = datetime.timedelta(hours=48)
@@ -47,13 +45,17 @@ class LogEntry(peri_scribe.fire_update_records.Record):
     timestamp: pydantic.AwareDatetime
     batch_id: str | None = None
 
-    def identity(self) -> peri_scribe.presentation.selection.AreaKey:
+    def identity(self) -> selection_types.AreaKey:
         """Retain a fire's acreage history when its current display name changes.
 
         Returns:
             The stable logged key, or the identifier/name key of an older record.
         """
-        return self.log_identity or peri_scribe.presentation.selection.fire_area_key(
+        if self.log_identity:
+            return self.log_identity
+        selection = importlib.import_module("peri_scribe.presentation.selection")
+
+        return selection.fire_area_key(
             self.identifier,
             self.name,
         )
@@ -130,7 +132,7 @@ def snapshot_from_entries(
         Every nonzero change in the window, including downward corrections.
     """
     now = generated_at.astimezone(datetime.UTC)
-    identity_parser = pydantic.TypeAdapter(HistoryIdentity)
+    identity_parser = peri_scribe.fire_update_records.IDENTITY
     projected: dict[tuple[str, str], HistoryIdentity] = {
         identity_parser.validate_json(bucket): identity_parser.validate_json(owner)
         for bucket, owner in (owners or {}).items()
@@ -145,10 +147,10 @@ def snapshot_from_entries(
         identity = history_identity or entry.identity()
         previous = previous_by_fire.get(identity)
         previous_by_fire[identity] = entry
-        previous_area = (
-            previous.mapped_area.quantity() if previous is not None else 0 * units.acres
-        )
-        if now - WINDOW < timestamp and entry.mapped_area.quantity() != previous_area:
+        # Both values are validated finite acre magnitudes.
+        if now - WINDOW < timestamp and entry.mapped_area.value != (
+            previous.mapped_area.value if previous is not None else 0.0
+        ):
             updates.append(
                 Update(
                     **entry.model_dump(exclude_unset=True),
@@ -180,7 +182,7 @@ def write_html(path: pathlib.Path) -> None:
 
 
 def preview_from_history(
-    fire: peri_scribe.presentation.fire_data.FireSummary,
+    fire: fire_data_types.FireSummary,
     update: Update,
 ) -> str | None:
     """Reconstruct a legacy row's preview from a matching dated mapping.
@@ -193,6 +195,12 @@ def preview_from_history(
         The dated history through its latest eligible perimeter if that perimeter is
         unique at its observation time and matches the logged acreage, or None.
     """
+    differential = importlib.import_module("peri_scribe.fires.differential")
+    measurements = importlib.import_module("peri_scribe.geo.measurements")
+    progression = importlib.import_module("peri_scribe.perimeters.progression")
+    previews = importlib.import_module("peri_scribe.previews")
+    units = importlib.import_module("measurement_units").units
+
     perimeters = tuple(
         perimeter
         for perimeter in fire.perimeters
@@ -213,28 +221,28 @@ def preview_from_history(
     ):
         return None
     # Later perimeters can trim earlier growth rings, so rebuild them from the prefix.
-    rows = peri_scribe.fires.differential.differential_rows_for_fire(
+    rows = differential.differential_rows_for_fire(
         [{"observation_time": perimeter.observation_time} for perimeter in perimeters],
         [perimeter.geometry for perimeter in perimeters],
     )
     rings = tuple(
-        peri_scribe.perimeters.progression.Ring(
+        progression.Ring(
             geometry=typing.cast("shapely.Geometry", row["geometry"]),
             observation_time=typing.cast("datetime.datetime", row["observation_time"]),
-            area=typing.cast("float", row[peri_scribe.geo.measurements.AREA_COLUMN])
+            area=typing.cast("float", row[measurements.AREA_COLUMN])
             * units.Unit("meters ** 2"),
         )
         for row in rows
-        if peri_scribe.perimeters.progression.SEQUENCE_COLUMN in row
+        if progression.SEQUENCE_COLUMN in row
     )
-    return peri_scribe.previews.fire_preview(
+    return previews.fire_preview(
         dataclasses.replace(fire, perimeters=perimeters, progression_rings=rings),
     )
 
 
 def with_previews(
     snapshot: Snapshot,
-    fires: collections.abc.Sequence[peri_scribe.presentation.fire_data.FireSummary],
+    fires: collections.abc.Sequence[fire_data_types.FireSummary],
     cities: geopandas.GeoDataFrame,
     *,
     state: peri_scribe.fire_updates.State | None = None,
@@ -254,6 +262,8 @@ def with_previews(
     Returns:
         The decorated snapshot, preserving other logged fields, baselines, and order.
     """
+    gathering = importlib.import_module("peri_scribe.report.gathering")
+
     aliases = state.aliases if state is not None else {}
     owners = state.owners if state is not None else {}
     by_identity = {}
@@ -264,7 +274,7 @@ def with_previews(
             by_identity[
                 peri_scribe.fire_update_records.IDENTITY.validate_json(owner)
             ] = fire
-    locations: dict[peri_scribe.presentation.selection.AreaKey, str | None] = {}
+    locations: dict[selection_types.AreaKey, str | None] = {}
     updates = []
     for update in snapshot.updates:
         identity = update.history_identity or update.identity()
@@ -272,9 +282,9 @@ def with_previews(
         if fire is None:
             updates.append(update)
             continue
-        key = peri_scribe.report.gathering.fire_identity(fire)
+        key = gathering.fire_identity(fire)
         if key not in locations:
-            locations[key] = peri_scribe.report.gathering.fire_location(fire, cities)
+            locations[key] = gathering.fire_location(fire, cities)
         location = locations[key]
         fields = {}
         if "preview" not in update.model_fields_set:
@@ -290,15 +300,43 @@ def with_previews(
 def write_updates_page(
     year_directory: pathlib.Path,
     *,
-    fires: collections.abc.Sequence[
-        peri_scribe.presentation.fire_data.FireSummary
-    ] = (),
+    fires: collections.abc.Sequence[fire_data_types.FireSummary] = (),
 ) -> None:
     """Refresh both outputs after a completed KMZ run has appended its log entries.
 
     Args:
         year_directory: The year directory holding the completed KMZ and logs.
         fires: Prepared KMZ fires supplying current locations and historical geometry.
+    """
+    gathering = importlib.import_module("peri_scribe.report.gathering")
+
+    def decorate(
+        snapshot: Snapshot,
+        state: peri_scribe.fire_updates.State | None,
+    ) -> Snapshot:
+        return with_previews(
+            snapshot,
+            fires,
+            gathering.read_cities_layer(year_directory),
+            state=state,
+        )
+
+    write_snapshot(year_directory, decorate=decorate)
+
+
+def write_snapshot(
+    year_directory: pathlib.Path,
+    *,
+    decorate: collections.abc.Callable[
+        [Snapshot, peri_scribe.fire_updates.State | None],
+        Snapshot,
+    ],
+) -> None:
+    """Publish the packaged viewer and the acknowledged update history.
+
+    Args:
+        year_directory: The year directory holding the log and checkpoint.
+        decorate: Fill presentation fields after selecting the current snapshot.
     """
     state = peri_scribe.fire_updates.read_authoritative(
         peri_scribe.fire_updates.state_path(year_directory),
@@ -309,12 +347,7 @@ def write_updates_page(
         datetime.datetime.now(datetime.UTC),
         owners=state.owners if state is not None else None,
     )
-    snapshot = with_previews(
-        snapshot,
-        fires,
-        peri_scribe.report.gathering.read_cities_layer(year_directory),
-        state=state,
-    )
+    snapshot = decorate(snapshot, state)
     directory = year_directory / peri_scribe.paths.MAPS_DIRECTORY_NAME
     write_html(directory / "updates.html")
     peri_scribe.publication.write_state(directory / "updates.json", snapshot)

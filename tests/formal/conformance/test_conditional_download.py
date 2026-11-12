@@ -3,6 +3,7 @@
 import pathlib
 
 import pytest
+import structlog.testing
 
 import tests.formal.helpers.conditional_download
 import tests.formal.helpers.conditional_download_crashes
@@ -47,14 +48,15 @@ def test_fetch_cities_database_matches_checked_refresh_protocol(
         "ConditionalDownload",
         tmp_path / "model",
     )
-    tests.formal.helpers.conditional_download.replay(
-        graph,
-        tmp_path / "year",
-        monkeypatch,
-        existing=existing,
-        validators=validators,
-        scenario=scenario,
-    )
+    with structlog.testing.capture_logs():
+        tests.formal.helpers.conditional_download.replay(
+            graph,
+            tmp_path / "year",
+            monkeypatch,
+            existing=existing,
+            validators=validators,
+            scenario=scenario,
+        )
 
 
 def test_conditional_download_rejects_publish_before_conversion_and_validation(

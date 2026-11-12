@@ -87,6 +87,8 @@ def pragma_matches() -> str:
         [
             rg_path,
             "--no-config",
+            "--threads",
+            "1",
             "--line-number",
             "--no-heading",
             "--color",

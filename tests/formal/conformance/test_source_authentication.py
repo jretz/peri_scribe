@@ -22,7 +22,11 @@ def test_file_digest_matches_all_checked_authentication_transitions(
         "SourceAuthentication",
         tmp_path / "tlc",
     )
-    histories = tests.formal.helpers.source_authentication.edge_histories(graph)
+    expected_edges = 984
+    assert sum(map(len, graph.outgoing.values())) == expected_edges
+    histories = tests.formal.helpers.source_authentication.maximal_edge_histories(graph)
+    expected_histories = 476
+    assert len(histories) == expected_histories
     recorder = tests.helpers.doubles.peri_scribe.sources.authentication.DigestRecorder(
         read=peri_scribe.sources.authentication.read_file_digest,
     )
@@ -39,4 +43,3 @@ def test_file_digest_matches_all_checked_authentication_transitions(
             recorder,
             inventory_first=inventory_first,
         )
-    assert len(histories) == sum(map(len, graph.outgoing.values()))

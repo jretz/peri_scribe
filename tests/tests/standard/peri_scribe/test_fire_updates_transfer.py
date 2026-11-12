@@ -14,6 +14,9 @@ import tests.helpers.factories.peri_scribe.fire_updates_ownership
 import tests.helpers.factories.peri_scribe.fire_updates_transfer
 
 
+pytestmark = pytest.mark.usefixtures("reuse_update_previews")
+
+
 def test_prepare_updates_inherits_every_history_without_relogging_known_mapping(
     tmp_path: pathlib.Path,
 ) -> None:

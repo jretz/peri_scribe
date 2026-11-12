@@ -7,8 +7,8 @@ import pytest
 import tests.formal.helpers.corpus
 import tests.formal.helpers.crash_worker
 import tests.formal.helpers.process_crashes
-import tests.formal.helpers.product_cache
 import tests.formal.helpers.product_retention
+import tests.formal.helpers.tlc_values
 
 
 def test_retire_contexts_matches_every_checked_maintenance_prefix(
@@ -48,8 +48,8 @@ def test_maintain_store_preserves_checked_rows_after_hard_process_termination(
     expected = next(
         state
         for state in states
-        if tests.formal.helpers.product_cache.numbers(state["retained"]) == (1,)
-        and tests.formal.helpers.product_cache.numbers(state["trace"]) == prefix
+        if tests.formal.helpers.tlc_values.numbers(state["retained"]) == (1,)
+        and tests.formal.helpers.tlc_values.numbers(state["trace"]) == prefix
     )
     records = tests.formal.helpers.process_crashes.history(
         tests.formal.helpers.crash_worker.Request(
@@ -63,5 +63,5 @@ def test_maintain_store_preserves_checked_rows_after_hard_process_termination(
     )
 
     assert [record["value"] for record in records if record["kind"] == "recovered"] == [
-        sorted(tests.formal.helpers.product_cache.numbers(expected["durable"])),
+        sorted(tests.formal.helpers.tlc_values.numbers(expected["durable"])),
     ]

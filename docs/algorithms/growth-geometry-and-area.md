@@ -145,6 +145,20 @@ the original polygon/hole and nested collection sums. Summing rounded batch subt
 would introduce a different floating-point grouping. Partition-invariance tests and
 bounded real-geometry comparisons check exact binary64 agreement across batch boundaries.
 
+The edge and quadrature arrays carry Pint units. NumPy expressions combine their
+magnitudes in the original binary64 operation order. Each result receives its known
+unit when the array is constructed. The degree-to-radian factor comes from the shared
+registry, and each conversion follows the same degree-space subtraction and midpoint
+arithmetic. The quadrature shape and the compensated summation order are unchanged.
+
+The subdivision counts determine each edge's first position in the flattened piece
+array. For counts `[2, 1, 3]`, the six global positions subtract starts
+`[0, 0, 2, 3, 3, 3]` to recover local indices `[0, 1, 0, 0, 1, 2]`. The
+[Lean proof](../../tests/formal/lean/PeriScribe/GrowthMeasurement.lean) covers arbitrary
+finite counts. Computing these indices with one prefix sum and one array subtraction
+keeps time and space linear in the edge and piece counts. It avoids creating a
+separate NumPy range for each edge.
+
 The latitude primitive is analytic within a one-radian complex neighborhood of real
 latitude: `|e sin(z)| <= e cosh(1) < 0.127`, safely away from its singularities.
 Bounding the primitive difference by `2e14` square meters there and applying Cauchy's

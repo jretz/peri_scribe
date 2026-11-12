@@ -49,13 +49,26 @@ append. A process interruption immediately after rename leaves a complete readab
 plain segment; receipt recovery handles the remaining compression boundaries. Readers
 return the legacy monthly archive first, numbered segments in ordinal order, and the
 active tail last. Each segment's receipt chooses between its overlapping plain/archive
-representations. The directory lock covers discovery and complete iteration.
+representations. A single directory inventory identifies months represented by a live
+file, an archive, or a numbered component. Each month uses its live name when present,
+then its archive, and finally the live name as a handle for its segments. The directory
+lock covers discovery and complete iteration.
 
 Prepare a target archive privately from the old archive and closed plain source. Ordinary
 occurrences are copied without value deduplication. Journal batches already in the old
 archive are excluded using their explicit IDs. Before publishing, write a receipt with
 SHA-256 checksums for the source, previous archive and target archive. Publish the target,
 remove the plain source, then remove the receipt.
+
+The writer emits a compact version 1 receipt with lowercase hexadecimal checksums and
+`null` for an absent previous archive. The reader recognizes those exact bytes directly.
+It uses the receipt model for other encodings, including receipts with a different field
+order or whitespace. Both routes supply the same fields to checksum authentication.
+
+Journal records use the standard JSON encoder. If it encounters a custom value, its
+fallback loads Structlog and obtains the renderer's conversion through the public
+serializer hook. The same encoder continues its original traversal, preserving custom
+callbacks, duplicate encoded keys and serialization errors before the batch is appended.
 
 On recovery, a target-matching archive authorizes retirement only if any remaining source
 still matches its receipted checksum. Otherwise both old archive and source must match
@@ -82,8 +95,11 @@ delay an observation for a large month. No bounded replay latency is claimed.
 skips a split line and reads forward to the next complete dated record. An older timestamp
 moves the lower bound just after that record; a recent timestamp or absent complete
 timestamp moves the upper bound to the probe. Ordered dated records make these decisions
-monotonic. The result is immediately after the last complete old record, leaving following
-undated records and any incomplete tail available. After seeking, filtering tests every
+monotonic. Rejection also limits the next forward scan to the first record boundary at or
+after the probe. A complete old record split by the probe still fits within that limit.
+If the split reaches an unfinished tail, the probe itself is a safe limit.
+The result is immediately after the last complete old record, leaving following undated
+records and any incomplete tail available. After seeking, filtering tests every
 occurrence independently so an upper-bound violation cannot hide later undated diagnostics.
 Lightweight token scanning tracks JSON nesting so a nested source timestamp cannot move
 the root timestamp boundary.
@@ -137,11 +153,13 @@ Let A be archived bytes, P plain bytes, D decompressed archive bytes, and J dist
 batch IDs. Rotation hashes and copies O(A + P) bytes and may scan O(D) to collect batch
 IDs; temporary disk holds the new archive, and memory is O(J + largest line) beyond codec
 buffers. Plain startup seeking uses O(log P) byte probes, followed by a linear read of the
-selected suffix. Each probe scans forward across at most the remaining split record and
-an undated stretch; long records or long undated stretches can make the bytes read exceed
-O(log P). Memory is bounded by the largest line. Compressed components remain sequential
-streams. Shared locks can delay writers during long reads; no bounded writer latency is
-claimed.
+selected suffix. Each forward scan past the split record covers a disjoint portion of
+the log. A later probe can still read bytes from the same long record when aligning to a
+newline. Memory is bounded by the largest line. The scan bound scores `(2, 1, 2, 2, 0)`,
+totaling 7. It retains the prior probe's alignment, depends on chronological timestamps,
+and tracks separate bounds for choosing probe offsets and limiting reads.
+Compressed components remain sequential streams. Shared locks can delay writers during
+long reads.
 
 Let S be total bytes sealed and K the number of segments. Independent general-log
 compression reads and writes O(S) bytes in aggregate, rather than copying and decoding a

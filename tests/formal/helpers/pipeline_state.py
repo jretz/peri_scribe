@@ -2,14 +2,17 @@
 
 import collections
 import dataclasses
+import importlib
 import json
 import pathlib
 import re
 
+import pytest
+
+import peri_scribe.durable_file
 import peri_scribe.pipeline_stages
 import peri_scribe.pipeline_state
-import tests.formal.helpers.corpus
-import tests.formal.helpers.oracle
+import tests.formal.helpers.pipeline_replay_files
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -76,7 +79,8 @@ def transitions(directory: pathlib.Path) -> list[Transition]:
         Every event in the model's complete finite state graph.
     """
     records = []
-    for fields in tests.formal.helpers.corpus.states("RunState", "RunState", directory):
+    corpus = importlib.import_module("tests.formal.helpers.corpus")
+    for fields in corpus.states("RunState", "RunState", directory):
         assert set(fields) == {
             "before",
             "after",
@@ -140,6 +144,48 @@ def replay(transition: Transition, directory: pathlib.Path) -> None:
     )
 
 
+def replay_all(
+    transitions: list[Transition],
+    directory: pathlib.Path,
+) -> tuple[int, int]:
+    """Keep every actual transition and a native codec and wrapper boundary basis.
+
+    Returns:
+        Total checked transitions and the number using native persistence.
+    """
+    binding = importlib.import_module("tests.formal.helpers.feed_component_binding")
+    qualified = binding.supported()
+    native = 0
+    for transition in transitions:
+        native_require = (not transition.required and not transition.forced) or (
+            transition.required == peri_scribe.pipeline_state.DERIVED_STAGES
+            and transition.forced
+        )
+        if not qualified or transition.operation != "require" or native_require:
+            replay(transition, directory)
+            native += 1
+            continue
+        trace: list[tests.formal.helpers.pipeline_replay_files.Event] = []
+        memory = tests.formal.helpers.pipeline_replay_files.Memory(
+            directory=directory,
+            effects={},
+            trace=trace,
+        )
+        with pytest.MonkeyPatch.context() as patch:
+            patch.setattr(peri_scribe.durable_file, "at", memory.at)
+            replay(transition, directory)
+        expected_writes = 2
+        assert len(trace) == expected_writes
+        assert all(
+            isinstance(event, tests.formal.helpers.pipeline_replay_files.Mutation)
+            and event.effect.operation
+            is tests.formal.helpers.pipeline_replay_files.Operation.REPLACE
+            and event.effect.name == tests.formal.helpers.pipeline_replay_files.PENDING
+            for event in trace
+        )
+    return len(transitions), native
+
+
 def mask(stages: tuple[peri_scribe.pipeline_stages.Stage, ...]) -> int:
     """Encode stage membership in the Lean oracle's finite transport format.
 
@@ -188,4 +234,5 @@ def check_lean(transitions: list[Transition]) -> None:
             mask(transition.after.remaining),
             int(transition.after.unconditional),
         ))
-    assert tests.formal.helpers.oracle.evaluate(commands) == expected
+    oracle = importlib.import_module("tests.formal.helpers.oracle")
+    assert oracle.evaluate(commands) == expected

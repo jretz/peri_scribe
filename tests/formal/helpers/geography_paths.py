@@ -37,6 +37,9 @@ class Files:
     templates: pathlib.Path
     checksums: dict[str, int]
     parents: dict[str, int]
+    template_frames: dict[tuple[pathlib.Path, str], geopandas.GeoDataFrame] = (
+        dataclasses.field(default_factory=dict)
+    )
 
     @property
     def paths(self) -> tuple[pathlib.Path, pathlib.Path]:
@@ -82,10 +85,15 @@ class Files:
         assert metadata is not None
         assert tuple(layer.name for layer in layers) == metadata.layers
         for layer in layers:
-            expected = geopandas.read_file(source, layer=layer.name)
+            key = source, layer.name
+            if key not in self.template_frames:
+                self.template_frames[key] = geopandas.read_file(
+                    source,
+                    layer=layer.name,
+                )
             geopandas.testing.assert_geodataframe_equal(
                 layer.dataframe.reset_index(drop=True),
-                expected,
+                self.template_frames[key].copy(),
                 check_dtype=False,
             )
         shutil.copyfile(source, path)

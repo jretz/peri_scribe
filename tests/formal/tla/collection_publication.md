@@ -20,7 +20,7 @@ of previous contents before replacement, and visibility of the new contents afte
 success. Weak fairness of writing, closing, and replacing establishes completion once
 the bounded interruption is exhausted.
 
-The safety and liveness configurations explore 70 distinct states. The three chunks
+One configuration checks safety and liveness across 70 distinct states. The three chunks
 abstract arbitrary partial byte writes; this is a bounded protocol check, not a proof
 for an arbitrary filesystem. Atomic same-filesystem replacement and ordinary local
 filesystem reads are assumptions. Process termination is covered; power-loss durability,
@@ -58,9 +58,8 @@ index publication can fail. Full/incremental fetching, previous recovery obligat
 and immediate/deferred indexing vary independently. Process loss may occur between any
 coordinator actions.
 
-The safety and liveness configurations each explore 197,898 distinct states. The three
-feeds and capacity two are finite bounds; correspondence for arbitrary feed counts and
-worker limits is not proved by these runs.
+The safety and liveness premises are checked on the same 197,898 reachable states.
+The model bounds are three feeds and a worker capacity of two.
 
 Properties require bounded active workers, no unmarked published input, no retirement of
 changed-input recovery, joining of active threads, complete indexing of successful
@@ -69,6 +68,20 @@ successful incremental collection can restore earlier recovery state. Expected s
 errors cannot themselves trigger sibling cancellation. Fair worker scheduling and eventual
 worker termination give eventual success, failure, or process termination; no timeout or
 progress guarantee is claimed for a hung SDK operation.
+
+TLC checks a natural-number rank on this complete graph. The remaining coordinator
+phase contributes five through zero. Waiting workers contribute two each and running
+workers contribute one each. Cancellation also spends one rank unit, including when
+there are no waiting workers. Every nonstuttering transition lowers the rank. At every
+nonterminal state, TLC checks that an enabled nonstuttering successor belongs to both
+`Next` and an action named in `LiveSpec`'s individual weak fairness assumptions.
+This includes a separate `Start` and `Finish` action for each feed.
+
+An infinite suffix that never settles must eventually stop moving because its rank
+cannot decrease indefinitely. A fair action enabled at the first state of that
+constant suffix stays enabled there. Its own weak fairness requires a move, yielding
+`EventuallySettled`. See the
+[fair-family and rank proofs](../lean/PeriScribe/RankedLiveness.lean).
 
 For deferred indexing, the terminal state is the successful collection boundary before
 the publication gate decision. Pending means either durable pending stages or the durable

@@ -10,9 +10,33 @@ The configuration has two successive batches, at most two interruptions, all fou
 empty/nonempty batch combinations, and both fresh/partial and gated/ungated publication
 modes for each batch. With the unchanged-build rotation path included, the replay
 configuration explores 78,940 states and produces 130 distinct observable recovery
-relations. Differences only in publication modes or other unobserved instrumentation
-are deduplicated; no distinct checkpoint, journal, log, original timestamp, or age is
-discarded.
+relations. The recovery comparisons deduplicate cases that agree on every observed
+checkpoint, journal, log, original timestamp, and age.
+
+## One exploration for publication and recovery
+
+Every `ReplayInit` state is an `UpdateJournal.Init` state with the same fixed observer
+values. `Explore` takes exactly `UpdateJournal.Next` and leaves those values fixed.
+`BeginRecovery` switches `replaying` to true. `Recover` keeps it true, so every
+successor of a recovery state stays in that part of the graph. Dropping the four
+fixed observer fields gives a bijection between the states with `replaying = FALSE`
+and the states of the original publication model. The projection preserves every
+`Next` edge, its source and target, and its position among the source's successors.
+
+TLC checks the invariants common to both scopes across the entire graph. The original
+publication-specific invariants, natural rank, and enabled progress are checked in
+publication states. Rank must decrease on every nonstuttering edge between those
+states. A stutter of the publication variables is also a stutter of the full state
+because the observer fields remain fixed. This supplies the same premises to the
+[Lean rank proof](../lean/PeriScribe/RankedLiveness.lean). Recovery keeps its own
+checkpoint and publication invariants.
+
+Builder and hard-process crash conformance use the induced publication graph from
+this invocation's checked output. The adapter checks the initial marks, common
+observer values, and absence of edges entering the publication subgraph. A comparison
+with a separate publication exploration matched all 49,596 states, 64 initial marks,
+and 80,724 ordered transitions after matching record fields by name. The recovery graph
+was byte-identical with the fingerprint polynomial fixed.
 
 ## Implementation connection
 
@@ -59,6 +83,13 @@ identity resolution, KMZ writing, publication commit, journal serialization and
 recovery, monthly append/compression, checkpoint replacement, and viewer writing.
 Rendering, geocoding, geography derivation, and candidate selection belong to other
 tests.
+
+The hard-process matrix checks both sides of every fresh-input publication boundary
+using the same production persistence sequence. Its three prepared inputs cover the
+first generation from empty state, the second generation from the first checkpoint,
+and the unchanged second generation. Workers select by the checkpoint they actually
+read after recovery. Separate hard interruptions before and after viewer replacement
+exercise the complete builder. [Execution assurance](../execution_assurance.md)
 
 ## Limits
 

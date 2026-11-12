@@ -2,13 +2,12 @@
 
 import contextlib
 import enum
+import importlib
 import pathlib
 import sqlite3
 
-import pytest
-
 import spatial_data.product_cache
-import tests.formal.helpers.product_cache
+import tests.formal.helpers.tlc_values
 import tests.helpers.factories.spatial_data.product_cache
 
 
@@ -92,6 +91,7 @@ def apply(
             writer.rollback()
         case Action.DELETE_FAILURE:
             writer.execute("PRAGMA query_only = ON")
+            pytest = importlib.import_module("pytest")
             with pytest.raises(sqlite3.OperationalError):
                 spatial_data.product_cache.retire_contexts(writer, frozenset())
             writer.rollback()
@@ -116,22 +116,22 @@ def replay(state: dict[str, str], path: pathlib.Path) -> None:
     seed(path)
     retained = frozenset(
         f"context-{context}"
-        for context in tests.formal.helpers.product_cache.numbers(state["retained"])
+        for context in tests.formal.helpers.tlc_values.numbers(state["retained"])
     )
     with (
         contextlib.closing(spatial_data.product_cache.open_store(path)) as writer,
         contextlib.closing(sqlite3.connect(path)) as reader,
         contextlib.closing(sqlite3.connect(path)) as observer,
     ):
-        for token in tests.formal.helpers.product_cache.numbers(state["trace"]):
+        for token in tests.formal.helpers.tlc_values.numbers(state["trace"]):
             apply(Action(token), writer, reader, retained)
         assert rows(writer) == frozenset(
-            tests.formal.helpers.product_cache.numbers(state["pending"]),
+            tests.formal.helpers.tlc_values.numbers(state["pending"]),
         ), state
         assert rows(observer) == frozenset(
-            tests.formal.helpers.product_cache.numbers(state["durable"]),
+            tests.formal.helpers.tlc_values.numbers(state["durable"]),
         ), state
         if state["readerPhase"] == "1":
             assert rows(reader) == frozenset(
-                tests.formal.helpers.product_cache.numbers(state["reader"]),
+                tests.formal.helpers.tlc_values.numbers(state["reader"]),
             ), state

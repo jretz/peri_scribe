@@ -239,6 +239,8 @@ def test_serialize_log_values_preserves_original_collections() -> None:
     paths = [path]
     parameters = {"paths": paths}
     event = {"parameters": parameters}
+    # Exercise the lazy formatter import in this covered assertion.
+    peri_scribe.logging.value_module.cache_clear()
     result = peri_scribe.logging.serialize_log_values(None, "info", event)
     assert result == {"parameters": {"paths": ["fires.json"]}}
     assert parameters == {"paths": [path]}
@@ -607,6 +609,58 @@ def test_append_monthly_records_publishes_a_complete_batch_once(
             for record in records
         ],
     ]
+
+
+def test_append_monthly_records_preserves_custom_json_keys_and_order(
+    tmp_path: pathlib.Path,
+) -> None:
+    when = datetime.datetime(2026, 9, 22, tzinfo=datetime.UTC)
+    custom = tests.helpers.factories.peri_scribe.logging.structured_log_value(
+        {1: "first", "1": "second"},
+    )
+    records = ({"custom": custom, "path": pathlib.Path("history.jsonl")},)
+    expected = structlog.processors.JSONRenderer(allow_nan=False)(
+        None,
+        "",
+        {**records[0], "timestamp": "2026-09-22T00:00:00+0000"},
+    )
+    assert isinstance(expected, str)
+
+    peri_scribe.logging.append_monthly_records(
+        tmp_path,
+        records,
+        suffix="-fire-updates",
+        timestamp=when,
+    )
+
+    path = tmp_path / "2026-09-fire-updates.jsonl"
+    assert path.read_text() == expected + "\n"
+    assert '"1": "first", "1": "second"' in path.read_text()
+
+
+def test_append_monthly_records_preserves_log_when_custom_value_is_nonfinite(
+    tmp_path: pathlib.Path,
+) -> None:
+    when = datetime.datetime(2026, 9, 22, tzinfo=datetime.UTC)
+    path = tmp_path / "2026-09-fire-updates.jsonl"
+    original = '{"name":"Previous"}\n'
+    path.write_text(original)
+    custom = tests.helpers.factories.peri_scribe.logging.structured_log_value(
+        float("nan"),
+    )
+
+    with (
+        time_machine.travel(when, tick=False),
+        pytest.raises(ValueError, match="Out of range float values"),
+    ):
+        peri_scribe.logging.append_monthly_records(
+            tmp_path,
+            ({"custom": custom},),
+            suffix="-fire-updates",
+            timestamp=when,
+        )
+
+    assert path.read_text() == original
 
 
 def test_append_atomic_preserves_existing_records_when_publication_fails(

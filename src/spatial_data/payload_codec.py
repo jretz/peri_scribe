@@ -6,9 +6,8 @@ Design: [Exact compressed payloads](../../docs/algorithms/compressed-payloads.md
 import compression.zstd
 import enum
 import hashlib
+import importlib
 import struct
-
-import spatial_data.payload_prediction
 
 
 BLOCK_BYTES = 1024 * 1024
@@ -86,13 +85,14 @@ def compress_frame(
     )
     if dictionary is not None:
         frame.extend(hashlib.sha256(dictionary).digest())
+    prediction = (
+        importlib.import_module("spatial_data.payload_prediction")
+        if predictor is Predictor.XOR16_SHUFFLE
+        else None
+    )
     for position in range(0, len(value), BLOCK_BYTES):
         block = value[position : position + BLOCK_BYTES]
-        predicted = (
-            spatial_data.payload_prediction.predict(block)
-            if predictor is Predictor.XOR16_SHUFFLE
-            else block
-        )
+        predicted = prediction.predict(block) if prediction is not None else block
         compressed = compression.zstd.compress(
             predicted,
             level=3,
@@ -232,7 +232,11 @@ def decode_compressed(frame: bytes, dictionary: bytes | None, total: int) -> byt
         ValueError: If any block length, content, or trailing bytes are invalid.
     """
     prepared, position = dictionary_for(frame, dictionary)
-    predicted = frame[0] & ~DICTIONARY_FLAG == PREDICTED_TAG
+    prediction = (
+        importlib.import_module("spatial_data.payload_prediction")
+        if frame[0] & ~DICTIONARY_FLAG == PREDICTED_TAG
+        else None
+    )
     result = bytearray()
     while len(result) < total:
         if position + BLOCK_HEADER.size > len(frame):
@@ -247,8 +251,10 @@ def decode_compressed(frame: bytes, dictionary: bytes | None, total: int) -> byt
         ):
             message = "Payload block lengths are invalid"
             raise ValueError(message)
-        stride = spatial_data.payload_prediction.STRIDE
-        expected = ((size + stride - 1) // stride) * stride if predicted else size
+        expected = size
+        if prediction is not None:
+            stride = prediction.STRIDE
+            expected = ((size + stride - 1) // stride) * stride
         value = decompress_block(
             frame[position : position + compressed_size],
             expected,
@@ -256,9 +262,7 @@ def decode_compressed(frame: bytes, dictionary: bytes | None, total: int) -> byt
         )
         position += compressed_size
         result.extend(
-            spatial_data.payload_prediction.restore(value, size)
-            if predicted
-            else value,
+            prediction.restore(value, size) if prediction is not None else value,
         )
     if position != len(frame):
         message = "Payload frame has trailing bytes"

@@ -41,12 +41,14 @@ pytest_plugins = [
     "tests.helpers.fixtures.peri_scribe.monitor.status_widgets",
     "tests.helpers.fixtures.peri_scribe.monitor.widgets",
     "tests.helpers.fixtures.peri_scribe.main_publication",
+    "tests.helpers.fixtures.peri_scribe.preparation",
     "tests.helpers.fixtures.spatial_data.layers",
     "tests.helpers.fixtures.peri_scribe.perimeters.classification_data",
     "tests.helpers.fixtures.peri_scribe.perimeters.versions",
     "tests.helpers.fixtures.peri_scribe.snapshot_storage",
     "tests.helpers.fixtures.peri_scribe.sources.feeds",
     "tests.helpers.fixtures.peri_scribe.sources.fetching",
+    "tests.helpers.fixtures.peri_scribe.monitor.presentation",
 ]
 
 

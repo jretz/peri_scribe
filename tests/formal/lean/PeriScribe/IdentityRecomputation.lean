@@ -535,25 +535,45 @@ def memoLookup {Value : Type} (fallback : Nat → Value) :
   | (stored, value) :: rest, key =>
     if key = stored then value else memoLookup fallback rest key
 
-structure Memo (Value : Type) where
-  entries : List (Nat × Value)
-  fallback : Nat → Value
+inductive Memo (Value : Type) where
+  | dense (entries : Array Value) (fallback : Nat → Value)
+  | sparse (entries : List (Nat × Value)) (fallback : Nat → Value)
 
+def Memo.get {Value : Type} (table : Memo Value) (key : Nat) : Value :=
+  match table with
+  | .dense entries fallback =>
+    match entries[key]? with
+    | some value => value
+    | none => fallback key
+  | .sparse entries fallback => memoLookup fallback entries key
+
+def memoBound (keys : List Nat) : Nat :=
+  keys.foldl (fun bound key => max bound (key + 1)) 0
+
+/-- Bound dense storage by both the requested domain and the size of the key list. -/
 def memo {Value : Type} (keys : List Nat) (values : Nat → Value) : Memo Value :=
-  ⟨keys.map (fun key => (key, values key)), values⟩
+  let bound := memoBound keys
+  if bound ≤ 65536 ∧ bound ≤ 4 * keys.length then
+    .dense (Array.ofFn (n := bound) fun key => values key.val) values
+  else .sparse (keys.map (fun key => (key, values key))) values
 
-def Memo.get {Value : Type} (table : Memo Value) : Nat → Value :=
-  memoLookup table.fallback table.entries
-
-theorem finite_memo_is_extensionally_equal {Value : Type} (keys : List Nat)
-    (values : Nat → Value) : (memo keys values).get = values := by
-  funext key
+private theorem memo_lookup_matches_values {Value : Type} (keys : List Nat)
+    (values : Nat → Value) (key : Nat) :
+    memoLookup values (keys.map (fun entry => (entry, values entry))) key = values key := by
   induction keys with
   | nil => rfl
   | cons first rest induction =>
     by_cases same : key = first
-    · simp [memo, Memo.get, memoLookup, same]
-    · simpa [memo, Memo.get, memoLookup, same] using induction
+    · simp [memoLookup, same]
+    · simpa [memoLookup, same] using induction
+
+theorem finite_memo_is_extensionally_equal {Value : Type} (keys : List Nat)
+    (values : Nat → Value) : (memo keys values).get = values := by
+  funext key
+  simp only [memo]
+  split
+  · by_cases inside : key < memoBound keys <;> simp [Memo.get, inside]
+  · exact memo_lookup_matches_values keys values key
 
 def materializedRetry (input : Feedback) : Feedback :=
   let winners := (memo input.histories (winning input.fires input.routes)).get

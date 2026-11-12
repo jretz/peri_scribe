@@ -523,6 +523,140 @@ theorem chronological_byte_search_matches_reference (cutoff : Nat)
   rw [probes]
   exact binary_search_matches_reference cutoff records unfinishedBytes positive
 
+/-- A scan limit can exclude records whose complete byte interval would exceed it. -/
+def boundedProbe (probe : Nat → Option Nat) (limit query : Nat) : Option Nat :=
+  (probe query).filter (· ≤ limit)
+
+/-- Rejection keeps the search decision and tightens the next scan's byte limit. -/
+def boundedBinarySearch (probe : Nat → Option Nat) (tighten : Nat → Nat → Nat) :
+    Nat → Nat → Nat → Nat → Nat
+  | 0, lower, _, _ => lower
+  | fuel + 1, lower, upper, limit =>
+    if lower < upper then
+      let middle := (lower + upper) / 2
+      match boundedProbe probe limit middle with
+      | some next => boundedBinarySearch probe tighten fuel next upper limit
+      | none => boundedBinarySearch probe tighten fuel lower middle (tighten middle limit)
+    else lower
+
+def CoversProbe (probe : Nat → Option Nat) (limit : Nat) : Prop :=
+  ∀ query stop, probe query = some stop → stop ≤ limit
+
+theorem bounded_probe_matches_covered_probe (probe : Nat → Option Nat) (limit query : Nat)
+    (covered : CoversProbe probe limit) :
+    boundedProbe probe limit query = probe query := by
+  unfold boundedProbe
+  cases answer : probe query with
+  | none => rfl
+  | some stop => simp [covered query stop answer]
+
+theorem bounded_search_preserves_original (probe : Nat → Option Nat)
+    (tighten : Nat → Nat → Nat) (fuel lower upper limit : Nat)
+    (covered : CoversProbe probe limit)
+    (safe : ∀ middle limit, probe middle = none → CoversProbe probe limit →
+      CoversProbe probe (tighten middle limit)) :
+    boundedBinarySearch probe tighten fuel lower upper limit =
+      binarySearch probe fuel lower upper := by
+  induction fuel generalizing lower upper limit with
+  | zero => rfl
+  | succ fuel induction =>
+    simp only [boundedBinarySearch, binarySearch]
+    split
+    · rw [bounded_probe_matches_covered_probe _ _ _ covered]
+      let middle := (lower + upper) / 2
+      change (match probe middle with
+          | some next => boundedBinarySearch probe tighten fuel next upper limit
+          | none => boundedBinarySearch probe tighten fuel lower middle (tighten middle limit)) =
+        (match probe middle with
+          | some next => binarySearch probe fuel next upper
+          | none => binarySearch probe fuel lower middle)
+      cases answer : probe middle with
+      | none => exact induction _ _ _ (safe middle limit answer covered)
+      | some _ => exact induction _ _ _ covered
+    · rfl
+
+theorem interval_rejection_can_tighten_at_aligned_boundary
+    (intervals : List (Nat × Nat)) (query aligned : Nat)
+    (rejected : intervalProbe intervals query = none)
+    (alignment : ∀ interval ∈ intervals, interval.1 < query → interval.2 ≤ aligned) :
+    CoversProbe (intervalProbe intervals) aligned := by
+  intro start stop found
+  simp only [intervalProbe, Option.map_eq_some_iff] at found
+  obtain ⟨entry, selected, rfl⟩ := found
+  have member := List.mem_of_find?_eq_some selected
+  simp only [intervalProbe, Option.map_eq_none_iff, List.find?_eq_none] at rejected
+  apply alignment entry member
+  simpa using rejected entry member
+
+
+/-- Align a byte offset to the next record start, or leave an unfinished-tail offset. -/
+def followingBoundary (offset query : Nat) : List Record → Nat
+  | [] => max offset query
+  | record :: rest =>
+    if query ≤ offset then offset else followingBoundary (offset + record.bytes) query rest
+
+theorem following_boundary_is_at_or_after_start (offset query : Nat) (records : List Record) :
+    offset ≤ followingBoundary offset query records := by
+  induction records generalizing offset with
+  | nil => simp [followingBoundary]; omega
+  | cons record rest induction =>
+    simp only [followingBoundary]
+    split
+    · exact Nat.le_refl _
+    · exact Nat.le_trans (Nat.le_add_right ..) (induction _)
+
+theorem earlier_complete_ends_by_following_boundary (cutoff offset query : Nat)
+    (records : List Record) (positive : ∀ record ∈ records, 0 < record.bytes)
+    (interval : Nat × Nat) (member : interval ∈ oldIntervals cutoff offset records)
+    (before : interval.1 < query) :
+    interval.2 ≤ followingBoundary offset query records := by
+  induction records generalizing offset with
+  | nil => simp [oldIntervals] at member
+  | cons record rest induction =>
+    by_cases starts : query ≤ offset
+    · have extent := old_intervals_are_complete_and_bounded cutoff offset
+        (record :: rest) positive interval member
+      omega
+    · have tailPositive : ∀ item ∈ rest, 0 < item.bytes := by
+        intro item inTail
+        exact positive item (by simp [inTail])
+      simp [followingBoundary, starts]
+      simp only [oldIntervals] at member
+      split at member
+      · simp only [List.mem_cons] at member
+        rcases member with same | inTail
+        · subst interval
+          exact following_boundary_is_at_or_after_start _ _ _
+        · exact induction _ tailPositive inTail
+      · exact induction _ tailPositive member
+
+theorem chronological_bounded_byte_search_matches_reference (cutoff : Nat)
+    (records : List Record) (unfinishedBytes : Nat)
+    (positive : ∀ record ∈ records, 0 < record.bytes)
+    (sorted : chronological records) :
+    boundedBinarySearch (fun query => timestampProbe cutoff 0 query records)
+      (fun query _ => followingBoundary 0 query records)
+      (size records + unfinishedBytes + 1) 0 (size records + unfinishedBytes)
+      (size records + unfinishedBytes) = seek cutoff records unfinishedBytes := by
+  have same : (fun query => timestampProbe cutoff 0 query records) =
+      intervalProbe (oldIntervals cutoff 0 records) := by
+    funext query
+    exact chronological_timestamp_probe_matches_intervals cutoff 0 query records sorted
+  rw [same]
+  rw [bounded_search_preserves_original]
+  · exact binary_search_matches_reference cutoff records unfinishedBytes positive
+  · intro query stop found
+    simp only [intervalProbe, Option.map_eq_some_iff] at found
+    obtain ⟨entry, selected, rfl⟩ := found
+    have ends := (old_intervals_are_complete_and_bounded cutoff 0 records positive entry
+      (List.mem_of_find?_eq_some selected)).2.2
+    omega
+  · intro query _limit rejected _covered
+    exact interval_rejection_can_tighten_at_aligned_boundary _ _ _ rejected
+      (fun interval member before =>
+        earlier_complete_ends_by_following_boundary cutoff 0 query records positive
+          interval member before)
+
 /-- A dated occurrence at or beyond the lower bound stops prefix retirement. -/
 def recent (cutoff : Nat) (record : Record) : Bool :=
   record.timestamp.any (cutoff ≤ ·)

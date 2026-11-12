@@ -30,6 +30,37 @@ class Defect:
     diagnostic: str
 
 
+def mutate(source: str, defect: Defect) -> str:
+    """Fail on source drift instead of silently testing a missing or misplaced defect.
+
+    Args:
+        source: The original production module, copied into private temporary storage.
+        defect: The exact mutation within one named module-level function.
+
+    Returns:
+        Syntactically valid source with exactly one intended replacement.
+    """
+    tree = ast.parse(source)
+    functions = [
+        node
+        for node in tree.body
+        if isinstance(node, ast.FunctionDef) and node.name == defect.function
+    ]
+    assert len(functions) == 1, defect.name
+    function = functions[0]
+    lines = source.splitlines(keepends=True)
+    body = "".join(lines[function.lineno - 1 : function.end_lineno])
+    assert body.count(defect.original) == 1, defect.name
+    changed = body.replace(defect.original, defect.replacement, 1)
+    result = "".join((
+        *lines[: function.lineno - 1],
+        changed,
+        *lines[function.end_lineno :],
+    ))
+    ast.parse(result)
+    return result
+
+
 DEFECTS = (
     Defect(
         name="transient-checkpoint-rollback",
@@ -214,8 +245,8 @@ DEFECTS = (
     ),
     Defect(
         name="missing-recovery-intent",
-        module="peri_scribe.pipeline",
-        function="run_fetch_stage",
+        module="peri_scribe.sources.fetch_control",
+        function="run_ungated_fetch",
         original="peri_scribe.pipeline_state.DERIVED_STAGES",
         replacement="()",
         test=(
@@ -297,37 +328,6 @@ DEFECTS = (
 )
 
 
-def mutate(source: str, defect: Defect) -> str:
-    """Fail on source drift instead of silently testing a missing or misplaced defect.
-
-    Args:
-        source: The original production module, copied into private temporary storage.
-        defect: The exact mutation within one named module-level function.
-
-    Returns:
-        Syntactically valid source with exactly one intended replacement.
-    """
-    tree = ast.parse(source)
-    functions = [
-        node
-        for node in tree.body
-        if isinstance(node, ast.FunctionDef) and node.name == defect.function
-    ]
-    assert len(functions) == 1, defect.name
-    function = functions[0]
-    lines = source.splitlines(keepends=True)
-    body = "".join(lines[function.lineno - 1 : function.end_lineno])
-    assert body.count(defect.original) == 1, defect.name
-    changed = body.replace(defect.original, defect.replacement, 1)
-    result = "".join((
-        *lines[: function.lineno - 1],
-        changed,
-        *lines[function.end_lineno :],
-    ))
-    ast.parse(result)
-    return result
-
-
 def check(
     defect: Defect,
     directory: pathlib.Path,
@@ -344,18 +344,24 @@ def check(
     source = tests.formal.helpers.defect_baselines.source_copy(directory)
     assert tests.formal.helpers.defect_baselines.fingerprints(source) == baseline.files
     module = source.joinpath(*defect.module.split(".")).with_suffix(".py")
-    module.write_text(mutate(module.read_text(), defect))
+    module.write_text(
+        mutate(module.read_text(), defect),
+    )
+    report = directory / "results.xml"
     rejected = tests.formal.helpers.process.run(
-        tests.formal.helpers.defect_baselines.command(
-            source,
-            directory,
-            (
-                tests.formal.helpers.defect_baselines.Target(
-                    module=defect.module,
-                    test=defect.test,
+        [
+            *tests.formal.helpers.defect_baselines.command(
+                source,
+                directory,
+                (
+                    tests.formal.helpers.defect_baselines.Target(
+                        module=defect.module,
+                        test=defect.test,
+                    ),
                 ),
             ),
-        ),
+            f"--junitxml={report}",
+        ],
         cwd=tests.formal.helpers.oracle.DIRECTORY.parents[1],
         timeout=180,
     )
@@ -367,3 +373,8 @@ def check(
     assert "tests/formal/helpers/oracle.py:" not in diagnostics, diagnostics
     assert defect.test in diagnostics, diagnostics
     assert defect.diagnostic in diagnostics, diagnostics
+    tests.formal.helpers.defect_baselines.checked_rejection(
+        report,
+        defect.test,
+        defect.diagnostic,
+    )

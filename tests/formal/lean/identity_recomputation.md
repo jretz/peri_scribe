@@ -27,8 +27,14 @@ an unchanged retry. The acknowledgement result applies independently to perimete
 source, and name evidence represented as opaque tokens.
 
 The executable oracle materializes finite functions to avoid repeatedly evaluating
-prior checkpoints. Lean proves this executor equals the original feedback definitions,
-including its repeated execution and evidence records.
+prior checkpoints. Dense keys share an immutable array within a checkpoint. The array
+length is bounded by both 65,536 and four times the number of supplied keys, so a few
+widely spaced keys keep a sparse list. An out-of-range query evaluates the same underlying
+function. This representation requires linear work to materialize the entries, with
+constant-time array lookup for in-range keys and a linear scan for sparse keys, excluding
+the cost of evaluating the underlying function. Lean proves equality for every queried
+key, including values outside the enumerated domain. The feedback, repeated execution,
+and evidence records retain their equality proofs.
 
 The same feedback protocol is also checked by `tla/IdentityRecomputation.tla`. Its
 phases are resolution, alias learning, evidence acknowledgement, and resolution of the unchanged
@@ -89,6 +95,16 @@ its first acknowledgement, including individual aliases, source evidence, and na
 The actual `prepare_updates` coordinator must then return no records and the same
 checkpoint. Initial complete claims come from the separate alias-transfer oracle,
 using raw saved aliases and lineage, before entering the feedback executor.
+
+For one input, the executable advances through the four results in order and emits a
+length-delimited observation for each. Lean's `List.getElem_scanl` identifies each step
+with folding the proved retry function over that many repetitions. With three retries,
+the second observation uses the already computed first result as its input, and the
+third uses the second. Each observation still compares all writer, route, owner,
+evidence, and novelty fields. If a case has R retry cycles, the executable applies the
+retry function R + 1 times and retains O(R + 1) feedback states and observations. Python
+rejects incomplete or extra observations and compares every cycle with the actual
+saved and reloaded state.
 
 ## Boundaries
 

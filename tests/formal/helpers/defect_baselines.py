@@ -13,13 +13,16 @@ import tests.formal.helpers.oracle
 import tests.formal.helpers.process
 
 
+USE_PRISTINE_TARGETS = "--use-pristine-targets"
 BOOTSTRAP = """
 import importlib
 import json
+import os
 import pathlib
 import sys
 import pytest
 
+os.environ.pop("PYTEST_ADDOPTS", None)
 source = pathlib.Path(sys.argv[1]).resolve()
 sys.path.insert(0, str(source))
 for name in json.loads(sys.argv[2]):
@@ -91,7 +94,6 @@ def command(
     Returns:
         One subprocess command containing each requested check exactly once.
     """
-    root = tests.formal.helpers.oracle.DIRECTORY.parents[1]
     return [
         sys.executable,
         "-B",
@@ -99,15 +101,43 @@ def command(
         BOOTSTRAP,
         str(source),
         json.dumps(tuple(dict.fromkeys(defect.module for defect in defects))),
+        *arguments(source, directory, defects),
+    ]
+
+
+def arguments(
+    source: pathlib.Path,
+    directory: pathlib.Path,
+    defects: tuple[Target, ...],
+) -> list[str]:
+    """Keep both native execution owners on the same restricted pytest configuration.
+
+    Args:
+        source: The current private application source root.
+        directory: Private pytest storage and diagnostics.
+        defects: Original target tests selected for native collection.
+
+    Returns:
+        Pytest arguments without an interpreter-specific bootstrap.
+    """
+    root = tests.formal.helpers.oracle.DIRECTORY.parents[1]
+    return [
         "-c",
         str(tests.formal.helpers.oracle.DIRECTORY / "pytest.ini"),
-        "--numprocesses=0",
+        "--disable-plugin-autoload",
+        "-o",
+        "addopts=-q",
+        "-p",
+        "pytest_asyncio.plugin",
+        "-p",
+        "tests.formal.helpers.fixtures.corpus",
         "-o",
         f"pythonpath={source} {root}",
         "-p",
         "no:cacheprovider",
         "--basetemp",
         str(directory / "pytest"),
+        "--assert=plain",
         "--tb=short",
         *(
             str(tests.formal.helpers.oracle.DIRECTORY / "conformance" / node)
@@ -127,9 +157,9 @@ def checked_report(report: pathlib.Path, nodes: tuple[str, ...]) -> None:
     assert len(cases) == len(nodes)
     assert all(not list(case) for case in cases)
     assert {
-        f"{case.attrib['classname'].rsplit('.', 1)[-1]}.py::{case.attrib['name']}"
+        f"{case.attrib['classname'].replace('.', '/')}.py::{case.attrib['name']}"
         for case in cases
-    } == set(nodes)
+    } == {f"conformance/{node}" for node in nodes}
 
 
 def check(
@@ -159,3 +189,22 @@ def check(
     checked_report(report, nodes)
     assert fingerprints(source) == files, "pristine checks changed their source tree"
     return Baseline(files=files, tests=nodes)
+
+
+def checked_rejection(report: pathlib.Path, node: str, diagnostic: str) -> None:
+    """Require one intended assertion failure with successful setup and teardown.
+
+    Args:
+        report: Fresh JUnit output from this mutant's private interpreter.
+        node: The unchanged target identity, including any parameter variant.
+        diagnostic: The semantic assertion required to reject this defect.
+    """
+    cases = tuple(defusedxml.ElementTree.parse(report).iter("testcase"))
+    assert len(cases) == 1
+    case = cases[0]
+    observed = f"{case.attrib['classname'].replace('.', '/')}.py::{case.attrib['name']}"
+    assert observed == f"conformance/{node}"
+    outcomes = tuple(case)
+    assert len(outcomes) == 1
+    assert outcomes[0].tag == "failure"
+    assert diagnostic in "".join(outcomes[0].itertext())

@@ -45,12 +45,13 @@ location measurement and entry construction run over the union of selected fires
 
 Conformance exercises 480 configurations over three fires: all showable subsets,
 distinct and repeated names, alias score rows, identifierless fallback, score ties,
-opposing score orders, and three limits. Crossing this domain with every Holding subset
-adds 3,840 configurations against the executable eligible-owner policy. Holding is an
-explicit excluded-owner input to this model; its derivation from growth history is
-covered separately. Another 420 scenarios run real DataFrame
-history preparation, descriptions, and `report_from_fires` with limits of 1, 2, and 50,
-comparing selected score and explanation provenance with the Lean association output.
+opposing score orders, and three limits. The seven nonempty Holding subsets add 3,360
+configurations against the executable eligible-owner policy. The ordinary ranking
+configurations cover the empty subset. Holding is an explicit excluded-owner input to
+this model, with separate checks for its derivation from growth history. Another 420
+scenarios run real DataFrame history preparation, descriptions, and `report_from_fires`
+with limits of 1, 2, and 50, comparing selected score and explanation provenance with
+the Lean association output.
 An additional case places 60 unshowable scores before an eligible fire, ensuring that
 exclusion happens before the 50-fire limit.
 

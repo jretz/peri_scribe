@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import pathlib
 import re
+import shutil
 import typing
 
 import arcgis.features
@@ -24,9 +25,18 @@ if typing.TYPE_CHECKING:
     import geopandas
 
 
+FEED_NAME = "snapshot_collection"
+INITIAL_VERSIONS = (1, 0)
+INITIAL_SNAPSHOT = peri_scribe.sources.snapshots.SourceFile(
+    serial_number=0,
+    last_edit_timestamp=1,
+).relative_path
+type RecoveryKey = tuple[tuple[int, ...], int, tuple[int, ...]]
+
+
 @dataclasses.dataclass(frozen=True, kw_only=True)
-class CollectionCase:
-    """Keep each checked query result and persisted observation together."""
+class Collection:
+    """Keep a fetch's complete observed input and checked persisted result."""
 
     full: bool
     marker: int
@@ -37,6 +47,13 @@ class CollectionCase:
     response: tuple[int, ...]
     saved: tuple[int, ...]
     receipt: int
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class CollectionCase:
+    """Pair the initial observations with the provider state after it settles."""
+
+    initial: Collection
     remote: tuple[int, ...]
     remote_marker: int
 
@@ -64,21 +81,46 @@ def cases(states: list[dict[str, str]]) -> set[CollectionCase]:
     """
     return {
         CollectionCase(
-            full=state["full"] == "TRUE",
-            marker=int(state["observedMarker"]),
-            changed=numbers(state["changed"]),
-            listed=numbers(state["listed"]),
-            selected=numbers(state["selected"]),
-            body=numbers(state["atBody"]),
-            response=numbers(state["response"]),
-            saved=numbers(state["saved"]),
-            receipt=int(state["receipt"]),
+            initial=Collection(
+                full=state["full"] == "TRUE",
+                marker=int(state["observedMarker"]),
+                changed=numbers(state["changed"]),
+                listed=numbers(state["listed"]),
+                selected=numbers(state["selected"]),
+                body=numbers(state["atBody"]),
+                response=numbers(state["response"]),
+                saved=numbers(state["saved"]),
+                receipt=int(state["receipt"]),
+            ),
             remote=numbers(state["remote"]),
             remote_marker=int(state["marker"]),
         )
         for state in states
         if state["phase"] == '"done"' and state["recovery"] == "FALSE"
     }
+
+
+def completed_recoveries(
+    states: list[dict[str, str]],
+) -> dict[RecoveryKey, set[tuple[int, ...]]]:
+    """Index each complete recovery by its source inventory, marker, and saved base.
+
+    Args:
+        states: Every reachable TLC state for the snapshot collector.
+
+    Returns:
+        Every distinct completed inventory for each matching set of recovery inputs.
+    """
+    completed: dict[RecoveryKey, set[tuple[int, ...]]] = {}
+    for state in states:
+        if state["recovery"] == "TRUE" and state["phase"] == '"done"':
+            key = (
+                numbers(state["remote"]),
+                int(state["observedMarker"]),
+                numbers(state["recoveryBase"]),
+            )
+            completed.setdefault(key, set()).add(numbers(state["saved"]))
+    return completed
 
 
 def features(
@@ -107,10 +149,35 @@ def features(
     }
 
 
+def write_seed_snapshot(directory: pathlib.Path) -> pathlib.Path:
+    """Create the real retained snapshot that supplies each case's private copy.
+
+    Args:
+        directory: Isolated directory holding the completed seed file.
+
+    Returns:
+        The seed GeoPackage at its normal serial and edit-marker filename.
+    """
+    snapshot = directory / INITIAL_SNAPSHOT
+    snapshot.parent.mkdir(parents=True)
+    spatial_data.layers.write_geopackage(
+        snapshot,
+        [
+            spatial_data.layers.LayerData(
+                name=FEED_NAME,
+                dataframe=tests.helpers.factories.peri_scribe.sources.fetching.fetch_frame(
+                    features(INITIAL_VERSIONS),
+                ),
+            ),
+        ],
+    )
+    return snapshot
+
+
 class QueryInterleaving(tests.helpers.doubles.arcgis.FeatureLayerStubBase):
     """Expose independently captured ID queries and a later feature response."""
 
-    def __init__(self, case: CollectionCase) -> None:
+    def __init__(self, case: Collection) -> None:
         """Represent one finite source trace without contacting a service.
 
         Args:
@@ -183,47 +250,27 @@ def versions(dataframe: geopandas.GeoDataFrame | None) -> tuple[int, ...]:
     return tuple(found.get(identifier, 0) for identifier in (1, 2))
 
 
-def replay_case(case: CollectionCase, directory: pathlib.Path) -> tuple[int, ...]:
-    """Exercise the whole collector with real snapshot and current-state files.
+def collect(
+    case: Collection,
+    directory: pathlib.Path,
+) -> tuple[peri_scribe.sources.fetching.FeedOutcome, tuple[int, ...], list[str]]:
+    """Run the real collector and read back the persisted rows.
 
     Args:
-        case: First-invocation TLC outcome plus the final remote state.
+        case: The observed provider state for this invocation.
         directory: Isolated application root.
 
     Returns:
-        Current stored versions after the post-quiescence full fetch.
+        Collection outcome, persisted row versions, and issued query order.
     """
+    feed = tests.helpers.doubles.peri_scribe.sources.fetching.FeedStub(
+        name=FEED_NAME,
+        url="https://example.test/FeatureServer/0",
+        last_edit_timestamp=case.marker,
+    )
+    layer = QueryInterleaving(case)
+    configured = typing.cast("peri_scribe.sources.feed_types.Feed", feed)
     with pytest.MonkeyPatch.context() as patch:
-        feed = tests.helpers.doubles.peri_scribe.sources.fetching.FeedStub(
-            name="snapshot_collection",
-            url="https://example.test/FeatureServer/0",
-            last_edit_timestamp=case.marker,
-        )
-        source_directory = peri_scribe.sources.snapshots.source_directory_path(
-            directory,
-            2026,
-            feed.name,
-        )
-        previous = (
-            source_directory
-            / peri_scribe.sources.snapshots.SourceFile(
-                serial_number=0,
-                last_edit_timestamp=1,
-            ).relative_path
-        )
-        previous.parent.mkdir(parents=True)
-        spatial_data.layers.write_geopackage(
-            previous,
-            [
-                spatial_data.layers.LayerData(
-                    name=feed.name,
-                    dataframe=tests.helpers.factories.peri_scribe.sources.fetching.fetch_frame(
-                        features((1, 0)),
-                    ),
-                ),
-            ],
-        )
-        layer = QueryInterleaving(case)
         patch.setattr(arcgis.features, "FeatureLayer", lambda *_args: layer)
         patch.setattr(
             peri_scribe.sources.fetching,
@@ -231,45 +278,81 @@ def replay_case(case: CollectionCase, directory: pathlib.Path) -> tuple[int, ...
             lambda _: None,
         )
         outcome = peri_scribe.sources.fetching.fetch_feed_snapshot(
-            typing.cast("peri_scribe.sources.feed_types.Feed", feed),
+            configured,
             base_dir=directory,
             year=2026,
             full=case.full,
         )
-        current = peri_scribe.sources.feed_state.read_current_features(
-            source_directory,
-            typing.cast("peri_scribe.sources.feed_types.Feed", feed),
-        )
-        assert versions(current) == case.saved
-        assert outcome.changed == (case.saved != (1, 0))
-        sources = peri_scribe.sources.snapshots.existing_source_files(source_directory)
-        assert sources[-1].last_edit_timestamp == case.receipt
-        expected_queries = (
-            ["body"] if case.full else [] if case.marker == 1 else ["changed", "ids"]
-        )
-        if not case.full and case.selected:
-            expected_queries.append("body")
-        assert layer.queries == expected_queries
-        assert (outcome.error is not None) == (
-            bool(case.selected) and case.response == (0, 0)
-        )
-        recovery = dataclasses.replace(
-            case,
-            full=True,
-            body=case.remote,
-            response=case.remote,
-        )
-        layer = QueryInterleaving(recovery)
-        stable_feed = dataclasses.replace(feed, last_edit_timestamp=case.remote_marker)
-        peri_scribe.sources.fetching.fetch_feed_snapshot(
-            typing.cast("peri_scribe.sources.feed_types.Feed", stable_feed),
-            base_dir=directory,
-            year=2026,
-            full=True,
-        )
-        return versions(
-            peri_scribe.sources.feed_state.read_current_features(
-                source_directory,
-                typing.cast("peri_scribe.sources.feed_types.Feed", stable_feed),
-            ),
-        )
+    source_directory = peri_scribe.sources.snapshots.source_directory_path(
+        directory,
+        2026,
+        FEED_NAME,
+    )
+    current = peri_scribe.sources.feed_state.read_current_features(
+        source_directory,
+        configured,
+    )
+    return outcome, versions(current), layer.queries
+
+
+def replay_collection(
+    case: Collection,
+    directory: pathlib.Path,
+    seed: pathlib.Path,
+) -> None:
+    """Record and check one exact initial collection before the provider settles.
+
+    Args:
+        case: The complete inputs and expected observations of the initial fetch.
+        directory: A private directory whose completed files can seed recoveries.
+        seed: The actual initial GeoPackage.
+    """
+    source_directory = peri_scribe.sources.snapshots.source_directory_path(
+        directory,
+        2026,
+        FEED_NAME,
+    )
+    previous = source_directory / INITIAL_SNAPSHOT
+    previous.parent.mkdir(parents=True)
+    shutil.copyfile(seed, previous)
+    outcome, saved, queries = collect(case, directory)
+    assert saved == case.saved
+    assert outcome.changed == (case.saved != INITIAL_VERSIONS)
+    sources = peri_scribe.sources.snapshots.existing_source_files(source_directory)
+    assert sources[-1].last_edit_timestamp == case.receipt
+    expected_queries = (
+        ["body"] if case.full else [] if case.marker == 1 else ["changed", "ids"]
+    )
+    if not case.full and case.selected:
+        expected_queries.append("body")
+    assert queries == expected_queries
+    assert (outcome.error is not None) == (
+        bool(case.selected) and case.response == (0, 0)
+    )
+
+
+def replay_recovery(
+    case: CollectionCase,
+    prefix: pathlib.Path,
+    directory: pathlib.Path,
+) -> tuple[int, ...]:
+    """Recover from private copies of the actual initial collection files.
+
+    Args:
+        case: One checked history through initial collection and remote quiescence.
+        prefix: The completed initial files for this history.
+        directory: The isolated location for this continuation.
+
+    Returns:
+        Current stored versions after the post-quiescence full fetch.
+    """
+    shutil.copytree(prefix, directory)
+    recovery = dataclasses.replace(
+        case.initial,
+        full=True,
+        marker=case.remote_marker,
+        body=case.remote,
+        response=case.remote,
+    )
+    _outcome, saved, _queries = collect(recovery, directory)
+    return saved

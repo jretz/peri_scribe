@@ -47,13 +47,8 @@ def crash_builder_contract(
     Returns:
         The checked publication contract for two fresh input generations.
     """
-    return tests.formal.helpers.journal_builder.contracts(
-        tests.formal.helpers.corpus.graph(
-            "UpdateJournal",
-            "UpdateJournal",
-            formal_corpus_directory,
-        ),
-    )[True, True]
+    modes = tests.formal.helpers.journal_builder.projections(formal_corpus_directory)
+    return modes[True, True]
 
 
 @pytest.fixture(scope="session")

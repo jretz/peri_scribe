@@ -4,6 +4,7 @@ import asyncio
 import collections.abc
 import contextlib
 import dataclasses
+import gc
 import typing
 
 import textual.app
@@ -11,6 +12,21 @@ import textual.command
 import textual.geometry
 import textual.pilot
 import textual.widget
+
+
+DEFAULT_TERMINAL_SIZE = (120, 42)
+TERMINAL_COLLECTION_THRESHOLD = 10_000
+
+
+class RefreshPilot(textual.pilot.Pilot[None]):
+    """Join the real message queues and paint instead of polling CPU inactivity."""
+
+    @typing.override
+    async def pause(self, delay: float | None = None) -> None:
+        """Keep explicit delays and acknowledge a completed frame for native input."""
+        await super().pause(0 if delay is None else delay)
+        if delay is None:
+            await self.app.wait_for_refresh()
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -122,14 +138,24 @@ async def scroll_end(widget: textual.widget.Widget) -> None:
 @contextlib.asynccontextmanager
 async def mounted[Application: textual.app.App[None]](
     app: Application,
+    *,
+    size: tuple[int, int] = DEFAULT_TERMINAL_SIZE,
 ) -> typing.AsyncGenerator[Session[Application]]:
     """Give each test fresh widgets and close their tasks before leaving the loop.
 
     Args:
         app: The isolated terminal application to exercise.
+        size: The terminal width and height in cells.
 
     Yields:
         The mounted app and its pilot on the current test's event loop.
     """
-    async with app.run_test(size=(120, 42)) as pilot:
-        yield Session(app=app, pilot=pilot)
+    thresholds = gc.get_threshold()
+    # A mounted terminal builds many short-lived cycles while updating widgets.
+    if 0 < thresholds[0] < TERMINAL_COLLECTION_THRESHOLD:
+        gc.set_threshold(TERMINAL_COLLECTION_THRESHOLD)
+    try:
+        async with app.run_test(size=size) as pilot:
+            yield Session(app=app, pilot=RefreshPilot(pilot.app))
+    finally:
+        gc.set_threshold(*thresholds)

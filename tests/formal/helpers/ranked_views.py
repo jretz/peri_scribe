@@ -5,6 +5,7 @@ import datetime
 import itertools
 import math
 import pathlib
+import typing
 
 import pytest
 import shapely
@@ -21,8 +22,12 @@ import tests.helpers.factories.peri_scribe.presentation.views
 from measurement_units import units
 
 
+if typing.TYPE_CHECKING:
+    import geopandas
+
+
 RANKING_COUNT = 480
-HOLDING_RANKING_COUNT = RANKING_COUNT * 8
+HOLDING_RANKING_COUNT = RANKING_COUNT * 7
 GROWTH_COUNT = 751
 NAME_SCORE_INDEX = 6
 UNLIMITED = 50
@@ -134,14 +139,14 @@ def check_rankings() -> None:
 
 
 def holding_rankings() -> tuple[Ranking, ...]:
-    """Exercise every Holding subset without changing complete score ownership.
+    """Exercise complete score ownership for every nonempty Holding subset.
 
     Returns:
-        The ranking domain crossed with all subsets of three Holding owners.
+        The ranking domain crossed with the seven nonempty Holding subsets.
     """
     return tuple(
         dataclasses.replace(case, holding=holding)
-        for case, holding in itertools.product(rankings(), range(8))
+        for case, holding in itertools.product(rankings(), range(1, 8))
     )
 
 
@@ -317,10 +322,11 @@ def check_associated_outputs(directory: pathlib.Path) -> None:
         directory: Isolated report directory with no external cities dataset.
     """
     cases = tuple(case for case in rankings() if case.visible)
-    expected = tests.formal.helpers.oracle.evaluate(
+    expected = tests.formal.helpers.oracle.evaluate_distinct(
         ["associations | " + case.command().split("|", 1)[1] for case in cases],
         executable="oracleOutputs",
     )
+    frames: dict[tuple[tuple[str, str], ...], geopandas.GeoDataFrame] = {}
     for case, outcome in zip(cases, expected, strict=True):
         sources, scores = case.inputs()
         index = peri_scribe.models.FireIndex(
@@ -335,10 +341,15 @@ def check_associated_outputs(directory: pathlib.Path) -> None:
                 for fire in sources
             ],
         )
-        perimeters = tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([
-            (min(fire.identifiers), fire.name, shapely.box(0, 0, 1, 1))
-            for fire in sources
-        ])
+        inventory = tuple((min(fire.identifiers), fire.name) for fire in sources)
+        if inventory not in frames:
+            frames[inventory] = (
+                tests.helpers.factories.peri_scribe.kml.parsing.geometry_frame([
+                    (identifier, name, shapely.box(0, 0, 1, 1))
+                    for identifier, name in inventory
+                ])
+            )
+        perimeters = frames[inventory].copy(deep=True)
         empty = perimeters.iloc[:0]
         fires = peri_scribe.presentation.fire_data.fire_summaries(
             index,

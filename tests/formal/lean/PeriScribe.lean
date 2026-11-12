@@ -1,4 +1,5 @@
 import PeriScribe.Pipeline
+import PeriScribe.FetchComposition
 import PeriScribe.AreaPolicy
 import PeriScribe.Reconciliation
 import PeriScribe.Geography
@@ -54,6 +55,10 @@ import PeriScribe.UpdateLogChronology
 import PeriScribe.OutputText
 import PeriScribe.KmzPreparation
 import PeriScribe.ReplayPrefixes
+import PeriScribe.EffectRefinement
+import PeriScribe.FrameLifting
+import PeriScribe.PipelineFileFootprint
+import PeriScribe.RankedLiveness
 import PeriScribe.Audit
 
 audit_peri_scribe

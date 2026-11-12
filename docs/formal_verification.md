@@ -64,65 +64,98 @@ linting, and type checking still apply to the Python helpers and conformance tes
 Checks operate on temporary data and do not access fire feeds or production data.
 
 The TLC matrix runs up to four configurations concurrently, each with private temporary
-metadata, a private JVM temporary directory, and a maximum 1 GiB heap. Each process
-retains one TLC exploration worker and its existing timeout. Model diagnostics are
-emitted together on completion. Failures and timeouts make the suite fail after the
-other selected configurations finish; interrupting the runner cancels active processes
-and removes their temporary storage. Set `env PERI_SCRIBE_TLC_JOBS=1 mise formal-tla`
-for serial execution, or use another positive count. The underlying runner also accepts
-`--jobs`, which takes precedence over that environment variable.
+metadata, a private runtime temporary directory, and a maximum 1 GiB heap. Each checker
+uses serial garbage collection and retains one TLC exploration worker and its existing
+timeout. The JVM path reports one CPU to Java. TLC checks liveness on the complete graph.
+Model diagnostics are emitted together on completion. If a model fails or times out,
+the suite fails after the other selected configurations finish. Interrupting the runner
+cancels active processes and removes their temporary storage. Set
+`env PERI_SCRIBE_TLC_JOBS=1 mise formal-tla` for serial execution, or use another
+positive count. The runner's `--jobs` option takes precedence over that environment
+variable.
 
-Top-level formal phases run sequentially inside one temporary evidence session. The
-model-checking phase publishes complete graphs for configurations used by conformance,
-and the later pytest phase consumes that same checked evidence. Standalone commands
-create their own fresh session when needed.
+Top-level formal phases share one temporary evidence session. The model-checking phase
+publishes complete graphs or complete reachable-state inventories as declared in the
+model registry. The conformance checks consume that same checked evidence. Standalone
+commands create their own fresh session when needed.
+
+Twenty-six qualified configurations share immutable fields during exploration. The checker
+publishes the complete graph or state inventory when the registry requires it. It
+keeps counts private when the registry calls for verification without an export.
+This path uses TLC's action evaluator and checks the original properties. Standard TLC
+handles source or tool changes outside the reviewed bounds. The
+[action frame design][action-frames] documents the qualification and the ordered
+successor proof.
+
+[action-frames]: algorithms/verification-tooling.md#immutable-tlc-action-frames
 
 Each outer proof job owns a private POSIX process group, including tools started by
-nested pytest runs. Cancellation and timeouts terminate that entire group and drain its
+nested pytest runs. The integrated model runner leases a worker group for one active
+model at a time, with fresh TLC classes, output, and metadata for each model. Cancellation
+and timeouts terminate the group and drain its
 output before the outer caller returns its original exception. A nested tool timeout or
 cancellation aborts the enclosing job rather than allowing that nested pytest to recover.
+The compiled Lean oracles and hard-crash workers run directly as leaf processes under
+the same ownership arrangement. The launcher passes the group identity to tools that
+start nested jobs.
 Tools and their descendants must retain the inherited process group; deliberately
 detached processes are outside this adapter's contract. Real-process regressions cover
 these operating-system boundaries; this thin test adapter changes no modeled pipeline
 protocol.
 
-The conformance and deliberate-defect tasks use six pytest-xdist workers with work
-stealing. Each concrete execution retains its own temporary storage, and Lean
-executables are built before workers start. The selected mutation checks share one
-serial pristine pytest session, containing every unique target. Each mutant runs in its
-own serial interpreter and private source tree. Source and resource digests must match
-the passing baseline before mutation. Exact JUnit target identities and successful
-outcomes reject missing, skipped, or substituted baseline checks. These nested runs do
-not start another worker pool. Individual TLC subprocesses use one model-checking worker
-and a maximum 1 GiB heap; account for this and the Python processes when increasing
-pytest concurrency.
+Standalone conformance and deliberate-defect tasks use six pytest-xdist workers with
+work stealing. The combined test gate starts one stock pool of five fresh conformance
+workers after models, Lean, pristine targets and the complete ordinary and QA graph have
+passed and exited. The [phase
+contract](algorithms/verification-tooling.md#fresh-conformance-admission) explains the
+checks, defaults and resource assumptions. Each concrete execution retains its own
+temporary storage, and Lean executables are built before workers start. In an integrated
+run, workers remove each passing case's temporary files during teardown. Shared evidence
+stays under the session owner until all workers exit. The twenty selected mutation
+checks use one serial pristine session for the nineteen unique targets, followed by
+fresh interpreter imports and private source trees for every mutant. The unchanged
+assertions must pass on pristine source and reject each intended defect. Exact JUnit
+identities and outcomes reject missing tests, skips and fixture failures.
+Source/resource hashes bind the successful baseline to each changed tree before
+mutation. These nested runs do not start another worker pool. The [deliberate defect
+contract](../tests/formal/defect_checks.md) explains isolation and the independently
+checked failure witnesses. Standalone conformance keeps its ordinary selection.
+Individual TLC subprocesses use one model-checking worker and a maximum 1 GiB heap;
+account for this and the Python processes when increasing pytest concurrency.
 
 The pipeline composition check distributes all 19,240 complete histories, containing
 38,143 logical invocations, across 48 pytest items. Identical complete prefixes execute
-once; each continuation receives an independent copy of the actual durable files and the
-full surviving TLC path. Timestamp-preserving copies retain publication identities. This
-requires 19,240 concrete invocations while preserving every complete history and
-mutation-boundary observation.
+once. Each continuation receives an independent copy of the branch's durable file image
+and the full surviving TLC path. This requires 19,240 coordinator invocations while
+preserving every complete history and mutation-boundary observation. Separate physical
+checks exercise distinct file effects from that run, including failure order, publication
+identities, and files outside each effect's footprint. Real process crashes and selected
+whole histories continue to run against actual files.
 
 The complete raw graph, typed projections, action mappings, history catalogue, and
-balanced prefix batches are prepared once per evidence session. Typed indexed tables
-retain exact node identities and successor order while avoiding repeated projection
-parsing and history reconstruction in workers. Regressions compare serialized contracts
-with their original complete graphs, require independent decoded containers, compare
-shared prefixes with fresh complete replays, and check copy isolation.
+balanced prefix batches are prepared once per evidence session. Replay workers read
+typed indexed tables with exact node identities, phase labels, and successor order.
+The other raw fields remain in the checked graph used to produce those tables. Workers
+avoid repeated projection parsing and history reconstruction. Regressions compare
+serialized contracts with their source contracts, require independent decoded
+containers, compare shared prefixes with fresh complete replays, and check copy
+isolation.
 `ReplayPrefixes.lean` proves composition under explicit determinism and exact-copy
-assumptions; Python tests check those adapter obligations.
+assumptions. `EffectRefinement.lean` proves trace preservation under equal one-step
+replies and observations. Python tests check the adapter obligations for the finite replay.
 
-Identity feedback and coordinate-reference checks use 12 batches each, and all 36
+Identity feedback and coordinate-reference checks use 12 batches each, and all 38
 hard-process crash scenarios are independent items. Batching preserves model bounds,
 assertions, failure injection, and the checked input inventory.
 
-All conformance consumers share complete checked graphs through typed JSON in the
-current formal invocation's temporary directory. State-only consumers use those same
-complete graphs. A stable operating-system lock admits one producer; publication uses a
-private staging directory and atomic replacement only after successful checking and
-serialization. This reuses the completed-staging contract in `StaticDownload.tla`;
-process-concurrency regressions check the lock adapter's exclusion and failure recovery.
+Conformance consumers share complete checked evidence through typed JSON in the
+current formal invocation's temporary directory. Path consumers receive directed graphs.
+State consumers receive ordered state inventories or project those values from a graph
+when another consumer needs its edges. TLC checks the full model in either mode.
+A stable operating-system lock admits one producer. Publication uses a private staging
+directory and atomic replacement after successful checking and serialization. This
+reuses the completed-staging contract in `StaticDownload.tla`. Process-concurrency
+regressions check the lock adapter's exclusion and failure recovery.
 An owner lease and the specification, configuration, adapter, and TLC content identity
 reject expired or incompatible inherited storage. Each worker retains its own decoded
 read-only contract. Failed producers cannot publish partial results, and a new top-level
@@ -133,13 +166,23 @@ They retain their original order and exact response counts, and each case keeps 
 identity and signature tables. A request that needs an earlier response must still run
 after it. Batching does not change the compiled definitions being evaluated.
 
+Two finite conformance tests also share exact repeated production observations within
+one test invocation. Incremental collection checks all 514 cases against Lean while
+executing 386 distinct ordered requests. Temporal complex ownership retains all 6,591
+variant checks and their graph-identity assertions, sharing 4,842 complete frozen results.
+These caches preserve input order and every fixture field; they do not normalize
+reversals, share mutable dataframes, or cross test boundaries. See
+[Execution assurance](../tests/formal/execution_assurance.md#equal-requests-in-finite-conformance-tests).
+
 Journal persistence fixtures supply fixed valid preview and icon images and a stable
-fixture-only runtime fingerprint. Real preview selection, KMZ and snapshot
-serialization, file replacement, observation, process termination, and recovery remain
-active. Image rendering and environment invalidation retain their own tests; these are
-outside the journal's persistence contract. Adapter regressions decode the actual
-published image payloads. The fixture and transport changes introduce no new application
-policy or persistence protocol requiring another formal model.
+fixture-only runtime fingerprint. The continuous builder checks and two hard viewer
+interruptions exercise the full builder. The hard publication matrix shares immutable
+prepared inputs generated by the same builder preparation from each exact fixture
+checkpoint in the current invocation. Every crash and recovery interpreter reads its
+own authoritative state before selecting those inputs and runs the same native
+publication sequence. The image and environment-invalidation tests cover their own
+contracts. Adapter regressions decode the actual published image payloads. See
+[Execution assurance](../tests/formal/execution_assurance.md).
 
 Formal fixtures live in `tests/formal/helpers/fixtures/`. Their aggregate `plugin.py` is
 registered in `tests/conftest.py` and explicitly loaded by the standalone formal pytest

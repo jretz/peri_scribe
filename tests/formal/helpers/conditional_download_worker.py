@@ -8,13 +8,13 @@ import pathlib
 import sys
 
 import pydantic
-import pytest
 import requests
 
 import peri_scribe.sources.catalog
 import peri_scribe.sources.cities
 import tests.formal.helpers.conditional_download
 import tests.formal.helpers.tlc
+import tests.helpers.doubles.attribute_overrides
 import tests.helpers.factories.peri_scribe.sources.cities
 
 
@@ -88,7 +88,7 @@ def crash(directory: pathlib.Path, *, existing: str, boundary: str) -> None:
         ),
         "published": tests.formal.helpers.conditional_download.Scenario.FRESH,
     }
-    with pytest.MonkeyPatch.context() as monkeypatch:
+    with tests.helpers.doubles.attribute_overrides.AttributeOverrides() as monkeypatch:
         monkeypatch.setattr(
             tests.formal.helpers.conditional_download.Observer,
             "transition",
@@ -167,7 +167,7 @@ def recover(directory: pathlib.Path) -> None:
             ),
         )
 
-    with pytest.MonkeyPatch.context() as monkeypatch:
+    with tests.helpers.doubles.attribute_overrides.AttributeOverrides() as monkeypatch:
         monkeypatch.setattr(requests, "get", get)
         monkeypatch.setattr(peri_scribe.sources.cities, "archive_cities", archive)
         peri_scribe.sources.cities.fetch_cities_database(source, year)

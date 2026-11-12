@@ -8,10 +8,15 @@ def test_differential_rows_for_fire_matches_proved_attribution_and_sparse_deltas
     None
 ):
     cases = tests.formal.helpers.differential_rows.histories()
-    area_tables = {
-        small: tests.formal.helpers.differential_rows.area_table(small=small)
+    footprints = {
+        small: tests.formal.helpers.differential_rows.measured_footprints(small=small)
         for small in (False, True)
     }
+    area_tables = {
+        small: tests.formal.helpers.differential_rows.area_table(measured)
+        for small, measured in footprints.items()
+    }
+    visible_areas: dict[bytes, float] = {}
     commands = [
         tests.formal.helpers.differential_rows.command(case, areas=area_tables[small])
         for case in cases
@@ -35,7 +40,8 @@ def test_differential_rows_for_fire_matches_proved_attribution_and_sparse_deltas
                 case,
                 expected,
                 actual,
-                small=small,
+                footprints=footprints[small],
+                visible_areas=visible_areas,
             )
 
 
@@ -51,7 +57,9 @@ def test_differential_rows_for_fire_keeps_omitted_candidate_source_measurements(
         source_type(identity=4, shape=15, time=4, values=(60, 20, 0, 50)),
     ]
     omissions = [(0,), (1,), (3,), (0, 1), (1, 3)]
-    areas = tests.formal.helpers.differential_rows.area_table(small=False)
+    footprints = tests.formal.helpers.differential_rows.measured_footprints(small=False)
+    areas = tests.formal.helpers.differential_rows.area_table(footprints)
+    visible_areas: dict[bytes, float] = {}
     expected = tests.formal.helpers.oracle.evaluate(
         [
             tests.formal.helpers.differential_rows.command(
@@ -75,5 +83,6 @@ def test_differential_rows_for_fire_keeps_omitted_candidate_source_measurements(
             case,
             records,
             actual,
-            small=False,
+            footprints=footprints,
+            visible_areas=visible_areas,
         )

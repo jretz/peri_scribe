@@ -38,7 +38,7 @@ positives are permitted; losing an actual modeled intersection is not.
 
 ## Differential source attribution and displayed ring sequence
 
-`PeriScribe/DifferentialRows.lean` has 17 theorems covering
+`PeriScribe/DifferentialRows.lean` has 20 theorems covering
 `peri_scribe.fires.differential.corrected_geometries`, `growth_indices`,
 `representative_indices`, `growth_difference`, `differential_rows_for_fire`, and
 `measure_drawn_rings`. The presentation connection includes
@@ -51,9 +51,10 @@ establishes that an arbitrary block of non-growth observations selects exactly i
 observation's metadata and preserves the candidate ring. Every final representative has
 an original source witness. Candidate boundaries put representatives inside their own
 block. Sparse deltas subtract the most recent prior candidate measurement that is present,
-distinguish missing values from zero, and preserve negative corrections. Complete present
-measurement changes telescope to the latest value, even with missing measurements
-between them.
+distinguish missing values from zero, and preserve negative corrections. The lazy scan
+matches the earlier-value policy and stops by the first usable predecessor. Complete
+present measurement changes telescope to the latest value, even with missing
+measurements between them.
 
 Candidate attribution precedes ring emission and visibility filtering. A candidate whose
 constructed geometry disappears can still provide source measurements to a later
@@ -96,7 +97,7 @@ history order, as supplied by the production caller.
 
 ## Polygonal surface measurement and cumulative growth
 
-`PeriScribe/GrowthMeasurement.lean` has seven theorems covering the polygon-only policy
+`PeriScribe/GrowthMeasurement.lean` covers the polygon-only policy
 in `spatial_data.surface_measurements.area` and the ordered coverage fold in
 `peri_scribe.perimeters.progression.added_areas`. The model was compiled before the
 production numerical adapters were implemented.
@@ -133,6 +134,11 @@ filtering and cumulative policy on the sampled geometries; they do not independe
 establish the accuracy of the WGS84 surface integral. Ordinary numerical regressions
 exercise its rectangle references, edge splitting, winding, holes, latitude range, and
 raw longitude/latitude edge interpretation.
+
+The piece ordinal theorem compares flattened position minus repeated edge start
+with each edge's own increasing index range, for arbitrary finite counts. This
+preserves subdivision order in the numerical adapter. Binary64 contributions and
+Pint conversions remain part of the independent numerical checks.
 
 The numerical growth backend applies fixed-precision overlay. Even segments with lattice
 endpoints can intersect off the lattice, and snapping the intersection can change their

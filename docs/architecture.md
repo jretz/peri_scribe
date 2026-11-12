@@ -706,15 +706,17 @@ by these measurements.
 
 ## Recovery and scheduling
 
-See [pipeline publication](algorithms/pipeline-publication.md),
-[update journaling](algorithms/update-journal.md),
-[log retention](algorithms/log-retention.md), and
-[worker lifetimes](algorithms/worker-lifetimes.md) for durable ordering and interruption
-arguments. [Monitor evidence](algorithms/monitor-evidence.md),
-[terminal rendering](algorithms/terminal-rendering.md), and
-[latency attribution](algorithms/latency-evidence.md) explain how execution is observed.
+See [pipeline publication](algorithms/pipeline-publication.md), [update
+journaling](algorithms/update-journal.md), [log retention](algorithms/log-retention.md),
+and [worker lifetimes](algorithms/worker-lifetimes.md) for durable ordering and
+interruption arguments. [Monitor evidence](algorithms/monitor-evidence.md), [terminal
+rendering](algorithms/terminal-rendering.md), and [latency
+attribution](algorithms/latency-evidence.md) explain how execution is observed.
 [Verification tooling](algorithms/verification-tooling.md) explains the machinery that
-checks paths, replays histories and authenticates test evidence.
+checks paths, replays histories and authenticates test evidence. Its full-suite
+coordinator starts one complete formal pool after proof prerequisites and the entire
+ordinary gate finish. [Deliberate defect checks](../tests/formal/defect_checks.md) run
+each mutant in its own interpreter and source tree after the pristine targets pass.
 
 `--full-fetch-interval` compares the last successful full-fetch time in
 `sources/fetch_state.json` with the requested interval. The first run with the option

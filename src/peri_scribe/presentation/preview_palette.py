@@ -181,6 +181,53 @@ def initial_clusters(
     return heap
 
 
+def squared_distances(target: Features, candidates: Features) -> Features:
+    """Add squared differences in feature order without a three-axis array.
+
+    Args:
+        target: Source colors in the four-dimensional feature space.
+        candidates: Rounded palette colors in the same feature space.
+
+    Returns:
+        The squared visible error for every source and candidate pair.
+    """
+    distances = target[:, None, 0] - candidates[None, :, 0]
+    np.square(distances, out=distances)
+    for coordinate in range(1, target.shape[1]):
+        difference = target[:, None, coordinate] - candidates[None, :, coordinate]
+        np.square(difference, out=difference)
+        distances += difference
+    return distances
+
+
+def update_centers(
+    centers: Features,
+    target: Features,
+    weights: Features,
+    labels: Indices,
+    fixed_count: int,
+) -> None:
+    """Accumulate each weighted mean in source order, keeping frozen centers intact.
+
+    Args:
+        centers: Rounded palette features to update in place.
+        target: The source colors in feature space.
+        weights: The source colors' positive pixel counts.
+        labels: Nearest palette index for each source color.
+        fixed_count: Number of initial palette entries that remain frozen.
+    """
+    totals = np.bincount(labels, weights, minlength=len(centers))
+    nonempty = totals > 0
+    nonempty[:fixed_count] = False
+    for coordinate in range(target.shape[1]):
+        weighted = np.bincount(
+            labels,
+            target[:, coordinate] * weights,
+            minlength=len(centers),
+        )
+        centers[nonempty, coordinate] = weighted[nonempty] / totals[nonempty]
+
+
 def refine_colors(
     target: Features,
     weights: Features,
@@ -207,22 +254,15 @@ def refine_colors(
         candidates = colors_from_centers(centers, opaque=opaque)
         candidates[: len(fixed)] = fixed
         rounded = features(candidates)
-        distances = np.sum((target[:, None] - rounded[None, :]) ** 2, axis=2)
-        labels = np.argmin(distances, axis=1)
+        labels = np.argmin(squared_distances(target, rounded), axis=1)
         if previous is not None and np.array_equal(labels, previous):
-            break
+            return candidates, labels
         previous = labels
         centers = rounded
-        for index in range(len(fixed), len(centers)):
-            selected = labels == index
-            if np.any(selected):
-                centers[index] = np.sum(
-                    target[selected] * weights[selected, None],
-                    axis=0,
-                ) / np.sum(weights[selected])
+        update_centers(centers, target, weights, labels, len(fixed))
     candidates = colors_from_centers(centers, opaque=opaque)
     candidates[: len(fixed)] = fixed
-    distances = np.sum((target[:, None] - features(candidates)[None, :]) ** 2, axis=2)
+    distances = squared_distances(target, features(candidates))
     return candidates, np.argmin(distances, axis=1)
 
 

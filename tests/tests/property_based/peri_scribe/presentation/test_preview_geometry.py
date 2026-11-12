@@ -16,14 +16,15 @@ import tests.helpers.reference.peri_scribe.presentation.preview_geometry
 @hypothesis.given(
     angle=hypothesis.strategies.floats(min_value=-math.pi, max_value=math.pi),
 )
+@hypothesis.example(angle=1.7972615888533068)
 def test_supersampled_dart_preserves_binary_and_resampled_colored_alpha(
     angle: float,
 ) -> None:
     geometry = peri_scribe.presentation.preview_geometry
     high = geometry.supersampled_dart(angle, alpha_only=True)
     assert np.all(np.isin(np.asarray(high), (0, 255)))
-    padded = high.resize(
-        (geometry.DART_SIZE, geometry.DART_SIZE),
+    padded = high.crop(geometry.DART_HULL_BOX).resize(
+        (geometry.DART_HULL_SIZE, geometry.DART_HULL_SIZE),
         PIL.Image.Resampling.LANCZOS,
     )
     actual = padded.crop(padded.getbbox())

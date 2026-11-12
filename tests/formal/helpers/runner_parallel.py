@@ -133,7 +133,7 @@ async def held_run(probe: ExecutionProbe) -> tuple[bool, frozenset[str]]:
                 models(),
                 "java",
                 pathlib.Path("tools.jar"),
-                parallelism=4,
+                semaphore=asyncio.Semaphore(4),
             ),
         )
         for _ in range(4):
@@ -156,7 +156,7 @@ async def cancelled_run(probe: ExecutionProbe) -> None:
                 models(),
                 "java",
                 pathlib.Path("tools.jar"),
-                parallelism=4,
+                semaphore=asyncio.Semaphore(4),
             ),
         )
         for _ in range(4):

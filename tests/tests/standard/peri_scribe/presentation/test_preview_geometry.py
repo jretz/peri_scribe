@@ -154,6 +154,22 @@ def test_angle_candidate_measures_overlap_at_the_final_rendered_orientation(
     )
 
 
+def test_coarse_candidates_preserves_scalar_scores_across_batch_boundaries(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    geometry = peri_scribe.presentation.preview_geometry
+    footprint = np.array(((0, 0), (10, 1), (8, 4), (2, 3)), dtype=float)
+    grid = tuple(
+        (degrees, geometry.north_dart_hull(math.radians(degrees)))
+        for degrees in (-90.0, -0.025, 89.975)
+    )
+    monkeypatch.setattr(geometry, "ROTATION_BATCH_POINTS", 2 * len(footprint))
+    monkeypatch.setattr(geometry, "coarse_dart_hulls", lambda: grid)
+    assert tuple(geometry.coarse_candidates(footprint)) == tuple(
+        geometry.angle_candidate(footprint, degrees, dart) for degrees, dart in grid
+    )
+
+
 def test_refinement_seeds_retains_distinct_starts_when_fewer_are_available() -> None:
     reference = peri_scribe.presentation.preview_geometry.AngleCandidate(
         degrees=15,
@@ -310,12 +326,12 @@ def test_dart_hull_from_state_reconstructs_identically_after_eviction(
         assert bounded.cache_info().currsize == entry_limit
 
 
-def test_dart_hull_from_state_bounds_retained_keys_to_64_mebibytes() -> None:
+def test_dart_hull_from_state_bounds_retained_keys_to_23_mebibytes() -> None:
     geometry = peri_scribe.presentation.preview_geometry
-    high = geometry.supersampled_dart(0, alpha_only=True)
+    high = geometry.supersampled_dart(0, alpha_only=True).crop(geometry.DART_HULL_BOX)
     key_bytes = len(np.packbits(np.asarray(high)).tobytes())
     entry_limit = geometry.dart_hull_from_state.cache_parameters()["maxsize"]
-    budget = 64 * 1024**2
+    budget = 23 * 1024**2
     assert entry_limit is not None
     assert entry_limit * key_bytes <= budget
 

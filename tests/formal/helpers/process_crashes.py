@@ -1,23 +1,34 @@
-"""Check hard process termination and fresh recovery against the checked contracts."""
+"""Check hard process termination and fresh recovery against the checked contracts.
+
+Design notes:
+[Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
+"""
 
 import collections.abc
 import dataclasses
+import functools
 import itertools
 import json
 import pathlib
+import shutil
 import signal
 import sys
 
+import pydantic
+
 import peri_scribe.fire_updates
 import peri_scribe.updates
+import tests.formal.helpers.corpus
 import tests.formal.helpers.crash_worker
 import tests.formal.helpers.journal_builder
+import tests.formal.helpers.journal_builder_inputs
 import tests.formal.helpers.log_rotation
 import tests.formal.helpers.oracle
 import tests.formal.helpers.paths
 import tests.formal.helpers.pipeline_state
 import tests.formal.helpers.process
 import tests.formal.helpers.product_cache
+import tests.formal.helpers.session
 import tests.formal.helpers.tlc
 
 
@@ -74,6 +85,7 @@ def invoke(request: tests.formal.helpers.crash_worker.Request) -> None:
         standard_input=json.dumps(dataclasses.asdict(request)),
         cwd=tests.formal.helpers.oracle.DIRECTORY.parents[1],
         timeout=30,
+        can_start_nested_tools=False,
     )
     expected = (
         tests.formal.helpers.crash_worker.EXIT_STATUS
@@ -91,10 +103,34 @@ def invoke(request: tests.formal.helpers.crash_worker.Request) -> None:
         assert not (root / "atexit-ran").exists()
 
 
+def seed(family: str, staging: pathlib.Path) -> pathlib.Path:
+    """Publish a family prefix only after its real seed process exits successfully.
+
+    Args:
+        family: The crash worker's fixed initial setup, independent of the fault.
+        staging: Private storage owned by the checked corpus producer.
+
+    Returns:
+        The complete seed files retained until the current evidence session ends.
+    """
+    source = staging / "seed"
+    invoke(
+        tests.formal.helpers.crash_worker.Request(
+            root=str(source),
+            family=family,
+            phase="seed",
+            boundary="",
+            after=False,
+            method="exit",
+        ),
+    )
+    return source.rename(staging.with_name(f"crash-seed-{staging.name}"))
+
+
 def history(
     request: tests.formal.helpers.crash_worker.Request,
 ) -> list[dict[str, object]]:
-    """Run three independent interpreter lifetimes over the same private files.
+    """Extend a real seed trace with independent crash and recovery interpreters.
 
     Args:
         request: Family, exact fault boundary, and selected termination method.
@@ -102,13 +138,31 @@ def history(
     Returns:
         The complete observations across seeding, actual process death, and recovery.
     """
-    for phase in PROCESS_PHASES:
+    corpus = tests.formal.helpers.session.directory()
+    assert corpus is not None
+    seed_family = "builder_full" if request.family == "builder" else request.family
+    source = tests.formal.helpers.corpus.load(
+        corpus,
+        f"crash-seed-{seed_family}",
+        pydantic.TypeAdapter(pathlib.Path),
+        functools.partial(seed, seed_family),
+    )
+    destination = pathlib.Path(request.root)
+    assert not destination.exists() or not any(destination.iterdir())
+    ignore = None
+    if seed_family == "builder_full":
+        catalogue_name = tests.formal.helpers.journal_builder_inputs.CATALOGUE_NAME
+        request = dataclasses.replace(
+            request,
+            builder_catalogue=str((source / catalogue_name).resolve()),
+        )
+        ignore = shutil.ignore_patterns(catalogue_name)
+    shutil.copytree(source, destination, dirs_exist_ok=True, ignore=ignore)
+    for phase in ("crash", "recover"):
         invoke(dataclasses.replace(request, phase=phase))
     records = [
         json.loads(line)
-        for line in (pathlib.Path(request.root) / "trace.jsonl")
-        .read_text()
-        .splitlines()
+        for line in (destination / "trace.jsonl").read_text().splitlines()
     ]
     assert sum(record["kind"] == "crash" for record in records) == 1
     processes = [record["value"] for record in records if record["kind"] == "process"]
@@ -177,6 +231,8 @@ def builders(
         tests.formal.helpers.journal_builder.Projection
     ],
     fault: tuple[str, bool, str],
+    *,
+    full_builder: bool = False,
 ) -> None:
     """Check every visible artifact around one selected hard builder interruption.
 
@@ -184,11 +240,12 @@ def builders(
         directory: Isolated subprocess storage for one three-process execution.
         contract: The checked graph restricted to fresh publication generations.
         fault: Artifact boundary, before/after placement, and termination method.
+        full_builder: Use the full builder for the interrupted publication and retry.
     """
     boundary, after, method = fault
     request = tests.formal.helpers.crash_worker.Request(
         root=str(directory),
-        family="builder",
+        family="builder_full" if full_builder else "builder",
         phase="crash",
         boundary=boundary,
         after=after,

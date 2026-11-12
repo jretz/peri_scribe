@@ -1,15 +1,89 @@
+/** Design: ../../../../docs/algorithms/verification-tooling.md */
 import vm from "node:vm";
 import { runScript } from "../../peri_scribe/updates_script.mjs";
 
+const selectors = new Map();
+const classNames = new Map();
+const layoutClasses = [
+  "section", "section-heading", "group-toggle", "sort-order", "group-body",
+  "updates", "group-surface", "update", "snapshot"
+];
+const layoutRoles = new Map();
+
+/** Distinguish classes that change flow topology from local styling. */
+function layoutRole(classes) {
+  let role = layoutRoles.get(classes);
+  if (role === undefined) {
+    role = layoutClasses.reduce((mask, name, index) =>
+      mask | (hasClass(classes, name) ? 1 << index : 0), 0);
+    layoutRoles.set(classes, role);
+  }
+  return role;
+}
+
+/** Reuse the parsed class string while preserving each node's current classes. */
+function hasClass(classes, name) {
+  let names = classNames.get(classes);
+  if (!names) {
+    names = new Set(classes.split(/\s+/));
+    classNames.set(classes, names);
+  }
+  return names.has(name);
+}
+
+/** Parse the supported selector syntax independently of any document. */
+function selectorMatcher(selector) {
+  let matches = selectors.get(selector);
+  if (matches) return matches;
+  const groups = selector.split(",").map(part => part.trim().split(/\s+/).reverse());
+  if (groups.length === 1 && groups[0].length === 1) {
+    const simple = groups[0][0];
+    matches = node => node.matches(simple);
+  } else {
+    matches = node => groups.some(parts => {
+      if (!node.matches(parts[0])) return false;
+      let parent = node.parentElement;
+      for (let index = 1; index < parts.length; index += 1) {
+        const ancestor = parts[index];
+        while (parent && !parent.matches(ancestor)) parent = parent.parentElement;
+        if (!parent) return false;
+        parent = parent.parentElement;
+      }
+      return true;
+    });
+  }
+  selectors.set(selector, matches);
+  return matches;
+}
+
+/** Read the live descendants in document order, stopping at the first match on request. */
+function selectDescendants(root, selector, firstOnly) {
+  const matches = selectorMatcher(selector);
+  const result = [];
+  const visit = parent => {
+    for (const child of parent.children) {
+      if (matches(child)) {
+        result.push(child);
+        if (firstOnly) return true;
+      }
+      if (visit(child)) return true;
+    }
+    return false;
+  };
+  visit(root);
+  return result;
+}
+
 /** Give the real viewer a deterministic DOM without browser or network dependencies. */
 class Element {
+  #className = "";
+
   /** Keep node identity stable while the viewer reparents and reorders its rows. */
   constructor(document, tagName) {
     this.ownerDocument = document;
     this.tagName = tagName;
     this.children = [];
     this.parentElement = null;
-    this.className = "";
     this.id = "";
     this.hidden = false;
     this.dataset = {};
@@ -19,7 +93,7 @@ class Element {
     this.value = "";
     this.text = "";
     this.classList = {
-      contains: name => this.className.split(/\s+/).includes(name),
+      contains: name => hasClass(this.className, name),
       toggle: (name, force) => {
         const names = new Set(this.className.split(/\s+/).filter(Boolean));
         const enabled = force ?? !names.has(name);
@@ -33,13 +107,31 @@ class Element {
     };
   }
 
+  /** Expose the current class names to selectors and the renderer. */
+  get className() {
+    return this.#className;
+  }
+
+  /** Drop the frame when an attached node gains or loses a layout role. */
+  set className(value) {
+    if (this.#className !== value && this.ownerDocument.hasFlow && this.isConnected &&
+        layoutRole(this.#className) !== layoutRole(value)) {
+      this.ownerDocument.invalidateFlow();
+    }
+    this.#className = value;
+  }
+
   /** Expose nested labels as users and accessibility tools read them. */
   get textContent() {
+    if (this.children.length === 0) return this.text + "";
     return this.text + this.children.map(child => child.textContent).join("");
   }
 
   /** Match the browser's replacement of child nodes when assigning plain text. */
   set textContent(value) {
+    if (this.children.length && this.ownerDocument.hasFlow && this.isConnected) {
+      this.ownerDocument.invalidateFlow();
+    }
     this.children.forEach(child => { child.parentElement = null; });
     this.children = [];
     this.text = String(value);
@@ -80,12 +172,18 @@ class Element {
     if (index < 0) throw new Error("Insertion position is not a child.");
     this.children.splice(index, 0, node);
     node.parentElement = this;
+    if (this.ownerDocument.hasFlow && this.isConnected) {
+      this.ownerDocument.invalidateFlow();
+    }
     return node;
   }
 
   /** Keep detached rows available for departure animations and assertions. */
   remove() {
     if (!this.parentElement) return;
+    if (this.ownerDocument.hasFlow && this.isConnected) {
+      this.ownerDocument.invalidateFlow();
+    }
     const siblings = this.parentElement.children;
     siblings.splice(siblings.indexOf(this), 1);
     this.parentElement = null;
@@ -135,28 +233,12 @@ class Element {
 
   /** Preserve document order when locating rows, headers, and nested labels. */
   querySelectorAll(selector) {
-    const result = [];
-    const selectors = selector.split(",").map(part => part.trim().split(/\s+/));
-    const visit = node => {
-      if (selectors.some(parts => {
-        if (!node.matches(parts.at(-1))) return false;
-        let parent = node.parentElement;
-        for (const ancestor of parts.slice(0, -1).reverse()) {
-          while (parent && !parent.matches(ancestor)) parent = parent.parentElement;
-          if (!parent) return false;
-          parent = parent.parentElement;
-        }
-        return true;
-      })) result.push(node);
-      node.children.forEach(visit);
-    };
-    this.children.forEach(visit);
-    return result;
+    return selectDescendants(this, selector, false);
   }
 
   /** Mirror the browser's null result when a requested descendant is absent. */
   querySelector(selector) {
-    return this.querySelectorAll(selector)[0] ?? null;
+    return selectDescendants(this, selector, true)[0] ?? null;
   }
 
   /** Make hidden ancestors suppress their descendants' visible geometry. */
@@ -241,8 +323,16 @@ class Canvas extends Element {
   }
 }
 
+/** Use one coordinate formula for fixed, flowing, and descendant rectangles. */
+function rectangle(left, top, width, height) {
+  return { left, top, width, height, right: left + width, bottom: top + height,
+    x: left, y: top };
+}
+
 /** Model normal document flow so collapsing a group moves all following groups. */
 class Document {
+  #flow = null;
+
   /** Provide the static page elements that exist before the renderer starts. */
   constructor() {
     this.animations = [];
@@ -325,27 +415,46 @@ class Document {
     };
   }
 
-  /** Reflow following windows so endpoint checks catch misplaced parent offsets. */
-  bounds(node) {
-    const rectangle = (left, top, width, height) => ({
-      left, top, width, height, right: left + width, bottom: top + height,
-      x: left, y: top
-    });
-    if (node.classList.contains("departing-update")) {
-      return rectangle(...["left", "top", "width", "height"].map(
-        name => Number.parseFloat(node.style[name]) || 0));
+  /** Skip invalidation work until a measurement has built a frame. */
+  get hasFlow() {
+    return this.#flow !== null;
+  }
+
+  /** Rebuild the next frame after a change to the attached node order or roles. */
+  invalidateFlow() {
+    this.#flow = null;
+  }
+
+  /** Read one frame for the current document flow and explicit width inputs. */
+  #flowPositions() {
+    const previous = this.#flow;
+    if (previous && previous.anchor === this.anchoredGroup &&
+        previous.groups.every(group =>
+          group.sectionHidden === group.section.hidden &&
+          group.bodyHidden === group.body.hidden &&
+          Object.is(group.width, this.headingWidths.get(group.index) ?? 800) &&
+          Object.is(group.toggleWidth, group.toggle.scrollWidth + 22) &&
+          Object.is(group.sortWidth, group.sort.scrollWidth))) {
+      return previous.positions;
     }
     const positions = new Map();
+    const groups = [];
+    const sections = this.querySelectorAll(".section");
     let top = 100;
-    for (const [index, section] of this.querySelectorAll(".section").entries()) {
+    for (const [index, section] of sections.entries()) {
       const heading = section.querySelector(".section-heading");
       const toggle = section.querySelector(".group-toggle");
       const sort = section.querySelector(".sort-order");
       const body = section.querySelector(".group-body");
       const list = section.querySelector(".updates");
-      const width = this.headingWidths.get(String(index)) ?? 800;
+      const key = String(index);
+      const width = this.headingWidths.get(key) ?? 800;
       const toggleWidth = toggle.scrollWidth + 22;
       const sortWidth = sort.scrollWidth;
+      groups.push(Object.freeze({
+        section, body, toggle, sort, index: key, width, toggleWidth, sortWidth,
+        sectionHidden: section.hidden, bodyHidden: body.hidden
+      }));
       const wrapped = toggleWidth + 16 + sortWidth > width;
       const headingHeight = wrapped ? 56 : 28;
       const bodyTop = top + headingHeight + 10;
@@ -369,7 +478,7 @@ class Document {
       if (!section.hidden) top += headingHeight + 34 + height;
     }
     positions.set(this.querySelector(".snapshot"), rectangle(36, top, 800, 24));
-    const anchor = this.querySelectorAll(".section")[this.anchoredGroup];
+    const anchor = sections[this.anchoredGroup];
     if (anchor) {
       const offset = positions.get(anchor).top;
       for (const bounds of positions.values()) {
@@ -378,6 +487,20 @@ class Document {
         bounds.y -= offset;
       }
     }
+    for (const value of positions.values()) Object.freeze(value);
+    this.#flow = Object.freeze({
+      anchor: this.anchoredGroup, groups: Object.freeze(groups), positions
+    });
+    return positions;
+  }
+
+  /** Reflow following windows so endpoint checks catch misplaced parent offsets. */
+  bounds(node) {
+    if (node.classList.contains("departing-update")) {
+      return rectangle(...["left", "top", "width", "height"].map(
+        name => Number.parseFloat(node.style[name]) || 0));
+    }
+    const positions = this.#flowPositions();
     if (positions.has(node)) return positions.get(node);
     const row = node.closest(".update");
     if (row && row !== node) {

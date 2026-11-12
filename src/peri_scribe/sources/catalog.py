@@ -4,13 +4,14 @@ Algorithm reasoning and contracts:
 [Monitor evidence](../../../docs/algorithms/monitor-evidence.md)
 """
 
+import importlib
+
 import us
 
 import peri_scribe.exceptions
 import peri_scribe.phases
 import peri_scribe.sources.archives
 import peri_scribe.sources.external_data
-import peri_scribe.sources.feeds
 
 
 BUILDINGS_STATES = tuple(state.name for state in (*us.states.STATES, us.states.DC))
@@ -82,8 +83,9 @@ def configured_phase_branches() -> peri_scribe.phases.Branches:
     Returns:
         Feed and external-source branches used to expand the phase catalogue.
     """
+    feeds = importlib.import_module("peri_scribe.sources.feeds")
     return peri_scribe.phases.Branches(
-        feeds=tuple(feed.name for feed in peri_scribe.sources.feeds.FEEDS),
+        feeds=tuple(feed.name for feed in feeds.FEEDS),
         sources=tuple(source.name for source in EXTERNAL_SOURCES),
         evacuations=EVACUATIONS_SOURCE.name,
         cities=CITIES_SOURCE.name,

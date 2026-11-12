@@ -3,16 +3,13 @@
 from __future__ import annotations
 
 import hashlib
+import importlib
 import io
 import typing
 import zipfile
 
-import shapely.geometry
-
 import peri_scribe.sources.catalog
 import peri_scribe.sources.cities
-import tests.helpers.factories.geography
-import tests.helpers.factories.peri_scribe.sources.external_source
 
 
 if typing.TYPE_CHECKING:
@@ -82,7 +79,9 @@ def dataframe() -> geopandas.GeoDataFrame:
     Returns:
         Source-shaped points with deliberately different coordinate attributes.
     """
-    return tests.helpers.factories.geography.geo_frame(
+    geography = importlib.import_module("tests.helpers.factories.geography")
+    geometry = importlib.import_module("shapely.geometry")
+    return geography.geo_frame(
         {
             "name": [
                 "Bakersfield",
@@ -100,7 +99,7 @@ def dataframe() -> geopandas.GeoDataFrame:
             "latitude": [0.0] * 8,
             "longitude": [0.0] * 8,
         },
-        [shapely.geometry.Point(-119.0 + index, 35.0) for index in range(8)],
+        [geometry.Point(-119.0 + index, 35.0) for index in range(8)],
     )
 
 
@@ -118,12 +117,13 @@ def archive(
     Returns:
         A complete in-memory Natural Earth-style ZIP download.
     """
-    content = (
-        tests.helpers.factories.peri_scribe.sources.external_source.archive_zip_bytes(
-            filename=f"{peri_scribe.sources.cities.ARCHIVE_STEM}.shp",
-            dataframe=source if source is not None else dataframe(),
-            driver="ESRI Shapefile",
-        )
+    external_source = importlib.import_module(
+        "tests.helpers.factories.peri_scribe.sources.external_source",
+    )
+    content = external_source.archive_zip_bytes(
+        filename=f"{peri_scribe.sources.cities.ARCHIVE_STEM}.shp",
+        dataframe=source if source is not None else dataframe(),
+        driver="ESRI Shapefile",
     )
     buffer = io.BytesIO(content)
     with zipfile.ZipFile(buffer, "a") as compressed:

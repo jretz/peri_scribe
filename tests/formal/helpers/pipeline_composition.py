@@ -11,7 +11,6 @@ import dataclasses
 import datetime
 import functools
 import json
-import os
 import pathlib
 import re
 
@@ -19,6 +18,7 @@ import pytest
 import structlog
 import time_machine
 
+import peri_scribe.durable_file
 import peri_scribe.fires.differential
 import peri_scribe.fires.index
 import peri_scribe.fires.scores
@@ -32,6 +32,7 @@ import peri_scribe.preparation
 import peri_scribe.publication
 import peri_scribe.sources.fetching
 import tests.formal.helpers.paths
+import tests.formal.helpers.pipeline_replay_files
 import tests.formal.helpers.pipeline_state
 import tests.formal.helpers.tlc
 import tests.helpers.doubles.peri_scribe.pipeline_fetch_recovery
@@ -221,7 +222,13 @@ def executions(graph: tests.formal.helpers.tlc.Graph) -> Executions:
                 else action
             )
     checked = tests.formal.helpers.paths.Contract(
-        graph=graph,
+        graph=dataclasses.replace(
+            graph,
+            states={
+                node: {"phase": fields["phase"]}
+                for node, fields in graph.states.items()
+            },
+        ),
         values={
             node: parse_durable(fields["durable"])
             for node, fields in graph.states.items()
@@ -238,18 +245,20 @@ def executions(graph: tests.formal.helpers.tlc.Graph) -> Executions:
             "acknowledge",
         }),
     )
+    terminals = {
+        node: invocation(fields, parse_durable)
+        for node, fields in graph.states.items()
+        if fields["phase"] == '"done"'
+    }
     records = {}
-    for node, fields in graph.states.items():
-        if fields["phase"] != '"done"':
-            continue
-        record = invocation(fields, parse_durable)
+    for node, record in terminals.items():
         if record in records:
             continue
         history = []
         current: int | None = node
         while current is not None:
-            if graph.states[current]["phase"] == '"done"':
-                history.append(invocation(graph.states[current], parse_durable))
+            if current in terminals:
+                history.append(terminals[current])
             current = previous[current]
         records[record] = tuple(reversed(history))
     assert collections.Counter(record.failed_at for record in records) == {
@@ -281,14 +290,42 @@ def executions(graph: tests.formal.helpers.tlc.Graph) -> Executions:
 
 @dataclasses.dataclass(kw_only=True)
 class Replay:
-    """Real file effects connect coordinator behavior to the abstract model."""
+    """Keep actual byte observations connected to one compatible execution."""
 
     invocation: Invocation
     directory: pathlib.Path
+    memory: tests.formal.helpers.pipeline_replay_files.Memory | None = None
+    trace: list[tests.formal.helpers.pipeline_replay_files.Event] | None = None
     calls: list[int] = dataclasses.field(default_factory=list)
     forces: list[bool] = dataclasses.field(default_factory=list)
     execution: tests.formal.helpers.paths.Path[Durable] | None = None
     begun: bool = False
+    files: tests.formal.helpers.pipeline_replay_files.Artifacts = dataclasses.field(
+        init=False,
+    )
+    source_file: pathlib.Path = dataclasses.field(init=False)
+    output_files: tuple[pathlib.Path, ...] = dataclasses.field(init=False)
+    deferred_file: pathlib.Path = dataclasses.field(init=False)
+    checkpoint_file: pathlib.Path = dataclasses.field(init=False)
+
+    def __post_init__(self) -> None:
+        """Build fixture paths once so each observation can read them directly."""
+        self.files = tests.formal.helpers.pipeline_replay_files.Artifacts(
+            directory=self.directory,
+            memory=self.memory,
+            trace=self.trace,
+        )
+        self.source_file = self.directory / "source-generation"
+        self.output_files = tuple(
+            peri_scribe.paths.kmz_path(self.directory)
+            if stage == KMZ
+            else self.directory / f"output-{stage}"
+            for stage in range(1, 5)
+        )
+        self.deferred_file = peri_scribe.pipeline_state.deferred_inputs_path(
+            self.directory,
+        )
+        self.checkpoint_file = peri_scribe.publication.publication_path(self.directory)
 
     def snapshot(self) -> Durable:
         """Read each independently retained file without consulting the expected result.
@@ -296,24 +333,24 @@ class Replay:
         Returns:
             Actual source/output generations, recovery markers, and checkpoint identity.
         """
-        publication_path = peri_scribe.publication.publication_path(self.directory)
-        checkpoint = (
-            peri_scribe.publication.Publication.model_validate_json(
-                publication_path.read_bytes(),
+        try:
+            checkpoint_bytes = self.files.read_bytes(self.checkpoint_file)
+        except FileNotFoundError:
+            checkpoint = None
+        else:
+            checkpoint = peri_scribe.publication.Publication.model_validate_json(
+                checkpoint_bytes,
             )
-            if publication_path.exists()
-            else None
-        )
         return Durable(
-            source=int(self.source_path().read_text()),
+            source=int(self.files.read_bytes(self.source_file)),
             outputs=tuple(
-                int(self.output_path(stage).read_text()) for stage in range(1, 5)
+                int(self.files.read_bytes(path)) for path in self.output_files
             ),
             pending=peri_scribe.pipeline_state.read_state(self.directory),
-            deferred=peri_scribe.pipeline_state.deferred_inputs_path(
-                self.directory,
-            ).exists(),
-            kmz_version=self.output_path(KMZ).stat().st_mtime_ns // 1_000_000_000 - 1,
+            deferred=self.files.exists(self.deferred_file),
+            kmz_version=self.files.modified_nanoseconds(self.output_path(KMZ))
+            // 1_000_000_000
+            - 1,
             publication_version=-1
             if checkpoint is None
             else (checkpoint.output.modified_nanoseconds // 1_000_000_000 - 1),
@@ -358,6 +395,12 @@ class Replay:
             value: Actual file contents read without any intervening persistence.
         """
         assert self.execution is not None
+        if self.trace is not None:
+            self.trace.append(
+                tests.formal.helpers.pipeline_replay_files.Observation(
+                    image=self.files.image(),
+                ),
+            )
         if self.begun:
             self.execution = self.execution.observe(value)
         else:
@@ -383,8 +426,8 @@ class Replay:
         """
         watched = {
             peri_scribe.pipeline_state.state_path(self.directory),
-            peri_scribe.pipeline_state.deferred_inputs_path(self.directory),
-            peri_scribe.publication.publication_path(self.directory),
+            self.deferred_file,
+            self.checkpoint_file,
         }
         original_replace, original_unlink, original_touch = (
             pathlib.Path.replace,
@@ -402,8 +445,16 @@ class Replay:
             Returns:
                 The unchanged filesystem replacement result.
             """
+            before = self.files.effect_input() if target in watched else None
+            argument = path.read_bytes() if before is not None else b""
             result = original_replace(path, target)
             if target in watched:
+                self.files.record_effect(
+                    tests.formal.helpers.pipeline_replay_files.Operation.REPLACE,
+                    target,
+                    argument=argument,
+                    before=before,
+                )
                 self.inspect()
             return result
 
@@ -414,8 +465,15 @@ class Replay:
                 path: The independently retired marker.
                 missing_ok: The unchanged production absence policy.
             """
+            before = self.files.effect_input() if path in watched else None
             original_unlink(path, missing_ok=missing_ok)
             if path in watched:
+                self.files.record_effect(
+                    tests.formal.helpers.pipeline_replay_files.Operation.REMOVE,
+                    path,
+                    argument=missing_ok,
+                    before=before,
+                )
                 self.inspect()
 
         def touch(
@@ -431,8 +489,15 @@ class Replay:
                 mode: The requested creation mode.
                 exist_ok: The requested existing-file policy.
             """
+            before = self.files.effect_input() if path in watched else None
             original_touch(path, mode=mode, exist_ok=exist_ok)
             if path in watched:
+                self.files.record_effect(
+                    tests.formal.helpers.pipeline_replay_files.Operation.TOUCH,
+                    path,
+                    argument=exist_ok,
+                    before=before,
+                )
                 self.inspect()
 
         patch.setattr(pathlib.Path, "replace", replace)
@@ -445,7 +510,7 @@ class Replay:
         Returns:
             The isolated source generation file.
         """
-        return self.directory / "source-generation"
+        return self.source_file
 
     def output_path(self, stage: int) -> pathlib.Path:
         """Use the real KMZ location so checkpoint identity validation remains active.
@@ -456,11 +521,7 @@ class Replay:
         Returns:
             The corresponding independently written artifact.
         """
-        return (
-            peri_scribe.paths.kmz_path(self.directory)
-            if stage == KMZ
-            else self.directory / f"output-{stage}"
-        )
+        return self.output_files[stage - 1]
 
     def inputs(self, generation: int) -> peri_scribe.publication.Collection:
         """Give the actual gate either below-threshold or threshold-reaching changes.
@@ -491,7 +552,7 @@ class Replay:
             The saved source inventory for that year.
         """
         assert directory == self.directory
-        return self.inputs(int(self.source_path().read_text()))
+        return self.inputs(int(self.files.read_bytes(self.source_path())))
 
     def fires(
         self,
@@ -510,29 +571,33 @@ class Replay:
         return tests.helpers.factories.peri_scribe.publication.publication(latest).fires
 
     def write_kmz(self, generation: int, version: int) -> None:
-        """Distinct completed files invalidate old checkpoints even at equal content.
+        """Observe the completed KMZ before changing its publication checkpoint.
 
         Args:
             generation: The geography revision encoded by this artifact.
-            version: The file identity assigned to this completed artifact.
+            version: The model version for the completed KMZ identity.
         """
-        path = self.output_path(3)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(str(generation))
-        nanoseconds = (version + 1) * 1_000_000_000
-        os.utime(path, ns=(nanoseconds, nanoseconds))
+        self.files.write_generation(
+            self.output_path(KMZ),
+            str(generation).encode(),
+            (version + 1) * 1_000_000_000,
+        )
         self.inspect()
 
     def initialize(self) -> None:
         """Recreate exactly the durable state reached by prior modeled invocations."""
         before = self.invocation.before
-        self.directory.mkdir(parents=True)
-        self.source_path().write_text(str(before.source))
+        if self.memory is None:
+            self.directory.mkdir(parents=True)
+        self.files.write_generation(self.source_path(), str(before.source).encode())
         for stage, generation in enumerate(before.outputs, start=1):
             if stage == KMZ:
                 self.write_kmz(generation, before.kmz_version)
             else:
-                self.output_path(stage).write_text(str(generation))
+                self.files.write_generation(
+                    self.output_path(stage),
+                    str(generation).encode(),
+                )
         peri_scribe.pipeline_state.write_state(self.directory, before.pending)
         if before.deferred:
             peri_scribe.pipeline_state.defer_inputs(self.directory)
@@ -548,7 +613,7 @@ class Replay:
                 fires=self.fires(before.publication),
             )
             peri_scribe.publication.write_state(
-                peri_scribe.publication.publication_path(self.directory),
+                self.checkpoint_file,
                 checkpoint,
             )
 
@@ -576,7 +641,7 @@ class Replay:
         assert build_index != self.invocation.gated
         self.interrupt("fetch write")
         if self.invocation.changed:
-            self.source_path().write_text("1")
+            self.files.write_generation(self.source_path(), b"1")
         self.inspect()
         self.interrupt("fetch decide")
         return peri_scribe.sources.fetching.FetchResult(
@@ -594,6 +659,13 @@ class Replay:
             ProcessLoss: When this case selects the given failure boundary.
         """
         if self.invocation.failed_at == boundary:
+            if self.trace is not None:
+                self.trace.append(
+                    tests.formal.helpers.pipeline_replay_files.Failure(
+                        boundary=boundary,
+                        image=self.files.image(),
+                    ),
+                )
             raise tests.helpers.doubles.peri_scribe.pipeline_fetch_recovery.ProcessLoss
 
     def geography(self, directory: pathlib.Path, *, unconditional: bool) -> None:
@@ -605,7 +677,10 @@ class Replay:
         """
         assert directory == self.directory
         assert unconditional == self.forces[-1]
-        self.output_path(1).write_text(self.source_path().read_text())
+        self.files.write_generation(
+            self.output_path(1),
+            self.files.read_bytes(self.source_path()),
+        )
         self.inspect()
 
     def score(self, directory: pathlib.Path) -> None:
@@ -615,7 +690,10 @@ class Replay:
             directory: The selected year.
         """
         assert directory == self.directory
-        self.output_path(2).write_text(self.output_path(1).read_text())
+        self.files.write_generation(
+            self.output_path(2),
+            self.files.read_bytes(self.output_path(1)),
+        )
         self.inspect()
 
     def reports(self, directory: pathlib.Path) -> pathlib.Path:
@@ -628,7 +706,10 @@ class Replay:
             The independently persisted report.
         """
         assert directory == self.directory
-        self.output_path(4).write_text(self.output_path(1).read_text())
+        self.files.write_generation(
+            self.output_path(4),
+            self.files.read_bytes(self.output_path(1)),
+        )
         self.inspect()
         return self.output_path(4)
 
@@ -649,7 +730,7 @@ class Replay:
         """
         assert directory == self.directory
         self.write_kmz(
-            int(self.output_path(1).read_text()),
+            int(self.files.read_bytes(self.output_path(1))),
             self.invocation.before.kmz_version + 1,
         )
         self.interrupt("commit publication")
@@ -669,16 +750,26 @@ class Replay:
         expected = self.invocation.after
         assert tuple(self.calls) == self.invocation.executed, self.invocation
         assert tuple(self.forces) == self.invocation.forces, self.invocation
+        if self.trace is not None:
+            self.trace.append(
+                tests.formal.helpers.pipeline_replay_files.Calls(
+                    stages=tuple(self.calls),
+                    forces=tuple(self.forces),
+                ),
+            )
         assert self.execution is not None
         assert self.execution.value == expected, self.invocation
         output = self.output_path(3)
-        assert output.stat().st_mtime_ns == (expected.kmz_version + 1) * 1_000_000_000
-        path = peri_scribe.publication.publication_path(self.directory)
+        assert (
+            self.files.modified_nanoseconds(output)
+            == (expected.kmz_version + 1) * 1_000_000_000
+        )
+        path = self.checkpoint_file
         if expected.publication < 0:
-            assert not path.exists(), self.invocation
+            assert not self.files.exists(path), self.invocation
         else:
             checkpoint = peri_scribe.publication.Publication.model_validate_json(
-                path.read_bytes(),
+                self.files.read_bytes(path),
             )
             assert checkpoint.files == self.inputs(expected.publication).files
             assert (
@@ -692,11 +783,71 @@ class Replay:
         ), self.invocation
 
 
+def install_dependencies(scenario: Replay, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Substitute data-producing stages while preserving actual coordinator decisions.
+
+    Args:
+        scenario: Fixture producers bound to this invocation's durable files.
+        monkeypatch: Overrides scoped to the invocation.
+    """
+    monkeypatch.setattr(
+        peri_scribe.sources.fetching,
+        "fetch_all_feeds",
+        scenario.fetch,
+    )
+    monkeypatch.setattr(peri_scribe.publication, "collect", scenario.collect)
+    monkeypatch.setattr(
+        peri_scribe.fires.differential,
+        "write_history_of_differential_geography",
+        scenario.geography,
+    )
+    monkeypatch.setattr(peri_scribe.fires.scores, "score_fires", scenario.score)
+    monkeypatch.setattr(peri_scribe.kml.builder, "create_kmz", scenario.create_kmz)
+    monkeypatch.setattr(peri_scribe.pipeline, "write_reports", scenario.reports)
+    monkeypatch.setattr(
+        peri_scribe.pipeline,
+        "prepare_administrative_boundaries",
+        lambda _year: None,
+    )
+    monkeypatch.setattr(
+        peri_scribe.fires.index,
+        "index_fire_sources",
+        lambda _year: None,
+    )
+    monkeypatch.setattr(
+        peri_scribe.pipeline,
+        "fetch_external_source",
+        lambda _source, _year: None,
+    )
+    monkeypatch.setattr(
+        peri_scribe.pipeline,
+        "refresh_external_sources",
+        lambda _year, **_kwargs: False,
+    )
+    monkeypatch.setattr(
+        peri_scribe.preparation,
+        "scope",
+        lambda *_args, **_kwargs: contextlib.nullcontext(),
+    )
+    monkeypatch.setattr(
+        peri_scribe.logging,
+        "log_phase",
+        lambda *_args, **_kwargs: contextlib.nullcontext(),
+    )
+    monkeypatch.setattr(peri_scribe.logging, "skip_phases", lambda *_args: None)
+    logger = structlog.ReturnLogger()
+    monkeypatch.setattr(peri_scribe.pipeline, "logger", logger)
+    monkeypatch.setattr(peri_scribe.pipeline_state, "state_logger", lambda: logger)
+
+
 def replay(
     invocation: Invocation,
     directory: pathlib.Path,
     checked: tests.formal.helpers.paths.Contract[Durable],
     execution: tests.formal.helpers.paths.Path[Durable] | None = None,
+    *,
+    memory: tests.formal.helpers.pipeline_replay_files.Memory | None = None,
+    trace: list[tests.formal.helpers.pipeline_replay_files.Event] | None = None,
 ) -> tests.formal.helpers.paths.Path[Durable]:
     """Execute real selected stages, pending markers, and checkpoint decisions.
 
@@ -705,12 +856,18 @@ def replay(
         directory: Isolated year directory containing this case's persistent files.
         checked: The full checked transition graph and durable projection.
         execution: The preceding real invocation, or None for the model initialization.
+        memory: Private in-memory raw files when replaying the complete cross-product.
+        trace: Optional ordered record for direct comparison with physical execution.
 
     Returns:
         The continuing execution matcher after this real invocation.
     """
-    scenario = Replay(invocation=invocation, directory=directory)
-    scenario.begin(checked, execution)
+    scenario = Replay(
+        invocation=invocation,
+        directory=directory,
+        memory=memory,
+        trace=trace,
+    )
     run_stage = peri_scribe.pipeline.run_pipeline_stage
     complete_stage = peri_scribe.pipeline_state.complete_stage
     clear_deferred = peri_scribe.pipeline_state.clear_deferred_inputs
@@ -773,66 +930,26 @@ def replay(
 
     with (
         pytest.MonkeyPatch.context() as monkeypatch,
+        # The coordinator reads UTC explicitly. Freezing the instant keeps the local
+        # timezone and its process-wide settings out of the replay.
         time_machine.travel(
-            tests.helpers.factories.peri_scribe.publication.NOW,
+            tests.helpers.factories.peri_scribe.publication.NOW.timestamp(),
             tick=False,
         ),
     ):
-        scenario.install_observer(monkeypatch)
+        if memory is not None:
+            memory.trace = trace
+            memory.observe = scenario.inspect
+            monkeypatch.setattr(peri_scribe.durable_file, "at", memory.at)
+        elif trace is not None:
+            scenario.install_observer(monkeypatch)
+        scenario.begin(checked, execution)
+        if memory is None and trace is None:
+            scenario.install_observer(monkeypatch)
         monkeypatch.setattr(peri_scribe.pipeline, "run_pipeline_stage", run)
         monkeypatch.setattr(peri_scribe.pipeline_state, "complete_stage", complete)
         monkeypatch.setattr(peri_scribe.pipeline_state, "clear_deferred_inputs", clear)
-        monkeypatch.setattr(
-            peri_scribe.sources.fetching,
-            "fetch_all_feeds",
-            scenario.fetch,
-        )
-        monkeypatch.setattr(peri_scribe.publication, "collect", scenario.collect)
-        monkeypatch.setattr(
-            peri_scribe.fires.differential,
-            "write_history_of_differential_geography",
-            scenario.geography,
-        )
-        monkeypatch.setattr(peri_scribe.fires.scores, "score_fires", scenario.score)
-        monkeypatch.setattr(peri_scribe.kml.builder, "create_kmz", scenario.create_kmz)
-        monkeypatch.setattr(peri_scribe.pipeline, "write_reports", scenario.reports)
-        monkeypatch.setattr(
-            peri_scribe.pipeline,
-            "prepare_administrative_boundaries",
-            lambda _year: None,
-        )
-        monkeypatch.setattr(
-            peri_scribe.fires.index,
-            "index_fire_sources",
-            lambda _year: None,
-        )
-        monkeypatch.setattr(
-            peri_scribe.pipeline,
-            "fetch_external_source",
-            lambda _source, _year: None,
-        )
-        monkeypatch.setattr(
-            peri_scribe.pipeline,
-            "refresh_external_sources",
-            lambda _year, **_kwargs: False,
-        )
-        monkeypatch.setattr(
-            peri_scribe.preparation,
-            "scope",
-            lambda *_args, **_kwargs: contextlib.nullcontext(),
-        )
-        monkeypatch.setattr(
-            peri_scribe.logging,
-            "log_phase",
-            lambda *_args, **_kwargs: contextlib.nullcontext(),
-        )
-        monkeypatch.setattr(peri_scribe.logging, "skip_phases", lambda *_args: None)
-        monkeypatch.setattr(peri_scribe.pipeline, "logger", structlog.ReturnLogger())
-        monkeypatch.setattr(
-            peri_scribe.pipeline_state,
-            "logger",
-            structlog.ReturnLogger(),
-        )
+        install_dependencies(scenario, monkeypatch)
         with (
             pytest.raises(
                 tests.helpers.doubles.peri_scribe.pipeline_fetch_recovery.ProcessLoss,

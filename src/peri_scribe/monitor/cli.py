@@ -4,6 +4,7 @@ import pathlib
 
 import click
 
+import peri_scribe.cli_help
 import peri_scribe.cli_options
 import peri_scribe.monitor.app
 import peri_scribe.paths
@@ -11,8 +12,10 @@ import peri_scribe.sources.catalog
 
 
 @click.command(
-    help="Observe live logs, pipeline phases, run history, and the current report. "
-    + peri_scribe.cli_options.year_directory_default_help(),
+    help=(
+        f"{peri_scribe.cli_help.MONITOR_HELP} "
+        f"{peri_scribe.cli_options.year_directory_default_help()}"
+    ),
 )
 @click.argument(
     "year_directory",

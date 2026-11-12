@@ -20,10 +20,6 @@ import platform
 import sys
 import typing
 
-import PIL.features
-import pyproj
-import shapely
-
 import peri_scribe.execution
 import peri_scribe.sources.authentication
 import spatial_data.product_cache
@@ -48,6 +44,9 @@ def runtime_fingerprint() -> str:
     Returns:
         The complete preparation environment's SHA-256 fingerprint.
     """
+    pillow_features = importlib.import_module("PIL.features")
+    pyproj = importlib.import_module("pyproj")
+    shapely = importlib.import_module("shapely")
     source_root = pathlib.Path(__file__).parents[1]
     code: list[tuple[str, str]] = []
     for package in (
@@ -73,7 +72,7 @@ def runtime_fingerprint() -> str:
         "platform": platform.platform(),
         "geos": shapely.geos_version_string,
         "proj": pyproj.proj_version_str,
-        "webp": PIL.features.version_module("webp"),
+        "webp": pillow_features.version_module("webp"),
         "libraries": {
             name: importlib.metadata.version(name)
             for name in (

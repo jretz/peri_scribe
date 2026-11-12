@@ -6,6 +6,7 @@ Algorithm reasoning and contracts:
 """
 
 import collections
+import collections.abc
 import compression.zstd
 import contextlib
 import dataclasses
@@ -163,11 +164,21 @@ class Follower:
         except OSError as error:
             return Batch(errors=(str(error),), caught_up=False)
 
-    def poll_locked(self, *, since: datetime.datetime | None = None) -> Batch:
+    def poll_locked(
+        self,
+        *,
+        since: datetime.datetime | None = None,
+        retained: collections.abc.Mapping[
+            pathlib.Path,
+            tuple[pathlib.Path, ...],
+        ]
+        | None = None,
+    ) -> Batch:
         """Avoid rereading source files that a rotation receipt confirms are archived.
 
         Args:
             since: The earliest timestamp to seek when opening a new log.
+            retained: Components already authenticated during this shared lock interval.
 
         Returns:
             A batch observed while appenders and rotators hold no writer lock.
@@ -177,9 +188,19 @@ class Follower:
         records: list[dict[str, object]] = []
         archives: list[pathlib.Path] = []
         caught_up = True
-        for monthly in peri_scribe.log_reading.log_paths(self.directory):
+        monthly_logs = (
+            peri_scribe.log_reading.log_paths(self.directory)
+            if retained is None
+            else retained
+        )
+        for monthly in monthly_logs:
             try:
-                for path in peri_scribe.log_reading.log_components(monthly):
+                components = (
+                    peri_scribe.log_reading.log_components(monthly)
+                    if retained is None
+                    else retained[monthly]
+                )
+                for path in components:
                     if path.suffix != ".zst":
                         current.add(self.discover(path, since))
                     else:

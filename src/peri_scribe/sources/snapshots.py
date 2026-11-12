@@ -27,6 +27,14 @@ LAST_EDIT_TIMESTAMP_PREFIX = "lastEdit="
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
+class FetchResult:
+    """The outcome of fetching every configured feed."""
+
+    snapshot_paths: tuple[pathlib.Path, ...]
+    changed: bool
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
 class SourceFile:
     """One source snapshot, identified by serial number and last-edit timestamp.
 

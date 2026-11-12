@@ -3,11 +3,29 @@ import PeriScribe.Scoring
 
 open PeriScribe.NumericalPolicy
 
+def maximumShift : Nat := 1074 + 1023
+
+def maximumFiniteMagnitude : Nat := (2 ^ 53 - 1) <<< (maximumShift - 52)
+
+/-- Reconstruct the exact model integer while bounding the decoded binary64 value. -/
+def number (text : String) : Except String Int := do
+  match text.splitOn ":" with
+  | [value] =>
+    let some integer := value.toInt? | throw s!"Expected integer: {text}"
+    return integer
+  | [significand, exponent] =>
+    let some integer := significand.toInt? | throw s!"Invalid shifted integer: {text}"
+    let some shift := exponent.toNat? | throw s!"Invalid shifted integer: {text}"
+    if integer.natAbs ≥ 2 ^ 53 || shift > maximumShift then
+      throw s!"Invalid shifted integer: {text}"
+    let decoded := integer <<< shift
+    if decoded.natAbs > maximumFiniteMagnitude then
+      throw s!"Invalid shifted integer: {text}"
+    return decoded
+  | _ => throw s!"Invalid shifted integer: {text}"
+
 def numbers (text : String) : Except String (List Int) :=
-  (text.splitOn " " |>.filter (· != "")).mapM fun value =>
-    match value.toInt? with
-    | some number => pure number
-    | none => .error s!"Expected integer: {value}"
+  (text.splitOn " " |>.filter (· != "")).mapM number
 
 def bit (value : Bool) : Int := if value then 1 else 0
 

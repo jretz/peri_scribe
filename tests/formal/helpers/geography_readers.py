@@ -8,6 +8,7 @@ import pathlib
 import shutil
 
 import pytest
+import structlog
 
 import peri_scribe.fires.derived_layers
 import peri_scribe.fires.differential
@@ -91,6 +92,13 @@ def replay(graph: tests.formal.helpers.tlc.Graph, directory: pathlib.Path) -> No
     expected_count = 162
     assert len(outcomes) == expected_count
     with pytest.MonkeyPatch.context() as patch:
+        for processor in structlog.get_config()["processors"]:
+            if isinstance(processor, structlog.dev.ConsoleRenderer):
+                patch.setattr(
+                    processor,
+                    "exception_formatter",
+                    structlog.dev.plain_traceback,
+                )
         patch.setattr(peri_scribe.fires.reuse, "derivation_context", lambda _: "reader")
         checksums, parents = tests.formal.helpers.geography_paths.templates(
             directory / "templates",

@@ -62,8 +62,54 @@ def encodedSets (queries : List Nat) (result : IdentityTransfer.Lineage) : Strin
     let values := (result query).eraseDups.mergeSort
     Int.ofNat values.length :: values.map Int.ofNat)
 
+/- A claimant's reachable histories depend on the shared lineage and its own record.
+   The whole-publication and singleton queries use the same immutable inventory. -/
+def contendersFrom (inventory : List (IdentityTransfer.Fire × List Nat))
+    (history : Nat) : List IdentityTransfer.Fire :=
+  (inventory.filter fun row => row.2.contains history).map Prod.fst
+
+theorem contenders_from_exact (known : IdentityTransfer.Lineage)
+    (current : List IdentityTransfer.Fire) (history : Nat) :
+    contendersFrom (current.map (fun item => (item, IdentityTransfer.reachable known item)))
+      history = IdentityTransfer.contenders known current history := by
+  induction current with
+  | nil => rfl
+  | cons item rest ih =>
+    by_cases member : history ∈ IdentityTransfer.reachable known item <;>
+      simp [contendersFrom, IdentityTransfer.contenders, member] at ih ⊢ <;>
+      rw [ih]
+
+def claimInventory (known : IdentityTransfer.Lineage) (current : List IdentityTransfer.Fire)
+    (queries : List Nat) : List Int :=
+  let inventory := current.map (fun item => (item, IdentityTransfer.reachable known item))
+  let whole := queries.map (fun history => selected
+    ((IdentityTransfer.latest (contendersFrom inventory history)).map IdentityTransfer.Fire.identity))
+  let singleton := inventory.flatMap (fun row => queries.map (fun history =>
+    if row.2.contains history then Int.ofNat row.1.identity else -1))
+  whole ++ singleton
+
+theorem claim_inventory_exact (known : IdentityTransfer.Lineage)
+    (current : List IdentityTransfer.Fire) (queries : List Nat) :
+    claimInventory known current queries =
+      ([current] ++ current.map (fun fire => [fire])).flatMap (fun scope =>
+        queries.map (fun history => selected (IdentityTransfer.claimant known scope history))) := by
+  simp only [claimInventory, contenders_from_exact, List.singleton_append, List.flatMap_cons,
+    List.flatMap_map, IdentityTransfer.claimant]
+  congr 1
+  apply congrArg List.flatten
+  apply List.map_congr_left
+  intro fire present
+  apply List.map_congr_left
+  intro history selectedHistory
+  by_cases reachable : history ∈ IdentityTransfer.reachable known fire <;>
+    simp [IdentityTransfer.contenders, IdentityTransfer.latest, selected, reachable]
+
 def respond (line : String) : Except String String := do
   match line.splitOn "|" with
+  | ["claim-inventory", queries, rawLineage, rawFires] =>
+    let known ← lineage rawLineage
+    let current ← fires rawFires
+    return encoded (claimInventory known current (← numbers queries))
   | ["claim", queries, rawLineage, rawFires] =>
     let known ← lineage rawLineage
     let current ← fires rawFires

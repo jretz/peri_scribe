@@ -16,7 +16,7 @@ class LayerStub(arcgis.features.FeatureLayer):
         Args:
             properties: ArcGIS metadata exposed by the layer's properties accessor.
         """
-        self.layer_properties = properties
+        self.properties = properties
 
     @property
     def properties(self) -> dict[str, object]:
@@ -26,6 +26,15 @@ class LayerStub(arcgis.features.FeatureLayer):
             The configured layer properties.
         """
         return self.layer_properties
+
+    @properties.setter
+    def properties(self, value: dict[str, object]) -> None:
+        """Retain the writable metadata contract of an ArcGIS layer.
+
+        Args:
+            value: Metadata supplied to the layer.
+        """
+        self.layer_properties = value
 
 
 class FeatureSetStub(arcgis.features.FeatureSet):
@@ -37,7 +46,7 @@ class FeatureSetStub(arcgis.features.FeatureSet):
         Args:
             spatial_reference: Spatial-reference value exposed by the feature-set stub.
         """
-        self.stored_spatial_reference = spatial_reference
+        self.spatial_reference = spatial_reference
 
     @property
     def spatial_reference(self) -> object:
@@ -47,6 +56,15 @@ class FeatureSetStub(arcgis.features.FeatureSet):
             The configured spatial-reference value.
         """
         return self.stored_spatial_reference
+
+    @spatial_reference.setter
+    def spatial_reference(self, value: object) -> None:
+        """Retain the writable reference contract of an ArcGIS feature set.
+
+        Args:
+            value: The reference exposed by this feature set.
+        """
+        self.stored_spatial_reference = value
 
 
 class FeatureLayerStubBase:

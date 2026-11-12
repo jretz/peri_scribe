@@ -21,6 +21,9 @@ if typing.TYPE_CHECKING:
     import pytest
 
 
+type FrameTemplates = dict[tuple[tuple[int, str], ...], geopandas.GeoDataFrame]
+
+
 def values(text: str) -> list[int]:
     """Decode TLC's finite object vector without reimplementing its merge policy.
 
@@ -33,18 +36,27 @@ def values(text: str) -> list[int]:
     return [int(value) for value in re.findall(r"\d+", text)]
 
 
-def frame(pairs: list[tuple[int, int]]) -> geopandas.GeoDataFrame:
-    """Retain only the model's present objects in a real geometry dataframe.
+def frame(
+    pairs: list[tuple[int, int]],
+    templates: FrameTemplates,
+) -> geopandas.GeoDataFrame:
+    """Give each input an independent frame with the model's exact present rows.
 
     Args:
         pairs: Object identities and positive values.
+        templates: Exact row templates shared only by this conformance test.
 
     Returns:
-        The production-shaped feature frame.
+        A private copy of the production-shaped feature frame.
     """
-    return tests.helpers.factories.peri_scribe.sources.feed_state.feature_frames(
-        [[(identifier, str(value)) for identifier, value in pairs if value]],
-    )[0]
+    rows = tuple((identifier, str(value)) for identifier, value in pairs if value)
+    if rows not in templates:
+        templates[rows] = (
+            tests.helpers.factories.peri_scribe.sources.feed_state.feature_frames([
+                list(rows),
+            ])[0]
+        )
+    return templates[rows].copy()
 
 
 @dataclasses.dataclass(kw_only=True)
@@ -97,6 +109,7 @@ def replay(
     state: dict[str, str],
     directory: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
+    templates: FrameTemplates,
 ) -> None:
     """Exercise every checked cache input against the TLC candidate, including gaps.
 
@@ -104,6 +117,7 @@ def replay(
         state: A state immediately before its checked atomic cache publication.
         directory: Isolated location for real staging and rename operations.
         monkeypatch: Per-test replacement scope for serialization boundaries.
+        templates: Exact row templates whose copies supply the current case.
     """
     updates = [
         (int(identifier), int(value))
@@ -123,12 +137,15 @@ def replay(
     state_path = peri_scribe.sources.snapshots.current_state_path(directory, tag)
     files = Files(
         frames={
-            directory / source.relative_path: frame([updates[index]])
+            directory / source.relative_path: frame([updates[index]], templates)
             for index, source in enumerate(sources)
         },
         unreadable=state_path if state["readable"] == "FALSE" else None,
     )
-    files.frames[state_path] = frame(list(enumerate(values(state["cache"]), 1)))
+    files.frames[state_path] = frame(
+        list(enumerate(values(state["cache"]), 1)),
+        templates,
+    )
     monkeypatch.setattr(peri_scribe.geo.reading, "read_layer_dataframe", files.read)
     monkeypatch.setattr(spatial_data.layers, "write_geopackage", files.write)
     monkeypatch.setattr(
@@ -144,7 +161,7 @@ def replay(
     peri_scribe.sources.feed_state.write_current_state(
         directory,
         tests.helpers.factories.peri_scribe.sources.feed_types.change_feed(),
-        frame([updates[count - 1]]),
+        frame([updates[count - 1]], templates),
     )
     assert files.written is not None
     actual = dict(zip(files.written["OBJECTID"], files.written["value"], strict=True))

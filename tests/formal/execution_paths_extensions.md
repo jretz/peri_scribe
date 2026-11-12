@@ -20,17 +20,20 @@ process exit treated as a terminal stutter must leave that value unchanged.
 
 `helpers/pipeline_composition.py` exports all 113,677 checked nodes and recovers a
 complete predecessor history for each of the 19,240 distinct terminal invocation
-outcomes. Every history creates the consistent generation-zero initial files once. It
-executes earlier invocations through the real coordinator, carries their files into the
-selected invocation, and retains the same matcher throughout. The original assertions
-for stage selection, force propagation, outputs, pending/deferred requirements,
-publication payload, and checkpoint validity remain in place.
+outcomes. Each history starts with the consistent generation-zero file image. It executes
+earlier invocations through the real coordinator, carries their file image into the selected
+invocation, and retains the same matcher throughout. The assertions cover stage selection,
+force propagation, outputs, pending and deferred requirements, publication payload, and
+checkpoint validity.
 
 The projection reads separate source, geography, score, KMZ, and report artifacts; the
 pending stage set and force bit; the deferred marker; and checkpoint content and KMZ
-file identity. Real marker/checkpoint replacements, removals, and creation are observed
-independently. A completed fixture stage produces one artifact observation. The source
-fixture likewise observes its actual persisted effect, including unchanged fetches.
+file identity. Marker and checkpoint replacements, removals, and creation are observed
+independently in replay. A completed fixture stage produces one artifact observation. The
+source fixture observes its file effect, including unchanged fetches. Separate physical
+tests apply distinct replay effects through the local filesystem adapter and compare
+observations and the surrounding files. See the [composition model](tla/composition.md)
+for the assumptions that connect the two checks.
 
 `Begin` is an explicit action carrying range, gate, force, source-change, and threshold
 choices. It consumes the actual pending-marker change when the coordinator requires

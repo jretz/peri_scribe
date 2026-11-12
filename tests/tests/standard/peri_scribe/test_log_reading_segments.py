@@ -43,3 +43,19 @@ def test_log_paths_discovers_months_represented_only_by_segments(
         tmp_path,
         since=datetime.datetime(2026, 10, 1).astimezone(),
     ) == (tmp_path / "2026-10.jsonl",)
+
+
+def test_log_paths_prefers_plain_month_then_archive_when_segments_exist(
+    tmp_path: pathlib.Path,
+) -> None:
+    plain = tmp_path / "2026-10.jsonl"
+    archive = tmp_path / "2026-10.jsonl.zst"
+    (tmp_path / "2026-10.000000000001.jsonl.rotation.json").touch()
+    archive.touch()
+    plain.touch()
+
+    assert peri_scribe.log_reading.log_paths(tmp_path) == (plain,)
+    plain.unlink()
+    assert peri_scribe.log_reading.log_paths(tmp_path) == (archive,)
+    archive.unlink()
+    assert peri_scribe.log_reading.log_paths(tmp_path) == (plain,)

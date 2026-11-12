@@ -95,7 +95,7 @@ parent noticing that failure are distinct: releasing a failed worker's semaphore
 admit a queued worker before cancellation is delivered. An append already in flight may
 finish after cancellation; staging must survive until that worker exits.
 
-The safety and liveness configurations each explore 6,588 states with three workers,
+The configuration checks safety and liveness across 6,588 states with three workers,
 two permits, and one abstract record chunk per worker. Cases cover absent, invalid, and
 accepted existing outputs; success; each archive failure position before and after
 partial conversion; external cancellation;

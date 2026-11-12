@@ -88,6 +88,8 @@ def data_digest(value: object) -> str:
 def derivation_context(year_directory: pathlib.Path) -> str:
     """Code, dependencies, settings, and boundary changes invalidate prior histories.
 
+    Application code is read directly because year-source ownership applies to data.
+
     Args:
         year_directory: The year directory holding the administrative boundary data.
 
@@ -101,7 +103,10 @@ def derivation_context(year_directory: pathlib.Path) -> str:
     return data_digest({
         "version": CACHE_VERSION,
         "code": [
-            (str(path.relative_to(source_root)), file_digest(path))
+            (
+                str(path.relative_to(source_root)),
+                peri_scribe.sources.authentication.read_file_digest(path),
+            )
             for package in (
                 "peri_scribe",
                 "arcgis_access",

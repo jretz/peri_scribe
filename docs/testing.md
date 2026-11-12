@@ -59,17 +59,28 @@ changing its scroll position. After keyboard navigation, filtering, or run selec
 use `settle` when the assertion depends on prepared content. Keep input stable during
 these waits. Both monitor fixtures disable automatic file reads and cosmetic timers
 and fix the observation clock. A frozen wall clock alone does not stop an asyncio timer
-from scheduling another table update. The ordinary fixture also joins initial background
-preparation before yielding; the startup fixture leaves that preparation under test
-control. Both fixtures join cosmetic-task cancellation before yielding. Timer and
-shutdown tests start the real cosmetic loop explicitly when needed.
+from scheduling another table update. The ordinary fixture opens Pipeline and joins
+initial background preparation before yielding. The startup fixture opens Status and
+leaves background preparation under test control. Both fixtures join cosmetic-task
+cancellation before yielding. Timer and shutdown tests start the real cosmetic loop
+explicitly when needed.
 
-The completion order matters: first dispatch queued control messages, then join
-tab-activation workers and the controller's display task, then wait for the final
-paint. For example, changing a search field schedules preparation outside Textual's
-worker manager. A paint wait alone can still show the preceding rows, and joining
-only Textual workers leaves that search running. The final refresh lets table cursor
-movement and Markdown layout reach the screen before scroll or screenshot assertions.
+Drain queued widget and application messages before joining tab-activation workers and
+the controller's display task. The widget queues can send new messages to the app during
+the drain. Changing a search field schedules preparation outside Textual's worker
+manager, so joining its workers alone leaves that search running. The final refresh lets
+table cursor movement and Markdown layout reach the screen before scroll or screenshot
+assertions. The scrolling fixture seeds its files before mounting. Its 120-by-32-cell
+terminal retains the usual width for edge and stripe assertions, with enough rows in
+each pane to exercise its scroll bounds.
+
+The stripe and terminal-edge tests share the seeded scrolling mount across panes in a
+theme. Each pane has its own subtest and sets its own scroll positions. The Pipeline
+panes run before other tabs, and each other tab opens for the first time from Pipeline.
+Headless terminal sessions raise Python's allocation threshold for cyclic collection
+to 10,000 when the existing threshold is lower and positive. This reduces collection
+work during repeated widget updates. The terminal helper restores the prior thresholds
+when the app closes.
 Use plain `refresh` for widget changes that do not schedule content preparation. Keep
 explicit gates in tests that intentionally inspect work in progress; do not settle
 away the concurrency those tests are exercising.
@@ -131,6 +142,128 @@ size to reach the requested dimensions, then waits for child refreshes. Run resi
 sequentially while keeping the same screen active. The added layout wait has a bounded
 timeout, and same-size requests still finish with a refresh barrier.
 
+Mounted sessions use `RefreshPilot` over the same application inside its native
+`run_test` lifecycle. Its inherited mouse, keyboard and resize methods still deliver
+the actual input events. A default pause drains the native widget queues and waits for
+the application's completed refresh. Explicit delays keep Textual's normal behavior;
+keyboard dispatch also retains its own native waits. The queue barrier still visits
+the mounted widgets, and rendering completes through the real screen. Comparisons
+retain every native scenario, inverse drag, assertion and screenshot export.
+
+### Native terminal scenarios
+
+Related native monitor observations share one mount only when they form a coherent
+history. Each former case remains a named subtest with its original assertions. Report
+checks prepare two replacements before the first Report visit, then exercise links,
+paused publication, all four other tab shortcuts, hidden completion and scroll retention.
+A separate layout scenario restores divider positions through actual inverse drags and
+returns to the default terminal size between viewport probes. The wheel scenario uses
+the public Live action and completed Pipeline navigation before each pane; it restores
+the inspection fixture's text through the real Static widget update.
+
+Option lists close through actual Escape input before the command palette opens. Each
+theme's tint scenario starts with severe events belonging to command `0`, then appends
+that command's start and the remaining run outcomes. The same seven run rows therefore
+supply the original outcome-color observations. Live-performance checks use one actual
+completion for paused collection, the cosmetic clock and the 48-hour expiration. A
+separate mount collects all 125 recent completions before adding the five chart groups
+used for native resize and scroll checks.
+
+Each scenario still owns an isolated directory, event loop, mounted application and
+ordinary fixture teardown. File readers, Textual input, layout, paint and completion
+barriers remain native. Screenshot, first-paint, shutdown, cancellation, cleanup and
+status-history checks retain independent mounts. Status freshness cases deliberately
+control distinct clock histories and should stay separate. Replacing a log file does
+not erase the monitor's retained historical evidence and is not a session reset.
+
+This orchestration has assessment **2/0/0/1/1 = 4, involved**: observations depend on their
+order, each scenario has bounded in-memory input, and joins coordinate with existing
+native completion boundaries. The existing monitor-session and worker models continue
+to own application transitions. These test adapters add no application policy, resource
+protocol or formal abstraction; native rendering and input checks remain the appropriate
+boundary evidence. They retain O(C + W) input/task references for C fixed scenario
+records and W active workers, plus the application's ordinary widgets and history.
+
+The qualified monitor cohort contains 609 unchanged cases and 37 original cases now
+represented by named subtests inside nine scenario items. Its total is 618 cases and 69
+subtests. The original cohort contained 646 cases and 32 subtests. The controlled cohort
+comparison preserves all 217 production executed/missing line and branch tables, plus
+49 exact assertion syntax trees and seven exact assertion-call trees moved into scenario
+helpers. No production source or test fixture changes are required.
+
+### Controller component responsibilities
+
+Controller policy tests use a presentation port over a real `MonitorApp`, domain session,
+reader, filesystem and task queue. Each component fixture has its own event loop and year
+directory. It joins the same real workers and descriptor cleanup as the mounted fixture.
+The recording presentation retains actual immutable health views, prepared event rows,
+report observations and generation numbers. Tests control attachment, filters and frame
+admission explicitly; expected results still come from their original domain assertions.
+
+Use this fixture for request sharing and priority, obsolete generations, paused snapshot
+identity, source/archive ordering, clock policy and cancellation after admission. Keep
+worker and application gates in the test body. A component refresh joins controller work;
+it does not acknowledge terminal layout or paint. Native evidence navigation and cursor
+application reject use through the recording presentation.
+
+Mounted tests own first Status paint, hidden-content preparation, real input routing,
+evidence links, table-to-event mappings, Markdown updates, attachment during asynchronous
+widget mutation, viewport geometry, cursors, scrolling, dragging, themes and screenshots.
+The native presentation delegates the existing widget functions and selectors. Extraction
+must pass the unchanged mounted cohort before any assertion moves to the component port.
+The [presentation contract](algorithms/monitor-presentation.md) describes this boundary.
+
+Thirty parameter cases across twenty-two functions use the component fixture. Their input
+dimensions and assertions remain covered alongside the native witnesses. The controlled
+618-case, 69-subtest comparison retains identical executed/missing line and branch tables
+for all 218 production files, including the native presentation adapter. This comparison
+checks the declared responsibilities; coverage alone does not establish their equivalence.
+
+## Immutable Preparation Environments
+
+Twelve ordinary geography and pipeline test files explicitly request
+`reuse_preparation_environment`. Their source code and installed dependencies remain
+fixed while their temporary data changes. Each worker retains the actual strings
+returned by `preparation.runtime_fingerprint` and `fires.reuse.derivation_context` for
+equal inputs. The first request executes the native function. Every later geography
+request still reads the boundary's existence and checksum, cache version, and all three
+configuration representations. Native runtime fields also remain part of each key.
+
+The fixture keeps complete source bytes and package versions at its first use and
+compares them after all worker tests finish. Replaced readers or encoders use the native
+functions. The lookup tables belong to that worker; only frozen keys and returned
+strings are shared between selected tests. Year directories, product databases, source
+data, geometry, and mutable application objects remain independently owned.
+
+Tests that edit source or runtime dependencies use the native functions without this
+fixture. In particular, preparation/reuse mutation checks, formal dependency checks,
+deliberate-defect workers, and hard-crash workers retain their original execution. The
+fixture's fixed-environment assumption excludes temporary source or package edits that
+are restored before teardown. Do not request it in a test of those edits. Boundary
+changes and configuration changes are supported while it is installed.
+
+Qualification recomputed the original native function at every shared hit. All 422
+repeated results matched exactly across the selected 239 cases; 62 preparation and reuse
+cases continued to run natively. Four fresh serial runs retained identical production
+line and branch sets and test identities. Regression checks cover same-size source edits,
+runtime changes, boundary replacement/removal, configuration changes, and replaced
+package readers. These observations establish this explicit fixture domain; a matching
+source seal alone would not prove arbitrary Python executions equivalent.
+
+This adapter's assessment is **1/1/0/2/1 = 5, involved**. It retains earlier observations,
+checks dynamic inputs and replaced bindings, and owns a bounded table for one test
+worker. Capturing and verifying S source bytes takes O(S) storage and reading work,
+plus package-metadata reads. Each context request still hashes B boundary bytes and
+uses an expected O(1) table lookup; D distinct requests retain O(D) keys and strings.
+The adapter introduces no application transition or process-lifetime protocol. Exact
+native-result comparisons and the boundary regressions check its representation and
+isolation obligations without a separate application model.
+
+See the [environment observation adapter] and [opt-in fixtures].
+
+[environment observation adapter]: ../tests/helpers/doubles/peri_scribe/preparation_environment.py
+[opt-in fixtures]: ../tests/helpers/fixtures/peri_scribe/preparation.py
+
 ## Browser Viewer Tests
 
 The fire update viewer has two complementary JavaScript suites:
@@ -144,11 +277,25 @@ The fire update viewer has two complementary JavaScript suites:
   inline JavaScript together.
 
 Both tasks are part of `mise test` and can also run independently. Browser tests use one
-worker and reuse its browser process, with a fresh isolated browser context for every
-test. Test requests are fulfilled from fixtures through interception, including the
-page itself; unexpected requests fail the test. No server or external network access
-is needed. Use controlled clocks for polling and elapsed-time behavior instead of real
-waits. Application state remains private to each test.
+worker and start with a fresh context unless the test file opts into reuse. The viewer
+heading and group tests reuse a tab across cases. Playwright navigates it to an empty
+document and resets viewport, media, the clock, and routes before the next case. Each
+case still opens the shipped page, drives real browser input and layout, and starts and
+stops a fresh V8 recording. The browser runner publishes coverage only after the suite
+passes.
+
+The [viewer context reset check] uses two successive cases to exercise those resets,
+including focus and JavaScript state. Run the entire file when focusing on the reset.
+Use a fresh context for tests that depend on browsing history or `window.name`, change
+permissions or context-wide settings such as geolocation and request headers, or alter
+browser-wide state. The viewer cases rely only on the state covered by the reset check.
+
+Test requests are fulfilled from fixtures through interception, including the page
+itself. Unexpected requests fail the test. No server or external network access is
+needed. Use controlled clocks for polling and elapsed-time behavior instead of real
+waits.
+
+[viewer context reset check]: ../tests/tests/browser/peri_scribe/test_viewer_context.mjs
 
 Install the locked JavaScript dependencies with `mise node-dependencies`, then install
 the matching Chromium build with `mise browser-install`. These setup steps may download
@@ -161,9 +308,26 @@ need browser system libraries; see [Development Tools](development_tools.md).
 The test tasks collect native V8 coverage without requiring each suite to cover the
 entire script. The final `mise coverage-report` task merges both JavaScript suites and
 requires 100% line, branch, and function coverage. Python retains its separate 100%
-coverage requirement. `mise test` runs Python tests, simulated viewer tests, linting,
-type checking, formatting checks, browser tests, and finally the coverage report.
-`mise test-all` runs this sequence and then the formal suite.
+coverage requirement. `mise test` runs Python tests and linting, then runs the viewer,
+browser, type, and formatting checks together before reporting coverage. `mise test-all`
+fixes lint issues before opening the formal evidence session. Its default ordinary
+Python run assigns whole files to four independent pytest sessions alongside one TLC
+check at a time. Each session collects and runs its assigned files with the regular
+fixtures. The coverage report uses the merged evidence from the four successful
+sessions. Custom pytest invocations use the standard runner. The full gate checks
+models one at a time, builds Lean, and executes the isolated pristine targets alongside
+ordinary checks. After both the proofs and the complete ordinary and QA process group
+exit successfully, one stock pool starts all five formal workers. Every worker collects
+the complete formal inventory. The controller preserves native collection and protocol
+reports without changing xdist scheduling. Native numerical libraries use one thread
+per worker. Other explicit worker configurations retain the sequential formal phases
+and the existing model-slot release after ordinary completion.
+
+The full-test environment sets `PYTHON_CPU_COUNT=1`, so Python discovers one CPU when
+choosing default worker counts. Explicit parallel tests still select their own worker
+counts, including four native buffer workers with out-of-order completion and ordered
+geometry results. This setting changes discovered defaults; it does not impose an
+operating-system CPU quota or a hard limit on simultaneous threads.
 
 The coverage tools verify that Node and Chromium tested the same production script
 and map gaps to its lines in `updates.html`. Coverage includes the complete script,

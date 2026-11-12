@@ -62,12 +62,19 @@ The final colored dart uses the same drawing primitives in RGBA. Alpha equivalen
 depends on Pillow's drawing and resampling behavior, so tests compare actual alpha
 bytes with the colored renderer instead of assuming equivalence from appearance.
 
-Nearby angles often draw exactly the same high-resolution alpha image. Each image has
-512×512 pixels containing only 0 or 255, so packing its pixels into bits retains every
-occupied position in 32 KiB. The complete packed image is the cache key. Equal keys
-reconstruct equal images and therefore give equal resampling, crop, pixel-square hull,
-corner placement, and clearance. Python checks complete byte equality after hashing;
-a hash collision cannot substitute a different raster.
+The scoring path draws on the 512×512 canvas, then crops its central 304×304 window
+before packing the binary pixels. The offset of 104 high-resolution pixels is exactly
+13 output pixels, so resizing either window by eight samples at the same positions.
+The farthest dart vertex is `sqrt(106)` output pixels from the center. Allowing two
+pixels for the stroke and rounding leaves more than six blank pixels before the window
+edge. The Lanczos filter has a three-pixel radius. Even a sample whose kernel reaches
+outside the window sees only zero alpha, so boundary normalization leaves the tight
+crop's pixels and dimensions unchanged.
+
+Nearby angles often draw exactly the same alpha image. The packed window retains every
+occupied position in 11,552 bytes and serves as the cache key. Equal keys give equal
+resampled pixels, tight crops, pixel-square hulls, corner placement, and clearance.
+Python checks complete byte equality after hashing.
 
 Image dimensions, supersampling, corner placement, clearance, resampling, and hull
 construction remain fixed for the process lifetime. Tests that replace any of those
@@ -79,7 +86,7 @@ four geometric vertices would not establish this property: curved line joins als
 depend on the original floating-point coordinates. Caching the final alpha mask would
 still require repeating the more expensive resampling step.
 
-The state cache retains at most 2,048 immutable hulls and 64 MiB of packed keys. The
+The state cache retains at most 2,048 immutable hulls and 23 MiB of packed keys. The
 angle and fixed coarse-grid caches retain references to those hulls. Eviction only
 requires reconstructing a deterministic hull; it changes no search result. The caches
 live in the process and do not alter persistent preview keys or their invalidation
@@ -90,16 +97,32 @@ This cache is presentation-only memoization with no domain policy, external effe
 or durable state transitions. Formal verification adds no useful coverage of the
 Pillow alpha/resampling boundary. Exact raster comparisons, independent rendered-pixel
 hull checks, and cache-reuse/eviction regressions exercise that boundary.
+History fixtures can share the same exact immutable coarse table within one fresh
+invocation under the [verification adapter](verification-tooling.md#immutable-dart-inputs-for-history-fixtures).
+The renderer's owning tests retain its native construction and cache controls.
 
 ## Search, ties, and limitations
 
 First find a size-only reference on a 0.25° half-turn grid, followed by five local
 refinements. If that sampled reference has zero dart overlap, return it immediately.
 Otherwise evaluate a 0.025° grid over `[-90°,90°)`, including the representable value
-just below 90°. At each penalty weight `0, 0.5, 0.75, 1`, retain up to six leading seeds
+just below 90°. The coarse fit and intersection process these angles in array batches.
+The size-only fit uses the same rotation batches at each of its six search rounds.
+Each angle retains its own rotation, scale, polygon, and dart hull, so the array axes
+change neither the scoring rule nor the order of candidates. A batch contains at most
+65,536 rotated hull vertices unless one hull itself exceeds that limit, in which case
+each batch fits a single angle. For example, a four-vertex hull can fit the complete
+coarse grid in one batch, while a 40-vertex hull uses batches of up to 1,638 angles.
+The coarse search continues to use the same point extents, machine-epsilon floor, and
+GEOS intersections as the scalar fit. An exact comparison covers a batch boundary.
+
+At each penalty weight `0, 0.5, 0.75, 1`, retain up to six leading seeds
 at least one degree apart and add the reference seed. Refine each for four rounds, using
 21 nearby probes and a tenfold smaller step each round. Probes remain inside the angle
-domain; they do not wrap around to another corner arrangement.
+domain. Each round scores its previously unmeasured angles together with the coarse
+grid's array calculation. It then compares every probe in its original order before
+choosing the next round's center. An angle already measured by another seed or weight
+keeps its exact score inputs.
 
 ![Global sampling supplies separated starts before local refinement](assets/preview-search.svg)
 
@@ -134,11 +157,12 @@ remain the [product cache](product-caching.md) contract.
 For V source vertices, H hull vertices, and A sampled angles, projection/hull construction
 is conventionally O(V log V), and each fit scans O(H) coordinates plus geometry-intersection
 cost. The coarse grid has about 7,200 angles; refinements add a bounded number of probes
-under these constants. Candidate memory is O(A), while the dart-hull LRU retains at most
+under these constants. Candidate memory is O(A), with O(max(H, 65536)) points in the
+temporary rotation arrays. The dart-hull LRU retains at most
 4,096 fine-search entries and a separate cache retains the fixed coarse grid. The
-additional raster cache has at most 2,048 entries: its keys use at most 64 MiB, plus
+additional raster cache has at most 2,048 entries. Its keys use at most 23 MiB, plus
 bounded Python and hull storage. Its values contain no retained image arrays. The
-fixed 64×64 output bounds hull size, and the angle/coarse caches may retain hull
+fixed 38×38 window bounds hull size, and the angle/coarse caches may retain hull
 references after a raster key is evicted.
 
 For P high-resolution dart pixels and U distinct raster states, drawing and packing

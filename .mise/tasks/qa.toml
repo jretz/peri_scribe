@@ -29,8 +29,8 @@ run = "uv run ty check"
 [pytest]
 description = "Run Python tests and collect coverage"
 depends = ["venv"]
-env = { TEXTUAL_ANIMATIONS = "none" }
-run = "uv run --locked --module pytest"
+env = { TEXTUAL_ANIMATIONS = "none", TEXTUAL_FPS = "240" }
+run = "uv run --locked --module tests.helpers.ordinary_lanes"
 
 [test-viewer]
 description = "Run simulated viewer tests and collect JavaScript coverage"
@@ -48,22 +48,31 @@ depends = ["node-dependencies"]
 run = "node tests/helpers/run_test_suite.mjs"
 
 [test-checks]
-description = "Run checks in order within the coverage session created by test"
+description = "Run checks within the coverage session created by test"
 hide = true
 run = [
     "node tests/helpers/check_coverage_session.mjs",
     { task = "pytest" },
-    { task = "test-viewer" },
     { task = "lint" },
-    { task = "typecheck" },
-    { task = "format-check" },
-    { task = "test-browser" },
+    "mise run --jobs 4 test-viewer ::: typecheck ::: format-check ::: test-browser",
     { task = "coverage-report" },
 ]
 
 [test-all]
 description = "Run all tests"
 run = [
-    { task = "test" },
-    { task = "formal" },
+    { task = "lint" },
+    '''
+PERI_SCRIBE_TLA_JAR="$(mise where github:tlaplus/tlaplus)/tla2tools.jar" \
+    .venv/bin/python -m tests.formal.run --with-regular
+''',
 ]
+
+[test-all.env]
+PYTHON_CPU_COUNT = "1"
+PERI_SCRIBE_TEST_WORKERS = "5"
+PERI_SCRIBE_TLC_JOBS = "3"
+OMP_NUM_THREADS = "1"
+OPENBLAS_NUM_THREADS = "1"
+VECLIB_MAXIMUM_THREADS = "1"
+RAYON_NUM_THREADS = "1"

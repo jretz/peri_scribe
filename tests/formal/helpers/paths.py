@@ -44,10 +44,10 @@ class Contract[Value: collections.abc.Hashable]:
             source = remaining.pop()
             for edge in self.graph.outgoing.get(source, ()):
                 if (
-                    edge.target in self.values
-                    and self.values[edge.target] == value
+                    edge.target not in reached
+                    and edge.target in self.values
                     and self.actions[edge] in self.internal
-                    and edge.target not in reached
+                    and self.values[edge.target] == value
                 ):
                     reached.add(edge.target)
                     remaining.append(edge.target)
@@ -77,7 +77,7 @@ class Contract[Value: collections.abc.Hashable]:
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
 class Path[Value: collections.abc.Hashable]:
-    """Retain every model state still compatible with the complete observed history."""
+    """Retain compatible states closed over internal edges at the observed value."""
 
     contract: Contract[Value]
     candidates: frozenset[int]
@@ -94,16 +94,20 @@ class Path[Value: collections.abc.Hashable]:
             The remaining compatible execution prefixes.
         """
         if value == self.value:
-            candidates = self.candidates
-        else:
-            candidates = frozenset(
-                edge.target
-                for source in self.candidates
-                for edge in self.contract.graph.outgoing.get(source, ())
-                if edge.target in self.contract.values
-                and self.contract.values[edge.target] == value
-                and self.contract.actions[edge] in self.contract.internal
+            # The existing closure already contains every reachable internal state.
+            return dataclasses.replace(
+                self,
+                value=value,
+                observations=self.observations + 1,
             )
+        candidates = frozenset(
+            edge.target
+            for source in self.candidates
+            for edge in self.contract.graph.outgoing.get(source, ())
+            if edge.target in self.contract.values
+            and self.contract.actions[edge] in self.contract.internal
+            and self.contract.values[edge.target] == value
+        )
         assert candidates, (
             "no compatible TLC execution",
             self.observations,
@@ -156,15 +160,15 @@ class Path[Value: collections.abc.Hashable]:
             for source in self.candidates
             for edge in self.contract.graph.outgoing.get(source, ())
             if edge.target in self.contract.values
-            and self.contract.values[edge.target] == value
             and self.contract.actions[edge] == action
+            and self.contract.values[edge.target] == value
         }
-        candidates.update(
-            source
-            for source in self.candidates
-            if value == self.value
-            and self.contract.graph.states[source].get("phase") in terminal_phases
-        )
+        if terminal_phases and value == self.value:
+            candidates.update(
+                source
+                for source in self.candidates
+                if self.contract.graph.states[source].get("phase") in terminal_phases
+            )
         assert candidates, ("no compatible TLC event", action, self.value, value)
         return dataclasses.replace(
             self,

@@ -16,6 +16,20 @@ project's virtual environment. Python development and deployment tools run throu
 environment. `uv.lock` records the resolved dependencies so the same environment can be
 reproduced.
 
+The current lock retains Ruff 0.16.10 because Ruff 0.17's new default aliases conflict
+with the project's module-qualified import convention. It also retains pandas 3.0.6:
+ArcGIS 2.4.4's spatial accessor imports `infer_dtype_from_object`, a private pandas API
+removed in pandas 3.1. The dependency declarations remain open. Recheck the existing
+lint rules and actual ArcGIS spatial-dataframe conversions before advancing these
+locked selections.
+
+Pytest 9.1.1 is retained because 9.2 does not restore GeoPandas's dynamic options
+correctly after `monkeypatch.setattr`, leaving a temporary Fiona engine choice active.
+It also changes the existing report-read mock's cleanup behavior. Pint 0.26.1 is
+retained because 0.26.2 changes exact acre normalization and invalid-unit failures.
+The existing assertions preserve those contracts; their expected values and error
+handling remain unchanged.
+
 ## Forgejo CI
 
 The workflow in `.forgejo/workflows/test.yml` runs on pushes and pull requests using
@@ -52,6 +66,15 @@ builds embed that path, so checkouts in different directories need separate cach
 when they use the same GEOS version. Repeated runs in the same checkout reuse their
 cache. Local runs use `.cache/uv` as the cache root. The GEOS environment and micromamba
 root remain checkout-local and are prepared by the existing setup tasks.
+
+Shapely 2.2 discovers the native GEOS dependency through pkg-config or CMake. Mise adds
+the checkout's GEOS metadata directory to `PKG_CONFIG_PATH`, so its source build uses
+the same GEOS 3.15 installation as the runtime library path. The GEOS setup installs
+pkg-config alongside the compiler. The older
+`GEOS_INCLUDE_PATH`, `GEOS_LIBRARY_PATH`, and `geos-config` discovery methods are no
+longer supported by Shapely. See its [custom GEOS build instructions][shapely-build].
+
+[shapely-build]: https://shapely.readthedocs.io/en/2.2.0/installation.html#geos-discovery-compile-time
 
 uv can reuse a cached source build even with `--reinstall-package shapely`; reinstalling
 does not guarantee a rebuild. The path-specific cache ensures Shapely is built against

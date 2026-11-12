@@ -18,12 +18,14 @@ import tempfile
 
 import tests.formal.helpers.paths
 import tests.formal.helpers.pipeline_composition
+import tests.formal.helpers.pipeline_replay_files
 
 
 type History = tuple[tests.formal.helpers.pipeline_composition.Invocation, ...]
 type Path = tests.formal.helpers.paths.Path[
     tests.formal.helpers.pipeline_composition.Durable
 ]
+type Traces = dict[History, list[tests.formal.helpers.pipeline_replay_files.Event]]
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -119,6 +121,8 @@ def replay(
     checked: tests.formal.helpers.paths.Contract[
         tests.formal.helpers.pipeline_composition.Durable
     ],
+    *,
+    traces: Traces | None = None,
 ) -> dict[History, Path]:
     """Continue real successful prefixes with independent, timestamp-preserving files.
 
@@ -126,6 +130,7 @@ def replay(
         roots: Complete prefix subtrees assigned to this worker's current test.
         directory: Private parent for all concrete branch directories.
         checked: The full checked graph and durable projection for these histories.
+        traces: Optional record of effects and observations at every replayed prefix.
 
     Returns:
         Every requested history's actual surviving TLC execution and observed state.
@@ -136,34 +141,113 @@ def replay(
     def visit(
         branch: Branch,
         prefix: History,
-        parent: pathlib.Path | None,
         execution: Path | None,
+        parent: pathlib.Path | None,
     ) -> None:
         """A continuation inherits the actual full matcher and a faithful private copy.
 
         Args:
             branch: The next real invocation and its independently checked children.
             prefix: All preceding invocation choices, including their crash boundaries.
-            parent: Real durable files after that exact successfully checked prefix.
             execution: Its full compatible TLC path, including hidden state choices.
+            parent: The preceding invocation's complete real year directory.
         """
         with tempfile.TemporaryDirectory(dir=directory) as temporary:
             year = pathlib.Path(temporary) / "2026"
             if parent is not None:
                 shutil.copytree(parent, year)
+            current = (*prefix, branch.invocation)
+            if traces is None:
+                path = tests.formal.helpers.pipeline_composition.replay(
+                    branch.invocation,
+                    year,
+                    checked,
+                    execution,
+                )
+            else:
+                path = tests.formal.helpers.pipeline_composition.replay(
+                    branch.invocation,
+                    year,
+                    checked,
+                    execution,
+                    trace=traces.setdefault(current, []),
+                )
+            if branch.terminal:
+                assert current not in completed
+                completed[current] = path
+            for child in branch.children:
+                visit(child, current, path, year)
+
+    for branch in roots:
+        visit(branch, (), None, None)
+    return completed
+
+
+def replay_memory(
+    roots: tuple[Branch, ...],
+    directory: pathlib.Path,
+    checked: tests.formal.helpers.paths.Contract[
+        tests.formal.helpers.pipeline_composition.Durable
+    ],
+    effects: tests.formal.helpers.pipeline_replay_files.Effects,
+    *,
+    traces: Traces | None = None,
+) -> dict[History, Path]:
+    """Replay the same prefix tree with actual bytes in private branch stores.
+
+    Args:
+        roots: Complete prefix subtrees assigned to this worker's current test.
+        directory: Private parent providing an otherwise unused year path.
+        checked: The full checked graph and durable projection for these histories.
+        effects: Receives all distinct raw effects for independent physical checks.
+        traces: Optional record of effects and observations at every replayed prefix.
+
+    Returns:
+        Every requested history's actual surviving TLC execution and observed state.
+    """
+    virtual = directory / "memory"
+    assert not virtual.exists()
+    year = tests.formal.helpers.pipeline_replay_files.MemoryPath(virtual / "2026")
+    completed: dict[History, Path] = {}
+
+    def visit(
+        branch: Branch,
+        prefix: History,
+        memory: tests.formal.helpers.pipeline_replay_files.Memory,
+        execution: Path | None,
+    ) -> None:
+        """Carry the full actual image and matcher through an isolated branch.
+
+        Args:
+            branch: The next real invocation and its independently checked children.
+            prefix: All preceding invocation choices, including crash boundaries.
+            memory: Private copy of the byte image at the start of the invocation.
+            execution: The continuing path, including hidden model-state choices.
+        """
+        current = (*prefix, branch.invocation)
+        trace = None if traces is None else traces.setdefault(current, [])
+        try:
             path = tests.formal.helpers.pipeline_composition.replay(
                 branch.invocation,
                 year,
                 checked,
                 execution,
+                memory=memory,
+                trace=trace,
             )
-            current = (*prefix, branch.invocation)
-            if branch.terminal:
-                assert current not in completed
-                completed[current] = path
-            for child in branch.children:
-                visit(child, current, year, path)
+        finally:
+            memory.observe = None
+        if branch.terminal:
+            assert current not in completed
+            completed[current] = path
+        for child in branch.children:
+            visit(child, current, memory.fork(), path)
 
     for branch in roots:
-        visit(branch, (), None, None)
+        memory = tests.formal.helpers.pipeline_replay_files.Memory(
+            directory=year,
+            effects=effects,
+        )
+        visit(branch, (), memory, None)
+    assert not virtual.exists(), "Composition wrote outside the modeled file interface"
     return completed

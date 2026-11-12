@@ -19,7 +19,6 @@ import structlog
 
 import document_text.encoding
 import kml_io.geometry
-import kml_io.kmz
 import peri_scribe.fire_updates
 import peri_scribe.fires.index
 import peri_scribe.fires.score_files
@@ -27,6 +26,7 @@ import peri_scribe.kml.colormap
 import peri_scribe.kml.fire_data
 import peri_scribe.kml.folders
 import peri_scribe.kml.icons
+import peri_scribe.kml.persistence
 import peri_scribe.kml.prepared_inputs
 import peri_scribe.kml.styles
 import peri_scribe.logging
@@ -507,31 +507,33 @@ def create_kmz(
         if publication_inputs is not None
         else None
     )
-    updates = peri_scribe.fire_updates.prepare_updates(
+    update_scores = scores or peri_scribe.models.FireScores(version="", fires=[])
+    return peri_scribe.kml.persistence.publish(
         year_directory,
-        geometries,
-        scores or peri_scribe.models.FireScores(version="", fires=[]),
-    )
-    with peri_scribe.logging.log_phase(
-        peri_scribe.phases.Phase.SERIALIZE_AND_WRITE_KMZ,
-    ):
-        kml_io.kmz.write_kmz(
-            output_path,
-            functools.partial(
-                write_kmz_document,
-                geometries,
-                output_path.stem,
-                scores=scores or peri_scribe.models.FireScores(version="", fires=[]),
-            ),
-            images,
-        )
-    if publication_inputs is not None and published is not None:
-        peri_scribe.publication.commit(
+        output_path,
+        write_document=lambda: functools.partial(
+            write_kmz_document,
+            geometries,
+            output_path.stem,
+            scores=scores or peri_scribe.models.FireScores(version="", fires=[]),
+        ),
+        images=images,
+        checkpoint=(
+            (publication_inputs, published)
+            if publication_inputs is not None and published is not None
+            else None
+        ),
+        prepare=lambda previous: peri_scribe.fire_updates.prepare_updates_for_state(
             year_directory,
-            output_path,
-            publication_inputs,
-            published,
-        )
-    peri_scribe.fire_updates.write_updates(year_directory, updates)
-    peri_scribe.updates.write_updates_page(year_directory, fires=geometries)
-    return output_path
+            geometries,
+            update_scores,
+            previous=previous,
+        ),
+        write_viewer=lambda year: peri_scribe.updates.write_updates_page(
+            year,
+            fires=geometries,
+        ),
+        archive_phase=lambda: peri_scribe.logging.log_phase(
+            peri_scribe.phases.Phase.SERIALIZE_AND_WRITE_KMZ,
+        ),
+    )

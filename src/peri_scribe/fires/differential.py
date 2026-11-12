@@ -256,7 +256,10 @@ def representative_indices(
     return representatives
 
 
-def growth_difference(current: object, previous: list[object]) -> float | None:
+def growth_difference(
+    current: object,
+    previous: typing.Iterable[object],
+) -> float | None:
     """Return *current* minus the most recent present value in *previous*.
 
     Args:
@@ -364,7 +367,7 @@ def serializable_growth_geometry(
 
 
 def differential_rows_for_fire(
-    attributes: list[dict[str, object]],
+    attributes: typing.Sequence[typing.Mapping[str, object]],
     geometries: list[shapely.Geometry | None],
 ) -> list[dict[str, object]]:
     """Return the differential perimeter rows for one fire.
@@ -400,10 +403,10 @@ def differential_rows_for_fire(
             row[column] = cumulative_value
             row[f"{column}_differential"] = growth_difference(
                 cumulative_value,
-                [
-                    attributes[representatives[earlier]].get(column)
-                    for earlier in reversed(survivors[:position])
-                ],
+                (
+                    attributes[representatives[survivors[earlier]]].get(column)
+                    for earlier in range(position - 1, -1, -1)
+                ),
             )
         row["area_acres_from_geometry"] = spatial_data.surface_measurements.area(
             cumulative_geometry,

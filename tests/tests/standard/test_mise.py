@@ -22,6 +22,7 @@ async def test_mise_environment_shared_cache_isolates_checkouts_with_same_name(
     )
 
     assert first["GEOS_LIBRARY_PATH"] != second["GEOS_LIBRARY_PATH"]
+    assert first["PKG_CONFIG_PATH"] != second["PKG_CONFIG_PATH"]
     assert first["UV_CACHE_DIR"] != second["UV_CACHE_DIR"]
 
 
@@ -66,4 +67,7 @@ async def test_mise_environment_local_cache_stays_in_checkout(
 
     assert pathlib.Path(environment["UV_CACHE_DIR"]).is_relative_to(
         checkout / ".cache" / "uv",
+    )
+    assert environment["PKG_CONFIG_PATH"] == str(
+        pathlib.Path(environment["GEOS_PREFIX"]) / "lib" / "pkgconfig",
     )

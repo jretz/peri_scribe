@@ -177,54 +177,56 @@ class Reference:
             for alias, histories in sorted(lineage(self.case.previous).items())
         )
 
-    def fire_text(self, selected: tuple[AreaKey, ...] | None = None) -> str:
-        """The oracle receives raw aliases and relative dated ranks, including zero.
-
-        Args:
-            selected: A restricted claimant set for independent claim-set queries.
+    def fire_records(self) -> list[str]:
+        """Encode raw aliases and relative dated ranks, including zero.
 
         Returns:
             Claimants with lexical identity rank, optional time, and raw aliases.
         """
-        dated = sorted({
-            time
-            for identity in self.identities
-            if (time := self.mapped_time(identity)) is not None
-        })
+        identities = self.identities
+        observed_times = [self.mapped_time(identity) for identity in identities]
+        dated = sorted({time for time in observed_times if time is not None})
         inherited = lineage(self.case.previous)
         records = []
-        for identity in self.identities if selected is None else selected:
+        for rank, (identity, observed) in enumerate(
+            zip(identities, observed_times, strict=True),
+            1,
+        ):
             aliases = self.aliases(identity)
             direct = [
                 alias
                 for alias in aliases
                 if alias not in inherited and alias in self.case.previous.perimeters
             ]
-            observed = self.mapped_time(identity)
             records.append(
                 ",".join((
-                    str(self.identities.index(identity) + 1),
+                    str(rank),
                     "n" if observed is None else str(dated.index(observed)),
                     ":".join(str(self.token(alias)) for alias in aliases) or "n",
                     ":".join(str(self.token(item)) for item in direct) or "n",
                 )),
             )
-        return " ".join(records)
+        return records
 
-    def claim_command(self, selected: tuple[AreaKey, ...] | None = None) -> str:
-        """Lean computes both individual claim sets and whole-publication competition.
-
-        Args:
-            selected: Optional claimant subset; omission includes all current fires.
+    def fire_text(self) -> str:
+        """Send the complete ordered claimant inventory.
 
         Returns:
-            One executable claim-selection query over every retained history bucket.
+            All claimant records in the oracle's input format.
+        """
+        return " ".join(self.fire_records())
+
+    def claim_inventory_command(self) -> str:
+        """Send shared inputs for the whole-publication and isolated claim queries.
+
+        Returns:
+            Ordered queries, shared lineage, and the complete claimant inventory.
         """
         return "|".join((
-            "claim",
+            "claim-inventory",
             self.sequence(sorted(history_keys(self.case.previous))),
             self.lineage_text(),
-            self.fire_text(selected),
+            self.fire_text(),
         ))
 
     def preferred(self, identity: AreaKey) -> str | None:
@@ -261,7 +263,7 @@ class Reference:
 def claims(
     references: tuple[Reference, ...],
 ) -> tuple[tuple[dict[AreaKey, frozenset[str]], dict[AreaKey, frozenset[str]]], ...]:
-    """One batched oracle call computes all raw and winning claim sets.
+    """Read the complete winner row and one equally wide row per isolated claimant.
 
     Args:
         references: Complete unresolved checkpoint/current-fire inputs.
@@ -269,36 +271,36 @@ def claims(
     Returns:
         Original claims and won histories for each input case.
     """
-    commands = [
-        reference.claim_command(selected)
-        for reference in references
-        for selected in (None, *((identity,) for identity in reference.identities))
-    ]
-    answers = iter(
-        tests.formal.helpers.oracle.evaluate(
-            commands,
-            executable="oracleIdentityTransfer",
-        ),
+    answers = tests.formal.helpers.oracle.evaluate_distinct(
+        [reference.claim_inventory_command() for reference in references],
+        executable="oracleIdentityTransfer",
     )
     results = []
-    for reference in references:
+    for reference, answer in zip(references, answers, strict=True):
         buckets = sorted(history_keys(reference.case.previous))
-        winners = next(answers)
+        identities = reference.identities
+        width = len(buckets)
+        assert len(answer) == width * (len(identities) + 1)
+        winners = answer[:width]
         won = {
             identity: frozenset(
                 bucket
                 for bucket, claimant in zip(buckets, winners, strict=True)
                 if claimant == index
             )
-            for index, identity in enumerate(reference.identities, 1)
+            for index, identity in enumerate(identities, 1)
         }
         original = {
             identity: frozenset(
                 bucket
-                for bucket, claimant in zip(buckets, next(answers), strict=True)
+                for bucket, claimant in zip(
+                    buckets,
+                    answer[index * width : (index + 1) * width],
+                    strict=True,
+                )
                 if claimant == index
             )
-            for index, identity in enumerate(reference.identities, 1)
+            for index, identity in enumerate(identities, 1)
         }
         results.append((original, won))
     return tuple(results)
@@ -516,6 +518,9 @@ def batch_cases() -> tuple[Resolution, ...]:
         dates,
         (False, True),
     ):
+        # A shared singleton fixes every alias preference to the same bucket.
+        if preferred and left == right and left.bit_count() == 1:
+            continue
         buckets = (key("history-0"), key("history-1"))
         inherited = {
             key(alias): frozenset(
@@ -593,7 +598,7 @@ def check_batches() -> int:
         Reference(case=case) for case in (*batch_cases(), *boundary_cases())
     )
     actual = ownership_batches(references)
-    outcomes = tests.formal.helpers.oracle.evaluate(
+    outcomes = tests.formal.helpers.oracle.evaluate_distinct(
         list(map(transfer_command, references, actual, strict=True)),
         executable="oracleIdentityTransfer",
     )

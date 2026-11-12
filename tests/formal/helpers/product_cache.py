@@ -10,6 +10,7 @@ import sqlite3
 import spatial_data.cache_values
 import spatial_data.product_cache
 import spatial_data.row_index
+import tests.formal.helpers.tlc_values
 
 
 COLUMNS = ("derivation_key", "value")
@@ -34,16 +35,7 @@ class Action(enum.IntEnum):
     ABORT = 8
 
 
-def numbers(value: str) -> tuple[int, ...]:
-    """Decode the model's small sets and sequences without executing text.
-
-    Args:
-        value: TLC's numeric set or sequence representation.
-
-    Returns:
-        The numbers in their printed order.
-    """
-    return tuple(map(int, re.findall(r"\d+", value)))
+numbers = tests.formal.helpers.tlc_values.numbers
 
 
 def rows(key: int) -> spatial_data.row_index.Rows:

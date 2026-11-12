@@ -10,14 +10,17 @@ Design notes:
 import asyncio
 import contextlib
 import dataclasses
+import errno
 import os
 import pathlib
 import signal
 import sys
+import time
 
 
 GROUP_VARIABLE = "PERI_SCRIBE_FORMAL_PROCESS_GROUP"
 LAUNCHER = pathlib.Path(__file__).with_name("process_launcher.py").resolve()
+DARWIN_SIGNAL_RETRIES = 10
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -50,14 +53,57 @@ def kill_group(group: int) -> None:
 
     Args:
         group: The private process group owned by this proof job.
+
+    Raises:
+        PermissionError: If the group remains unsignalable after cleanup retries.
     """
-    with contextlib.suppress(ProcessLookupError):
-        os.killpg(group, signal.SIGKILL)
+    for attempt in range(DARWIN_SIGNAL_RETRIES + 1):
+        try:
+            os.killpg(group, signal.SIGKILL)
+        except ProcessLookupError:
+            return
+        except PermissionError as error:
+            if (
+                sys.platform != "darwin"
+                or error.errno != errno.EPERM
+                or attempt == DARWIN_SIGNAL_RETRIES
+            ):
+                raise
+            # XNU can retain the group briefly after its last member exits.
+            time.sleep(0.01)
+        else:
+            return
+
+
+async def group_closed(group: int) -> None:
+    """Wait for physical group absence before reusing independent native capacity.
+
+    The operating system has ten seconds to release the terminated group.
+
+    Args:
+        group: The group whose owning command has completed and been reaped.
+
+    Raises:
+        PermissionError: If the group cannot be inspected outside Darwin's exit race.
+    """
+    async with asyncio.timeout(10):
+        while True:
+            try:
+                os.killpg(group, 0)
+            except ProcessLookupError:
+                return
+            except PermissionError as error:
+                if sys.platform != "darwin" or error.errno != errno.EPERM:
+                    raise
+            await asyncio.sleep(0.01)
 
 
 async def terminate(
     launch: asyncio.Task[asyncio.subprocess.Process],
     group: int | None,
+    *,
+    interrupt_grace_seconds: float,
+    wait_for_group_exit: bool = False,
 ) -> None:
     """Wait for the process handle so the whole failed proof job can be terminated.
 
@@ -69,6 +115,9 @@ async def terminate(
     Args:
         launch: A shielded launch that may still be handing back its process handle.
         group: An inherited job group, or None for a newly isolated job.
+        interrupt_grace_seconds: Time for an independently owned tool to clean up
+            after SIGINT before terminating its group.
+        wait_for_group_exit: Require physical group absence before returning capacity.
     """
     result = (await asyncio.gather(launch, return_exceptions=True))[0]
     if isinstance(result, BaseException):
@@ -81,9 +130,16 @@ async def terminate(
                 file=sys.stderr,
                 flush=True,
             )
-    kill_group(process.pid if group is None else group)
     # Pipe-holding descendants must exit before transports can report completion.
-    await process.communicate()
+    drain = asyncio.create_task(process.communicate())
+    if group is None and interrupt_grace_seconds > 0:
+        with contextlib.suppress(ProcessLookupError):
+            os.killpg(process.pid, signal.SIGINT)
+        await asyncio.wait({drain}, timeout=interrupt_grace_seconds)
+    kill_group(process.pid if group is None else group)
+    await drain
+    if wait_for_group_exit and group is None:
+        await group_closed(process.pid)
 
 
 async def finish(cleanup: asyncio.Task[None]) -> None:
@@ -106,6 +162,9 @@ async def execute(
     standard_input: str,
     cwd: pathlib.Path | None,
     maximum_seconds: float,
+    can_start_nested_tools: bool = True,
+    interrupt_grace_seconds: float = 0,
+    wait_for_group_exit: bool = False,
 ) -> Result:
     """Terminate proof tools that exceed their caller's explicit time budget.
 
@@ -114,13 +173,24 @@ async def execute(
         standard_input: Text supplied through standard input.
         cwd: The tool's working directory.
         maximum_seconds: Maximum execution time in seconds.
+        can_start_nested_tools: Whether child proof tools need an inherited group.
+        interrupt_grace_seconds: Optional grace period for a tool's SIGINT handler.
+        wait_for_group_exit: Require physical group absence before reusing capacity.
 
     Returns:
         The exit status and both diagnostic streams.
+
+    Raises:
+        ValueError: If group-exit admission is requested from an inherited owner.
     """
     group = inherited_group()
+    if wait_for_group_exit and group is not None:
+        message = "Only independently owned commands can release group capacity"
+        raise ValueError(message)
     arguments = (
-        command if group is not None else [sys.executable, str(LAUNCHER), *command]
+        [sys.executable, str(LAUNCHER), *command]
+        if group is None and can_start_nested_tools
+        else command
     )
     launch = asyncio.create_task(
         asyncio.create_subprocess_exec(
@@ -139,10 +209,25 @@ async def execute(
             timeout=maximum_seconds,
         )
     except BaseException:
-        await finish(asyncio.create_task(terminate(launch, group)))
+        cleanup = asyncio.create_task(
+            terminate(
+                launch,
+                group,
+                interrupt_grace_seconds=interrupt_grace_seconds,
+                wait_for_group_exit=wait_for_group_exit,
+            ),
+        )
+        await finish(cleanup)
         raise
     if group is None:
         kill_group(process.pid)
+        if wait_for_group_exit:
+            cleanup = asyncio.create_task(group_closed(process.pid))
+            try:
+                await asyncio.shield(cleanup)
+            except BaseException:
+                await finish(cleanup)
+                raise
     assert process.returncode is not None
     return Result(
         returncode=process.returncode,
@@ -157,6 +242,7 @@ def run(
     standard_input: str = "",
     cwd: pathlib.Path | None = None,
     timeout: float = 60,
+    can_start_nested_tools: bool = True,
 ) -> Result:
     """Let synchronous checks share the same isolated process adapter.
 
@@ -165,6 +251,7 @@ def run(
         standard_input: Text supplied through standard input.
         cwd: The tool's working directory.
         timeout: Maximum execution time in seconds.
+        can_start_nested_tools: Whether child proof tools need an inherited group.
 
     Returns:
         The exit status and both diagnostic streams.
@@ -175,5 +262,6 @@ def run(
             standard_input=standard_input,
             cwd=cwd,
             maximum_seconds=timeout,
+            can_start_nested_tools=can_start_nested_tools,
         ),
     )

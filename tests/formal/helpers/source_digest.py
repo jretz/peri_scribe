@@ -219,6 +219,9 @@ def framing_cases() -> list[tuple[bytes, ...]]:
 def equivalences(fixtures: tuple[Frame, ...]) -> list[tuple[int, int, bool]]:
     """Compare source semantics before hashing, including exact row multiplicities.
 
+    Lean prefixes the content header with its length so equality preserves the boundary
+    between the header and the rows. Each frame's content can serve every pair.
+
     Args:
         fixtures: Source frames with independent normalized field declarations.
 
@@ -231,21 +234,14 @@ def equivalences(fixtures: tuple[Frame, ...]) -> list[tuple[int, int, bool]]:
         [int.from_bytes(b"\x01" + next(encoded_rows)) for _ in case.rows]
         for case in fixtures
     ]
-    pairs = list(itertools.combinations(range(len(fixtures)), 2))
-    results = tests.formal.helpers.oracle.evaluate(
+    contents = tests.formal.helpers.oracle.evaluate_distinct(
         [
-            "|".join((
-                "equal",
-                numbers(schemas[first]),
-                numbers(rows[first]),
-                numbers(schemas[second]),
-                numbers(rows[second]),
-            ))
-            for first, second in pairs
+            "|".join(("content", numbers(schema), numbers(row)))
+            for schema, row in zip(schemas, rows, strict=True)
         ],
         executable="oracleSourceDigest",
     )
     return [
-        (first, second, bool(result[0]))
-        for (first, second), result in zip(pairs, results, strict=True)
+        (first, second, contents[first] == contents[second])
+        for first, second in itertools.combinations(range(len(contents)), 2)
     ]

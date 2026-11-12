@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import contextlib
 import dataclasses
+import functools
 import itertools
 import pathlib
 import shutil
 
 import pytest
-import structlog
+import structlog.testing
 
 import peri_scribe.fires.differential
 import peri_scribe.fires.files
@@ -20,6 +21,7 @@ import peri_scribe.logging
 import peri_scribe.pipeline
 import peri_scribe.pipeline_stages
 import peri_scribe.pipeline_state
+import peri_scribe.preparation
 import spatial_data.layers
 import tests.formal.helpers.geography_paths
 import tests.formal.helpers.publication_paths
@@ -236,8 +238,13 @@ def replay(graph: tests.formal.helpers.tlc.Graph, directory: pathlib.Path) -> in
             (False, True),
         )
     )
-    with pytest.MonkeyPatch.context() as patch:
+    with pytest.MonkeyPatch.context() as patch, structlog.testing.capture_logs():
         patch.setattr(peri_scribe.fires.reuse, "derivation_context", lambda _: "reader")
+        patch.setattr(
+            peri_scribe.preparation,
+            "runtime_fingerprint",
+            functools.cache(peri_scribe.preparation.runtime_fingerprint),
+        )
         checksums, parents = tests.formal.helpers.geography_paths.templates(
             directory / "templates",
         )
@@ -248,6 +255,7 @@ def replay(graph: tests.formal.helpers.tlc.Graph, directory: pathlib.Path) -> in
             )
             for forced in (False, True)
         }
+        template_frames = {}
         for number, (initial, forced, failure) in enumerate(specifications):
             observer = tests.formal.helpers.publication_paths.Observer(
                 files=tests.formal.helpers.geography_paths.Files(
@@ -255,6 +263,7 @@ def replay(graph: tests.formal.helpers.tlc.Graph, directory: pathlib.Path) -> in
                     templates=directory / "templates",
                     checksums=checksums,
                     parents=parents,
+                    template_frames=template_frames,
                 ),
                 checked=contracts[forced],
                 failure=failure,

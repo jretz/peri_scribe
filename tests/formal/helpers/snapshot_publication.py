@@ -5,6 +5,7 @@ import pathlib
 import typing
 
 import pytest
+import structlog.testing
 
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.fetching
@@ -112,7 +113,7 @@ def replay_case(
         full: Whether to bypass the metadata shortcut.
         fail_after: Staged prefix to interrupt, or None for an uninterrupted write.
     """
-    with pytest.MonkeyPatch.context() as patch:
+    with pytest.MonkeyPatch.context() as patch, structlog.testing.capture_logs():
         dataframe = (
             tests.helpers.doubles.peri_scribe.sources.snapshot_fetching
         ).configure_fetch(patch)

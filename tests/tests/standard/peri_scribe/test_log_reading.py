@@ -79,6 +79,55 @@ def test_seek_since_uses_bounded_probes_for_a_long_ordered_prefix(
     assert timestamp.call_count < maximum_probes
 
 
+@pytest.mark.parametrize("unfinished", [False, True])
+def test_seek_since_bounds_reads_of_a_rejected_suffix(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    unfinished: bool,
+) -> None:
+    old = b'{"timestamp":"2026-08-31"}\n'
+    diagnostic = b'{"event":"undated diagnostic"}'
+    suffix = b"x" * 32768 if unfinished else (diagnostic + b"\n") * 1024
+    contents = old + suffix
+    bytes_read = 0
+    with io.BytesIO(contents) as stream:
+        original = stream.readline
+
+        def measure(size: int = -1) -> bytes:
+            """Count only reads made by the seek algorithm.
+
+            Args:
+                size: The requested maximum number of bytes.
+
+            Returns:
+                The original stream's bytes for this read.
+            """
+            nonlocal bytes_read
+            line = original(size)
+            bytes_read += len(line)
+            return line
+
+        monkeypatch.setattr(stream, "readline", measure)
+        peri_scribe.log_reading.seek_since(
+            stream,
+            tests.helpers.factories.peri_scribe.show_latencies.evidence.NOW,
+        )
+        assert stream.read() == suffix
+    assert bytes_read <= 2 * len(contents)
+
+
+def test_seek_since_keeps_the_split_old_record_in_the_next_scan() -> None:
+    old = b'{"timestamp":"2026-08-31","message":"' + b"z" * 256 + b'"}\n'
+    suffix = b'{"event":"undated"}\n{"timestamp":"2026-09-01T12:00:00+00:00"}\n'
+    with io.BytesIO(old + suffix) as stream:
+        peri_scribe.log_reading.seek_since(
+            stream,
+            tests.helpers.factories.peri_scribe.show_latencies.evidence.NOW,
+        )
+        assert stream.tell() == len(old)
+        assert stream.read() == suffix
+
+
 def test_seek_since_preserves_all_equal_cutoff_occurrences() -> None:
     old = b'{"timestamp":"2026-09-01T10:00:00+00:00"}\n'
     recent = b'{"timestamp":"2026-09-01T12:00:00+00:00"}\n'

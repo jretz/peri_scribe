@@ -2,6 +2,7 @@
 
 import collections.abc
 import concurrent.futures
+import dataclasses
 import itertools
 import threading
 
@@ -13,6 +14,11 @@ import tests.formal.helpers.oracle
 
 Entry = tuple[int, int]
 State = spatial_data.geometry_pool.GeometryState
+type GeometryEncodings = dict[int, tuple[shapely.Geometry, bytes]]
+DIGEST_BITS = 256
+PACKED_HEADER_FIELDS = 2
+NODE_HEADER_FIELDS = 3
+BRANCH_CHILDREN = 2
 SMALL_TRANSITIONS = 2930
 PERMUTATION_TRANSITIONS = 600
 WIDTH_TRANSITIONS = 512
@@ -35,98 +41,266 @@ def catalogue() -> tuple[bytes, ...]:
     return tuple(shapely.to_wkb(geometry, include_srid=True) for geometry in geometries)
 
 
-def entries(state: State | None, payloads: tuple[bytes, ...]) -> list[Entry]:
-    """Project full decoded payload bytes independently of the digest.
+def exact_wkb(geometry: shapely.Geometry, encodings: GeometryEncodings) -> bytes:
+    """Share the observed bytes while the immutable geometry remains alive.
 
     Args:
-        state: Actual immutable root returned by production insertion.
-        payloads: Canonical bytes defining exact token equality.
+        geometry: The actual leaf payload being inspected.
+        encodings: Exact encodings with strong references owned by this history.
 
     Returns:
-        Every exact digest/payload pair retained by the leaves.
+        The geometry's canonical bytes including its spatial reference.
     """
-    if state is None:
-        return []
-    if state.split_bit is None:
-        return [
-            (
-                int.from_bytes(state.digest),
-                payloads.index(shapely.to_wkb(geometry, include_srid=True)),
-            )
-            for geometry in state.geometries
-        ]
-    return entries(state.smaller, payloads) + entries(state.larger, payloads)
-
-
-def representation(
-    state: State | None,
-    payloads: tuple[bytes, ...],
-    bound: int = 256,
-) -> tuple[int, ...]:
-    """Check routing and decreasing split depths before describing actual nodes.
-
-    Args:
-        state: Root of an actual immutable trie snapshot.
-        payloads: Byte catalogue used for exact leaf identification.
-        bound: Maximum permitted split bit below the parent.
-
-    Returns:
-        A complete structural serialization including branch representatives.
-    """
-    return describe(state, payloads, bound)[0]
+    identity = id(geometry)
+    if (retained := encodings.get(identity)) is not None:
+        assert retained[0] is geometry
+        return retained[1]
+    content = shapely.to_wkb(geometry, include_srid=True)
+    encodings[identity] = geometry, content
+    return content
 
 
 def describe(
     state: State | None,
     payloads: tuple[bytes, ...],
-    bound: int,
+    encodings: GeometryEncodings,
 ) -> tuple[tuple[int, ...], list[Entry]]:
-    """Visit each node once so deep digest paths remain practical to check.
+    """Check routing and serialize the structure and exact payloads in one traversal.
+
+    See [Geometry sharing](../../../docs/algorithms/geometry-sharing.md).
 
     Args:
-        state: The current compressed trie node.
+        state: Root of an actual immutable trie snapshot.
         payloads: Exact canonical geometry encodings.
-        bound: Highest legal split bit at this node.
+        encodings: Serialized payloads retained across snapshots of this history.
 
     Returns:
-        Its structural encoding and exact descendant entries.
+        The structural encoding and exact descendant entries.
     """
     if state is None:
         return (2,), []
-    digest = int.from_bytes(state.digest)
-    if state.split_bit is None:
-        assert state.smaller is None
-        assert state.larger is None
-        contents = entries(state, payloads)
-        values = tuple(payload for _, payload in contents)
-        assert values
-        assert len(set(values)) == len(values)
-        return (0, digest, len(values), *values), contents
-    assert not state.geometries
-    assert state.smaller is not None
-    assert state.larger is not None
-    split = state.split_bit
-    assert 0 < split <= bound
-    small_shape, small = describe(state.smaller, payloads, split - 1)
-    large_shape, large = describe(state.larger, payloads, split - 1)
-    contents = small + large
-    assert all(not (key >> (split - 1)) & 1 for key, _ in small)
-    assert all((key >> (split - 1)) & 1 for key, _ in large)
-    assert digest in {key for key, _ in contents}
-    assert all(key >> split == digest >> split for key, _ in contents)
-    return (1, digest, split, *small_shape, *large_shape), contents
+    encoding: list[int] = []
+    contents: list[Entry] = []
+    representatives: set[int] = set()
+
+    def visit(node: State, bound: int, expected_prefix: int | None) -> None:
+        """Check the parent's route before adding this node in preorder.
+
+        Args:
+            node: The current concrete branch or leaf.
+            bound: The number of unconstrained low bits below the parent.
+            expected_prefix: Bits imposed by the parent's prefix and child route.
+        """
+        digest = int.from_bytes(node.digest)
+        assert expected_prefix is None or digest >> bound == expected_prefix
+        split = node.split_bit
+        if split is None:
+            assert node.smaller is None
+            assert node.larger is None
+            values = tuple(
+                payloads.index(exact_wkb(geometry, encodings))
+                for geometry in node.geometries
+            )
+            assert values
+            assert len(set(values)) == len(values)
+            encoding.extend((0, digest, len(values), *values))
+            contents.extend((digest, value) for value in values)
+            return
+        assert not node.geometries
+        assert node.smaller is not None
+        assert node.larger is not None
+        assert 0 < split <= bound
+        encoding.extend((1, digest, split))
+        representatives.add(digest)
+        smaller_prefix = (digest >> split) << 1
+        visit(node.smaller, split - 1, smaller_prefix)
+        visit(node.larger, split - 1, smaller_prefix | 1)
+
+    visit(state, DIGEST_BITS, None)
+    # The matching leaf shares every ancestor route of its representative branch.
+    assert representatives <= {digest for digest, _ in contents}
+    return tuple(encoding), contents
 
 
-def request(history: collections.abc.Iterable[Entry]) -> str:
-    """Encode one actual insertion sequence for the proved model.
+def encoded_entries(history: collections.abc.Iterable[Entry]) -> str:
+    """Encode actual insertion entries for the proved model.
 
     Args:
         history: Digest and canonical byte-token observations.
 
     Returns:
-        A tree request preserving every insertion and repeated occurrence.
+        Entries in their original order, including repeated occurrences.
     """
-    return "tree" + "".join(f" {digest},{payload}" for digest, payload in history)
+    return " ".join(f"{digest},{payload}" for digest, payload in history)
+
+
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class PackedNode:
+    """Keep the full node tokens and references to its ordered children."""
+
+    tokens: tuple[int, ...]
+    children: tuple[int, ...] = ()
+
+
+def decode_node(
+    record: tuple[int, ...],
+    *,
+    digests: tuple[int, ...],
+    payloads: frozenset[int],
+    preceding: int,
+) -> PackedNode:
+    """Accept only exact digest and payload values and backward child references.
+
+    Args:
+        record: The oracle's complete length-framed node fields.
+        digests: Exact input digests in their order of first occurrence.
+        payloads: Exact payload identifiers from the current insertion history.
+        preceding: Number of nodes available as children.
+
+    Returns:
+        One ordered node with its full digest restored.
+
+    Raises:
+        ValueError: If a constructor or any of its fields is invalid.
+    """
+    if len(record) < NODE_HEADER_FIELDS:
+        message = "Incomplete packed tree node"
+        raise ValueError(message)
+    kind, ordinal, size = record[:NODE_HEADER_FIELDS]
+    if not 0 <= ordinal < len(digests):
+        message = "Unknown packed tree digest"
+        raise ValueError(message)
+    fields = record[NODE_HEADER_FIELDS:]
+    digest = digests[ordinal]
+    if kind == 0 and size == len(fields) > 0:
+        values = set(fields)
+        if values <= payloads and len(values) == size:
+            return PackedNode(tokens=(kind, digest, size, *fields))
+    if (
+        kind == 1
+        and 0 < size <= DIGEST_BITS
+        and len(fields) == BRANCH_CHILDREN
+        and all(0 <= child < preceding for child in fields)
+    ):
+        return PackedNode(tokens=(kind, digest, size), children=fields)
+    message = "Invalid packed tree constructor fields"
+    raise ValueError(message)
+
+
+def unpack_prefixes(
+    history: tuple[Entry, ...],
+    response: tuple[int, ...],
+) -> tuple[int, ...]:
+    """Restore every full prefix description from exact ordered node references.
+
+    Args:
+        history: The ordered digest and payload inputs used to build the trees.
+        response: The oracle's node and root counts, framed nodes, and ordered roots.
+
+    Returns:
+        The original sequence of length-framed tree descriptions.
+
+    Raises:
+        ValueError: If the oracle names an invalid, aliased, or unused node.
+    """
+    if len(response) < PACKED_HEADER_FIELDS:
+        message = "Missing packed tree counts"
+        raise ValueError(message)
+    count, roots = response[:PACKED_HEADER_FIELDS]
+    if (
+        roots != len(history)
+        or not 0 <= count <= roots**2
+        or roots > len(response) - PACKED_HEADER_FIELDS
+    ):
+        message = "Invalid packed tree counts"
+        raise ValueError(message)
+    digests = tuple(dict.fromkeys(digest for digest, _ in history))
+    payloads = frozenset(payload for _, payload in history)
+    records: list[PackedNode] = []
+    offset = PACKED_HEADER_FIELDS
+    boundary = len(response) - roots
+    for preceding in range(count):
+        if (
+            offset >= boundary
+            or not NODE_HEADER_FIELDS <= response[offset] < boundary - offset
+        ):
+            message = "Invalid packed tree node length"
+            raise ValueError(message)
+        end = offset + 1 + response[offset]
+        records.append(
+            decode_node(
+                response[offset + 1 : end],
+                digests=digests,
+                payloads=payloads,
+                preceding=preceding,
+            ),
+        )
+        offset = end
+    if offset != boundary or len(set(records)) != count:
+        message = "Invalid packed tree node table"
+        raise ValueError(message)
+    return expand_roots(tuple(records), response[boundary:])
+
+
+def expand_roots(
+    records: tuple[PackedNode, ...],
+    roots: tuple[int, ...],
+) -> tuple[int, ...]:
+    """Decode each occurrence in preorder while bounding untrusted expansion.
+
+    Args:
+        records: Unique validated nodes ordered after their children.
+        roots: One root for each nonempty prefix in insertion order.
+
+    Returns:
+        Full framed descriptions, with repeated node occurrences preserved.
+
+    Raises:
+        ValueError: If a root or its expansion is outside the prefix bounds.
+    """
+    output: list[int] = []
+    reached: set[int] = set()
+    for length, root in enumerate(roots, start=1):
+        if not 0 <= root < len(records):
+            message = "Unknown packed tree root"
+            raise ValueError(message)
+        start = len(output)
+        output.append(0)
+        pending = [root]
+        remaining = 2 * length - 1
+        while pending:
+            if not remaining:
+                message = "Packed tree exceeds its prefix node bound"
+                raise ValueError(message)
+            remaining -= 1
+            node = pending.pop()
+            reached.add(node)
+            record = records[node]
+            output.extend(record.tokens)
+            pending.extend(reversed(record.children))
+        output[start] = len(output) - start - 1
+    if len(reached) != len(records):
+        message = "Unused packed tree nodes"
+        raise ValueError(message)
+    return tuple(output)
+
+
+def checked_prefixes(
+    histories: collections.abc.Sequence[tuple[Entry, ...]],
+) -> list[tuple[int, ...]]:
+    """Read exact prefix descriptions produced by the proved insertion algorithm.
+
+    Args:
+        histories: Every requested insertion history in caller order.
+
+    Returns:
+        Each original complete framed description in the same order.
+    """
+    responses = tests.formal.helpers.oracle.evaluate(
+        [f"packed-tree-prefixes {encoded_entries(history)}" for history in histories],
+        executable="oraclePresentationFlow",
+    )
+    return list(map(unpack_prefixes, histories, responses, strict=True))
 
 
 def compare_histories(histories: collections.abc.Iterable[tuple[Entry, ...]]) -> int:
@@ -139,12 +313,15 @@ def compare_histories(histories: collections.abc.Iterable[tuple[Entry, ...]]) ->
         Number of actual persistent insertion transitions checked.
     """
     payloads = catalogue()
-    commands = []
+    requested = []
     observed = []
+    transitions = 0
     for history in histories:
         state = None
         identities: dict[Entry, shapely.Geometry] = {}
+        encodings: GeometryEncodings = {}
         snapshots: list[tuple[State, tuple[int, ...]]] = []
+        description_tokens: list[int] = []
         for index, (digest, payload) in enumerate(history):
             previous = state
             state, geometry = spatial_data.geometry_pool.shared_geometry(
@@ -158,18 +335,17 @@ def compare_histories(histories: collections.abc.Iterable[tuple[Entry, ...]]) ->
                 assert state is previous
             else:
                 identities[digest, payload] = geometry
-            actual = representation(state, payloads)
-            assert set(entries(state, payloads)) == set(history[: index + 1])
+            actual, contents = describe(state, payloads, encodings)
+            assert set(contents) == set(history[: index + 1])
             for old, description in snapshots[:: max(1, len(snapshots) // 3)]:
-                assert representation(old, payloads) == description
+                assert describe(old, payloads, encodings)[0] == description
             snapshots.append((state, actual))
-            commands.append(request(history[: index + 1]))
-            observed.append(actual)
-    assert observed == tests.formal.helpers.oracle.evaluate(
-        commands,
-        executable="oraclePresentationFlow",
-    )
-    return len(observed)
+            description_tokens.extend((len(actual), *actual))
+        requested.append(history)
+        observed.append(tuple(description_tokens))
+        transitions += len(history)
+    assert observed == checked_prefixes(requested)
+    return transitions
 
 
 def compact_histories() -> tuple[tuple[Entry, ...], ...]:
@@ -194,7 +370,8 @@ def concurrent_pool() -> int:
     """
     payloads = catalogue()
     pool = spatial_data.geometry_pool.GeometryPool()
-    barrier = threading.Barrier(8)
+    worker_count = 4
+    barrier = threading.Barrier(worker_count)
 
     def worker(offset: int) -> list[tuple[int, shapely.Geometry]]:
         """Overlap workers while each requests every exact payload repeatedly.
@@ -212,8 +389,11 @@ def concurrent_pool() -> int:
             for index in [(offset + position) % len(payloads)]
         ]
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
-        results = list(itertools.chain.from_iterable(executor.map(worker, range(8))))
+    # Paired offsets give each wave simultaneous identical-payload lookups while
+    # retaining all eight original offsets.
+    offsets = (0, 5, 1, 6, 2, 7, 3, 4)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=worker_count) as executor:
+        results = list(itertools.chain.from_iterable(executor.map(worker, offsets)))
     for index in range(len(payloads)):
         geometries = [geometry for token, geometry in results if token == index]
         assert len({id(geometry) for geometry in geometries}) == 1
@@ -221,8 +401,7 @@ def concurrent_pool() -> int:
     states = pool.states()
     contents = []
     for index, state in enumerate(states):
-        representation(state, payloads)
-        shard_entries = entries(state, payloads)
+        _, shard_entries = describe(state, payloads, {})
         assert all(key % len(states) == index for key, _ in shard_entries)
         contents.extend(shard_entries)
     expected = {
@@ -231,7 +410,7 @@ def concurrent_pool() -> int:
     }
     assert set(contents) == expected
     assert len(contents) == len(payloads)
-    encoded = request(contents).removeprefix("tree")
+    encoded = encoded_entries(contents)
     queries = list(
         itertools.product(
             {key for key, _ in expected},
@@ -239,7 +418,7 @@ def concurrent_pool() -> int:
         ),
     )
     answers = tests.formal.helpers.oracle.evaluate(
-        [f"lookup {key} {payload}{encoded}" for key, payload in queries],
+        [f"lookup {key} {payload} {encoded}" for key, payload in queries],
         executable="oraclePresentationFlow",
     )
     assert answers == [(int(query in expected),) for query in queries]

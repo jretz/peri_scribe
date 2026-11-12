@@ -23,6 +23,7 @@ import click
 import pydantic
 import structlog
 
+import peri_scribe.cli_help
 import peri_scribe.cli_options
 import peri_scribe.logging
 import peri_scribe.pipeline_stages
@@ -101,7 +102,7 @@ def logging_levels() -> tuple[str, str]:
 @click.command(
     help=textwrap.dedent(
         f"""\
-        Run the PeriScribe pipeline.
+        {peri_scribe.cli_help.RUN_HELP}
 
         A full run goes through fetch, geography, score, kmz, and reports in that order.
         Fetch collects every configured fire feed and checks the external sources:

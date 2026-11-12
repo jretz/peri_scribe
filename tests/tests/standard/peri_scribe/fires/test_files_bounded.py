@@ -19,6 +19,9 @@ import tests.helpers.doubles.peri_scribe.fires.files
 import tests.helpers.doubles.peri_scribe.fires.files_bounded
 
 
+pytestmark = pytest.mark.usefixtures("reuse_preparation_environment")
+
+
 def test_build_bounded_full_geography_matches_complete_source_adapter(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,

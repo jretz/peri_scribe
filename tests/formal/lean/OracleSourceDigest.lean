@@ -21,11 +21,10 @@ def respond (line : String) : Except String (List Nat) := do
       (← inventoryPairs (← parts.mapM numbers))
   | "fields" :: parts => return fields (← parts.mapM numbers)
   | ["rows", values] => return orderedRows (← numbers values)
-  | ["equal", schemaOne, rowsOne, schemaTwo, rowsTwo] =>
-    let first := content (← numbers schemaOne) (← numbers rowsOne)
-    let second := content (← numbers schemaTwo) (← numbers rowsTwo)
-    return [if first = second then 1 else 0]
-  | _ => throw "Expected fields, rows, or equal request"
+  | ["content", schema, rows] =>
+    let (header, ordered) := content (← numbers schema) (← numbers rows)
+    return header.length :: (header ++ ordered)
+  | _ => throw "Expected inventory, fields, rows, or content request"
 
 def main : IO UInt32 := do
   let input ← IO.getStdin

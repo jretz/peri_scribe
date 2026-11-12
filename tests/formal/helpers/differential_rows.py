@@ -139,25 +139,49 @@ def histories() -> list[list[Source]]:
     ]
 
 
-def area_table(*, small: bool) -> str:
-    """Measure the fixed fixture shapes once for an oracle request inventory.
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class MeasuredFootprint:
+    """Retain the real geometry and both units needed by the checks."""
+
+    geometry: shapely.Geometry
+    square_meters: float
+    acres: float
+
+
+def measured_footprints(*, small: bool) -> tuple[MeasuredFootprint, ...]:
+    """Measure the fixed fixture shapes once for the oracle and assertions.
 
     Args:
         small: Whether cells straddle the one-square-meter visibility threshold.
 
     Returns:
+        Immutable fixture measurements indexed by the sixteen footprint masks.
+    """
+    measured = []
+    for mask in range(16):
+        geometry = footprint(mask, small=small)
+        area = spatial_data.surface_measurements.area(geometry)
+        measured.append(
+            MeasuredFootprint(
+                geometry=geometry,
+                square_meters=area.m_as("meters ** 2"),
+                acres=area.m_as("acres"),
+            ),
+        )
+    return tuple(measured)
+
+
+def area_table(footprints: tuple[MeasuredFootprint, ...]) -> str:
+    """Encode the fixture's measured visibility boundaries for the oracle.
+
+    Args:
+        footprints: The fixed fixture measurements in mask order.
+
+    Returns:
         Sixteen comma-separated integer areas in millionths of a square meter.
     """
     return ",".join(
-        str(
-            math.ceil(
-                spatial_data.surface_measurements.area(
-                    footprint(mask, small=small),
-                ).m_as("meters ** 2")
-                * 1_000_000,
-            ),
-        )
-        for mask in range(16)
+        str(math.ceil(footprint.square_meters * 1_000_000)) for footprint in footprints
     )
 
 
@@ -263,7 +287,8 @@ def assert_rows(
     expected: list[tuple[int, ...]],
     actual: list[dict[str, object]],
     *,
-    small: bool,
+    footprints: tuple[MeasuredFootprint, ...],
+    visible_areas: dict[bytes, float],
 ) -> None:
     """Compare geometry, lineage, and sparse deltas independently of Python selection.
 
@@ -271,7 +296,8 @@ def assert_rows(
         sources: Original evidence by unique identity.
         expected: All candidate records emitted by the proved Lean definitions.
         actual: Rows returned by the production differential transform.
-        small: The fixture's geodesic scale.
+        footprints: Exact fixture geometries and areas for this scale.
+        visible_areas: Reference areas already measured for exact ring unions.
     """
     emitted = [row for row in expected if row[4]]
     assert len(actual) == len(emitted)
@@ -287,40 +313,37 @@ def assert_rows(
         assert row["source_objectid"] == source.attributes()["source_objectid"]
         assert row["observation_time"] == source.attributes()["observation_time"]
         geometry = typing.cast("shapely.Geometry", row["geometry"])
-        assert geometry.equals(footprint(result[3], small=small))
+        measured = footprints[result[3]]
+        assert geometry.equals(measured.geometry)
         for index, key in enumerate(peri_scribe.fires.differential.GROWTH_COLUMNS):
             offset = 8 + 4 * index
             value = result[offset + 1] if result[offset] else None
             difference = result[offset + 3] if result[offset + 2] else None
             assert peri_scribe.geo.parsing.numeric_value(row[key]) == value
             assert row[f"{key}_differential"] == difference
-        area = spatial_data.surface_measurements.area(footprint(result[3], small=small))
         assert row[peri_scribe.geo.measurements.AREA_COLUMN] == pytest.approx(
-            area.m_as("meters ** 2"),
+            measured.square_meters,
         )
         assert row["area_acres_from_geometry_differential"] == pytest.approx(
-            area.m_as("acres"),
+            measured.acres,
         )
         assert row["area_acres_from_geometry"] == pytest.approx(
-            spatial_data.surface_measurements.area(
-                footprint(
-                    cumulative_shapes[result[0]],
-                    small=small,
-                ),
-            ).m_as("acres"),
+            footprints[cumulative_shapes[result[0]]].acres,
         )
-    assert_visible_sequence(emitted, actual)
+    assert_visible_sequence(emitted, actual, visible_areas)
 
 
 def assert_visible_sequence(
     expected: list[tuple[int, ...]],
     actual: list[dict[str, object]],
+    visible_areas: dict[bytes, float],
 ) -> None:
     """Stored measurements and presentation must share the model-selected ring sequence.
 
     Args:
         expected: Model records for the emitted rows.
         actual: Production rows in the same progression order.
+        visible_areas: Reference square meters per exact union in this test.
     """
     selected = [row for row, result in zip(actual, expected, strict=True) if result[5]]
     policy = "wgs84-straight-polygon-surface-grid-2^-30-v1"
@@ -333,9 +356,13 @@ def assert_visible_sequence(
         digest.update(len(content).to_bytes(8))
         digest.update(content)
         shapes.append(geometry)
-        area = spatial_data.surface_measurements.area(shapely.union_all(shapes)).m_as(
-            "meters ** 2",
-        )
+        union = shapely.union_all(shapes)
+        union_bytes = shapely.to_wkb(union, include_srid=True)
+        if union_bytes not in visible_areas:
+            visible_areas[union_bytes] = spatial_data.surface_measurements.area(
+                union,
+            ).m_as("meters ** 2")
+        area = visible_areas[union_bytes]
         assert row[
             peri_scribe.perimeters.progression.ADDED_AREA_COLUMN
         ] == pytest.approx(

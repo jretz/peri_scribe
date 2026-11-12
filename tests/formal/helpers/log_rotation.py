@@ -1,19 +1,31 @@
-"""Observe real receipt, archive, and source mutations against checked TLC states."""
+"""Observe real receipt, archive, and source mutations against checked TLC states.
+
+Design notes:
+[Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
+"""
+
+from __future__ import annotations
 
 import compression.zstd
 import dataclasses
 import hashlib
+import importlib
 import itertools
 import json
 import pathlib
 import re
-
-import pytest
+import shutil
+import tempfile
+import typing
 
 import peri_scribe.logging
-import tests.formal.helpers.paths
-import tests.formal.helpers.tlc
+import tests.helpers.doubles.attribute_overrides
 import tests.helpers.doubles.peri_scribe.log_rotation
+
+
+if typing.TYPE_CHECKING:
+    import tests.formal.helpers.paths as paths_types
+    import tests.formal.helpers.tlc as tlc_types
 
 
 LINES = {
@@ -61,8 +73,8 @@ class Scenario:
     """Authenticate receipt fields while observing independently persisted files."""
 
     path: pathlib.Path
-    checked: tests.formal.helpers.paths.Contract[Projection] | None
-    execution: tests.formal.helpers.paths.Path[Projection] | None = None
+    checked: paths_types.Contract[Projection] | None
+    execution: paths_types.Path[Projection] | None = None
     contents: dict[str, tuple[int, ...]] = dataclasses.field(default_factory=dict)
     observations: int = 0
 
@@ -97,11 +109,8 @@ class Scenario:
         if not path.exists():
             return ()
         payload = path.read_bytes()
-        if compressed:
-            with compression.zstd.open(path, "rb") as stream:
-                values = records(stream.read())
-        else:
-            values = records(payload)
+        contents = compression.zstd.decompress(payload) if compressed else payload
+        values = records(contents)
         self.contents[hashlib.sha256(payload).hexdigest()] = values
         return values
 
@@ -142,7 +151,10 @@ class Scenario:
         )
         self.observations += 1
 
-    def install(self, patch: pytest.MonkeyPatch) -> None:
+    def install(
+        self,
+        patch: tests.helpers.doubles.attribute_overrides.AttributePatch,
+    ) -> None:
         """Inspect both sides of production replacements and deletions.
 
         Args:
@@ -188,6 +200,7 @@ class Scenario:
         Args:
             fault: One operation and side of its durable boundary, or no interruption.
         """
+        pytest = importlib.import_module("pytest")
         with pytest.MonkeyPatch.context() as observer:
             self.install(observer)
             self.inspect()
@@ -226,8 +239,8 @@ class Scenario:
 
 
 def contract(
-    graph: tests.formal.helpers.tlc.Graph,
-) -> tests.formal.helpers.paths.Contract[Projection]:
+    graph: tlc_types.Graph,
+) -> paths_types.Contract[Projection]:
     """Bind occurrence projections to real directed successors from the checked model.
 
     Args:
@@ -237,7 +250,8 @@ def contract(
         A path contract that cannot spend crash transitions invisibly.
     """
     actions = {edge: edge.action for edges in graph.outgoing.values() for edge in edges}
-    return tests.formal.helpers.paths.Contract(
+    paths = importlib.import_module("tests.formal.helpers.paths")
+    return paths.Contract(
         graph=graph,
         values={
             identifier: (
@@ -255,7 +269,7 @@ def contract(
     )
 
 
-def replay(graph: tests.formal.helpers.tlc.Graph, directory: pathlib.Path) -> int:
+def replay(graph: tlc_types.Graph, directory: pathlib.Path) -> int:
     """Exercise every interruption pair across initial and identical late arrivals.
 
     Args:
@@ -271,19 +285,28 @@ def replay(graph: tests.formal.helpers.tlc.Graph, directory: pathlib.Path) -> in
         *itertools.product(("receipt", "archive", "source", "retire"), (False, True)),
     )
     count = 0
-    for existing, first, second in itertools.product((False, True), faults, faults):
-        root = directory / str(count)
-        root.mkdir(parents=True)
-        scenario = Scenario(path=root / "2026-01.jsonl", checked=checked)
-        if existing:
-            scenario.archive.write_bytes(compression.zstd.compress(LINES[2]))
-        scenario.path.write_bytes(LINES[1] * 2)
-        scenario.rotate(first)
-        scenario.path.write_bytes(LINES[1])
-        scenario.rotate(second)
-        expected = ((2,) if existing else ()) + (1, 1, 1)
-        assert scenario.remember(scenario.archive, compressed=True) == expected
-        assert set(root.iterdir()) == {scenario.archive}
-        assert scenario.observations > 0
-        count += 1
+    directory.mkdir(parents=True)
+    for existing, first in itertools.product((False, True), faults):
+        with tempfile.TemporaryDirectory(dir=directory) as temporary:
+            prefix = pathlib.Path(temporary)
+            seeded = Scenario(path=prefix / "2026-01.jsonl", checked=checked)
+            if existing:
+                seeded.archive.write_bytes(compression.zstd.compress(LINES[2]))
+            seeded.path.write_bytes(LINES[1] * 2)
+            seeded.rotate(first)
+            for second in faults:
+                root = directory / str(count)
+                shutil.copytree(prefix, root)
+                scenario = dataclasses.replace(
+                    seeded,
+                    path=root / seeded.path.name,
+                    contents=seeded.contents.copy(),
+                )
+                scenario.path.write_bytes(LINES[1])
+                scenario.rotate(second)
+                expected = ((2,) if existing else ()) + (1, 1, 1)
+                assert scenario.remember(scenario.archive, compressed=True) == expected
+                assert set(root.iterdir()) == {scenario.archive}
+                assert scenario.observations > 0
+                count += 1
     return count

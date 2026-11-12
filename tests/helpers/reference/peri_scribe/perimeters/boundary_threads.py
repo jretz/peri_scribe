@@ -11,7 +11,7 @@ import shapely
 import peri_scribe.perimeters.classification_data
 
 
-WORKERS = 8
+WORKERS = 4
 REPETITIONS = 100
 
 

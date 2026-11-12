@@ -36,7 +36,7 @@ The checked guarantees are:
 - Completed rotation has no plain source or pending receipt. With fair progress and an
   eventual end to failures, both rotation epochs finish with the complete archive.
 
-The safety and liveness configurations each explore 156 distinct states. They include
+One configuration checks safety and liveness across 156 distinct states. They include
 an empty or nonempty initial archive, two identical initial diagnostic occurrences, one
 identical late occurrence, two rotation epochs, and up to two process interruptions.
 Private preparation, receipt publication, archive replacement, source removal, and
@@ -95,12 +95,15 @@ cutoff; subsequent undated diagnostics and unfinished tail bytes remain availabl
 `chronological_byte_search_matches_reference` proves that byte-offset binary search,
 using the next complete dated record after each probe, equals that reference. The proof
 covers arbitrary positive record lengths, duplicate timestamps, undated positions, and
-unfinished tail lengths. `safe_boundary_equals_ordered_reference` connects ordered
+unfinished tail lengths. `chronological_bounded_byte_search_matches_reference` proves
+that limiting later scans at the rejected probe's aligned boundary preserves that result.
+Every earlier complete record ends by the aligned boundary, even when the probe splits
+that record. `safe_boundary_equals_ordered_reference` connects ordered
 logs to the independently defined prefix-retirement policy. The separate window proofs
 preserve occurrence order and multiplicity while applying inclusive bounds and retaining
 undated diagnostics. Upper-bound violations do not terminate the stream.
 
-`OracleLogSeeking.lean` executes the proved binary search and independent recursive
+`OracleLogSeeking.lean` executes the proved bounded search and independent recursive
 boundary. `conformance/test_log_seeking.py` compares actual Python seek offsets, exact byte
 suffixes, and plain/compressed occurrences with this compiled oracle for **3,840
 histories**. Cases exhaust sequences of zero to four records over three nondecreasing
@@ -121,9 +124,9 @@ records. Observation-clock reversal remains supported by monitor retention/proje
 
 ### Seeking cost and limits
 
-Plain seeking makes O(log P) byte probes for P file bytes. Probe cost includes scanning
-past a split record and any undated stretch before a usable timestamp; unusually long
-records or undated stretches can dominate bytes examined. Startup then reads the selected
+Plain seeking makes O(log P) byte probes for P file bytes. The forward scans after
+alignment are disjoint. Aligning split records can revisit portions of a long record
+before it finds a newline. Startup then reads the selected
 suffix, while ordinary follower polls keep their cursor. Compressed components stream
 sequentially. Shared locks can delay writers; no bounded latency is claimed.
 

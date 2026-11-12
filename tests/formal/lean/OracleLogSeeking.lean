@@ -26,8 +26,9 @@ def respond (line : String) : Except String String := do
     let parsed ← if body.isEmpty then pure [] else (body.splitOn ";").mapM record
     let records := parsed.zipIdx.map fun (item, index) => {item with serial := index}
     let start := seek since records tail
-    let searched := binarySearch (fun query => timestampProbe since 0 query records)
-      (size records + tail + 1) 0 (size records + tail)
+    let fileBytes := size records + tail
+    let searched := boundedBinarySearch (fun query => timestampProbe since 0 query records)
+      (fun query _ => followingBoundary 0 query records) (fileBytes + 1) 0 fileBytes fileBytes
     let plain := safeWindow since upperBound (dropBytes start records)
     let compressed := safeWindow since upperBound records
     let values := [start, searched, plain.length] ++ plain.map Record.serial ++

@@ -47,10 +47,14 @@ async def test_controller_activate_performance_before_first_paint_uses_loaded_ev
     assert controller.prepared_generation == controller.generation
 
 
-@pytest.mark.asyncio
-async def test_monitor_app_performance_uses_complete_recent_history(
+async def assert_performance_uses_complete_recent_history(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
+    """Keep every recent completion after interactive record retention is exceeded.
+
+    Args:
+        monitor_session: The mounted monitor at the scenario boundary.
+    """
     count = 125
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
         monitor_session.directory,
@@ -74,10 +78,14 @@ async def test_monitor_app_performance_uses_complete_recent_history(
     assert len(monitor_session.app.controller.snapshot.records.runs) < count
 
 
-@pytest.mark.asyncio
-async def test_monitor_app_performance_updates_while_log_browsing_is_paused(
+async def assert_performance_updates_while_log_browsing_is_paused(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
+    """Update live performance while retaining the paused diagnostic snapshot.
+
+    Args:
+        monitor_session: The mounted monitor at the scenario boundary.
+    """
     await tests.helpers.textual.invoke(monitor_session.app.action_toggle_follow)
     visible = monitor_session.app.visible_state
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
@@ -102,20 +110,14 @@ async def test_monitor_app_performance_updates_while_log_browsing_is_paused(
     )
 
 
-@pytest.mark.asyncio
-async def test_monitor_app_performance_expires_completed_runs_after_window(
+async def assert_performance_expires_completed_runs_after_window(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
-    tests.helpers.factories.peri_scribe.monitor.events.write_log(
-        monitor_session.directory,
-        tests.helpers.factories.peri_scribe.monitor.status.record(
-            "Finished command",
-            command="run",
-            status="completed",
-            duration={"value": 10, "units": "seconds"},
-        ),
-    )
-    await monitor_session.app.refresh_files()
+    """Expire the shared completion through the actual reader and chart binding.
+
+    Args:
+        monitor_session: The mounted monitor at the scenario boundary.
+    """
     pane = monitor_session.app.query_one(
         peri_scribe.monitor.performance_widgets.PerformancePane,
     )
@@ -132,22 +134,17 @@ async def test_monitor_app_performance_expires_completed_runs_after_window(
         assert pane.series == ()
 
 
-@pytest.mark.asyncio
-async def test_controller_watch_presentation_advances_performance_without_reads(
+async def assert_watch_presentation_advances_performance_without_reads(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Advance the shared completion chart without requesting more domain evidence.
+
+    Args:
+        monitor_session: The mounted monitor at the scenario boundary.
+        monkeypatch: Restores scenario-local observation wrappers.
+    """
     controller = monitor_session.app.controller
-    tests.helpers.factories.peri_scribe.monitor.events.write_log(
-        monitor_session.directory,
-        tests.helpers.factories.peri_scribe.monitor.status.record(
-            "Finished command",
-            command="run",
-            status="completed",
-            duration={"value": 10, "units": "seconds"},
-        ),
-    )
-    await monitor_session.app.refresh_files()
     pane = monitor_session.app.query_one(
         peri_scribe.monitor.performance_widgets.PerformancePane,
     )
@@ -171,10 +168,14 @@ async def test_controller_watch_presentation_advances_performance_without_reads(
     request.assert_not_awaited()
 
 
-@pytest.mark.asyncio
-async def test_monitor_app_performance_resizes_charts_and_preserves_scroll(
+async def assert_performance_resizes_charts_and_preserves_scroll(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
 ) -> None:
+    """Reflow actual charts and preserve their native scroll offset during refresh.
+
+    Args:
+        monitor_session: The mounted monitor at the scenario boundary.
+    """
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
         monitor_session.directory,
         *(
@@ -213,3 +214,38 @@ async def test_monitor_app_performance_resizes_charts_and_preserves_scroll(
     await monitor_session.app.refresh_files()
     await monitor_session.refresh()
     assert pane.scroll_offset == position
+
+
+@pytest.mark.asyncio
+async def test_monitor_app_live_performance_survives_pause_and_clock_changes(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    monkeypatch: pytest.MonkeyPatch,
+    subtests: pytest.Subtests,
+) -> None:
+    session = monitor_session
+    with subtests.test(scenario="performance_updates_while_log_browsing_is_paused"):
+        await assert_performance_updates_while_log_browsing_is_paused(session)
+    with (
+        subtests.test(
+            scenario="controller_watch_presentation_advances_performance_without_reads",
+        ),
+        monkeypatch.context() as patch,
+    ):
+        await assert_watch_presentation_advances_performance_without_reads(
+            session,
+            patch,
+        )
+    with subtests.test(scenario="performance_expires_completed_runs_after_window"):
+        await assert_performance_expires_completed_runs_after_window(session)
+
+
+@pytest.mark.asyncio
+async def test_monitor_app_complete_performance_history_survives_native_layout_changes(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    subtests: pytest.Subtests,
+) -> None:
+    session = monitor_session
+    with subtests.test(scenario="performance_uses_complete_recent_history"):
+        await assert_performance_uses_complete_recent_history(session)
+    with subtests.test(scenario="performance_resizes_charts_and_preserves_scroll"):
+        await assert_performance_resizes_charts_and_preserves_scroll(session)

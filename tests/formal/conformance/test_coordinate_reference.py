@@ -1,3 +1,4 @@
+import functools
 import itertools
 
 import pytest
@@ -45,7 +46,16 @@ def test_longitudes_in_area_matches_proved_extent_policy() -> None:
 )
 def test_select_spatial_reference_wkid_matches_complete_candidate_policy(
     extent: tests.formal.helpers.coordinate_reference.Bounds | None,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    # Candidate subsets share the same native projection measurement for each CRS.
+    # Selection and classification still evaluate the complete candidate sets.
+    measure = arcgis_access.spatial_reference.projected_maximum_magnitude_in_crs_units
+    monkeypatch.setattr(
+        arcgis_access.spatial_reference,
+        "projected_maximum_magnitude_in_crs_units",
+        functools.cache(measure),
+    )
     cases = tests.formal.helpers.coordinate_reference.selection_cases(extent)
     commands = list(
         itertools.starmap(tests.formal.helpers.coordinate_reference.command, cases),

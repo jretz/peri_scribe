@@ -121,4 +121,33 @@ theorem empty_baseline_counts_final_coverage_once
     | cons cell rest induction => simp [surfaceArea, induction]
   simpa [empty] using cumulative_changes_telescope cells weight (fun _ => false) history
 
+/-- Repeat each edge's starting offset for the number of pieces it owns. -/
+def pieceStarts (offset : Nat) : List Nat → List Nat
+  | [] => []
+  | count :: rest => List.replicate count offset ++ pieceStarts (offset + count) rest
+
+private theorem consecutive_offsets_subtract_start (offset count : Nat) :
+    List.zipWith Nat.sub (List.range' offset count) (List.replicate count offset) =
+      List.range count := by
+  apply List.ext_getElem
+  · simp
+  · intro index left right
+    simp [List.getElem_range', List.getElem_zipWith]
+
+/-- Subtracting repeated starts from flattened indices keeps each edge's local order. -/
+theorem piece_ordinals_match_local_ranges (offset : Nat) (counts : List Nat) :
+    List.zipWith Nat.sub (List.range' offset counts.sum) (pieceStarts offset counts) =
+      counts.flatMap List.range := by
+  induction counts generalizing offset with
+  | nil => simp [pieceStarts]
+  | cons count rest induction =>
+    have consecutive :
+        List.range' offset (count + rest.sum) =
+          List.range' offset count ++ List.range' (offset + count) rest.sum := by
+      have appended :=
+        (List.range'_append (s := offset) (m := count) (n := rest.sum) (step := 1)).symm
+      rwa [Nat.one_mul] at appended
+    simp only [List.sum_cons, consecutive, pieceStarts, List.flatMap_cons]
+    rw [List.zipWith_append (by simp), consecutive_offsets_subtract_start, induction]
+
 end PeriScribe.GrowthMeasurement

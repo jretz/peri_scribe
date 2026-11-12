@@ -10,6 +10,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import hashlib
+import importlib
 import io
 import json
 import pathlib
@@ -17,7 +18,6 @@ import sqlite3
 import typing
 import zipfile
 
-import geopandas
 import pydantic
 import requests
 import structlog
@@ -28,7 +28,10 @@ import peri_scribe.sources.catalog
 import peri_scribe.sources.downloading
 import peri_scribe.sources.external_data
 import peri_scribe.sources.network
-import spatial_data.reference
+
+
+if typing.TYPE_CHECKING:
+    import geopandas
 
 
 logger = structlog.get_logger()
@@ -209,6 +212,8 @@ def read_cities(year_directory: pathlib.Path) -> geopandas.GeoDataFrame:
     Returns:
         Names, postal states, and WGS84 point geometry; empty if no cache is usable.
     """
+    geopandas = importlib.import_module("geopandas")
+    reference = importlib.import_module("spatial_data.reference")
     database = read_database(
         city_database_path(year_directory),
         peri_scribe.sources.catalog.CITIES_SOURCE.url,
@@ -223,7 +228,7 @@ def read_cities(year_directory: pathlib.Path) -> geopandas.GeoDataFrame:
             [city.longitude for city in cities],
             [city.latitude for city in cities],
         ),
-        crs=spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID,
+        crs=reference.WGS84_SPATIAL_REFERENCE_ID,
     )
 
 
@@ -259,9 +264,11 @@ def archive_cities(content: bytes) -> tuple[str, tuple[City, ...]]:
     """
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
         version = archive.read(f"{ARCHIVE_STEM}.VERSION.txt").decode().strip()
+    geopandas = importlib.import_module("geopandas")
+    reference = importlib.import_module("spatial_data.reference")
     dataframe = geopandas.read_file(io.BytesIO(content))
     selected = dataframe[dataframe["sov_a3"] == "USA"].to_crs(
-        spatial_data.reference.WGS84_SPATIAL_REFERENCE_ID,
+        reference.WGS84_SPATIAL_REFERENCE_ID,
     )
     if (
         not (selected.geometry.geom_type == "Point").all()

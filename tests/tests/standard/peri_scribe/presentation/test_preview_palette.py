@@ -71,6 +71,20 @@ def test_quantize_handles_images_using_only_the_reserved_opaque_colors() -> None
     )
 
 
+def test_squared_distances_preserves_feature_order_and_exact_ties() -> None:
+    palette = peri_scribe.presentation.preview_palette
+    colors = np.array(
+        ((0, 0, 0, 255), (10, 20, 30, 127), (50, 20, 30, 200)),
+        dtype=np.uint8,
+    )
+    target = palette.features(colors)
+    candidates = target[[1, 0, 1, 2]]
+    expected = np.sum((target[:, None] - candidates[None, :]) ** 2, axis=2)
+    actual = palette.squared_distances(target, candidates)
+    assert actual.tobytes() == expected.tobytes()
+    assert np.argmin(actual, axis=1).tolist() == [1, 0, 3]
+
+
 def test_refine_colors_preserves_frozen_colors_with_unused_dynamic_centers(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

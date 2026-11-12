@@ -11,26 +11,37 @@ import tests.helpers.textual
 
 
 @pytest.mark.parametrize("theme", ["flexoki", "textual-light"])
-@pytest.mark.parametrize(
-    ("view", "selector", "metadata"),
-    [
+@pytest.mark.asyncio
+async def test_monitor_app_stripes_rows_across_the_full_width_after_scrolling(
+    scrolling_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    subtests: pytest.Subtests,
+    theme: str,
+) -> None:
+    session = scrolling_session
+    for view, selector, metadata in (
         ("pipeline", "#phase-tree", "line"),
         ("pipeline", "#pipeline-stream .events", "row"),
         ("logs", "#log-stream .events", "row"),
         ("runs", "#run-table", "row"),
-    ],
-)
-@pytest.mark.asyncio
-async def test_monitor_app_stripes_rows_across_the_full_width_after_scrolling(
-    scrolling_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
-    theme: str,
-    view: str,
+    ):
+        with subtests.test(view=view, selector=selector, metadata=metadata):
+            await tests.helpers.textual.invoke(setattr, session.app, "theme", theme)
+            await session.show_view_from_pipeline(view)
+            await assert_striped_rows(session, selector, metadata)
+
+
+async def assert_striped_rows(
+    session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     selector: str,
     metadata: str,
 ) -> None:
-    session = scrolling_session
-    await tests.helpers.textual.invoke(setattr, session.app, "theme", theme)
-    await session.show_view(view)
+    """Read the same logical rows before and after changing the viewport offset.
+
+    Args:
+        session: The settled monitor with the selected pane visible.
+        selector: The widget whose rows should be striped.
+        metadata: The rendered segment key for a logical row.
+    """
     widget = session.app.query_one(selector)
     backgrounds = []
     for offset in (0, 1):
@@ -60,15 +71,19 @@ async def test_monitor_app_stripes_rows_across_the_full_width_after_scrolling(
     assert backgrounds[0] == backgrounds[1]
 
 
-@pytest.mark.parametrize("theme", ["flexoki", "textual-light"])
-@pytest.mark.parametrize("palette", [False, True])
-@pytest.mark.asyncio
-async def test_monitor_app_stripes_options_without_overwriting_selection(
+async def assert_stripes_options_without_overwriting_selection(
     monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
     theme: str,
     *,
     palette: bool,
 ) -> None:
+    """Compare native option stripes with the highlighted row before and after input.
+
+    Args:
+        monitor_session: The mounted monitor at the scenario boundary.
+        theme: The terminal palette under observation.
+        palette: Whether to open the command palette or the severity options.
+    """
     session = monitor_session
     await tests.helpers.textual.invoke(setattr, session.app, "theme", theme)
     if palette:
@@ -107,3 +122,24 @@ async def test_monitor_app_stripes_options_without_overwriting_selection(
         1,
     )
     assert selected == colors[0]
+
+
+@pytest.mark.parametrize("theme", ["flexoki", "textual-light"])
+@pytest.mark.asyncio
+async def test_monitor_app_stripes_options_without_overwriting_selection(
+    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    subtests: pytest.Subtests,
+    theme: str,
+) -> None:
+    session = monitor_session
+    for palette in (False, True):
+        with subtests.test(palette=palette):
+            try:
+                await assert_stripes_options_without_overwriting_selection(
+                    session,
+                    theme,
+                    palette=palette,
+                )
+            finally:
+                await session.pilot.press("escape")
+                await session.refresh()

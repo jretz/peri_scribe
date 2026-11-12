@@ -15,6 +15,7 @@ import typing
 
 import pytest
 import shapely
+import structlog.testing
 
 import peri_scribe.execution
 import peri_scribe.fires.bounded_sources
@@ -480,7 +481,11 @@ class Observer:
         """Execute the bounded stage, including its real success or refusal outcome."""
         self.damage()
         self.edit("before_pin")
-        with pytest.MonkeyPatch.context() as patch, peri_scribe.execution.sharing():
+        with (
+            pytest.MonkeyPatch.context() as patch,
+            peri_scribe.execution.sharing(),
+            structlog.testing.capture_logs(),
+        ):
             self.install(patch)
             try:
                 result = peri_scribe.fires.files.write_bounded_full_geography(

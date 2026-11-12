@@ -7,6 +7,7 @@ Design notes:
 from __future__ import annotations
 
 import contextlib
+import importlib
 import pathlib
 import tempfile
 import typing
@@ -16,13 +17,9 @@ import structlog
 
 import peri_scribe.exceptions
 import peri_scribe.sources.archives
-import peri_scribe.sources.conversion
 import peri_scribe.sources.external_data
 import peri_scribe.sources.network
-import spatial_data.centroid_streaming
 import spatial_data.exceptions
-import spatial_data.layers
-import spatial_data.reference
 
 
 logger = structlog.get_logger()
@@ -184,12 +181,13 @@ def stream_download_and_convert(
     Raises:
         ExternalDataError: The download or its streamed geometry cannot be read.
     """
+    centroid_streaming = importlib.import_module("spatial_data.centroid_streaming")
     try:
         with peri_scribe.sources.network.downloaded_response(
             url,
             stream=True,
         ) as response:
-            return spatial_data.centroid_streaming.convert_zip_stream(
+            return centroid_streaming.convert_zip_stream(
                 response.iter_content(
                     chunk_size=peri_scribe.sources.network.DOWNLOAD_CHUNK_SIZE,
                 ),
@@ -225,6 +223,9 @@ def combine_downloaded_source(
     if output.is_file():
         logger.debug("External source already present", source=source.name, path=output)
         return output
+    conversion = importlib.import_module("peri_scribe.sources.conversion")
+    layers = importlib.import_module("spatial_data.layers")
+    reference = importlib.import_module("spatial_data.reference")
     state_urls = source.state_urls() if source.state_urls is not None else None
     layer_name = source.layer_name or source.name
     wrote_any = False
@@ -237,15 +238,15 @@ def combine_downloaded_source(
             state_output = temporary_path / f"{state}.gpkg"
             url = state_download_url(source, state, state_urls)
             download_and_convert(source, temporary_path, url, state_output)
-            for chunk in spatial_data.layers.read_layer_chunks(
+            for chunk in layers.read_layer_chunks(
                 state_output,
                 layer_name,
-                peri_scribe.sources.conversion.CONVERSION_CHUNK_SIZE,
+                conversion.CONVERSION_CHUNK_SIZE,
             ):
                 dataframe = chunk.to_crs(
-                    spatial_data.reference.WGS84_SPATIAL_REFERENCE,
+                    reference.WGS84_SPATIAL_REFERENCE,
                 )
-                spatial_data.layers.append_geopackage_chunk(
+                layers.append_geopackage_chunk(
                     temporary,
                     layer_name,
                     dataframe,
@@ -287,8 +288,9 @@ def download_and_convert(
                 extraction_path,
                 source.geodata_suffix,
             )
+            conversion = importlib.import_module("peri_scribe.sources.conversion")
             with completed_download(output) as temporary:
-                peri_scribe.sources.conversion.convert_to_geopackage(
+                conversion.convert_to_geopackage(
                     geodata_path,
                     temporary,
                     source.layer_name or source.name,

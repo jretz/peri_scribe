@@ -42,4 +42,13 @@ RecoveryKeepsPublication ==
     replaying => durable.kmz = recoveryInput.kmz
                  /\ durable.publication = recoveryInput.publication
                  /\ durable.viewer = recoveryInput.viewer
+\* The original publication checks apply to the unmodified Explore subgraph.
+BaseCompletedPublicationConsistent == ~replaying => CompletedPublicationConsistent
+BasePublicationRequiresFreshInputs == ~replaying => PublicationRequiresFreshInputs
+BaseFreshPublicationPrecedesAcknowledgment == ~replaying => FreshPublicationPrecedesAcknowledgment
+BaseGatedPartialInvalidatesPublication == ~replaying => GatedPartialInvalidatesPublication
+BaseUngatedPartialCannotAcknowledgeFreshInputs == ~replaying => UngatedPartialCannotAcknowledgeFreshInputs
+BaseRankIsNatural == ~replaying => RankIsNatural
+BaseProgressAvailable == ~replaying => ProgressAvailable
+BaseRankDecreases == [][(~replaying /\ ~replaying') => Rank' < Rank]_replayVariables
 =============================================================================

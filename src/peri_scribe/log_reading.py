@@ -20,6 +20,7 @@ import peri_scribe.logging
 
 
 JSON_TOKENS = re.compile(rb'"(?:[^"\\]|\\.)*"|[{}\[\]]')
+MONTHLY_LOG_NAME = re.compile(r".{4}-.{2}\.jsonl(?:\.zst)?", re.DOTALL)
 
 
 def timestamp(value: object) -> datetime.datetime | None:
@@ -68,28 +69,31 @@ def timestamp_after(
     stream: typing.BinaryIO,
     offset: int,
     end: int,
-) -> datetime.datetime | None:
+) -> tuple[datetime.datetime | None, int]:
     """Probe complete records so byte offsets cannot split UTF-8 or JSON values.
 
     Args:
         stream: An uncompressed log whose records retain their original timestamps.
         offset: The binary search probe's byte offset.
-        end: The file size observed before searching.
+        end: The exclusive byte limit for this scan.
 
     Returns:
-        The next usable timestamp, leaving the stream just after its record.
+        The next usable timestamp and an aligned scan limit if the probe is
+        rejected. A dated result leaves the stream just after its record.
     """
     stream.seek(max(0, offset - 1))
-    if offset:
-        stream.readline(end - stream.tell())
+    if offset and not stream.readline(end - stream.tell()).endswith(b"\n"):
+        # The split reached the unfinished tail, so complete records end by the probe.
+        return None, offset
+    aligned = stream.tell()
     while stream.tell() < end:
         line = stream.readline(end - stream.tell())
         if not line.endswith(b"\n"):
-            return None
+            break
         timestamp = line_timestamp(line)
         if timestamp is not None:
-            return timestamp
-    return None
+            return timestamp, aligned
+    return None, aligned
 
 
 def seek_since(stream: typing.BinaryIO, since: datetime.datetime) -> None:
@@ -103,14 +107,16 @@ def seek_since(stream: typing.BinaryIO, since: datetime.datetime) -> None:
         since: The inclusive timestamp cutoff.
     """
     lower = 0
-    end = upper = stream.seek(0, os.SEEK_END)
+    scan_end = upper = stream.seek(0, os.SEEK_END)
     while lower < upper:
         middle = (lower + upper) // 2
-        time = timestamp_after(stream, middle, end)
+        time, aligned = timestamp_after(stream, middle, scan_end)
         if time is not None and time < since:
             lower = stream.tell()
         else:
             upper = middle
+            # Keep any complete record split by the probe and skip the ruled-out suffix.
+            scan_end = aligned
     stream.seek(lower)
 
 
@@ -128,18 +134,26 @@ def log_paths(
     Returns:
         Monthly logs in chronological filename order without duplicate months.
     """
-    paths = {
-        path.name.removesuffix(".zst"): path
-        for path in directory.glob("????-??.jsonl.zst")
-    }
-    paths.update({path.name: path for path in directory.glob("????-??.jsonl")})
-    for component in directory.glob("????-??.*.jsonl*"):
-        name = component.name.removesuffix(".rotation.json").removesuffix(".zst")
-        if peri_scribe.logging.SEGMENT_PATTERN.fullmatch(name):
-            monthly_name = name[:7] + ".jsonl"
-            paths.setdefault(monthly_name, directory / monthly_name)
+    monthly: dict[str, str] = {}
+    segmented: set[str] = set()
+    with contextlib.suppress(OSError):
+        for component in directory.iterdir():
+            name = component.name
+            if MONTHLY_LOG_NAME.fullmatch(name):
+                if name.endswith(".zst"):
+                    monthly.setdefault(name.removesuffix(".zst"), name)
+                else:
+                    monthly[name] = name
+            else:
+                segment = name.removesuffix(".rotation.json").removesuffix(".zst")
+                if peri_scribe.logging.SEGMENT_PATTERN.fullmatch(segment):
+                    segmented.add(segment[:7] + ".jsonl")
+    for name in segmented:
+        monthly.setdefault(name, name)
     first_month = since.astimezone().strftime("%Y-%m") if since else ""
-    return tuple(paths[name] for name in sorted(paths) if name >= first_month)
+    return tuple(
+        directory / monthly[name] for name in sorted(monthly) if name >= first_month
+    )
 
 
 @contextlib.contextmanager

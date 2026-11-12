@@ -14,7 +14,7 @@ import typing
 
 
 if typing.TYPE_CHECKING:
-    import pytest
+    import tests.helpers.doubles.attribute_overrides
 
 
 EXIT_STATUS = 91
@@ -30,6 +30,7 @@ class Request:
     boundary: str
     after: bool
     method: str
+    builder_catalogue: str | None = None
 
     @property
     def directory(self) -> pathlib.Path:
@@ -67,7 +68,7 @@ class Request:
 
 
 def interruption(
-    patch: pytest.MonkeyPatch,
+    patch: tests.helpers.doubles.attribute_overrides.AttributePatch,
     request: Request,
     target: pathlib.Path,
     *,
@@ -128,8 +129,9 @@ def main() -> None:
     if request.phase == "crash":
         atexit.register((pathlib.Path(request.root) / "atexit-ran").touch)
     try:
+        family = "builder" if request.family == "builder_full" else request.family
         worker = importlib.import_module(
-            f"tests.formal.helpers.crash_workers.{request.family}",
+            f"tests.formal.helpers.crash_workers.{family}",
         )
         worker.run(request)
     finally:

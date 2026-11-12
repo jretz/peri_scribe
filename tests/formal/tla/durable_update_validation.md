@@ -3,8 +3,8 @@
 A missing update checkpoint can mean there is nothing to recover. An unreadable one
 doesn't establish that: it may still record work that must be preserved.
 `DurableUpdateValidation.tla` checks that distinction for fire-update checkpoints and
-journals before recovery, a new completed publication, or viewer output. The safety and
-liveness configurations were checked before changing production code.
+journals before recovery, a new completed publication, or viewer output. TLC checked
+the safety and liveness properties before production code changed.
 
 ## Contract and implementation
 
@@ -32,12 +32,12 @@ unclaimed historical buckets. Those are valid inputs to the one-hop ownership pr
 Previously emitted canonical checkpoints and legacy records without `log_identity` remain
 readable.
 
-Both configurations explore **797 distinct states**, starting from **252 distinct initial
-states**. They cover recovery, writing, and viewing; missing/valid/invalid retained inputs;
+The configuration explores **797 distinct states**, starting from **252 distinct initial
+states**. It covers recovery, writing, and viewing; missing/valid/invalid retained inputs;
 valid/invalid incoming records; changed/equal checkpoints; empty/nonempty batches; and
 already appended batch IDs. Invalid intent remains untouched. Every durable effect follows
 complete validation; complete append precedes acknowledgment, which precedes retirement.
-The liveness configuration checks eventual completion or rejection under weak fairness.
+The liveness property requires eventual completion or rejection under weak fairness.
 
 ## Executable connection
 

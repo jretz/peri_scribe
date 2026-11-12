@@ -4,12 +4,13 @@ Algorithm reasoning and contracts:
 [Update journal](../../docs/algorithms/update-journal.md)
 """
 
+import collections.abc
+import functools
+import importlib
 import json
 import typing
 
 import pydantic
-
-from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
@@ -18,6 +19,7 @@ if typing.TYPE_CHECKING:
 
 type HistoryIdentity = tuple[typing.Literal["id", "name", "local", "component"], str]
 IDENTITY = pydantic.TypeAdapter(HistoryIdentity)
+MAXIMUM_CACHED_IDENTITY_LENGTH = 512
 type Preview = typing.Annotated[
     str,
     pydantic.StringConstraints(
@@ -26,17 +28,11 @@ type Preview = typing.Annotated[
 ]
 
 
-def canonical_identity(value: str) -> str:
-    """Require one JSON spelling for each history identity.
-
-    Equivalent identities with different encoded strings would become different keys,
-    allowing the same history to be assigned to conflicting owners.
+def validate_identity_encoding(value: str) -> None:
+    """Require a single JSON spelling so each identity names one durable history.
 
     Args:
         value: A persisted identity key or target in a durable checkpoint.
-
-    Returns:
-        The unchanged canonical JSON identity pair.
 
     Raises:
         ValueError: The kind, payload, or exact JSON representation is invalid.
@@ -45,7 +41,38 @@ def canonical_identity(value: str) -> str:
     if json.dumps(identity) != value:
         message = "History identity must use canonical JSON encoding"
         raise ValueError(message)
-    return value
+
+
+def identity_encoding_validator() -> collections.abc.Callable[[str], str]:
+    """Keep the cache behind the size check that bounds retained text.
+
+    Returns:
+        A checkpoint identity validator with its own bounded cache.
+    """
+    validate = validate_identity_encoding
+    cached = functools.lru_cache(maxsize=4096)(validate)
+
+    def canonical_identity(value: str) -> str:
+        """Reuse validation for short keys repeated across checkpoint fields.
+
+        Invalid encodings propagate the validator's error.
+
+        Args:
+            value: A persisted identity key or target in a durable checkpoint.
+
+        Returns:
+            The unchanged canonical JSON identity pair.
+        """
+        if type(value) is str and len(value) <= MAXIMUM_CACHED_IDENTITY_LENGTH:
+            cached(value)
+        else:
+            validate(value)
+        return value
+
+    return canonical_identity
+
+
+canonical_identity = identity_encoding_validator()
 
 
 type EncodedIdentity = typing.Annotated[
@@ -71,6 +98,7 @@ class Acreage(pydantic.BaseModel):
         Returns:
             The measured acreage as a quantity.
         """
+        units = importlib.import_module("measurement_units").units
         return self.value * units.acres
 
 

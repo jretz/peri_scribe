@@ -11,6 +11,7 @@ import collections
 import dataclasses
 import datetime
 import hashlib
+import importlib
 import itertools
 import json
 import pathlib
@@ -21,14 +22,14 @@ import pydantic
 
 import peri_scribe.fire_update_records
 import peri_scribe.logging
-import peri_scribe.models
-import peri_scribe.perimeters.identity
-import peri_scribe.presentation.fire_data
-import peri_scribe.presentation.perimeters
-import peri_scribe.presentation.selection
-import peri_scribe.previews
 import peri_scribe.publication
-import peri_scribe.report.gathering
+
+
+if typing.TYPE_CHECKING:
+    import peri_scribe.models as models_types
+    import peri_scribe.presentation.fire_data as fire_data_types
+    import peri_scribe.presentation.perimeters as perimeters_types
+    import peri_scribe.presentation.selection as selection_types
 
 
 class State(pydantic.BaseModel):
@@ -68,9 +69,9 @@ class State(pydantic.BaseModel):
 class Ownership:
     """Keep stored histories distinct from the fires that can currently claim them."""
 
-    keys: dict[peri_scribe.presentation.selection.AreaKey, str]
-    histories: dict[peri_scribe.presentation.selection.AreaKey, frozenset[str]]
-    claims: dict[peri_scribe.presentation.selection.AreaKey, frozenset[str]]
+    keys: dict[selection_types.AreaKey, str]
+    histories: dict[selection_types.AreaKey, frozenset[str]]
+    claims: dict[selection_types.AreaKey, frozenset[str]]
     owners: dict[str, str]
 
 
@@ -126,7 +127,7 @@ def read_authoritative[Document: pydantic.BaseModel](
 
 
 def perimeter_signature(
-    perimeter: peri_scribe.presentation.perimeters.Perimeter,
+    perimeter: perimeters_types.Perimeter,
 ) -> str:
     """Recognize a new survey or shape without treating ring order as new mapping.
 
@@ -136,14 +137,16 @@ def perimeter_signature(
     Returns:
         A stable digest of its normalized geometry and UTC observation time.
     """
-    return peri_scribe.perimeters.identity.signature(
+    identity = importlib.import_module("peri_scribe.perimeters.identity")
+
+    return identity.signature(
         perimeter.geometry,
         perimeter.observation_time,
     )
 
 
 def identity_keys(
-    fire: peri_scribe.presentation.fire_data.FireSummary,
+    fire: fire_data_types.FireSummary,
 ) -> tuple[str, ...]:
     """Match every known identifier without conflating distinct same-named fires.
 
@@ -154,8 +157,10 @@ def identity_keys(
         External and internal component aliases, using the name only for legacy fires
         with neither kind of identity.
     """
+    selection = importlib.import_module("peri_scribe.presentation.selection")
+
     keys = [
-        (peri_scribe.presentation.selection.IDENTIFIER_AREA_KEY, identifier)
+        (selection.IDENTIFIER_AREA_KEY, identifier)
         for identifier in sorted(fire.identifiers)
     ]
     components = fire.component_aliases | (
@@ -166,16 +171,15 @@ def identity_keys(
         key=lambda value: (value != fire.component_id, value),
     )
     keys.extend(
-        (peri_scribe.presentation.selection.COMPONENT_AREA_KEY, component)
-        for component in ordered_components
+        (selection.COMPONENT_AREA_KEY, component) for component in ordered_components
     )
     if not keys:
-        keys.append((peri_scribe.presentation.selection.NAME_AREA_KEY, fire.name))
+        keys.append((selection.NAME_AREA_KEY, fire.name))
     return tuple(json.dumps(key) for key in keys)
 
 
 def stable_identity(
-    fire: peri_scribe.presentation.fire_data.FireSummary,
+    fire: fire_data_types.FireSummary,
     previous: State,
 ) -> str | None:
     """Prefer an existing writer key when ownership arbitration permits retaining it.
@@ -207,35 +211,38 @@ def historical_names(previous: State) -> dict[str, frozenset[str]]:
     Returns:
         All known normalized names for each stable log identity.
     """
+    models = importlib.import_module("peri_scribe.models")
+    selection = importlib.import_module("peri_scribe.presentation.selection")
+
     names = dict(previous.names)
     for alias, key in itertools.chain(
         ((key, key) for key in previous.perimeters),
         previous.aliases.items(),
     ):
         kind, name = json.loads(alias)
-        if kind == peri_scribe.presentation.selection.NAME_AREA_KEY:
+        if kind == selection.NAME_AREA_KEY:
             names[key] = names.get(key, frozenset()) | {
-                peri_scribe.models.normalize_fire_name(name),
+                models.normalize_fire_name(name),
             }
     return names
 
 
 def matching_name_identities(
     fires: typing.Mapping[
-        peri_scribe.presentation.selection.AreaKey,
-        peri_scribe.presentation.fire_data.FireSummary,
+        selection_types.AreaKey,
+        fire_data_types.FireSummary,
     ],
     previous: State,
     signatures: typing.Mapping[
-        peri_scribe.presentation.selection.AreaKey,
+        selection_types.AreaKey,
         frozenset[str],
     ],
     sources: typing.Mapping[
-        peri_scribe.presentation.selection.AreaKey,
+        selection_types.AreaKey,
         frozenset[str],
     ],
     reserved: set[str],
-) -> dict[peri_scribe.presentation.selection.AreaKey, str]:
+) -> dict[selection_types.AreaKey, str]:
     """Require unambiguous mapping continuity and name matches in both directions.
 
     Empty histories can be adopted without mapping evidence because they contain no
@@ -253,6 +260,9 @@ def matching_name_identities(
     Returns:
         Matches with exactly one historical candidate and one current claimant.
     """
+    models = importlib.import_module("peri_scribe.models")
+    selection = importlib.import_module("peri_scribe.presentation.selection")
+
     histories: dict[str, set[str]] = {}
     for key, names in historical_names(previous).items():
         if key not in reserved:
@@ -261,15 +271,12 @@ def matching_name_identities(
     local_aliases: dict[str, set[str]] = {}
     for alias, key in previous.aliases.items():
         kind, name = json.loads(alias)
-        if (
-            kind == peri_scribe.presentation.selection.NAME_AREA_KEY
-            and json.loads(key)[0] == "local"
-        ):
-            normalized = peri_scribe.models.normalize_fire_name(name)
+        if kind == selection.NAME_AREA_KEY and json.loads(key)[0] == "local":
+            normalized = models.normalize_fire_name(name)
             local_aliases.setdefault(normalized, set()).add(key)
     candidates = {}
     for identity, fire in fires.items():
-        normalized = peri_scribe.models.normalize_fire_name(fire.name)
+        normalized = models.normalize_fire_name(fire.name)
         candidates[identity] = {
             key
             for key in histories.get(normalized, ())
@@ -278,7 +285,7 @@ def matching_name_identities(
             or sources[identity] & previous.sources.get(key, frozenset())
         }
         name_key = json.dumps(
-            peri_scribe.presentation.selection.fire_area_key(None, fire.name),
+            selection.fire_area_key(None, fire.name),
         )
         preferred = previous.aliases.get(name_key)
         local = candidates[identity] & local_aliases.get(normalized, set())
@@ -299,7 +306,7 @@ def matching_name_identities(
 
 
 def new_identity(
-    identity: peri_scribe.presentation.selection.AreaKey,
+    identity: selection_types.AreaKey,
     signatures: frozenset[str],
     reserved: set[str],
     reserved_names: set[str],
@@ -315,10 +322,13 @@ def new_identity(
     Returns:
         An unused report key or a local key deterministic across retries and ordering.
     """
+    models = importlib.import_module("peri_scribe.models")
+    selection = importlib.import_module("peri_scribe.presentation.selection")
+
     key = json.dumps(identity)
     name_collision = (
-        identity[0] == peri_scribe.presentation.selection.NAME_AREA_KEY
-        and peri_scribe.models.normalize_fire_name(identity[1]) in reserved_names
+        identity[0] == selection.NAME_AREA_KEY
+        and models.normalize_fire_name(identity[1]) in reserved_names
     )
     if key not in reserved and not name_collision:
         return key
@@ -362,8 +372,8 @@ def history_keys(previous: State) -> set[str]:
 
 
 def mapping_priority(
-    fire: peri_scribe.presentation.fire_data.FireSummary,
-) -> tuple[bool, datetime.datetime, peri_scribe.presentation.selection.AreaKey]:
+    fire: fire_data_types.FireSummary,
+) -> tuple[bool, datetime.datetime, selection_types.AreaKey]:
     """Resolve corrections by mapped freshness, with deterministic equal-date ties.
 
     Args:
@@ -372,6 +382,8 @@ def mapping_priority(
     Returns:
         A sortable priority with undated mapping below every dated observation.
     """
+    gathering = importlib.import_module("peri_scribe.report.gathering")
+
     latest = max(
         (
             perimeter.observation_time
@@ -384,25 +396,25 @@ def mapping_priority(
     return (
         latest is not None,
         latest or datetime.datetime.min.replace(tzinfo=datetime.UTC),
-        peri_scribe.report.gathering.fire_identity(fire),
+        gathering.fire_identity(fire),
     )
 
 
 def history_claims(
     fires: typing.Mapping[
-        peri_scribe.presentation.selection.AreaKey,
-        peri_scribe.presentation.fire_data.FireSummary,
+        selection_types.AreaKey,
+        fire_data_types.FireSummary,
     ],
     previous: State,
     signatures: typing.Mapping[
-        peri_scribe.presentation.selection.AreaKey,
+        selection_types.AreaKey,
         frozenset[str],
     ],
     sources: typing.Mapping[
-        peri_scribe.presentation.selection.AreaKey,
+        selection_types.AreaKey,
         frozenset[str],
     ],
-) -> dict[peri_scribe.presentation.selection.AreaKey, frozenset[str]]:
+) -> dict[selection_types.AreaKey, frozenset[str]]:
     """Find histories linked by aliases and check evidence for name-only matches.
 
     External identifiers and internal component aliases preserve every route to a
@@ -419,6 +431,8 @@ def history_claims(
     Returns:
         Existing buckets each current fire can claim before freshness arbitration.
     """
+    selection = importlib.import_module("peri_scribe.presentation.selection")
+
     lineage = history_lineage(previous)
     claims = {
         identity: frozenset(
@@ -437,8 +451,8 @@ def history_claims(
         for alias, histories in lineage.items()
         if json.loads(alias)[0]
         in {
-            peri_scribe.presentation.selection.IDENTIFIER_AREA_KEY,
-            peri_scribe.presentation.selection.COMPONENT_AREA_KEY,
+            selection.IDENTIFIER_AREA_KEY,
+            selection.COMPONENT_AREA_KEY,
         }
         for history in histories
     }
@@ -448,6 +462,8 @@ def history_claims(
             for identity, fire in fires.items()
             if not claims.get(identity) and bool(fire.identifiers) is identified
         }
+        if not seeking:
+            continue
         matches = matching_name_identities(
             seeking,
             previous,
@@ -462,16 +478,16 @@ def history_claims(
 
 def resolved_ownership(
     fires: typing.Mapping[
-        peri_scribe.presentation.selection.AreaKey,
-        peri_scribe.presentation.fire_data.FireSummary,
+        selection_types.AreaKey,
+        fire_data_types.FireSummary,
     ],
     previous: State,
     signatures: typing.Mapping[
-        peri_scribe.presentation.selection.AreaKey,
+        selection_types.AreaKey,
         frozenset[str],
     ],
     sources: typing.Mapping[
-        peri_scribe.presentation.selection.AreaKey,
+        selection_types.AreaKey,
         frozenset[str],
     ],
 ) -> Ownership:
@@ -495,13 +511,18 @@ def resolved_ownership(
         )
         for history in claims[identity]
     }
+    histories_by_winner: dict[selection_types.AreaKey, list[str]] = (
+        collections.defaultdict(list)
+    )
+    for history, winner in winners.items():
+        histories_by_winner[winner].append(history)
     reserved = history_keys(previous) | set(winners)
     reserved_names = {
         name for names in historical_names(previous).values() for name in names
     }
     keys = {}
     for identity in sorted(fires):
-        won = {history for history, winner in winners.items() if winner == identity}
+        won = histories_by_winner.get(identity)
         preferred = stable_identity(fires[identity], previous)
         if won:
             keys[identity] = preferred if preferred in won else min(won)
@@ -516,12 +537,13 @@ def resolved_ownership(
     owners = {history: previous.owners.get(history, history) for history in reserved}
     owners.update({history: keys[identity] for history, identity in winners.items()})
     owners.update({key: key for key in keys.values()})
+    histories_by_owner: dict[str, list[str]] = collections.defaultdict(list)
+    for history, owner in owners.items():
+        histories_by_owner[owner].append(history)
     return Ownership(
         keys=keys,
         histories={
-            identity: frozenset(
-                history for history, owner in owners.items() if owner == key
-            )
+            identity: frozenset(histories_by_owner[key])
             for identity, key in keys.items()
         },
         claims=claims,
@@ -529,10 +551,10 @@ def resolved_ownership(
     )
 
 
-def prepare_updates[Fire: peri_scribe.presentation.fire_data.FireSummary](
+def prepare_updates[Fire: fire_data_types.FireSummary](
     year_directory: pathlib.Path,
     fires: list[Fire],
-    scores: peri_scribe.models.FireScores,
+    scores: models_types.FireScores,
 ) -> PreparedUpdates:
     """Select new mapped observations against the last completed KMZ's baseline.
 
@@ -553,17 +575,50 @@ def prepare_updates[Fire: peri_scribe.presentation.fire_data.FireSummary](
     Returns:
         Pending log entries and state, to persist only after KMZ generation succeeds.
     """
-    recover_updates(year_directory)
-    previous = (
-        read_authoritative(
-            state_path(year_directory),
-            State,
-        )
-        or State()
+    return prepare_updates_for_state(
+        year_directory,
+        fires,
+        scores,
+        previous=previous_state_for_preparation(year_directory),
     )
-    fires_by_identity = {
-        peri_scribe.report.gathering.fire_identity(fire): fire for fire in fires
-    }
+
+
+def previous_state_for_preparation(year_directory: pathlib.Path) -> State:
+    """Read the acknowledged baseline after recovering any interrupted update.
+
+    Args:
+        year_directory: The year directory holding the journal and checkpoint.
+
+    Returns:
+        The recovered mapping checkpoint, or an empty baseline on first publication.
+    """
+    recover_updates(year_directory)
+    return read_authoritative(state_path(year_directory), State) or State()
+
+
+def prepare_updates_for_state[Fire: fire_data_types.FireSummary](
+    year_directory: pathlib.Path,
+    fires: list[Fire],
+    scores: models_types.FireScores,
+    *,
+    previous: State,
+) -> PreparedUpdates:
+    """Select the next update batch from a validated mapping checkpoint.
+
+    Args:
+        year_directory: The year directory containing cities for the report.
+        fires: All prepared fires eligible for the KMZ.
+        scores: The scores selecting the report's ranked sections.
+        previous: The recovered mapping checkpoint for this year.
+
+    Returns:
+        Pending log entries and the next checkpoint.
+    """
+    selection = importlib.import_module("peri_scribe.presentation.selection")
+    previews = importlib.import_module("peri_scribe.previews")
+    gathering = importlib.import_module("peri_scribe.report.gathering")
+
+    fires_by_identity = {gathering.fire_identity(fire): fire for fire in fires}
     signatures = {
         identity: frozenset(
             perimeter_signature(perimeter)
@@ -582,21 +637,21 @@ def prepare_updates[Fire: peri_scribe.presentation.fire_data.FireSummary](
         for identity, fire in fires_by_identity.items()
     }
     ownership = resolved_ownership(fires_by_identity, previous, signatures, sources)
-    keys = ownership.keys
-    perimeters = {keys[identity]: values for identity, values in signatures.items()}
-    report = peri_scribe.report.gathering.report_from_fires(
+    perimeters = {
+        ownership.keys[identity]: values for identity, values in signatures.items()
+    }
+    records: list[dict[str, object]] = []
+    for entry in gathering.report_from_fires(
         fires,
         scores,
         year_directory,
-    )
-    records: list[dict[str, object]] = []
-    for entry in report.fire_details:
-        identity = peri_scribe.presentation.selection.fire_area_key(
+    ).fire_details:
+        identity = selection.fire_area_key(
             entry.identifier,
             entry.name,
             entry.component_id,
         )
-        key = keys[identity]
+        key = ownership.keys[identity]
         fire = fires_by_identity[identity]
         inherited = frozenset(
             signature
@@ -609,17 +664,14 @@ def prepare_updates[Fire: peri_scribe.presentation.fire_data.FireSummary](
         records.append({
             "log_identity": [identity_kind, identifier],
             "identifier": (
-                identifier
-                if identity_kind
-                == peri_scribe.presentation.selection.IDENTIFIER_AREA_KEY
-                else None
+                identifier if identity_kind == selection.IDENTIFIER_AREA_KEY else None
             ),
             "name": entry.name,
             "location": entry.location,
             "mapped_area": peri_scribe.logging.log_value(
                 fire.perimeters[-1].measured_area.to("acres"),
             ),
-            "preview": peri_scribe.previews.fire_preview(fire),
+            "preview": previews.fire_preview(fire),
         })
     return PreparedUpdates(
         records=tuple(records),
@@ -635,17 +687,17 @@ def prepare_updates[Fire: peri_scribe.presentation.fire_data.FireSummary](
 
 def acknowledged_state(
     fires: typing.Mapping[
-        peri_scribe.presentation.selection.AreaKey,
-        peri_scribe.presentation.fire_data.FireSummary,
+        selection_types.AreaKey,
+        fire_data_types.FireSummary,
     ],
     previous: State,
     ownership: Ownership,
     signatures: typing.Mapping[
-        peri_scribe.presentation.selection.AreaKey,
+        selection_types.AreaKey,
         frozenset[str],
     ],
     sources: typing.Mapping[
-        peri_scribe.presentation.selection.AreaKey,
+        selection_types.AreaKey,
         frozenset[str],
     ],
 ) -> State:
@@ -661,11 +713,14 @@ def acknowledged_state(
     Returns:
         The checkpoint to publish together with the prepared update records.
     """
+    models = importlib.import_module("peri_scribe.models")
+    gathering = importlib.import_module("peri_scribe.report.gathering")
+
     ordered = sorted(fires.values(), key=mapping_priority)
     aliases = previous.aliases | {
         alias: ownership.keys[identity]
         for fire in ordered
-        for identity in [peri_scribe.report.gathering.fire_identity(fire)]
+        for identity in [gathering.fire_identity(fire)]
         for alias in identity_keys(fire)
     }
     lineage = history_lineage(previous)
@@ -685,7 +740,7 @@ def acknowledged_state(
     for identity, fire in fires.items():
         key = ownership.keys[identity]
         names[key] = names.get(key, frozenset()) | {
-            peri_scribe.models.normalize_fire_name(fire.name),
+            models.normalize_fire_name(fire.name),
         }
     return State(
         perimeters=acknowledged,

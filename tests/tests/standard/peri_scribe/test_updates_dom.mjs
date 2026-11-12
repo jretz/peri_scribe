@@ -26,6 +26,43 @@ test("browser visible rectangles measure only the target and respect hidden ance
     const page = await viewer.page([viewer.update("Timber", 120)]);
     const row = page.row("Timber");
     const name = row.querySelector(".fire-name");
+    const group = page.group(1);
+    const following = page.group(2);
+    const body = group.querySelector(".group-body");
+    const list = group.querySelector(".updates");
+    const sort = group.querySelector(".sort-order");
+    const groupTop = group.getBoundingClientRect().top;
+    const followingTop = following.getBoundingClientRect().top;
+    const bodyHeight = body.getBoundingClientRect().height;
+
+    body.hidden = true;
+    assert.equal(following.getBoundingClientRect().top, followingTop - bodyHeight);
+    body.hidden = false;
+    group.hidden = true;
+    assert.equal(following.getBoundingClientRect().top, groupTop);
+    group.hidden = false;
+    page.document.textWidths.set(sort.textContent, 1000);
+    assert.equal(following.getBoundingClientRect().top, followingTop + 28);
+    page.document.textWidths.delete(sort.textContent);
+    page.document.headingWidths.set("1", 1200);
+    assert.equal(group.getBoundingClientRect().width, 1200);
+    page.document.headingWidths.delete("1");
+
+    page.anchorGroup(1);
+    assert.equal(following.getBoundingClientRect().top, followingTop - groupTop);
+    page.anchorGroup(null);
+    row.classList.remove("update");
+    assert.equal(following.getBoundingClientRect().top, followingTop - (96 - 52));
+    row.classList.add("update");
+    following.querySelector(".updates").append(row);
+    assert.equal(following.getBoundingClientRect().top, followingTop - 96);
+    list.append(row);
+    assert.equal(following.getBoundingClientRect().top, followingTop);
+    list.textContent = "";
+    assert.equal(following.getBoundingClientRect().top, followingTop - 96);
+    list.append(row);
+    assert.equal(following.getBoundingClientRect().top, followingTop);
+
     const expected = name.getBoundingClientRect();
     context.mock.method(page.document, "bounds", node => {
       assert.ok(node === name, "Only the requested rectangle needs measuring.");

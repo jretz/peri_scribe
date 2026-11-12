@@ -5,6 +5,7 @@ GEOS_VERSION = "3.15.0"
 GEOS_PREFIX = "{{config_root}}/.cache/geos/{{env.GEOS_VERSION}}"
 GEOS_INCLUDE_PATH = "{{env.GEOS_PREFIX}}/include"
 GEOS_LIBRARY_PATH = "{{env.GEOS_PREFIX}}/lib"
+PKG_CONFIG_PATH = "{{env.GEOS_PREFIX}}/lib/pkgconfig{% if env.PKG_CONFIG_PATH is defined %}:{{env.PKG_CONFIG_PATH}}{% endif %}"
 LDFLAGS = '{{env.LDFLAGS | default(value="")}} -Wl,-rpath,"{{env.GEOS_LIBRARY_PATH}}"'
 MAMBA_ROOT_PREFIX = "{{config_root}}/.cache/micromamba"
 # Shapely builds embed the GEOS library path, so caches must distinguish checkouts.

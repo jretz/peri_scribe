@@ -225,7 +225,7 @@ def batch_cases() -> tuple[Resolution, ...]:
     Returns:
         Complete resolvers with varied identified/name-only claimants and known owners.
     """
-    result = []
+    result: dict[tuple[object, ...], Resolution] = {}
     for index, case in enumerate(tests.formal.helpers.identity.cases()):
         for variant in (index % 8, (index + 3) % 8):
             fires, previous, signatures, sources, keys = (
@@ -260,17 +260,26 @@ def batch_cases() -> tuple[Resolution, ...]:
                 changed_fires[changed] = fire
                 changed_signatures[changed] = signatures[identity]
                 changed_sources[changed] = sources[identity]
-            result.append(
+            checkpoint = previous.model_copy(
+                update={"aliases": aliases, "perimeters": perimeters},
+            )
+            # A variant can change only an inactive claimant. Preserve input ordering
+            # and every checkpoint field when recognizing identical resolver inputs.
+            result.setdefault(
+                (
+                    tuple(changed_fires.items()),
+                    checkpoint.model_dump_json(),
+                    tuple(changed_signatures.items()),
+                    tuple(changed_sources.items()),
+                ),
                 Resolution(
                     fires=changed_fires,
-                    previous=previous.model_copy(
-                        update={"aliases": aliases, "perimeters": perimeters},
-                    ),
+                    previous=checkpoint,
                     signatures=changed_signatures,
                     sources=changed_sources,
                 ),
             )
-    return tuple(result)
+    return tuple(result.values())
 
 
 def assert_resolution(
@@ -307,16 +316,21 @@ def assert_resolution(
     return actual
 
 
-def check_batches() -> None:
-    """Every expected owner comes from the complete executable formal resolver."""
+def check_batches() -> int:
+    """Compare every distinct complete batch with the executable formal resolver.
+
+    Returns:
+        Number of distinct batches checked in both orders and on retry.
+    """
     cases = batch_cases()
     symbols = [Symbols() for _case in cases]
-    expected = tests.formal.helpers.oracle.evaluate(
+    expected = tests.formal.helpers.oracle.evaluate_distinct(
         [case.command(table) for case, table in zip(cases, symbols, strict=True)],
         executable="oracleOwnership",
     )
     for case, table, outcome in zip(cases, symbols, expected, strict=True):
         assert_resolution(case, table, outcome)
+    return len(cases)
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -484,12 +498,6 @@ def checkpoint_expectations(
             )
             fields.append((kind, observed.get(owner, frozenset())))
         assert set(observed) == set(previous) | set(new)
-    results = tests.formal.helpers.oracle.evaluate(
-        commands,
-        executable="oracleOwnership",
-    )
-    for (kind, observed), expected in zip(fields, results, strict=True):
-        assert {symbols.token(kind, value) for value in observed} == set(expected)
     new_aliases = {
         serialized(("id", identifier))
         if identifier is not None
@@ -510,33 +518,31 @@ def checkpoint_expectations(
         ),
         symbols.sequence("key", queries),
     ))
-    expected_aliases = tests.formal.helpers.oracle.evaluate(
-        [alias_command],
+    commands.append(alias_command)
+    commands.extend(
+        "|".join((
+            "novel",
+            symbols.sequence(
+                "signature",
+                sorted(case.previous.perimeters.get(ownership[identity], ())),
+            ),
+            symbols.sequence("signature", sorted(case.signatures[identity])),
+        ))
+        for identity in sorted(case.fires)
+    )
+    results = tests.formal.helpers.oracle.evaluate(
+        commands,
         executable="oracleOwnership",
-    )[0]
+    )
+    for (kind, observed), expected in zip(fields, results[: len(fields)], strict=True):
+        assert {symbols.token(kind, value) for value in observed} == set(expected)
+    expected_aliases = results[len(fields)]
     assert set(actual.state.aliases) == set(queries)
     assert (
         tuple(symbols.token("key", actual.state.aliases[alias]) for alias in queries)
         == expected_aliases
     )
-    novel = (
-        tests.formal.helpers.oracle.evaluate(
-            [
-                "|".join((
-                    "novel",
-                    symbols.sequence(
-                        "signature",
-                        sorted(case.previous.perimeters.get(ownership[identity], ())),
-                    ),
-                    symbols.sequence("signature", sorted(case.signatures[identity])),
-                ))
-                for identity in sorted(case.fires)
-            ],
-            executable="oracleOwnership",
-        )
-        if case.fires
-        else []
-    )
+    novel = results[len(fields) + 1 :]
     expected_records = {
         ownership[identity]
         for identity, (changed,) in zip(sorted(case.fires), novel, strict=True)

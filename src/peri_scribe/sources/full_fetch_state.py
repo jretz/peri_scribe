@@ -8,16 +8,13 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import importlib
 import json
 import pathlib
 import typing
 
-import structlog
-
 import peri_scribe.sources.snapshots
 
-
-logger = structlog.get_logger()
 
 STATE_FILENAME = "fetch_state.json"
 STATE_VERSION = "2026-09-06"
@@ -166,6 +163,7 @@ def malformed_state_error(path: pathlib.Path, error: Exception) -> typing.Never:
         ValueError: Always, with a message describing the unusable state.
     """
     message = f"Malformed fetch state at {path}: {error}"
+    logger = importlib.import_module("structlog").get_logger()
     logger.error("Malformed fetch state", path=path, error=str(error), exc_info=error)
     raise ValueError(message) from error
 

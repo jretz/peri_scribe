@@ -37,7 +37,12 @@ class Session(tests.helpers.textual.Session[peri_scribe.monitor.app.MonitorApp])
         admits tab workers and filter preparation; joining both kinds of work keeps
         their final table replacement and cursor movement ahead of assertions.
         """
-        await self.refresh()
+        await self.pilot.pause(0)
+        # Widget controls can queue messages for the app during the pilot's drain.
+        dispatched = asyncio.Event()
+        assert self.app.call_later(dispatched.set)
+        async with asyncio.timeout(5):
+            await dispatched.wait()
         await self.app.workers.wait_for_complete()
         await self.app.controller.flush_display()
         await self.refresh()
@@ -54,6 +59,17 @@ class Session(tests.helpers.textual.Session[peri_scribe.monitor.app.MonitorApp])
         """
         self.app.action_view(name)
         await self.settle()
+
+    async def show_view_from_pipeline(self, name: str) -> None:
+        """Start a pane's layout probe from the fixture's initial tab.
+
+        Args:
+            name: An as-yet unvisited tab, or Pipeline itself.
+        """
+        views = self.app.query_one("#views", textual.widgets.TabbedContent)
+        if views.active != "pipeline":
+            await self.show_view("pipeline")
+        await self.show_view(name)
 
 
 async def pause_clock(app: peri_scribe.monitor.app.MonitorApp) -> None:
@@ -74,16 +90,19 @@ async def pause_clock(app: peri_scribe.monitor.app.MonitorApp) -> None:
     app.controller.cosmetic_task = None
 
 
-@pytest_asyncio.fixture
-async def monitor_session(
-    tmp_path: pathlib.Path,
+@contextlib.asynccontextmanager
+async def mount_monitor(
+    directory: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,
-) -> typing.AsyncIterator[Session]:
+    *,
+    size: tuple[int, int] = tests.helpers.textual.DEFAULT_TERMINAL_SIZE,
+) -> typing.AsyncGenerator[Session]:
     """Control observation, cosmetic timers, and terminal capabilities explicitly.
 
     Args:
-        tmp_path: The current test's isolated filesystem.
+        directory: The current test's initialized year directory.
         monkeypatch: Fixes color support and pauses automatic file reads.
+        size: The terminal width and height in cells.
 
     Yields:
         A headless terminal running on the current test's event loop.
@@ -99,18 +118,17 @@ async def monitor_session(
         "clock",
         unittest.mock.AsyncMock(),
     )
-    directory = tmp_path / "2026"
-    directory.mkdir()
     app = peri_scribe.monitor.app.MonitorApp(
         directory,
         directory / "report.md",
         tests.helpers.factories.peri_scribe.monitor.events.BRANCHES,
     )
+    app.initial_view = "pipeline"
     with time_machine.travel(
         tests.helpers.factories.peri_scribe.monitor.status.NOW,
         tick=False,
     ):
-        async with tests.helpers.textual.mounted(app) as session:
+        async with tests.helpers.textual.mounted(app, size=size) as session:
             await pause_clock(app)
             monitor = Session(
                 app=app,
@@ -118,11 +136,31 @@ async def monitor_session(
                 directory=directory,
                 clock=app.controller.session.tick,
             )
-            await monitor.show_view("pipeline")
+            await monitor.refresh()
             if app.controller.background is not None:
                 await app.controller.background
             await monitor.settle()
             yield monitor
+
+
+@pytest_asyncio.fixture
+async def monitor_session(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> typing.AsyncIterator[Session]:
+    """Mount a fresh monitor with an empty year and settle its initial content.
+
+    Args:
+        tmp_path: The current test's isolated filesystem.
+        monkeypatch: Fixes color support and pauses automatic file reads.
+
+    Yields:
+        A headless terminal running on the current test's event loop.
+    """
+    directory = tmp_path / "2026"
+    directory.mkdir()
+    async with mount_monitor(directory, monkeypatch) as monitor:
+        yield monitor
 
 
 async def remove_views(app: peri_scribe.monitor.app.MonitorApp) -> None:
@@ -184,42 +222,51 @@ def color_session(
 
 
 @pytest_asyncio.fixture
-async def scrolling_session(monitor_session: Session) -> Session:
+async def scrolling_session(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> typing.AsyncIterator[Session]:
     """Give every pane enough content to exercise its scrollbar at several positions.
 
     Args:
-        monitor_session: The current test's isolated terminal session.
+        tmp_path: The current test's isolated filesystem.
+        monkeypatch: Fixes color support and pauses automatic file reads.
 
-    Returns:
+    Yields:
         A populated terminal whose panes all overflow vertically.
     """
+    directory = tmp_path / "2026"
+    # Keep the full width for the stripe and edge checks.
+    size = (120, 32)
+    run_count = 34
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
-        monitor_session.directory,
+        directory,
         *(
             tests.helpers.factories.peri_scribe.monitor.events.record(
                 "Starting command",
                 command="run",
                 run_id=str(number),
             )
-            for number in range(50)
+            for number in range(run_count)
         ),
         *(
             tests.helpers.factories.peri_scribe.monitor.events.record(
                 f"Event {number}",
-                run_id="49",
+                run_id=str(run_count - 1),
             )
-            for number in range(100)
+            for number in range(run_count)
         ),
     )
-    content = "\n\n".join(f"Paragraph {number}" for number in range(100))
-    monitor_session.app.report_path.write_text(content)
-    await monitor_session.app.refresh_files()
-    for selector in ("#details", "#decisions"):
-        await tests.helpers.textual.invoke(
-            monitor_session.app.query_one(selector, textual.widgets.Static).update,
-            content,
-        )
-    return monitor_session
+    # The screenshot assertion identifies the last paragraph by its text.
+    content = "\n\n".join(f"Paragraph {number}" for number in (*range(20), 99))
+    (directory / "report.md").write_text(content)
+    async with mount_monitor(directory, monkeypatch, size=size) as monitor:
+        for selector in ("#details", "#decisions"):
+            await tests.helpers.textual.invoke(
+                monitor.app.query_one(selector, textual.widgets.Static).update,
+                content,
+            )
+        yield monitor
 
 
 @pytest.fixture

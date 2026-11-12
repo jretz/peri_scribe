@@ -19,7 +19,7 @@ committed validators and displayed data, and preservation of the snapshot and va
 after failure or HTTP 304. HTTP 304 replies never read a body and are errors when the
 request did not send a validator. Missing ETags require unconditional GETs.
 
-The liveness configuration checks that a healthy retry eventually displays the stable
+The temporal property checks that a healthy retry eventually displays the stable
 server generation, assuming requests and polling progress. The first round may fail; the
 second round is healthy. This is a bounded recovery claim, not a guarantee against an
 indefinitely failing server. Healthy responses must change the validator when the cached
@@ -27,10 +27,12 @@ content is no longer semantically equivalent. A server that reuses an ETag for
 substantive changes and keeps returning HTTP 304 is outside the recovery guarantee; the
 viewer cannot detect that server error through conditional GETs alone.
 
-Both configurations explore 161 states from 18 initial combinations. Conformance replays
+One configuration checks safety and liveness across 161 states from 18 initial
+combinations. Conformance replays
 all 36 completed first-round outcomes, with and without overlapping polling, against the
-shipped inline JavaScript through the existing browser double. Each outcome runs with
-quoted and `W/`-prefixed ETag fixtures, for 72 concrete executions. It checks the request
+shipped inline JavaScript through the existing browser double. Outcomes with an ETag run
+with both quoted and `W/`-prefixed validators. Outcomes without an ETag run once, for 60
+concrete executions across the matrix. It checks the request
 method and validator, body-read and failure counts, and displayed snapshot. The next
 healthy poll must send the retained validator and display the server generation. Further
 polling must continue to send that generation's validator. Real DOM rendering, browser
@@ -57,11 +59,16 @@ exact wall-clock scheduling guarantee. Monotonic timer progress is an environmen
 assumption; date formatting and wall-clock adjustments do not determine the deadline.
 
 Conformance replays every bounded history against the shipped watchdog and request
-wrapper with HTTP 200, HTTP 304, and HTTP 503 replies. It checks the displayed warning and
+wrapper. Histories that receive a response run with HTTP 200, HTTP 304, and HTTP 503.
+Histories without a response run once. It checks the displayed warning and
 last-response timestamp, including initial silence, rejection, recovery, and delayed
-dispatch. The model also covers an indefinitely pending request through time-only
-transitions. Native browser timeout implementation, unbounded histories, and the visual
-prominence of the warning are outside this finite guarantee.
+dispatch. The harness compiles the full shipped script once in a shared VM realm for
+JavaScript built-ins. The script holds its mutable state in local variables and supplied
+browser objects. Each replay initializes a fresh closure with independent document
+state, timers, clock, and network responses. The model also covers an indefinitely
+pending request through time-only transitions. Native browser timeout implementation,
+unbounded histories, and the visual prominence of the warning are outside this finite
+guarantee.
 
 ## Log cursors and context
 
@@ -69,7 +76,32 @@ prominence of the warning are outside this finite guarantee.
 states enumerate every legal trace through seven steps, up to three distinct records,
 one rotation, complete writes, partial writes, polls, and detectable truncation. Properties
 require exactly-once delivery of completed records and complete delivery after polling.
-Conformance replays every trace using actual temporary files and retained file handles.
+Conformance starts a fresh follower and actual temporary files for each of the 2,668
+traces that have no longer extension. It checks delivery at every prefix, including
+the empty trace, and requires the checked prefix set to match all 4,299 TLC traces.
+
+For example, `partial, poll, truncate, poll, write, poll` is checked immediately before
+the seventh step of each extension. The same file handles carry the cursor offset and
+buffer through that step. The prefix composition argument assumes a fixed initial
+filesystem and deterministic fixture operations. File identities vary across fresh
+directories, so the teardown check compares each retained cursor with its own current
+file's identity. Every replay of a shared prefix must agree with its checked delivery.
+See [`ReplayPrefixes.run_append`](lean/PeriScribe/ReplayPrefixes.lean).
+
+The modeled files drain in one poll. At teardown each follower holds one open stream,
+either on the current file or on the renamed file awaiting its next poll. The terminal
+replays exercise both file roles with and without buffered partial data. Each replay
+checks that `Follower.close` empties the cursor map and closes the held stream. When
+readers may close during concurrent requests is checked separately. See the
+[session lifecycle tests](../tests/standard/peri_scribe/monitor/test_session.py) and
+[task conformance](conformance/test_monitor_tasks.py).
+
+For P checked traces of length up to D, the input index retains O(PD) trace data. The
+maximal replays perform 18,676 modeled steps across 2,668 live followers, with
+O(D²) tuple slicing per follower for prefix lookup. The assessment `(2, 0, 1, 2, 1)`
+totals 6. Action order, prefix indexing, and descriptor cleanup account for the score.
+See the [conformance test](conformance/test_monitor_reader.py) and
+[replay helper](helpers/observers.py).
 
 The initial file is already discovered. Rotation retains its handle and the old writer
 has finished writing before that handle is drained and retired. A truncation preserves

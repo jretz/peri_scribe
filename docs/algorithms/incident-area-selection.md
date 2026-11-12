@@ -90,6 +90,13 @@ Confirmed reports with the same report time count only once. All missing report 
 also count as one value. Thus an unknown report time paired with one known time can
 satisfy the default count of two.
 
+The event sweep carries the latest accepted report and a set of qualifying report times
+for the current survey. The survey fixes the rapid-growth threshold. Each report
+can contribute its formal time once when it arrives. A fresh survey clears the set after
+using the latest report for its baseline. Earlier reports, including one observed at
+the same time as the survey, fall outside the strictly later confirmation window.
+A nonsurvey mapping or a synthetic deadline keeps the existing set.
+
 Synthetic deadlines advance eligibility without inventing evidence: the output's
 `time` can be day three while `observation_time` remains day two. No deadline is added
 beyond the observed horizon, and the selector never consults wall-clock time.
@@ -135,9 +142,10 @@ prefer measured geometry whenever available, then supplied acreage.
 
 For M mappings and R reports, sorting costs O(M log M + R log R), with O(M + R) event and
 result storage. Mapping footprint comparisons add geometry-overlay/measurement costs.
-The current implementation copies known-report tuples and scans report confirmations at
-candidate events, so report handling can be O(R² + MR), rather than a guaranteed linear
-sweep. Reusing `PreparedHistory` avoids repeating the same decision for multiple consumers.
+After sorting, the sweep does expected O(M + R) report work. Each accepted report is
+examined at its observation time, and clearing confirmation sets costs at most the total
+work to populate them. The current survey needs O(K) space for K distinct qualifying
+report times. Reusing `PreparedHistory` shares the same decision across consumers.
 
 The thresholds encode current policy, not an accuracy guarantee about source reports.
 Capture parsing, geodesic kernels, valid geometry, consistent time zones, and source truth
@@ -158,6 +166,8 @@ and [area properties](../../tests/tests/property_based/peri_scribe/test_areas.py
 [AreaPolicy](../../tests/formal/lean/PeriScribe/AreaPolicy.lean),
 [AreaHistory](../../tests/formal/lean/PeriScribe/AreaHistory.lean), and
 [survey evidence](../../tests/formal/lean/evidence.md) cover the policy folds.
+The area history proofs connect the latest report and current confirmation count to a
+complete rescan, including the reset at a fresh survey.
 Bridges: [incident rules](../../tests/formal/conformance/test_incidents.py),
 [complete incident histories](../../tests/formal/conformance/test_incident_histories.py),
 [areas](../../tests/formal/conformance/test_areas.py), and

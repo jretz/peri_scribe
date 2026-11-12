@@ -17,13 +17,13 @@ import peri_scribe.monitor.rendering
 import peri_scribe.monitor.session
 import peri_scribe.monitor.status_widgets
 import peri_scribe.monitor.tasks
-import peri_scribe.monitor.widgets
 import tests.helpers.doubles.peri_scribe.monitor.controller
 import tests.helpers.doubles.peri_scribe.monitor.synchronization
 import tests.helpers.doubles.peri_scribe.monitor.tasks
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.factories.peri_scribe.monitor.status
 import tests.helpers.fixtures.peri_scribe.monitor.controller
+import tests.helpers.fixtures.peri_scribe.monitor.presentation
 
 
 if typing.TYPE_CHECKING:
@@ -66,6 +66,8 @@ async def test_controller_close_before_start_rejects_late_presentation_requests(
     await controller.close()
     await controller.load_older()
     controller.show_health(tests.helpers.factories.peri_scribe.monitor.status.NOW)
+    controller.schedule_display(requested=True)
+    peri_scribe.monitor.rendering.reveal_diagnostic_cursor(unmounted_monitor, "logs")
     assert not controller.available()
     assert controller.display_task is None
 
@@ -115,18 +117,23 @@ async def test_controller_begin_background_prepares_hidden_content_before_naviga
     assert all(len(rows) == expected_rows for rows in app.rows.values())
     assert app.rendered_report.content == "# The complete report\n"
     version = controller.session.snapshot.version
+    rows = app.rows.copy()
     await controller.activate("logs")
     await controller.activate("report")
+    await initial_monitor.refresh()
     assert controller.session.snapshot.version == version
+    assert all(app.rows[table] is evidence for table, evidence in rows.items())
 
 
 @pytest.mark.parametrize("name", ["pipeline", "report"])
 @pytest.mark.asyncio
 async def test_controller_activate_before_paint_does_not_start_other_content(
-    initial_monitor: tests.helpers.fixtures.peri_scribe.monitor.controller.Session,
+    component_initial_monitor: (
+        tests.helpers.fixtures.peri_scribe.monitor.presentation.Session
+    ),
     name: str,
 ) -> None:
-    controller = initial_monitor.app.controller
+    controller = component_initial_monitor.app.controller
     await controller.activate(name)
     assert not controller.presented
     assert controller.background is None
@@ -138,7 +145,9 @@ async def test_controller_activate_before_paint_does_not_start_other_content(
 @pytest.mark.parametrize("name", ["logs", "report"])
 @pytest.mark.asyncio
 async def test_controller_activate_joins_background_content_already_admitted(
-    initial_monitor: tests.helpers.fixtures.peri_scribe.monitor.controller.Session,
+    component_initial_monitor: (
+        tests.helpers.fixtures.peri_scribe.monitor.presentation.Session
+    ),
     monkeypatch: pytest.MonkeyPatch,
     name: str,
 ) -> None:
@@ -152,11 +161,11 @@ async def test_controller_activate_joins_background_content_already_admitted(
         kind=kind,
     )
     monkeypatch.setattr(peri_scribe.monitor.session, "execute", gate.execute)
-    controller = initial_monitor.app.controller
+    controller = component_initial_monitor.app.controller
     with tests.helpers.doubles.peri_scribe.monitor.synchronization.release_on_exit(
         gate.released,
     ):
-        initial_monitor.begin_background()
+        component_initial_monitor.begin_background()
         await gate.started.wait()
         navigation = asyncio.create_task(controller.activate(name))
         await asyncio.sleep(0)
@@ -172,10 +181,12 @@ async def test_controller_activate_joins_background_content_already_admitted(
 
 @pytest.mark.asyncio
 async def test_controller_prepare_content_promotes_queued_work_without_duplicate_read(
-    initial_monitor: tests.helpers.fixtures.peri_scribe.monitor.controller.Session,
+    component_initial_monitor: (
+        tests.helpers.fixtures.peri_scribe.monitor.presentation.Session
+    ),
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    controller = initial_monitor.app.controller
+    controller = component_initial_monitor.app.controller
     gate = tests.helpers.doubles.peri_scribe.monitor.controller.ContentGate(
         operation=peri_scribe.monitor.session.execute,
         kind=peri_scribe.monitor.session.RefreshHealth,
@@ -235,17 +246,21 @@ async def test_controller_prepare_content_releases_superseded_complete_snapshots
 
 @pytest.mark.asyncio
 async def test_controller_prepare_display_discards_obsolete_prepared_rows(
-    initial_monitor: tests.helpers.fixtures.peri_scribe.monitor.controller.Session,
+    component_initial_monitor: (
+        tests.helpers.fixtures.peri_scribe.monitor.presentation.Session
+    ),
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app = initial_monitor.app
+    app = component_initial_monitor.app
     await app.controller.activate("pipeline")
     preparation = tests.helpers.doubles.peri_scribe.monitor.tasks.PausedCall(
         function=peri_scribe.monitor.display.prepare,
     )
-    applied = unittest.mock.AsyncMock(wraps=peri_scribe.monitor.rendering.apply_records)
+    applied = unittest.mock.AsyncMock(
+        wraps=component_initial_monitor.presentation.records,
+    )
     monkeypatch.setattr(peri_scribe.monitor.display, "prepare", preparation)
-    monkeypatch.setattr(peri_scribe.monitor.rendering, "apply_records", applied)
+    monkeypatch.setattr(component_initial_monitor.presentation, "records", applied)
     app.controller.schedule_display()
     try:
         assert await asyncio.to_thread(preparation.started.wait, 5)
@@ -253,8 +268,8 @@ async def test_controller_prepare_display_discards_obsolete_prepared_rows(
             operation=app.render_state,
         )
         monkeypatch.setattr(app, "render_state", change)
-        stream = app.query_one("#pipeline-stream", peri_scribe.monitor.widgets.Stream)
-        stream.query_one(textual.widgets.Input).value = "Beta"
+        component_initial_monitor.presentation.queries = ("Beta", "")
+        app.render_state()
         await asyncio.wait_for(change.dispatched.wait(), 5)
     finally:
         preparation.release.set()
@@ -267,15 +282,17 @@ async def test_controller_prepare_display_discards_obsolete_prepared_rows(
 
 @pytest.mark.asyncio
 async def test_controller_prepare_display_repeats_after_superseded_widget_application(
-    initial_monitor: tests.helpers.fixtures.peri_scribe.monitor.controller.Session,
+    component_initial_monitor: (
+        tests.helpers.fixtures.peri_scribe.monitor.presentation.Session
+    ),
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    app = initial_monitor.app
+    app = component_initial_monitor.app
     await app.controller.activate("pipeline")
     gate = tests.helpers.doubles.peri_scribe.monitor.controller.RenderingGate(
-        operation=peri_scribe.monitor.rendering.apply_records,
+        operation=component_initial_monitor.presentation.records,
     )
-    monkeypatch.setattr(peri_scribe.monitor.rendering, "apply_records", gate.apply)
+    monkeypatch.setattr(component_initial_monitor.presentation, "records", gate.apply)
     with tests.helpers.doubles.peri_scribe.monitor.synchronization.release_on_exit(
         gate.released,
     ):
@@ -285,14 +302,16 @@ async def test_controller_prepare_display_repeats_after_superseded_widget_applic
             operation=app.render_state,
         )
         monkeypatch.setattr(app, "render_state", change)
-        stream = app.query_one("#pipeline-stream", peri_scribe.monitor.widgets.Stream)
-        stream.query_one(textual.widgets.Input).value = "Beta"
+        component_initial_monitor.presentation.queries = ("Beta", "")
+        app.render_state()
         await asyncio.wait_for(change.dispatched.wait(), 5)
     await app.controller.flush_display()
     assert gate.generations[0] < gate.generations[-1]
     assert app.controller.prepared_generation == app.controller.generation
-    table = stream.query_one(peri_scribe.monitor.widgets.EventTable)
-    assert [event.message for event in app.rows[table].values()] == ["Beta event"]
+    assert [
+        item.event.message
+        for item in component_initial_monitor.presentation.prepared[-1].pipeline
+    ] == ["Beta event"]
 
 
 @pytest.mark.asyncio
@@ -358,10 +377,12 @@ async def test_controller_schedule_display_surfaces_completed_preparation_failur
 
 @pytest.mark.asyncio
 async def test_controller_accept_preserves_paused_run_and_event_snapshot(
-    initial_monitor: tests.helpers.fixtures.peri_scribe.monitor.controller.Session,
+    component_initial_monitor: (
+        tests.helpers.fixtures.peri_scribe.monitor.presentation.Session
+    ),
 ) -> None:
-    app = initial_monitor.app
-    initial_monitor.begin_background()
+    app = component_initial_monitor.app
+    component_initial_monitor.begin_background()
     assert app.controller.background is not None
     await app.controller.background
     app.following = False
@@ -380,25 +401,32 @@ async def test_controller_accept_preserves_paused_run_and_event_snapshot(
     assert app.controller.snapshot.records.runs[-1].identifier == "later-run"
     assert all(
         event.fields.get("run_id") == selected
-        for rows in app.rows.values()
-        for event in rows.values()
+        for item in (
+            *component_initial_monitor.presentation.prepared[-1].pipeline,
+            *component_initial_monitor.presentation.prepared[-1].logs,
+        )
+        for event in (item.event,)
     )
 
 
 @pytest.mark.asyncio
 async def test_controller_close_discards_worker_completion_after_detachment(
-    initial_monitor: tests.helpers.fixtures.peri_scribe.monitor.controller.Session,
+    component_initial_monitor: (
+        tests.helpers.fixtures.peri_scribe.monitor.presentation.Session
+    ),
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    controller = initial_monitor.app.controller
+    controller = component_initial_monitor.app.controller
     await controller.activate("pipeline")
     controller.cosmetic_task = asyncio.create_task(controller.watch_presentation())
     preparation = tests.helpers.doubles.peri_scribe.monitor.tasks.PausedCall(
         function=peri_scribe.monitor.display.prepare,
     )
-    applied = unittest.mock.AsyncMock(wraps=peri_scribe.monitor.rendering.apply_records)
+    applied = unittest.mock.AsyncMock(
+        wraps=component_initial_monitor.presentation.records,
+    )
     monkeypatch.setattr(peri_scribe.monitor.display, "prepare", preparation)
-    monkeypatch.setattr(peri_scribe.monitor.rendering, "apply_records", applied)
+    monkeypatch.setattr(component_initial_monitor.presentation, "records", applied)
     controller.schedule_display()
     try:
         assert await asyncio.to_thread(preparation.started.wait, 5)
@@ -415,18 +443,20 @@ async def test_controller_close_discards_worker_completion_after_detachment(
 
 @pytest.mark.asyncio
 async def test_controller_show_health_updates_ages_without_domain_work(
-    initial_monitor: tests.helpers.fixtures.peri_scribe.monitor.controller.Session,
+    component_initial_monitor: (
+        tests.helpers.fixtures.peri_scribe.monitor.presentation.Session
+    ),
 ) -> None:
-    controller = initial_monitor.app.controller
-    pane = initial_monitor.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
-    previous = pane.view
+    controller = component_initial_monitor.app.controller
+    previous = component_initial_monitor.presentation.health_views[-1]
     snapshot = controller.session.snapshot
     now = tests.helpers.factories.peri_scribe.monitor.status.NOW
     controller.show_health(now + datetime.timedelta(minutes=1))
-    await initial_monitor.refresh()
-    assert pane.view is not None
-    assert previous is not None
-    assert pane.view.metrics[2].text != previous.metrics[2].text
+    await component_initial_monitor.refresh()
+    assert (
+        component_initial_monitor.presentation.health_views[-1].metrics[2].text
+        != previous.metrics[2].text
+    )
     assert controller.session.snapshot is snapshot
     assert not controller.content
 
@@ -434,14 +464,16 @@ async def test_controller_show_health_updates_ages_without_domain_work(
 @pytest.mark.parametrize("detached", [False, True])
 @pytest.mark.asyncio
 async def test_controller_watch_presentation_redraws_only_while_attached(
-    initial_monitor: tests.helpers.fixtures.peri_scribe.monitor.controller.Session,
+    component_initial_monitor: (
+        tests.helpers.fixtures.peri_scribe.monitor.presentation.Session
+    ),
     monkeypatch: pytest.MonkeyPatch,
     *,
     detached: bool,
 ) -> None:
-    controller = initial_monitor.app.controller
+    controller = component_initial_monitor.app.controller
     if detached:
-        await initial_monitor.app.query_one("#views").remove()
+        component_initial_monitor.presentation.attached = False
     shown = unittest.mock.Mock(wraps=controller.show_health)
     monkeypatch.setattr(controller, "show_health", shown)
     with monkeypatch.context() as patch:

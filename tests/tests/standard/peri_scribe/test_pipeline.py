@@ -16,6 +16,7 @@ import peri_scribe.sources.catalog
 import peri_scribe.sources.digests
 import peri_scribe.sources.external_data
 import peri_scribe.sources.external_sources
+import peri_scribe.supervision
 import tests.helpers.doubles.peri_scribe.main_run
 import tests.helpers.doubles.peri_scribe.main_source
 import tests.helpers.doubles.peri_scribe.main_write_reports
@@ -27,6 +28,10 @@ from measurement_units import units
 
 if typing.TYPE_CHECKING:
     import structlog.testing
+
+
+def test_run_resolves_to_registered_supervisor_command() -> None:
+    assert peri_scribe.pipeline.run is peri_scribe.supervision.run
 
 
 def test_stored_evacuations_digest_uses_evacuations_output(

@@ -11,10 +11,10 @@ is an error, and its bytes are retained so the failure can be investigated.
 
 The contract spans [fire_updates.py](../../src/peri_scribe/fire_updates.py),
 [fire_update_records.py](../../src/peri_scribe/fire_update_records.py), journal-aware
-[logging.py](../../src/peri_scribe/logging.py), and its caller
-[kml/builder.py](../../src/peri_scribe/kml/builder.py). The year writer and log-directory
-writer locks exclude cooperating writers. Individual replacements are atomic across
-process interruption. The protocol does not claim power-loss durability.
+[logging.py](../../src/peri_scribe/logging.py), and the publication sequence in
+[kml/persistence.py](../../src/peri_scribe/kml/persistence.py). The year writer and
+log-directory writer locks exclude cooperating writers. Individual replacements are
+atomic across process interruption. The protocol does not claim power-loss durability.
 
 ## Complexity assessment
 
@@ -31,11 +31,14 @@ arbitrary unjournaled publication attempts.
 
 ## Approach and invariants
 
-Preparation resolves [history ownership](history-ownership.md) and freezes records without
-acknowledging them. Each record includes a WebP data URL from the prepared mapping, or
-an explicit null when there is no drawable preview. Keeping the image in the batch
-preserves the map from that publication when a retry encounters newer geometry. The
-builder then performs these independently interruptible writes in order.
+The builder supplies the archive content and a preparation function to the publication
+sequence. The sequence recovers any pending batch, reads the authoritative mapping
+checkpoint, and supplies that state to the preparation function. Preparation resolves
+history ownership and freezes records without acknowledging them. Each record includes a
+WebP data URL from the prepared mapping or an explicit null when there is no drawable
+preview. Keeping the image in the batch preserves the map from that publication when a
+retry encounters newer geometry. Publication proceeds through the following independently
+interruptible writes. [History ownership](history-ownership.md)
 
 1. Replace the completed KMZ.
 2. Commit its publication checkpoint when fresh frozen publication inputs are available.
@@ -60,6 +63,12 @@ nonnegative acreage in acres and canonical encoded identity pairs. It accepts a 
 URL, a null preview, or an absent preview field for legacy records. Invalid stored intent
 must never be treated as absence. The disposable publication measurement cache has a
 different error policy and is not authoritative update intent.
+
+The same identity can occur in the lineage, names, sources, and ownership fields of a
+checkpoint. The process-local cache retains up to 4,096 successful checks keyed by their
+exact JSON spelling. It accepts keys of at most 512 characters, so it retains at most
+2 MiB of ASCII identity text plus cache overhead. Longer keys go directly through the
+same validator. This reuse depends on the fixed schema and the immutable input string.
 
 The surviving journal identifies the recovery action at each interruption point:
 

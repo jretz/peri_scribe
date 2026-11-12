@@ -7,11 +7,12 @@ def test_run_fetch_stage_matches_all_checked_fetch_completion_states(
     tmp_path: pathlib.Path,
 ) -> None:
     outcomes = tests.formal.helpers.fetch_recovery.outcomes(tmp_path / "tlc")
-    for index, outcome in enumerate(outcomes):
-        tests.formal.helpers.fetch_recovery.replay_outcome(
-            outcome,
-            tmp_path / str(index) / "2026",
-        )
+    total, native = tests.formal.helpers.fetch_recovery.replay_outcomes(
+        outcomes,
+        tmp_path,
+    )
+    assert total == len(outcomes)
+    assert native in {92, len(outcomes)}
 
 
 def test_run_fetch_stage_recovers_each_checked_source_interruption_boundary(

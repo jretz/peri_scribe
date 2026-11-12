@@ -33,6 +33,9 @@ if typing.TYPE_CHECKING:
     import spatial_data.layers
 
 
+pytestmark = pytest.mark.usefixtures("reuse_preparation_environment")
+
+
 @pytest.mark.parametrize("unconditional", [False, True])
 def test_write_history_of_full_geography_matches_standalone_with_shared_sources(
     tmp_path: pathlib.Path,

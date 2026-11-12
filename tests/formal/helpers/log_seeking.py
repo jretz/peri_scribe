@@ -135,20 +135,30 @@ def selected(line: bytes) -> bool:
     return b'"take":true' in line
 
 
-def verify(case: SearchCase, result: tuple[int, ...], directory: pathlib.Path) -> None:
+def verify(
+    case: SearchCase,
+    result: tuple[int, ...],
+    contents: bytes,
+    plain: pathlib.Path,
+    archive: pathlib.Path,
+    *,
+    write_image: bool,
+) -> None:
     """Check the actual prefix seek and both actual log-reading storage formats.
 
     Args:
         case: One semantic history and its exact byte layout.
         result: Lean's exact offset and plain/compressed window occurrence indices.
-        directory: Separate storage-format directories for independent seek queries.
+        contents: Exact fixture bytes including any unfinished final fragment.
+        plain: The plain fixture for these bytes.
+        archive: The corresponding two-frame compressed fixture.
+        write_image: Whether these fixture paths need the current bytes written.
     """
     offset, searched, count, *remaining = result
     assert searched == offset
     plain_indices = remaining[:count]
     compressed_count, *compressed_indices = remaining[count:]
     assert len(compressed_indices) == compressed_count
-    contents = b"".join(case.lines) + case.partial
     since = EPOCH + datetime.timedelta(seconds=case.cutoff)
     upper = (
         None if case.upper is None else EPOCH + datetime.timedelta(seconds=case.upper)
@@ -157,8 +167,8 @@ def verify(case: SearchCase, result: tuple[int, ...], directory: pathlib.Path) -
         peri_scribe.log_reading.seek_since(stream, since)
         assert stream.tell() == offset, (case, offset, stream.tell())
         assert stream.read() == contents[offset:]
-    plain = directory / "plain" / "log.jsonl"
-    plain.write_bytes(contents)
+    if write_image:
+        plain.write_bytes(contents)
     observed = tuple(
         peri_scribe.log_reading.complete_lines(
             plain,
@@ -168,12 +178,12 @@ def verify(case: SearchCase, result: tuple[int, ...], directory: pathlib.Path) -
         ),
     )
     assert observed == tuple(case.lines[index] for index in plain_indices)
-    archive = directory / "compressed" / "log.jsonl.zst"
-    middle = len(contents) // 2
-    archive.write_bytes(
-        compression.zstd.compress(contents[:middle])
-        + compression.zstd.compress(contents[middle:]),
-    )
+    if write_image:
+        middle = len(contents) // 2
+        archive.write_bytes(
+            compression.zstd.compress(contents[:middle])
+            + compression.zstd.compress(contents[middle:]),
+        )
     observed_compressed = tuple(
         peri_scribe.log_reading.complete_lines(
             archive,
@@ -196,15 +206,35 @@ def replay(directory: pathlib.Path) -> int:
     Returns:
         Number of histories checked in each storage format.
     """
-    for name in ("plain", "compressed"):
-        (directory / name).mkdir(parents=True)
+    fixtures = {
+        partial: (
+            directory / name / "plain" / "log.jsonl",
+            directory / name / "compressed" / "log.jsonl.zst",
+        )
+        for partial, name in ((False, "complete"), (True, "unfinished"))
+    }
+    for plain, archive in fixtures.values():
+        plain.parent.mkdir(parents=True)
+        archive.parent.mkdir(parents=True)
+    images: dict[bool, bytes] = {}
     histories = cases()
     results = tests.formal.helpers.oracle.evaluate(
         [case.request() for case in histories],
         executable="oracleLogSeeking",
     )
     for case, result in zip(histories, results, strict=True):
-        verify(case, result, directory)
+        partial = bool(case.partial)
+        contents = b"".join(case.lines) + case.partial
+        plain, archive = fixtures[partial]
+        verify(
+            case,
+            result,
+            contents,
+            plain,
+            archive,
+            write_image=images.get(partial) != contents,
+        )
+        images[partial] = contents
     return len(histories)
 
 

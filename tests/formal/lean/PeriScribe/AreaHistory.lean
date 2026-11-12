@@ -79,6 +79,77 @@ def takeover (mapping : Mapping) (reports : List Report) (time : Nat)
       decide (mapping.evidence.time < report.evidence.time), baseline,
       (time : Int) - mapping.evidence.time, confirmations⟩
 
+def confirmationKey (mapping : Mapping) (report : Report) : Option (Option Nat) :=
+  if report.confirmed && mapping.evidence.time < report.evidence.time &&
+      2 * mapping.evidence.area ≤ report.evidence.area
+  then some report.confirmation else none
+
+def confirmationTimes (mapping : Mapping) (reports : List Report) : List (Option Nat) :=
+  (reports.filterMap (confirmationKey mapping)).eraseDups
+
+def insertConfirmation (keys : List (Option Nat)) : Option (Option Nat) → List (Option Nat)
+  | none => keys
+  | some key => if key ∈ keys then keys else keys ++ [key]
+
+theorem latest_report_after_append (reports : List Report) (new : Option Report) :
+    last? (reports ++ new.toList) = new.or (last? reports) := by
+  cases new with
+  | none => simp
+  | some report =>
+    induction reports with
+    | nil => simp [last?]
+    | cons first rest induction =>
+      have tail : last? (rest ++ [report]) = some report := by simpa using induction
+      simp [last?, tail]
+
+theorem confirmations_advance_with_one_report (mapping : Mapping) (reports : List Report)
+    (new : Option Report) :
+    confirmationTimes mapping (reports ++ new.toList) =
+      insertConfirmation (confirmationTimes mapping reports) (new.bind (confirmationKey mapping)) := by
+  cases new with
+  | none => simp [insertConfirmation]
+  | some report =>
+    cases key : confirmationKey mapping report with
+    | none => simp [confirmationTimes, insertConfirmation, List.filterMap_append, key]
+    | some value =>
+      simp only [confirmationTimes, Option.toList_some, List.filterMap_append,
+        List.filterMap_cons, key, List.filterMap_nil, Option.bind_some, insertConfirmation]
+      rw [List.eraseDups_append]
+      by_cases present : value ∈ reports.filterMap (confirmationKey mapping)
+      · have witness := List.mem_filterMap.mp present
+        simp [List.mem_eraseDups, present, List.removeAll, witness]
+      · have absent : ¬ ∃ item, item ∈ reports ∧
+            confirmationKey mapping item = some value := fun witness =>
+          present (List.mem_filterMap.mpr witness)
+        simp [List.mem_eraseDups, present, List.removeAll, absent, List.eraseDups_cons]
+
+theorem confirmations_reset_at_a_fresh_survey (mapping : Mapping) (reports : List Report)
+    (prior : ∀ report ∈ reports, report.evidence.time ≤ mapping.evidence.time) :
+    confirmationTimes mapping reports = [] := by
+  have empty : reports.filterMap (confirmationKey mapping) = [] := by
+    apply List.eq_nil_iff_forall_not_mem.mpr
+    intro key member
+    obtain ⟨report, recorded, confirmed⟩ := List.mem_filterMap.mp member
+    have tooEarly := Nat.not_lt.mpr (prior report recorded)
+    simp [confirmationKey, tooEarly] at confirmed
+  simp [confirmationTimes, empty]
+
+def takeoverWithReportEvidence (mapping : Mapping) (latest : Option Report)
+    (count time : Nat) (baseline : Option Nat) : Bool :=
+  match latest with
+  | none => false
+  | some report =>
+    AreaPolicy.takeover ⟨mapping.evidence.area, report.evidence.area,
+      decide (mapping.evidence.time < report.evidence.time), baseline,
+      (time : Int) - mapping.evidence.time, count⟩
+
+theorem takeover_with_latest_and_confirmations_matches_history (mapping : Mapping)
+    (reports : List Report) (time : Nat) (baseline : Option Nat) :
+    takeoverWithReportEvidence mapping (last? reports)
+      (confirmationTimes mapping reports).length time baseline =
+      takeover mapping reports time baseline := by
+  rfl
+
 /-- A fresh survey resets ownership even after reports supplied the selected acreage. -/
 def mappingSelection (selected : Option Estimate) (mapping : Option Mapping)
     (time : Nat) : Option Estimate :=

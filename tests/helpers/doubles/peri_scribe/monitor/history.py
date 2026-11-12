@@ -39,11 +39,13 @@ class BlockedPoll:
         self,
         *,
         since: datetime.datetime,
+        retained: object,
     ) -> peri_scribe.monitor.storage.Batch:
         """Leave more history pending so shutdown must stop the catch-up loop.
 
         Args:
             since: The observation cutoff supplied by the reader.
+            retained: The empty log inventory supplied by the waiting reader.
 
         Returns:
             An unfinished read after the test releases it.
@@ -51,6 +53,7 @@ class BlockedPoll:
         Raises:
             TimeoutError: The controlling test failed to release the read.
         """
+        assert not retained
         self.started.set()
         if not self.release.wait(timeout=5):
             message = f"Test did not release the read for {since.isoformat()}"

@@ -29,6 +29,7 @@ def test_read_state_recovers_invalid_markers(
     tmp_path: pathlib.Path,
     content: bytes,
 ) -> None:
+    peri_scribe.pipeline_state.state_logger.cache_clear()
     peri_scribe.pipeline_state.state_path(tmp_path).write_bytes(content)
     state = peri_scribe.pipeline_state.read_state(tmp_path)
     assert state.remaining == peri_scribe.pipeline_state.DERIVED_STAGES

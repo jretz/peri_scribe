@@ -21,9 +21,17 @@ def test_fetch_feed_dataframe_matches_proved_eligibility() -> None:
         [tests.formal.helpers.incremental_collection.command(case) for case in cases],
         executable="oracleIngestion",
     )
+    observations: dict[
+        tests.formal.helpers.incremental_collection.Request,
+        tests.formal.helpers.incremental_collection.Observation,
+    ] = {}
     with structlog.testing.capture_logs():
         for case, result in zip(cases, expected, strict=True):
-            tests.formal.helpers.incremental_collection.replay(case, result)
+            tests.formal.helpers.incremental_collection.replay(
+                case,
+                result,
+                observations,
+            )
 
 
 def test_where_clause_for_matches_lean_null_and_overlap_policy() -> None:

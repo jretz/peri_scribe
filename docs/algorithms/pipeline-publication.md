@@ -118,14 +118,24 @@ cross-file atomicity or power-loss durability.
 
 ## Implementation and verification
 
-Owners: [pipeline.py](../../src/peri_scribe/pipeline.py),
-[pipeline_state.py](../../src/peri_scribe/pipeline_state.py),
-[pipeline_stages.py](../../src/peri_scribe/pipeline_stages.py), and
-[publication.py](../../src/peri_scribe/publication.py). Ordinary checks cover
-[state](../../tests/tests/standard/peri_scribe/test_pipeline_state.py),
+The [pipeline coordinator](../../src/peri_scribe/pipeline.py),
+[fetch recovery coordinator](../../src/peri_scribe/sources/fetch_control.py),
+[pending state](../../src/peri_scribe/pipeline_state.py),
+[stages](../../src/peri_scribe/pipeline_stages.py), and
+[publication state](../../src/peri_scribe/publication.py) use a shared
+[file adapter](../../src/peri_scribe/durable_file.py) for marker and checkpoint effects.
+State validation and recovery decisions stay with their respective callers. Ordinary
+checks cover [state](../../tests/tests/standard/peri_scribe/test_pipeline_state.py),
 [fetch recovery](../../tests/tests/standard/peri_scribe/test_pipeline_fetch_recovery.py),
 [composition](../../tests/tests/standard/peri_scribe/test_pipeline_composition.py), and
 [publication decisions](../../tests/tests/standard/peri_scribe/test_publication.py).
+
+`required_state` and `completed_state` expose the pure pending-state transformations;
+the owning wrappers retain their original read, conditional write and logging order.
+The fetch wrapper evaluates prior-state restoration before its final proceed decision.
+Those predicates stay separate because a restore write can precede the second changed
+input read. [Fetch composition](../../tests/formal/fetch_composition.md) records the
+checked relation and the separate native storage and concurrency witnesses.
 
 The [TLA+ inventory](../../tests/formal/tla/README.md) maps RunState, RunScheduler,
 PublicationGate and FetchCrash, naming finite bounds and fairness premises.

@@ -17,6 +17,7 @@ import peri_scribe.fires.sources
 import peri_scribe.models
 import peri_scribe.perimeters.cleaning
 import peri_scribe.sources.administrative_boundaries
+import peri_scribe.sources.authentication
 import spatial_data.layers
 import tests.helpers.doubles.peri_scribe.fires.reuse
 import tests.helpers.peri_scribe.fires.reuse
@@ -436,11 +437,11 @@ def test_derivation_context_tracks_extracted_package_code(
     source_root = pathlib.Path(peri_scribe.fires.reuse.__file__).parents[2]
     dependency = source_root / package / "__init__.py"
     first = peri_scribe.fires.reuse.derivation_context(tmp_path)
-    file_digest = peri_scribe.fires.reuse.file_digest
+    file_digest = peri_scribe.sources.authentication.read_file_digest
     # Preserve the module's source location so coverage can attribute later calls.
     monkeypatch.setattr(
-        peri_scribe.fires.reuse,
-        "file_digest",
+        peri_scribe.sources.authentication,
+        "read_file_digest",
         lambda path: "changed" if path == dependency else file_digest(path),
     )
     assert peri_scribe.fires.reuse.derivation_context(tmp_path) != first

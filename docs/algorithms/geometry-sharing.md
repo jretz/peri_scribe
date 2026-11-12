@@ -93,7 +93,45 @@ validity, insertion/lookup agreement, collision preservation, persistent snapsho
 the digest-width depth bound.
 [Conformance](../../tests/formal/conformance/test_geometry_sharing.py) compares actual
 trees with the executable model and includes real concurrent requests with forced
-collisions. The source-read registry also assigns compact exact `.wkb` class keys
+collisions. The test adapter carries each branch's required digest prefix to its
+children. A branch splitting at the second-lowest bit requires its smaller child to
+share its higher bits followed by 0 at that bit, and its larger child to share them
+followed by 1. A deeper split constrains more bits while preserving that route. The
+adapter also checks that every branch representative occurs among the leaves. Any
+matching leaf must be in that branch's subtree because a leaf in a different branch
+would disagree at the first divergent split. Every selected historical root receives
+the same complete traversal. The adapter retains the EWKB bytes alongside a strong
+reference to each observed immutable Shapely object. Visits to that same object share
+its exact bytes. Every insertion still checks the bytes returned by the production call.
+
+The test adapter scores **1/1/1/2/1 = 6, involved**. It retains ordered prefix roots,
+combines routing and representative checks, and validates a compact response before
+expanding it. For N nodes and P payloads, each description takes O(N + P) time and
+space with the fixed digest width and payload catalogue. Geometry bytes add their own
+serialization cost. The Lean validity and insertion definitions supply the expected
+contract.
+
+The oracle folds the same proved insertion over every prefix. Each response carries
+the roots in insertion order and a table of their exact immutable nodes. Each branch
+record names the two ordered child records, and each leaf records its ordered payloads.
+Digest ordinals identify exact inputs in their order of first occurrence. For example,
+two roots that share a leaf can both name record 0. A branch with the same digest and
+split bit but reversed children has a different record. The reconstruction theorem
+shows that exact node records and their child descriptions determine the full ordered
+tree. [GeometrySharing.lean](../../tests/formal/lean/PeriScribe/GeometrySharing.lean)
+
+Python checks the digest, payload and node references, rejects duplicate or unreachable
+records, and expands every root occurrence to its complete length-framed description.
+For a history of H entries, the oracle performs H insertions, visits all N node
+occurrences and writes D distinct node records and H roots. Packing takes expected
+O(N) time with bounded digest width and payload count per leaf. The wire and decoder's
+node table use O(D + H) space, and full expanded comparisons can take O(N) space. The
+prefix length bounds each expansion. The two 256-entry width histories retain all
+131,072 node occurrences in 33,407 records. A separate regression checks the decoded
+results against the direct Lean descriptions for the small collision histories and
+permutations. [Conformance](../../tests/formal/conformance/test_geometry_sharing.py)
+
+The source-read registry also assigns compact exact `.wkb` class keys
 without retaining all encoded coordinate buffers; its SRID-ignoring equality is separate
 from this pool's EWKB equality. See [source geometry
 preparation](source-geometry-preparation.md). Canonical WKB serialization, Shapely

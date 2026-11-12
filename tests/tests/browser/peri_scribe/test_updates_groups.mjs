@@ -2,6 +2,8 @@ import {
   test, expect, update, finishAnimations
 } from "../../../helpers/browser/updates.mjs";
 
+test.use({ reuseContext: true });
+
 test("startPage gives each window an independent keyboard-operated collapse control",
   async ({ viewer }) => {
     await viewer.open([update("Timber", 10)]);

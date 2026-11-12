@@ -35,7 +35,7 @@ def test_run_fetch_stage_recovers_after_hard_process_termination(
     ("boundary", "after", "method"),
     tests.formal.helpers.process_crashes.BUILDER_FAULTS,
 )
-def test_create_kmz_recovers_in_a_fresh_interpreter_after_hard_termination(
+def test_kmz_persistence_recovers_in_a_fresh_interpreter_after_hard_termination(
     tmp_path: pathlib.Path,
     crash_builder_contract: tests.formal.helpers.paths.Contract[
         tests.formal.helpers.journal_builder.Projection
@@ -49,6 +49,27 @@ def test_create_kmz_recovers_in_a_fresh_interpreter_after_hard_termination(
         tmp_path,
         crash_builder_contract,
         (boundary, after, method),
+    )
+
+
+@pytest.mark.parametrize(
+    ("after", "method"),
+    [(False, "kill"), (True, "exit")],
+)
+def test_create_kmz_recovers_across_viewer_publication_after_hard_termination(
+    tmp_path: pathlib.Path,
+    crash_builder_contract: tests.formal.helpers.paths.Contract[
+        tests.formal.helpers.journal_builder.Projection
+    ],
+    *,
+    after: bool,
+    method: str,
+) -> None:
+    tests.formal.helpers.process_crashes.builders(
+        tmp_path,
+        crash_builder_contract,
+        ("viewer", after, method),
+        full_builder=True,
     )
 
 

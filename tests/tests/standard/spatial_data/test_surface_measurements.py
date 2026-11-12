@@ -185,6 +185,39 @@ def test_area_is_bitwise_invariant_across_integration_batch_boundaries(
     assert all(len(call.args[0]) <= batch_size for call in primitive.call_args_list)
 
 
+def test_integration_preserves_mixed_angular_units() -> None:
+    longitude = np.array([1.0, -2.0]) * units.degrees
+    midpoint = np.array([0.21, -0.17]) * units.degrees
+    half_width = np.array([0.002, 0.003]) * units.radians
+    references = np.array([0.3, -0.2]) * units.radians
+    measurements = spatial_data.surface_measurements
+    actual = measurements.integration_contributions(
+        longitude,
+        midpoint,
+        half_width,
+        references=references,
+        latitude_references=references,
+        edge_ring_indices=np.arange(2),
+    )
+    offsets = (
+        midpoint[:, None] + half_width[:, None] * measurements.GAUSSIAN_NODES[None, :]
+    )
+    aligned = zip(longitude, offsets, references, strict=True)
+    expected = [
+        (
+            -width.to("radians")
+            * np.sum(
+                measurements.latitude_primitive_difference(samples, reference)
+                * measurements.GAUSSIAN_MEAN_WEIGHTS,
+            )
+        ).m_as("meters ** 2")
+        for width, samples, reference in aligned
+    ]
+    assert [value.hex() for value in actual.m_as("meters ** 2")] == [
+        value.hex() for value in expected
+    ]
+
+
 def test_ring_areas_match_individual_boundaries_for_many_small_components() -> None:
     polygons = [
         shapely.box(-100 + index / 100, 40, -99.999 + index / 100, 40.001)

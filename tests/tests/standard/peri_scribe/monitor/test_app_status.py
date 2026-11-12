@@ -24,6 +24,7 @@ import tests.helpers.doubles.peri_scribe.monitor.changes
 import tests.helpers.factories.peri_scribe.monitor.events
 import tests.helpers.factories.peri_scribe.monitor.status
 import tests.helpers.fixtures.peri_scribe.monitor.application
+import tests.helpers.fixtures.peri_scribe.monitor.presentation
 import tests.helpers.textual
 
 
@@ -44,9 +45,9 @@ async def test_monitor_app_status_is_first_tab_and_first_shortcut(
 
 @pytest.mark.asyncio
 async def test_monitor_app_status_ages_update_without_new_logs(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    component_monitor: tests.helpers.fixtures.peri_scribe.monitor.presentation.Session,
 ) -> None:
-    session = monitor_session
+    session = component_monitor
     now = tests.helpers.factories.peri_scribe.monitor.status.NOW
     session.app.kmz_path.parent.mkdir()
     session.app.kmz_path.write_bytes(b"map")
@@ -58,21 +59,27 @@ async def test_monitor_app_status_ages_update_without_new_logs(
     )
     with time_machine.travel(now + datetime.timedelta(hours=4), tick=False):
         await session.app.refresh_files()
-        pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
-        assert pane.view is not None
-        assert pane.view.metrics[0].health == peri_scribe.monitor.status.Health.GOOD
+        presentation = session.presentation
+        assert presentation.health_views
+        assert (
+            presentation.health_views[-1].metrics[0].health
+            == peri_scribe.monitor.status.Health.GOOD
+        )
     with time_machine.travel(now + datetime.timedelta(hours=7), tick=False):
         await session.app.refresh_files()
-        assert pane.view is not None
-        assert pane.view.metrics[0].health == peri_scribe.monitor.status.Health.BAD
+        assert presentation.health_views
+        assert (
+            presentation.health_views[-1].metrics[0].health
+            == peri_scribe.monitor.status.Health.BAD
+        )
 
 
 @pytest.mark.asyncio
 async def test_monitor_app_status_reuses_sorted_evidence_when_only_time_changes(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    component_monitor: tests.helpers.fixtures.peri_scribe.monitor.presentation.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session = monitor_session
+    session = component_monitor
     session.app.kmz_path.parent.mkdir()
     session.app.kmz_path.write_bytes(b"map")
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
@@ -82,14 +89,14 @@ async def test_monitor_app_status_reuses_sorted_evidence_when_only_time_changes(
     evidence = unittest.mock.Mock(wraps=peri_scribe.monitor.status.evidence)
     monkeypatch.setattr(peri_scribe.monitor.status, "evidence", evidence)
     await session.app.refresh_files()
-    pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
-    assert pane.view is not None
-    previous = pane.view.metrics
+    presentation = session.presentation
+    assert presentation.health_views
+    previous = presentation.health_views[-1].metrics
     now = tests.helpers.factories.peri_scribe.monitor.status.NOW
     with time_machine.travel(now + datetime.timedelta(hours=7), tick=False):
         await session.app.refresh_files()
     evidence.assert_called_once()
-    assert pane.view.metrics != previous
+    assert presentation.health_views[-1].metrics != previous
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
         session.directory,
         tests.helpers.factories.peri_scribe.monitor.status.finished("reports"),
@@ -101,10 +108,10 @@ async def test_monitor_app_status_reuses_sorted_evidence_when_only_time_changes(
 
 @pytest.mark.asyncio
 async def test_monitor_app_status_catches_up_before_projecting_history(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    component_monitor: tests.helpers.fixtures.peri_scribe.monitor.presentation.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session = monitor_session
+    session = component_monitor
     monkeypatch.setattr(peri_scribe.monitor.storage, "MAXIMUM_READ_BYTES", 100)
     tests.helpers.factories.peri_scribe.monitor.events.write_log(
         session.directory,
@@ -115,9 +122,12 @@ async def test_monitor_app_status_catches_up_before_projecting_history(
     await session.app.refresh_files()
     project.assert_called_once()
     assert project.call_args.args[0].caught_up
-    pane = session.app.query_one(peri_scribe.monitor.status_widgets.StatusPane)
-    assert pane.view is not None
-    assert pane.view.coverage.health == peri_scribe.monitor.status.Health.GOOD
+    presentation = session.presentation
+    assert presentation.health_views
+    assert (
+        presentation.health_views[-1].coverage.health
+        == peri_scribe.monitor.status.Health.GOOD
+    )
 
 
 @pytest.mark.asyncio
@@ -251,10 +261,10 @@ async def test_monitor_app_status_link_supports_keyboard(
 
 @pytest.mark.asyncio
 async def test_monitor_app_status_missing_evidence_reports_unavailable(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    component_monitor: tests.helpers.fixtures.peri_scribe.monitor.presentation.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session = monitor_session
+    session = component_monitor
     notification = unittest.mock.Mock()
     monkeypatch.setattr(session.app, "notify", notification)
     history = tests.helpers.factories.peri_scribe.monitor.status.history(
@@ -269,10 +279,10 @@ async def test_monitor_app_status_missing_evidence_reports_unavailable(
 
 @pytest.mark.asyncio
 async def test_monitor_app_status_evidence_read_error_is_visible(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    component_monitor: tests.helpers.fixtures.peri_scribe.monitor.presentation.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session = monitor_session
+    session = component_monitor
     notification = unittest.mock.Mock()
     monkeypatch.setattr(session.app, "notify", notification)
     monkeypatch.setattr(
@@ -342,12 +352,12 @@ async def test_refresh_clock_updates_freshness_without_reading_files(
 @pytest.mark.parametrize("notification", [True, False])
 @pytest.mark.asyncio
 async def test_refresh_clock_reads_on_notification_or_reconciliation_deadline(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    component_monitor: tests.helpers.fixtures.peri_scribe.monitor.presentation.Session,
     monkeypatch: pytest.MonkeyPatch,
     *,
     notification: bool,
 ) -> None:
-    session = monitor_session
+    session = component_monitor
     read = unittest.mock.AsyncMock(wraps=peri_scribe.monitor.session.refresh_health)
     monkeypatch.setattr(peri_scribe.monitor.session, "refresh_health", read)
     session.app.controller.session.files_changed = notification
@@ -374,10 +384,10 @@ async def test_monitor_app_ignores_clock_updates_after_views_unmount(
 
 @pytest.mark.asyncio
 async def test_refresh_clock_waits_for_initial_status(
-    monitor_session: tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+    component_monitor: tests.helpers.fixtures.peri_scribe.monitor.presentation.Session,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    session = monitor_session
+    session = component_monitor
     session.app.controller.session.snapshot = dataclasses.replace(
         session.app.controller.session.snapshot,
         health=None,
@@ -392,16 +402,16 @@ async def test_refresh_clock_waits_for_initial_status(
 
 @pytest.mark.asyncio
 async def test_watch_files_coalesces_notifications_without_reading_from_the_worker(
-    file_watching_session: tuple[
+    component_file_watching_session: tuple[
         collections.abc.Callable[
             [peri_scribe.monitor.session.MonitorSession],
             collections.abc.Coroutine[typing.Any, typing.Any, None],
         ],
-        tests.helpers.fixtures.peri_scribe.monitor.application.Session,
+        tests.helpers.fixtures.peri_scribe.monitor.presentation.Session,
     ],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    watcher, session = file_watching_session
+    watcher, session = component_file_watching_session
     hints = tests.helpers.doubles.peri_scribe.monitor.changes.notifications(
         session.app.controller.session.watching_stopped,
     )

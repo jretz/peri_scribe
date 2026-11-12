@@ -16,6 +16,9 @@ import peri_scribe.updates
 import tests.helpers.factories.peri_scribe.fire_update_corrections
 
 
+pytestmark = pytest.mark.usefixtures("reuse_update_previews")
+
+
 def test_write_updates_preserves_name_only_identity_after_mapping_revision(
     tmp_path: pathlib.Path,
 ) -> None:

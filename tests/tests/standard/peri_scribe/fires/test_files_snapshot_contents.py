@@ -1,7 +1,8 @@
 """Authenticated geography generations must use current snapshot content."""
 
 import pathlib
-import typing
+
+import pytest
 
 import peri_scribe.fires.classification
 import peri_scribe.fires.files
@@ -20,8 +21,7 @@ import tests.helpers.peri_scribe.fires.snapshot_contents
 import tests.helpers.peri_scribe.geo.package
 
 
-if typing.TYPE_CHECKING:
-    import pytest
+pytestmark = pytest.mark.usefixtures("reuse_preparation_environment")
 
 
 def test_write_history_of_full_geography_uses_current_snapshot_contents(

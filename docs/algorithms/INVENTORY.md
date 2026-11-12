@@ -67,6 +67,7 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 | [areas.py](../../src/peri_scribe/areas.py) | [incident area selection](incident-area-selection.md) |
 | [cli_options.py](../../src/peri_scribe/cli_options.py) | [pipeline publication](pipeline-publication.md); [stage processes](stage-processes.md). Shared command values and selected ranges preserve the existing policy. |
 | [concurrency.py](../../src/peri_scribe/concurrency.py) | [worker lifetimes](worker-lifetimes.md); [ordered history work](history-work-queues.md) |
+| [durable_file.py](../../src/peri_scribe/durable_file.py) | [pipeline publication](pipeline-publication.md). Stages complete single-file writes within the destination filesystem. |
 | [exceptions.py](../../src/peri_scribe/exceptions.py) | **0/0/0/0/0**: exception vocabulary; no decision algorithm. |
 | [execution.py](../../src/peri_scribe/execution.py) | [geography generations](geography-generations.md) |
 | [fire_update_records.py](../../src/peri_scribe/fire_update_records.py) | [update journal](update-journal.md) |
@@ -81,6 +82,7 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 | [paths.py](../../src/peri_scribe/paths.py) | Straightforward **0/1/0/0/0** (1). Path composition and a year-name validation rule. |
 | [phases.py](../../src/peri_scribe/phases.py) | [monitor evidence](monitor-evidence.md) |
 | [pipeline.py](../../src/peri_scribe/pipeline.py) | [pipeline publication](pipeline-publication.md) |
+| [fetch_control.py](../../src/peri_scribe/sources/fetch_control.py) | [pipeline publication](pipeline-publication.md) |
 | [supervision.py](../../src/peri_scribe/supervision.py) | [stage processes](stage-processes.md) |
 | [pipeline_stages.py](../../src/peri_scribe/pipeline_stages.py) | Straightforward **0/0/0/0/0** (0). Enum vocabulary only; no decision algorithm. |
 | [pipeline_state.py](../../src/peri_scribe/pipeline_state.py) | [pipeline publication](pipeline-publication.md); [geography generations](geography-generations.md) |
@@ -152,6 +154,7 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 | [fire_data.py](../../src/peri_scribe/kml/fire_data.py) | [presentation selection](presentation-selection.md) |
 | [folders.py](../../src/peri_scribe/kml/folders.py) | [output serialization](output-serialization.md); [corrected growth rings](corrected-growth-rings.md) |
 | [icons.py](../../src/peri_scribe/kml/icons.py) | [progression presentation](progression-presentation.md) |
+| [persistence.py](../../src/peri_scribe/kml/persistence.py) | [update journal](update-journal.md) |
 | [plot_data.py](../../src/peri_scribe/kml/plot_data.py) | [chart layout](chart-layout.md) |
 | [plot_rendering.py](../../src/peri_scribe/kml/plot_rendering.py) | [chart layout](chart-layout.md); [product caching](product-caching.md) |
 | [prepared_inputs.py](../../src/peri_scribe/kml/prepared_inputs.py) | [KMZ preparation](kmz-preparation.md); [prepared product representations](prepared-product-representations.md) |
@@ -187,6 +190,7 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 | [striping.py](../../src/peri_scribe/monitor/striping.py) | [terminal rendering](terminal-rendering.md) |
 | [tasks.py](../../src/peri_scribe/monitor/tasks.py) | [worker lifetimes](worker-lifetimes.md) |
 | [terminal_contract.py](../../src/peri_scribe/monitor/terminal_contract.py) | **0/0/0/0/0**: structural presentation interfaces; no executable decision policy. |
+| [terminal_presentation.py](../../src/peri_scribe/monitor/terminal_presentation.py) | [Monitor presentation: controller and terminal boundary](monitor-presentation.md#controller-and-terminal-boundary). Native widget effects retain the controller's existing presentation contract. |
 | [theme.py](../../src/peri_scribe/monitor/theme.py) | Straightforward **0/1/0/0/0** (1). Independent constants map statuses to fixed colors. |
 | [widgets.py](../../src/peri_scribe/monitor/widgets.py) | [terminal rendering](terminal-rendering.md) |
 
@@ -269,6 +273,7 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 | [feeds.py](../../src/peri_scribe/sources/feeds.py) | [source collection](source-collection.md) |
 | [fetching.py](../../src/peri_scribe/sources/fetching.py) | [source collection](source-collection.md) |
 | [full_fetch_state.py](../../src/peri_scribe/sources/full_fetch_state.py) | [pipeline publication](pipeline-publication.md) |
+| [incremental_query.py](../../src/peri_scribe/sources/incremental_query.py) | [source collection](source-collection.md) |
 | [network.py](../../src/peri_scribe/sources/network.py) | [source collection](source-collection.md) |
 | [snapshots.py](../../src/peri_scribe/sources/snapshots.py) | [source collection](source-collection.md) |
 | [validation.py](../../src/peri_scribe/sources/validation.py) | [source validation](source-validation.md) |
@@ -314,10 +319,13 @@ supply these local contracts. The [rubric](../algorithm_design.md) determines th
 | Scope | Explanation |
 | --- | --- |
 | [Packaged viewer](../../src/peri_scribe/updates.html) | [Snapshot and row reconciliation](update-viewer.md), including conditional refresh, layout, aging and notifications. |
-| [Formal checker](../../tests/formal/check.py), process/session/corpus helpers | [Verification evidence](verification-tooling.md): admission, cancellation, leases, authenticating checked graphs and staged publication. |
+| [Formal checker](../../tests/formal/check.py), process/session/corpus helpers, [TLC action frames](../../tests/formal/tla/FrameChecker.java) | [Verification evidence](verification-tooling.md): admission, cancellation, leases, graph checking with immutable fields, and staged publication. |
+| [Full-suite coordinator](../../tests/formal/helpers/overlap.py) and [native report observer](../../tests/formal/helpers/conformance.py) | [Fresh conformance admission](verification-tooling.md#fresh-conformance-admission): complete prerequisites, stock worker scheduling, native collections and protocols, source freshness and joined cleanup; **2/1/0/1/3 = 7, complex**. |
 | Formal path matchers, pipeline batching and replay adapters | [Verification evidence](verification-tooling.md): complete paths, hidden choices, shared prefixes, private branch copies and workload balancing. |
-| Formal mutation helpers and defect checks | [Verification evidence](verification-tooling.md): exact successful baselines, unchanged test identities and behavioral rejection. |
-| [Regular runner](../../tests/helpers/run_test_suite.mjs), coverage collectors/reporters and browser setup | [Verification evidence](verification-tooling.md): fresh invocation/source identity, contributor receipts and combined coverage. Browser installation is a version-selected tool adapter. |
+| [Deliberate defects](../../tests/formal/helpers/defect_checks.py) and [pristine baselines](../../tests/formal/helpers/defect_baselines.py) | [Defect checks](../../tests/formal/defect_checks.md): isolated imports, exact source identity and native semantic failure evidence; **1/1/0/1/2 = 5, involved**. |
+| [Regular runner](../../tests/helpers/run_test_suite.mjs), [ordinary receipt decoder](../../tests/helpers/ordinary_receipts.py), coverage collectors/reporters and browser setup | [Verification evidence](verification-tooling.md): fresh invocation/source identity, contributor receipts and combined coverage. Browser installation is a version-selected tool adapter. |
+| [History preview inputs](../../tests/helpers/factories/peri_scribe/presentation/preview_grid.py) | [Verification evidence](verification-tooling.md#immutable-dart-inputs-for-history-fixtures): exact immutable dart tables, renderer qualification, live leases and native cache seeding. |
+| [Preparation environment observations](../../tests/helpers/doubles/peri_scribe/preparation_environment.py) | [Testing](../testing.md#immutable-preparation-environments): native immutable results, complete fixed source/runtime inputs and current boundary/configuration reads; **1/1/0/2/1 = 5, involved**. |
 | Domain conformance adapters and reference implementations | The production note for that domain owns the algorithm and links its checks. The [Lean](../../tests/formal/lean/README.md), [TLA+](../../tests/formal/tla/README.md), and [defect](../../tests/formal/defect_checks.md) inventories own model/proof scope and assumptions. |
 | Test assertions, factories, fixtures, strategies and doubles | Case construction and observations use the corresponding domain contracts. Shared graph traversal, durable replay and coverage mechanisms belong to the verification note above. Assertions are evidence of the contract, not a separate policy definition. |
 | [Mise tasks](../../.mise/tasks), package/tool configuration and [systemd unit](../../systemd/peri-scribe.service) | Straightforward **1/1/0/0/1 = 3** for local task ordering, fixed dispatch and process exit status. Failure coordination inside called tools belongs to their notes. |

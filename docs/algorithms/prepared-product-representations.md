@@ -52,6 +52,12 @@ members, and scalar coercions. Unsupported versions miss safely; source changes 
 change the enclosing runtime fingerprint, so incompatible typed payloads cannot become
 warm hits under the normal publication context.
 
+Builtin scalar and container tags can be read and written in a fresh process using
+the standard library. Scientific scalar types load their libraries on demand, including
+the shared measurement registry for quantity reconstruction. Plain Zstandard frames
+also use the standard library. NumPy loads for the byte predictor only when the caller
+selects it or the stored frame carries its tag.
+
 Source keys retain the complete ordered schema and selected row digests. Their preimage
 starts with a distinct format/version prefix, then the length and bytes of the typed
 identity and the number of source layers. Each layer contributes a length-framed schema,

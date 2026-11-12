@@ -20,8 +20,13 @@ def test_load_updates_refines_tlc_refresh_transactions(tmp_path: pathlib.Path) -
     node = shutil.which("node")
     assert node is not None, "Run mise formal-conformance to provide Node"
     result = tests.formal.helpers.process.run(
-        [node, str(pathlib.Path(__file__).parents[1] / "helpers/browser_refresh.mjs")],
+        [
+            node,
+            "--single-threaded",
+            str(pathlib.Path(__file__).parents[1] / "helpers/browser_refresh.mjs"),
+        ],
         standard_input=json.dumps(cases),
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    assert json.loads(result.stdout) == {"checked": len(cases) * 2}
+    expected_replays = 60
+    assert json.loads(result.stdout) == {"checked": expected_replays}

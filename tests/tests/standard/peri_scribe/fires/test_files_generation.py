@@ -19,6 +19,9 @@ import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.fires.index
 
 
+pytestmark = pytest.mark.usefixtures("reuse_preparation_environment")
+
+
 @pytest.mark.parametrize("available", [False, True])
 def test_write_history_of_full_geography_partial_rebuild_keeps_classification_proof(
     tmp_path: pathlib.Path,

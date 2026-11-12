@@ -30,9 +30,18 @@ MARGIN = 2
 OUTLINE_COLORS = ("#ffffff", "#ffff00", "#ff0000")
 DART_VERTICES = ((0, -9), (5, 9), (0, 6), (-5, 9))
 DART_SIZE = 64
+DART_HULL_SIZE = 38
+DART_HULL_PADDING = (DART_SIZE - DART_HULL_SIZE) // 2
+DART_HULL_BOX = (
+    DART_HULL_PADDING * SUPERSAMPLING,
+    DART_HULL_PADDING * SUPERSAMPLING,
+    (DART_HULL_PADDING + DART_HULL_SIZE) * SUPERSAMPLING,
+    (DART_HULL_PADDING + DART_HULL_SIZE) * SUPERSAMPLING,
+)
 DART_CLEARANCE = 2
 OVERLAP_WEIGHT = 0.75
 ANGLE_STEP = 0.025
+ROTATION_BATCH_POINTS = 65_536
 REFINEMENT_STARTS = 6
 SCORE_TOLERANCE = 1e-11
 MINIMUM_ANGLE = -90.0
@@ -68,6 +77,19 @@ class Transform:
         return list(map(tuple, pixels.tolist()))
 
 
+def rotation_axes(angle: float) -> tuple[tuple[float, float], tuple[float, float]]:
+    """Use the same screen transform for individual and batched fits.
+
+    Args:
+        angle: Counterclockwise map rotation in radians.
+
+    Returns:
+        The two screen-axis coefficients for each metric axis.
+    """
+    cosine, sine = math.cos(angle), math.sin(angle)
+    return ((cosine, -sine), (-sine, -cosine))
+
+
 def rotate(coordinates: Coordinates, angle: float) -> Coordinates:
     """Orient metric coordinates in screen axes without stretching the fire.
 
@@ -78,8 +100,40 @@ def rotate(coordinates: Coordinates, angle: float) -> Coordinates:
     Returns:
         Rotated coordinates with screen y increasing downward.
     """
-    cosine, sine = math.cos(angle), math.sin(angle)
-    return coordinates @ np.array(((cosine, -sine), (-sine, -cosine)))
+    return coordinates @ np.array(rotation_axes(angle))
+
+
+def rotated_batches(
+    coordinates: Coordinates,
+    angles: collections.abc.Sequence[float],
+) -> collections.abc.Iterator[tuple[slice, Coordinates]]:
+    """Keep temporary point storage bounded while evaluating independent rotations.
+
+    Args:
+        coordinates: Vertices of a nonempty metric hull.
+        angles: The ordered rotations in radians.
+
+    Yields:
+        An angle range and one set of screen coordinates per angle in that range.
+    """
+    batch_size = max(1, ROTATION_BATCH_POINTS // len(coordinates))
+    for start in range(0, len(angles), batch_size):
+        selection = slice(start, start + batch_size)
+        rotations = np.array([rotation_axes(angle) for angle in angles[selection]])
+        yield selection, coordinates @ rotations
+
+
+def fitted_scales(extents: Coordinates) -> Coordinates | np.float64:
+    """Apply the same two-axis fit and degenerate-extent floor at every angle.
+
+    Args:
+        extents: Width and height for one or more rotated hulls, in meters.
+
+    Returns:
+        Uniform pixels per native projected meter for each hull.
+    """
+    available = np.array(SIZE) - 2 * MARGIN
+    return np.min(available / np.maximum(extents, np.finfo(float).eps), axis=-1)
 
 
 def fitted_scale(coordinates: Coordinates, angle: float) -> float:
@@ -93,8 +147,7 @@ def fitted_scale(coordinates: Coordinates, angle: float) -> float:
         Uniform pixels per native projected meter.
     """
     extent = np.ptp(rotate(coordinates, angle), axis=0)
-    available = np.array(SIZE) - 2 * MARGIN
-    return float(np.min(available / np.maximum(extent, np.finfo(float).eps)))
+    return float(fitted_scales(extent))
 
 
 def best_fit_angle(coordinates: Coordinates) -> float:
@@ -115,7 +168,9 @@ def best_fit_angle(coordinates: Coordinates) -> float:
     angles = np.arange(720) * step
     angle = 0.0
     for _ in range(6):
-        scales = np.array([fitted_scale(coordinates, float(value)) for value in angles])
+        scales = np.empty(len(angles))
+        for selection, rotated in rotated_batches(coordinates, angles.tolist()):
+            scales[selection] = fitted_scales(np.ptp(rotated, axis=1))
         angle = float(angles[int(np.argmax(scales))])
         angles = angle + np.arange(-10, 11) * (step / 10)
         step /= 10
@@ -183,6 +238,59 @@ def angle_candidate(
     )
     overlap = footprint.intersection(dart_hull).area / dart_hull.area
     return AngleCandidate(degrees=degrees, scale=scale, overlap=overlap)
+
+
+def coarse_candidates(
+    coordinates: Coordinates,
+) -> collections.abc.Iterator[AngleCandidate]:
+    """Fit and intersect each coarse orientation in order with bounded point storage.
+
+    The caller reaches the coarse grid only when its reference footprint has positive
+    overlap area, so these rotations all have polygon input.
+
+    Args:
+        coordinates: Vertices of the projected footprint's convex hull.
+
+    Yields:
+        One fitted scale and buffered dart overlap for every coarse angle.
+    """
+    degrees, darts = zip(*coarse_dart_hulls(), strict=True)
+    yield from score_candidates(coordinates, degrees, darts)
+
+
+def score_candidates(
+    coordinates: Coordinates,
+    degrees: collections.abc.Sequence[float],
+    darts: collections.abc.Sequence[shapely.Polygon],
+) -> collections.abc.Iterator[AngleCandidate]:
+    """Score independent rotations while keeping the rotated hull storage bounded.
+
+    Args:
+        coordinates: Vertices of the projected footprint's convex hull.
+        degrees: Candidate angles in their original search order.
+        darts: The placed, buffered dart hull for each candidate angle.
+
+    Yields:
+        Each angle's fitted scale and dart overlap in input order.
+    """
+    angles = [math.radians(value) for value in degrees]
+    canvas_center = np.array(SIZE) / 2
+    for selection, rotated in rotated_batches(coordinates, angles):
+        minimum = np.min(rotated, axis=1)
+        maximum = np.max(rotated, axis=1)
+        scales = np.asarray(fitted_scales(maximum - minimum))
+        centers = (minimum + maximum) / 2
+        offsets = canvas_center - centers * scales[:, None]
+        points = rotated * scales[:, None, None] + offsets[:, None, :]
+        intersections = shapely.intersection(shapely.polygons(points), darts[selection])
+        overlaps = shapely.area(intersections) / shapely.area(darts[selection])
+        for value, scale, overlap in zip(
+            degrees[selection],
+            scales.tolist(),
+            overlaps.tolist(),
+            strict=True,
+        ):
+            yield AngleCandidate(degrees=value, scale=scale, overlap=overlap)
 
 
 def select_angle(
@@ -270,17 +378,23 @@ def refine_angle(
     current = seed
     step = ANGLE_STEP
     for _ in range(4):
-        local = [current]
-        for delta in range(-10, 11):
-            degrees = float(round(current.degrees + delta * step / 10, 10))
-            if MINIMUM_ANGLE <= degrees < MAXIMUM_ANGLE:
-                if degrees not in candidates:
-                    candidates[degrees] = angle_candidate(
-                        coordinates,
-                        degrees,
-                        north_dart_hull(math.radians(degrees)),
-                    )
-                local.append(candidates[degrees])
+        probes = [
+            float(round(current.degrees + delta * step / 10, 10))
+            for delta in range(-10, 11)
+        ]
+        nearby = [
+            degrees for degrees in probes if MINIMUM_ANGLE <= degrees < MAXIMUM_ANGLE
+        ]
+        missing = tuple(
+            degrees for degrees in dict.fromkeys(nearby) if degrees not in candidates
+        )
+        if missing:
+            darts = tuple(north_dart_hull(math.radians(degrees)) for degrees in missing)
+            candidates.update(
+                (candidate.degrees, candidate)
+                for candidate in score_candidates(coordinates, missing, darts)
+            )
+        local = [current, *(candidates[degrees] for degrees in nearby)]
         current = select_angle(local, weight, maximum_scale, reference)
         step /= 10
 
@@ -303,8 +417,8 @@ def best_angle(coordinates: Coordinates) -> float:
     if reference.overlap == 0:
         return reference_angle
     candidates = {reference.degrees: reference}
-    for degrees, hull in coarse_dart_hulls():
-        candidates[degrees] = angle_candidate(coordinates, degrees, hull)
+    for candidate in coarse_candidates(coordinates):
+        candidates[candidate.degrees] = candidate
     coarse = list(candidates.values())
     maximum_scale = max(value.scale for value in coarse)
     # Nearby penalties expose narrow clearance optima at raster-support boundaries.
@@ -438,12 +552,12 @@ def dart_hull_from_state(state: bytes) -> shapely.Polygon:
     """Reuse exact binary rasters before resampling and constructing their hulls.
 
     Args:
-        state: Every packed bit of the fixed-size supersampled alpha image.
+        state: The packed pixels inside the aligned supersampled window.
 
     Returns:
         The immutable placed support hull, with two pixels of clearance.
     """
-    high_size = DART_SIZE * SUPERSAMPLING
+    high_size = DART_HULL_SIZE * SUPERSAMPLING
     pixels = (
         np.unpackbits(np.frombuffer(state, dtype=np.uint8)).reshape((
             high_size,
@@ -452,7 +566,7 @@ def dart_hull_from_state(state: bytes) -> shapely.Polygon:
         * 255
     )
     high = PIL.Image.fromarray(pixels)
-    padded = high.resize((DART_SIZE, DART_SIZE), PIL.Image.Resampling.LANCZOS)
+    padded = high.resize((DART_HULL_SIZE, DART_HULL_SIZE), PIL.Image.Resampling.LANCZOS)
     dart = padded.crop(padded.getbbox())
     rows, columns = np.nonzero(np.asarray(dart))
     centers = np.column_stack((columns + SIZE[0] - dart.width + 0.5, rows + 0.5))
@@ -474,7 +588,8 @@ def north_dart_hull(angle: float) -> shapely.Polygon:
     Returns:
         The placed alpha-support hull, buffered without clipping to the canvas.
     """
-    high = supersampled_dart(angle, alpha_only=True)
+    # The aligned window leaves both filter radii of blank pixels at each edge.
+    high = supersampled_dart(angle, alpha_only=True).crop(DART_HULL_BOX)
     return dart_hull_from_state(np.packbits(np.asarray(high)).tobytes())
 
 

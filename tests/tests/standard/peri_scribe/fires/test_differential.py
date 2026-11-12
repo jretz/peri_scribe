@@ -1,5 +1,6 @@
 """Tests for peri_scribe.fires.differential."""
 
+import collections
 import datetime
 import pathlib
 
@@ -22,6 +23,9 @@ import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.fires.differential
 import tests.helpers.factories.geometry
 import tests.helpers.factories.peri_scribe.fires.differential
+
+
+pytestmark = pytest.mark.usefixtures("reuse_preparation_environment")
 
 
 def test_differential_geopackage_path_names_output() -> None:
@@ -424,6 +428,50 @@ def test_growth_difference_falls_back_to_zero() -> None:
     assert peri_scribe.fires.differential.growth_difference(150.0, []) == pytest.approx(
         150.0,
     )
+
+
+def test_differential_rows_for_fire_stops_at_each_usable_predecessor() -> None:
+    reads = 0
+
+    class CountedAttributes(collections.UserDict[str, object]):
+        """Count source attribute lookups across all candidate rows."""
+
+        def get(self, key: object, default: object = None) -> object:
+            """Retain the source value and count this lookup.
+
+            Args:
+                key: The requested growth attribute.
+                default: The fallback for an absent attribute.
+
+            Returns:
+                The ordinary dictionary lookup result.
+            """
+            nonlocal reads
+            reads += 1
+            return self.data.get(key, default)
+
+    count = 24
+    columns = peri_scribe.fires.differential.GROWTH_COLUMNS
+    attributes = [
+        CountedAttributes({
+            **dict.fromkeys(columns, index + 1),
+            "observation_time": None,
+        })
+        for index in range(count)
+    ]
+    geometries: list[shapely.Geometry | None] = [
+        shapely.geometry.box(-120.0, 40.0, -119.9 + index / 100, 40.1)
+        for index in range(count)
+    ]
+    rows = peri_scribe.fires.differential.differential_rows_for_fire(
+        attributes,
+        geometries,
+    )
+    assert len(rows) == count
+    assert [row[f"{column}_differential"] for row in rows for column in columns] == (
+        pytest.approx([1.0] * (count * len(columns)))
+    )
+    assert reads == len(columns) * (2 * count - 1)
 
 
 def test_row_identity_normalizes_missing() -> None:

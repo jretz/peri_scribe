@@ -46,25 +46,30 @@ def respond (line : String) : Except String (List Nat) := do
     let previous ← pairs (← numbers rawEvidence)
     let surveys ← pairs (← numbers rawSurveys)
     let queries ← numbers rawQueries
-    let input : Feedback := ⟨current, histories, grouped routes, lookup preferred,
-      fun history => (lookup owners history).getD history,
-      fun fire => (lookup fresh fire).getD
-        (freshAbove (histories ++ fresh.map Prod.snd) fire)⟩
-    let state := materializedRepetitions input count
-    let result := materializedRetry state
+    let identities := current.map Fire.identity
+    let surveyRows := memo identities (grouped surveys)
+    let input : Feedback := ⟨current, histories, (memo identities (grouped routes)).get,
+      (memo identities (lookup preferred)).get,
+      (memo histories (fun history => (lookup owners history).getD history)).get,
+      (memo identities (fun fire => (lookup fresh fire).getD
+        (freshAbove (histories ++ fresh.map Prod.snd) fire))).get⟩
     let first := materializedRetry input
     let acknowledged := acknowledgedRecords previous (recordsWithWriters current
-      (fun fire => (first.preferred fire).getD 0) (grouped surveys))
-    let repeated := acknowledgedRecords acknowledged (recordsWithWriters current
-      (fun fire => (result.preferred fire).getD 0) (grouped surveys))
-    return current.map (fun fire => (result.preferred fire.identity).getD 0) ++
-      queries.map result.previous ++
-      current.flatMap (fun fire => packed (result.routes fire.identity)) ++
-      queries.flatMap (fun history => packed (grouped repeated history)) ++
-      current.map (fun fire => if novel (fun history => some (result.previous history))
-        repeated ((result.preferred fire.identity).getD 0)
-          (grouped surveys fire.identity)
-        then 1 else 0)
+      (fun fire => (first.preferred fire).getD 0) surveyRows.get)
+    let results := (List.replicate count ()).scanl
+      (fun result _ => materializedRetry result) first
+    return results.flatMap fun result =>
+      let repeated := acknowledgedRecords acknowledged (recordsWithWriters current
+        (fun fire => (result.preferred fire).getD 0) surveyRows.get)
+      let observation := current.map (fun fire => (result.preferred fire.identity).getD 0) ++
+        queries.map result.previous ++
+        current.flatMap (fun fire => packed (result.routes fire.identity)) ++
+        queries.flatMap (fun history => packed (grouped repeated history)) ++
+        current.map (fun fire => if novel (fun history => some (result.previous history))
+          repeated ((result.preferred fire.identity).getD 0)
+            (surveyRows.get fire.identity)
+          then 1 else 0)
+      observation.length :: observation
   | _ => throw "Expected complete feedback input"
 
 end PeriScribe.IdentityRecomputationOracle

@@ -40,8 +40,9 @@ def test_scope_matches_every_checked_transaction_prefix(tmp_path: pathlib.Path) 
     assert {int(state["phase"]) for state in states} == set(range(7))
     assert {state["interrupted"] for state in states} == {"TRUE", "FALSE"}
     assert {state["disabled"] for state in states} == {"TRUE", "FALSE"}
-    for index, state in enumerate(states):
-        tests.formal.helpers.product_cache.replay_transaction(
-            state,
-            tmp_path / f"prefix-{index}.sqlite",
-        )
+    with structlog.testing.capture_logs():
+        for index, state in enumerate(states):
+            tests.formal.helpers.product_cache.replay_transaction(
+                state,
+                tmp_path / f"prefix-{index}.sqlite",
+            )

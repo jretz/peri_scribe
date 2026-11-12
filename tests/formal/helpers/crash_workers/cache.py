@@ -4,12 +4,11 @@ import pathlib
 import sqlite3
 import typing
 
-import pytest
-
 import spatial_data.product_cache
 import spatial_data.row_index
 import tests.formal.helpers.crash_worker
 import tests.formal.helpers.product_cache
+import tests.helpers.doubles.attribute_overrides
 
 
 def run(request: tests.formal.helpers.crash_worker.Request) -> None:
@@ -105,7 +104,7 @@ def run(request: tests.formal.helpers.crash_worker.Request) -> None:
         initialized.close()
         return sqlite3.connect(target, factory=Connection)
 
-    with pytest.MonkeyPatch.context() as patch:
+    with tests.helpers.doubles.attribute_overrides.AttributeOverrides() as patch:
         patch.setattr(spatial_data.product_cache, "open_store", open_store)
         patch.setattr(spatial_data.product_cache, "put", put)
         patch.setattr(spatial_data.product_cache, "prune", prune)

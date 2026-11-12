@@ -99,6 +99,35 @@ async def apply_records(
     )
 
 
+def reveal_diagnostic_cursor(
+    app: peri_scribe.monitor.terminal_contract.Host,
+    name: str,
+) -> None:
+    """Restore cursor visibility after the selected diagnostic tab has reflowed.
+
+    Args:
+        app: The terminal whose prepared widgets can be reused.
+        name: The tab that requested the refresh callback.
+    """
+    if not app.controller.available():
+        return
+    views = app.query_one("#views", textual.widgets.TabbedContent)
+    if views.active != name:
+        return
+    if name == "pipeline":
+        tree = app.query_one("#phase-tree", textual.widgets.Tree)
+        cursor = tree.cursor_node
+        if cursor is not None and cursor.data is not None:
+            tree.move_cursor(cursor)
+    table = views.get_pane(name).query_one(textual.widgets.DataTable)
+    row = (
+        max(0, table.row_count - 1)
+        if app.following and isinstance(table, peri_scribe.monitor.widgets.EventTable)
+        else table.cursor_row
+    )
+    table.move_cursor(row=row)
+
+
 def show_activity(app: peri_scribe.monitor.terminal_contract.Host) -> None:
     """Format the current inspection independently of live health evidence."""
     pending = app.controller.snapshot.records.sequence - app.visible_state.sequence

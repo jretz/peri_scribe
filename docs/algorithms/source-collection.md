@@ -74,6 +74,11 @@ For example, if snapshots 8 and 9 were published but the cache still covers 7, a
 only snapshot 9 would lose changes first observed in 8. Reconstruction closes that gap.
 Cache failure leaves the completed source observation available.
 
+The feed writer discovers the snapshot inventory once when updating the cache. The same
+serial-ordered list determines whether a previous cache is reusable, which files a
+rebuild reads, and which serial the result can claim. Each cooperating writer owns its
+feed directory throughout the update.
+
 ## Bounded network retries
 
 The ArcGIS adapter retries only recognized rate limits and transient connection,
@@ -105,7 +110,17 @@ protocol preserves historical observations even when the provider later removes 
 
 ## Implementation and verification
 
+`collect_feed_outcomes` owns the native runner and returns immutable feed-order values
+only after worker shutdown. `summarize_feed_outcomes` projects paths, ordinary errors and
+the changed flag before index publication. This is a linear pass over feed outcomes;
+indexing still precedes reporting ordinary source errors. Fatal task-group failure skips
+both operations and preserves completed sibling writes. The
+[fetch composition inventory](../../tests/formal/fetch_composition.md) checks the complete
+policy relation around this boundary and retains a native worker basis for every feed
+kind and full-fetch input, together with all forced cancellation interleavings.
+
 - [Collection](../../src/peri_scribe/sources/fetching.py),
+  [incremental candidate queries](../../src/peri_scribe/sources/incremental_query.py),
   [current state](../../src/peri_scribe/sources/feed_state.py),
   [snapshot discovery](../../src/peri_scribe/sources/snapshots.py), and
   [change detection](../../src/peri_scribe/sources/changes.py).

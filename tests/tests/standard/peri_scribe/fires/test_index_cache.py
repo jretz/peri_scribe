@@ -17,6 +17,9 @@ import spatial_data.product_cache
 import tests.helpers.doubles.peri_scribe.fires.index
 
 
+pytestmark = pytest.mark.usefixtures("reuse_preparation_environment")
+
+
 def test_classifications_for_prepared_sources_reuses_results_across_executions(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,

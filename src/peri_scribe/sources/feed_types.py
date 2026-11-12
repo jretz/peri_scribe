@@ -6,12 +6,12 @@ Design notes:
 
 from __future__ import annotations
 
+import importlib
 import typing
 import urllib.parse
 
 import pydantic
 
-import arcgis_access.metadata
 import peri_scribe.sources.network
 
 
@@ -218,7 +218,8 @@ class ArcGISFeed(pydantic.BaseModel):
         Returns:
             The observed last-edit timestamp, or None when an observation fails.
         """
-        return arcgis_access.metadata.observe_layer_last_edit_timestamp(
+        metadata = importlib.import_module("arcgis_access.metadata")
+        return metadata.observe_layer_last_edit_timestamp(
             self.url,
             self.name,
             user_agent=USER_AGENT,

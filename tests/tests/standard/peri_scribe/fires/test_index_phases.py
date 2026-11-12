@@ -14,6 +14,9 @@ import peri_scribe.pipeline_stages
 import peri_scribe.sources.snapshots
 
 
+pytestmark = pytest.mark.usefixtures("reuse_preparation_environment")
+
+
 @pytest.mark.parametrize(
     "stage",
     [peri_scribe.pipeline_stages.Stage.KMZ, peri_scribe.pipeline_stages.Stage.REPORTS],

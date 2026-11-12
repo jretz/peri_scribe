@@ -130,7 +130,7 @@ lifecycle, reference systems, dimensions, exact key equality, prepared predicate
 complete classification evidence. They also check projection reuse through both
 classification consumers. Deterministic ownership checks verify distinct prepared
 objects per thread and release with their owner. A subprocess stress check synchronizes
-eight workers before their first native prepared query, then compares 43,200 predicates
+four workers before their first native prepared query, then compares 21,600 predicates
 with an unprepared reference. Native prepared-index ownership is an adapter constraint
 outside the ideal geometry model; it changes neither policy nor mathematical evidence.
 [Coordinator regressions](../../tests/tests/standard/peri_scribe/fires/test_classification.py)

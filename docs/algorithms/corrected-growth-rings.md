@@ -119,7 +119,11 @@ every earlier footprint against every later footprint.
 
 For N observations, there are O(N) backward intersections and forward growth checks;
 actual construction costs depend on vertices and overlay intersections. Sparse attribute
-delta searches can scan earlier candidates, so worst-case attribute work is O(N²).
+deltas read the earlier candidates in reverse order until a usable value appears.
+A missing current value reads no earlier values. Each usable emitted value also bounds
+the next search in its column. Omitted candidates remain in that history and can stop
+a search sooner. Across a fixed set of columns the searches do O(N) attribute work
+with constant auxiliary iterator space.
 Visible added-area calculation performs an expanding sequence of unions whose total
 geometry cost depends on intermediate complexity. WKB hashing is linear in encoded bytes.
 Storage includes O(N) corrected geometry references and all generated overlay geometry.
@@ -145,7 +149,7 @@ Tests: [differential regressions](../../tests/tests/standard/peri_scribe/fires/t
 [Geography proofs](../../tests/formal/lean/PeriScribe/Geography.lean) establish the set
 recurrence. [DifferentialRows](../../tests/formal/lean/PeriScribe/DifferentialRows.lean)
 and its [formal boundary inventory](../../tests/formal/lean/spatial_boundaries.md)
-cover representative blocks, sparse deltas, and the visible ordered sequence.
+cover representative blocks, lazy sparse deltas, and the visible ordered sequence.
 [Conformance](../../tests/formal/conformance/test_differential_rows.py) compares complete
 rows, geometry, provenance, and measurements with the executable cell-set policy, including
 explicitly injected numerical-empty outcomes. These abstractions do not prove GEOS,

@@ -10,6 +10,7 @@ import pathlib
 import typing
 import unittest.mock
 
+import click.testing
 import pytest
 import structlog
 import structlog.testing
@@ -43,14 +44,32 @@ import tests.helpers.peri_scribe.main_publication
 from measurement_units import units
 
 
-if typing.TYPE_CHECKING:
-    import click.testing
+pytestmark = pytest.mark.usefixtures("reuse_preparation_environment")
 
 
 def test_cli_help(runner: click.testing.CliRunner) -> None:
     result = runner.invoke(peri_scribe.main.cli, ["--help"])
     assert result.exit_code == 0
     assert "Gather fire geography and turn it into maps and reports" in result.output
+
+
+@pytest.mark.parametrize("terminal_width", [55, 100])
+def test_commands_format_commands_matches_click_without_loading_deferred_commands(
+    monkeypatch: pytest.MonkeyPatch,
+    terminal_width: int,
+) -> None:
+    group = peri_scribe.main.cli
+    with click.Context(group, terminal_width=terminal_width) as context:
+        expected = context.make_formatter()
+        click.Group.format_commands(group, context, expected)
+        resolve = unittest.mock.Mock(side_effect=AssertionError("loaded a command"))
+        monkeypatch.setattr(group, "get_command", resolve)
+        actual = context.make_formatter()
+
+        group.format_commands(context, actual)
+
+    assert actual.getvalue() == expected.getvalue()
+    resolve.assert_not_called()
 
 
 @pytest.mark.parametrize("option", ["--stderr-log-level", "--file-log-level"])
@@ -288,7 +307,7 @@ def test_cli_defaults_both_log_destinations_to_debug(
     tmp_path: pathlib.Path,
     run_stubs: typing.Callable[..., tests.helpers.doubles.peri_scribe.main.RunStubs],
 ) -> None:
-    run_stubs(changed=False)
+    run_stubs(changed=False, render_logs=True)
     year_directory = tmp_path / "2026"
     year_directory.mkdir()
     result = runner.invoke(peri_scribe.main.cli, ["run", str(year_directory)])
@@ -356,7 +375,7 @@ def test_run_logs_failure_tracebacks_to_the_year_directory(
     monkeypatch: pytest.MonkeyPatch,
     run_stubs: typing.Callable[..., tests.helpers.doubles.peri_scribe.main.RunStubs],
 ) -> None:
-    run_stubs(changed=True)
+    run_stubs(changed=True, render_logs=True)
     error = RuntimeError("scoring failed")
     monkeypatch.setattr(
         peri_scribe.fires.scores,
@@ -579,6 +598,7 @@ def test_failed_fetch_or_check_requires_retry_without_advancing_publication(
     )
 
 
+@pytest.mark.usefixtures("cli_log_output")
 @pytest.mark.parametrize(
     "error",
     [
@@ -1213,7 +1233,7 @@ def test_run_full_fetch_forces_geography_without_source_changes(
     ).remaining
 
 
-@pytest.mark.usefixtures("current_year")
+@pytest.mark.usefixtures("current_year", "cli_log_output")
 def test_run_retries_failed_full_rebuild_without_another_full_fetch(
     runner: click.testing.CliRunner,
     run_stubs: typing.Callable[..., tests.helpers.doubles.peri_scribe.main.RunStubs],
@@ -1252,7 +1272,7 @@ def test_run_retries_failed_full_rebuild_without_another_full_fetch(
     ]
 
 
-@pytest.mark.usefixtures("current_year")
+@pytest.mark.usefixtures("current_year", "cli_log_output")
 def test_run_retries_external_failure_after_full_fetch(
     runner: click.testing.CliRunner,
     run_stubs: typing.Callable[..., tests.helpers.doubles.peri_scribe.main.RunStubs],
@@ -1277,7 +1297,7 @@ def test_run_retries_external_failure_after_full_fetch(
     ]
 
 
-@pytest.mark.usefixtures("current_year")
+@pytest.mark.usefixtures("current_year", "cli_log_output")
 def test_run_partial_selection_keeps_full_rebuild_pending(
     runner: click.testing.CliRunner,
     run_stubs: typing.Callable[..., tests.helpers.doubles.peri_scribe.main.RunStubs],
@@ -1328,7 +1348,7 @@ def test_run_skips_an_overlapping_invocation(
     ]
 
 
-@pytest.mark.usefixtures("current_year")
+@pytest.mark.usefixtures("current_year", "cli_log_output")
 def test_run_full_fetch_interval_does_not_record_state_when_fetch_fails(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
@@ -1344,7 +1364,7 @@ def test_run_full_fetch_interval_does_not_record_state_when_fetch_fails(
     assert stubs.write_state_calls == []
 
 
-@pytest.mark.usefixtures("current_year")
+@pytest.mark.usefixtures("current_year", "cli_log_output")
 def test_run_stops_when_fetch_state_is_malformed(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
@@ -1388,7 +1408,7 @@ def test_run_help_describes_full_fetch_interval_and_unconditional(
     assert "--unconditional" in result.output
 
 
-@pytest.mark.usefixtures("current_year")
+@pytest.mark.usefixtures("current_year", "cli_log_output")
 def test_run_stops_when_fetch_fails(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
@@ -1413,7 +1433,7 @@ def test_run_stops_when_fetch_fails(
     assert stubs.report_calls == []
 
 
-@pytest.mark.usefixtures("current_year")
+@pytest.mark.usefixtures("current_year", "cli_log_output")
 def test_run_stops_when_external_source_fetch_fails(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
@@ -1439,7 +1459,7 @@ def test_run_stops_when_external_source_fetch_fails(
     assert stubs.report_calls == []
 
 
-@pytest.mark.usefixtures("current_year")
+@pytest.mark.usefixtures("current_year", "cli_log_output")
 def test_run_stops_when_a_stage_fails(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,
@@ -1467,7 +1487,7 @@ def test_run_stops_when_a_stage_fails(
     assert stubs.report_calls == []
 
 
-@pytest.mark.usefixtures("current_year")
+@pytest.mark.usefixtures("current_year", "cli_log_output")
 def test_run_stops_when_scoring_fails(
     monkeypatch: pytest.MonkeyPatch,
     runner: click.testing.CliRunner,

@@ -45,7 +45,7 @@ calls the production stable-identity or candidate-selection helpers to obtain ex
 owners. Current records are serialized in Python's canonical report-key allocation
 order. The model itself applies identifier lookup, both adoption phases, and allocation.
 
-Conformance covers 5,048 complete batches derived from the existing continuity
+Conformance covers 4,564 distinct complete batches derived from the existing continuity
 catalogue with varied mixtures of name-only and identified fires, known owners,
 legacy direct keys, reserved historical aliases, local preferences, rename evidence,
 empty histories, source corrections, and ambiguous claims. Every batch also runs the

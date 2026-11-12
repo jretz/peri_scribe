@@ -39,8 +39,9 @@ Last-write-wins is checked over this finite domain, not proved for unbounded his
 archive downloads, converted state combinations, and streamed state combinations. The
 model separates three staging chunks, completion, atomic rename, observation, and an
 interruption followed by retry. Existing output is either absent or previously complete.
-An observer can never see a partial reusable output. Both configurations explore 19
-states; liveness assumes finite failure and weak fairness of remaining work.
+An observer can never see a partial reusable output. One configuration checks safety
+and liveness across 19 states. Liveness assumes finite failure and weak fairness of
+remaining work.
 
 The conformance test replays every possible interruption prefix (including after all
 chunks but before rename) through the production context manager and compares visibility
@@ -112,7 +113,7 @@ arriving during cancellation cannot be delivered afterward. The cancellation cou
 saturates at two so arbitrary additional cancellation remains enabled without growing
 the finite state space.
 
-Both configurations explore 90 states, including two read opportunities, worker success
+The configuration explores 90 states, including two read opportunities, worker success
 or failure, and cancellation before or after worker exit. Liveness requires blocking
 reads and the worker to finish and the owner to be scheduled; it makes no claim that
 Python can forcibly terminate a stuck thread.

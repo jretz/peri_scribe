@@ -1,6 +1,7 @@
 """Reject malformed journal payloads and ambiguous serialized identity keys."""
 
 import json
+import unittest.mock
 
 import pydantic
 import pytest
@@ -41,6 +42,20 @@ def test_canonical_identity_rejects_ambiguous_or_invalid_encodings(
 ) -> None:
     with pytest.raises(ValueError, match=r"validation error|canonical JSON encoding"):
         peri_scribe.fire_update_records.canonical_identity(encoded)
+
+
+def test_canonical_identity_validates_long_keys_without_retaining_them(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    records = peri_scribe.fire_update_records
+    validate = unittest.mock.Mock(wraps=records.validate_identity_encoding)
+    monkeypatch.setattr(records, "validate_identity_encoding", validate)
+    canonical_identity = records.identity_encoding_validator()
+    encoded = json.dumps(("id", "x" * 513))
+
+    assert canonical_identity(encoded) is encoded
+    assert canonical_identity(encoded) is encoded
+    assert validate.call_args_list == [unittest.mock.call(encoded)] * 2
 
 
 @pytest.mark.parametrize(

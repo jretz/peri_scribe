@@ -8,41 +8,38 @@ Algorithm reasoning and contracts:
 from __future__ import annotations
 
 import datetime
+import importlib
 import pathlib
 import textwrap
+import typing
 
 import click
 import structlog
 
+import peri_scribe.cli_help
 import peri_scribe.cli_options
 import peri_scribe.execution
-import peri_scribe.fires.differential
-import peri_scribe.fires.index
-import peri_scribe.fires.scores
-import peri_scribe.kml.builder
 import peri_scribe.kml.colormap
 import peri_scribe.logging
-import peri_scribe.output
 import peri_scribe.paths
 import peri_scribe.phases
 import peri_scribe.pipeline_stages
 import peri_scribe.pipeline_state
 import peri_scribe.preparation
-import peri_scribe.publication
-import peri_scribe.report.gathering
-import peri_scribe.report.markdown
-import peri_scribe.sources.administrative_boundaries
 import peri_scribe.sources.catalog
-import peri_scribe.sources.cities
-import peri_scribe.sources.digests
 import peri_scribe.sources.external_data
-import peri_scribe.sources.external_sources
 import peri_scribe.sources.feeds
+import peri_scribe.sources.fetch_control
 import peri_scribe.sources.fetching
 import peri_scribe.sources.full_fetch_state
 import peri_scribe.sources.snapshots
-import peri_scribe.sources.validation
-import peri_scribe.supervision
+
+
+if typing.TYPE_CHECKING:
+    import peri_scribe.publication as publication_types
+    import peri_scribe.supervision as supervision_types
+
+    run = supervision_types.run
 
 
 logger = structlog.get_logger()
@@ -70,7 +67,10 @@ def fetch_external_source(
         peri_scribe.phases.Phase.COLLECT_EXTERNAL_SOURCE,
         source=source.name,
     ):
-        paths = peri_scribe.sources.external_sources.fetch_external_source(
+        external_sources = importlib.import_module(
+            "peri_scribe.sources.external_sources",
+        )
+        paths = external_sources.fetch_external_source(
             source,
             year_directory,
         )
@@ -79,8 +79,8 @@ def fetch_external_source(
 
 @click.command(
     help=textwrap.dedent(
-        """\
-        Preview the progression-ring colors in a truecolor terminal.
+        f"""\
+        {peri_scribe.cli_help.COLORMAP_HELP}
 
         The strip shows all 256 Turbo colors. Labels on the left identify every 16th
         color, and a marker on the right shows the range used for progression rings,
@@ -130,8 +130,9 @@ def stored_evacuations_digest(year_directory: pathlib.Path) -> str | None:
         The digest of the stored evacuations contents, or None when no version is
         stored.
     """
+    digests = importlib.import_module("peri_scribe.sources.digests")
     source = peri_scribe.sources.catalog.EVACUATIONS_SOURCE
-    return peri_scribe.sources.digests.stored_geopackage_digest(
+    return digests.stored_geopackage_digest(
         peri_scribe.sources.external_data.output_path(year_directory, source),
         source.layer_name or source.name,
     )
@@ -149,8 +150,10 @@ def write_reports(year_directory: pathlib.Path) -> pathlib.Path:
     Returns:
         The path of the written reports.
     """
-    report = peri_scribe.report.gathering.gather_report(year_directory)
-    return peri_scribe.report.markdown.render_markdown_report(report, year_directory)
+    report_gathering = importlib.import_module("peri_scribe.report.gathering")
+    report_markdown = importlib.import_module("peri_scribe.report.markdown")
+    report = report_gathering.gather_report(year_directory)
+    return report_markdown.render_markdown_report(report, year_directory)
 
 
 def prepare_administrative_boundaries(year_directory: pathlib.Path) -> None:
@@ -162,7 +165,10 @@ def prepare_administrative_boundaries(year_directory: pathlib.Path) -> None:
     with peri_scribe.logging.log_phase(
         peri_scribe.phases.Phase.ADMINISTRATIVE_BOUNDARIES,
     ):
-        peri_scribe.sources.administrative_boundaries.ensure_administrative_boundaries(
+        boundaries = importlib.import_module(
+            "peri_scribe.sources.administrative_boundaries",
+        )
+        boundaries.ensure_administrative_boundaries(
             year_directory,
         )
 
@@ -182,61 +188,14 @@ def fetch_fire_sources(
 
     Returns:
         The collected snapshots and whether a scheduled full fetch was performed.
-
-    Raises:
-        SystemExit: If collection fails; the required rebuild remains pending.
     """
-    base_directory = peri_scribe.sources.snapshots.base_directory_for_year_directory(
+    return peri_scribe.sources.fetch_control.collect_fire_sources(
         year_directory,
+        full_fetch_interval=full_fetch_interval,
+        fetch=peri_scribe.sources.fetching.fetch_all_feeds,
+        prepare=prepare_administrative_boundaries,
+        defer_index=defer_index,
     )
-    year = peri_scribe.paths.year_for_year_directory(year_directory)
-    state_file = peri_scribe.sources.full_fetch_state.state_path(year_directory)
-    full = False
-    if full_fetch_interval is not None:
-        stored_state = peri_scribe.sources.full_fetch_state.read_state(state_file)
-        current_time = datetime.datetime.now(datetime.UTC)
-        last_full_fetch = (
-            stored_state.last_full_fetch if stored_state is not None else None
-        )
-        full = peri_scribe.sources.full_fetch_state.full_fetch_is_due(
-            interval=full_fetch_interval,
-            current_time=current_time,
-            last_full_fetch=last_full_fetch,
-        )
-    if full:
-        peri_scribe.pipeline_state.require_stages(
-            year_directory,
-            peri_scribe.pipeline_state.DERIVED_STAGES,
-            unconditional=True,
-        )
-    try:
-        if defer_index:
-            result = peri_scribe.sources.fetching.fetch_all_feeds(
-                base_directory,
-                year=year,
-                full=full,
-                build_index=False,
-            )
-        else:
-            prepare_administrative_boundaries(year_directory)
-            result = peri_scribe.sources.fetching.fetch_all_feeds(
-                base_directory,
-                year=year,
-                full=full,
-            )
-    except Exception, SystemExit:
-        # A failed feed can follow successful snapshot writes from other feeds.
-        peri_scribe.pipeline_state.require_stages(
-            year_directory,
-            peri_scribe.pipeline_state.DERIVED_STAGES,
-        )
-        raise
-    if full and not defer_index:
-        peri_scribe.sources.full_fetch_state.write_state(
-            state_file,
-            last_full_fetch=datetime.datetime.now(datetime.UTC),
-        )
-    return result, full
 
 
 def run_fetch_stage(
@@ -244,7 +203,7 @@ def run_fetch_stage(
     *,
     full_fetch_interval: datetime.timedelta | None,
     unconditional: bool,
-    publish_threshold: peri_scribe.publication.Threshold | None = None,
+    publish_threshold: publication_types.Threshold | None = None,
 ) -> bool:
     """Run required output work when the publication policy permits it.
 
@@ -269,25 +228,12 @@ def run_fetch_stage(
             unconditional=unconditional,
             threshold=publish_threshold,
         )
-    previous = peri_scribe.pipeline_state.read_state(year_directory)
-    deferred = peri_scribe.pipeline_state.deferred_inputs_path(year_directory).exists()
-    peri_scribe.pipeline_state.require_stages(
-        year_directory,
-        peri_scribe.pipeline_state.DERIVED_STAGES,
-    )
-    peri_scribe.pipeline_state.clear_deferred_inputs(year_directory)
-    result, full = fetch_fire_sources(
+    return peri_scribe.sources.fetch_control.run_ungated_fetch(
         year_directory,
         full_fetch_interval=full_fetch_interval,
-    )
-    external_changed = refresh_external_sources(year_directory)
-    if not (result.changed or external_changed or full or deferred):
-        peri_scribe.pipeline_state.write_state(year_directory, previous)
-    return (
-        result.changed
-        or external_changed
-        or unconditional
-        or bool(peri_scribe.pipeline_state.read_state(year_directory).remaining)
+        unconditional=unconditional,
+        collect=fetch_fire_sources,
+        refresh=refresh_external_sources,
     )
 
 
@@ -296,7 +242,7 @@ def run_gated_fetch_stage(
     *,
     full_fetch_interval: datetime.timedelta | None,
     unconditional: bool,
-    threshold: peri_scribe.publication.Threshold,
+    threshold: publication_types.Threshold,
 ) -> bool:
     """Check live reference data and retained geometry before deciding to publish.
 
@@ -312,6 +258,7 @@ def run_gated_fetch_stage(
     Raises:
         SystemExit: If fetching or evaluating saved inputs fails.
     """
+    publication = importlib.import_module("peri_scribe.publication")
     peri_scribe.pipeline_state.defer_inputs(year_directory)
     _result, full = fetch_fire_sources(
         year_directory,
@@ -351,7 +298,7 @@ def run_gated_fetch_stage(
         threshold=threshold.area.to("acres"),
     )
     if not proceed:
-        if decision.reason == peri_scribe.publication.Reason.NO_CHANGES:
+        if decision.reason == publication.Reason.NO_CHANGES:
             peri_scribe.pipeline_state.clear_deferred_inputs(year_directory)
         peri_scribe.logging.skip_phases(
             (peri_scribe.phases.Phase.DEFERRED_FETCH,),
@@ -365,7 +312,8 @@ def run_gated_fetch_stage(
     peri_scribe.pipeline_state.clear_deferred_inputs(year_directory)
     with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.DEFERRED_FETCH):
         prepare_administrative_boundaries(year_directory)
-        peri_scribe.fires.index.index_fire_sources(year_directory)
+        fire_index = importlib.import_module("peri_scribe.fires.index")
+        fire_index.index_fire_sources(year_directory)
         if full:
             peri_scribe.sources.full_fetch_state.write_state(
                 peri_scribe.sources.full_fetch_state.state_path(year_directory),
@@ -381,8 +329,8 @@ def run_gated_fetch_stage(
 
 def publication_decision(
     year_directory: pathlib.Path,
-    threshold: peri_scribe.publication.Threshold,
-) -> peri_scribe.publication.Decision:
+    threshold: publication_types.Threshold,
+) -> publication_types.Decision:
     """Compare the saved inventory with the checkpoint belonging to the current KMZ.
 
     Args:
@@ -392,12 +340,13 @@ def publication_decision(
     Returns:
         The publication decision for the current time and saved inputs.
     """
-    collection = peri_scribe.publication.collect(year_directory)
-    published = peri_scribe.publication.read_publication(
+    publication = importlib.import_module("peri_scribe.publication")
+    collection = publication.collect(year_directory)
+    published = publication.read_publication(
         year_directory,
         peri_scribe.paths.kmz_path(year_directory),
     )
-    return peri_scribe.publication.decide(
+    return publication.decide(
         collection,
         published,
         threshold,
@@ -422,6 +371,7 @@ def refresh_external_sources(
     Returns:
         Whether evacuation geography or city locations changed.
     """
+    cities = importlib.import_module("peri_scribe.sources.cities")
     with peri_scribe.logging.log_phase(
         peri_scribe.phases.Phase.EXTERNAL_SOURCE_REFRESH,
     ):
@@ -429,9 +379,7 @@ def refresh_external_sources(
             stored_evacuations_digest(year_directory) if include_evacuations else None
         )
         cities_digest_before = (
-            peri_scribe.sources.cities.database_digest(year_directory)
-            if include_cities
-            else None
+            cities.database_digest(year_directory) if include_cities else None
         )
         for source in peri_scribe.sources.catalog.EXTERNAL_SOURCES:
             if (
@@ -450,8 +398,7 @@ def refresh_external_sources(
             and stored_evacuations_digest(year_directory) != evacuations_digest_before
         ) or (
             include_cities
-            and peri_scribe.sources.cities.database_digest(year_directory)
-            != cities_digest_before
+            and cities.database_digest(year_directory) != cities_digest_before
         )
 
 
@@ -474,7 +421,8 @@ def run_geography_stage(
     ):
         peri_scribe.execution.clear(group)
     try:
-        peri_scribe.fires.differential.write_history_of_differential_geography(
+        differential = importlib.import_module("peri_scribe.fires.differential")
+        differential.write_history_of_differential_geography(
             year_directory,
             unconditional=unconditional,
         )
@@ -489,13 +437,14 @@ def run_score_stage(year_directory: pathlib.Path) -> None:
         year_directory: Directory containing the year's source snapshots and derived
             outputs.
     """
-    peri_scribe.fires.scores.score_fires(year_directory)
+    scores = importlib.import_module("peri_scribe.fires.scores")
+    scores.score_fires(year_directory)
 
 
 def run_kmz_stage(
     year_directory: pathlib.Path,
     *,
-    publication_inputs: peri_scribe.publication.Collection | None = None,
+    publication_inputs: publication_types.Collection | None = None,
 ) -> None:
     """Build the symbolized KMZ for Google Earth.
 
@@ -504,10 +453,11 @@ def run_kmz_stage(
         publication_inputs: Frozen source inputs to acknowledge after KMZ completion, or
             None when no publication checkpoint is requested.
     """
+    builder = importlib.import_module("peri_scribe.kml.builder")
     if publication_inputs is None:
-        peri_scribe.kml.builder.create_kmz(year_directory)
+        builder.create_kmz(year_directory)
     else:
-        peri_scribe.kml.builder.create_kmz(
+        builder.create_kmz(
             year_directory,
             publication_inputs=publication_inputs,
         )
@@ -535,8 +485,8 @@ def run_pipeline_stage(
     *,
     full_fetch_interval: datetime.timedelta | None,
     unconditional: bool,
-    publish_threshold: peri_scribe.publication.Threshold | None = None,
-    publication_inputs: peri_scribe.publication.Collection | None = None,
+    publish_threshold: publication_types.Threshold | None = None,
+    publication_inputs: publication_types.Collection | None = None,
 ) -> bool:
     """Run *stage* and return whether the next stage should run.
 
@@ -569,9 +519,8 @@ def run_pipeline_stage(
             case peri_scribe.pipeline_stages.Stage.KMZ:
                 run_kmz_stage(year_directory, publication_inputs=publication_inputs)
                 if publish_threshold is not None and publication_inputs is None:
-                    peri_scribe.publication.publication_path(year_directory).unlink(
-                        missing_ok=True,
-                    )
+                    publication = importlib.import_module("peri_scribe.publication")
+                    publication.invalidate(year_directory)
                     logger.info(
                         "KMZ created without fresh geography; "
                         "publication checkpoint requires rebuild",
@@ -585,7 +534,21 @@ print_stages = peri_scribe.cli_options.print_stages
 selected_stage_range = peri_scribe.cli_options.selected_stage_range
 
 
-run = peri_scribe.supervision.run
+def __getattr__(name: str) -> click.Command:
+    """Load the supervisor when a caller requests the public run command.
+
+    Args:
+        name: The requested pipeline module attribute.
+
+    Returns:
+        The supervisor's registered Click command.
+
+    Raises:
+        AttributeError: If the pipeline does not expose the attribute.
+    """
+    if name == "run":
+        return importlib.import_module("peri_scribe.supervision").run
+    raise AttributeError(name)
 
 
 @peri_scribe.preparation.cached_year
@@ -596,11 +559,11 @@ def run_selected_stages(
     *,
     full_fetch_interval: datetime.timedelta | None,
     unconditional: bool,
-    publish_threshold: peri_scribe.publication.Threshold | None = None,
+    publish_threshold: publication_types.Threshold | None = None,
     initialize: bool = True,
     stop_after_geography: bool = False,
-    publication_inputs: peri_scribe.publication.Collection | None = None,
-) -> peri_scribe.supervision.SegmentResult:
+    publication_inputs: publication_types.Collection | None = None,
+) -> supervision_types.SegmentResult:
     """Keep recovery state until the required outputs have successfully completed.
 
     Args:
@@ -619,6 +582,7 @@ def run_selected_stages(
     Returns:
         Continuation state only after a completed segment or an unchanged fetch.
     """
+    supervision = importlib.import_module("peri_scribe.supervision")
     selected = tuple(
         stage.name
         for stage in PIPELINE_STAGES[start : end + 1]
@@ -660,13 +624,14 @@ def run_selected_stages(
             stage.name == peri_scribe.pipeline_stages.Stage.GEOGRAPHY
             and publish_threshold is not None
         ):
-            publication_inputs = peri_scribe.publication.collect(year_directory)
+            publication = importlib.import_module("peri_scribe.publication")
+            publication_inputs = publication.collect(year_directory)
         peri_scribe.pipeline_state.complete_stage(year_directory, stage.name)
         if (
             stop_after_geography
             and stage.name == peri_scribe.pipeline_stages.Stage.GEOGRAPHY
         ):
-            return peri_scribe.supervision.SegmentResult(
+            return supervision.SegmentResult(
                 next_stage=STAGE_INDEX[stage.name] + 1,
                 publication_inputs=(
                     None
@@ -674,13 +639,13 @@ def run_selected_stages(
                     else publication_inputs.model_dump_json()
                 ),
             )
-    return peri_scribe.supervision.SegmentResult()
+    return supervision.SegmentResult()
 
 
 @click.command(
     help=textwrap.dedent(
         f"""\
-        Validate that YEAR_DIRECTORY/sources covers a complete snapshot of every feed.
+        {peri_scribe.cli_help.VALIDATE_HELP}
 
         Fetches every feed in full into YEAR_DIRECTORY/validation, then runs the
         incremental fetch so the stored sources reflect the same state, and compares the
@@ -720,6 +685,8 @@ def validate_locked_sources(year_directory: pathlib.Path) -> None:
     Args:
         year_directory: The year whose exclusive writer lock is held by the caller.
     """
+    output = importlib.import_module("peri_scribe.output")
+    validation = importlib.import_module("peri_scribe.sources.validation")
     base_directory = peri_scribe.sources.snapshots.base_directory_for_year_directory(
         year_directory,
     )
@@ -727,7 +694,7 @@ def validate_locked_sources(year_directory: pathlib.Path) -> None:
     complete_directory = peri_scribe.sources.snapshots.validation_directory_path(
         year_directory,
     )
-    peri_scribe.output.remove_directory_tree(complete_directory)
+    output.remove_directory_tree(complete_directory)
     peri_scribe.sources.fetching.fetch_all_feeds_complete(base_directory, year=year)
     previous = peri_scribe.pipeline_state.read_state(year_directory)
     peri_scribe.pipeline_state.require_stages(
@@ -737,13 +704,13 @@ def validate_locked_sources(year_directory: pathlib.Path) -> None:
     collected = peri_scribe.sources.fetching.fetch_all_feeds(base_directory, year=year)
     if not collected.changed:
         peri_scribe.pipeline_state.write_state(year_directory, previous)
-    results = peri_scribe.sources.validation.validate_complete_sources(
+    results = validation.validate_complete_sources(
         year_directory,
         peri_scribe.sources.feeds.FEEDS,
     )
     problem_results = [result for result in results if result.has_problems]
     if not problem_results:
-        peri_scribe.output.remove_directory_tree(complete_directory)
+        output.remove_directory_tree(complete_directory)
         logger.info("Validated sources; no problems found")
         return
     for result in problem_results:

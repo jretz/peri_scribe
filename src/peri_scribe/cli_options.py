@@ -4,17 +4,20 @@ from __future__ import annotations
 
 import dataclasses
 import datetime
+import importlib
 import math
 import pathlib
 import re
 import typing
 
 import click
-import pint
 
 import peri_scribe.paths
 import peri_scribe.pipeline_stages
-from measurement_units import units
+
+
+if typing.TYPE_CHECKING:
+    import pint
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -142,6 +145,8 @@ class Area(click.ParamType):
         Returns:
             The positive area converted to square meters.
         """
+        pint = importlib.import_module("pint")
+        units = importlib.import_module("measurement_units").units
         message = f"{value!r} is not a positive area such as '25 acre'"
         if not isinstance(value, (str, pint.Quantity)):
             self.fail(message, param, ctx)

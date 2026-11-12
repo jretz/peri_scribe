@@ -289,7 +289,7 @@ def test_reader_catch_up_stops_on_errors(
         ),
     )
     with contextlib.closing(peri_scribe.monitor.history.Reader(tmp_path)) as reader:
-        monkeypatch.setattr(reader.follower, "poll", poll)
+        monkeypatch.setattr(reader.follower, "poll_locked", poll)
         history = reader.catch_up(
             tests.helpers.factories.peri_scribe.monitor.status.NOW,
         )
@@ -319,7 +319,7 @@ def test_reader_close_interrupts_catch_up_after_the_active_batch(
             release=release,
         ),
     )
-    monkeypatch.setattr(reader.follower, "poll", poll)
+    monkeypatch.setattr(reader.follower, "poll_locked", poll)
     with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
         reading = executor.submit(
             reader.catch_up,

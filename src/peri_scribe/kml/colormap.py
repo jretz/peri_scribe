@@ -17,9 +17,8 @@ compressing most growth into one color; short active windows use the hotter ramp
 
 from __future__ import annotations
 
+import importlib
 import typing
-
-from measurement_units import units
 
 
 if typing.TYPE_CHECKING:
@@ -485,6 +484,7 @@ def active_ring_window(
     """
     best = (0, len(areas) - 1)
     left = 0
+    units = importlib.import_module("measurement_units").units
     running = 0 * units.Unit("meters ** 2")
     for right, area in enumerate(areas):
         running += area
@@ -551,6 +551,7 @@ def progression_ring_colors(
         timestamps.append(observation_time.timestamp())
     if not dated:
         return ()
+    units = importlib.import_module("measurement_units").units
     areas = [ring.area for ring in dated]
     threshold = ACTIVE_GROWTH_FRACTION * sum(areas, 0 * units.Unit("meters ** 2"))
     start, end = active_ring_window(areas, threshold)

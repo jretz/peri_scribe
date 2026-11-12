@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import enum
 import pathlib
+import types
 
 
 class LogStatus(enum.StrEnum):
@@ -24,3 +25,24 @@ class LogDetails:
 
     path: pathlib.Path
     status: LogStatus
+
+
+def structured_log_value(value: object) -> types.SimpleNamespace:
+    """Supply a custom JSON representation through Structlog's public protocol.
+
+    Args:
+        value: The custom representation, including its original keys and order.
+
+    Returns:
+        An object implementing the custom serialization callback.
+    """
+
+    def render() -> object:
+        """Return the selected representation.
+
+        Returns:
+            The unmodified value.
+        """
+        return value
+
+    return types.SimpleNamespace(__structlog__=render)

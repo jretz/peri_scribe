@@ -28,6 +28,10 @@ WGS84_FLATTENING = 1 / 298.257223563
 ECCENTRICITY_SQUARED = WGS84_FLATTENING * (2 - WGS84_FLATTENING)
 ECCENTRICITY = math.sqrt(ECCENTRICITY_SQUARED)
 SURFACE_SCALE = WGS84_EQUATORIAL_RADIUS**2 * (1 - ECCENTRICITY_SQUARED) / 2
+SQUARE_METERS = SURFACE_SCALE.units
+DEGREES = units.degrees
+RADIANS = units.radians
+DEGREE_TO_RADIAN = (1 * DEGREES).m_as(RADIANS)
 GAUSSIAN_NODES, GAUSSIAN_WEIGHTS = np.polynomial.legendre.leggauss(8)
 GAUSSIAN_MEAN_WEIGHTS = GAUSSIAN_WEIGHTS / 2
 MAXIMUM_INTEGRATION_BATCH_PIECES = 8192
@@ -89,17 +93,24 @@ def area_from_ring_areas(
     """
     if isinstance(geometry, shapely.Polygon):
         if geometry.is_empty:
-            return 0.0 * units.Unit("meters ** 2")
-        return abs(next(measurements)) - math.fsum(
-            abs(next(measurements)).m_as("meters ** 2")
-            for _interior in geometry.interiors
-        ) * units.Unit("meters ** 2")
+            return units.Quantity(0.0, SQUARE_METERS)
+        return (
+            abs(next(measurements))
+            - math.fsum(
+                abs(next(measurements)).m_as(SQUARE_METERS)
+                for _interior in geometry.interiors
+            )
+            * SQUARE_METERS
+        )
     if isinstance(geometry, shapely.MultiPolygon | shapely.GeometryCollection):
-        return math.fsum(
-            area_from_ring_areas(part, measurements).m_as("meters ** 2")
-            for part in geometry.geoms
-        ) * units.Unit("meters ** 2")
-    return 0.0 * units.Unit("meters ** 2")
+        return units.Quantity(
+            math.fsum(
+                area_from_ring_areas(part, measurements).m_as(SQUARE_METERS)
+                for part in geometry.geoms
+            ),
+            SQUARE_METERS,
+        )
+    return units.Quantity(0.0, SQUARE_METERS)
 
 
 def ring_area(ring: shapely.LinearRing) -> pint.Quantity[float]:
@@ -115,7 +126,7 @@ def ring_area(ring: shapely.LinearRing) -> pint.Quantity[float]:
         Signed surface area in square meters, positive counterclockwise.
     """
     if ring.is_empty:
-        return 0.0 * units.Unit("meters ** 2")
+        return units.Quantity(0.0, SQUARE_METERS)
     return ring_areas((ring,))[0]
 
 
@@ -135,7 +146,7 @@ def ring_areas(
         Signed square-meter measurements aligned with the input boundaries.
     """
     if not rings:
-        return np.empty(0) * units.Unit("meters ** 2")
+        return units.Quantity(np.empty(0), SQUARE_METERS)
     coordinates, coordinate_ring_indices = shapely.get_coordinates(
         rings,
         return_index=True,
@@ -146,13 +157,14 @@ def ring_areas(
     last_coordinate = np.zeros(len(coordinates), dtype=bool)
     first_coordinate[ring_starts] = True
     last_coordinate[np.cumsum(lengths) - 1] = True
-    latitude_references = (
+    latitude_references = units.Quantity(
         (
             np.minimum.reduceat(coordinates[:, 1], ring_starts)
             + np.maximum.reduceat(coordinates[:, 1], ring_starts)
         )
-        / 2
-    ) * units.degrees
+        / 2,
+        DEGREES,
+    )
     contributions, edge_ring_indices = ring_edge_contributions(
         coordinates[~last_coordinate],
         coordinates[~first_coordinate],
@@ -161,14 +173,16 @@ def ring_areas(
     )
     stops = np.cumsum(np.bincount(edge_ring_indices, minlength=len(rings)))
     starts = np.r_[0, stops[:-1]]
-    native_contributions = contributions.m_as("meters ** 2")
-    return np.fromiter(
-        (
-            math.fsum(native_contributions[start:stop])
-            for start, stop in zip(starts, stops, strict=True)
+    return units.Quantity(
+        np.fromiter(
+            (
+                math.fsum(contributions.magnitude[start:stop])
+                for start, stop in zip(starts, stops, strict=True)
+            ),
+            dtype=float,
         ),
-        dtype=float,
-    ) * units.Unit("meters ** 2")
+        SQUARE_METERS,
+    )
 
 
 def ring_edge_contributions(
@@ -188,12 +202,16 @@ def ring_edge_contributions(
     Returns:
         Signed square-meter contributions and their aligned boundary identities.
     """
-    longitude_difference = (end[:, 0] - start[:, 0]) * units.degrees
-    latitude_difference = (end[:, 1] - start[:, 1]) * units.degrees
-    nonvertical = longitude_difference.m_as("degrees") != 0
-    longitude_difference = longitude_difference[nonvertical]
-    latitude_difference = latitude_difference[nonvertical]
-    starting_latitudes = start[nonvertical, 1] * units.degrees
+    nonvertical = end[:, 0] - start[:, 0] != 0
+    longitude_difference = units.Quantity(
+        end[nonvertical, 0] - start[nonvertical, 0],
+        DEGREES,
+    )
+    latitude_difference = units.Quantity(
+        end[nonvertical, 1] - start[nonvertical, 1],
+        DEGREES,
+    )
+    starting_latitudes = units.Quantity(start[nonvertical, 1], DEGREES)
     edge_ring_indices = edge_ring_indices[nonvertical]
     longitude_difference, latitude_difference, starting_latitudes, edge_ring_indices = (
         subdivide_edges(
@@ -203,14 +221,24 @@ def ring_edge_contributions(
             edge_ring_indices,
         )
     )
-    references = latitude_references[edge_ring_indices]
-    latitude_offsets = (starting_latitudes - references + latitude_difference / 2).to(
-        "radians",
+    references = units.Quantity(
+        latitude_references.magnitude[edge_ring_indices],
+        latitude_references.units,
+    )
+    # Form the complete midpoint offset in degrees before converting to radians.
+    latitude_offsets = units.Quantity(
+        (
+            starting_latitudes.magnitude
+            - references.m_as(DEGREES)
+            + latitude_difference.magnitude / 2
+        )
+        * DEGREE_TO_RADIAN,
+        RADIANS,
     )
     return integration_contributions(
         longitude_difference,
         latitude_offsets,
-        latitude_difference.to("radians") / 2,
+        units.Quantity(latitude_difference.magnitude * DEGREE_TO_RADIAN / 2, RADIANS),
         references=references,
         latitude_references=latitude_references,
         edge_ring_indices=edge_ring_indices,
@@ -240,19 +268,28 @@ def subdivide_edges(
         Longitude widths, latitude widths, starting latitudes, and boundary identities
         aligned with the subdivision intervals.
     """
-    if np.any(np.abs(latitude_difference.m_as("degrees")) > 1):
-        piece_counts = np.maximum(
-            1,
-            np.ceil(np.abs(latitude_difference.m_as("degrees"))).astype(int),
-        )
+    latitude_widths = abs(latitude_difference.to(DEGREES))
+    if np.any(latitude_widths.magnitude > 1):
+        piece_counts = np.maximum(1, np.ceil(latitude_widths.magnitude).astype(int))
         edge_indices = np.repeat(np.arange(len(piece_counts)), piece_counts)
-        piece_numbers = np.concatenate([np.arange(count) for count in piece_counts])
-        longitude_difference = (
-            longitude_difference[edge_indices] / piece_counts[edge_indices]
+        piece_starts = np.cumsum(piece_counts) - piece_counts
+        piece_numbers = np.arange(len(edge_indices)) - piece_starts[edge_indices]
+        longitude_difference = units.Quantity(
+            longitude_difference.magnitude[edge_indices] / piece_counts[edge_indices],
+            longitude_difference.units,
         )
-        latitude_steps = latitude_difference[edge_indices] / piece_counts[edge_indices]
-        starting_latitudes = (
-            starting_latitudes[edge_indices] + piece_numbers * latitude_steps
+        latitude_steps = units.Quantity(
+            latitude_difference.magnitude[edge_indices] / piece_counts[edge_indices],
+            latitude_difference.units,
+        )
+        latitude_shifts = units.Quantity(
+            piece_numbers * latitude_steps.magnitude,
+            latitude_steps.units,
+        )
+        starting_latitudes = units.Quantity(
+            starting_latitudes.magnitude[edge_indices]
+            + latitude_shifts.m_as(starting_latitudes.units),
+            starting_latitudes.units,
         )
         latitude_difference = latitude_steps
         edge_ring_indices = edge_ring_indices[edge_indices]
@@ -286,26 +323,41 @@ def integration_contributions(
     Returns:
         Oriented surface-integral contributions in original edge and piece order.
     """
-    reference_sines = [math.sin(value) for value in latitude_references.m_as("radians")]
+    reference_sines = [math.sin(value) for value in latitude_references.m_as(RADIANS)]
     reference_denominators = np.fromiter(
         (1 - ECCENTRICITY_SQUARED * value**2 for value in reference_sines),
         dtype=float,
     )
     reference_sine_array = np.asarray(reference_sines)
-    contributions = np.empty(len(longitude_difference)) * units.Unit("meters ** 2")
+    contributions = units.Quantity(
+        np.empty(len(longitude_difference)),
+        SQUARE_METERS,
+    )
+    offset_unit = latitude_offsets.units
+    same_units = offset_unit == half_latitude_difference.units
     for start_index in range(0, len(contributions), MAXIMUM_INTEGRATION_BATCH_PIECES):
         selected = slice(start_index, start_index + MAXIMUM_INTEGRATION_BATCH_PIECES)
         selected_ring_indices = edge_ring_indices[selected]
+        quadrature_offsets = (
+            units.Quantity(
+                latitude_offsets.magnitude[selected, None]
+                + half_latitude_difference.magnitude[selected, None]
+                * GAUSSIAN_NODES[None, :],
+                offset_unit,
+            )
+            if same_units
+            else latitude_offsets[selected, None]
+            + half_latitude_difference[selected, None] * GAUSSIAN_NODES[None, :]
+        )
         primitive_values = primitive_difference_with_reference_values(
-            latitude_offsets[selected, None]
-            + half_latitude_difference[selected, None] * GAUSSIAN_NODES[None, :],
-            references[selected, None].to("radians"),
+            quadrature_offsets,
+            references[selected, None].to(RADIANS),
             reference_sine_array[selected_ring_indices, None],
             reference_denominators[selected_ring_indices, None],
         )
-        contributions[selected] = -longitude_difference[selected].to("radians") * (
-            np.sum(primitive_values * GAUSSIAN_MEAN_WEIGHTS, axis=1)
-        )
+        contributions.magnitude[selected] = -longitude_difference[selected].m_as(
+            RADIANS,
+        ) * np.sum(primitive_values.magnitude * GAUSSIAN_MEAN_WEIGHTS, axis=1)
     return contributions
 
 
@@ -363,4 +415,7 @@ def primitive_difference_with_reference_values(
     logarithmic_difference = (
         np.arctanh(ECCENTRICITY * sine_difference / (1 - product)) / ECCENTRICITY
     )
-    return SURFACE_SCALE * (rational_difference + logarithmic_difference)
+    return units.Quantity(
+        SURFACE_SCALE.magnitude * (rational_difference + logarithmic_difference),
+        SQUARE_METERS,
+    )

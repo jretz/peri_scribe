@@ -86,6 +86,13 @@ def replay(states: list[dict[str, str]], directory: pathlib.Path) -> None:
                 changed=changed,
                 interrupt=interrupted,
             )
+            # Keep the command's file logs while checking its exit and durable state.
+            arguments = (
+                "--stderr-log-level",
+                "critical",
+                "validate-sources",
+                str(year),
+            )
             with pytest.MonkeyPatch.context() as patch:
                 tests.helpers.doubles.peri_scribe.source_commands.configure_validation(
                     patch,
@@ -93,7 +100,7 @@ def replay(states: list[dict[str, str]], directory: pathlib.Path) -> None:
                 )
                 result = click.testing.CliRunner().invoke(
                     peri_scribe.main.cli,
-                    ["validate-sources", str(year)],
+                    arguments,
                 )
                 assert result.exit_code == int(interrupted), result.output
                 assert collection.pending[0].remaining == stages
@@ -104,7 +111,7 @@ def replay(states: list[dict[str, str]], directory: pathlib.Path) -> None:
                     collection.changed = False
                     retry = click.testing.CliRunner().invoke(
                         peri_scribe.main.cli,
-                        ["validate-sources", str(year)],
+                        arguments,
                     )
                     assert retry.exit_code == 0, retry.output
                     assert peri_scribe.pipeline_state.read_state(year) == after

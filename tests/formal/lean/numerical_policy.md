@@ -56,6 +56,15 @@ facts. The oracle computes arithmetic and acceptance; Python does not supply an 
 calculated decision or rounded difference. Conversion factors come from the installed
 shared unit registry. Their physical definitions remain trusted metadata.
 
+The transport sends a signed significand and a nonnegative binary shift for each
+nonzero operand. Shifting the significand reconstructs the exact integer before the
+proved definitions run. Removing trailing binary zeros keeps the significand within
+53 bits. For example, the smallest positive subnormal is `1:0` and 1.0 is `1:1074`.
+The largest finite exponent permits a shift of 2097 for a significand of 1. The decoder
+checks the significand, shift, and reconstructed magnitude. Both signed zeros use the
+integer token `0`, and control flags use ordinary integers. The response still contains
+the model's exact integer results.
+
 Operation order is part of the contract. Quantity subtraction converts the right operand
 to the left operand's units. Comparisons of different units convert both operands to
 base units, while equal-unit comparisons use their original magnitudes. Relative area

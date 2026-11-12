@@ -39,7 +39,7 @@ marker survives both cases without changing the `PendingRun` schema.
 
 ## Bounds and assumptions
 
-The safety and liveness configurations explore **113,677 states**. They start with
+TLC explores **113,677 states**. It starts with
 matching generation-zero inputs and outputs, a valid checkpoint, and no pending work.
 Two exploratory invocations choose among all 15 contiguous ranges over fetch, geography,
 score, KMZ, and reports; both publication modes; and both explicit forcing choices. One
@@ -52,9 +52,10 @@ behavior; their duplicate values for other ranges are omitted.
 
 Safety includes intermediate persistent states. Failure boundaries are before a stage,
 before consuming deferred intent, before and after source replacement, before and after
-checkpoint commit, and before stage acknowledgment. The liveness configuration adds weak
-fairness of ordinary progress. With the final healthy complete invocation, all derived
-artifacts eventually match the saved inputs and pending/deferred work becomes empty.
+checkpoint commit, and before stage acknowledgment. TLC checks these invariants over the
+complete reachable graph. With the final healthy complete invocation and weak fairness
+of ordinary progress, all derived artifacts eventually match the saved inputs and
+pending and deferred work become empty.
 Arbitrary repeated partial selections or failures are not assumed to recover. The final
 ungated run need not create a publication checkpoint; a later gated invocation can
 conservatively rebuild when that checkpoint is invalid.
@@ -76,6 +77,29 @@ update-journal replay, viewer refresh, locks, and product caches have separate c
 The initial consistent generation does not model migration of source changes deferred
 before this marker protocol was installed.
 
+## Liveness proof
+
+TLC checks three premises of the Lean [rank proof](../lean/PeriScribe/RankedLiveness.lean)
+on the same complete graph. The rank is a natural number in each reachable state, every
+nonstuttering transition decreases it, and every state before the final invocation ends
+enables a nonstuttering `Progress` transition. Under `LiveSpec`, weak fairness forces a
+progress transition from any suffix that never reaches the final state. The rank cannot
+decrease indefinitely, so that final state is reached. `FinalRecovery` checks its durable
+contents. `EventuallyRecovered` records this temporal claim.
+
+The rank leaves 64 positions per invocation. Within an invocation, later stages advance
+by ten positions. Internal positions follow the effect order. For example, ungated fetch
+consumes deferred intent before writing source data, while gated fetch does so after
+deciding to proceed. A crash moves to the completed invocation position, and the next
+invocation takes a new block of positions. The bound on invocations keeps all ranks
+nonnegative.
+
+The assessment is `(1, 2, 2, 1, 1)`, totaling 7. The rank represents local stage order
+with different fetch paths and a separate interruption exit. The Lean argument uses
+well-foundedness and the existing fairness premise. Checking the rank adds constant work
+per explicit transition and keeps the same state variables and successor relation. A
+comparison with direct TLC liveness checking matched the complete labeled graph.
+
 ## Implementation connection
 
 `test_pipeline_composition.py` exports the checked TLC graph and replays all **19,240**
@@ -88,31 +112,56 @@ modes and forcing choices, deferred stale inputs, and inherited forced requireme
 Expectations come from TLC's reached terminal state rather than a second Python
 implementation of the protocol.
 
-Each root begins at the unique consistent initial state in an isolated directory. Exact
-common prefixes execute once; each child continues from an independent, timestamp-preserving
-copy of the actual files and the full surviving matcher state. This shares only identical
-complete histories, never merely equal durable projections or final invocation choices.
-The tree contains **19,240** concrete invocations. Regressions compare fresh full-history
-execution with shared-prefix execution, including files, KMZ identities, and hidden TLC
-path choices, and verify parent/sibling isolation. The Lean `ReplayPrefixes` proofs
-establish sequential composition and failure preservation under explicit deterministic
-transition and exact-copy assumptions. These proofs do not verify Python or file copying.
+Only idle states enumerate invocation choices. Recovery admits one complete ungated
+choice, and exploratory invocations enumerate only ranges and flags that can take a
+`Begin` step. This prunes rejected candidates while retaining every reachable state and
+labeled successor. The path matcher accepts implicit stuttering as an unchanged
+observation.
+
+Each root begins at the unique consistent initial state. Exact common prefixes execute
+once. Each child receives a separate copy of the branch's file contents, identities, and
+full surviving matcher state. This shares only identical complete histories. The tree
+contains **19,240** coordinator invocations. Regressions compare fresh filesystem histories
+with shared prefixes, including files, KMZ identities, and hidden TLC path choices, and
+verify parent and sibling isolation. The Lean `ReplayPrefixes` proofs establish sequential
+composition and failure preservation under explicit determinism and exact-copy assumptions.
 
 Every invocation calls the actual `run_selected_stages` and `run_pipeline_stage`. A matcher
 preserves the full compatible TLC path through every actual artifact, marker, and
 checkpoint observation; crashes and parameterized invocation choices consume explicit
 edges. See the [execution extension](../execution_paths_extensions.md) for projection
-details. It retains real pending and deferred marker I/O, real publication decisions,
-checkpoint serialization and identity validation, and separately written source,
-geography, score, KMZ, and report revision files. It compares all resulting revisions,
-remaining requirements, marker presence, checkpoint contents and validity, selected
-calls, and effective force flags with TLC. Process-loss injection uses `BaseException`
-to bypass ordinary recovery handlers. Every watched file mutation reads a fresh complete
-snapshot; adjacent control-only checks reuse the immediately preceding observation.
+details. Production pending-state parsing, publication decisions, checkpoint serialization,
+and identity validation run over a branch-local in-memory file image. The source, geography,
+score, KMZ, and report fixtures retain separate revision files in that image. Replay compares
+all revisions, remaining requirements, marker presence, checkpoint contents and validity,
+selected calls, and effective force flags with TLC. Process-loss injection uses
+`BaseException` to bypass ordinary recovery handlers. Every watched mutation reads a fresh
+complete snapshot. Adjacent control-only checks reuse the preceding observation.
+
+The physical checks derive distinct effect inputs from the same current-run histories.
+They exercise the default filesystem adapter, verify exact bytes and stamps and check that
+files outside the operation are preserved. They also check failures on both sides of a
+mutation, parse real pending markers, and exercise real publication stamps. Each full
+image keeps its own comparison. A [source-bound footprint](../../../docs/algorithms/verification-tooling.md#pipeline-file-effects)
+lets images share a physical witness when their command has the same path, argument,
+target presence and directory layout. Lean composes the one-step transfer with the
+original reply-dependent continuation and preserves the ordered trace. The complete
+physical matrix applies when the source, live bindings, proof build, or fixture falls
+outside the certified domain. Real hard-process tests retain independent crash and
+recovery processes and actual on-disk files.
+
+The ordered comparator runs the original coordinator for each history in its selected
+batch and retains all raw reads, writes, full observations, and failure boundaries.
+Within the reviewed [ordered witness domain](../../../docs/algorithms/verification-tooling.md#pipeline-file-effects),
+continuous native histories cover the exact reader and writer classes, observed fault
+frames, and stage/force dispatch. Their original ancestors run on the real filesystem,
+and their full tapes and terminal paths must match the memory replay. The existing
+complete native comparator applies whenever the ordered proof or runtime binding is
+unavailable.
 
 Expensive geography, remote fetching, index preparation, presentation generation,
 logging, and product-cache setup are substituted at their dependency boundaries. The KMZ
-substitute writes a real file and calls the real publication commit with the
+substitute writes a revision file and calls the real publication commit with the
 coordinator's frozen inputs. Journal behavior inside the complete builder is covered by
 [journal replay](journal_replay.md). This is finite conformance evidence for the modeled
 coordinator executions, not a proof that arbitrary Python execution refines TLA+.

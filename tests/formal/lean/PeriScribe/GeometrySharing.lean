@@ -668,4 +668,63 @@ theorem reachable_lookup_order_independent (initial : Entry) (first second : Lis
       payload ∈ lookup (build initial second) digest := by
   simp only [reachable_lookup_agrees_with_finite_map, List.mem_cons, same]
 
+/-- A wire node names exact values in the digest and child tables. -/
+inductive PackedNode where
+  | leaf (digest : Nat) (payloads : List Nat)
+  | branch (digest split smaller larger : Nat)
+  deriving DecidableEq, BEq, Hashable
+
+def PackedNode.tokens : PackedNode → List Nat
+  | .leaf digest payloads => 0 :: digest :: payloads.length :: payloads
+  | .branch digest split smaller larger => [1, digest, split, smaller, larger]
+
+def expandNode (digestAt : Nat → Option Nat) (childAt : Nat → Option Tree) :
+    PackedNode → Option Tree
+  | .leaf digest payloads => do
+    return .leaf (← digestAt digest) payloads
+  | .branch digest split smaller larger => do
+    return .branch (← digestAt digest) split (← childAt smaller) (← childAt larger)
+
+def expandPackedTree (digestAt : Nat → Option Nat) (nodeAt : Nat → Option PackedNode) :
+    Nat → Nat → Option Tree
+  | 0, _ => none
+  | fuel + 1, root =>
+    (nodeAt root).bind (expandNode digestAt (expandPackedTree digestAt nodeAt fuel))
+
+/-- Each interned node retains the exact digest, payload order, and ordered children. -/
+inductive DescribesTree (digestAt : Nat → Option Nat) (nodeAt : Nat → Option PackedNode) :
+    Nat → Tree → Prop where
+  | leaf {root ordinal digest payloads}
+      (entry : nodeAt root = some (.leaf ordinal payloads))
+      (value : digestAt ordinal = some digest) :
+      DescribesTree digestAt nodeAt root (.leaf digest payloads)
+  | branch {root ordinal digest split left right smaller larger}
+      (entry : nodeAt root = some (.branch ordinal split left right))
+      (value : digestAt ordinal = some digest)
+      (leftChild : DescribesTree digestAt nodeAt left smaller)
+      (rightChild : DescribesTree digestAt nodeAt right larger) :
+      DescribesTree digestAt nodeAt root (.branch digest split smaller larger)
+
+theorem expand_described_tree
+    (description : DescribesTree digestAt nodeAt root tree) :
+    ∀ fuel, height tree ≤ fuel → expandPackedTree digestAt nodeAt fuel root = some tree := by
+  induction description with
+  | leaf entry value =>
+    intro fuel bound
+    cases fuel with
+    | zero => simp [height] at bound
+    | succ fuel => simp [expandPackedTree, expandNode, entry, value]
+  | @branch root ordinal digest split left right smaller larger entry value _ _
+      leftResult rightResult =>
+    intro fuel bound
+    cases fuel with
+    | zero => simp [height] at bound
+    | succ fuel =>
+      have childBound : max (height smaller) (height larger) ≤ fuel := by
+        simp only [height] at bound
+        omega
+      have smallerTree := leftResult fuel (Nat.le_trans (Nat.le_max_left ..) childBound)
+      have largerTree := rightResult fuel (Nat.le_trans (Nat.le_max_right ..) childBound)
+      simp [expandPackedTree, expandNode, entry, value, smallerTree, largerTree]
+
 end PeriScribe.GeometrySharing

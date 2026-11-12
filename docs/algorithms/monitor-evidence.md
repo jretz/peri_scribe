@@ -40,12 +40,14 @@ a and keeps b's bytes private. If the next poll on I finds the rest of b and its
 it delivers b once.
 
 The health reader discovers recent months, consumes archived prefixes plus live tails,
-and watches archive identity (device, inode, size, modification nanoseconds). A changed
-already-seen archive resets recent ingestion and rebuilds it: a late tail may have been
-appended and compressed entirely between polls. After catch-up, restore structural records
-for recent runs whose command start lies before the window, scanning older months until
-those starts are found. Context records precede each run's recent cutoff and are tracked
-separately to avoid repeated restoration.
+and watches archive identity (device, inode, size, modification nanoseconds). Each poll
+uses one authenticated component inventory for archive checks, archive replay, and live
+cursor discovery. The shared writer lock keeps that inventory valid across those reads.
+A changed already-seen archive resets recent ingestion and rebuilds it because a late
+tail may have been appended and compressed entirely between polls. After catch-up,
+restore structural records for recent runs whose command start lies before the window,
+scanning older months until those starts are found. Context records precede each run's
+recent cutoff and are tracked separately to avoid repeated restoration.
 
 For a month represented by one plain file, binary-seek to the greatest missing-run cutoff
 and scan backward in 64 KiB blocks. Retain only important dated records strictly before

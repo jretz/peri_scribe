@@ -6,16 +6,17 @@ Algorithm reasoning and contracts:
 [Monitor evidence](../../docs/algorithms/monitor-evidence.md)
 """
 
+from __future__ import annotations
+
 import collections.abc
 import compression.zstd
 import contextlib
 import contextvars
-import dataclasses
 import datetime
-import enum
 import fcntl
 import functools
 import hashlib
+import importlib
 import json
 import logging
 import os
@@ -25,23 +26,31 @@ import shutil
 import sys
 import tempfile
 import time
+import types
 import typing
 import uuid
 
-import click
-import pint
-import pydantic
-import pyproj
-import structlog
-
 import peri_scribe.phases
 import peri_scribe.pipeline_stages
-from measurement_units import units
 
 
-logger = structlog.get_logger()
+if typing.TYPE_CHECKING:
+    import click
+    import structlog
+
+    import peri_scribe.rotation_types as receipt_types
+
+    RotationReceipt = receipt_types.RotationReceipt
+    logger: structlog.typing.FilteringBoundLogger
+
+
 MAXIMUM_LOG_SEGMENT_BYTES = 16 * 1024 * 1024
 SEGMENT_PATTERN = re.compile(r"[0-9]{4}-(0[1-9]|1[0-2])\.[0-9]{12,}\.jsonl")
+ROTATION_RECEIPT_PATTERN = re.compile(
+    rb'\{"version":1,"source_checksum":"([0-9a-f]{64})",'
+    rb'"archive_checksum":(?:null|"([0-9a-f]{64})"),'
+    rb'"target_checksum":"([0-9a-f]{64})"\}',
+)
 PHASE_PATH: contextvars.ContextVar[tuple[str, ...]] = contextvars.ContextVar(
     "phase_path",
     default=(),
@@ -58,6 +67,55 @@ RUN_CONTEXT: contextvars.ContextVar[dict[str, object] | None] = contextvars.Cont
 )
 
 
+@functools.cache
+def structured_logging() -> types.ModuleType:
+    """Load rendering and diagnostic support when it is used.
+
+    Returns:
+        The structured logging library.
+    """
+    return importlib.import_module("structlog")
+
+
+@functools.cache
+def execution_logger() -> structlog.typing.FilteringBoundLogger:
+    """Create the logger when an execution event needs it.
+
+    Returns:
+        The logger for command and phase events.
+    """
+    return structured_logging().get_logger()
+
+
+def __getattr__(name: str) -> object:
+    """Resolve the existing receipt model and logger on access.
+
+    Args:
+        name: Requested module attribute.
+
+    Returns:
+        The receipt model or execution logger.
+
+    Raises:
+        AttributeError: The module has no attribute by that name.
+    """
+    if name == "RotationReceipt":
+        return importlib.import_module("peri_scribe.rotation_types").RotationReceipt
+    if name == "logger":
+        return execution_logger()
+    raise AttributeError(name)
+
+
+@functools.cache
+def value_module() -> types.ModuleType:
+    """Load quantity and coordinate formatting when rendering or timing needs it.
+
+    Returns:
+        The application value formatter and monotonic-clock adapter.
+    """
+    return importlib.import_module("peri_scribe.log_values")
+
+
 def log_value(value: object) -> object:
     """Give console and JSON logs the same representations of application values.
 
@@ -67,33 +125,7 @@ def log_value(value: object) -> object:
     Returns:
         The value with quantities, paths, coordinate systems, and dates normalized.
     """
-    if dataclasses.is_dataclass(value) and not isinstance(value, type):
-        value = {
-            field.name: getattr(value, field.name)
-            for field in dataclasses.fields(value)
-        }
-    if isinstance(value, dict):
-        return {name: log_value(item) for name, item in value.items()}
-    if isinstance(value, (set, frozenset)):
-        # A canonical baseline keeps incomparable or partially ordered values stable.
-        value = sorted(
-            value,
-            key=lambda item: json.dumps(log_value(item), sort_keys=True, default=repr),
-        )
-        with contextlib.suppress(TypeError):
-            value = sorted(value)
-    if isinstance(value, (list, tuple)):
-        return [log_value(item) for item in value]
-    if isinstance(value, datetime.timedelta):
-        value = value.total_seconds() * units.seconds
-    if isinstance(value, pint.Quantity):
-        unit_name = str(value.units)
-        return {"value": float(value.magnitude), "units": unit_name}
-    if isinstance(value, (enum.StrEnum, pathlib.PurePath, pyproj.CRS)):
-        return str(value)
-    if isinstance(value, (datetime.date, datetime.time)):
-        return value.isoformat()
-    return value
+    return value_module().log_value(value)
 
 
 def serialize_log_values(
@@ -139,15 +171,30 @@ def batch_identifier(line: bytes) -> str | None:
     return None
 
 
-class RotationReceipt(pydantic.BaseModel):
-    """Record checksums showing when rotation allows the plain log to be removed."""
+def rotation_checksums(raw: bytes) -> tuple[str, str | None, str]:
+    """Read the checksums written by rotation and validate alternate receipts.
 
-    model_config = pydantic.ConfigDict(frozen=True, extra="forbid")
+    Args:
+        raw: The complete stored receipt.
 
-    version: typing.Literal[1] = 1
-    source_checksum: str
-    archive_checksum: str | None
-    target_checksum: str
+    Returns:
+        The source, previous archive, and target archive checksums.
+    """
+    match = ROTATION_RECEIPT_PATTERN.fullmatch(raw)
+    if match is None:
+        model = importlib.import_module("peri_scribe.rotation_types").RotationReceipt
+        receipt = model.model_validate_json(raw)
+        return (
+            receipt.source_checksum,
+            receipt.archive_checksum,
+            receipt.target_checksum,
+        )
+    source, archive, target = match.groups()
+    return (
+        source.decode(),
+        None if archive is None else archive.decode(),
+        target.decode(),
+    )
 
 
 def rotation_receipt_path(path: pathlib.Path) -> pathlib.Path:
@@ -208,18 +255,15 @@ def rotation_committed(path: pathlib.Path) -> bool:
     receipt_path = rotation_receipt_path(path)
     if not receipt_path.exists():
         return False
-    receipt = RotationReceipt.model_validate_json(receipt_path.read_bytes())
+    source, previous, target = rotation_checksums(receipt_path.read_bytes())
     archive_checksum = file_checksum(path.with_suffix(".jsonl.zst"))
     source_checksum = file_checksum(path)
-    if archive_checksum == receipt.target_checksum:
-        if source_checksum is not None and source_checksum != receipt.source_checksum:
+    if archive_checksum == target:
+        if source_checksum is not None and source_checksum != source:
             message = f"Rotation source changed before retirement: {path}"
             raise ValueError(message)
         return True
-    if (
-        archive_checksum != receipt.archive_checksum
-        or source_checksum != receipt.source_checksum
-    ):
+    if archive_checksum != previous or source_checksum != source:
         message = f"Rotation receipt does not authenticate retained files: {path}"
         raise ValueError(message)
     return False
@@ -274,13 +318,18 @@ def compress_log(path: pathlib.Path, *, level: int = 19) -> None:
             else:
                 shutil.copyfileobj(source, destination)
         target_checksum = required_file_checksum(temporary)
-        receipt = RotationReceipt(
-            source_checksum=source_checksum,
-            archive_checksum=file_checksum(archive),
-            target_checksum=target_checksum,
+        receipt = json.dumps(
+            {
+                "version": 1,
+                "source_checksum": source_checksum,
+                "archive_checksum": file_checksum(archive),
+                "target_checksum": target_checksum,
+            },
+            ensure_ascii=False,
+            separators=(",", ":"),
         )
         temporary_receipt = pathlib.Path(directory) / "rotation.json"
-        temporary_receipt.write_text(receipt.model_dump_json(), encoding="utf-8")
+        temporary_receipt.write_text(receipt, encoding="utf-8")
         temporary_receipt.replace(rotation_receipt_path(path))
         temporary.replace(archive)
     path.unlink()
@@ -455,6 +504,52 @@ def append_atomic(path: pathlib.Path, content: str) -> None:
         temporary.replace(path)
 
 
+@functools.cache
+def json_value_handler() -> collections.abc.Callable[[object], object]:
+    """Obtain Structlog's JSON fallback through its public serializer hook.
+
+    Returns:
+        The renderer's handler for values outside JSON's built-in types.
+    """
+    handlers: list[collections.abc.Callable[[object], object]] = []
+
+    def receive_default(
+        _event: object,
+        *,
+        default: collections.abc.Callable[[object], object],
+    ) -> str:
+        """Capture the handler supplied to the renderer's serializer.
+
+        Args:
+            _event: The empty event used to obtain the handler.
+            default: The renderer's custom-value conversion.
+
+        Returns:
+            An empty rendering for the initialization event.
+        """
+        handlers.append(default)
+        return ""
+
+    structured_logging().processors.JSONRenderer(serializer=receive_default)(
+        None,
+        "",
+        {},
+    )
+    return handlers[0]
+
+
+def render_json_value(value: object) -> object:
+    """Load custom-value support when the JSON encoder needs it.
+
+    Args:
+        value: A value outside the JSON encoder's built-in types.
+
+    Returns:
+        The value produced by Structlog's JSON fallback.
+    """
+    return json_value_handler()(value)
+
+
 def append_monthly_records(
     directory: pathlib.Path,
     records: collections.abc.Iterable[collections.abc.Mapping[str, object]],
@@ -491,19 +586,19 @@ def append_monthly_records(
         if batch_id is not None and contains_batch(path, batch_id):
             return
         entries = tuple(
-            structlog.processors.JSONRenderer(allow_nan=False)(
-                None,
-                "",
+            json.dumps(
                 {
                     **record,
                     **({"batch_id": batch_id} if batch_id is not None else {}),
                     "timestamp": timestamp.strftime("%Y-%m-%dT%H:%M:%S%z"),
                 },
+                allow_nan=False,
+                default=render_json_value,
             )
             for record in records
         )
         if entries:
-            content = "".join(typing.cast("str", entry) + "\n" for entry in entries)
+            content = "".join(entry + "\n" for entry in entries)
             if batch_id is not None:
                 append_atomic(path, content)
             else:
@@ -533,9 +628,9 @@ def route_log_event(
     Returns:
         The event for console rendering.
 
-    Raises:
-        structlog.DropEvent: When the event is below stderr's threshold.
+    Events below stderr's threshold are dropped after any file output.
     """
+    structlog = structured_logging()
     level = logging.getLevelNamesMapping()[str(event_dict["level"]).upper()]
     if directory is not None and level >= file_level:
         file_event = structlog.processors.format_exc_info(
@@ -562,6 +657,7 @@ def configure_logging(
         file_log_level: The minimum severity for monthly JSON files.
         year_directory: The command's data directory, or None to disable file logging.
     """
+    structlog = structured_logging()
     stderr_level = logging.getLevelNamesMapping()[stderr_log_level.upper()]
     file_level = logging.getLevelNamesMapping()[file_log_level.upper()]
     directory = year_directory / "logs" if year_directory is not None else None
@@ -595,6 +691,7 @@ def command_file_logging(context: click.Context) -> typing.Generator[None]:
     Yields:
         Control with file logging enabled when the command accepts a year directory.
     """
+    structlog = structured_logging()
     configuration = structlog.get_config()
     year_directory = context.params.get("year_directory")
     try:
@@ -648,25 +745,27 @@ def log_execution(
         PHASE_INSTANCES.set(instances),
         RUN_CONTEXT.set(run_context),
     ):
-        started_at = time.perf_counter() * units.seconds
+        seconds = value_module().seconds
+        started_at = time.perf_counter()
         context: dict[str, object] = run_context | {kind: name}
         if kind == "phase":
             context["phase_path"] = ".".join(phase_path)
             context["phase_segments"] = instances
-        logger.info("Starting %s", kind, **context, **kwargs)
+        log = execution_logger()
+        log.info("Starting %s", kind, **context, **kwargs)
         status = "failed"
         try:
             yield
             status = "completed"
         finally:
-            elapsed = time.perf_counter() * units.seconds - started_at
-            logger.log(
+            elapsed = time.perf_counter() - started_at
+            log.log(
                 logging.ERROR if status == "failed" else logging.INFO,
                 "Finished %s",
                 kind,
                 **context,
                 **(kwargs if kind == "phase" else {}),
-                duration=round(elapsed, 2),
+                duration=seconds(round(elapsed, 2)),
                 status=status,
                 exc_info=status == "failed",
             )
@@ -714,7 +813,7 @@ def skip_phases(
         identifiers: Sibling phases that will not run in the enclosing context.
         reason: The execution decision responsible for skipping this work.
     """
-    logger.info("Skipped phases", phases=identifiers, reason=reason)
+    execution_logger().info("Skipped phases", phases=identifiers, reason=reason)
 
 
 def command_line_parameters(context: click.Context) -> dict[str, object]:
@@ -726,6 +825,7 @@ def command_line_parameters(context: click.Context) -> dict[str, object]:
     Returns:
         The supplied parameter names and their parsed values.
     """
+    click = importlib.import_module("click")
     parameters: dict[str, object] = {}
     current: click.Context | None = context
     while current is not None:
@@ -762,7 +862,7 @@ def log_command[**Parameters, Result](
         Returns:
             The command callback's result.
         """
-        context = click.get_current_context()
+        context = importlib.import_module("click").get_current_context()
         with (
             command_file_logging(context),
             log_execution(

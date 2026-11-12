@@ -9,6 +9,12 @@ export { expect };
 export const openedAt = new Date("2026-09-23T12:00:00Z");
 const origin = "https://viewer.test";
 
+/** Let the clock reach the fixture time before the page installs its timers. */
+export async function installViewerClock(page) {
+  await page.clock.install({ time: new Date(openedAt.getTime() - 60_000) });
+  await page.clock.pauseAt(openedAt);
+}
+
 export const test = base.extend({
   viewer: async ({ page, context }, use, testInfo) => {
     const unexpectedRequests = [];
@@ -41,8 +47,7 @@ export const test = base.extend({
         await route.abort("blockedbyclient");
       }
     });
-    await page.clock.install({ time: openedAt });
-    await page.clock.pauseAt(openedAt);
+    await installViewerClock(page);
     await page.coverage.startJSCoverage({ resetOnNavigation: false });
     const viewer = {
       page,

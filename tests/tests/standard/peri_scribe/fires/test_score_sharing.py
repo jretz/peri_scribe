@@ -25,6 +25,9 @@ import tests.helpers.factories.peri_scribe.kml.parsing
 from measurement_units import units
 
 
+pytestmark = pytest.mark.usefixtures("reuse_preparation_environment")
+
+
 @pytest.mark.parametrize(
     ("contents", "unreadable"),
     [

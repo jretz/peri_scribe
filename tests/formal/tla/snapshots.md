@@ -22,9 +22,9 @@ content comparison produced changed observations to write. An unchanged full col
 can return the existing snapshot without appending; `SnapshotCollection` separately
 checks that deduplication behavior.
 
-The safety configuration explores 227 states: zero or one existing snapshot, matching or
-different timestamps, full or incremental mode, three serialized chunks, and at most one
-interrupted attempt. Its liveness configuration requires future retry and progress
+The configuration checks safety and liveness across 227 states with zero or one existing
+snapshot, matching or different timestamps, full or incremental mode, three serialized
+chunks, and at most one interrupted attempt. Liveness requires future retry and progress
 through writing, publication, and cache handling after that interruption. These are
 finite bounds; the model does not prove arbitrary repeated failures or writer races.
 
@@ -85,12 +85,33 @@ infinitely changing feeds remain outside this model. A recovery full fetch retai
 historical rows deleted remotely; its completeness claim concerns currently present
 rows, not exact equality of object sets.
 
-`test_snapshot_collection.py` replays all 177 distinct initial outcomes through real
-metadata skipping, query routing, GeoPackage serialization, current-state cache updates,
-and later full collection. Ninety-seven outcomes contain a missed or stale current row
-before recovery. The checked recovery relation is matched by the exact previous saved
-rows, final source rows, and metadata marker; every real recovery result equals that
-relation. These executions show why periodic full collection is necessary even with
+`test_snapshot_collection.py` replays all 177 histories through real metadata skipping,
+query routing, GeoPackage serialization, current-state cache updates, and later full
+collection. They contain 70 distinct initial fetches. For example, two histories can see
+the same metadata, IDs, and feature body before the provider settles on different row
+versions. The first fetch then runs once and each recovery starts with its own copy of
+the actual snapshots and current-state files. The copy preserves bytes, relative paths,
+and modification times. The [prefix proof](../lean/PeriScribe/ReplayPrefixes.lean)
+applies because the initial fetch receives the same inputs and each later full fetch
+receives its own settled inputs. Grouping uses one entry per distinct initial fetch.
+Each continuation copies only its own initial file tree.
+
+The snapshot transport shares three native leaf operations within the collection test.
+The ArcGIS conversion key includes the ordered provider reply and layer metadata.
+Each native read keys on the complete bytes of a single-layer fixture file. A native
+write keys on the ordered frame, schema, index, and geometry in a GeoArrow stream.
+Decoded streams are checked against the native frames for each new input. A repeated
+read or conversion reconstructs a fresh frame. Each staged write gets its own physical
+file with the exact bytes from the native writer. The fixture fixes GDAL's file metadata
+clock, while the modeled source markers and actual query order remain live. The
+[effect refinement proof](../lean/PeriScribe/EffectRefinement.lean) lifts equal leaf
+replies and writes through all the continuations. The publication interruption tests
+still execute the native writer with their original fault injection.
+
+Ninety-seven histories contain a missed or stale current row before recovery. The
+checked recovery relation is matched by the exact previous saved rows, final source
+rows, and metadata marker. Every real recovery result equals that relation. These
+executions show why periodic full collection is necessary even with
 otherwise successful incremental invocations. These race fixtures keep stored rows
 inactive, so they exercise changed-ID and missing-ID queries but omit the separate
 inactive-status query for previously active rows. The stable-view union of all three

@@ -87,11 +87,30 @@ budget. It includes successful and failed writes, oversize requests, authenticat
 corruption and closure. It checks capacity, fresh-entry provenance, exact hit selection
 and release of the owning scope.
 
-[Conformance](../../tests/formal/conformance/test_boundary_spill.py) replays all 18,240
-checked prefixes using actual private temporary files and production admission, codec,
-lookup and scope code. Write failures and corrupt bytes are injected at the file boundary.
-Each complete prefix is replayed before comparing its full modeled observation, so a
-locally reachable state cannot hide an incompatible earlier operation.
+[Conformance](../../tests/formal/conformance/test_boundary_spill.py) checks all 18,240
+prefixes against actual admission, codec, lookup and scope behavior. The replay visits
+shorter prefixes first. Each distinct pair of exact prior image and next action gets a
+fresh, complete history in one private native stream. The witness reproduces its prior
+image before performing the last action. Write failures and corruption still reach the
+file boundary. Repeated pairs share the immutable result, and every prefix checks its
+own model row. [Replay adapter](../../tests/formal/helpers/boundary_spill.py)
+
+The image retains the file bytes, cursor, ordered index with offsets and digests, entry
+limit, reserved size, disabled flag, scope, and observed read and corruption state.
+For example, a miss on an absent key can leave every image field unchanged. A later
+insertion after that miss can then use the same witness as an insertion without the
+miss. A cursor change or an incomplete tail would require a separate witness. The
+reviewed source and live bindings qualify the assumption that equal images and actions
+give equal results in this single-owner fixture. Other implementations run each native
+history independently. A regression changes a read to depend on an earlier miss and
+checks that independent replay catches the changed result. The prefix proof composes
+these exact steps without discarding their preceding order. [Replay prefix proof](../../tests/formal/lean/PeriScribe/ReplayPrefixes.lean)
+
+The adapter scores `(2, 1, 2, 2, 1)`, totaling 8. With `P` checked prefixes of maximum
+length `L` and `W` distinct image and action pairs, ordering the prefixes takes
+`O(P log P)` time. Prefix keys retain `O(PL)` action references, and witnesses perform
+at most `O(WL)` native operations with one live stream at a time. Each stream remains
+bounded by the fixture's four-byte budget. The adapter adds no application behavior.
 
 API operations are atomic in the model because the spool has no other reader or writer;
 failed partial bytes are never indexed. Process death ends the disposable scope rather

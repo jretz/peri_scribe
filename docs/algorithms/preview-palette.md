@@ -56,8 +56,15 @@ For each opacity class, refine candidate colors for up to 100 iterations. Conver
 feature centers back to rounded integer RGBA; clamp partial alpha to 1–254 and set opaque
 alpha to 255. Opaque refinement also offers the four frozen required colors. Assign
 each unique source color to its nearest rounded candidate, update nonfrozen centers with
-pixel-count weights, and stop when labels stop changing. Recompute final assignments
-against the final rounded palette. The inverse map restores original pixel positions.
+pixel-count weights, and stop when labels stop changing. When the iteration limit is
+reached, assign colors against the last rounded palette. The inverse map restores
+original pixel positions.
+
+Assignment accumulates squared differences one feature at a time in feature order.
+This retains the same distances and first-candidate tie rule without storing all four
+differences together. Each center update groups weighted features and pixel counts by
+label in source order. A nonempty label receives its weighted mean. Frozen and empty
+centers retain their rounded values.
 
 Freezing required colors preserves exact matches at zero distance. Separating opacity
 classes prevents a cluster center from turning opaque fills translucent or erasing a
@@ -81,7 +88,9 @@ normalizing invisible RGB values of fully transparent pixels.
 
 Let P be pixels, U unique colors, K at most 256 palette entries, and I at most 100
 refinement iterations. Uniquing typically costs O(P log P); iterative assignment costs
-O(IUK) and retains an O(UK) distance array. Principal-axis splits sort subsets of U colors
+O(IUK) and retains a distance array and one scratch array of O(UK) each. Grouped center
+updates take O(U + K) work and O(U + K) temporary storage per round.
+Principal-axis splits sort subsets of U colors
 and compute fixed 4×4 eigensystems; costs depend on split balance and the capped K.
 Pixel reconstruction retains O(P) arrays. The fixed preview size bounds the normal caller's
 input, but the function itself does not enforce that size.

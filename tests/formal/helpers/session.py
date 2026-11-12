@@ -51,7 +51,13 @@ def identity() -> str:
             FORMAL_DIRECTORY / "tla" / "models.toml",
             pathlib.Path(__file__),
             pathlib.Path(__file__).with_name("tlc.py"),
+            pathlib.Path(__file__).with_name("tlc_frames.py"),
+            pathlib.Path(__file__).with_name("tlc_frame_wire.py"),
+            pathlib.Path(__file__).with_name("tlc_worker.py"),
             pathlib.Path(__file__).with_name("corpus.py"),
+            pathlib.Path(__file__).with_name("model_registry.py"),
+            FORMAL_DIRECTORY / "tla" / "TlcWorker.java",
+            FORMAL_DIRECTORY / "tla" / "FrameChecker.java",
         ],
     )
     jar = os.environ.get("PERI_SCRIBE_TLA_JAR")

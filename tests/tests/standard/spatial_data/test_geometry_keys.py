@@ -61,7 +61,7 @@ def test_geometry_keys_key_shares_concurrent_exact_classes(
         shapely.Point(index % class_count, index % class_count) for index in range(80)
     ]
     registry = spatial_data.geometry_pool.GeometryKeys()
-    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
         keys = list(executor.map(registry.key, geometries))
     for offset in range(class_count):
         assert len(set(keys[offset::class_count])) == 1

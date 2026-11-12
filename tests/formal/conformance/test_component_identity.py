@@ -1,5 +1,7 @@
 import pathlib
 
+import pytest
+
 import tests.formal.helpers.component_identity
 
 
@@ -11,6 +13,7 @@ def test_scoring_namespaces_match_injective_reserved_prefix_encoding() -> None:
     assert tests.formal.helpers.component_identity.check_storage_keys()
 
 
+@pytest.mark.usefixtures("reuse_update_previews")
 def test_stored_anonymous_components_survive_publication_and_identity_corrections(
     tmp_path: pathlib.Path,
 ) -> None:

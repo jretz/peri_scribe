@@ -4,11 +4,10 @@ import collections.abc
 import contextlib
 import sqlite3
 
-import pytest
-
 import spatial_data.product_cache
 import tests.formal.helpers.crash_worker
 import tests.formal.helpers.product_retention
+import tests.helpers.doubles.attribute_overrides
 
 
 def run(request: tests.formal.helpers.crash_worker.Request) -> None:
@@ -72,7 +71,7 @@ def run(request: tests.formal.helpers.crash_worker.Request) -> None:
                 sorted(tests.formal.helpers.product_retention.rows(writer)),
             )
             return
-        with pytest.MonkeyPatch.context() as patch:
+        with tests.helpers.doubles.attribute_overrides.AttributeOverrides() as patch:
             patch.setattr(spatial_data.product_cache, "retire_contexts", retire)
             patch.setattr(
                 spatial_data.product_cache,

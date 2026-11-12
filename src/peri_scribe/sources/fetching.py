@@ -10,29 +10,22 @@ import asyncio
 import dataclasses
 import datetime
 import functools
+import importlib
 import pathlib
 import tempfile
 import typing
 
-import arcgis.features
-import arcgis.gis
 import structlog
 
-import arcgis_access.data
+import arcgis_access.client as arcgis
 import peri_scribe.concurrency
 import peri_scribe.exceptions
-import peri_scribe.fires.index
-import peri_scribe.geo.data
 import peri_scribe.logging
-import peri_scribe.models
 import peri_scribe.paths
 import peri_scribe.phases
-import peri_scribe.sources.changes
-import peri_scribe.sources.feed_state
 import peri_scribe.sources.feed_types
 import peri_scribe.sources.feeds
 import peri_scribe.sources.snapshots
-import spatial_data.layers
 
 
 if typing.TYPE_CHECKING:
@@ -40,14 +33,7 @@ if typing.TYPE_CHECKING:
 
 
 logger = structlog.get_logger()
-
-
-@dataclasses.dataclass(frozen=True, kw_only=True)
-class FetchResult:
-    """The outcome of fetching every configured feed."""
-
-    snapshot_paths: tuple[pathlib.Path, ...]
-    changed: bool
+FetchResult = peri_scribe.sources.snapshots.FetchResult
 
 
 def fetch_feed_dataframe(
@@ -82,17 +68,20 @@ def fetch_feed_dataframe(
     Raises:
         ValueError: If the feed has no change columns configured and *full* is false.
     """
+    geo_data = importlib.import_module("peri_scribe.geo.data")
     if not existing_source_files:
-        feature_set = peri_scribe.geo.data.query_with_retry(feed.name, layer)
-        return peri_scribe.geo.data.dataframe_for_layer(feed, layer, feature_set)
+        feature_set = geo_data.query_with_retry(feed.name, layer)
+        return geo_data.dataframe_for_layer(feed, layer, feature_set)
+    changes = importlib.import_module("peri_scribe.sources.changes")
+    feed_state = importlib.import_module("peri_scribe.sources.feed_state")
     if full:
-        feature_set = peri_scribe.geo.data.query_with_retry(feed.name, layer)
-        geodataframe = peri_scribe.geo.data.dataframe_for_layer(
+        feature_set = geo_data.query_with_retry(feed.name, layer)
+        geodataframe = geo_data.dataframe_for_layer(
             feed,
             layer,
             feature_set,
         )
-        existing = peri_scribe.sources.feed_state.read_current_features(
+        existing = feed_state.read_current_features(
             source_directory,
             feed,
         )
@@ -100,7 +89,7 @@ def fetch_feed_dataframe(
             peri_scribe.phases.Phase.COMPARE_FEATURES,
             feed=feed.name,
         ):
-            geodataframe = peri_scribe.sources.changes.drop_features_already_present(
+            geodataframe = changes.drop_features_already_present(
                 geodataframe,
                 existing,
             )
@@ -112,76 +101,26 @@ def fetch_feed_dataframe(
     if not change_columns:
         message = f"Feed {feed.name} has no change columns configured"
         raise ValueError(message)
-    existing = peri_scribe.sources.feed_state.read_current_features(
+    existing = feed_state.read_current_features(
         source_directory,
         feed,
     )
-    cutoff = peri_scribe.sources.changes.incremental_cutoff(existing, feed)
-    where = peri_scribe.sources.feed_state.where_clause_for(change_columns, cutoff)
-    changed_ids = arcgis_access.data.query_object_ids_with_retry(
-        feed.name,
-        layer,
-        where=where,
-    )
-    # A source may publish features without updating their modified timestamps, so the
-    # timestamp query alone can miss features that are present in the layer but never
-    # stored (for example a WFIGS row re-added with an outdated modified time). Compare
-    # the layer's full OBJECTID set against the stored set to catch them.
-    stored_ids = peri_scribe.sources.feed_state.stored_object_ids(existing)
-    layer_ids = set(
-        arcgis_access.data.query_object_ids_with_retry(feed.name, layer, where="1=1"),
-    )
-    missing_ids = sorted(layer_ids - stored_ids)
-    if missing_ids:
-        logger.debug(
-            "Found features present but not stored",
-            feed=feed.name,
-            count=len(missing_ids),
-        )
-    active_ids = peri_scribe.sources.feed_state.stored_status_object_ids(
-        existing,
-        feed,
-        peri_scribe.models.FireStatus.ACTIVE,
-    )
-    inactive_literals = peri_scribe.sources.feed_state.stored_status_literals(
-        existing,
-        feed,
-        peri_scribe.models.FireStatus.INACTIVE,
-    )
-    flipped_ids: list[int] = []
-    if active_ids and inactive_literals:
-        # A source may flip a stored feature's status to inactive without updating its
-        # modified timestamp, so re-check the stored-active features' statuses.
-        flipped_ids = arcgis_access.data.query_object_ids_with_retry(
-            feed.name,
-            layer,
-            where=(
-                f"{feed.status_column} IN ({', '.join(inactive_literals)}) "
-                f"AND {peri_scribe.models.OBJECT_ID_COLUMN_NAME} "
-                f"IN ({', '.join(str(i) for i in active_ids)})"
-            ),
-        )
-    if flipped_ids:
-        logger.debug(
-            "Found stored-active features now inactive",
-            feed=feed.name,
-            count=len(flipped_ids),
-        )
-    object_ids = sorted(set(changed_ids) | set(missing_ids) | set(flipped_ids))
+    incremental_query = importlib.import_module("peri_scribe.sources.incremental_query")
+    object_ids = incremental_query.object_ids(feed, layer, change_columns, existing)
     if not object_ids:
         logger.debug("No new or changed features", feed=feed.name)
         return None
-    feature_set = peri_scribe.geo.data.query_with_retry(
+    feature_set = geo_data.query_with_retry(
         feed.name,
         layer,
         parameters={"object_ids": ",".join(str(i) for i in object_ids)},
     )
-    geodataframe = peri_scribe.geo.data.dataframe_for_layer(feed, layer, feature_set)
+    geodataframe = geo_data.dataframe_for_layer(feed, layer, feature_set)
     with peri_scribe.logging.log_phase(
         peri_scribe.phases.Phase.COMPARE_FEATURES,
         feed=feed.name,
     ):
-        geodataframe = peri_scribe.sources.changes.drop_features_already_present(
+        geodataframe = changes.drop_features_already_present(
             geodataframe,
             existing,
         )
@@ -240,6 +179,15 @@ class FeedOutcome:
     error: str | None = None
 
 
+@dataclasses.dataclass(frozen=True, kw_only=True)
+class CollectedFeeds:
+    """Retain collection results before indexing and reporting source failures."""
+
+    snapshot_paths: tuple[pathlib.Path, ...]
+    errors: tuple[str, ...]
+    changed: bool
+
+
 FEED_CONCURRENCY = 3
 
 
@@ -284,6 +232,41 @@ async def collect_feeds(
     return [task.result() for task in pending]
 
 
+def collect_feed_outcomes(
+    fetch: typing.Callable[[peri_scribe.sources.feed_types.Feed], FeedOutcome],
+) -> tuple[FeedOutcome, ...]:
+    """Join every feed operation before returning results to the collection policy.
+
+    Args:
+        fetch: The independent operation owning each feed's client and snapshot.
+
+    Returns:
+        The immutable outcomes in configured feed order.
+    """
+    return tuple(asyncio.run(collect_feeds(fetch)))
+
+
+def summarize_feed_outcomes(outcomes: tuple[FeedOutcome, ...]) -> CollectedFeeds:
+    """Keep publication decisions independent of worker and event-loop lifetimes.
+
+    Args:
+        outcomes: The joined outcomes in configured feed order.
+
+    Returns:
+        Saved paths, ordered source errors and whether any snapshot changed.
+    """
+    snapshot_paths = tuple(
+        outcome.path for outcome in outcomes if outcome.path is not None
+    )
+    errors = tuple(outcome.error for outcome in outcomes if outcome.error is not None)
+    wrote_snapshot = any(outcome.changed for outcome in outcomes)
+    return CollectedFeeds(
+        snapshot_paths=snapshot_paths,
+        errors=errors,
+        changed=wrote_snapshot,
+    )
+
+
 def open_feed_connection(
     feed: peri_scribe.sources.feed_types.Feed,
 ) -> arcgis.gis.GIS:
@@ -323,6 +306,8 @@ def fetch_feed_snapshot(
     Returns:
         The saved snapshot, change flag, or expected source failure.
     """
+    feed_state = importlib.import_module("peri_scribe.sources.feed_state")
+    layers = importlib.import_module("spatial_data.layers")
     with peri_scribe.logging.log_phase(
         peri_scribe.phases.Phase.COLLECT_FEED,
         feed=feed.name,
@@ -374,7 +359,7 @@ def fetch_feed_snapshot(
         except peri_scribe.exceptions.FeedFetchError as error:
             return FeedOutcome(error=str(error))
         if geodataframe is None:
-            latest_path = peri_scribe.sources.feed_state.latest_snapshot_path(
+            latest_path = feed_state.latest_snapshot_path(
                 source_directory,
                 existing_source_files,
             )
@@ -406,10 +391,10 @@ def fetch_feed_snapshot(
         ):
             # Recursive discovery must reject names in abandoned staging directories.
             temporary = pathlib.Path(directory) / "snapshot.gpkg"
-            spatial_data.layers.write_geopackage(
+            layers.write_geopackage(
                 temporary,
                 [
-                    spatial_data.layers.LayerData(
+                    layers.LayerData(
                         name=feed.name,
                         dataframe=geodataframe,
                     ),
@@ -421,7 +406,7 @@ def fetch_feed_snapshot(
                 peri_scribe.phases.Phase.UPDATE_CURRENT_STATE,
                 feed=feed.name,
             ):
-                peri_scribe.sources.feed_state.write_current_state(
+                feed_state.write_current_state(
                     source_directory,
                     feed,
                     geodataframe,
@@ -487,26 +472,26 @@ def fetch_all_feeds(
     if year is None:
         year = datetime.date.today().year
     with peri_scribe.logging.log_phase(peri_scribe.phases.Phase.FIRE_COLLECTION):
-        outcomes = asyncio.run(
-            collect_feeds(
-                functools.partial(
-                    fetch_feed_snapshot,
-                    base_dir=base_dir,
-                    year=year,
-                    full=full,
-                ),
+        outcomes = collect_feed_outcomes(
+            functools.partial(
+                fetch_feed_snapshot,
+                base_dir=base_dir,
+                year=year,
+                full=full,
             ),
         )
-    snapshot_paths = [outcome.path for outcome in outcomes if outcome.path is not None]
-    errors = [outcome.error for outcome in outcomes if outcome.error is not None]
-    wrote_snapshot = any(outcome.changed for outcome in outcomes)
+    collected = summarize_feed_outcomes(outcomes)
+    snapshot_paths = collected.snapshot_paths
+    errors = collected.errors
+    wrote_snapshot = collected.changed
     if build_index and (wrote_snapshot or full):
-        peri_scribe.fires.index.index_fire_sources(
+        fire_index = importlib.import_module("peri_scribe.fires.index")
+        fire_index.index_fire_sources(
             peri_scribe.paths.year_directory_path(base_dir, year),
         )
     if errors:
         raise SystemExit("\n".join(errors))
-    return FetchResult(snapshot_paths=tuple(snapshot_paths), changed=wrote_snapshot)
+    return FetchResult(snapshot_paths=snapshot_paths, changed=wrote_snapshot)
 
 
 def fetch_all_feeds_complete(
@@ -569,6 +554,7 @@ def fetch_validation_feed(
     Returns:
         The written path or the feed's source failure.
     """
+    layers = importlib.import_module("spatial_data.layers")
     logger.debug("Fetching complete snapshot", feed=feed.name, url=feed.url)
     try:
         geodataframe = fetch_feed(
@@ -587,8 +573,8 @@ def fetch_validation_feed(
     )
     output_path.parent.mkdir(parents=True, exist_ok=True)
     logger.debug("Writing layer", feed=feed.name, path=output_path)
-    spatial_data.layers.write_geopackage(
+    layers.write_geopackage(
         output_path,
-        [spatial_data.layers.LayerData(name=feed.name, dataframe=geodataframe)],
+        [layers.LayerData(name=feed.name, dataframe=geodataframe)],
     )
     return FeedOutcome(path=output_path, changed=True)

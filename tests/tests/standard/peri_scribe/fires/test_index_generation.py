@@ -17,6 +17,9 @@ import tests.helpers.doubles.errors
 import tests.helpers.doubles.peri_scribe.fires.index
 
 
+pytestmark = pytest.mark.usefixtures("reuse_preparation_environment")
+
+
 def test_index_fire_sources_skips_all_parsing_for_authenticated_generation(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,

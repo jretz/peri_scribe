@@ -5,6 +5,7 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import json
+import unittest.mock
 
 import pandas as pd
 import pytest
@@ -195,6 +196,74 @@ def test_area_history_requires_distinct_confirmations_for_rapid_growth() -> None
             points,
         ),
     ) == pytest.approx(400)
+
+
+def test_area_history_counts_each_report_once_and_resets_at_a_survey(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    time = tests.helpers.factories.peri_scribe.areas.time
+    perimeters = tests.helpers.factories.peri_scribe.areas.mappings([
+        (0, 100),
+        (2, 100),
+    ])
+    perimeters["source_subsource"] = "FIRIS"
+    reports = (
+        (1.1, 230.0, 1.1),
+        (1.2, 235.0, 1.1),
+        (2, 240.0, 2),
+        (3.1, 250.0, None),
+        (3.2, 260.0, None),
+        (3.3, 270.0, 3.3),
+    )
+    updates = tuple(
+        peri_scribe.incidents.IncidentUpdate(
+            observation_time=time(observed),
+            report_time=None if formal is None else time(formal),
+            confirmed=True,
+            source="formal",
+            source_file=str(index),
+            serial=index,
+            measurements={"incident_size": area},
+        )
+        for index, (observed, area, formal) in enumerate(reports)
+    )
+    check = unittest.mock.Mock(wraps=peri_scribe.areas.is_rapid_confirmation)
+    monkeypatch.setattr(peri_scribe.areas, "is_rapid_confirmation", check)
+
+    history = peri_scribe.areas.area_history(
+        perimeters,
+        pd.DataFrame(),
+        updates=updates,
+    )
+
+    assert all(
+        estimate.source is peri_scribe.areas.AreaSource.MAPPED
+        for estimate in history[:-1]
+    )
+    assert history[-1].source is peri_scribe.areas.AreaSource.REPORTED
+    assert history[-1].source_file == "5"
+    assert history[-1].observation_time == time(3.3)
+    assert check.call_count == len(updates)
+
+
+def test_report_can_take_over_applies_all_requirements_to_a_report_tuple() -> None:
+    time = tests.helpers.factories.peri_scribe.areas.time
+    perimeters = tests.helpers.factories.peri_scribe.areas.mappings([(0, 100)])
+    points = tests.helpers.factories.peri_scribe.areas.reports(
+        [(1, 230), (2, 250)],
+        confirmed=True,
+    )
+    first, second = peri_scribe.incidents.history(perimeters, points)
+    duplicate = dataclasses.replace(second, report_time=first.report_time)
+    policy = peri_scribe.areas.DEFAULT_POLICY
+    (mapping,) = peri_scribe.areas.mapping_history(perimeters, policy)
+    takeover = peri_scribe.areas.report_can_take_over
+
+    assert not takeover(mapping, (), time(2), None, policy)
+    assert not takeover(mapping, (first, second), time(2), 300, policy)
+    assert not takeover(mapping, (first, duplicate), time(2), None, policy)
+    assert takeover(mapping, (first, second), time(2), None, policy)
+    assert takeover(mapping, (first,), time(3), None, policy)
 
 
 def test_area_history_does_not_refresh_mapping_for_negligible_geometry_edit() -> None:

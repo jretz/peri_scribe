@@ -300,30 +300,80 @@ def report_can_take_over(
     """
     if not reports:
         return False
-    report = reports[-1]
+    required = takeover_confirmation_requirement(
+        mapping,
+        reports[-1],
+        time,
+        baseline,
+        policy,
+    )
+    if required is None:
+        return False
+    if required <= 0:
+        return True
+    confirmations = {
+        report.report_time
+        for report in reports
+        if is_rapid_confirmation(mapping, report, policy)
+    }
+    return len(confirmations) >= required
+
+
+def is_rapid_confirmation(
+    mapping: Mapping,
+    report: peri_scribe.incidents.IncidentUpdate,
+    policy: AreaPolicy,
+) -> bool:
+    """Check whether an observed report can corroborate growth beyond a survey.
+
+    Args:
+        mapping: The latest survey fixing the rapid-growth threshold.
+        report: One accepted report visible at the current event.
+        policy: The ratio required for rapid growth.
+
+    Returns:
+        Whether this report's formal time contributes a confirmation.
+    """
+    return (
+        report.confirmed
+        and report.observation_time > mapping.time
+        and report.measurements["incident_size"] * units.acres
+        >= mapping.area * policy.rapid_ratio
+    )
+
+
+def takeover_confirmation_requirement(
+    mapping: Mapping,
+    report: peri_scribe.incidents.IncidentUpdate,
+    time: datetime.datetime,
+    baseline: float | None,
+    policy: AreaPolicy,
+) -> int | None:
+    """Find how much corroboration this report needs to replace the mapping.
+
+    Args:
+        mapping: The latest survey.
+        report: The latest accepted acreage report.
+        time: The current observation or policy deadline.
+        baseline: Reported acreage already known at the survey, in acres.
+        policy: The mapping-age, growth, and corroboration rules.
+
+    Returns:
+        The required count, zero for ordinary takeover, or None when blocked.
+    """
     value = report.measurements["incident_size"] * units.acres
     if report.observation_time <= mapping.time or (
         baseline is not None and value <= baseline * units.acres
     ):
-        return False
+        return None
     if value - mapping.area < policy.minimum_increase:
-        return False
+        return None
     age = time - mapping.time
     if age >= policy.stale_after and value >= mapping.area * policy.significant_ratio:
-        return True
-    confirmations = {
-        item.report_time
-        for item in reports
-        if item.confirmed
-        and item.observation_time > mapping.time
-        and item.measurements["incident_size"] * units.acres
-        >= mapping.area * policy.rapid_ratio
-    }
-    return (
-        age >= policy.rapid_after
-        and value >= mapping.area * policy.rapid_ratio
-        and len(confirmations) >= policy.rapid_confirmations
-    )
+        return 0
+    if age >= policy.rapid_after and value >= mapping.area * policy.rapid_ratio:
+        return policy.rapid_confirmations
+    return None
 
 
 def accepted_reports(
@@ -391,11 +441,12 @@ def area_history(
     mappings = mapping_history(perimeters, policy)
     if updates is None:
         updates = peri_scribe.incidents.history(perimeters, points, incident_rows)
-    reports = accepted_reports(updates, policy)
-    if not mappings and not reports:
+    report_by_time = {
+        report.observation_time: report for report in accepted_reports(updates, policy)
+    }
+    if not mappings and not report_by_time:
         return ()
     mapping_by_time = {mapping.time: mapping for mapping in mappings}
-    report_by_time = {report.observation_time: report for report in reports}
     times = set(mapping_by_time) | set(report_by_time)
     last_time = max(times)
     # Deadlines expose already-reported growth when no further feed edits arrive.
@@ -408,20 +459,23 @@ def area_history(
     selected: AreaEstimate | None = None
     fresh_mapping: Mapping | None = None
     baseline: float | None = None
-    known_reports: tuple[peri_scribe.incidents.IncidentUpdate, ...] = ()
+    latest_report: peri_scribe.incidents.IncidentUpdate | None = None
+    confirmations: set[datetime.datetime | None] = set()
     result: list[AreaEstimate] = []
     for time in sorted(times):
-        if time in report_by_time:
-            known_reports = (*known_reports, report_by_time[time])
+        report = report_by_time.get(time)
+        if report is not None:
+            latest_report = report
         mapping = mapping_by_time.get(time)
         if mapping is not None:
             if mapping.surveyed:
                 fresh_mapping = mapping
                 baseline = (
-                    known_reports[-1].measurements["incident_size"]
-                    if known_reports
+                    latest_report.measurements["incident_size"]
+                    if latest_report is not None
                     else None
                 )
+                confirmations.clear()
             if (
                 mapping.surveyed
                 or selected is None
@@ -434,26 +488,33 @@ def area_history(
                     source=AreaSource.MAPPED,
                     source_file=mapping.source_file,
                 )
-        use_report = (
-            fresh_mapping is None
-            or (selected is not None and selected.source is AreaSource.REPORTED)
-            or report_can_take_over(
-                fresh_mapping,
-                known_reports,
-                time,
-                baseline,
-                policy,
+        if (
+            report is not None
+            and fresh_mapping is not None
+            and is_rapid_confirmation(fresh_mapping, report, policy)
+        ):
+            confirmations.add(report.report_time)
+        if latest_report is not None:
+            required = (
+                0
+                if fresh_mapping is None
+                or (selected is not None and selected.source is AreaSource.REPORTED)
+                else takeover_confirmation_requirement(
+                    fresh_mapping,
+                    latest_report,
+                    time,
+                    baseline,
+                    policy,
+                )
             )
-        )
-        if known_reports and use_report:
-            report = known_reports[-1]
-            selected = AreaEstimate(
-                time=time,
-                observation_time=report.observation_time,
-                area=report.measurements["incident_size"] * units.acres,
-                source=AreaSource.REPORTED,
-                source_file=report.source_file,
-            )
+            if required is not None and len(confirmations) >= required:
+                selected = AreaEstimate(
+                    time=time,
+                    observation_time=latest_report.observation_time,
+                    area=latest_report.measurements["incident_size"] * units.acres,
+                    source=AreaSource.REPORTED,
+                    source_file=latest_report.source_file,
+                )
         if selected is not None:
             result.append(dataclasses.replace(selected, time=time))
     return tuple(result)

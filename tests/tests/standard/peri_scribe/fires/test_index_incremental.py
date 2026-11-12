@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import pathlib
-import typing
+
+import pytest
 
 import peri_scribe.execution
 import peri_scribe.fires.classification
@@ -18,8 +19,7 @@ import tests.helpers.doubles.peri_scribe.geo.reading
 import tests.helpers.factories.peri_scribe.geo.package
 
 
-if typing.TYPE_CHECKING:
-    import pytest
+pytestmark = pytest.mark.usefixtures("reuse_preparation_environment")
 
 
 def test_incremental_index_hydrates_new_snapshot_and_matches_complete_rebuild(
