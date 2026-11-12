@@ -1,4 +1,4 @@
-"""Run independent TLC requests inside an owned JVM process group.
+"""Run independent action-frame checks inside an owned JVM process group.
 
 Design notes:
 [Verification evidence and execution](../../../docs/algorithms/verification-tooling.md).
@@ -167,6 +167,26 @@ def diagnostic_excerpt(connection: Connection) -> str:
     return ""
 
 
+def request_diagnostics(connection: Connection, directory: pathlib.Path) -> str:
+    """Keep bounded partial output when a request cannot return a receipt.
+
+    Args:
+        connection: The failed worker's launcher diagnostics.
+        directory: Private stdout and stderr storage for the active request.
+
+    Returns:
+        Launcher diagnostics and the tail of each available request stream.
+    """
+    excerpts = [diagnostic_excerpt(connection)]
+    for name in (OUTPUT, ERRORS):
+        with contextlib.suppress(OSError), (directory / name).open("rb") as stream:
+            stream.seek(0, os.SEEK_END)
+            stream.seek(max(0, stream.tell() - MAXIMUM_DIAGNOSTIC_BYTES))
+            value = stream.read(MAXIMUM_DIAGNOSTIC_BYTES).decode(errors="replace")
+            excerpts.append(f"{name}:\n{value}")
+    return "\n".join(excerpts).strip()
+
+
 async def exit_after_eof(connection: Connection) -> None:
     """Allow a finished JVM to exit and its launcher to reap it normally.
 
@@ -234,7 +254,7 @@ async def exchange(
 
 
 class Worker:
-    """Give each request exclusive use of a reusable, independently owned JVM."""
+    """Give each frame check exclusive use of an independently owned JVM."""
 
     def __init__(
         self,
@@ -364,11 +384,12 @@ class Worker:
                         java_directory,
                     )
             except TimeoutError as error:
+                diagnostic = request_diagnostics(connection, java_directory)
                 await self.stop()
                 message = f"TLC worker request {self.identifier} timed out"
-                raise TimeoutError(message) from error
+                raise TimeoutError(f"{message}\n{diagnostic}".rstrip()) from error
             except (OSError, ValueError) as error:
-                diagnostic = diagnostic_excerpt(connection)
+                diagnostic = request_diagnostics(connection, java_directory)
                 await self.stop()
                 message = f"TLC worker request {self.identifier} failed\n{error}"
                 raise OSError(f"{message}\n{diagnostic}".rstrip()) from error

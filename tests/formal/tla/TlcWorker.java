@@ -15,7 +15,7 @@ import java.util.ArrayList;
 import java.util.Base64;
 import java.util.concurrent.FutureTask;
 
-/** Runs each request with its own copy of TLC's static state. */
+/** Runs each frame request with its own copy of TLC's evaluator state. */
 public final class TlcWorker {
     private static final int MAXIMUM_REQUEST_BYTES = 65536;
 
@@ -63,35 +63,16 @@ public final class TlcWorker {
 
     private static int check(URLClassLoader loader, String[] arguments)
             throws ReflectiveOperationException {
-        if (arguments[0].equals("--peri-scribe-frame")) {
-            if (arguments.length != 5 && arguments.length != 6) {
-                throw new IllegalArgumentException("Invalid frame request");
-            }
-            Class<?> frame = loader.loadClass("FrameChecker");
-            boolean checked = (boolean) frame
-                    .getMethod("check", String.class, String.class, String.class, String.class, String.class)
-                    .invoke(null, arguments[1], arguments[2], arguments[3], arguments[4],
-                            arguments.length == 6 ? arguments[5] : "TEXT");
-            return checked ? 0 : 125;
+        if (!arguments[0].equals("--peri-scribe-frame")
+                || (arguments.length != 5 && arguments.length != 6)) {
+            throw new IllegalArgumentException("Invalid frame request");
         }
-        Class<?> checkerType = loader.loadClass("tlc2.TLC");
-        Object checker = checkerType.getConstructor().newInstance();
-        boolean parsed = (boolean) checkerType
-                .getMethod("handleParameters", String[].class)
-                .invoke(checker, (Object) arguments);
-        if (!parsed) return 1;
-        String main = (String) checkerType.getMethod("getMainFile").invoke(checker);
-        String directory = (String) loader.loadClass("util.FileUtil")
-                .getMethod("parseDirname", String.class).invoke(null, main);
-        Class<?> resolverType = loader.loadClass("util.SimpleFilenameToStream");
-        Object resolver = directory.isEmpty()
-                ? resolverType.getConstructor().newInstance()
-                : resolverType.getConstructor(String.class).newInstance(directory);
-        checkerType.getMethod("setResolver", loader.loadClass("util.FilenameToStream"))
-                .invoke(checker, resolver);
-        int result = (int) checkerType.getMethod("process").invoke(checker);
-        return (int) loader.loadClass("tlc2.output.EC$ExitStatus")
-                .getMethod("errorConstantToExitStatus", int.class).invoke(null, result);
+        Class<?> frame = loader.loadClass("FrameChecker");
+        boolean checked = (boolean) frame
+                .getMethod("check", String.class, String.class, String.class, String.class, String.class)
+                .invoke(null, arguments[1], arguments[2], arguments[3], arguments[4],
+                        arguments.length == 6 ? arguments[5] : "TEXT");
+        return checked ? 0 : 125;
     }
 
     private static PrintStream diagnostics(Path directory, String name)
@@ -155,7 +136,6 @@ public final class TlcWorker {
                 throw new IOException("Cannot send TLC worker result");
             }
         }
-        // JVM-wide RMI services can survive individual model lifetimes.
         System.exit(0);
     }
 }

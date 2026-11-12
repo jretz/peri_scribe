@@ -21,6 +21,7 @@ import time
 GROUP_VARIABLE = "PERI_SCRIBE_FORMAL_PROCESS_GROUP"
 LAUNCHER = pathlib.Path(__file__).with_name("process_launcher.py").resolve()
 DARWIN_SIGNAL_RETRIES = 10
+MAXIMUM_TIMEOUT_DIAGNOSTIC_BYTES = 8192
 
 
 @dataclasses.dataclass(frozen=True, kw_only=True)
@@ -104,6 +105,7 @@ async def terminate(
     *,
     interrupt_grace_seconds: float,
     wait_for_group_exit: bool = False,
+    drain: asyncio.Task[tuple[bytes, bytes]] | None = None,
 ) -> None:
     """Wait for the process handle so the whole failed proof job can be terminated.
 
@@ -118,6 +120,7 @@ async def terminate(
         interrupt_grace_seconds: Time for an independently owned tool to clean up
             after SIGINT before terminating its group.
         wait_for_group_exit: Require physical group absence before returning capacity.
+        drain: The existing pipe reader, when execution has already started it.
     """
     result = (await asyncio.gather(launch, return_exceptions=True))[0]
     if isinstance(result, BaseException):
@@ -131,7 +134,8 @@ async def terminate(
                 flush=True,
             )
     # Pipe-holding descendants must exit before transports can report completion.
-    drain = asyncio.create_task(process.communicate())
+    if drain is None:
+        drain = asyncio.create_task(process.communicate())
     if group is None and interrupt_grace_seconds > 0:
         with contextlib.suppress(ProcessLookupError):
             os.killpg(process.pid, signal.SIGINT)
@@ -181,6 +185,7 @@ async def execute(
         The exit status and both diagnostic streams.
 
     Raises:
+        TimeoutError: If execution exceeds the budget, with bounded tool diagnostics.
         ValueError: If group-exit admission is requested from an inherited owner.
     """
     group = inherited_group()
@@ -202,22 +207,33 @@ async def execute(
             start_new_session=group is None,
         ),
     )
+    drain: asyncio.Task[tuple[bytes, bytes]] | None = None
     try:
         process = await asyncio.shield(launch)
+        drain = asyncio.create_task(process.communicate(standard_input.encode()))
         stdout, stderr = await asyncio.wait_for(
-            process.communicate(standard_input.encode()),
+            asyncio.shield(drain),
             timeout=maximum_seconds,
         )
-    except BaseException:
+    except BaseException as error:
         cleanup = asyncio.create_task(
             terminate(
                 launch,
                 group,
                 interrupt_grace_seconds=interrupt_grace_seconds,
                 wait_for_group_exit=wait_for_group_exit,
+                drain=drain,
             ),
         )
         await finish(cleanup)
+        if isinstance(error, TimeoutError) and drain is not None:
+            stdout, stderr = drain.result()
+            message = f"Command exceeded {maximum_seconds:g} seconds"
+            for name, output in (("stdout", stdout), ("stderr", stderr)):
+                excerpt = output[-MAXIMUM_TIMEOUT_DIAGNOSTIC_BYTES:]
+                if excerpt:
+                    message += f"\n{name}:\n{excerpt.decode(errors='replace')}"
+            raise TimeoutError(message) from error
         raise
     if group is None:
         kill_group(process.pid)

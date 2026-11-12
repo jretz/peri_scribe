@@ -19,33 +19,23 @@ def arguments(
     config: str,
     directory: pathlib.Path,
 ) -> list[str]:
-    """Use the normal checker arguments with a fixed fingerprint for graph parity.
+    """Request one qualified frame with private receipt storage.
 
     Args:
         module: The model's source module.
         config: Its exact registered configuration.
-        directory: The private graph and state metadata directory.
+        directory: The private frame receipt and diagnostic directory.
 
     Returns:
-        The original TLC CLI arguments for the requested check.
+        The frame checker's arguments for the requested check.
     """
     return [
-        "-workers",
-        "1",
-        "-seed",
-        "1",
-        "-fp",
-        "0",
-        "-lncheck",
-        "final",
-        "-metadir",
-        str(directory / "metadata"),
-        "-dump",
-        "dot,actionlabels",
-        str(directory / "graph.dot"),
-        "-config",
-        f"{config}.cfg",
-        f"{module}.tla",
+        tests.formal.helpers.tlc_worker.FRAME_REQUEST,
+        module,
+        config,
+        str(tests.formal.check.DIRECTORY),
+        str(directory / "complete.pfr"),
+        "STATES" if module == "FeedCoordinator" else "GRAPH",
     ]
 
 
@@ -79,14 +69,14 @@ async def test_real_worker_reuses_after_rejection_and_restarts_after_cancellatio
 ) -> None:
     java, jar = tests.formal.check.toolchain()
     transport = tests.formal.helpers.tlc_worker
-    classes = await transport.compile_worker(java, tmp_path)
+    classes = await transport.compile_worker(java, tmp_path, jar=jar)
     worker = transport.Worker(java, jar, classes, tests.formal.check.DIRECTORY)
 
     async def run(module: str, config: str, directory: pathlib.Path) -> int:
         """Run a real model and compare its private diagnostic files to the reply.
 
         Returns:
-            TLC's original exit status.
+            The frame checker's original exit status.
         """
         await asyncio.to_thread(directory.mkdir)
         result = await worker.execute(
@@ -100,20 +90,17 @@ async def test_real_worker_reuses_after_rejection_and_restarts_after_cancellatio
 
     try:
         first = tmp_path / "first-é\n\t"
-        assert await run("StaticDownload", "StaticDownload", first) == 0
+        assert await run("FeedCoordinator", "FeedCoordinator", first) == 0
         connection = worker.connection
         assert connection is not None
         original = connection.launch.result()
 
         rejected = tmp_path / "rejected"
         assert (
-            await run("GeographyPublication", "GeographyPairExpected", rejected)
-            == tests.formal.check.INVARIANT_VIOLATION
+            await run("FeedCoordinator", "Unreviewed", rejected)
+            == transport.FRAME_UNSUPPORTED
         )
-        assert (
-            "Invariant PairAlwaysMatches is violated."
-            in (rejected / transport.OUTPUT).read_text()
-        )
+        assert not (rejected / "complete.pfr").exists()
         assert worker.connection is connection
 
         interrupted = tmp_path / "interrupted"
@@ -130,16 +117,16 @@ async def test_real_worker_reuses_after_rejection_and_restarts_after_cancellatio
         timed_out.mkdir()
         with pytest.raises(TimeoutError, match="timed out"):
             await worker.execute(
-                arguments("StaticDownload", "StaticDownload", timed_out),
+                arguments("FeedCoordinator", "FeedCoordinator", timed_out),
                 timed_out,
                 maximum_seconds=0,
             )
         assert worker.connection is None
 
         restarted = tmp_path / "restarted"
-        assert await run("StaticDownload", "StaticDownload", restarted) == 0
-        assert (first / "graph.dot").read_bytes() == (
-            restarted / "graph.dot"
+        assert await run("FeedCoordinator", "FeedCoordinator", restarted) == 0
+        assert (first / "complete.pfr").read_bytes() == (
+            restarted / "complete.pfr"
         ).read_bytes()
         replacement = worker.connection
         assert replacement is not None
@@ -147,6 +134,50 @@ async def test_real_worker_reuses_after_rejection_and_restarts_after_cancellatio
         await worker.close()
         assert replacement.launch.result().returncode == 0
         assert worker.connection is None
+    finally:
+        await worker.close()
+
+
+@pytest.mark.asyncio
+async def test_worker_timeout_preserves_partial_diagnostics_and_reaps_the_process(
+    tmp_path: pathlib.Path,
+) -> None:
+    transport = tests.formal.helpers.tlc_worker
+    worker = transport.Worker("java", tmp_path / "tools.jar", tmp_path, tmp_path)
+    worker.command = [
+        sys.executable,
+        "-c",
+        (
+            "import os, pathlib, signal, sys\n"
+            "directory = pathlib.Path(sys.argv[1])\n"
+            "(directory / 'pid').write_text(str(os.getpid()))\n"
+            "(directory / 'stdout.log').write_bytes(b'x' * 20000 + b'partial model')\n"
+            "(directory / 'stderr.log').write_text('model error')\n"
+            "print('launcher error', file=sys.stderr, flush=True)\n"
+            "(directory / 'ready').touch()\n"
+            "input()\n"
+            "signal.pause()\n"
+        ),
+        str(tmp_path),
+    ]
+    try:
+        connection = worker.start()
+        worker.connection = connection
+        async with asyncio.timeout(DEADLINE_SECONDS):
+            await asyncio.shield(connection.launch)
+            await asyncio.to_thread(
+                tests.formal.helpers.process_checks.wait_until,
+                (tmp_path / "ready").exists,
+            )
+        with pytest.raises(TimeoutError, match="partial model") as raised:
+            await worker.execute(["case.tla"], tmp_path, maximum_seconds=0)
+        message = str(raised.value)
+        assert "launcher error" in message
+        assert "model error" in message
+        assert len(message) < transport.MAXIMUM_DIAGNOSTIC_BYTES + 200
+        assert worker.connection is None
+        with pytest.raises(ProcessLookupError):
+            os.getpgid(int((tmp_path / "pid").read_text()))
     finally:
         await worker.close()
 

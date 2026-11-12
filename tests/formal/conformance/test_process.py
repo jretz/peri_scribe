@@ -1,9 +1,11 @@
 import asyncio
+import contextlib
 import errno
 import os
 import pathlib
 import signal
 import sys
+import typing
 import unittest.mock
 
 import pytest
@@ -11,6 +13,86 @@ import pytest
 import tests.formal.helpers.process
 import tests.formal.helpers.process_checks
 import tests.helpers.doubles.attribute_overrides
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("nested_tools", [True, False])
+async def test_execute_timeout_preserves_bounded_diagnostics_from_a_real_child(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    nested_tools: bool,
+) -> None:
+    adapter = tests.formal.helpers.process
+    monkeypatch.delenv(adapter.GROUP_VARIABLE, raising=False)
+    monkeypatch.setattr(adapter, "MAXIMUM_TIMEOUT_DIAGNOSTIC_BYTES", 128)
+    marker = tmp_path / "output-written"
+    original = typing.cast(
+        "tests.formal.helpers.process_checks.Launch",
+        asyncio.create_subprocess_exec,
+    )
+    children: list[asyncio.subprocess.Process] = []
+
+    async def launch(*args: str, **kwargs: object) -> asyncio.subprocess.Process:
+        """Begin the deadline only after both real pipes contain the diagnostics.
+
+        Args:
+            args: The adapter's executable and arguments.
+            kwargs: Its unchanged process ownership and pipe options.
+
+        Returns:
+            The real child handle after its output handshake.
+        """
+        child = await original(*args, **kwargs)
+        children.append(child)
+        await asyncio.to_thread(
+            tests.formal.helpers.process_checks.wait_until,
+            marker.exists,
+        )
+        return child
+
+    monkeypatch.setattr(asyncio, "create_subprocess_exec", launch)
+    command = [
+        sys.executable,
+        "-c",
+        (
+            "import pathlib, signal, sys\n"
+            "for stream, name in ((sys.stdout, 'stdout'), (sys.stderr, 'stderr')):\n"
+            "    stream.buffer.write(('earliest ' + name).encode() + b'.' * 256\n"
+            "                        + b'\\xfflast ' + name.encode()\n"
+            "                        + b' diagnostic\\n')\n"
+            "    stream.buffer.flush()\n"
+            "pathlib.Path(sys.argv[1]).touch()\n"
+            "signal.pause()\n"
+        ),
+        str(marker),
+    ]
+    try:
+        with pytest.raises(TimeoutError) as raised:
+            async with asyncio.timeout(
+                tests.formal.helpers.process_checks.GUARD_SECONDS,
+            ):
+                await adapter.execute(
+                    command,
+                    standard_input="",
+                    cwd=None,
+                    maximum_seconds=0,
+                    can_start_nested_tools=nested_tools,
+                )
+        diagnostic = str(raised.value)
+        assert "last stdout diagnostic" in diagnostic
+        assert "last stderr diagnostic" in diagnostic
+        assert "earliest stdout" not in diagnostic
+        assert "earliest stderr" not in diagnostic
+        maximum_message_length = 512
+        assert len(diagnostic) < maximum_message_length
+        assert len(children) == 1
+        assert children[0].returncode is not None
+    finally:
+        for child in children:
+            with contextlib.suppress(ProcessLookupError):
+                os.killpg(child.pid, signal.SIGKILL)
+            await child.wait()
 
 
 def test_kill_group_waits_for_darwin_to_reap_an_exited_group(
@@ -65,21 +147,35 @@ def test_run_timeout_drains_output_before_waiting_for_exit(
     process = unittest.mock.create_autospec(asyncio.subprocess.Process, instance=True)
     process.pid = 123
     process.returncode = None
-    process.communicate.side_effect = [
-        TimeoutError("proof tool deadline"),
-        (b"buffered output", b"buffered diagnostics"),
-    ]
+    terminated = asyncio.Event()
+
+    async def communicate(standard_input: bytes) -> tuple[bytes, bytes]:
+        """Keep the original pipe reader active until cleanup terminates its owner.
+
+        Returns:
+            Both buffered streams after the process exits.
+        """
+        assert standard_input == b""
+        await terminated.wait()
+        return b"buffered output", b"buffered diagnostics"
+
+    process.communicate.side_effect = communicate
     process.wait.side_effect = AssertionError("Undrained pipes can block process exit")
     launch = unittest.mock.AsyncMock(return_value=process)
     monkeypatch.setattr(asyncio, "create_subprocess_exec", launch)
     monkeypatch.setattr(tests.formal.helpers.process, "inherited_group", lambda: None)
-    terminate = unittest.mock.Mock()
+    terminate = unittest.mock.Mock(
+        side_effect=lambda group: terminated.set() if group == process.pid else None,
+    )
     monkeypatch.setattr(tests.formal.helpers.process, "kill_group", terminate)
-    with pytest.raises(TimeoutError, match="proof tool deadline"):
+    with pytest.raises(TimeoutError, match="exceeded 0 seconds") as raised:
         tests.formal.helpers.process.run(
             ["proof-tool"],
+            timeout=0,
             can_start_nested_tools=nested_tools,
         )
+    assert "buffered output" in str(raised.value)
+    assert "buffered diagnostics" in str(raised.value)
     launched = launch.await_args
     assert launched is not None
     assert launched.args == (
@@ -89,10 +185,7 @@ def test_run_timeout_drains_output_before_waiting_for_exit(
     )
     assert launched.kwargs["start_new_session"] is True
     terminate.assert_called_once_with(process.pid)
-    assert process.communicate.await_args_list == [
-        unittest.mock.call(b""),
-        unittest.mock.call(),
-    ]
+    process.communicate.assert_awaited_once_with(b"")
 
 
 @pytest.mark.asyncio
@@ -101,18 +194,36 @@ async def test_execute_interrupts_graceful_tools_before_forcing_the_group(
 ) -> None:
     process = unittest.mock.create_autospec(asyncio.subprocess.Process, instance=True)
     process.pid = 123
-    process.communicate.side_effect = [TimeoutError("deadline"), (b"", b"")]
-    kill = unittest.mock.Mock()
+    interrupted = asyncio.Event()
+
+    async def communicate(standard_input: bytes) -> tuple[bytes, bytes]:
+        """Finish the pending reader only after the tool receives its interrupt.
+
+        Returns:
+            The gracefully closed streams.
+        """
+        assert standard_input == b""
+        await interrupted.wait()
+        return b"", b""
+
+    process.communicate.side_effect = communicate
+    kill = unittest.mock.Mock(
+        side_effect=lambda group, requested: (
+            interrupted.set()
+            if (group, requested) == (process.pid, signal.SIGINT)
+            else None
+        ),
+    )
     launch = unittest.mock.AsyncMock(return_value=process)
     monkeypatch.setattr(asyncio, "create_subprocess_exec", launch)
     monkeypatch.setattr(tests.formal.helpers.process, "inherited_group", lambda: None)
     monkeypatch.setattr(os, "killpg", kill)
-    with pytest.raises(TimeoutError, match="deadline"):
+    with pytest.raises(TimeoutError, match="exceeded 0 seconds"):
         await tests.formal.helpers.process.execute(
             ["regular-tool"],
             standard_input="",
             cwd=None,
-            maximum_seconds=60,
+            maximum_seconds=0,
             can_start_nested_tools=False,
             interrupt_grace_seconds=1,
         )

@@ -181,7 +181,7 @@ async def check_model(
         )
     with tempfile.TemporaryDirectory(prefix="peri-scribe-tlc-") as temporary:
         directory = pathlib.Path(temporary)
-        source_directory = DIRECTORY
+        source_directory = worker.cwd if worker is not None else DIRECTORY
         if qualified and mode == "COUNTS" and worker is not None and worker.framed:
             output = await tests.formal.helpers.tlc_frames.check(
                 model.module,
@@ -195,15 +195,11 @@ async def check_model(
                     stdout=output,
                     stderr="",
                 )
-            # Standalone TLC owns the terminal status of a temporal counterexample.
-            source_directory = worker.cwd
-            worker = None
         return await run_stock_model(
             model,
             java,
             jar,
             directory,
-            worker=worker,
             source_directory=source_directory,
         )
 
@@ -231,20 +227,6 @@ async def run_exported_model(
         else None
     )
     if output is None:
-        source_directory = None
-        if (
-            framed
-            and worker is not None
-            and worker.framed
-            and (
-                model.config == "BuildingsConstruction"
-                or (model.module, model.config)
-                in tests.formal.helpers.tlc_frames.SAFETY_EXPORTS
-            )
-        ):
-            # Standalone TLC owns the terminal status of a declined proof request.
-            source_directory = worker.cwd
-            worker = None
         check = (
             tests.formal.helpers.corpus.checked_states
             if model.conformance is tests.formal.helpers.model_registry.Export.STATES
@@ -254,8 +236,7 @@ async def run_exported_model(
             model.module,
             model.config,
             directory,
-            worker=worker,
-            source_directory=source_directory,
+            source_directory=worker.cwd if worker is not None else None,
         )
         output = checked.output
     return tests.formal.helpers.process.Result(returncode=0, stdout=output, stderr="")
@@ -267,7 +248,6 @@ async def run_stock_model(
     jar: pathlib.Path,
     directory: pathlib.Path,
     *,
-    worker: tests.formal.helpers.tlc_worker.Worker | None,
     source_directory: pathlib.Path,
 ) -> tests.formal.helpers.process.Result:
     """Keep the locked checker's original counterexample and failure diagnostics.
@@ -290,8 +270,6 @@ async def run_stock_model(
         f"{model.config}.cfg",
         f"{model.module}.tla",
     ]
-    if worker is not None:
-        return await worker.execute(arguments, java_directory, maximum_seconds=180)
     return await tests.formal.helpers.process.execute(
         [
             java,
@@ -342,8 +320,8 @@ async def run_limited_model(
                     corpus_directory,
                     worker=worker,
                 )
-        except TimeoutError:
-            print(f"FAILED: {model.name} exceeded 180 seconds", flush=True)
+        except TimeoutError as error:
+            print(f"FAILED: {model.name} exceeded 180 seconds\n{error}", flush=True)
         except OSError as error:
             print(f"FAILED: {model.name}: {error}", flush=True)
         return False

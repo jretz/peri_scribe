@@ -13,6 +13,44 @@ import tests.formal.helpers.tlc
 import tests.formal.helpers.tlc_worker
 
 
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "name",
+    ["parsed-cache", "parsed-cache-read", "source-summaries"],
+)
+async def test_stock_models_run_independently_of_the_frame_worker(
+    tmp_path: pathlib.Path,
+    monkeypatch: pytest.MonkeyPatch,
+    name: str,
+) -> None:
+    monkeypatch.delenv(tests.formal.helpers.session.VARIABLE, raising=False)
+    java, jar = tests.formal.check.toolchain()
+    worker = unittest.mock.Mock(
+        cwd=tests.formal.check.DIRECTORY,
+        framed=True,
+        execute=unittest.mock.AsyncMock(
+            side_effect=AssertionError("Stock TLC requires a fresh JVM"),
+        ),
+    )
+    model = next(model for model in tests.formal.check.models() if model.name == name)
+    assert await tests.formal.check.run_model(
+        model,
+        java,
+        jar,
+        tmp_path,
+        worker=worker,
+    )
+    worker.execute.assert_not_awaited()
+    if name == "parsed-cache-read":
+        expected_states = 696
+        states = tests.formal.helpers.corpus.states(
+            model.module,
+            model.config,
+            tmp_path,
+        )
+        assert len(states) == expected_states
+
+
 def test_models_rejects_unregistered_configuration(
     tmp_path: pathlib.Path,
     monkeypatch: pytest.MonkeyPatch,

@@ -90,11 +90,13 @@ successor proof.
 [action-frames]: algorithms/verification-tooling.md#immutable-tlc-action-frames
 
 Each outer proof job owns a private POSIX process group, including tools started by
-nested pytest runs. The integrated model runner leases a worker group for one active
-model at a time, with fresh TLC classes, output, and metadata for each model. Cancellation
-and timeouts terminate the group and drain its
-output before the outer caller returns its original exception. A nested tool timeout or
-cancellation aborts the enclosing job rather than allowing that nested pytest to recover.
+nested pytest runs. Stock TLC runs in a fresh JVM for every check. The integrated model
+runner reuses JVMs only for action-frame checks, with fresh evaluator classes, output
+and metadata for each model. It admits one active model at a time; an idle frame JVM
+can remain while a stock check runs. Cancellation and timeouts terminate the owned
+group and drain its output before the outer caller returns its exception. A nested tool
+timeout or cancellation aborts the enclosing job rather than allowing that nested pytest
+to recover.
 The compiled Lean oracles and hard-crash workers run directly as leaf processes under
 the same ownership arrangement. The launcher passes the group identity to tools that
 start nested jobs.

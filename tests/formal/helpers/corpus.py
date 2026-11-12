@@ -21,7 +21,6 @@ import tests.formal.helpers.session
 import tests.formal.helpers.tlc
 import tests.formal.helpers.tlc_frame_wire
 import tests.formal.helpers.tlc_frames
-import tests.formal.helpers.tlc_worker
 
 
 def load[Value](
@@ -201,7 +200,6 @@ async def checked_graph(
     config: str,
     directory: pathlib.Path,
     *,
-    worker: tests.formal.helpers.tlc_worker.Worker | None = None,
     source_directory: pathlib.Path | None = None,
 ) -> tests.formal.helpers.tlc.CheckedGraph:
     """Publish the directed evidence required by path consumers.
@@ -210,7 +208,6 @@ async def checked_graph(
         module: The TLA+ module name.
         config: The exact finite configuration.
         directory: The outer formal invocation's temporary storage.
-        worker: A leased JVM with no other active model.
         source_directory: Explicit TLC sources for an isolated fallback.
 
     Returns:
@@ -225,7 +222,6 @@ async def checked_graph(
             tests.formal.helpers.tlc.checked_graph_async,
             module,
             config,
-            worker=worker,
             source_directory=source_directory,
         ),
     )
@@ -236,7 +232,6 @@ async def checked_states(
     config: str,
     directory: pathlib.Path,
     *,
-    worker: tests.formal.helpers.tlc_worker.Worker | None = None,
     source_directory: pathlib.Path | None = None,
 ) -> tests.formal.helpers.tlc.CheckedStates:
     """Publish every checked state in the state inventory's own receipt.
@@ -245,7 +240,6 @@ async def checked_states(
         module: The TLA+ module name.
         config: The exact finite configuration.
         directory: The outer formal invocation's temporary storage.
-        worker: A leased JVM with no other active model.
         source_directory: Explicit TLC sources for an isolated fallback.
 
     Returns:
@@ -259,7 +253,6 @@ async def checked_states(
             tests.formal.helpers.tlc.checked_states_async,
             module,
             config,
-            worker=worker,
             source_directory=source_directory,
         ),
     )

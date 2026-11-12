@@ -68,7 +68,6 @@ async def explore_async(
     directory: pathlib.Path,
     *,
     graph: bool = False,
-    worker: tests.formal.helpers.tlc_worker.Worker | None = None,
     source_directory: pathlib.Path | None = None,
 ) -> tuple[str, str]:
     """Require complete successful exploration before exposing either dump format.
@@ -78,7 +77,6 @@ async def explore_async(
         config: The registered finite configuration.
         directory: Private dump, TLC metadata, and JVM temporary storage.
         graph: Whether actual successor edges and initial-state marks are required.
-        worker: A leased JVM with no other active model.
         source_directory: Explicit TLC sources for an isolated fallback.
 
     Returns:
@@ -106,29 +104,22 @@ async def explore_async(
             f"{config}.cfg",
             f"{module}.tla",
         ]
-        if worker is not None:
-            result = await worker.execute(
-                arguments,
-                pathlib.Path(java_directory),
-                maximum_seconds=180,
-            )
-        else:
-            java = shutil.which("java")
-            assert java is not None, "Run mise formal-conformance to provide Java"
-            result = await tests.formal.helpers.process.execute(
-                [
-                    java,
-                    *JAVA_OPTIONS,
-                    f"-Djava.io.tmpdir={java_directory}",
-                    "-cp",
-                    os.environ["PERI_SCRIBE_TLA_JAR"],
-                    "tlc2.TLC",
-                    *arguments,
-                ],
-                standard_input="",
-                cwd=source_directory or tests.formal.helpers.oracle.DIRECTORY / "tla",
-                maximum_seconds=180,
-            )
+        java = shutil.which("java")
+        assert java is not None, "Run mise formal-conformance to provide Java"
+        result = await tests.formal.helpers.process.execute(
+            [
+                java,
+                *JAVA_OPTIONS,
+                f"-Djava.io.tmpdir={java_directory}",
+                "-cp",
+                os.environ["PERI_SCRIBE_TLA_JAR"],
+                "tlc2.TLC",
+                *arguments,
+            ],
+            standard_input="",
+            cwd=source_directory or tests.formal.helpers.oracle.DIRECTORY / "tla",
+            maximum_seconds=180,
+        )
     assert result.returncode == 0, result.stdout + result.stderr
     assert "Model checking completed. No error has been found." in result.stdout
     return dump.read_text(), result.stdout
@@ -303,7 +294,6 @@ async def checked_graph_async(
     config: str,
     directory: pathlib.Path,
     *,
-    worker: tests.formal.helpers.tlc_worker.Worker | None = None,
     source_directory: pathlib.Path | None = None,
 ) -> CheckedGraph:
     """The model runner and conformance consumers use the same checked evidence.
@@ -312,7 +302,6 @@ async def checked_graph_async(
         module: The TLA+ module name.
         config: The exact finite configuration.
         directory: Private checker storage.
-        worker: A leased JVM with no other active model.
         source_directory: Explicit TLC sources for an isolated fallback.
 
     Returns:
@@ -323,7 +312,6 @@ async def checked_graph_async(
         config,
         directory,
         graph=True,
-        worker=worker,
         source_directory=source_directory,
     )
     return CheckedGraph(graph=decode_graph(dump, output), output=output)
@@ -378,7 +366,6 @@ async def checked_states_async(
     config: str,
     directory: pathlib.Path,
     *,
-    worker: tests.formal.helpers.tlc_worker.Worker | None = None,
     source_directory: pathlib.Path | None = None,
 ) -> CheckedStates:
     """Export valuations from the same full checker run as the diagnostics.
@@ -387,7 +374,6 @@ async def checked_states_async(
         module: The TLA+ module name.
         config: The exact finite configuration.
         directory: Private checker storage.
-        worker: A leased JVM with no other active model.
         source_directory: Explicit TLC sources for an isolated fallback.
 
     Returns:
@@ -397,7 +383,6 @@ async def checked_states_async(
         module,
         config,
         directory,
-        worker=worker,
         source_directory=source_directory,
     )
     return CheckedStates(states=decode_states(dump, output), output=output)

@@ -73,32 +73,44 @@ fingerprint IDs to their actual discovery ordinals; it preserved all raw fields 
 values, initial marks, action labels, duplicate edges, and successor order. This changes
 compilation policy while retaining the original TLC arguments and model limits.
 
-The formal gate compiles its worker once in the fresh evidence session. An admitted
-model leases one JVM and sends one request. The worker loads the locked TLC archive
-through a new classloader, runs the model in its own thread group, and writes diagnostics
-to that request's private directory. It closes the classloader and checks for remaining
-model threads before returning the matching completion receipt. The parent still checks
-the status and diagnostics and validates each export before publishing evidence.
-The JVM's compiler, runtime services, and heap survive between requests. TLC classes,
-model state, and temporary files belong to one request.
+Stock TLC checks each run in a fresh JVM through the owned process adapter. The
+checker creates fingerprint sets, disk-queue helpers and JVM-wide RMI services. A
+classloader isolates TLC's static fields but cannot give those services a fresh process
+lifetime. Keeping each stock check in its own process bounds their retained state and
+lets the official CLI own its terminal exit status. Graph and state exports use this
+same boundary, including fallbacks from an unqualified action-frame check.
 
-For example, after the first model returns, the next model in that slot can start in the
-warm JVM with fresh TLC classes and files. A timeout kills and reaps the process group
-while it still belongs to the failed request. The next model in that slot starts a fresh
-worker. Idle workers exit when the controller closes their request streams. A hung
-shutdown also triggers forced cleanup. At most one model can be affected by a worker's
-failure, and a failed request cannot supply evidence. For `N` models and `K`
-admitted slots, at most `K` JVMs stay live for `N` independent checks. Each JVM has a
-1 GiB heap limit. The adapter scores `(2, 2, 1, 2, 3)`, totaling 10. Requests and replies
-must match in order, argument lengths preserve exact UTF-8 boundaries, and process
-ownership must survive cancellation. Tests exercise completion, an expected failure,
-and cancellation while another worker continues. A comparison across 62 checks,
-including repeats and the known counterexample, matched 49 raw graph exports and saved
-about 20 CPU seconds.
+The formal gate compiles its action-frame worker once in the fresh evidence session.
+An admitted frame check leases one JVM and sends one request. The worker loads the
+locked TLC evaluator through a new classloader, runs the synchronous frame checker in
+its own thread group, and writes diagnostics to that request's private directory. It
+closes the classloader and checks for remaining model threads before returning the
+matching completion receipt. The parent still checks the status and diagnostics and
+validates each export before publishing evidence. Only the evaluator's compiler,
+runtime services and heap survive between frame requests. Model state and temporary
+files belong to one request. Stock TLC cannot run through this transport.
 
-A check already owned by an enclosing process group uses the direct Java launcher, so
-its parent can still terminate the entire job. Both execution paths run the same TLC
-engine and validate fresh results through the current evidence session.
+For example, a frame check can reuse an idle frame JVM after a stock check has exited.
+A timeout kills and reaps the failed request's process group. Failed checks cannot
+supply evidence. Idle frame workers exit when the controller closes their request
+streams; a hung shutdown also triggers forced cleanup. Timeouts retain bounded partial
+diagnostics. The process adapter gives cleanup the same output-draining task that
+execution started, so a timeout cannot create competing pipe readers.
+
+For `K` admitted model slots, at most `K` checks are active. Up to `K` idle frame JVMs
+can remain while fresh stock JVMs run. Each JVM has a 1 GiB heap limit. The full gate
+uses one model slot, so it can retain one idle frame JVM alongside one active stock
+JVM. A check already owned by an enclosing process group uses the direct Java launcher,
+so its parent can terminate the entire job.
+
+The worker adapter scores `(2, 2, 1, 2, 3)`, totaling 10. Requests and replies must match
+in order, argument lengths preserve exact UTF-8 boundaries, and process ownership must
+survive cancellation. Tests exercise frame completion, declined qualification,
+cancellation, partial timeout output and restart. Separate regressions require stock
+counts, graph exports and state exports to succeed independently of the frame worker.
+Both paths validate fresh results through the current evidence session. This routing
+and diagnostic change introduces no new modeled protocol; the real-process checks
+exercise the existing ownership contract.
 
 When safety and liveness use the same initial states and next-state relation, one TLC
 configuration can check both on the same explored graph. This applies to static
