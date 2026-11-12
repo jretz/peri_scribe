@@ -42,6 +42,13 @@ versions from `.mise/mise.lock`; [strict installation][mise-lock] with
 `mise install --locked` additionally rejects missing lock entries and is used when
 smoke-testing the runner image.
 
+The job enables `container.init` so Docker's init process reaps orphaned descendants.
+The full test gate waits for owned process groups to disappear before releasing their
+capacity. An exited process that has not been reaped can keep its group present and
+make that check time out. This setting applies when the runner creates the container;
+it works with the runner's keepalive entrypoint and the `ci-base` label's image.
+See [Forgejo's container settings][container-init] and [Docker's init process][docker-init].
+
 After all preceding steps succeed on a push to the repository's default branch, the
 final step creates or moves the remote `deploy` tag to the commit SHA tested by that
 workflow run. It uses the [automatic workflow token][workflow-token] persisted by
@@ -124,6 +131,8 @@ is no additional application policy or persistence protocol here for a formal mo
 verify.
 
 [mise-lock]: https://mise.jdx.dev/dev-tools/mise-lock.html
+[container-init]: https://forgejo.org/docs/latest/user/actions/reference/#jobsjob_idcontainerinit
+[docker-init]: https://docs.docker.com/reference/cli/docker/container/run/#specify-an-init-process
 [workflow-token]: https://forgejo.org/docs/latest/user/actions/basic-concepts/#automatic-token
 [forgejo-v12]: https://forgejo.org/2025-07-release-v12-0/
 

@@ -5,6 +5,8 @@ enable-email-notifications: true
 jobs:
   test:
     runs-on: ci-base
+    container:
+      init: true
     env:
       MISE_TRUSTED_CONFIG_PATHS: ${{ forgejo.workspace }}
       PERI_SCRIBE_UV_CACHE_ROOT: /tool-cache/uv/peri-scribe
