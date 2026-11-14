@@ -1,0 +1,10 @@
+[Unit]
+Description=Schedule PeriScribe Production Pipeline
+
+[Timer]
+OnActiveSec=1s
+OnUnitActiveSec=60s
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

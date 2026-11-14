@@ -136,14 +136,21 @@ verify.
 [workflow-token]: https://forgejo.org/docs/latest/user/actions/basic-concepts/#automatic-token
 [forgejo-v12]: https://forgejo.org/2025-07-release-v12-0/
 
-## Production systemd unit
+## Production systemd units
 
 [`systemd/peri-scribe.service`](../systemd/peri-scribe.service) is a user service that
 runs `mise deploy` before each separate invocation of `mise run-production`. The `-`
 prefix on `ExecStartPre` allows production to proceed after deployment succeeds or
-fails, using whichever commit remains checked out. After production exits, successfully
-or otherwise, systemd waits 50 seconds before starting the next cycle with deployment.
-Stopping the service explicitly stops repetition.
+fails, using whichever commit remains checked out.
+
+[`systemd/peri-scribe.timer`](../systemd/peri-scribe.timer) starts the first cycle one
+second after the timer starts and schedules subsequent cycles 60 seconds after the
+preceding service activation. A cycle that finishes in less than a minute waits for
+the remaining time; a longer cycle is followed immediately by the next one. Timer
+accuracy is set to one second. Systemd waits for the service to finish before activating
+it again, so cycles do not overlap. The interval covers the whole service cycle,
+including deployment, environment setup, the pipeline, and upload. Failed cycles use the
+same cadence. Each activation runs its own deployment check.
 
 The unit uses the `/home/jimmy/peri_scribe` checkout and `/usr/local/bin/mise` executable.
 It runs as the owner of the user service manager, with no `User` override. The account
@@ -152,36 +159,78 @@ remote used by `run-production`.
 
 `TimeoutStartSec=infinity` disables the startup timeout, so deployment can take as long
 as needed. If deployment hangs, production and the next cycle must wait for it to exit.
-Sequencing, retries, and the delay use [systemd's service lifecycle][systemd-service].
-This configuration adds no application protocol for an additional formal model to verify.
+Sequencing and failure handling use [systemd's service lifecycle][systemd-service], and
+the cadence uses [monotonic timers][systemd-timer]. This configuration adds no application
+protocol for an additional formal model to verify.
 
-On the production host, validate the unit from the checkout as `jimmy` without starting
-it:
-
-```sh
-systemd-analyze --user verify systemd/peri-scribe.service
-```
-
-Place the file or a symlink to it at
-`/home/jimmy/.config/systemd/user/peri-scribe.service`. Then, as `jimmy`, enable and start
-it:
+On the production host, validate both units from the checkout as `jimmy` without
+starting them:
 
 ```sh
-systemctl --user enable --now peri-scribe.service
+systemd-analyze --user verify \
+  systemd/peri-scribe.service systemd/peri-scribe.timer
 ```
 
-`WantedBy=default.target` starts the enabled service with the user service manager. To
-start that manager at boot and keep it running after logout, enable lingering once:
+Install symlinks to both files, then enable the timer as `jimmy`:
+
+```sh
+mkdir -p /home/jimmy/.config/systemd/user
+ln -sfn /home/jimmy/peri_scribe/systemd/peri-scribe.service \
+  /home/jimmy/.config/systemd/user/peri-scribe.service
+ln -sfn /home/jimmy/peri_scribe/systemd/peri-scribe.timer \
+  /home/jimmy/.config/systemd/user/peri-scribe.timer
+systemctl --user daemon-reload
+systemctl --user enable --now peri-scribe.timer
+```
+
+The timer's `WantedBy=timers.target` starts it with the user service manager. The service
+is activated by the timer and is not enabled directly. To start the user service manager
+at boot and keep it running after logout, enable lingering once:
 
 ```sh
 sudo loginctl enable-linger jimmy
 ```
 
-After editing the installed unit, run `systemctl --user daemon-reload` and
-`systemctl --user restart peri-scribe.service` to apply the changes. The unit is supplied
-as a file; it is not installed or enabled by any project task.
+When switching an existing installation to the timer, first let deployment pull the
+commit containing both unit files. Then run these commands before the installation
+commands above:
+
+```sh
+systemctl --user daemon-reload
+systemctl --user disable --no-reload peri-scribe.service
+```
+
+The reload applies the service settings without interrupting a running cycle. Disabling
+without `--now` also lets that cycle finish. Disabling may warn that the service has no
+installation section; it still removes existing enablement links. It can also remove
+the service's symlink to the checkout, which the installation commands restore.
+`--no-reload` keeps the manager's configuration intact until both symlinks are in place.
+
+Check the loaded settings and schedule with:
+
+```sh
+systemctl --user show peri-scribe.service --property=Restart,FragmentPath,UnitFileState
+systemctl --user list-timers --all peri-scribe.timer
+```
+
+`Restart=no` confirms that the timer owns repetition. The service can report
+`UnitFileState=linked` because it is available to the timer without direct enablement.
+While a cycle is running, the timer may have no next expiry displayed; it schedules
+the next activation when the service finishes.
+
+Symlinked changes on disk require `systemctl --user daemon-reload` before the manager
+uses them. After changing timer settings, also run
+`systemctl --user restart peri-scribe.timer`; this leaves an active service running.
+To stop future cycles, stop the timer. To stop an active cycle too, stop both units:
+
+```sh
+systemctl --user stop peri-scribe.timer peri-scribe.service
+```
+
+The unit files are not installed or enabled by any project task.
 
 [systemd-service]: https://github.com/systemd/systemd/blob/main/man/systemd.service.xml
+[systemd-timer]: https://github.com/systemd/systemd/blob/main/man/systemd.timer.xml
 
 ## Formal verification
 
